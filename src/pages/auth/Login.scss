@@ -1,0 +1,128 @@
+// src/pages/auth/Login.scss
+
+// Variables de color (puedes moverlas a un archivo global luego)
+$jonnys-red: #d32f2f;
+$dark-bg: #121212;
+$dark-input: #1e1e1e;
+$text-muted: #b0bec5;
+
+.login-page {
+  // 1. Configuración del contenedor principal para que ocupe toda la pantalla
+  min-height: 100vh;
+  width: 100%;
+  
+  // 2. Imagen de fondo con una capa oscura encima para que el texto se lea bien
+  background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+              url('../../assets/images/login-bg.jpg'); // Asegúrate que este sea el nombre de tu imagen
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  // 3. Centrar la tarjeta del formulario (Flexbox)
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px; // Un poco de espacio en móviles
+
+  .login-card {
+    // 4. Efecto "Glassmorphism" (Tarjeta transparente)
+    background-color: rgba(20, 20, 20, 0.85); // Color negro semi-transparente
+    backdrop-filter: blur(8px); // Desenfoca el fondo detrás de la tarjeta
+    -webkit-backdrop-filter: blur(8px); // Para Safari
+    border: 1px solid rgba(255, 255, 255, 0.1); // Borde sutil
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    
+    border-radius: 16px;
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 450px; // Ancho máximo para que no se vea gigante
+    text-align: center;
+    color: white;
+
+    .login-logo {
+      width: 120px;
+      margin-bottom: 1.5rem;
+    }
+
+    h3 {
+      font-weight: 600;
+      margin-bottom: 2rem;
+      font-size: 1.5rem;
+    }
+
+    // --- Estilos para los Inputs y Botones (igual que antes) ---
+    .form-control {
+      background-color: $dark-input;
+      border: 1px solid #333;
+      color: white;
+      padding: 0.8rem 1rem;
+      border-radius: 8px;
+
+      &::placeholder {
+        color: $text-muted;
+      }
+
+      &:focus {
+        background-color: lighten($dark-input, 5%);
+        border-color: $jonnys-red;
+        box-shadow: none;
+      }
+    }
+
+    .input-group-text {
+      background-color: $dark-input;
+      border: 1px solid #333;
+      border-left: none;
+      color: $text-muted;
+      cursor: pointer;
+      border-top-right-radius: 8px;
+      border-bottom-right-radius: 8px;
+    }
+    
+    .form-control + .input-group-text {
+         border-top-left-radius: 0;
+         border-bottom-left-radius: 0;
+    }
+
+    .options-row {
+      font-size: 0.9rem;
+      color: $text-muted;
+      margin-bottom: 2rem;
+
+      a {
+        color: $text-muted;
+        text-decoration: underline;
+        &:hover { color: white; }
+      }
+
+      .form-check-input {
+        background-color: $dark-input;
+        border-color: #333;
+        &:checked {
+            background-color: $jonnys-red;
+            border-color: $jonnys-red;
+        }
+        &:focus { box-shadow: none; }
+      }
+    }
+
+    .btn { padding: 0.8rem; border-radius: 8px; font-weight: 600; }
+
+    .btn-jonnys-red {
+      background-color: $jonnys-red;
+      border: none;
+      color: white;
+      &:hover { background-color: darken($jonnys-red, 10%); }
+    }
+
+    .btn-jonnys-outline {
+      background-color: transparent;
+      border: 2px solid #333;
+      color: white;
+      &:hover {
+          border-color: white;
+          background-color: rgba(255,255,255,0.1);
+      }
+    }
+  }
+}
