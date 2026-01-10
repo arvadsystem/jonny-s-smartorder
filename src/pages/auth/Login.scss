@@ -1,5 +1,5 @@
 // src/pages/auth/Login.scss
-
+@use "sass:color";
 // Variables de color (puedes moverlas a un archivo global luego)
 $jonnys-red: #d32f2f;
 $dark-bg: #121212;
@@ -63,7 +63,7 @@ $text-muted: #b0bec5;
       }
 
       &:focus {
-        background-color: lighten($dark-input, 5%);
+        background-color: color.adjust($dark-input, $lightness: 5%);
         border-color: $jonnys-red;
         box-shadow: none;
       }
@@ -112,7 +112,7 @@ $text-muted: #b0bec5;
       background-color: $jonnys-red;
       border: none;
       color: white;
-      &:hover { background-color: darken($jonnys-red, 10%); }
+      &:hover { background-color: color.adjust($jonnys-red, $lightness: -10%); }
     }
 
     .btn-jonnys-outline {
