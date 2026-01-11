@@ -1,19 +1,59 @@
 import { useState } from 'react';
-import logo from '../../assets/images/logo-jonnys.png';
-import './Login.scss'; // <--- AQUÍ importamos el archivo de estilos que acabas de crear
+import { useNavigate } from 'react-router-dom';
+import logo from '../../assets/images/Logo-jonnys-sinFondo.jpeg';
+import './Login.scss';
+import authService from '../../services/authService';
 
 const Login = () => {
-  const [email, setEmail] = useState('');
+  const navigate = useNavigate();
+
+  const [nombreUsuario, setNombreUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Intento de login:', { email, password });
+    setError(''); // Limpiamos errores previos
+    setLoading(true);
+
+    try {
+        const credentials = {
+            nombre_usuario: nombreUsuario,
+            clave: password
+        };
+
+        const response = await authService.login(credentials);
+        
+        console.log('Login exitoso:', response);
+
+        if (response.token) {
+            localStorage.setItem('token', response.token);
+            localStorage.setItem('usuario', JSON.stringify(response.usuario));
+        }
+
+        navigate('/dashboard');
+
+    } catch (err) {
+        console.error(err);
+        
+        // --- AQUÍ ESTÁ EL CAMBIO ---
+        let mensajeError = err.message;
+
+        // "Failed to fetch" es el mensaje estándar de Chrome/Edge cuando no hay conexión
+        if (mensajeError === 'Failed to fetch' || mensajeError.includes('NetworkError')) {
+            mensajeError = 'Error de conexión con el servidor';
+        }
+
+        setError(mensajeError);
+    } finally {
+        setLoading(false);
+    }
   };
 
   return (
@@ -23,14 +63,18 @@ const Login = () => {
         
         <h3>Jonny's Smart Orden</h3>
 
+        {/* Mostramos el mensaje de error (ahora personalizado) */}
+        {error && <div className="alert alert-danger">{error}</div>}
+
         <form onSubmit={handleSubmit}>
+          
           <div className="mb-4 text-start">
             <input
-              type="email"
+              type="text" 
               className="form-control"
-              placeholder="Correo Electronico"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Nombre de Usuario"
+              value={nombreUsuario}
+              onChange={(e) => setNombreUsuario(e.target.value)}
               required
             />
           </div>
@@ -61,13 +105,11 @@ const Login = () => {
           </div>
 
           <div className="d-grid gap-3">
-            <button type="button" className="btn btn-jonnys-red text-uppercase">
-              Registrar
-            </button>
-             <button type="submit" className="btn btn-jonnys-outline text-uppercase">
-              Iniciar Sesion
+             <button type="submit" className="btn btn-jonnys-red text-uppercase fw-bold" disabled={loading}>
+              {loading ? 'Validando...' : 'Iniciar Sesion'}
             </button>
           </div>
+
         </form>
       </div>
     </div>
