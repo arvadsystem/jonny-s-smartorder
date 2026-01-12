@@ -3,38 +3,55 @@ import { API_URL } from '../utils/constants';
 // Función genérica para hacer peticiones
 export const apiFetch = async (endpoint, method = 'GET', body = null) => {
     
-    // Configuración básica de cabeceras
-    const options = {
-        method,
-        headers: {
-            'Content-Type': 'application/json',
-            // Aquí agregaríamos el token de autorización en el futuro
-            // 'Authorization': `Bearer ${token}` 
-        },
+    // 1. Recuperamos el token del almacenamiento local
+    const token = localStorage.getItem('token');
+
+    // 2. Configuramos los headers
+    const headers = {
+        'Content-Type': 'application/json',
     };
 
-    // Si hay datos para enviar (POST/PUT), los convertimos a String
+    // Si hay token, lo inyectamos en la cabecera Authorization
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const options = {
+        method,
+        headers,
+    };
+
     if (body) {
         options.body = JSON.stringify(body);
     }
 
     try {
-        // Ejecutamos el fetch uniendo la URL base con el endpoint (ej: /login)
         const response = await fetch(`${API_URL}${endpoint}`, options);
 
-        // Fetch no lanza error si el status es 400 o 500, hay que validarlo manual:
+        // 3. Manejo de error 401 (No autorizado / Token vencido)
+        if (response.status === 401) {
+            console.warn("Sesión expirada o token inválido. Cerrando sesión...");
+            
+            // Limpiamos todo rastro de la sesión
+            localStorage.removeItem('token');
+            localStorage.removeItem('usuario');
+            
+            // Forzamos la recarga y redirección al Login
+            // Usamos window.location en lugar de navigate porque este es un archivo JS puro, no un componente React
+            window.location.href = '/';
+            return; 
+        }
+
+        // Si la respuesta no es OK (ej: 400, 500, etc, pero no 401)
         if (!response.ok) {
-            // Intentamos leer el mensaje de error que envía el backend
             const errorData = await response.json().catch(() => ({}));
-            // Lanzamos un error para que el 'catch' del componente lo capture
             throw new Error(errorData.message || `Error HTTP: ${response.status}`);
         }
 
-        // Si todo sale bien, devolvemos el JSON parseado
+        // Si todo sale bien, devolvemos el JSON
         return await response.json();
 
     } catch (error) {
-        // Relanzamos el error para manejarlo en el componente
         throw error;
     }
 };

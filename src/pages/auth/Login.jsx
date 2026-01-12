@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth'; // Importamos el hook de seguridad
+import authService from '../../services/authService';
 import logo from '../../assets/images/Logo-jonnys-sinFondo.jpeg';
 import './Login.scss';
-import authService from '../../services/authService';
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth(); // Usamos la función login del contexto
 
   const [nombreUsuario, setNombreUsuario] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +21,7 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); // Limpiamos errores previos
+    setError('');
     setLoading(true);
 
     try {
@@ -32,20 +34,20 @@ const Login = () => {
         
         console.log('Login exitoso:', response);
 
+        // Si el login es correcto, guardamos sesión en el Contexto Global
         if (response.token) {
-            localStorage.setItem('token', response.token);
-            localStorage.setItem('usuario', JSON.stringify(response.usuario));
+            login(response.usuario, response.token);
         }
 
+        // Redirigimos al Dashboard
         navigate('/dashboard');
 
     } catch (err) {
         console.error(err);
         
-        // --- AQUÍ ESTÁ EL CAMBIO ---
         let mensajeError = err.message;
-
-        // "Failed to fetch" es el mensaje estándar de Chrome/Edge cuando no hay conexión
+        
+        // Personalizamos el error de conexión
         if (mensajeError === 'Failed to fetch' || mensajeError.includes('NetworkError')) {
             mensajeError = 'Error de conexión con el servidor';
         }
@@ -63,7 +65,6 @@ const Login = () => {
         
         <h3>Jonny's Smart Orden</h3>
 
-        {/* Mostramos el mensaje de error (ahora personalizado) */}
         {error && <div className="alert alert-danger">{error}</div>}
 
         <form onSubmit={handleSubmit}>

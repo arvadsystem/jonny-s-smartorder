@@ -1,46 +1,52 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // Para redireccionar
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth'; // Importamos el hook
 import userAvatar from '../../assets/images/logo-jonnys.png'; 
 
-const Navbar = ({ nombreUsuario }) => {
+const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
+  const { user, logout } = useAuth(); // Traemos datos del contexto
 
   const toggleDropdown = () => setIsOpen(!isOpen);
 
   const handleLogout = () => {
-    localStorage.removeItem('usuario');
+    logout(); // Limpia sesión
     navigate('/', { replace: true });
   };
 
+  // Datos seguros del usuario
+  const userName = user?.nombre_usuario || 'Invitado';
+  const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
+
   return (
     <div className="top-navbar">
-      {/* Buscador */}
+      {/* 1. Buscador Central/Izquierdo */}
       <div className="search-container">
         <i className="bi bi-search"></i>
         <input type="text" placeholder="Buscar en el sistema..." />
       </div>
 
-      {/* Perfil Dropdown */}
+      {/* 2. Perfil Dropdown */}
       <div className="user-profile-container" onClick={toggleDropdown}>
         
-        {/* La parte visible siempre */}
+        {/* Parte visible siempre */}
         <div className="user-profile">
             <div className="text-info d-none d-sm-block">
-                <h6>{nombreUsuario}</h6>
-                <p>Super Admin</p>
+                <h6>{userName}</h6>
+                <p>{userRole}</p>
             </div>
             <img src={userAvatar} alt="Perfil" />
-            {/* Pequeña flecha indicando que es menú */}
+            
+            {/* Indicadores de flecha */}
             <i className={`bi bi-chevron-down small ms-2 text-muted ${isOpen ? 'd-none' : ''}`} style={{fontSize: '0.8rem'}}></i>
-             <i className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`} style={{fontSize: '0.8rem'}}></i>
+            <i className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`} style={{fontSize: '0.8rem'}}></i>
         </div>
 
-        {/* El Menú Desplegable (Solo si isOpen es true) */}
+        {/* Menú Flotante (Dropdown) */}
         {isOpen && (
             <div className="dropdown-menu-custom">
                 <ul>
-                    {/* Aquí puedes agregar 'Mi Perfil' en el futuro */}
                     <li onClick={handleLogout}>
                         <i className="bi bi-box-arrow-right"></i>
                         Cerrar Sesión
