@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth'; // Importamos el hook
-import userAvatar from '../../assets/images/logo-jonnys.png'; 
+import userAvatar from '../../assets/images/logo-jonnys.png';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,8 +10,9 @@ const Navbar = () => {
 
   const toggleDropdown = () => setIsOpen(!isOpen);
 
-  const handleLogout = () => {
-    logout(); // Limpia sesión
+  const handleLogout = async () => {
+    // ✅ Mantiene tu lógica nueva (backend borra cookies)
+    await logout();
     navigate('/', { replace: true });
   };
 
@@ -29,30 +30,35 @@ const Navbar = () => {
 
       {/* 2. Perfil Dropdown */}
       <div className="user-profile-container" onClick={toggleDropdown}>
-        
         {/* Parte visible siempre */}
         <div className="user-profile">
-            <div className="text-info d-none d-sm-block">
-                <h6>{userName}</h6>
-                <p>{userRole}</p>
-            </div>
-            <img src={userAvatar} alt="Perfil" />
-            
-            {/* Indicadores de flecha */}
-            <i className={`bi bi-chevron-down small ms-2 text-muted ${isOpen ? 'd-none' : ''}`} style={{fontSize: '0.8rem'}}></i>
-            <i className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`} style={{fontSize: '0.8rem'}}></i>
+          <div className="text-info d-none d-sm-block">
+            <h6>{userName}</h6>
+            <p>{userRole}</p>
+          </div>
+          <img src={userAvatar} alt="Perfil" />
+
+          {/* Indicadores de flecha */}
+          <i
+            className={`bi bi-chevron-down small ms-2 text-muted ${isOpen ? 'd-none' : ''}`}
+            style={{ fontSize: '0.8rem' }}
+          ></i>
+          <i
+            className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`}
+            style={{ fontSize: '0.8rem' }}
+          ></i>
         </div>
 
         {/* Menú Flotante (Dropdown) */}
         {isOpen && (
-            <div className="dropdown-menu-custom">
-                <ul>
-                    <li onClick={handleLogout}>
-                        <i className="bi bi-box-arrow-right"></i>
-                        Cerrar Sesión
-                    </li>
-                </ul>
-            </div>
+          <div className="dropdown-menu-custom">
+            <ul>
+              <li onClick={handleLogout}>
+                <i className="bi bi-box-arrow-right"></i>
+                Cerrar Sesión
+              </li>
+            </ul>
+          </div>
         )}
       </div>
     </div>
@@ -60,3 +66,5 @@ const Navbar = () => {
 };
 
 export default Navbar;
+
+

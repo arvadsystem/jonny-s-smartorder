@@ -1,17 +1,17 @@
 import { apiFetch } from './api';
 
 const authService = {
-    // Login
-    login: async (credentials) => {
-        // credentials ahora será: 
-        // { "nombre_usuario": "Admin", "clave": "12345" }
-        return await apiFetch('/login', 'POST', credentials);
-    },
+  login: async (credentials) => {
+    return await apiFetch('/login', 'POST', credentials);
+  },
 
-    // Registro
-    register: async (userData) => {
-        return await apiFetch('/usuarios', 'POST', userData);
-    }
+  me: async () => {
+    return await apiFetch('/me', 'GET');
+  },
+
+  logout: async () => {
+    return await apiFetch('/logout', 'POST');
+  }
 };
 
 export default authService;

@@ -1,57 +1,104 @@
 import { API_URL } from '../utils/constants';
 
-// Función genérica para hacer peticiones
-export const apiFetch = async (endpoint, method = 'GET', body = null) => {
-    
-    // 1. Recuperamos el token del almacenamiento local
-    const token = localStorage.getItem('token');
+class ApiError extends Error {
+  constructor(message, { status, code, data } = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.data = data;
+  }
+}
 
-    // 2. Configuramos los headers
-    const headers = {
-        'Content-Type': 'application/json',
-    };
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-    // Si hay token, lo inyectamos en la cabecera Authorization
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
+const readBody = async (response) => {
+  const text = await response.text().catch(() => '');
+  if (!text) return null;
 
-    const options = {
-        method,
-        headers,
-    };
-
-    if (body) {
-        options.body = JSON.stringify(body);
-    }
-
-    try {
-        const response = await fetch(`${API_URL}${endpoint}`, options);
-
-        // 3. Manejo de error 401 (No autorizado / Token vencido)
-        if (response.status === 401) {
-            console.warn("Sesión expirada o token inválido. Cerrando sesión...");
-            
-            // Limpiamos todo rastro de la sesión
-            localStorage.removeItem('token');
-            localStorage.removeItem('usuario');
-            
-            // Forzamos la recarga y redirección al Login
-            // Usamos window.location en lugar de navigate porque este es un archivo JS puro, no un componente React
-            window.location.href = '/';
-            return; 
-        }
-
-        // Si la respuesta no es OK (ej: 400, 500, etc, pero no 401)
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || `Error HTTP: ${response.status}`);
-        }
-
-        // Si todo sale bien, devolvemos el JSON
-        return await response.json();
-
-    } catch (error) {
-        throw error;
-    }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 };
+
+const getCookie = (name) => {
+  if (typeof document === 'undefined') return null;
+
+  const match = document.cookie
+    .split('; ')
+    .find((row) => row.startsWith(`${name}=`));
+
+  if (!match) return null;
+
+  const value = match.split('=').slice(1).join('=');
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+export const apiFetch = async (endpoint, method = 'GET', body = null) => {
+  const upperMethod = method.toUpperCase();
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  // CSRF: para métodos que cambian estado
+  if (!SAFE_METHODS.has(upperMethod)) {
+    const csrf = getCookie('csrf_token');
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+  }
+
+  const options = {
+    method: upperMethod,
+    headers,
+    credentials: 'include' // ✅ envía cookies (HttpOnly JWT)
+  };
+
+  if (body !== null && body !== undefined) {
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, options);
+
+  if (response.status === 401) {
+    const errorData = await readBody(response);
+    const msg =
+      (errorData && typeof errorData === 'object' && (errorData.message || errorData.mensaje)) ||
+      (typeof errorData === 'string' ? errorData : '') ||
+      'No autorizado';
+
+    // Redirige al login si la sesión expiró
+    window.location.href = '/';
+    throw new ApiError(msg, { status: 401, code: 'UNAUTHORIZED', data: errorData });
+  }
+
+  if (response.status === 403) {
+    const errorData = await readBody(response);
+    const msg =
+      (errorData && typeof errorData === 'object' && (errorData.message || errorData.mensaje)) ||
+      (typeof errorData === 'string' ? errorData : '') ||
+      'Acción bloqueada (CSRF)';
+
+    throw new ApiError(msg, { status: 403, code: 'CSRF', data: errorData });
+  }
+
+  if (!response.ok) {
+    const errorData = await readBody(response);
+    const msg =
+      (errorData && typeof errorData === 'object' && (errorData.message || errorData.mensaje)) ||
+      (typeof errorData === 'string' ? errorData : '') ||
+      `Error HTTP: ${response.status}`;
+
+    throw new ApiError(msg, { status: response.status, code: 'HTTP_ERROR', data: errorData });
+  }
+
+  if (response.status === 204) return null;
+
+  return await readBody(response);
+};
+

@@ -25,36 +25,35 @@ const Login = () => {
     setLoading(true);
 
     try {
-        const credentials = {
-            nombre_usuario: nombreUsuario,
-            clave: password
-        };
+      const credentials = {
+        nombre_usuario: nombreUsuario,
+        clave: password
+      };
 
-        const response = await authService.login(credentials);
-        
-        console.log('Login exitoso:', response);
+      const response = await authService.login(credentials);
 
-        // Si el login es correcto, guardamos sesión en el Contexto Global
-        if (response.token) {
-            login(response.usuario, response.token);
-        }
+      console.log('Login exitoso:', response);
 
-        // Redirigimos al Dashboard
-        navigate('/dashboard');
+      // ✅ NUEVA LÓGICA (cookies): ya no existe response.token, solo guardamos usuario en contexto
+      if (response?.usuario) {
+        login(response.usuario);
+      }
 
+      // Redirigimos al Dashboard
+      navigate('/dashboard');
     } catch (err) {
-        console.error(err);
-        
-        let mensajeError = err.message;
-        
-        // Personalizamos el error de conexión
-        if (mensajeError === 'Failed to fetch' || mensajeError.includes('NetworkError')) {
-            mensajeError = 'Error de conexión con el servidor';
-        }
+      console.error(err);
 
-        setError(mensajeError);
+      let mensajeError = err.message;
+
+      // Personalizamos el error de conexión
+      if (mensajeError === 'Failed to fetch' || mensajeError.includes('NetworkError')) {
+        mensajeError = 'Error de conexión con el servidor';
+      }
+
+      setError(mensajeError);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -62,16 +61,15 @@ const Login = () => {
     <div className="login-page">
       <div className="login-card shadow-lg">
         <img src={logo} alt="Jonny's Logo" className="login-logo img-fluid" />
-        
+
         <h3>Jonny's Smart Orden</h3>
 
         {error && <div className="alert alert-danger">{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          
           <div className="mb-4 text-start">
             <input
-              type="text" 
+              type="text"
               className="form-control"
               placeholder="Nombre de Usuario"
               value={nombreUsuario}
@@ -82,7 +80,7 @@ const Login = () => {
 
           <div className="input-group mb-4">
             <input
-              type={showPassword ? "text" : "password"}
+              type={showPassword ? 'text' : 'password'}
               className="form-control"
               placeholder="Contraseña"
               value={password}
@@ -90,8 +88,8 @@ const Login = () => {
               required
               style={{ borderRight: 'none' }}
             />
-             <span className="input-group-text" onClick={togglePasswordVisibility}>
-                <i className={`bi ${showPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
+            <span className="input-group-text" onClick={togglePasswordVisibility}>
+              <i className={`bi ${showPassword ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
             </span>
           </div>
 
@@ -102,15 +100,20 @@ const Login = () => {
                 Recordar contraseña
               </label>
             </div>
-            <a href="#" className="">Olvidé mi contraseña</a>
+            <a href="#" className="">
+              Olvidé mi contraseña
+            </a>
           </div>
 
           <div className="d-grid gap-3">
-             <button type="submit" className="btn btn-jonnys-red text-uppercase fw-bold" disabled={loading}>
+            <button
+              type="submit"
+              className="btn btn-jonnys-red text-uppercase fw-bold"
+              disabled={loading}
+            >
               {loading ? 'Validando...' : 'Iniciar Sesion'}
             </button>
           </div>
-
         </form>
       </div>
     </div>
@@ -118,3 +121,4 @@ const Login = () => {
 };
 
 export default Login;
+

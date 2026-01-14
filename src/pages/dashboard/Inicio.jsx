@@ -1,24 +1,31 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
 
 const Inicio = () => {
-  const usuarioGuardado = JSON.parse(localStorage.getItem('usuario'));
-  const nombre = usuarioGuardado ? usuarioGuardado.nombre_usuario : 'Gerson';
+  const { user } = useAuth();
+
+  // ✅ NUEVA FUENTE: contexto (sin localStorage aquí)
+  // Mantengo el fallback EXACTO como antes: "Gerson"
+  const nombre = user?.nombre_usuario ? user.nombre_usuario : 'Gerson';
 
   return (
     <div className="welcome-section fade-in">
-        <div className="welcome-card">
-            <div className="content">
-                <h1>¡Bienvenido de nuevo, {nombre}!</h1>
-                <p>Selecciona una opción del menú lateral para comenzar a gestionar tu negocio.</p>
-                
-                <Link to="/dashboard/ventas">
-                    <button className="btn-black">Ir al Dashboard</button>
-                </Link>
-            </div>
+      <div className="welcome-card">
+        <div className="content">
+          <h1>¡Bienvenido de nuevo, {nombre}!</h1>
+          <p>
+            Selecciona una opción del menú lateral para comenzar a gestionar tu negocio.
+          </p>
+
+          <Link to="/dashboard/ventas">
+            <button className="btn-black">Ir al Dashboard</button>
+          </Link>
         </div>
+      </div>
     </div>
   );
 };
 
 export default Inicio;
+
