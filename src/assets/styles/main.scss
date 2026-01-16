@@ -108,6 +108,36 @@ a { text-decoration: none !important; }
     gap: 5px;
     padding: 0 15px;
 
+        // COMENTARIO EN MAYÚSCULAS: SCROLL DELICADO + LLAMATIVO EN SIDEBAR
+    overflow-y: auto;
+
+    // FIREFOX
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.35) rgba(255, 255, 255, 0.08);
+
+    // CHROME / EDGE
+    &::-webkit-scrollbar {
+      width: 7px; // MÁS DELGADO
+    }
+
+    &::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 999px;
+      margin: 10px 0; // QUE NO PEGUE EN ESQUINAS
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.28); // VISIBLE PERO ELEGANTE
+      border-radius: 999px;
+      border: 2px solid $sidebar-bg; // SE FUNDE CON EL COLOR DEL SIDEBAR
+      background-clip: padding-box;
+    }
+
+    &::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.45); // MÁS LLAMATIVO EN HOVER
+    }
+
+
     .menu-item {
       display: flex;
       align-items: center;

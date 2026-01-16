@@ -65,17 +65,18 @@ export const apiFetch = async (endpoint, method = 'GET', body = null) => {
 
   const response = await fetch(`${API_URL}${endpoint}`, options);
 
-  if (response.status === 401) {
+    if (response.status === 401) {
     const errorData = await readBody(response);
     const msg =
       (errorData && typeof errorData === 'object' && (errorData.message || errorData.mensaje)) ||
       (typeof errorData === 'string' ? errorData : '') ||
       'No autorizado';
 
-    // Redirige al login si la sesión expiró
-    window.location.href = '/';
+    // IMPORTANT: NO RECARGAR LA PAGINA AQUI
+    // PROTECTEDROUTE YA SE ENCARGA DE REDIRIGIR
     throw new ApiError(msg, { status: 401, code: 'UNAUTHORIZED', data: errorData });
   }
+
 
   if (response.status === 403) {
     const errorData = await readBody(response);
