@@ -5,8 +5,6 @@ import { useAuth } from '../../hooks/useAuth';
 const Inicio = () => {
   const { user } = useAuth();
 
-  // ✅ NUEVA FUENTE: contexto (sin localStorage aquí)
-  // Mantengo el fallback EXACTO como antes: "Gerson"
   const nombre = user?.nombre_usuario ? user.nombre_usuario : 'Gerson';
 
   return (

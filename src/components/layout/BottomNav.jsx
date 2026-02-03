@@ -15,7 +15,7 @@ const BottomNav = () => {
   // DETECTAR SI ESTAMOS EN INVENTARIO (PARA MARCAR ACTIVO)
   const isInInventario = location.pathname.startsWith('/dashboard/inventario');
 
-  // ✅ Mantiene EXACTAMENTE las opciones originales del sidebar
+  
   const menuItems = [
     { name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
     { name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
@@ -28,7 +28,7 @@ const BottomNav = () => {
   ];
 
   const handleLogout = async () => {
-    // ✅ MANTIENE LA LOGICA NUEVA (BORRA COOKIES EN BACKEND)
+    
     await logout();
     navigate('/', { replace: true });
   };
@@ -64,9 +64,7 @@ const BottomNav = () => {
               );
             }
 
-            // ==============================
-            // RESTO: IGUAL QUE ANTES
-            // ==============================
+          
             return (
               <NavLink
                 key={item.path}
@@ -81,7 +79,7 @@ const BottomNav = () => {
             );
           })}
 
-          {/* ✅ Opción original (Salir) ahora en la barra inferior */}
+          {/*  Opción original (Salir) ahora en la barra inferior */}
           <button type="button" className="bottom-nav-item" onClick={handleLogout} title="Salir">
             <i className="bi bi-box-arrow-right"></i>
             <span>Salir</span>
@@ -100,7 +98,7 @@ const BottomNav = () => {
           aria-modal="true"
           onClick={() => setShowInventarioSheet(false)}
         >
-          {/* COMENTARIO EN MAYÚSCULAS: CAMBIO DE BOTTOM SHEET A MODAL CENTRADO */}
+          
           <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
             <div className="modal-content shadow">
               <div className="modal-header d-flex align-items-center justify-content-between">
@@ -133,7 +131,7 @@ const BottomNav = () => {
                   Insumos
                 </button>
 
-                {/* COMENTARIO EN MAYÚSCULAS: NUEVA OPCIÓN PRODUCTOS */}
+                
                 <button
                   type="button"
                   className="btn btn-outline-primary"
@@ -143,7 +141,7 @@ const BottomNav = () => {
                   Productos
                 </button>
 
-                {/* COMENTARIO EN MAYÚSCULAS: NUEVA OPCIÓN ALMACENES */}
+                
                 <button
                   type="button"
                   className="btn btn-outline-primary"
@@ -153,7 +151,7 @@ const BottomNav = () => {
                   Almacenes
                 </button>
 
-                {/* COMENTARIO EN MAYÚSCULAS: NUEVA OPCIÓN MOVIMIENTOS */}
+                
                 <button
                   type="button"
                   className="btn btn-outline-primary"
@@ -163,7 +161,7 @@ const BottomNav = () => {
                   Movimientos
                 </button>
 
-                {/* COMENTARIO EN MAYÚSCULAS: NUEVA OPCIÓN ALERTAS */}
+                
                 <button
                   type="button"
                   className="btn btn-outline-primary"

@@ -11,7 +11,7 @@ const Navbar = () => {
   const toggleDropdown = () => setIsOpen(!isOpen);
 
   const handleLogout = async () => {
-    // ✅ Mantiene tu lógica nueva (backend borra cookies)
+
     await logout();
     navigate('/', { replace: true });
   };

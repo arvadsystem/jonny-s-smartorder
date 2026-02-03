@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import logo from '../../assets/images/logo-jonnys.png'; // ✅ logo del proyecto
+import logo from '../../assets/images/logo-jonnys.png'; //  logo del proyecto
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   const navigate = useNavigate();
@@ -9,7 +9,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   const { user, logout } = useAuth();
 
   // ==============================
-  // MENU PRINCIPAL (SE MANTIENE)
+  // MENU PRINCIPAL 
   // ==============================
   const menuItems = [
     { name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
@@ -23,12 +23,12 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   ];
 
   // ==============================
-  // SUBMENUS INVENTARIO (NUEVO)
+  // SUBMENUS INVENTARIO 
   // ==============================
   const isInInventario = location.pathname.startsWith('/dashboard/inventario');
   const tabInventario = (new URLSearchParams(location.search).get('tab') || 'categorias').toLowerCase();
 
-  // ABRIR SUBMENU SI YA ESTAMOS EN INVENTARIO
+  
   const [openInventario, setOpenInventario] = useState(isInInventario);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   }, [isInInventario]);
 
   const handleLogout = async () => {
-    await logout(); // ✅ cookies/httpOnly (sin tocar)
+    await logout(); 
     navigate('/', { replace: true });
   };
 
@@ -48,7 +48,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
     <div className={`sidebar-wrapper ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
         <div className="brand">
-          {/* ✅ Logo como antes */}
+          
           <img className="brand-logo" src={logo} alt="Jonny's" />
           <h4>Jonny's Smart</h4>
         </div>
@@ -72,7 +72,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
         </button>
       </div>
 
-      {/* COMENTARIO EN MAYÚSCULAS: HACER SCROLL EN EL MENÚ PARA PODER VER TODO EL SIDEBAR */}
+      {/* HACER SCROLL EN EL MENÚ PARA PODER VER TODO EL SIDEBAR */}
       <div
         className="sidebar-menu"
         style={{
@@ -86,7 +86,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
       >
         {menuItems.map((item) => {
           // ==============================
-          // INVENTARIO CON SUBMENU (NUEVO)
+          // INVENTARIO CON SUBMENU 
           // ==============================
           if (item.name === 'Inventario') {
             return (
@@ -97,7 +97,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                   title={isCollapsed ? item.name : ''}
                   aria-expanded={openInventario}
                   onClick={() => {
-                    // SI NO ESTAMOS EN INVENTARIO, ENTRAMOS A CATEGORIAS
+                    
                     if (!isInInventario) {
                       navigate('/dashboard/inventario?tab=categorias');
                       return;
@@ -118,14 +118,13 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                   <i className={`bi ${item.icon}`}></i>
                   <span>{item.name}</span>
 
-                  {/* FLECHA (NUEVO) */}
                   <i
                     className={`bi ${openInventario ? 'bi-chevron-up' : 'bi-chevron-down'}`}
                     style={{ marginLeft: 'auto' }}
                   ></i>
                 </button>
 
-                {/* SUBMENU INVENTARIO */}
+               
                 {openInventario && (
                   <div style={{ paddingLeft: isCollapsed ? 0 : 18 }}>
                     <NavLink
@@ -152,7 +151,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                       <span>Insumos</span>
                     </NavLink>
 
-                    {/* COMENTARIO EN MAYÚSCULAS: NUEVO SUBMENÚ PRODUCTOS EN SIDEBAR */}
+                    
                     <NavLink
                       to="/dashboard/inventario?tab=productos"
                       className={() =>
@@ -165,7 +164,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                       <span>Productos</span>
                     </NavLink>
 
-                    {/* COMENTARIO EN MAYÚSCULAS: NUEVO SUBMENÚ ALMACENES */}
+                    
                     <NavLink
                       to="/dashboard/inventario?tab=almacenes"
                       className={() =>
@@ -178,7 +177,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                       <span>Almacenes</span>
                     </NavLink>
 
-                    {/* COMENTARIO EN MAYÚSCULAS: NUEVO SUBMENÚ MOVIMIENTOS */}
+                    
                     <NavLink
                       to="/dashboard/inventario?tab=movimientos"
                       className={() =>
@@ -191,7 +190,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                       <span>Movimientos</span>
                     </NavLink>
 
-                    {/* COMENTARIO EN MAYÚSCULAS: NUEVO SUBMENÚ ALERTAS (STOCK BAJO / SIN STOCK) */}
+                    
                     <NavLink
                       to="/dashboard/inventario?tab=alertas"
                       className={() =>
@@ -210,7 +209,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
           }
 
           // ==============================
-          // RESTO DE OPCIONES (SIN CAMBIOS)
+          // RESTO DE OPCIONES
           // ==============================
           return (
             <NavLink

@@ -19,7 +19,6 @@ a { text-decoration: none !important; }
 
 // =========================================
 // 3. SIDEBAR + LAYOUT + NAVBAR + SECCIONES
-// (Tu archivo original completo)
 // =========================================
 
 .dashboard-wrapper {
@@ -345,7 +344,7 @@ a { text-decoration: none !important; }
   right: 0;
   bottom: 0;
   height: 76px;
-  background-color: $sidebar-bg; // ✅ mismo color que el sidebar
+  background-color: $sidebar-bg; // mismo color que el sidebar
   display: none; // se muestra solo en mobile/tablet
   align-items: center;
   padding: 10px 10px;

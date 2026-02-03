@@ -56,7 +56,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null) => {
   const options = {
     method: upperMethod,
     headers,
-    credentials: 'include' // ✅ envía cookies (HttpOnly JWT)
+    credentials: 'include' // envía cookies (HttpOnly JWT)
   };
 
   if (body !== null && body !== undefined) {
@@ -72,8 +72,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null) => {
       (typeof errorData === 'string' ? errorData : '') ||
       'No autorizado';
 
-    // IMPORTANT: NO RECARGAR LA PAGINA AQUI
-    // PROTECTEDROUTE YA SE ENCARGA DE REDIRIGIR
+    
     throw new ApiError(msg, { status: 401, code: 'UNAUTHORIZED', data: errorData });
   }
 

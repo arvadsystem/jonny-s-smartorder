@@ -35,7 +35,7 @@ const Inventario = () => {
   }, [searchParams]);
 
   // ==============================
-  // MODALES CREAR (RESPONSIVE)
+  // MODALES  (RESPONSIVE)
   // ==============================
   const [showCreateCategoriaSheet, setShowCreateCategoriaSheet] = useState(false);
   const [showCreateInsumoSheet, setShowCreateInsumoSheet] = useState(false);

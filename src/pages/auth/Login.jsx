@@ -34,7 +34,7 @@ const Login = () => {
 
       console.log('Login exitoso:', response);
 
-      // ✅ NUEVA LÓGICA (cookies): ya no existe response.token, solo guardamos usuario en contexto
+      
       if (response?.usuario) {
         login(response.usuario);
       }
@@ -46,7 +46,7 @@ const Login = () => {
 
       let mensajeError = err.message;
 
-      // Personalizamos el error de conexión
+      
       if (mensajeError === 'Failed to fetch' || mensajeError.includes('NetworkError')) {
         mensajeError = 'Error de conexión con el servidor';
       }

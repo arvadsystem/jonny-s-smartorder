@@ -10,7 +10,7 @@ import Inventario from './pages/dashboard/Inventario';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 
-// Componente temporal (PaginaEnConstruccion) sigue igual...
+
 const PaginaEnConstruccion = ({ titulo }) => {
   return (
     <div className="p-5 text-center">

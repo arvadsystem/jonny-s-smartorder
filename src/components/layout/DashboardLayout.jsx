@@ -20,7 +20,7 @@ const DashboardLayout = () => {
         <Outlet />
       </div>
 
-      {/* ✅ Solo se verá en tablets/smartphones por CSS */}
+      {/*  Solo se verá en tablets/smartphones por CSS */}
       <BottomNav />
     </>
   );
