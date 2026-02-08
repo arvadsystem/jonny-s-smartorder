@@ -63,7 +63,8 @@ const Seguridad = () => {
       {/* Contenido por tab */}
       {activeTab === "sesiones" && <SesionesTab />}
       {activeTab === "password" && <PasswordPolicyTab />}
-      {activeTab === "logins" && <LoginLogsTab />}
+      {activeTab === "logins" && <LoginLogsTab />} // Aqui estoy agregando el nuevo tab de los logs login
+      // usuario estado IP fecha, navegador, etc.
     </div>
   );
 };
