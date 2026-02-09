@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { perfilService } from "../../services/perfilService";
+import usePasswordPolicies from "../../hooks/usePasswordPolicies";
+import { validatePassword } from "../../utils/passwordValidator";
 
 const Perfil = () => {
   const [data, setData] = useState(null);
@@ -9,7 +11,7 @@ const Perfil = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Form editar perfil (solo campos permitidos por tu backend)
+  // Form editar perfil
   const [form, setForm] = useState({
     nombre: "",
     apellido: "",
@@ -25,9 +27,29 @@ const Perfil = () => {
     confirmacion: "",
   });
 
+  // ✅ Toggle mostrar/ocultar password
+  const [showPw, setShowPw] = useState({
+    actual: false,
+    nueva: false,
+    confirmacion: false,
+  });
+
+  const { policies, loading: loadingPolicies, error: policiesError } = usePasswordPolicies();
+
+  const passwordCheck = validatePassword(pw.nueva || "", policies || {});
+  const confirmOk = pw.nueva.length > 0 && pw.nueva === pw.confirmacion;
+
+  const canChangePassword =
+    !loadingPolicies &&
+    !policiesError &&
+    pw.actual.length > 0 &&
+    passwordCheck.allOk &&
+    confirmOk;
+
   const cargar = async () => {
     setLoading(true);
     setError("");
+
     try {
       const res = await perfilService.getPerfil();
       setData(res?.perfil || null);
@@ -74,8 +96,10 @@ const Perfil = () => {
         password_actual: pw.actual,
         password_nueva: pw.nueva,
       });
+
       alert("Contraseña actualizada.");
       setPw({ actual: "", nueva: "", confirmacion: "" });
+      setShowPw({ actual: false, nueva: false, confirmacion: false });
     } catch (e) {
       alert(e?.message || "No se pudo cambiar la contraseña");
     }
@@ -106,7 +130,9 @@ const Perfil = () => {
                   <input
                     className="form-control"
                     value={form.nombre}
-                    onChange={(e) => setForm((s) => ({ ...s, nombre: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, nombre: e.target.value }))
+                    }
                   />
                 </div>
 
@@ -115,7 +141,9 @@ const Perfil = () => {
                   <input
                     className="form-control"
                     value={form.apellido}
-                    onChange={(e) => setForm((s) => ({ ...s, apellido: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, apellido: e.target.value }))
+                    }
                   />
                 </div>
 
@@ -124,7 +152,9 @@ const Perfil = () => {
                   <input
                     className="form-control"
                     value={form.telefono}
-                    onChange={(e) => setForm((s) => ({ ...s, telefono: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, telefono: e.target.value }))
+                    }
                   />
                 </div>
 
@@ -133,7 +163,9 @@ const Perfil = () => {
                   <input
                     className="form-control"
                     value={form.email}
-                    onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, email: e.target.value }))
+                    }
                   />
                 </div>
 
@@ -142,7 +174,9 @@ const Perfil = () => {
                   <input
                     className="form-control"
                     value={form.direccion}
-                    onChange={(e) => setForm((s) => ({ ...s, direccion: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, direccion: e.target.value }))
+                    }
                   />
                 </div>
               </div>
@@ -162,36 +196,124 @@ const Perfil = () => {
             <div className="card-body">
               <h5 className="mb-3">Cambiar contraseña</h5>
 
+              {loadingPolicies && (
+                <div className="text-muted mb-2">
+                  <span className="spinner-border spinner-border-sm me-2"></span>
+                  Cargando políticas...
+                </div>
+              )}
+
+              {policiesError && (
+                <div className="alert alert-warning">
+                  No se pudieron cargar las políticas de contraseña. Aún puedes intentar cambiarla,
+                  pero no habrá validación en vivo.
+                </div>
+              )}
+
+              {/* Contraseña actual */}
               <label className="form-label">Contraseña actual</label>
-              <input
-                type="password"
-                className="form-control mb-2"
-                value={pw.actual}
-                onChange={(e) => setPw((s) => ({ ...s, actual: e.target.value }))}
-              />
+              <div className="input-group mb-2">
+                <input
+                  type={showPw.actual ? "text" : "password"}
+                  className="form-control"
+                  value={pw.actual}
+                  onChange={(e) =>
+                    setPw((s) => ({ ...s, actual: e.target.value }))
+                  }
+                />
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => setShowPw((s) => ({ ...s, actual: !s.actual }))}
+                  title={showPw.actual ? "Ocultar" : "Mostrar"}
+                >
+                  <i className={`bi ${showPw.actual ? "bi-eye-slash" : "bi-eye"}`}></i>
+                </button>
+              </div>
 
+              {/* Nueva contraseña */}
               <label className="form-label">Nueva contraseña</label>
-              <input
-                type="password"
-                className="form-control mb-2"
-                value={pw.nueva}
-                onChange={(e) => setPw((s) => ({ ...s, nueva: e.target.value }))}
-              />
+              <div className="input-group mb-2">
+                <input
+                  type={showPw.nueva ? "text" : "password"}
+                  className="form-control"
+                  value={pw.nueva}
+                  onChange={(e) =>
+                    setPw((s) => ({ ...s, nueva: e.target.value }))
+                  }
+                />
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => setShowPw((s) => ({ ...s, nueva: !s.nueva }))}
+                  title={showPw.nueva ? "Ocultar" : "Mostrar"}
+                >
+                  <i className={`bi ${showPw.nueva ? "bi-eye-slash" : "bi-eye"}`}></i>
+                </button>
+              </div>
 
+              {/* Checklist */}
+              <div className="border rounded p-2 mb-2">
+                <div className="small fw-semibold mb-1">Debe cumplir:</div>
+                <ul className="list-unstyled mb-0 small">
+                  {passwordCheck.rules.map((r) => (
+                    <li key={r.key} className={r.ok ? "text-success" : "text-danger"}>
+                      <i className={`bi ${r.ok ? "bi-check-circle" : "bi-x-circle"} me-2`}></i>
+                      {r.label}
+                    </li>
+                  ))}
+                  <li className={confirmOk ? "text-success" : "text-danger"}>
+                    <i className={`bi ${confirmOk ? "bi-check-circle" : "bi-x-circle"} me-2`}></i>
+                    Confirmación coincide
+                  </li>
+                </ul>
+              </div>
+
+              {/* Confirmación */}
               <label className="form-label">Confirmación</label>
-              <input
-                type="password"
-                className="form-control mb-3"
-                value={pw.confirmacion}
-                onChange={(e) => setPw((s) => ({ ...s, confirmacion: e.target.value }))}
-              />
+              <div className="input-group mb-3">
+                <input
+                  type={showPw.confirmacion ? "text" : "password"}
+                  className="form-control"
+                  value={pw.confirmacion}
+                  onChange={(e) =>
+                    setPw((s) => ({ ...s, confirmacion: e.target.value }))
+                  }
+                />
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() =>
+                    setShowPw((s) => ({ ...s, confirmacion: !s.confirmacion }))
+                  }
+                  title={showPw.confirmacion ? "Ocultar" : "Mostrar"}
+                >
+                  <i className={`bi ${showPw.confirmacion ? "bi-eye-slash" : "bi-eye"}`}></i>
+                </button>
+              </div>
 
-              <button className="btn btn-outline-dark w-100" onClick={onChangePassword}>
+              <button
+                className="btn btn-outline-dark w-100"
+                onClick={onChangePassword}
+                disabled={!canChangePassword}
+                title={
+                  !canChangePassword
+                    ? "Completa y cumple las políticas para habilitar"
+                    : "Cambiar contraseña"
+                }
+              >
                 Actualizar contraseña
               </button>
+
+              {!confirmOk && pw.confirmacion.length > 0 && (
+                <div className="small text-danger mt-2">
+                  La confirmación no coincide.
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Roles + último acceso */}
           <div className="card shadow-sm">
             <div className="card-body">
               <h6 className="text-muted mb-2">Roles</h6>
