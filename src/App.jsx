@@ -4,6 +4,7 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import Inicio from './pages/dashboard/Inicio';
 import ProtectedRoute from './routes/ProtectedRoute'; // <--- Importamos el guardia
 import Inventario from './pages/dashboard/Inventario';
+import Personas from './pages/dashboard/Personas';
 
 
 // Estilos
@@ -32,7 +33,7 @@ function App() {
           <Route path="/dashboard" element={<DashboardLayout />}>
             <Route index element={<Inicio />} />
             <Route path="sucursales" element={<PaginaEnConstruccion titulo="Sucursales" />} />
-            <Route path="personas" element={<PaginaEnConstruccion titulo="Personas" />} />
+            <Route path="personas" element={<Personas />} />
             <Route path="inventario" element={<Inventario />} />
             <Route path="ventas" element={<PaginaEnConstruccion titulo="Ventas" />} />
             <Route path="menu" element={<PaginaEnConstruccion titulo="Menú" />} />

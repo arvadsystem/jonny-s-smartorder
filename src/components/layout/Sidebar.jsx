@@ -35,6 +35,24 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
     if (isInInventario) setOpenInventario(true);
   }, [isInInventario]);
 
+
+// ==============================
+// SUBMENUS PERSONAS
+// ==============================
+const isInPersonasEmpresas = location.pathname.startsWith('/dashboard/personas');
+const tabPersonasEmpresas =
+  (new URLSearchParams(location.search).get('tab') || 'personas').toLowerCase();
+
+const [openPersonasEmpresas, setOpenPersonasEmpresas] = useState(isInPersonasEmpresas);
+
+useEffect(() => {
+  if (isInPersonasEmpresas) setOpenPersonasEmpresas(true);
+}, [isInPersonasEmpresas]);
+
+
+//----------------------------------------------------------------------------
+
+
   const handleLogout = async () => {
     await logout(); 
     navigate('/', { replace: true });
@@ -207,6 +225,131 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
               </div>
             );
           }
+
+// ==============================
+// PERSONAS / EMPRESAS CON SUBMENU
+// ==============================
+if (item.name === 'Personas/Empresas') {
+  return (
+    <div key={item.path}>
+      <button
+        type="button"
+        className={`menu-item ${isInPersonasEmpresas ? 'active' : ''}`}
+        title={isCollapsed ? item.name : ''}
+        aria-expanded={openPersonasEmpresas}
+        onClick={() => {
+          if (!isInPersonasEmpresas) {
+            navigate('/dashboard/personas?tab=personas');
+            return;
+          }
+          setOpenPersonasEmpresas(v => !v);
+        }}
+        style={{
+          width: '100%',
+          border: 'none',
+          background: 'transparent',
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'center'
+        }}
+      >
+        <i className={`bi ${item.icon}`}></i>
+        <span>{item.name}</span>
+
+        <i
+          className={`bi ${openPersonasEmpresas ? 'bi-chevron-up' : 'bi-chevron-down'}`}
+          style={{ marginLeft: 'auto' }}
+        ></i>
+      </button>
+
+      {/* SUBMENÚ */}
+      {openPersonasEmpresas && (
+        <div style={{ paddingLeft: isCollapsed ? 0 : 18 }}>
+
+          <NavLink
+            to="/dashboard/personas?tab=personas"
+            className={() =>
+              `menu-item ${tabPersonasEmpresas === 'personas' ? 'active' : ''}`
+            }
+            style={{ fontSize: 14 }}
+          >
+            <i className="bi bi-person"></i>
+            <span>Personas</span>
+          </NavLink>
+
+          <NavLink
+            to="/dashboard/personas?tab=empresas"
+            className={() =>
+              `menu-item ${tabPersonasEmpresas === 'empresas' ? 'active' : ''}`
+            }
+            style={{ fontSize: 14 }}
+          >
+            <i className="bi bi-building"></i>
+            <span>Empresas</span>
+          </NavLink>
+
+          <NavLink
+            to="/dashboard/personas?tab=empleados"
+            className={() =>
+              `menu-item ${tabPersonasEmpresas === 'empleados' ? 'active' : ''}`
+            }
+            style={{ fontSize: 14 }}
+          >
+            <i className="bi bi-person-badge"></i>
+            <span>Empleados</span>
+          </NavLink>
+
+          <NavLink
+            to="/dashboard/personas?tab=usuarios"
+            className={() =>
+              `menu-item ${tabPersonasEmpresas === 'usuarios' ? 'active' : ''}`
+            }
+            style={{ fontSize: 14 }}
+          >
+            <i className="bi bi-person-lock"></i>
+            <span>Usuarios</span>
+          </NavLink>
+
+          <NavLink
+            to="/dashboard/personas?tab=clientes"
+            className={() =>
+              `menu-item ${tabPersonasEmpresas === 'clientes' ? 'active' : ''}`
+            }
+            style={{ fontSize: 14 }}
+          >
+            <i className="bi bi-people"></i>
+            <span>Clientes</span>
+          </NavLink>
+
+          <NavLink
+            to="/dashboard/personas?tab=planillas"
+            className={() =>
+              `menu-item ${tabPersonasEmpresas === 'planillas' ? 'active' : ''}`
+            }
+            style={{ fontSize: 14 }}
+          >
+            <i className="bi bi-cash-stack"></i>
+            <span>Planillas / Nóminas</span>
+          </NavLink>
+
+          <NavLink
+            to="/dashboard/personas?tab=biometricos"
+            className={() =>
+              `menu-item ${tabPersonasEmpresas === 'biometricos' ? 'active' : ''}`
+            }
+            style={{ fontSize: 14 }}
+          >
+            <i className="bi bi-fingerprint"></i>
+            <span>Registros Biométricos</span>
+          </NavLink>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 
           // ==============================
           // RESTO DE OPCIONES
