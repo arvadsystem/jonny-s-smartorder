@@ -5,6 +5,8 @@ import Inicio from './pages/dashboard/Inicio';
 import ProtectedRoute from './routes/ProtectedRoute'; // <--- Importamos el guardia
 import Inventario from './pages/dashboard/Inventario';
 import Personas from './pages/dashboard/Personas';
+import Sucursales from './pages/dashboard/Sucursales';
+import Menu from './pages/dashboard/menu/Menu';
 
 
 // Estilos
@@ -29,20 +31,21 @@ function App() {
 
       {/* 2. RUTAS PROTEGIDAS (Hallazgo A solucionado) */}
       <Route element={<ProtectedRoute />}>
-          
           <Route path="/dashboard" element={<DashboardLayout />}>
             <Route index element={<Inicio />} />
             <Route path="sucursales" element={<PaginaEnConstruccion titulo="Sucursales" />} />
             <Route path="personas" element={<Personas />} />
+            <Route path="sucursales" element={<Sucursales />} />
+            <Route path="personas" element={<PaginaEnConstruccion titulo="Personas" />} />
             <Route path="inventario" element={<Inventario />} />
             <Route path="ventas" element={<PaginaEnConstruccion titulo="Ventas" />} />
-            <Route path="menu" element={<PaginaEnConstruccion titulo="Menú" />} />
+            <Route path="menu" element={<Menu />} />
             <Route path="seguridad" element={<PaginaEnConstruccion titulo="Seguridad" />} />
             <Route path="configuracion" element={<PaginaEnConstruccion titulo="Configuración" />} />
           </Route>
 
       </Route>
-
+        
       {/* 3. Comodín */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
