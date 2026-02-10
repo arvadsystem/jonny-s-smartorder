@@ -40,7 +40,6 @@ function App() {
             <Route path="personas" element={<PaginaEnConstruccion titulo="Personas" />} />
             <Route path="inventario" element={<Inventario />} />
             <Route path="ventas" element={<PaginaEnConstruccion titulo="Ventas" />} />
-            <Route path="menu" element={<PaginaEnConstruccion titulo="Menú" />} />
             <Route path="seguridad" element={<Seguridad />} />
             <Route path="perfil" element={<Perfil />} />
             <Route path="menu" element={<Menu />} />

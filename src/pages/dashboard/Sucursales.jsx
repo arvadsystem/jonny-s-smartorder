@@ -149,7 +149,7 @@ export default function Sucursales() {
 
     try {
       setError("");
-      await sucursalesService.remove(sucursal.id_sucursal);
+      await sucursalesService.delete(sucursal.id_sucursal);
       await loadSucursales();
     } catch (e) {
       setError(e?.message || "No se pudo eliminar la sucursal.");

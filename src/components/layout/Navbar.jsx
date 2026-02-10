@@ -23,9 +23,9 @@ const Navbar = () => {
   return (
     <div className="top-navbar">
       {/* 1. Buscador Central/Izquierdo */}
-      <div className="search-container">
-        <i className="bi bi-search"></i>
-        <input type="text" placeholder="Buscar en el sistema..." />
+      <div>
+        
+        
       </div>
 
       {/* 2. Perfil Dropdown */}
