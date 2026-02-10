@@ -33,7 +33,6 @@ function App() {
       <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardLayout />}>
             <Route index element={<Inicio />} />
-            <Route path="sucursales" element={<PaginaEnConstruccion titulo="Sucursales" />} />
             <Route path="personas" element={<Personas />} />
             <Route path="sucursales" element={<Sucursales />} />
             <Route path="personas" element={<PaginaEnConstruccion titulo="Personas" />} />
