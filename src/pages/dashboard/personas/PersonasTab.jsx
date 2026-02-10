@@ -17,7 +17,6 @@ const PersonasTab = ({ openToast }) => {
   const [direcciones, setDirecciones] = useState([]);
   const [correos, setCorreos] = useState([]);
 
-
   // ==============================
   // ETIQUETAS
   // ==============================
@@ -52,25 +51,9 @@ const PersonasTab = ({ openToast }) => {
   const [search, setSearch] = useState("");
 
   // ==============================
-  // COLUMNAS VISIBLES
-  // ==============================
-  const [visibleColumns, setVisibleColumns] = useState({
-    id_persona: true,
-    nombre: true,
-    apellido: true,
-    dni: true,
-    genero: true,
-    rtn: true,
-    fecha_nacimiento: true,
-    telefono: true,
-    direccion: true,
-    correo: true,
-  });
-
-  // ==============================
   // FORM CREAR
   // ==============================
-  const [form, setForm] = useState({
+  const emptyForm = {
     nombre: "",
     apellido: "",
     dni: "",
@@ -80,9 +63,9 @@ const PersonasTab = ({ openToast }) => {
     id_telefono: "",
     id_direccion: "",
     id_correo: "",
-  });
+  };
 
-  const [createErrors, setCreateErrors] = useState({});
+  const [form, setForm] = useState(emptyForm);
 
   // ==============================
   // EDITAR
@@ -91,7 +74,7 @@ const PersonasTab = ({ openToast }) => {
   const [editForm, setEditForm] = useState(null);
 
   // ==============================
-  // CARGAR TODO (PERSONAS + FK)
+  // CARGAR TODO
   // ==============================
   const cargar = async () => {
     setLoading(true);
@@ -127,46 +110,17 @@ const PersonasTab = ({ openToast }) => {
   }, []);
 
   // ==============================
-  // VALIDAR
-  // ==============================
-  const validar = (data) => {
-    const errors = {};
-    if (!data.nombre) errors.nombre = "Requerido";
-    if (!data.apellido) errors.apellido = "Requerido";
-    if (!data.dni) errors.dni = "Requerido";
-    return { ok: Object.keys(errors).length === 0, errors };
-  };
-
-  // ==============================
   // CREAR
   // ==============================
   const onCrear = async (e) => {
     e.preventDefault();
-    setError("");
-
-    const v = validar(form);
-    setCreateErrors(v.errors);
-    if (!v.ok) return;
-
     try {
       await personaService.crearPersona(form);
-
-      setForm({
-        nombre: "",
-        apellido: "",
-        dni: "",
-        genero: "",
-        rtn: "",
-        fecha_nacimiento: "",
-        id_telefono: "",
-        id_direccion: "",
-        id_correo: "",
-      });
-
+      setForm(emptyForm);
       await cargar();
       safeToast("CREADO", "PERSONA CREADA", "success");
-    } catch (e2) {
-      const msg = e2?.message || "Error creando";
+    } catch (e) {
+      const msg = e?.message || "Error creando";
       setError(msg);
       safeToast("ERROR", msg, "danger");
     }
@@ -177,7 +131,12 @@ const PersonasTab = ({ openToast }) => {
   // ==============================
   const iniciarEdicion = (p) => {
     setEditId(p.id_persona);
-    setEditForm({ ...p });
+    setEditForm({
+      ...p,
+      id_telefono: p.id_telefono || "",
+      id_direccion: p.id_direccion || "",
+      id_correo: p.id_correo || "",
+    });
   };
 
   const cancelarEdicion = () => {
@@ -281,6 +240,7 @@ const PersonasTab = ({ openToast }) => {
               onChange={(e) => setForm(s => ({ ...s, fecha_nacimiento: e.target.value }))}/>
           </div>
 
+          {/* TELEFONO */}
           <div className="col-md-2">
             <select className="form-select"
               value={form.id_telefono}
@@ -294,6 +254,7 @@ const PersonasTab = ({ openToast }) => {
             </select>
           </div>
 
+          {/* DIRECCION */}
           <div className="col-md-3">
             <select className="form-select"
               value={form.id_direccion}
@@ -307,6 +268,7 @@ const PersonasTab = ({ openToast }) => {
             </select>
           </div>
 
+          {/* CORREO */}
           <div className="col-md-3">
             <select className="form-select"
               value={form.id_correo}
@@ -323,7 +285,6 @@ const PersonasTab = ({ openToast }) => {
           <div className="col-md-2 d-grid">
             <button className="btn btn-primary">Crear</button>
           </div>
-
         </form>
 
         {/* ================= BUSCADOR ================= */}
@@ -341,39 +302,77 @@ const PersonasTab = ({ openToast }) => {
             <table className="table table-sm align-middle">
               <thead>
                 <tr>
-                  {Object.keys(visibleColumns).map(
-                    (col) => visibleColumns[col] && (
-                      <th key={col}>{columnLabels[col] || col}</th>
-                    )
-                  )}
+                  {Object.keys(columnLabels).map((col) => (
+                    <th key={col}>{columnLabels[col]}</th>
+                  ))}
                   <th>Acciones</th>
                 </tr>
               </thead>
 
               <tbody>
-                {personasFiltradas.map((p) => (
-                  <tr key={p.id_persona}>
-                    {Object.keys(visibleColumns).map(
-                      (col) =>
-                        visibleColumns[col] && (
-                          <td key={col}>
-                            {col === "fecha_nacimiento"
-                              ? formatDate(p[col])
-                              : p[col]}
-                          </td>
-                        )
-                    )}
+                {personasFiltradas.map((p) => {
+                  const isEditing = editId === p.id_persona;
 
-                    <td>
-                      <button
-                        className="btn btn-sm btn-outline-danger"
-                        onClick={() => eliminar(p.id_persona)}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                  return (
+                    <tr key={p.id_persona}>
+                      {Object.keys(columnLabels).map((col) => (
+                        <td key={col}>
+                          {isEditing ? (
+                            col === "fecha_nacimiento" ? (
+                              <input type="date"
+                                className="form-control form-control-sm"
+                                value={editForm[col] ?? ""}
+                                onChange={(e) =>
+                                  setEditForm(s => ({ ...s, [col]: e.target.value }))
+                                }
+                              />
+                            ) : (
+                              <input
+                                className="form-control form-control-sm"
+                                value={editForm[col] ?? ""}
+                                onChange={(e) =>
+                                  setEditForm(s => ({ ...s, [col]: e.target.value }))
+                                }
+                              />
+                            )
+                          ) : col === "fecha_nacimiento" ? (
+                            formatDate(p[col])
+                          ) : (
+                            p[col]
+                          )}
+                        </td>
+                      ))}
+
+                      <td>
+                        {isEditing ? (
+                          <>
+                            <button className="btn btn-sm btn-primary me-2"
+                              onClick={guardarEdicion}>
+                              Guardar
+                            </button>
+
+                            <button className="btn btn-sm btn-secondary"
+                              onClick={cancelarEdicion}>
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button className="btn btn-sm btn-outline-primary me-2"
+                              onClick={() => iniciarEdicion(p)}>
+                              Editar
+                            </button>
+
+                            <button className="btn btn-sm btn-outline-danger"
+                              onClick={() => eliminar(p.id_persona)}>
+                              Eliminar
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
 
             </table>

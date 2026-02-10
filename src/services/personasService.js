@@ -14,17 +14,13 @@ export const personaService = {
   crearPersona: (data) => apiFetch('/personas', 'POST', data),
 
   actualizarPersonaCampo: (id, campo, valor) =>
-    apiFetch('/personas', 'PUT', {
-      campo,
-      valor,
-      id_campo: 'id_persona',
-      id_valor: id
-    }),
+  apiFetch(`/personas/${id}`, 'PUT', {
+    campo,
+    valor
+  }),
+
 
   eliminarPersona: (id) =>
-    apiFetch('/personas', 'DELETE', {
-      columna_id: 'id_persona',
-      valor_id: id
-    }),
+    apiFetch(`/personas/${id}`, 'DELETE'),
 
 };
