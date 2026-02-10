@@ -4,6 +4,7 @@ import DashboardLayout from './components/layout/DashboardLayout';
 import Inicio from './pages/dashboard/Inicio';
 import ProtectedRoute from './routes/ProtectedRoute'; // <--- Importamos el guardia
 import Inventario from './pages/dashboard/Inventario';
+import Menu from './pages/dashboard/menu/Menu';
 
 
 // Estilos
@@ -35,7 +36,7 @@ function App() {
             <Route path="personas" element={<PaginaEnConstruccion titulo="Personas" />} />
             <Route path="inventario" element={<Inventario />} />
             <Route path="ventas" element={<PaginaEnConstruccion titulo="Ventas" />} />
-            <Route path="menu" element={<PaginaEnConstruccion titulo="Menú" />} />
+            <Route path="menu" element={<Menu />} />
             <Route path="seguridad" element={<PaginaEnConstruccion titulo="Seguridad" />} />
             <Route path="configuracion" element={<PaginaEnConstruccion titulo="Configuración" />} />
           </Route>
