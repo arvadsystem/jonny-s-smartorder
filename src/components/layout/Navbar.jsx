@@ -53,6 +53,10 @@ const Navbar = () => {
         {isOpen && (
           <div className="dropdown-menu-custom">
             <ul>
+              <li onClick={() => navigate("/dashboard/perfil")}>
+                  <i className="bi bi-person-circle"></i>
+                  Mi perfil
+              </li>
               <li onClick={handleLogout}>
                 <i className="bi bi-box-arrow-right"></i>
                 Cerrar Sesión

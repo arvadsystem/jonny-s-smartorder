@@ -47,7 +47,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null) => {
     'Content-Type': 'application/json'
   };
 
-  // CSRF: para métodos que cambian estado
+  // ✅ CSRF SOLO para métodos que cambian estado
   if (!SAFE_METHODS.has(upperMethod)) {
     const csrf = getCookie('csrf_token');
     if (csrf) headers['X-CSRF-Token'] = csrf;
@@ -65,28 +65,36 @@ export const apiFetch = async (endpoint, method = 'GET', body = null) => {
 
   const response = await fetch(`${API_URL}${endpoint}`, options);
 
-    if (response.status === 401) {
+  // 401 -> no autenticado
+  if (response.status === 401) {
     const errorData = await readBody(response);
     const msg =
       (errorData && typeof errorData === 'object' && (errorData.message || errorData.mensaje)) ||
       (typeof errorData === 'string' ? errorData : '') ||
       'No autorizado';
 
-    
     throw new ApiError(msg, { status: 401, code: 'UNAUTHORIZED', data: errorData });
   }
 
-
+  // ✅ 403 -> distinguir permisos vs CSRF
   if (response.status === 403) {
     const errorData = await readBody(response);
     const msg =
       (errorData && typeof errorData === 'object' && (errorData.message || errorData.mensaje)) ||
       (typeof errorData === 'string' ? errorData : '') ||
-      'Acción bloqueada (CSRF)';
+      'Acceso denegado';
 
-    throw new ApiError(msg, { status: 403, code: 'CSRF', data: errorData });
+    // Si el método es seguro (GET/HEAD/OPTIONS), NO es CSRF, es FORBIDDEN (RBAC)
+    if (SAFE_METHODS.has(upperMethod)) {
+      throw new ApiError(msg, { status: 403, code: 'FORBIDDEN', data: errorData });
+    }
+
+    // En métodos no seguros, un 403 puede ser CSRF o permisos.
+    // Conservamos tu mensaje por compatibilidad.
+    throw new ApiError(msg || 'Acción bloqueada (CSRF)', { status: 403, code: 'CSRF', data: errorData });
   }
 
+  // otros errores HTTP
   if (!response.ok) {
     const errorData = await readBody(response);
     const msg =
@@ -101,4 +109,3 @@ export const apiFetch = async (endpoint, method = 'GET', body = null) => {
 
   return await readBody(response);
 };
-
