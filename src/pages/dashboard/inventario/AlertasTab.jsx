@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
 
 const AlertasTab = ({ openToast }) => {
@@ -71,24 +71,24 @@ const AlertasTab = ({ openToast }) => {
     return m;
   }, [tipoDepartamentos]);
 
-  const getAlmacenLabel = (id) => {
+  const getAlmacenLabel = useCallback((id) => {
     const a = almacenesMap.get(String(id));
     if (!a) return String(id || '-');
     return `${a.nombre} (Sucursal ${a.id_sucursal})`;
-  };
+  }, [almacenesMap]);
 
-  const getCategoriaLabel = (id) => {
+  const getCategoriaLabel = useCallback((id) => {
     const c = categoriasMap.get(String(id));
     if (!c) return String(id || '-');
     return `${c.nombre_categoria}`;
-  };
+  }, [categoriasMap]);
 
-  const getDeptoLabel = (id) => {
+  const getDeptoLabel = useCallback((id) => {
     if (!id && id !== 0) return '-';
     const d = tipoDeptoMap.get(String(id));
     if (!d) return String(id || '-');
     return `${d.nombre_departamento}${d.estado === false ? ' (Inactivo)' : ''}`;
-  };
+  }, [tipoDeptoMap]);
 
   // ==============================
   // COMENTARIO EN MAYÚSCULAS: NORMALIZAR ITEMS PARA UNIFICAR PRODUCTOS + INSUMOS EN 1 LISTA
@@ -303,7 +303,7 @@ const AlertasTab = ({ openToast }) => {
 
       return matchEstado && matchItem && matchAlmacen && matchTexto;
     });
-  }, [items, search, estadoFiltro, itemFiltro, almacenFiltro, almacenesMap, categoriasMap, tipoDeptoMap]);
+  }, [items, search, estadoFiltro, itemFiltro, almacenFiltro, getAlmacenLabel, getCategoriaLabel, getDeptoLabel]);
 
   const resumen = useMemo(() => {
     let sinStock = 0;
