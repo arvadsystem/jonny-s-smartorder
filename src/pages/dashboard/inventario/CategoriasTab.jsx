@@ -1,5 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
+
+const resolveCardsPerPage = (width) => {
+  if (width >= 1200) return 6; // 3x2 desktop
+  if (width >= 620) return 4; // 2x2 tablet
+  return 2; // 1x2 mobile
+};
 
 const CategoriasTab = ({
   categorias = [],
@@ -41,6 +47,17 @@ const CategoriasTab = ({
   });
 
   const [formErrors, setFormErrors] = useState({});
+  const carouselRef = useRef(null);
+
+  const [cardsPerPage, setCardsPerPage] = useState(() =>
+    typeof window === 'undefined' ? 6 : resolveCardsPerPage(window.innerWidth)
+  );
+
+  useEffect(() => {
+    const onResize = () => setCardsPerPage(resolveCardsPerPage(window.innerWidth));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const openCreate = () => {
     // FUNCIONALIDAD: ABRIR DRAWER CREAR
@@ -56,8 +73,8 @@ const CategoriasTab = ({
     setDrawerMode('edit');
     setEditId(c?.id_categoria_producto ?? null);
     setForm({
-      nombre_categoria: c?.nombre_categoria ?? '',
-      codigo_categoria: c?.codigo_categoria ?? '',
+      nombre_categoria: String(c?.nombre_categoria ?? '').toUpperCase(),
+      codigo_categoria: normalizeCodigo(c?.codigo_categoria ?? ''),
       descripcion: c?.descripcion ?? '',
       estado: !!c?.estado
     });
@@ -149,16 +166,71 @@ const CategoriasTab = ({
 
   const hasActiveFilters = useMemo(() => search.trim() !== '' || estadoFiltro !== 'todos', [search, estadoFiltro]);
 
+  const normalizedNombre = String(form?.nombre_categoria ?? '').trim().toUpperCase();
+  const normalizedCodigo = normalizeCodigo(form?.codigo_categoria ?? '');
+
+  const baseCategorias = Array.isArray(categorias) ? categorias : [];
+  const isSameRecord = (cat) =>
+    drawerMode === 'edit' &&
+    Number(cat?.id_categoria_producto ?? 0) === Number(editId ?? 0);
+
+  const nombreDuplicado =
+    normalizedNombre.length > 0 &&
+    baseCategorias.some((cat) => !isSameRecord(cat) && String(cat?.nombre_categoria ?? '').trim().toUpperCase() === normalizedNombre);
+
+  const codigoDuplicado =
+    normalizedCodigo.length > 0 &&
+    baseCategorias.some((cat) => !isSameRecord(cat) && normalizeCodigo(cat?.codigo_categoria ?? '') === normalizedCodigo);
+
+  const liveDuplicateErrors = {
+    nombre_categoria: nombreDuplicado ? 'YA EXISTE UNA CATEGORIA CON ESE NOMBRE' : '',
+    codigo_categoria: codigoDuplicado ? 'YA EXISTE UNA CATEGORIA CON ESE CODIGO' : ''
+  };
+
+  const nombreErrorMsg = formErrors.nombre_categoria || liveDuplicateErrors.nombre_categoria;
+  const codigoErrorMsg = formErrors.codigo_categoria || liveDuplicateErrors.codigo_categoria;
+  const hasLiveDuplicates = Boolean(liveDuplicateErrors.nombre_categoria || liveDuplicateErrors.codigo_categoria);
+
+  const categoriasPages = useMemo(() => {
+    const size = Math.max(1, cardsPerPage);
+    const pages = [];
+    for (let i = 0; i < categoriasFiltradas.length; i += size) {
+      pages.push(categoriasFiltradas.slice(i, i + size));
+    }
+    return pages;
+  }, [categoriasFiltradas, cardsPerPage]);
+
   // ==============================
   // CREAR / EDITAR
   // ==============================
+  const scrollCarousel = (direction) => {
+    const node = carouselRef.current;
+    if (!node) return;
+    const delta = direction === 'next' ? node.clientWidth : -node.clientWidth;
+    node.scrollBy({ left: delta, behavior: 'smooth' });
+  };
+
+  const onCarouselWheel = (e) => {
+    const node = carouselRef.current;
+    if (!node) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      node.scrollLeft += e.deltaY;
+    }
+  };
+
   const onSave = async (e) => {
     e?.preventDefault?.();
     safeSetError('');
 
     const v = validarCategoria(form);
-    setFormErrors(v.errors);
-    if (!v.ok) return;
+    const mergedErrors = {
+      ...v.errors,
+      ...(liveDuplicateErrors.nombre_categoria ? { nombre_categoria: liveDuplicateErrors.nombre_categoria } : {}),
+      ...(liveDuplicateErrors.codigo_categoria ? { codigo_categoria: liveDuplicateErrors.codigo_categoria } : {})
+    };
+    setFormErrors(mergedErrors);
+    if (!v.ok || hasLiveDuplicates) return;
 
     try {
       if (drawerMode === 'create') {
@@ -319,62 +391,95 @@ const CategoriasTab = ({
                 </div>
               </div>
             ) : (
-              <div className="inv-catpro-grid">
-                {categoriasFiltradas.map((c, idx) => {
-                  const isActive = !!c?.estado;
-                  const code = c?.codigo_categoria ?? '';
-                  const dotClass = isActive ? 'ok' : 'off';
+              <div className="inv-catpro-carousel-wrap">
+                <button
+                  type="button"
+                  className="inv-catpro-carousel-nav prev"
+                  onClick={() => scrollCarousel('prev')}
+                  aria-label="Pagina anterior"
+                  disabled={categoriasPages.length <= 1}
+                >
+                  <i className="bi bi-chevron-left" />
+                </button>
 
-                  return (
-                    <div
-                      key={c?.id_categoria_producto ?? idx}
-                      className="inv-catpro-item inv-anim-in"
-                      style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
-                    >
-                      <div className="inv-catpro-item-top">
-                        <div>
-                          <div className="fw-bold">
-                            {idx + 1}. {c?.nombre_categoria ?? ''}
-                          </div>
-                          <div className="text-muted small">{c?.descripcion || 'Sin descripción'}</div>
+                <div className="inv-catpro-carousel" ref={carouselRef} onWheel={onCarouselWheel}>
+                  {categoriasPages.map((page, pageIdx) => {
+                    const colsClass = cardsPerPage >= 6 ? 'cols-3' : cardsPerPage >= 4 ? 'cols-2' : 'cols-1';
+
+                    return (
+                      <div className="inv-catpro-page" key={`page-${pageIdx}`} aria-label={`Pagina ${pageIdx + 1}`}>
+                        <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
+                          {page.map((c, idx) => {
+                            const globalIdx = pageIdx * cardsPerPage + idx;
+                            const isActive = !!c?.estado;
+                            const code = c?.codigo_categoria ?? '';
+                            const dotClass = isActive ? 'ok' : 'off';
+
+                            return (
+                              <div
+                                key={c?.id_categoria_producto ?? globalIdx}
+                                className="inv-catpro-item inv-anim-in"
+                                style={{ animationDelay: `${Math.min(globalIdx * 40, 240)}ms` }}
+                              >
+                                <div className="inv-catpro-item-top">
+                                  <div>
+                                    <div className="fw-bold">
+                                      {globalIdx + 1}. {c?.nombre_categoria ?? ''}
+                                    </div>
+                                    <div className="text-muted small">{c?.descripcion || 'Sin descripcion'}</div>
+                                  </div>
+
+                                  <span className={`badge ${isActive ? 'bg-success' : 'bg-secondary'}`}>
+                                    {isActive ? 'Activo' : 'Inactivo'}
+                                  </span>
+                                </div>
+
+                                <div className="inv-catpro-meta inv-catpro-item-footer">
+                                  <div className="inv-catpro-code-wrap">
+                                    <span className={`inv-catpro-state-dot ${dotClass}`} />
+                                    <span className="inv-catpro-code">{code}</span>
+                                  </div>
+
+                                  <div className="inv-catpro-meta-actions inv-catpro-action-bar">
+                                    <button
+                                      type="button"
+                                      className="inv-catpro-action edit inv-catpro-action-compact"
+                                      onClick={() => openEdit(c)}
+                                      title="Editar"
+                                    >
+                                      <i className="bi bi-pencil-square" />
+                                      <span className="inv-catpro-action-label">Editar</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="inv-catpro-action danger inv-catpro-action-compact"
+                                      onClick={() => openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria)}
+                                      title="Eliminar"
+                                    >
+                                      <i className="bi bi-trash" />
+                                      <span className="inv-catpro-action-label">Eliminar</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-
-                        <span className={`badge ${isActive ? 'bg-success' : 'bg-secondary'}`}>
-                          {isActive ? 'Activo' : 'Inactivo'}
-                        </span>
                       </div>
+                    );
+                  })}
+                </div>
 
-                      <div className="inv-catpro-meta">
-                        <div className="inv-catpro-code-wrap">
-                          <span className={`inv-catpro-state-dot ${dotClass}`} />
-                          <span className="inv-catpro-code">{code}</span>
-                        </div>
-
-                        <div className="inv-catpro-meta-actions">
-                          <button
-                            type="button"
-                            className="inv-catpro-action edit inv-catpro-action-compact"
-                            onClick={() => openEdit(c)}
-                            title="Editar"
-                          >
-                            <i className="bi bi-pencil-square" />
-                            <span className="inv-catpro-action-label">Editar</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            className="inv-catpro-action danger inv-catpro-action-compact"
-                            onClick={() => openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria)}
-                            title="Eliminar"
-                          >
-                            <i className="bi bi-trash" />
-                            <span className="inv-catpro-action-label">Eliminar</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                <button
+                  type="button"
+                  className="inv-catpro-carousel-nav next"
+                  onClick={() => scrollCarousel('next')}
+                  aria-label="Pagina siguiente"
+                  disabled={categoriasPages.length <= 1}
+                >
+                  <i className="bi bi-chevron-right" />
+                </button>
               </div>
             )}
           </div>
@@ -418,23 +523,23 @@ const CategoriasTab = ({
           <div className="mb-2">
             <label className="form-label">Nombre</label>
             <input
-              className={`form-control ${formErrors.nombre_categoria ? 'is-invalid' : ''}`}
+              className={`form-control ${nombreErrorMsg ? 'is-invalid' : ''}`}
               value={form.nombre_categoria}
-              onChange={(e) => setForm((s) => ({ ...s, nombre_categoria: e.target.value }))}
+              onChange={(e) => setForm((s) => ({ ...s, nombre_categoria: String(e.target.value ?? '').toUpperCase() }))}
               placeholder="Ej: Bebidas"
             />
-            {formErrors.nombre_categoria ? <div className="invalid-feedback">{formErrors.nombre_categoria}</div> : null}
+            {nombreErrorMsg ? <div className="invalid-feedback d-block">{nombreErrorMsg}</div> : null}
           </div>
 
           <div className="mb-2">
             <label className="form-label">Código</label>
             <input
-              className={`form-control ${formErrors.codigo_categoria ? 'is-invalid' : ''}`}
+              className={`form-control ${codigoErrorMsg ? 'is-invalid' : ''}`}
               value={form.codigo_categoria}
               onChange={(e) => setForm((s) => ({ ...s, codigo_categoria: normalizeCodigo(e.target.value) }))}
               placeholder="Ej: BEB"
             />
-            {formErrors.codigo_categoria ? <div className="invalid-feedback">{formErrors.codigo_categoria}</div> : null}
+            {codigoErrorMsg ? <div className="invalid-feedback d-block">{codigoErrorMsg}</div> : null}
           </div>
 
           <div className="mb-2">
@@ -462,7 +567,7 @@ const CategoriasTab = ({
           </div>
 
           <div className="inv-catpro-drawer-footer">
-            <button type="submit" className="btn btn-primary inv-catpro-save flex-fill" disabled={loading}>
+            <button type="submit" className="btn btn-primary inv-catpro-save flex-fill" disabled={loading || hasLiveDuplicates}>
               {loading ? 'Cargando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}
             </button>
             <button type="button" className="btn btn-outline-light inv-catpro-cancel" onClick={closeDrawer}>
@@ -514,3 +619,4 @@ const CategoriasTab = ({
 };
 
 export default CategoriasTab;
+
