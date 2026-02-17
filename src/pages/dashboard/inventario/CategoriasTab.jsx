@@ -360,7 +360,12 @@ const CategoriasTab = ({
 
           {/* FUNCIONALIDAD: LISTADO */}
           <div className={`inv-catpro-list ${drawerOpen ? 'drawer-open' : ''}`}>
-            {!loading && categoriasFiltradas.length === 0 ? (
+            {loading ? (
+              <div className="inv-catpro-loading" role="status" aria-live="polite">
+                <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                <span>Cargando categorias...</span>
+              </div>
+            ) : categoriasFiltradas.length === 0 ? (
               <div className="inv-catpro-empty">
                 <div className="inv-catpro-empty-icon">
                   <i className="bi bi-inbox-fill" />

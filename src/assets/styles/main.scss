@@ -1,7 +1,7 @@
-@import './_variables.scss';
-@import './_legacy-main.scss';
-@import './_layout.scss';
-@import './_sidebar.scss';
-@import './_navbar.scss';
-@import './_inventory.scss';
-@import './_mobile.scss';
+@use './variables';
+@use './legacy-main';
+@use './layout';
+@use './sidebar';
+@use './navbar';
+@use './inventory';
+@use './mobile';
