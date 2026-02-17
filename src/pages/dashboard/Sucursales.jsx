@@ -42,7 +42,7 @@ export default function Sucursales() {
       const data = await sucursalesService.getAll();
       setSucursales(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e?.message || "No se pudieron cargar las sucursales.");
+      setError(e?.message || "No se pudieron cargar las sucursales con exito.");
     } finally {
       setLoading(false);
     }
