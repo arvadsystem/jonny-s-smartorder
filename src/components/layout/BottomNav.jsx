@@ -92,30 +92,30 @@ const BottomNav = () => {
           ============================== */}
       {showInventarioSheet && (
         <div
-          className="modal fade show"
+          className="modal fade show inv-submodule-modal"
           style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2000 }}
           role="dialog"
           aria-modal="true"
           onClick={() => setShowInventarioSheet(false)}
         >
           
-          <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content shadow">
-              <div className="modal-header d-flex align-items-center justify-content-between">
-                <div className="fw-semibold">Inventario</div>
+          <div className="modal-dialog modal-dialog-centered inv-submodule-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content shadow inv-submodule-content">
+              <div className="modal-header d-flex align-items-center justify-content-between inv-submodule-header">
+                <div className="fw-semibold inv-submodule-title">Inventario</div>
                 <button
                   type="button"
-                  className="btn btn-sm btn-light"
+                  className="btn btn-sm btn-light inv-submodule-close"
                   onClick={() => setShowInventarioSheet(false)}
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="modal-body d-grid gap-2">
+              <div className="modal-body d-grid gap-2 inv-submodule-body">
                 <button
                   type="button"
-                  className="btn btn-outline-primary"
+                  className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('categorias')}
                 >
                   <i className="bi bi-tags me-2"></i>
@@ -124,7 +124,7 @@ const BottomNav = () => {
 
                 <button
                   type="button"
-                  className="btn btn-outline-primary"
+                  className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('insumos')}
                 >
                   <i className="bi bi-box me-2"></i>
@@ -134,7 +134,7 @@ const BottomNav = () => {
                 
                 <button
                   type="button"
-                  className="btn btn-outline-primary"
+                  className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('productos')}
                 >
                   <i className="bi bi-basket2 me-2"></i>
@@ -144,7 +144,7 @@ const BottomNav = () => {
                 
                 <button
                   type="button"
-                  className="btn btn-outline-primary"
+                  className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('almacenes')}
                 >
                   <i className="bi bi-building me-2"></i>
@@ -154,7 +154,7 @@ const BottomNav = () => {
                 
                 <button
                   type="button"
-                  className="btn btn-outline-primary"
+                  className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('movimientos')}
                 >
                   <i className="bi bi-arrow-left-right me-2"></i>
@@ -164,7 +164,7 @@ const BottomNav = () => {
                 
                 <button
                   type="button"
-                  className="btn btn-outline-primary"
+                  className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('alertas')}
                 >
                   <i className="bi bi-exclamation-triangle me-2"></i>
@@ -174,11 +174,11 @@ const BottomNav = () => {
 
               </div>
 
-              <div className="modal-footer">
-                <div className="text-muted small me-auto">SELECCIONA UN SUBMÓDULO</div>
+              <div className="modal-footer inv-submodule-footer">
+                <div className="text-muted small me-auto inv-submodule-help">SELECCIONA UN SUBMÓDULO</div>
                 <button
                   type="button"
-                  className="btn btn-outline-secondary"
+                  className="btn btn-outline-secondary inv-submodule-footer-btn"
                   onClick={() => setShowInventarioSheet(false)}
                 >
                   Cerrar
@@ -193,3 +193,4 @@ const BottomNav = () => {
 };
 
 export default BottomNav;
+

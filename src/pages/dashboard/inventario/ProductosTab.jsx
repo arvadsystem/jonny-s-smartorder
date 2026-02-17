@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
 
 const ProductosTab = ({ categorias = [], openToast }) => {
@@ -127,24 +127,24 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return m;
   }, [tipoDepartamentos]);
 
-  const getCategoriaLabel = (id) => {
+  const getCategoriaLabel = useCallback((id) => {
     const c = categoriasMap.get(String(id));
     if (!c) return String(id || '-');
     return `${c.nombre_categoria}`;
-  };
+  }, [categoriasMap]);
 
-  const getAlmacenLabel = (id) => {
+  const getAlmacenLabel = useCallback((id) => {
     const a = almacenesMap.get(String(id));
     if (!a) return String(id || '-');
     return `${a.nombre} (Sucursal ${a.id_sucursal})`;
-  };
+  }, [almacenesMap]);
 
-  const getDeptoLabel = (id) => {
+  const getDeptoLabel = useCallback((id) => {
     if (!id && id !== 0) return '-';
     const d = tipoDeptoMap.get(String(id));
     if (!d) return String(id || '-');
     return `${d.nombre_departamento}${d.estado === false ? ' (Inactivo)' : ''}`;
-  };
+  }, [tipoDeptoMap]);
 
   // ==============================
   // VALIDACIÓN MÍNIMA (PRODUCTOS)
@@ -511,7 +511,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       return matchTexto && matchStock && matchCategoria && matchAlmacen && matchDepto;
     });
-  }, [productos, search, stockFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, categoriasMap, almacenesMap, tipoDeptoMap]);
+  }, [productos, search, stockFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, getCategoriaLabel, getAlmacenLabel, getDeptoLabel]);
 
   return (
     <div className="card shadow-sm mb-3">
