@@ -23,6 +23,19 @@
   background: #fff !important;
 }
 
+.inv-catpro-loading {
+  min-height: 180px;
+  border: 1px dashed rgba(237, 235, 179, 0.8);
+  border-radius: 14px;
+  background: rgba(243, 241, 216, 0.35);
+  color: var(--c-text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
 .inv-catpro-carousel-wrap {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

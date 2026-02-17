@@ -88,7 +88,6 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
   useEffect(() => {
     // FUNCIONALIDAD: CIERRA EL MENU AL CAMBIAR TAB
     closeMore();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeKey]);
 
   useEffect(() => {
