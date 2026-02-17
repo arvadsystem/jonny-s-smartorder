@@ -403,10 +403,7 @@ export default function Sucursales() {
                       </div>
                     </div>
 
-                    <div className="small text-muted mt-3">
-                      * La tabla está lista para mostrar <strong>antigüedad_calculada</strong>{" "}
-                      si el backend la envía en el JSON.
-                    </div>
+                    
                   </div>
 
                   <div className="modal-footer">
