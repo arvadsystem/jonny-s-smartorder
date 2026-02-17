@@ -1,0 +1,25 @@
+html,
+body,
+#root {
+  background: var(--c-bg-soft) !important;
+}
+
+body {
+  color: var(--c-text);
+  background: var(--c-bg-soft) !important;
+}
+
+.main-content {
+  background: var(--c-bg-soft) !important;
+}
+
+.container-fluid,
+.container-fluid.p-3 {
+  background: transparent !important;
+}
+
+.card {
+  background: #fff !important;
+  border-color: var(--c-border-soft) !important;
+  box-shadow: 0 6px 16px rgba(var(--c-shadow-rgb), 0.14) !important;
+}

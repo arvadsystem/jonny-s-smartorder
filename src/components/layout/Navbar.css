@@ -1,0 +1,220 @@
+/* ==============================
+   NAVBAR PROFESIONAL / PREMIUM
+   ============================== */
+
+.top-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+
+  background: rgba(10, 16, 28, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  transition: background 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+/* ==============================
+   ✅ NUEVO: EFECTO "APP ENTERPRISE" AL HACER SCROLL
+   ============================== */
+.top-navbar.navbar-scrolled {
+  background: rgba(10, 16, 28, 0.90);
+  border-bottom-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.48);
+}
+
+/* ✅ CONTENEDOR IZQUIERDO */
+.navbar-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ==============================
+   ✅ BARRA DE SUBMODULOS: ESCRITORIO FIJO (SIN SCROLL)
+   ============================== */
+.inventory-tabs-bar {
+  display: flex;
+  align-items: center;
+
+  /* ✅ ESCRITORIO: SIN SCROLL */
+  overflow: hidden;
+
+  padding: 6px 8px;
+  border-radius: 999px;
+
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+}
+
+.inventory-tabs-fixed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  flex-wrap: nowrap; /* ✅ ESCRITORIO: FIJO */
+}
+
+/* ✅ BOTON PREMIUM */
+.inventory-tab-btn {
+  border-radius: 999px !important;
+  padding: 8px 12px !important;
+
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.1px;
+
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease, border-color 140ms ease, filter 140ms ease;
+}
+
+.inventory-tab-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.20);
+}
+
+/* ✅ ACTIVE */
+.inventory-tab-btn.inventory-tab-active {
+  border-color: transparent !important;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(99, 102, 241, 0.95)) !important;
+
+  color: #fff !important;
+  box-shadow: 0 14px 34px rgba(37, 99, 235, 0.30);
+  filter: saturate(1.03);
+}
+
+/* ==============================
+   ✅ PUNTO VERDE PREMIUM (GLOW + PULSO ELEGANTE)
+   ============================== */
+.inventory-tab-btn .active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14), 0 0 14px rgba(34, 197, 94, 0.35);
+
+  opacity: 0;
+  transform: scale(0.55);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+/* ✅ SOLO SE VE CUANDO EL TAB ESTA ACTIVO */
+.inventory-tab-btn.inventory-tab-active .active-dot {
+  opacity: 1;
+  transform: scale(1);
+  animation: activeDotPulse 1.6s ease-in-out infinite;
+}
+
+/* ✅ ANIMACION SUAVE, NADA EXAGERADO */
+@keyframes activeDotPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14), 0 0 14px rgba(34, 197, 94, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(34, 197, 94, 0.10), 0 0 18px rgba(34, 197, 94, 0.46);
+  }
+}
+
+.inventory-tab-btn i {
+  font-size: 1rem;
+  opacity: 0.95;
+}
+
+.inventory-tab-btn:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, 0.55);
+  outline-offset: 2px;
+}
+
+/* ==============================
+   ✅ RESPONSIVE: AQUI SI HAY SCROLL (SOLO MOVIL/TABLET)
+   ============================== */
+@media (max-width: 768px) {
+  /* ✅ RESPONSIVE: SE PERMITE SCROLL SOLO AQUI */
+  .inventory-tabs-bar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+
+    /* ✅ INDICA QUE HAY MAS CONTENIDO (EFECTO PRO) */
+    mask-image: linear-gradient(to right, transparent 0, black 18px, black calc(100% - 18px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 18px, black calc(100% - 18px), transparent 100%);
+
+    scroll-snap-type: x proximity;
+  }
+
+  /* ✅ SCROLLBAR PREMIUM */
+  .inventory-tabs-bar::-webkit-scrollbar {
+    height: 8px;
+  }
+  .inventory-tabs-bar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+  }
+  .inventory-tabs-bar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+  }
+  .inventory-tabs-bar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35);
+  }
+
+  .inventory-tabs-fixed {
+    gap: 8px;
+  }
+
+  .inventory-tab-btn {
+    padding: 8px 10px !important;
+    gap: 7px;
+    scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 576px) {
+  .top-navbar {
+    padding: 10px 10px;
+  }
+
+  .inventory-tabs-bar {
+    padding: 6px 6px;
+  }
+
+  .inventory-tab-btn {
+    padding: 8px 10px !important;
+  }
+}
+
+/* ✅ DROPDOWN MAS PRO */
+.dropdown-menu-custom {
+  background: rgba(10, 16, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.45);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.dropdown-menu-custom ul li {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.dropdown-menu-custom ul li:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
