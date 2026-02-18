@@ -214,7 +214,8 @@ const CategoriasTab = ({
     const node = carouselRef.current;
     if (!node) return;
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-      e.preventDefault();
+      // En algunos navegadores el listener wheel se ejecuta como passive.
+      // Evitamos preventDefault para no disparar warnings en consola.
       node.scrollLeft += e.deltaY;
     }
   };
