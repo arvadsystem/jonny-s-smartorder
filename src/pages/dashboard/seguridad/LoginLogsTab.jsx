@@ -4,6 +4,7 @@ import SinPermiso from "../../../components/common/SinPermiso";
 import { apiFetch } from "../../../services/api";
 import { fmtHN } from "../../../utils/dateTime";
 
+// ✅ Honduras: siempre formatear con fmtHN (backend manda ISO con Z)
 const fmtDate = (value) => fmtHN(value);
 
 const estadoBadge = (exito) => {
@@ -80,7 +81,17 @@ const LoginLogsTab = () => {
   const canPrev = filters.offset > 0;
   const canNext = filters.offset + filters.limit < total;
 
-  if (noPermiso) return <SinPermiso permiso="SEGURIDAD_VER" detalle="Requiere permiso para ver logs de login (HU78)." />;
+  // ✅ contador acumulado (como pediste): 10/107, 20/107, ... 107/107
+  const shownCount = Math.min(filters.offset + rows.length, total);
+
+  if (noPermiso) {
+    return (
+      <SinPermiso
+        permiso="SEGURIDAD_VER"
+        detalle="Requiere permiso para ver logs de login (HU78)."
+      />
+    );
+  }
 
   return (
     <div className="card shadow-sm">
@@ -196,7 +207,7 @@ const LoginLogsTab = () => {
             {/* Paginación */}
             <div className="d-flex justify-content-between align-items-center">
               <small className="text-muted">
-                Mostrando {rows.length} de {total}
+                Mostrando {shownCount} de {total}
               </small>
 
               <div className="btn-group">
