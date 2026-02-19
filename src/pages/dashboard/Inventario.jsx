@@ -9,26 +9,16 @@ import AlmacenesTab from './inventario/AlmacenesTab.jsx';
 import MovimientosTab from './inventario/MovimientosTab.jsx';
 import AlertasTab from './inventario/AlertasTab.jsx';
 
+// AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
+const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'movimientos', 'alertas'];
+
 const Inventario = () => {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('categorias');
 
   useEffect(() => {
     const t = (searchParams.get('tab') || 'categorias').toLowerCase();
-
-    setActiveTab(
-      t === 'insumos'
-        ? 'insumos'
-        : t === 'productos'
-          ? 'productos'
-          : t === 'almacenes'
-            ? 'almacenes'
-            : t === 'movimientos'
-              ? 'movimientos'
-              : t === 'alertas'
-                ? 'alertas'
-                : 'categorias'
-    );
+    setActiveTab(INVENTARIO_TAB_KEYS.includes(t) ? t : 'categorias');
   }, [searchParams]);
 
   const [categorias, setCategorias] = useState([]);

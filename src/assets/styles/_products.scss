@@ -79,7 +79,7 @@
 
 .inv-prod-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   padding: 12px 16px 4px;
 }
@@ -89,22 +89,53 @@
   border-radius: 12px;
   background: rgba(243, 241, 216, 0.6);
   padding: 0.5rem 0.65rem;
+  color: #17080a;
+  position: relative;
+  overflow: hidden;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: flex-start;
   gap: 6px;
 }
 
+.inv-prod-kpi-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+// AJUSTE: jerarquia visual de KPI con etiqueta secundaria en 14px.
 .inv-prod-kpi span {
   color: rgba(82, 44, 34, 0.8);
-  font-size: 0.76rem;
+  font-size: 14px;
   font-weight: 700;
 }
 
+// AJUSTE: jerarquia visual de KPI con valor principal en 24px.
 .inv-prod-kpi strong {
   color: #17080a;
-  font-size: 0.96rem;
+  font-size: 24px;
+  line-height: 1;
   font-weight: 800;
+}
+
+// NUEVO: sparkline de fondo en KPI sin interferir con contenido ni eventos.
+.inv-prod-kpi-spark {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.inv-prod-kpi-spark polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
 }
 
 .inv-prod-kpi.is-ok {
@@ -112,6 +143,10 @@
 }
 
 .inv-prod-kpi.is-ok strong {
+  color: #2d6b66;
+}
+
+.inv-prod-kpi.is-ok {
   color: #2d6b66;
 }
 
@@ -123,11 +158,19 @@
   color: #c56f43;
 }
 
+.inv-prod-kpi.is-low {
+  color: #c56f43;
+}
+
 .inv-prod-kpi.is-empty {
   border-color: rgba(178, 45, 48, 0.35);
 }
 
 .inv-prod-kpi.is-empty strong {
+  color: #b22d30;
+}
+
+.inv-prod-kpi.is-empty {
   color: #b22d30;
 }
 
@@ -152,7 +195,7 @@
 }
 
 .inv-prod-create-wrap.open {
-  max-height: 1240px;
+  max-height: 1900px;
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
@@ -219,6 +262,35 @@
   color: rgba(82, 44, 34, 0.82);
   font-size: 0.74rem;
   font-weight: 700;
+}
+
+// AJUSTE: layout premium del formulario para distribuir campos y media en desktop.
+.inv-prod-create-form-premium {
+  align-items: stretch;
+}
+
+// NUEVO: bloque premium para carga de imagen dentro del formulario de alta.
+.inv-prod-create-premium-media {
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 12px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(250, 249, 239, 0.84));
+  padding: 10px;
+  min-height: 100%;
+}
+
+.inv-prod-create-premium-media-title {
+  color: #17080a;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.inv-prod-create-premium-media .inv-prod-image-preview {
+  min-height: 228px;
+}
+
+.inv-prod-create-premium-media .inv-prod-image-preview img {
+  min-height: 228px;
 }
 
 .inv-prod-create-actions-col {
@@ -598,9 +670,15 @@
   border-color: #7a1e24 !important;
 }
 
+@media (max-width: 1199.98px) {
+  .inv-prod-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 991.98px) {
   .inv-prod-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -620,8 +698,14 @@
   }
 
   .inv-prod-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     padding: 10px 12px 4px;
+  }
+
+  // VALIDACION: en mobile el valor KPI baja a 20px y mantiene prioridad visual.
+  .inv-prod-kpi strong {
+    font-size: 20px;
   }
 
   .inv-prod-pagination {
@@ -637,7 +721,7 @@
   }
 
   .inv-prod-create-wrap.open {
-    max-height: 1420px;
+    max-height: 2200px;
   }
 
   .inv-prod-image-preview {
@@ -655,6 +739,15 @@
   .inv-prod-image-actions .btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .inv-prod-create-premium-media {
+    padding: 8px;
+  }
+
+  .inv-prod-create-premium-media .inv-prod-image-preview,
+  .inv-prod-create-premium-media .inv-prod-image-preview img {
+    min-height: 120px;
   }
 }
 
@@ -778,6 +871,8 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
+  // AJUSTE: fuerza estiramiento uniforme de items en listados de productos.
+  align-items: stretch;
 }
 
 .inv-prod-catalog-carousel {
@@ -792,6 +887,8 @@
   padding: 2px 16px 10px;
   scrollbar-width: thin;
   scrollbar-color: rgba(157, 150, 112, 0.52) transparent;
+  // AJUSTE: mantiene altura consistente entre cards del carrusel.
+  align-items: stretch;
 }
 
 .inv-prod-catalog-carousel::-webkit-scrollbar {
@@ -815,6 +912,10 @@
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(var(--c-shadow-rgb), 0.12);
   transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  // NUEVO: layout interno flex para igualar altura y anclar acciones al fondo.
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .inv-prod-catalog-card:hover {
@@ -871,6 +972,9 @@
   font-weight: 700;
   border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.84);
+  // VALIDACION: evita wrap del badge para mantener lectura y densidad visual consistente.
+  white-space: nowrap;
+  line-height: 1.1;
 }
 
 .inv-prod-card-state.is-ok {
@@ -895,6 +999,11 @@
 
 .inv-prod-card-body {
   padding: 0.72rem;
+  // AJUSTE: permite que el bloque de acciones se apoye al final en cards de altura uniforme.
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .inv-prod-card-name {
@@ -902,12 +1011,24 @@
   font-weight: 800;
   font-size: 0.92rem;
   line-height: 1.2;
+  // AJUSTE: se compacta a una linea para mantener altura visual uniforme del card.
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 1.2em;
 }
 
 .inv-prod-card-category {
   color: rgba(82, 44, 34, 0.8);
   font-size: 0.78rem;
   margin-top: 2px;
+  // VALIDACION: se limita a una línea para conservar alineación entre cards.
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 1.15em;
 }
 
 .inv-prod-card-metrics {
@@ -929,8 +1050,11 @@
 }
 
 .inv-prod-stock-line {
-  margin-top: 0.62rem;
-  min-height: 34px;
+  // AJUSTE: ancla acciones y estado al fondo de la card para altura uniforme.
+  margin-top: auto;
+  padding-top: 0.62rem;
+  // AJUSTE: altura fija del bloque inferior para evitar estiramiento por contenido variable.
+  min-height: 42px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -942,6 +1066,18 @@
   display: inline-flex;
   align-items: center;
   gap: 9px;
+  // VALIDACION: estabiliza el alto del contenido de estado/item para que no cambie entre cards.
+  min-height: 34px;
+}
+
+// NUEVO: contenedor con alto controlado para texto de stock e item sin generar cards mas altos.
+.inv-prod-stock-copy {
+  min-width: 0;
+  min-height: 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  row-gap: 2px;
 }
 
 .inv-prod-stock-ring {
@@ -980,11 +1116,19 @@
   color: #17080a;
   font-size: 0.75rem;
   font-weight: 700;
+  // AJUSTE: se fuerza una sola linea para evitar saltos que alteren la altura del card.
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.1;
 }
 
 .inv-prod-stock-copy small {
+  display: block;
   color: rgba(82, 44, 34, 0.72);
   font-size: 0.7rem;
+  white-space: nowrap;
+  line-height: 1.1;
 }
 
 .inv-prod-card-action {

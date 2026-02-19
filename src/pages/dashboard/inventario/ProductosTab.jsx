@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
+import { useAuth } from '../../../hooks/useAuth';
 
 const getStockMeta = (cantidad) => {
   const qty = Number.parseInt(String(cantidad ?? '0'), 10);
@@ -16,12 +17,15 @@ const buildCreateImageState = () => ({
 });
 
 const ProductosTab = ({ categorias = [], openToast }) => {
+  // NUEVO: toma contexto de sesion existente para segmentar historial KPI por usuario/empresa/sucursal.
+  const { user } = useAuth();
   // ==============================
   // TOAST (SI NO VIENE DEL PADRE)
   // ==============================
-  const safeToast = (title, message, variant = 'success') => {
+  // AJUSTE: memoizado para evitar recreacion y mantener estables los hooks dependientes.
+  const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
-  };
+  }, [openToast]);
 
   // ==============================
   // ESTADOS PRINCIPALES
@@ -44,12 +48,47 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   const [search, setSearch] = useState('');
   const [stockFiltro, setStockFiltro] = useState('todos'); // todos | con_stock | sin_stock
+  const [estadoFiltro, setEstadoFiltro] = useState('todos'); // todos | activo | inactivo
   const [categoriaFiltro, setCategoriaFiltro] = useState('todos'); // todos | id_categoria
   const [almacenFiltro, setAlmacenFiltro] = useState('todos'); // todos | id_almacen
   const [deptoFiltro, setDeptoFiltro] = useState('todos'); // todos | id_tipo_departamento
   const [sortBy, setSortBy] = useState('recientes');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [createPanelOpen, setCreatePanelOpen] = useState(false);
+  // NUEVO: feature flag para mantener fallback del formulario legacy sin eliminar código funcional.
+  const USE_PREMIUM_NEW_FORM = true;
+  // NUEVO: historial local para micro-gráficos de KPI sin requerir backend adicional.
+  // NUEVO: key legacy para compatibilidad con historico guardado antes del contexto dinamico.
+  const KPI_HISTORY_LEGACY_KEY = 'inv_productos_kpi_history_v1';
+  // NUEVO: historial local segmentado por contexto para evitar mezcla entre cuentas/sucursales.
+  const KPI_HISTORY_KEY = useMemo(() => {
+    const normalizePart = (value) => {
+      if (value === null || value === undefined) return '';
+      const s = String(value).trim().toLowerCase();
+      if (!s) return '';
+      return s.replace(/[^a-z0-9_-]/g, '');
+    };
+
+    // AJUSTE: se usan datos de sesion existentes; si no hay contexto suficiente, cae a global.
+    const userEntries = user && typeof user === 'object' ? Object.entries(user) : [];
+    const usuarioCtx = normalizePart(user?.nombre_usuario);
+    const empresaCtx = normalizePart(
+      userEntries.find(([key, value]) =>
+        String(key).toLowerCase().includes('empresa') && value !== null && value !== undefined && String(value).trim() !== ''
+      )?.[1]
+    );
+    const sucursalCtx = normalizePart(
+      user?.id_sucursal ||
+      userEntries.find(([key, value]) =>
+        String(key).toLowerCase().includes('sucursal') && value !== null && value !== undefined && String(value).trim() !== ''
+      )?.[1]
+    );
+
+    if (!usuarioCtx && !empresaCtx && !sucursalCtx) return 'inv_productos_kpi_history_global';
+    return `inv_productos_kpi_history_${empresaCtx || 'na'}_${sucursalCtx || 'na'}_${usuarioCtx || 'na'}`;
+  }, [user]);
+  // AJUSTE: limita snapshots para controlar tamano de almacenamiento local.
+  const KPI_HISTORY_LIMIT = 20;
   const currentPage = 1;
   const pageSize = 8;
   const renderLegacyLayouts = false;
@@ -66,6 +105,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     nombre_producto: '',
     precio: '',
     cantidad: '',
+    // NUEVO: se agrega stock_minimo al formulario de alta para alinear payload con backend.
+    stock_minimo: '0',
     descripcion_producto: '',
     fecha_ingreso_producto: '',
     fecha_caducidad: '',
@@ -103,7 +144,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [drawerMessage, setDrawerMessage] = useState('');
   const [togglingEstado, setTogglingEstado] = useState(false);
   const catalogCarouselRef = useRef(null);
+  // NUEVO: refs para desplazar viewport a paneles cuando el usuario abre Nuevo/Filtros.
+  const filtersSectionRef = useRef(null);
+  const createSectionRef = useRef(null);
   const [carouselState, setCarouselState] = useState({ canPrev: false, canNext: false });
+  const [kpiHistory, setKpiHistory] = useState([]);
 
   const openConfirmDelete = (id, nombre) => {
     setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
@@ -124,6 +169,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return s;
   };
 
+  // NUEVO: normaliza estado para compatibilidad backend (boolean/string/number).
+  const productoActivo = useCallback((estado) => {
+    return estado === true || estado === 'true' || estado === 1 || estado === '1';
+  }, []);
+
   // ==============================
   // SOLO ENTEROS EN INPUT (BLOQUEAR DECIMALES)
   // ==============================
@@ -139,6 +189,79 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (Number.isNaN(n)) return 'L. 0.00';
     return `L. ${n.toFixed(2)}`;
   };
+
+  // NUEVO: extrae errores de campo del backend cuando vienen en e.data.errors.
+  const mapApiFieldErrors = useCallback((apiData) => {
+    const errors = apiData?.errors;
+    if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return {};
+
+    return Object.entries(errors).reduce((acc, [field, rawValue]) => {
+      if (typeof rawValue === 'string' && rawValue.trim()) {
+        acc[field] = rawValue.trim();
+      } else if (Array.isArray(rawValue) && rawValue.length > 0) {
+        acc[field] = String(rawValue[0]);
+      } else if (rawValue !== null && rawValue !== undefined) {
+        acc[field] = String(rawValue);
+      }
+      return acc;
+    }, {});
+  }, []);
+
+  // NUEVO: centraliza lectura de mensaje y estado para toasts consistentes.
+  const handleApiStatusError = useCallback((apiError, fallbackMessage, setFieldErrors) => {
+    const status = Number(apiError?.status || 0);
+    const backendData = apiError?.data;
+    const backendMessage = backendData && typeof backendData === 'object'
+      ? backendData.message || backendData.mensaje
+      : '';
+    // AJUSTE: fallback especifico para auth/permisos manteniendo el flujo actual sin redirecciones.
+    const fallbackByStatus =
+      status === 401
+        ? 'Vuelve a iniciar sesi\u00F3n para continuar.'
+        : status === 403
+        ? 'No tienes autorizaci\u00F3n para realizar esta acci\u00F3n.'
+        : fallbackMessage;
+    const message = String(backendMessage || apiError?.message || fallbackByStatus || 'Error inesperado');
+
+    if (typeof setFieldErrors === 'function') {
+      const fieldErrors = mapApiFieldErrors(backendData);
+      if (Object.keys(fieldErrors).length > 0) {
+        setFieldErrors((prev) => ({ ...prev, ...fieldErrors }));
+      }
+    }
+
+    // VALIDACION: se respeta feedback por código HTTP acordado con backend.
+    // AJUSTE: se agrega manejo explicito para 401/403 con toasts claros y consistentes.
+    if (status === 401) safeToast('SESI\u00D3N EXPIRADA', message, 'warning');
+    else if (status === 403) safeToast('SIN PERMISOS', message, 'warning');
+    else if (status === 400) safeToast('VALIDACION', message, 'warning');
+    else if (status === 404) safeToast('NO ENCONTRADO', message, 'warning');
+    else if (status === 409) safeToast('CONFLICTO', message, 'warning');
+    else if (status >= 500) safeToast('ERROR', message, 'danger');
+    else safeToast('ERROR', message, 'danger');
+
+    return message;
+  }, [mapApiFieldErrors, safeToast]);
+
+  // NUEVO: genera puntos SVG normalizados para sparkline de KPI.
+  const buildSparklinePoints = useCallback((series, width = 120, height = 44, padding = 4) => {
+    if (!Array.isArray(series) || series.length < 2) return '';
+
+    const values = series.map((value) => Number(value ?? 0));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const safeWidth = Math.max(width - padding * 2, 1);
+    const safeHeight = Math.max(height - padding * 2, 1);
+
+    return values
+      .map((value, index) => {
+        const x = padding + (safeWidth * index) / (values.length - 1);
+        const y = padding + safeHeight - ((value - min) / range) * safeHeight;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(' ');
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -199,12 +322,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return productos.find((p) => Number(p?.id_producto) === Number(selectedProductoId)) || null;
   }, [productos, selectedProductoId]);
 
+  // AJUSTE: usa normalización estricta para mostrar estado activo/inactivo de forma consistente.
   const resolveEstadoActivo = useCallback((producto) => {
     if (!producto) return false;
     const localEstado = localEstadoMap[producto?.id_producto];
-    if (localEstado === true || localEstado === false) return localEstado;
-    return producto?.estado !== false;
-  }, [localEstadoMap]);
+    if (localEstado !== null && localEstado !== undefined) return productoActivo(localEstado);
+    return productoActivo(producto?.estado);
+  }, [localEstadoMap, productoActivo]);
 
   const resolveEstadoProducto = useCallback((producto) => {
     if (!resolveEstadoActivo(producto)) return { label: 'Inactivo', className: 'is-inactive' };
@@ -312,6 +436,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
     const precioRaw = String(data?.precio ?? '').trim();
     const cantidadRaw = String(data?.cantidad ?? '').trim();
+    // NUEVO: se valida stock_minimo para enviar valor compatible con backend.
+    const stockMinimoRaw = String(data?.stock_minimo ?? '').trim();
 
     const categoriaRaw = String(data?.id_categoria_producto ?? '').trim();
     const almacenRaw = String(data?.id_almacen ?? '').trim();
@@ -324,7 +450,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
     // === NOMBRE OBLIGATORIO ===
     if (nombre.length < 2) errors.nombre_producto = 'MÍNIMO 2 CARACTERES';
-    if (nombre.length > 80) errors.nombre_producto = 'MÁXIMO 80 CARACTERES';
+    // AJUSTE: backend valida nombre_producto con maximo de 50 caracteres.
+    if (nombre.length > 50) errors.nombre_producto = 'M\u00C1XIMO 50 CARACTERES';
 
     // === PRECIO OBLIGATORIO (DECIMAL) ===
     const precio = Number.parseFloat(precioRaw);
@@ -338,6 +465,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
 
     // === FK CATEGORÍA OBLIGATORIA ===
+    // VALIDACION: stock_minimo debe ser entero no negativo.
+    const stock_minimo = Number.parseInt(stockMinimoRaw || '0', 10);
+    if (stockMinimoRaw === '') errors.stock_minimo = 'EL STOCK M\u00CDNIMO ES OBLIGATORIO';
+    else if (!/^\d+$/.test(stockMinimoRaw)) errors.stock_minimo = 'SOLO ENTEROS (SIN DECIMALES)';
+    else if (Number.isNaN(stock_minimo) || stock_minimo < 0) errors.stock_minimo = 'DEBE SER UN ENTERO >= 0';
+
     const id_categoria_producto = Number.parseInt(categoriaRaw, 10);
     if (!categoriaRaw) errors.id_categoria_producto = 'LA CATEGORÍA ES OBLIGATORIA';
     else if (Number.isNaN(id_categoria_producto) || id_categoria_producto <= 0)
@@ -357,7 +490,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     }
 
     // === DESCRIPCIÓN OPCIONAL ===
-    if (descripcion.length > 150) errors.descripcion_producto = 'MÁXIMO 150 CARACTERES';
+
+    // AJUSTE: se permite hasta 250 caracteres para descripcion_producto.
+    if (descripcion.length > 250) errors.descripcion_producto = 'M\u00C1XIMO 250 CARACTERES';
 
     // === FECHAS OPCIONALES ===
     if (fechaIngreso && !/^\d{4}-\d{2}-\d{2}$/.test(fechaIngreso)) {
@@ -374,6 +509,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         nombre_producto: nombre,
         precio,
         cantidad,
+        stock_minimo,
         descripcion_producto: descripcion,
         fecha_ingreso_producto: fechaIngreso,
         fecha_caducidad: fechaCaducidad,
@@ -393,6 +529,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       nombre_producto: cleaned.nombre_producto,
       precio: cleaned.precio,
       cantidad: cleaned.cantidad,
+      // AJUSTE: se incluye stock_minimo como numero para alinear create con backend.
+      stock_minimo: cleaned.stock_minimo,
       id_categoria_producto: cleaned.id_categoria_producto,
       id_almacen: cleaned.id_almacen
     };
@@ -471,6 +609,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       nombre_producto: '',
       precio: '',
       cantidad: '',
+      // AJUSTE: reset consistente del nuevo campo stock_minimo.
+      stock_minimo: '0',
       descripcion_producto: '',
       fecha_ingreso_producto: '',
       fecha_caducidad: '',
@@ -506,9 +646,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       safeToast('CREADO', 'EL PRODUCTO SE CREÓ CORRECTAMENTE.', 'success');
     } catch (e2) {
-      const msg = e2?.message || 'ERROR CREANDO PRODUCTO';
+      // AJUSTE: se maneja ApiError por status y errores de campo para feedback consistente.
+      const msg = handleApiStatusError(e2, 'ERROR CREANDO PRODUCTO', setCreateErrors);
       setError(msg);
-      safeToast('ERROR', msg, 'danger');
     } finally {
       setCreating(false);
     }
@@ -526,6 +666,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       nombre_producto: p.nombre_producto ?? '',
       precio: p.precio ?? '',
       cantidad: p.cantidad ?? '',
+      // AJUSTE: el form de edicion conserva stock_minimo para validacion homogenea.
+      stock_minimo: String(p.stock_minimo ?? '0'),
       descripcion_producto: p.descripcion_producto ?? '',
       fecha_ingreso_producto: toDateInputValue(p.fecha_ingreso_producto),
       fecha_caducidad: toDateInputValue(p.fecha_caducidad),
@@ -561,22 +703,45 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const duplicarProductoDesdeDrawer = () => {
     if (!selectedProducto) return;
 
+    // AJUSTE: se toma snapshot antes de cerrar drawer para no perder la referencia seleccionada.
+    const productoBase = { ...selectedProducto };
+    // VALIDACION: se normalizan campos numericos para evitar valores invalidos al precargar.
+    const precioRaw = Number.parseFloat(String(productoBase?.precio ?? '0'));
+    const precioNormalizado = Number.isNaN(precioRaw) || precioRaw < 0 ? 0 : precioRaw;
+    const stockMinimoRaw = Number.parseInt(String(productoBase?.stock_minimo ?? '0'), 10);
+    const stockMinimoNormalizado = Number.isNaN(stockMinimoRaw) || stockMinimoRaw < 0 ? 0 : stockMinimoRaw;
+
     setForm({
-      nombre_producto: selectedProducto?.nombre_producto ?? '',
-      precio: selectedProducto?.precio ?? '',
-      cantidad: selectedProducto?.cantidad ?? '',
-      descripcion_producto: selectedProducto?.descripcion_producto ?? '',
-      fecha_ingreso_producto: toDateInputValue(selectedProducto?.fecha_ingreso_producto),
-      fecha_caducidad: toDateInputValue(selectedProducto?.fecha_caducidad),
-      id_categoria_producto: String(selectedProducto?.id_categoria_producto ?? ''),
-      id_almacen: String(selectedProducto?.id_almacen ?? ''),
-      id_tipo_departamento: selectedProducto?.id_tipo_departamento ? String(selectedProducto?.id_tipo_departamento) : ''
+      nombre_producto: productoBase?.nombre_producto ? `${productoBase.nombre_producto} (copia)` : '',
+      precio: String(precioNormalizado),
+      // VALIDACION: el duplicado inicia con cantidad 0 para evitar clonar existencias sin intencion.
+      cantidad: '0',
+      // AJUSTE: al duplicar se replica stock_minimo y si no existe se usa 0.
+      stock_minimo: String(stockMinimoNormalizado),
+      descripcion_producto: productoBase?.descripcion_producto ?? '',
+      fecha_ingreso_producto: toDateInputValue(productoBase?.fecha_ingreso_producto),
+      fecha_caducidad: toDateInputValue(productoBase?.fecha_caducidad),
+      id_categoria_producto: String(productoBase?.id_categoria_producto ?? ''),
+      id_almacen: String(productoBase?.id_almacen ?? ''),
+      id_tipo_departamento: productoBase?.id_tipo_departamento ? String(productoBase?.id_tipo_departamento) : ''
     });
     setCreateErrors({});
     clearCreateImage();
-    setCreatePanelOpen(true);
+    // AJUSTE: al duplicar se cierra el drawer y filtros antes de redirigir al flujo de alta.
+    setFiltersOpen(false);
+    cerrarDrawerProducto();
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setCreatePanelOpen(false);
       setShowCreateProductoSheet(true);
+      return;
+    }
+    setShowCreateProductoSheet(false);
+    setCreatePanelOpen(true);
+    // NUEVO: al abrir Nuevo desde duplicar se desplaza al formulario para completar datos.
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        createSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     }
   };
 
@@ -647,9 +812,24 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!editId || !editForm || savingEdit) return;
 
     setError('');
-    const v = validarProducto(editForm);
+    // AJUSTE: en edicion, stock_minimo vacio se normaliza a 0 para alinear con DEFAULT de BD.
+    const editData = {
+      ...editForm,
+      stock_minimo: String(editForm?.stock_minimo ?? '').trim() === '' ? '0' : editForm.stock_minimo
+    };
+    const v = validarProducto(editData);
     setEditErrors(v.errors);
     if (!v.ok) return;
+
+    // VALIDACION: bloquea guardado si stock_minimo no es entero valido >= 0.
+    const stockMinimoEdit = Number.parseInt(String(v.cleaned?.stock_minimo ?? '0'), 10);
+    if (Number.isNaN(stockMinimoEdit) || stockMinimoEdit < 0) {
+      setEditErrors((prev) => ({
+        ...prev,
+        stock_minimo: 'DEBE SER UN ENTERO >= 0'
+      }));
+      return;
+    }
 
     setSavingEdit(true);
     try {
@@ -661,6 +841,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       const nombreActual = String(actual?.nombre_producto ?? '').trim();
       const precioActual = Number.parseFloat(String(actual?.precio ?? ''));
       const cantidadActual = Number.parseInt(String(actual?.cantidad ?? ''), 10);
+      // AJUSTE: normaliza stock_minimo actual para comparar contra edicion con fallback 0.
+      const stockMinimoActualRaw = Number.parseInt(String(actual?.stock_minimo ?? '0'), 10);
+      const stockMinimoActual = Number.isNaN(stockMinimoActualRaw) ? 0 : stockMinimoActualRaw;
 
       const descActual = String(actual?.descripcion_producto ?? '').trim();
 
@@ -675,6 +858,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       if (v.cleaned.nombre_producto !== nombreActual) cambios.push(['nombre_producto', v.cleaned.nombre_producto]);
       if (!Number.isNaN(v.cleaned.precio) && v.cleaned.precio !== precioActual) cambios.push(['precio', v.cleaned.precio]);
       if (!Number.isNaN(v.cleaned.cantidad) && v.cleaned.cantidad !== cantidadActual) cambios.push(['cantidad', v.cleaned.cantidad]);
+      // AJUSTE: se incluye stock_minimo en persistencia por campo cuando cambia en edicion.
+      if (stockMinimoEdit !== stockMinimoActual) cambios.push(['stock_minimo', stockMinimoEdit]);
 
       if (!Number.isNaN(v.cleaned.id_categoria_producto) && v.cleaned.id_categoria_producto !== catActual) {
         cambios.push(['id_categoria_producto', v.cleaned.id_categoria_producto]);
@@ -719,10 +904,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       setDrawerMessage('Cambios guardados.');
       setDrawerEditMode(false);
       safeToast('EXITO', 'Cambios guardados.', 'success');
-    } catch {
-      const msg = 'No se pudo guardar. Intenta de nuevo.';
+    } catch (e) {
+      // AJUSTE: se refleja status HTTP y errores por campo en la edición.
+      const msg = handleApiStatusError(e, 'No se pudo guardar. Intenta de nuevo.', setEditErrors);
       setError(msg);
-      safeToast('ERROR', msg, 'danger');
+      setDrawerMessage(msg);
     } finally {
       setSavingEdit(false);
     }
@@ -738,17 +924,25 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setDeleting(true);
     setError('');
     try {
-      await inventarioService.eliminarProducto(id);
+      // AJUSTE: se leen flags hard_deleted/soft_deleted para feedback correcto.
+      const resp = await inventarioService.eliminarProducto(id);
       closeConfirmDelete();
       await cargarProductos();
+      if (resp?.soft_deleted === true) {
+        safeToast('DESACTIVADO', resp?.message || 'Producto desactivado porque esta en uso.', 'warning');
+        return;
+      }
+      if (resp?.hard_deleted === true) {
+        safeToast('ELIMINADO', resp?.message || 'Producto eliminado.', 'success');
+        return;
+      }
+      // AJUSTE: compatibilidad con respuestas antiguas sin flags.
 
       safeToast('ELIMINADO', 'EL PRODUCTO SE ELIMINÓ CORRECTAMENTE.', 'success');
     } catch (e) {
       closeConfirmDelete();
-      const msg = e?.message || 'ERROR ELIMINANDO PRODUCTO';
+      const msg = handleApiStatusError(e, 'ERROR ELIMINANDO PRODUCTO');
       setError(msg);
-      safeToast('ERROR', msg, 'danger');
-      setDeleting(false);
     }
   };
 
@@ -779,7 +973,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           ? true
           : String(p.id_tipo_departamento ?? '') === String(deptoFiltro);
 
-      return matchTexto && matchStock && matchCategoria && matchAlmacen && matchDepto;
+      // AJUSTE: filtro por estado usando normalizacion de activo/inactivo.
+      const activo = resolveEstadoActivo(p);
+      const matchEstado =
+        estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? activo : !activo;
+
+      return matchTexto && matchStock && matchEstado && matchCategoria && matchAlmacen && matchDepto;
     });
 
     filtered.sort((a, b) => {
@@ -797,26 +996,113 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     });
 
     return filtered;
-  }, [productos, search, stockFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy, getCategoriaLabel, getAlmacenLabel, getDeptoLabel]);
+  }, [productos, search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy, getCategoriaLabel, getAlmacenLabel, getDeptoLabel, resolveEstadoActivo]);
 
   const kpis = useMemo(() => {
     const total = Array.isArray(productos) ? productos.length : 0;
     const conStock = (productos || []).filter((p) => getStockMeta(p?.cantidad).qty > 0).length;
     const stockBajo = (productos || []).filter((p) => getStockMeta(p?.cantidad).className === 'is-low').length;
     const sinStock = total - conStock;
-    return { total, conStock, stockBajo, sinStock };
-  }, [productos]);
+    // AJUSTE: se agregan KPIs de activas/inactivas con la misma regla de estado.
+    const activas = (productos || []).filter((p) => resolveEstadoActivo(p)).length;
+    const inactivas = total - activas;
+    return { total, conStock, stockBajo, sinStock, activas, inactivas };
+  }, [productos, resolveEstadoActivo]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(KPI_HISTORY_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setKpiHistory(parsed.slice(-KPI_HISTORY_LIMIT));
+          return;
+        }
+      }
+
+      const legacyRaw = window.localStorage.getItem(KPI_HISTORY_LEGACY_KEY);
+      if (!legacyRaw) return;
+      const legacyParsed = JSON.parse(legacyRaw);
+      if (!Array.isArray(legacyParsed)) return;
+      const migrated = legacyParsed.slice(-KPI_HISTORY_LIMIT);
+      setKpiHistory(migrated);
+      // AJUSTE: migracion de key para no perder historico si aun existe en la key anterior.
+      window.localStorage.setItem(KPI_HISTORY_KEY, JSON.stringify(migrated));
+    } catch {
+      setKpiHistory([]);
+    }
+  }, [KPI_HISTORY_KEY, KPI_HISTORY_LEGACY_KEY, KPI_HISTORY_LIMIT]);
+
+  useEffect(() => {
+    if (loadingProductos || typeof window === 'undefined') return;
+
+    const snapshot = {
+      ts: Date.now(),
+      total: kpis.total,
+      activas: kpis.activas,
+      inactivas: kpis.inactivas,
+      conStock: kpis.conStock,
+      stockBajo: kpis.stockBajo,
+      sinStock: kpis.sinStock
+    };
+
+    // NUEVO: persistencia de snapshots KPI para sparklines sin soporte histórico del backend.
+    setKpiHistory((prev) => {
+      const base = Array.isArray(prev) ? prev : [];
+      const last = base[base.length - 1];
+      const isSameAsLast = Boolean(last) && (
+        Number(last.total ?? 0) === snapshot.total &&
+        Number(last.activas ?? 0) === snapshot.activas &&
+        Number(last.inactivas ?? 0) === snapshot.inactivas &&
+        Number(last.conStock ?? 0) === snapshot.conStock &&
+        Number(last.stockBajo ?? 0) === snapshot.stockBajo &&
+        Number(last.sinStock ?? 0) === snapshot.sinStock
+      );
+
+      const next = isSameAsLast ? base : [...base, snapshot].slice(-KPI_HISTORY_LIMIT);
+      try {
+        window.localStorage.setItem(KPI_HISTORY_KEY, JSON.stringify(next));
+      } catch {
+        // VALIDACION: si localStorage falla, el flujo de KPIs no se interrumpe.
+      }
+      return next;
+    });
+  }, [
+    KPI_HISTORY_KEY,
+    KPI_HISTORY_LIMIT,
+    loadingProductos,
+    kpis.total,
+    kpis.activas,
+    kpis.inactivas,
+    kpis.conStock,
+    kpis.stockBajo,
+    kpis.sinStock
+  ]);
+
+  const kpiSeries = useMemo(() => {
+    const values = Array.isArray(kpiHistory) ? kpiHistory : [];
+    return {
+      total: values.map((item) => Number(item?.total ?? 0)),
+      activas: values.map((item) => Number(item?.activas ?? 0)),
+      inactivas: values.map((item) => Number(item?.inactivas ?? 0)),
+      conStock: values.map((item) => Number(item?.conStock ?? 0)),
+      stockBajo: values.map((item) => Number(item?.stockBajo ?? 0)),
+      sinStock: values.map((item) => Number(item?.sinStock ?? 0))
+    };
+  }, [kpiHistory]);
 
   const hasActiveFilters = useMemo(() => {
     return (
       search.trim() !== '' ||
       stockFiltro !== 'todos' ||
+      estadoFiltro !== 'todos' ||
       categoriaFiltro !== 'todos' ||
       almacenFiltro !== 'todos' ||
       deptoFiltro !== 'todos' ||
       sortBy !== 'recientes'
     );
-  }, [search, stockFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy]);
+  }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy]);
 
   const productosPaginados = productosFiltrados;
   const rangoHasta = productosFiltrados.length;
@@ -862,9 +1148,54 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     el.scrollBy({ left, behavior: 'smooth' });
   };
 
+  // NUEVO: helper de scroll para enfocar paneles abiertos sin cambiar rutas ni navegacion.
+  const scrollToSection = useCallback((sectionRef) => {
+    if (typeof window === 'undefined') return;
+    const node = sectionRef?.current;
+    if (!node) return;
+    window.requestAnimationFrame(() => {
+      node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  // AJUSTE: Filtros y Nuevo son mutuamente excluyentes para evitar paneles abiertos al mismo tiempo.
+  const toggleFiltrosPanel = useCallback(() => {
+    const nextOpen = !filtersOpen;
+    if (!nextOpen) {
+      setFiltersOpen(false);
+      return;
+    }
+    setCreatePanelOpen(false);
+    setShowCreateProductoSheet(false);
+    setFiltersOpen(true);
+    scrollToSection(filtersSectionRef);
+  }, [filtersOpen, scrollToSection]);
+
+  // AJUSTE: al abrir Nuevo en desktop se cierran filtros y se enfoca el formulario.
+  const toggleNuevoDesktop = useCallback(() => {
+    const nextOpen = !createPanelOpen;
+    if (!nextOpen) {
+      setCreatePanelOpen(false);
+      return;
+    }
+    setFiltersOpen(false);
+    setShowCreateProductoSheet(false);
+    setCreatePanelOpen(true);
+    scrollToSection(createSectionRef);
+  }, [createPanelOpen, scrollToSection]);
+
+  // AJUSTE: en mobile, Nuevo abre sheet y cierra filtros para mantener exclusividad.
+  const abrirNuevoMobile = useCallback(() => {
+    setFiltersOpen(false);
+    setCreatePanelOpen(false);
+    setShowCreateProductoSheet(true);
+  }, []);
+
   const resetFiltros = () => {
     setSearch('');
     setStockFiltro('todos');
+    // AJUSTE: limpia tambien el nuevo filtro por estado.
+    setEstadoFiltro('todos');
     setCategoriaFiltro('todos');
     setAlmacenFiltro('todos');
     setDeptoFiltro('todos');
@@ -962,6 +1293,26 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     </div>
   );
 
+  // AJUSTE: renderiza cada KPI con sparkline de fondo sin duplicar contenido principal.
+  const renderKpiCard = (key, label, value, className = '') => {
+    const series = kpiSeries[key] || [];
+    const points = buildSparklinePoints(series);
+
+    return (
+      <div className={`inv-prod-kpi ${className}`.trim()}>
+        {points ? (
+          <svg className="inv-prod-kpi-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points={points} />
+          </svg>
+        ) : null}
+        <div className="inv-prod-kpi-content">
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="card shadow-sm mb-3 inv-prod-card">
       <div className="card-header inv-prod-header">
@@ -977,7 +1328,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           <button
             type="button"
             className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
-            onClick={() => setFiltersOpen((s) => !s)}
+            // AJUSTE: usa handler dedicado para exclusión mutua con panel Nuevo.
+            onClick={toggleFiltrosPanel}
             aria-expanded={filtersOpen}
             aria-controls="inv-prod-filters"
           >
@@ -988,7 +1340,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           <button
             type="button"
             className={`inv-prod-toolbar-btn d-none d-md-inline-flex ${createPanelOpen ? 'is-on' : ''}`}
-            onClick={() => setCreatePanelOpen((s) => !s)}
+            // AJUSTE: usa handler dedicado para cerrar filtros y hacer scroll al formulario.
+            onClick={toggleNuevoDesktop}
             aria-expanded={createPanelOpen}
             aria-controls="inv-prod-create-panel"
           >
@@ -999,7 +1352,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           <button
             type="button"
             className="inv-prod-toolbar-btn d-md-none"
-            onClick={() => setShowCreateProductoSheet(true)}
+            // AJUSTE: en mobile se respeta exclusión mutua cerrando filtros al abrir Nuevo.
+            onClick={abrirNuevoMobile}
             aria-label="Abrir modal de crear producto"
           >
             <i className="bi bi-plus-circle" />
@@ -1009,22 +1363,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       </div>
 
       <div className="inv-prod-kpis">
-        <div className="inv-prod-kpi">
-          <span>Total</span>
-          <strong>{kpis.total}</strong>
-        </div>
-        <div className="inv-prod-kpi is-ok">
-          <span>Con stock</span>
-          <strong>{kpis.conStock}</strong>
-        </div>
-        <div className="inv-prod-kpi is-low">
-          <span>Stock bajo</span>
-          <strong>{kpis.stockBajo}</strong>
-        </div>
-        <div className="inv-prod-kpi is-empty">
-          <span>Sin stock</span>
-          <strong>{kpis.sinStock}</strong>
-        </div>
+        {renderKpiCard('total', 'Total', kpis.total)}
+        {renderKpiCard('activas', 'Activas', kpis.activas, 'is-ok')}
+        {renderKpiCard('inactivas', 'Inactivas', kpis.inactivas, 'is-empty')}
+        {renderKpiCard('conStock', 'Con stock', kpis.conStock, 'is-ok')}
+        {renderKpiCard('stockBajo', 'Stock bajo', kpis.stockBajo, 'is-low')}
+        {renderKpiCard('sinStock', 'Sin stock', kpis.sinStock, 'is-empty')}
       </div>
 
       <div className="card-body inv-prod-body">
@@ -1033,6 +1377,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         {/* FORM CREAR (SOLO DESKTOP/TABLET) */}
         <div
           id="inv-prod-create-panel"
+          ref={createSectionRef}
           className={`inv-prod-create-wrap d-none d-md-block ${createPanelOpen ? 'open' : ''}`}
           aria-hidden={!createPanelOpen}
         >
@@ -1042,6 +1387,190 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className="inv-prod-section-sub">Completa los datos esenciales sin salir del catálogo</div>
           </div>
 
+          {USE_PREMIUM_NEW_FORM ? (
+          <form onSubmit={onCrear} className="row g-3 mb-1 inv-prod-create-form inv-prod-create-form-premium">
+            <div className="col-12 col-xl-8">
+              <div className="row g-2">
+                <div className="col-12">
+                  <label className="form-label mb-1">Nombre del producto</label>
+                  <input
+                    className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
+                    placeholder="Ej: Hamburguesa clásica"
+                    value={form.nombre_producto}
+                    onChange={(e) => setForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                    required
+                  />
+                  {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Precio</label>
+                  <input
+                    className={`form-control ${createErrors.precio ? 'is-invalid' : ''}`}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Ej: 150.00"
+                    value={form.precio}
+                    onChange={(e) => setForm((s) => ({ ...s, precio: e.target.value }))}
+                    required
+                  />
+                  {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Cantidad</label>
+                  <input
+                    className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
+                    type="number"
+                    step="1"
+                    min="0"
+                    inputMode="numeric"
+                    placeholder="Ej: 10"
+                    value={form.cantidad}
+                    onKeyDown={blockNonIntegerKeys}
+                    onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
+                    required
+                  />
+                  {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Stock mínimo</label>
+                  <input
+                    className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
+                    type="number"
+                    step="1"
+                    min="0"
+                    inputMode="numeric"
+                    value={form.stock_minimo}
+                    onKeyDown={blockNonIntegerKeys}
+                    onChange={(e) => setForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }))}
+                  />
+                  {createErrors.stock_minimo && <div className="invalid-feedback">{createErrors.stock_minimo}</div>}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Categoría</label>
+                  <select
+                    className={`form-select ${createErrors.id_categoria_producto ? 'is-invalid' : ''}`}
+                    value={String(form.id_categoria_producto ?? '')}
+                    onChange={(e) => setForm((s) => ({ ...s, id_categoria_producto: e.target.value }))}
+                    required
+                  >
+                    <option value="">Seleccione categoría</option>
+                    {categorias.map((c) => (
+                      <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                        {c.nombre_categoria}
+                      </option>
+                    ))}
+                  </select>
+                  {createErrors.id_categoria_producto && (
+                    <div className="invalid-feedback">{createErrors.id_categoria_producto}</div>
+                  )}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Almacén</label>
+                  <select
+                    className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
+                    value={String(form.id_almacen ?? '')}
+                    onChange={(e) => setForm((s) => ({ ...s, id_almacen: e.target.value }))}
+                    required
+                    disabled={loadingAlmacenes}
+                  >
+                    <option value="">
+                      {loadingAlmacenes ? 'Cargando almacenes...' : 'Seleccione almacén'}
+                    </option>
+                    {almacenes.map((a) => (
+                      <option key={a.id_almacen} value={a.id_almacen}>
+                        {a.nombre} (Sucursal {a.id_sucursal})
+                      </option>
+                    ))}
+                  </select>
+                  {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
+                </div>
+
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                  <select
+                    className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                    value={String(form.id_tipo_departamento ?? '')}
+                    onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                    disabled={loadingTipoDepto}
+                  >
+                    <option value="">
+                      {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
+                    </option>
+                    {tipoDepartamentos.map((d) => (
+                      <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                        {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {createErrors.id_tipo_departamento && (
+                    <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                  )}
+                </div>
+
+                <div className="col-12">
+                  <label className="form-label mb-1">Descripción (opcional)</label>
+                  <input
+                    className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
+                    placeholder="Ej: Incluye papas y bebida"
+                    value={form.descripcion_producto}
+                    onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: e.target.value }))}
+                  />
+                  {createErrors.descripcion_producto && (
+                    <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
+                  )}
+                </div>
+
+                <div className="col-12 col-md-6">
+                  <label className="form-label mb-1">Fecha ingreso (opcional)</label>
+                  <input
+                    className={`form-control ${createErrors.fecha_ingreso_producto ? 'is-invalid' : ''}`}
+                    type="date"
+                    value={form.fecha_ingreso_producto}
+                    onChange={(e) => setForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }))}
+                  />
+                  {createErrors.fecha_ingreso_producto && (
+                    <div className="invalid-feedback">{createErrors.fecha_ingreso_producto}</div>
+                  )}
+                </div>
+
+                <div className="col-12 col-md-6">
+                  <label className="form-label mb-1">Fecha caducidad (opcional)</label>
+                  <input
+                    className={`form-control ${createErrors.fecha_caducidad ? 'is-invalid' : ''}`}
+                    type="date"
+                    value={form.fecha_caducidad}
+                    onChange={(e) => setForm((s) => ({ ...s, fecha_caducidad: e.target.value }))}
+                  />
+                  {createErrors.fecha_caducidad && <div className="invalid-feedback">{createErrors.fecha_caducidad}</div>}
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-xl-4">
+              <div className="inv-prod-create-premium-media">
+                <div className="inv-prod-create-premium-media-title">Imagen del producto</div>
+                {renderCreateImageField('col-12')}
+              </div>
+            </div>
+
+            <div className="col-12 inv-prod-create-actions-col">
+              <div className="inv-prod-create-actions">
+                <button className="btn inv-prod-btn-primary" type="submit" disabled={creating}>
+                  {creating ? 'Creando...' : 'Crear'}
+                </button>
+                <button className="btn inv-prod-btn-subtle" type="button" onClick={resetForm} disabled={creating}>
+                  Limpiar
+                </button>
+              </div>
+            </div>
+          </form>
+          ) : (
           <form onSubmit={onCrear} className="row g-2 mb-1 inv-prod-create-form">
             <div className="col-12 col-md-3">
               <label className="form-label mb-1">Nombre del producto</label>
@@ -1085,6 +1614,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 required
               />
               {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
+            </div>
+
+            <div className="col-6 col-md-2">
+              <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
+              <input
+                className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
+                type="number"
+                step="1"
+                min="0"
+                inputMode="numeric"
+                value={form.stock_minimo}
+                onKeyDown={blockNonIntegerKeys}
+                onChange={(e) => setForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }))}
+              />
+              {createErrors.stock_minimo && <div className="invalid-feedback">{createErrors.stock_minimo}</div>}
             </div>
 
             <div className="col-12 col-md-2">
@@ -1200,6 +1744,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               </div>
             </div>
           </form>
+          )}
         </div>
 
         {/* FILTROS */}
@@ -1209,10 +1754,15 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
         </div>
 
-        <div id="inv-prod-filters" className={`inv-prod-filters ${filtersOpen ? 'open' : ''}`} aria-hidden={!filtersOpen}>
+        <div
+          id="inv-prod-filters"
+          ref={filtersSectionRef}
+          className={`inv-prod-filters ${filtersOpen ? 'open' : ''}`}
+          aria-hidden={!filtersOpen}
+        >
           <div className="inv-prod-panel-head inv-prod-filters-head">
             <div className="inv-prod-panel-eyebrow">Búsqueda avanzada</div>
-            <div className="inv-prod-section-title">Filtros y orden del catálogo</div>
+            <div className="inv-prod-section-title">Filtros y Orden del Catálogo</div>
             <div className="inv-prod-section-sub">Refina resultados por stock, categoría, almacén y departamento</div>
           </div>
 
@@ -1228,15 +1778,23 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
             <div className="col-12 col-md-2">
               <select className="form-select" value={stockFiltro} onChange={(e) => setStockFiltro(e.target.value)}>
-                <option value="todos">Todos</option>
+                <option value="todos">STOCK</option>
                 <option value="con_stock">Con stock</option>
                 <option value="sin_stock">Sin stock</option>
               </select>
             </div>
 
             <div className="col-12 col-md-2">
+              <select className="form-select" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+                <option value="todos">ESTADOS</option>
+                <option value="activo">Activos</option>
+                <option value="inactivo">Inactivos</option>
+              </select>
+            </div>
+
+            <div className="col-12 col-md-2">
               <select className="form-select" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
-                <option value="todos">Todas las categorías</option>
+                <option value="todos">CATEGORIAS</option>
                 {categorias.map((c) => (
                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                     {c.nombre_categoria}
@@ -1247,7 +1805,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
             <div className="col-12 col-md-2">
               <select className="form-select" value={almacenFiltro} onChange={(e) => setAlmacenFiltro(e.target.value)}>
-                <option value="todos">Todos los almacenes</option>
+                <option value="todos">ALMACENES</option>
                 {almacenes.map((a) => (
                   <option key={a.id_almacen} value={a.id_almacen}>
                     {a.nombre} (Sucursal {a.id_sucursal})
@@ -1258,7 +1816,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
             <div className="col-12 col-md-2">
               <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
-                <option value="todos">Todos los deptos</option>
+                <option value="todos">DEPTOS</option>
                 {tipoDepartamentos.map((d) => (
                   <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
                     {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
@@ -1269,7 +1827,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
             <div className="col-12 col-md-2">
               <select className="form-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                <option value="recientes">Mas recientes</option>
+                <option value="recientes">{'M\u00E1s recientes'}</option>
                 <option value="nombre_asc">Nombre A-Z</option>
                 <option value="nombre_desc">Nombre Z-A</option>
                 <option value="precio_desc">Precio mayor</option>
@@ -1326,7 +1884,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   const estado = resolveEstadoProducto(p);
                   const stock = getStockMeta(p.cantidad);
                   const imgSrc = getProductoImageSrc(p);
-                  const stockMin = Number.parseInt(String(p?.stock_minimo ?? 10), 10);
+                  const stockMin = Number.parseInt(String(p?.stock_minimo ?? 0), 10);
                   const ratioBase = stockMin > 0 ? stock.qty / (stockMin * 2) : stock.qty / 20;
                   const ratio = Math.max(0, Math.min(1, Number.isNaN(ratioBase) ? 0 : ratioBase));
 
@@ -1918,8 +2476,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     <strong>{Number.parseInt(String(editForm?.cantidad ?? selectedProducto?.cantidad ?? '0'), 10) || 0}</strong>
                   </div>
                   <div>
-                    <span>Stock minimo</span>
-                    <strong>{Number.parseInt(String(selectedProducto?.stock_minimo ?? 10), 10) || 10}</strong>
+                    <span>{'Stock m\u00EDnimo'}</span>
+                    <strong>{Number.parseInt(String(selectedProducto?.stock_minimo ?? 0), 10) || 0}</strong>
                   </div>
                   <div>
                     <span>Unidad</span>
@@ -2046,6 +2604,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
                     </div>
 
+                    <div className="col-6">
+                      <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
+                      <input
+                        className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
+                        type="number"
+                        step="1"
+                        min="0"
+                        inputMode="numeric"
+                        value={form.stock_minimo}
+                        onKeyDown={blockNonIntegerKeys}
+                        onChange={(e) => setForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }))}
+                      />
+                      {createErrors.stock_minimo && <div className="invalid-feedback">{createErrors.stock_minimo}</div>}
+                    </div>
+
                     <div className="col-12">
                       <label className="form-label mb-1">Categoría</label>
                       <select
@@ -2121,6 +2694,30 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       )}
                     </div>
 
+                    <div className="col-12 col-md-6">
+                      <label className="form-label mb-1">Fecha ingreso (opcional)</label>
+                      <input
+                        className={`form-control ${createErrors.fecha_ingreso_producto ? 'is-invalid' : ''}`}
+                        type="date"
+                        value={form.fecha_ingreso_producto}
+                        onChange={(e) => setForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }))}
+                      />
+                      {createErrors.fecha_ingreso_producto && (
+                        <div className="invalid-feedback">{createErrors.fecha_ingreso_producto}</div>
+                      )}
+                    </div>
+
+                    <div className="col-12 col-md-6">
+                      <label className="form-label mb-1">Fecha caducidad (opcional)</label>
+                      <input
+                        className={`form-control ${createErrors.fecha_caducidad ? 'is-invalid' : ''}`}
+                        type="date"
+                        value={form.fecha_caducidad}
+                        onChange={(e) => setForm((s) => ({ ...s, fecha_caducidad: e.target.value }))}
+                      />
+                      {createErrors.fecha_caducidad && <div className="invalid-feedback">{createErrors.fecha_caducidad}</div>}
+                    </div>
+
                     {renderCreateImageField('col-12')}
 
                     <div className="col-12 d-grid gap-2 mt-2">
@@ -2193,6 +2790,4 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 };
 
 export default ProductosTab;
-
-
 

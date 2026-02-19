@@ -50,6 +50,11 @@ const AlertasTab = ({ openToast }) => {
 
   const sanitizeInteger = (value) => String(value ?? '').replace(/[^\d]/g, '');
 
+  // NUEVO: misma normalizacion de backend para detectar productos activos.
+  const productoActivo = useCallback((estado) => {
+    return estado === true || estado === 'true' || estado === 1 || estado === '1';
+  }, []);
+
   // ==============================
   // MAPAS ID -> OBJ (LABELS)
   // ==============================
@@ -97,6 +102,8 @@ const AlertasTab = ({ openToast }) => {
     const list = [];
 
     for (const p of productos) {
+      // AJUSTE: alertas y edicion de stock_minimo excluyen productos inactivos.
+      if (!productoActivo(p?.estado)) continue;
       list.push({
         item_tipo: 'producto',
         id: p?.id_producto,
@@ -124,7 +131,7 @@ const AlertasTab = ({ openToast }) => {
     }
 
     return list;
-  }, [productos, insumos]);
+  }, [productos, insumos, productoActivo]);
 
   const getEstadoStock = (it) => {
     const stock = Number.parseInt(String(it?.cantidad ?? '0'), 10);
