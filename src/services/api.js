@@ -73,6 +73,10 @@ export const apiFetch = async (endpoint, method = 'GET', body = null) => {
       (typeof errorData === 'string' ? errorData : '') ||
       'No autorizado';
 
+      // ✅ HU79/HU82: si el backend dice 401, forzamos logout global en la app
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:logout'));
+      }
     throw new ApiError(msg, { status: 401, code: 'UNAUTHORIZED', data: errorData });
   }
 

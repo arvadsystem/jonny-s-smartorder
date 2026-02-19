@@ -3,12 +3,10 @@ import { securityService } from "../../../services/securityService";
 import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
 import ConfirmButton from "../../../components/common/ConfirmButton";
+import { fmtHN } from "../../../utils/dateTime";
+const PAGE_SIZE = 10;
 
-const fmtDate = (value) => {
-  if (!value) return "—";
-  const d = new Date(value);
-  return d.toLocaleString();
-};
+const fmtDate = (value) => fmtHN(value);
 
 const SesionesTab = () => {
   const [sesiones, setSesiones] = useState([]);
@@ -16,9 +14,10 @@ const SesionesTab = () => {
   const [noPermiso, setNoPermiso] = useState(false);
   const [error, setError] = useState("");
 
-  // Estado para acciones por fila
   const [closingId, setClosingId] = useState(null);
   const [closingOtras, setClosingOtras] = useState(false);
+
+  const [page, setPage] = useState(1);
 
   const cargar = async () => {
     setLoading(true);
@@ -48,12 +47,16 @@ const SesionesTab = () => {
     [sesiones]
   );
 
-  // ✅ Fallback para "sesión actual": asumimos que la activa con última actividad más reciente es la actual
-  const currentSessionId = useMemo(() => {
-    const act = sesionesActivas.slice();
-    act.sort((a, b) => new Date(b.ultima_actividad) - new Date(a.ultima_actividad));
-    return act[0]?.id_sesion ?? null;
-  }, [sesionesActivas]);
+  // ----------------------
+  // PAGINACIÓN
+  // ----------------------
+  const totalPages = Math.max(1, Math.ceil(sesiones.length / PAGE_SIZE));
+  const start = (page - 1) * PAGE_SIZE;
+  const paginated = sesiones.slice(start, start + PAGE_SIZE);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(1);
+  }, [sesiones]);
 
   const onCerrar = async (id_sesion) => {
     setClosingId(id_sesion);
@@ -88,16 +91,15 @@ const SesionesTab = () => {
           <div>
             <h5 className="mb-0">Sesiones activas</h5>
             <small className="text-muted">
-              Puedes cerrar sesiones remotamente. Si cierras la sesión actual, el backend la bloqueará en la siguiente petición.
+              Puedes cerrar sesiones remotamente.
             </small>
           </div>
 
           <ConfirmButton
             className="btn btn-outline-danger"
-            confirmText="¿Cerrar todas las otras sesiones?"
+            confirmText="¿Cerrar todas las sesiones excepto la actual?"
             onConfirm={onCerrarOtras}
             disabled={sesionesActivas.length <= 1 || closingOtras}
-            title="Cierra todas excepto la sesión actual"
           >
             {closingOtras ? (
               <>
@@ -107,7 +109,7 @@ const SesionesTab = () => {
             ) : (
               <>
                 <i className="bi bi-x-circle me-2"></i>
-                Cerrar otras
+                Cerrar sesiones (menos la actual)
               </>
             )}
           </ConfirmButton>
@@ -117,73 +119,95 @@ const SesionesTab = () => {
         {error && <div className="alert alert-danger">{error}</div>}
 
         {!loading && !error && (
-          <div className="table-responsive">
-            <table className="table table-hover align-middle">
-              <thead>
-                <tr>
-                  <th>Estado</th>
-                  <th>Dispositivo</th>
-                  <th>Navegador</th>
-                  <th>SO</th>
-                  <th>IP</th>
-                  <th>Inicio</th>
-                  <th>Última actividad</th>
-                  <th className="text-end">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sesiones.length === 0 && (
+          <>
+            <div className="table-responsive">
+              <table className="table table-hover align-middle">
+                <thead>
                   <tr>
-                    <td colSpan="8" className="text-center text-muted py-4">
-                      No hay sesiones registradas.
-                    </td>
+                    <th>Estado</th>
+                    <th>Dispositivo</th>
+                    <th>Navegador</th>
+                    <th>SO</th>
+                    <th>IP</th>
+                    <th>Inicio</th>
+                    <th>Última actividad</th>
+                    <th className="text-end">Acciones</th>
                   </tr>
-                )}
-
-                {sesiones.map((s) => {
-                  const esActual = s.activa && s.id_sesion === currentSessionId;
-
-                  return (
-                    <tr key={s.id_sesion} className={esActual ? "table-success" : ""}>
-                      <td>
-                        {s.activa ? (
-                          <span className="badge bg-success">
-                            Activa{esActual ? " (Actual)" : ""}
-                          </span>
-                        ) : (
-                          <span className="badge bg-secondary">Cerrada</span>
-                        )}
-                      </td>
-                      <td>{s.dispositivo || "—"}</td>
-                      <td>{s.navegador || "—"}</td>
-                      <td>{s.sistema_operativo || "—"}</td>
-                      <td>{s.ip_origen || "—"}</td>
-                      <td>{fmtDate(s.fecha_inicio)}</td>
-                      <td>{fmtDate(s.ultima_actividad)}</td>
-                      <td className="text-end">
-                        <ConfirmButton
-                          className="btn btn-sm btn-outline-danger"
-                          confirmText="¿Cerrar esta sesión?"
-                          onConfirm={() => onCerrar(s.id_sesion)}
-                          disabled={!s.activa || closingId === s.id_sesion || esActual} // 🔒 evitamos cerrar la actual por UI
-                          title={esActual ? "No puedes cerrar tu sesión actual desde aquí" : "Cerrar sesión"}
-                        >
-                          {closingId === s.id_sesion ? (
-                            <span className="spinner-border spinner-border-sm" />
-                          ) : (
-                            "Cerrar"
-                          )}
-                        </ConfirmButton>
+                </thead>
+                <tbody>
+                  {paginated.length === 0 && (
+                    <tr>
+                      <td colSpan="8" className="text-center text-muted py-4">
+                        No hay sesiones registradas.
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  )}
 
-            <small className="text-muted">
-            </small>
-          </div>
+                  {paginated.map((s) => {
+                    const esActual = !!s.es_actual && s.activa;
+
+                    return (
+                      <tr key={s.id_sesion} className={esActual ? "table-success" : ""}>
+                        <td>
+                          {s.activa ? (
+                            <span className="badge bg-success">
+                              Activa{esActual ? " (Actual)" : ""}
+                            </span>
+                          ) : (
+                            <span className="badge bg-secondary">Cerrada</span>
+                          )}
+                        </td>
+                        <td>{s.dispositivo || "—"}</td>
+                        <td>{s.navegador || "—"}</td>
+                        <td>{s.sistema_operativo || "—"}</td>
+                        <td>{s.ip_origen || "—"}</td>
+                        <td>{fmtDate(s.fecha_inicio)}</td>
+                        <td>{fmtDate(s.ultima_actividad)}</td>
+                        <td className="text-end">
+                          <ConfirmButton
+                            className="btn btn-sm btn-outline-danger"
+                            confirmText="¿Cerrar esta sesión?"
+                            onConfirm={() => onCerrar(s.id_sesion)}
+                            disabled={!s.activa || closingId === s.id_sesion || esActual}
+                          >
+                            {closingId === s.id_sesion ? (
+                              <span className="spinner-border spinner-border-sm" />
+                            ) : (
+                              "Cerrar"
+                            )}
+                          </ConfirmButton>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* CONTROLES DE PAGINACIÓN */}
+            <div className="d-flex justify-content-between align-items-center mt-2">
+              <small className="text-muted">
+                Mostrando {Math.min(page * PAGE_SIZE, sesiones.length)} de {sesiones.length}
+              </small>
+
+              <div className="btn-group">
+                <button
+                  className="btn btn-sm btn-outline-secondary"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </button>
+                <button
+                  className="btn btn-sm btn-outline-secondary"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -191,4 +215,3 @@ const SesionesTab = () => {
 };
 
 export default SesionesTab;
-

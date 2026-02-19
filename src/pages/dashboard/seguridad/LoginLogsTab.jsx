@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import InlineLoader from "../../../components/common/InlineLoader";
 import SinPermiso from "../../../components/common/SinPermiso";
 import { apiFetch } from "../../../services/api";
+import { fmtHN } from "../../../utils/dateTime";
 
-const fmtDate = (value) => {
-  if (!value) return "—";
-  return new Date(value).toLocaleString();
-};
+const fmtDate = (value) => fmtHN(value);
 
 const estadoBadge = (exito) => {
   if (exito === true) return <span className="badge bg-success">Éxito</span>;

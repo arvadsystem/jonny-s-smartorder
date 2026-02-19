@@ -27,6 +27,12 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+      useEffect(() => {
+      const handler = () => setUser(null);
+      window.addEventListener('auth:logout', handler);
+      return () => window.removeEventListener('auth:logout', handler);
+    }, []);
+
   const login = (usuario) => {
     setUser(usuario);
   };
