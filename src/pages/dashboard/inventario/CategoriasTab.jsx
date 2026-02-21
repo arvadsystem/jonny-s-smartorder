@@ -52,6 +52,8 @@ const CategoriasTab = ({
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === 'undefined' ? 6 : resolveCardsPerPage(window.innerWidth)
   );
+  // NUEVO: feature flag para habilitar hover premium sin eliminar implementacion actual.
+  const USE_PREMIUM_CATEGORY_CARDS = true;
 
   useEffect(() => {
     const onResize = () => setCardsPerPage(resolveCardsPerPage(window.innerWidth));
@@ -85,7 +87,7 @@ const CategoriasTab = ({
   const closeDrawer = () => setDrawerOpen(false);
 
   // ==============================
-  // ELIMINAR (CONFIRMACIÓN)
+  // ELIMINAR (CONFIRMACION)
   // ==============================
   const [confirmModal, setConfirmModal] = useState({
     show: false,
@@ -113,14 +115,14 @@ const CategoriasTab = ({
 
     const errors = {};
 
-    if (nombre.length < 2) errors.nombre_categoria = 'MÍNIMO 2 CARACTERES';
-    if (nombre.length > 50) errors.nombre_categoria = 'MÁXIMO 50 CARACTERES';
+    if (nombre.length < 2) errors.nombre_categoria = 'MINIMO 2 CARACTERES';
+    if (nombre.length > 50) errors.nombre_categoria = 'MAXIMO 50 CARACTERES';
 
-    if (codigo.length < 2) errors.codigo_categoria = 'MÍNIMO 2 CARACTERES';
-    if (codigo.length > 10) errors.codigo_categoria = 'MÁXIMO 10 CARACTERES';
-    if (!/^[A-Z0-9_]+$/.test(codigo)) errors.codigo_categoria = 'SOLO MAYÚSCULAS, NÚMEROS O _ (SIN ESPACIOS)';
+    if (codigo.length < 2) errors.codigo_categoria = 'MINIMO 2 CARACTERES';
+    if (codigo.length > 10) errors.codigo_categoria = 'MAXIMO 10 CARACTERES';
+    if (!/^[A-Z0-9_]+$/.test(codigo)) errors.codigo_categoria = 'SOLO MAYUSCULAS, NUMEROS O _ (SIN ESPACIOS)';
 
-    if (descripcion.length > 150) errors.descripcion = 'MÁXIMO 150 CARACTERES';
+    if (descripcion.length > 150) errors.descripcion = 'MAXIMO 150 CARACTERES';
 
     const cleaned = { nombre_categoria: nombre, codigo_categoria: codigo, estado };
     // FUNCIONALIDAD: NO ENVIAR NULL, SOLO SI HAY TEXTO
@@ -236,7 +238,7 @@ const CategoriasTab = ({
     try {
       if (drawerMode === 'create') {
         await inventarioService.crearCategoria(v.cleaned);
-        safeToast('CREADO', 'LA CATEGORÍA SE CREÓ CORRECTAMENTE.', 'success');
+        safeToast('CREADO', 'LA CATEGORIA SE CREO CORRECTAMENTE.', 'success');
       } else {
         if (!editId) return;
 
@@ -252,13 +254,13 @@ const CategoriasTab = ({
           await inventarioService.actualizarCategoriaCampo(editId, campo, valor);
         }
 
-        safeToast('ACTUALIZADO', 'LA CATEGORÍA SE ACTUALIZÓ CORRECTAMENTE.', 'success');
+        safeToast('ACTUALIZADO', 'LA CATEGORIA SE ACTUALIZO CORRECTAMENTE.', 'success');
       }
 
       closeDrawer();
       if (typeof reloadCategorias === 'function') await reloadCategorias();
     } catch (err) {
-      const msg = err?.message || 'ERROR GUARDANDO CATEGORÍA';
+      const msg = err?.message || 'ERROR GUARDANDO CATEGORIA';
       safeSetError(msg);
       safeToast('ERROR', msg, 'danger');
     }
@@ -276,9 +278,9 @@ const CategoriasTab = ({
       await inventarioService.eliminarCategoria(id);
       closeConfirmDelete();
       if (typeof reloadCategorias === 'function') await reloadCategorias();
-      safeToast('ELIMINADO', 'LA CATEGORÍA SE ELIMINÓ CORRECTAMENTE.', 'success');
+      safeToast('ELIMINADO', 'LA CATEGORIA SE ELIMINO CORRECTAMENTE.', 'success');
     } catch (err) {
-      const msg = err?.message || 'ERROR ELIMINANDO CATEGORÍA';
+      const msg = err?.message || 'ERROR ELIMINANDO CATEGORIA';
       safeSetError(msg);
       safeToast('ERROR', msg, 'danger');
     }
@@ -292,7 +294,7 @@ const CategoriasTab = ({
           <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
             <div className="d-flex align-items-center gap-2">
               <i className="bi bi-tag" />
-              <div className="inv-catpro-title">Categorías de productos</div>
+              <div className="inv-catpro-title">Categorias de productos</div>
             </div>
 
             <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -330,7 +332,7 @@ const CategoriasTab = ({
               <div className="col-12 col-md-8">
                 <input
                   className="form-control"
-                  placeholder="Buscar por nombre, código o descripción..."
+                  placeholder="Buscar por nombre, codigo o descripcion..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -371,9 +373,9 @@ const CategoriasTab = ({
                 <div className="inv-catpro-empty-icon">
                   <i className="bi bi-inbox-fill" />
                 </div>
-                <div className="inv-catpro-empty-title">No hay categorías para mostrar</div>
+                <div className="inv-catpro-empty-title">No hay categorias para mostrar</div>
                 <div className="inv-catpro-empty-sub">
-                  {hasActiveFilters ? 'Prueba limpiar filtros o crea una nueva categoría.' : 'Crea tu primera categoría.'}
+                  {hasActiveFilters ? 'Prueba limpiar filtros o crea una nueva categoria.' : 'Crea tu primera categoria.'}
                 </div>
 
                 <div className="d-flex gap-2 justify-content-center flex-wrap">
@@ -392,15 +394,17 @@ const CategoriasTab = ({
                   ) : null}
 
                   <button type="button" className="btn btn-primary" onClick={openCreate}>
-                    Nueva categoría
+                    Nueva categoria
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="inv-catpro-carousel-wrap">
+              <div className="inv-catpro-carousel-wrap inv-prod-carousel-stage">
+                {/* AJUSTE: se reutiliza el stage de Productos para que las flechas flotantes hereden el mismo layout visual. */}
                 <button
                   type="button"
-                  className="inv-catpro-carousel-nav prev"
+                  // AJUSTE: se replica el boton flotante del carrusel de Productos.
+                  className={`btn inv-prod-carousel-float is-prev ${categoriasPages.length > 1 ? 'is-visible' : ''}`}
                   onClick={() => scrollCarousel('prev')}
                   aria-label="Pagina anterior"
                   disabled={categoriasPages.length <= 1}
@@ -421,18 +425,99 @@ const CategoriasTab = ({
                             const code = c?.codigo_categoria ?? '';
                             const dotClass = isActive ? 'ok' : 'off';
 
+                            // AJUSTE: se mantiene fallback del card actual cuando el modo premium esta desactivado.
+                            if (!USE_PREMIUM_CATEGORY_CARDS) {
+                              return (
+                                <div
+                                  key={c?.id_categoria_producto ?? globalIdx}
+                                  className="inv-catpro-item inv-anim-in"
+                                  style={{ animationDelay: `${Math.min(globalIdx * 40, 240)}ms` }}
+                                  role="button"
+                                  tabIndex={0}
+                                  // AJUSTE: la edicion ahora se abre al interactuar con el card completo.
+                                  onClick={() => openEdit(c)}
+                                  // NUEVO: soporte teclado para abrir modal desde el card.
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      openEdit(c);
+                                    }
+                                  }}
+                                >
+                                  <div className="inv-catpro-item-top">
+                                    <div>
+                                      <div className="fw-bold">
+                                        {globalIdx + 1}. {c?.nombre_categoria ?? ''}
+                                      </div>
+                                      <div className="text-muted small">{c?.descripcion || 'Sin descripcion'}</div>
+                                    </div>
+
+                                    <span className={`badge ${isActive ? 'bg-success' : 'bg-secondary'}`}>
+                                      {isActive ? 'Activo' : 'Inactivo'}
+                                    </span>
+                                  </div>
+
+                                  <div className="inv-catpro-meta inv-catpro-item-footer">
+                                    <div className="inv-catpro-code-wrap">
+                                      <span className={`inv-catpro-state-dot ${dotClass}`} />
+                                      <span className="inv-catpro-code">{code}</span>
+                                    </div>
+
+                                    <div className="inv-catpro-meta-actions inv-catpro-action-bar">
+                                      {/* AJUSTE: boton editar se elimina visualmente; editar se dispara desde el card. */}
+
+                                      <button
+                                        type="button"
+                                        className="inv-catpro-action danger inv-catpro-action-compact"
+                                        // NUEVO: evita que la accion interna de eliminar abra el modal de edicion.
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria);
+                                        }}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        title="Eliminar"
+                                      >
+                                        <i className="bi bi-trash" />
+                                        <span className="inv-catpro-action-label">Eliminar</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
                             return (
                               <div
                                 key={c?.id_categoria_producto ?? globalIdx}
-                                className="inv-catpro-item inv-anim-in"
+                                // AJUSTE: card premium agrega capas visuales, manteniendo handlers y estructura base.
+                                className="inv-catpro-item inv-cat-card inv-anim-in"
                                 style={{ animationDelay: `${Math.min(globalIdx * 40, 240)}ms` }}
+                                role="button"
+                                tabIndex={0}
+                                // AJUSTE: la edicion ahora se abre al interactuar con el card completo.
+                                onClick={() => openEdit(c)}
+                                // NUEVO: soporte teclado para abrir modal desde el card.
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    openEdit(c);
+                                  }
+                                }}
                               >
+                                {/* NUEVO: halo decorativo animado para enfatizar hover/focus sin cambiar la paleta. */}
+                                <div className="inv-cat-card__halo" aria-hidden="true" />
                                 <div className="inv-catpro-item-top">
-                                  <div>
-                                    <div className="fw-bold">
-                                      {globalIdx + 1}. {c?.nombre_categoria ?? ''}
+                                  <div className="inv-cat-card__title-wrap">
+                                    {/* NUEVO: icono visual del card con micro-animacion en hover/focus. */}
+                                    <span className="inv-cat-card__icon" aria-hidden="true">
+                                      <i className="bi bi-tag" />
+                                    </span>
+                                    <div>
+                                      <div className="fw-bold">
+                                        {globalIdx + 1}. {c?.nombre_categoria ?? ''}
+                                      </div>
+                                      <div className="text-muted small">{c?.descripcion || 'Sin descripcion'}</div>
                                     </div>
-                                    <div className="text-muted small">{c?.descripcion || 'Sin descripcion'}</div>
                                   </div>
 
                                   <span className={`badge ${isActive ? 'bg-success' : 'bg-secondary'}`}>
@@ -446,21 +531,18 @@ const CategoriasTab = ({
                                     <span className="inv-catpro-code">{code}</span>
                                   </div>
 
-                                  <div className="inv-catpro-meta-actions inv-catpro-action-bar">
-                                    <button
-                                      type="button"
-                                      className="inv-catpro-action edit inv-catpro-action-compact"
-                                      onClick={() => openEdit(c)}
-                                      title="Editar"
-                                    >
-                                      <i className="bi bi-pencil-square" />
-                                      <span className="inv-catpro-action-label">Editar</span>
-                                    </button>
+                                  <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions">
+                                    {/* AJUSTE: boton editar se elimina visualmente; editar se dispara desde el card. */}
 
                                     <button
                                       type="button"
                                       className="inv-catpro-action danger inv-catpro-action-compact"
-                                      onClick={() => openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria)}
+                                      // NUEVO: evita que la accion interna de eliminar abra el modal de edicion.
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria);
+                                      }}
+                                      onKeyDown={(e) => e.stopPropagation()}
                                       title="Eliminar"
                                     >
                                       <i className="bi bi-trash" />
@@ -479,7 +561,8 @@ const CategoriasTab = ({
 
                 <button
                   type="button"
-                  className="inv-catpro-carousel-nav next"
+                  // AJUSTE: se replica el boton flotante del carrusel de Productos.
+                  className={`btn inv-prod-carousel-float is-next ${categoriasPages.length > 1 ? 'is-visible' : ''}`}
                   onClick={() => scrollCarousel('next')}
                   aria-label="Pagina siguiente"
                   disabled={categoriasPages.length <= 1}
@@ -502,30 +585,21 @@ const CategoriasTab = ({
         <i className="bi bi-plus" />
       </button>
 
-      {/* FUNCIONALIDAD: BACKDROP */}
-      <div className={`inv-catpro-backdrop ${drawerOpen ? 'show' : ''}`} onClick={closeDrawer} aria-hidden={!drawerOpen} />
-
-      {/* FUNCIONALIDAD: DRAWER */}
-      <div
-        className={`inv-catpro-drawer ${drawerOpen ? 'show' : ''} ${drawerMode === 'create' ? 'is-create' : 'is-edit'}`}
-        role="dialog"
-        aria-modal="true"
-      >
-        <div className="inv-catpro-drawer-head d-flex align-items-start justify-content-between gap-2">
+      {/* AJUSTE: modal de categorias con patron lateral derecho igual al de Productos. */}
+      <div className={`inv-prod-drawer-backdrop ${drawerOpen ? 'show' : ''}`} onClick={closeDrawer} aria-hidden={!drawerOpen} />
+      <aside className={`inv-prod-drawer ${drawerOpen ? 'show' : ''}`} role="dialog" aria-modal="true">
+        <div className="inv-prod-drawer-head">
           <div>
-            <div className={`inv-catpro-drawer-chip inv-catpro-drawer-chip-hero ${drawerMode === 'create' ? 'is-create' : 'is-edit'}`}>
-              <i className={`bi ${drawerMode === 'create' ? 'bi-plus-circle-fill' : 'bi-pencil-fill'}`} />
-              <span>{drawerMode === 'create' ? 'MODO CREACIÓN' : 'MODO EDICIÓN'}</span>
-            </div>
-            <div className="inv-catpro-drawer-sub">Completa los campos y guarda los cambios.</div>
+            <div className="inv-prod-drawer-title">{drawerMode === 'create' ? 'Nueva categoria' : 'Editar categoria'}</div>
+            <div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div>
           </div>
-
-          <button type="button" className="btn inv-catpro-close" onClick={closeDrawer} title="Cerrar">
+          {/* AJUSTE: se iguala el boton de cierre al patron de Productos para mantener diseno consistente. */}
+          <button type="button" className="inv-prod-drawer-close" onClick={closeDrawer} title="Cerrar">
             <i className="bi bi-x-lg" />
           </button>
         </div>
 
-        <form className="inv-catpro-drawer-body" onSubmit={onSave}>
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={onSave}>
           <div className="mb-2">
             <label className="form-label">Nombre</label>
             <input
@@ -538,7 +612,7 @@ const CategoriasTab = ({
           </div>
 
           <div className="mb-2">
-            <label className="form-label">Código</label>
+            <label className="form-label">Codigo</label>
             <input
               className={`form-control ${codigoErrorMsg ? 'is-invalid' : ''}`}
               value={form.codigo_categoria}
@@ -549,17 +623,17 @@ const CategoriasTab = ({
           </div>
 
           <div className="mb-2">
-            <label className="form-label">Descripción (opcional)</label>
+            <label className="form-label">Descripcion (opcional)</label>
             <input
               className={`form-control ${formErrors.descripcion ? 'is-invalid' : ''}`}
               value={form.descripcion}
               onChange={(e) => setForm((s) => ({ ...s, descripcion: e.target.value }))}
-              placeholder="Ej: Categoría para bebidas frías y calientes"
+              placeholder="Ej: Categoria para bebidas frias y calientes"
             />
             {formErrors.descripcion ? <div className="invalid-feedback">{formErrors.descripcion}</div> : null}
           </div>
 
-          <div className="form-check mt-2">
+          <div className="form-check mt-2 mb-3">
             <input
               className="form-check-input"
               type="checkbox"
@@ -572,18 +646,18 @@ const CategoriasTab = ({
             </label>
           </div>
 
-          <div className="inv-catpro-drawer-footer">
-            <button type="submit" className="btn btn-primary inv-catpro-save flex-fill" disabled={loading || hasLiveDuplicates}>
-              {loading ? 'Cargando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}
-            </button>
-            <button type="button" className="btn btn-outline-light inv-catpro-cancel" onClick={closeDrawer}>
+          <div className="d-flex gap-2">
+            <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={closeDrawer}>
               Cancelar
+            </button>
+            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={loading || hasLiveDuplicates}>
+              {loading ? 'Cargando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}
             </button>
           </div>
         </form>
-      </div>
+      </aside>
 
-      {/* FUNCIONALIDAD: MODAL CONFIRMAR ELIMINACIÓN */}
+      {/* FUNCIONALIDAD: MODAL CONFIRMAR ELIMINACION */}
       {confirmModal.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
           <div className="inv-pro-confirm-panel" onClick={(e) => e.stopPropagation()}>
@@ -592,8 +666,8 @@ const CategoriasTab = ({
                 <i className="bi bi-exclamation-triangle-fill" />
               </div>
               <div>
-                <div className="inv-pro-confirm-title">Confirmar eliminación</div>
-                <div className="inv-pro-confirm-sub">Esta acción es permanente</div>
+                <div className="inv-pro-confirm-title">Confirmar eliminacion</div>
+                <div className="inv-pro-confirm-sub">Esta accion es permanente</div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
                 <i className="bi bi-x-lg" />
@@ -601,10 +675,10 @@ const CategoriasTab = ({
             </div>
 
             <div className="inv-pro-confirm-body">
-              <div className="inv-pro-confirm-question">¿Deseas eliminar esta categoría?</div>
+              <div className="inv-pro-confirm-question">Deseas eliminar esta categoria?</div>
               <div className="inv-pro-confirm-name">
                 <i className="bi bi-tag" />
-                <span>{confirmModal.nombre || 'Categoría seleccionada'}</span>
+                <span>{confirmModal.nombre || 'Categoria seleccionada'}</span>
               </div>
             </div>
 
