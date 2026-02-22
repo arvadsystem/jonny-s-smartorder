@@ -1,23 +1,20 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, NavLink } from "react-router-dom";
 import SesionesTab from "./seguridad/SesionesTab";
 import PasswordPolicyTab from "./seguridad/PasswordPolicyTab";
 import LoginLogsTab from "./seguridad/LoginLogsTab";
 
-
 const Seguridad = () => {
   const [searchParams] = useSearchParams();
-
-  // ✅ Ahora soporta: sesiones | password | logins
   const [activeTab, setActiveTab] = useState("sesiones");
 
   useEffect(() => {
     const t = (searchParams.get("tab") || "sesiones").toLowerCase();
-
-    // ✅ Permitimos 3 tabs y dejamos "sesiones" como fallback
-    if (t === "password") setActiveTab("password");
-    else if (t === "logins") setActiveTab("logins");
-    else setActiveTab("sesiones");
+    if (["sesiones", "password", "logins"].includes(t)) {
+      setActiveTab(t);
+    } else {
+      setActiveTab("sesiones");
+    }
   }, [searchParams]);
 
   return (
@@ -25,46 +22,55 @@ const Seguridad = () => {
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div>
           <h3 className="mb-0">Seguridad</h3>
-          <small className="text-muted">Sesiones, políticas de contraseña y auditoría</small>
+          <small className="text-muted">
+            Sesiones y políticas de contraseña
+          </small>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* ✅ Tabs SIN RECARGA */}
       <ul className="nav nav-tabs mb-3">
         <li className="nav-item">
-          <a
-            className={`nav-link ${activeTab === "sesiones" ? "active" : ""}`}
-            href="/dashboard/seguridad?tab=sesiones"
+          <NavLink
+            to="/dashboard/seguridad?tab=sesiones"
+            className={({ isActive }) =>
+              `nav-link ${activeTab === "sesiones" ? "active" : ""}`
+            }
           >
-            <i className="bi bi-laptop me-2"></i>Sesiones activas
-          </a>
+            <i className="bi bi-laptop me-2"></i>
+            Sesiones activas
+          </NavLink>
         </li>
 
         <li className="nav-item">
-          <a
-            className={`nav-link ${activeTab === "password" ? "active" : ""}`}
-            href="/dashboard/seguridad?tab=password"
+          <NavLink
+            to="/dashboard/seguridad?tab=password"
+            className={() =>
+              `nav-link ${activeTab === "password" ? "active" : ""}`
+            }
           >
-            <i className="bi bi-key me-2"></i>Políticas de contraseña
-          </a>
+            <i className="bi bi-key me-2"></i>
+            Políticas de contraseña
+          </NavLink>
         </li>
 
-        {/* ✅ NUEVO TAB: Logs de login (HU78) */}
         <li className="nav-item">
-          <a
-            className={`nav-link ${activeTab === "logins" ? "active" : ""}`}
-            href="/dashboard/seguridad?tab=logins"
+          <NavLink
+            to="/dashboard/seguridad?tab=logins"
+            className={() =>
+              `nav-link ${activeTab === "logins" ? "active" : ""}`
+            }
           >
-            <i className="bi bi-journal-text me-2"></i>Logs de login
-          </a>
+            <i className="bi bi-journal-text me-2"></i>
+            Logs de login
+          </NavLink>
         </li>
       </ul>
 
-      {/* Contenido por tab */}
+      {/* Contenido */}
       {activeTab === "sesiones" && <SesionesTab />}
       {activeTab === "password" && <PasswordPolicyTab />}
-      {activeTab === "logins" && <LoginLogsTab />} // Aqui estoy agregando el nuevo tab de los logs login
-      // usuario estado IP fecha, navegador, etc.
+      {activeTab === "logins" && <LoginLogsTab />}
     </div>
   );
 };

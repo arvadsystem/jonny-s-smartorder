@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import logo from '../../assets/images/logo-jonnys.png'; //  logo del proyecto
+import Can from "../common/Can";
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   const navigate = useNavigate();
@@ -23,6 +24,33 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
     { name: 'Parámetros', path: '/dashboard/parametros', icon: 'bi-sliders' },
     { name: 'Configuración', path: '/dashboard/configuracion', icon: 'bi-gear' },
   ];
+
+  // ==============================
+  // SUBMENUS INVENTARIO 
+  // ==============================
+  const isInInventario = location.pathname.startsWith('/dashboard/inventario');
+  const tabInventario = (new URLSearchParams(location.search).get('tab') || 'categorias').toLowerCase();
+
+  const [openInventario, setOpenInventario] = useState(isInInventario);
+
+  useEffect(() => {
+    if (isInInventario) setOpenInventario(true);
+  }, [isInInventario]);
+
+  // ==============================
+  // SUBMENUS PERSONAS
+  // ==============================
+  const isInPersonasEmpresas = location.pathname.startsWith('/dashboard/personas');
+  const tabPersonasEmpresas =
+    (new URLSearchParams(location.search).get('tab') || 'personas').toLowerCase();
+
+  const [openPersonasEmpresas, setOpenPersonasEmpresas] = useState(isInPersonasEmpresas);
+
+  useEffect(() => {
+    if (isInPersonasEmpresas) setOpenPersonasEmpresas(true);
+  }, [isInPersonasEmpresas]);
+
+  //----------------------------------------------------------------------------
 
   const handleLogout = async () => {
     await logout();
@@ -69,22 +97,39 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
           flex: 1,
           minHeight: 0,
           paddingBottom: 8,
-          WebkitOverflowScrolling: 'touch',
-        }}
-      >
-        {/* ✅ EL SIDEBAR AHORA SOLO MUESTRA MODULOS (SIN SUBMENUS) */}
-        {menuItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === '/dashboard'}
-            className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
-            title={isCollapsed ? item.name : ''}
-          >
-            <i className={`bi ${item.icon}`}></i>
-            <span>{item.name}</span>
-          </NavLink>
-        ))}
+{/* ✅ EL SIDEBAR AHORA SOLO MUESTRA MODULOS (SIN SUBMENUS) */}
+        {menuItems.map((item) => {
+          // ✅ HU82: OCULTAR "SEGURIDAD" SI NO TIENE PERMISO
+          if (item.name === 'Seguridad') {
+            return (
+              <Can perm="SEGURIDAD_VER" key={item.path}>
+                <NavLink
+                  to={item.path}
+                  end={item.path === '/dashboard'}
+                  className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
+                  title={isCollapsed ? item.name : ''}
+                >
+                  <i className={`bi ${item.icon}`}></i>
+                  <span>{item.name}</span>
+                </NavLink>
+              </Can>
+            );
+          }
+
+          // Para el resto de los módulos, se muestran normales sin submenús
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.path === '/dashboard'}
+              className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
+              title={isCollapsed ? item.name : ''}
+            >
+              <i className={`bi ${item.icon}`}></i>
+              <span>{item.name}</span>
+            </NavLink>
+          );
+        })}
       </div>
 
       <div className="sidebar-footer">

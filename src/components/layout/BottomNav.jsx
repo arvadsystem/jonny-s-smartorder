@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import Can from "../common/Can";
 
 const BottomNav = () => {
   const navigate = useNavigate();
@@ -15,7 +16,6 @@ const BottomNav = () => {
   // DETECTAR SI ESTAMOS EN INVENTARIO (PARA MARCAR ACTIVO)
   const isInInventario = location.pathname.startsWith('/dashboard/inventario');
 
-  
   const menuItems = [
     { name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
     { name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
@@ -28,7 +28,6 @@ const BottomNav = () => {
   ];
 
   const handleLogout = async () => {
-    
     await logout();
     navigate('/', { replace: true });
   };
@@ -64,7 +63,26 @@ const BottomNav = () => {
               );
             }
 
-          
+            // ✅ HU82: OCULTAR "SEGURIDAD" SI NO TIENE PERMISO
+            if (item.name === 'Seguridad') {
+              return (
+                <Can perm="SEGURIDAD_VER" key={item.path}>
+                  <NavLink
+                    to={item.path}
+                    end={item.path === '/dashboard'}
+                    className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
+                    title={item.name}
+                  >
+                    <i className={`bi ${item.icon}`}></i>
+                    <span>{item.name}</span>
+                  </NavLink>
+                </Can>
+              );
+            }
+
+            // ==============================
+            // RESTO DE OPCIONES
+            // ==============================
             return (
               <NavLink
                 key={item.path}
@@ -99,6 +117,7 @@ const BottomNav = () => {
           onClick={() => setShowInventarioSheet(false)}
         >
           
+          
           <div className="modal-dialog modal-dialog-centered inv-submodule-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="modal-content shadow inv-submodule-content">
               <div className="modal-header d-flex align-items-center justify-content-between inv-submodule-header">
@@ -131,7 +150,6 @@ const BottomNav = () => {
                   Insumos
                 </button>
 
-                
                 <button
                   type="button"
                   className="btn btn-outline-primary inv-submodule-option"
@@ -141,7 +159,6 @@ const BottomNav = () => {
                   Productos
                 </button>
 
-                
                 <button
                   type="button"
                   className="btn btn-outline-primary inv-submodule-option"
@@ -151,7 +168,6 @@ const BottomNav = () => {
                   Almacenes
                 </button>
 
-                
                 <button
                   type="button"
                   className="btn btn-outline-primary inv-submodule-option"
@@ -161,7 +177,6 @@ const BottomNav = () => {
                   Movimientos
                 </button>
 
-                
                 <button
                   type="button"
                   className="btn btn-outline-primary inv-submodule-option"
@@ -170,8 +185,6 @@ const BottomNav = () => {
                   <i className="bi bi-exclamation-triangle me-2"></i>
                   Alertas
                 </button>
-
-
               </div>
 
               <div className="modal-footer inv-submodule-footer">
