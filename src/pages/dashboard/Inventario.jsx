@@ -87,7 +87,7 @@ const Inventario = () => {
         />
       )}
 
-      {activeTab === 'insumos' && <InsumosTab openToast={openToast} />}
+      {activeTab === 'insumos' && <InsumosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
       {activeTab === 'movimientos' && <MovimientosTab openToast={openToast} />}
