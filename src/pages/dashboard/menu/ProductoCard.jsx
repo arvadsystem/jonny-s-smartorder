@@ -1,20 +1,22 @@
-// HU-65 - Tarjeta de producto (POS)
+// =====================================================
+// HU 65 - Tarjeta de producto (POS)
+// Muestra nombre + precio + botón rápido
+// =====================================================
 const ProductoCard = ({ producto, onAgregar }) => {
   return (
     <div className="card h-100 shadow-sm">
       <div className="card-body d-flex flex-column justify-content-between">
-        {/* Nombre */}
-        <h6 className="card-title mb-2">
-          {producto.nombre_producto}
-        </h6>
+        {/* Nombre del producto */}
+        <h6 className="card-title mb-2">{producto.nombre_producto}</h6>
 
         {/* Precio */}
         <div className="fw-bold mb-3">
-          L {Number(producto.precio).toFixed(2)}
+          L {Number(producto.precio || 0).toFixed(2)}
         </div>
 
-        {/* Acción rápida (HU-66 después) */}
+        {/* Acción rápida (HU-66 lo conecta a carrito real) */}
         <button
+          type="button"
           className="btn btn-primary btn-sm w-100"
           onClick={() => onAgregar(producto)}
         >
