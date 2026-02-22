@@ -20,18 +20,24 @@ const toFieldLabel = (fieldName) => { // Convierte nombre tecnico de campo en et
 }; // Cierra helper de etiqueta.
 
 const buildFieldList = (catalogo, rows) => { // Construye listado de columnas combinando config y datos reales.
-  const fromConfig = Array.isArray(catalogo?.fields) ? catalogo.fields : []; // Lee columnas declaradas en configuracion.
   const fromRows = Array.isArray(rows) && rows.length > 0 && rows[0] ? Object.keys(rows[0]) : []; // Lee columnas reales del primer registro.
-  return Array.from(new Set([...fromConfig, ...fromRows])); // Elimina duplicados conservando orden.
+  if (fromRows.length > 0) return fromRows; // Prioriza columnas reales cuando el backend devuelve filas.
+  const fromConfig = Array.isArray(catalogo?.fields) ? catalogo.fields : []; // Lee columnas declaradas en configuracion como fallback.
+  return Array.from(new Set([...fromConfig])); // Devuelve configuracion solo cuando no hay filas para inferir.
 }; // Cierra helper de columnas.
 
 const inferIdField = (catalogo, fields, rows) => { // Resuelve el campo id siguiendo reglas robustas de inferencia.
-  if (catalogo?.idField && fields.includes(catalogo.idField)) return catalogo.idField; // Prioriza id declarado en configuracion.
-  const fromFields = fields.find((field) => String(field).toLowerCase().startsWith('id_')); // Busca primer campo que inicie con id_.
-  if (fromFields) return fromFields; // Retorna id detectado por convencion.
   const firstRow = Array.isArray(rows) && rows.length > 0 ? rows[0] : null; // Obtiene primera fila para fallback.
-  const fromRowKeys = firstRow ? Object.keys(firstRow).find((field) => String(field).toLowerCase().startsWith('id_')) : ''; // Busca id en llaves reales.
-  if (fromRowKeys) return fromRowKeys; // Retorna id encontrado en datos.
+  const rowKeys = firstRow ? Object.keys(firstRow) : []; // Obtiene llaves reales del primer registro.
+  if (rowKeys.length > 0) { // Prioriza inferencia basada en respuesta real del backend.
+    if (catalogo?.idField && rowKeys.includes(catalogo.idField)) return catalogo.idField; // Usa id configurado solo si existe realmente en la fila.
+    const fromRowKeys = rowKeys.find((field) => String(field).toLowerCase().startsWith('id_')); // Busca primer campo id_* real.
+    if (fromRowKeys) return fromRowKeys; // Retorna id encontrado en los datos reales.
+    return rowKeys[0] || ''; // Usa primera columna real como ultimo recurso cuando no hay id_*.
+  } // Cierra ruta de inferencia por datos reales.
+  if (catalogo?.idField && fields.includes(catalogo.idField)) return catalogo.idField; // Prioriza id declarado si aun no hay filas.
+  const fromFields = fields.find((field) => String(field).toLowerCase().startsWith('id_')); // Busca primer campo que inicie con id_ en fallback de config.
+  if (fromFields) return fromFields; // Retorna id detectado por convencion desde config.
   if (fields.length > 0) return fields[0]; // Usa primera columna conocida como ultimo fallback.
   return ''; // Devuelve vacio si no hay forma segura de inferir id.
 }; // Cierra helper de id.

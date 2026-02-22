@@ -2,25 +2,20 @@
 import { useSearchParams } from 'react-router-dom'; // Permite sincronizar tab activo con query string.
 import CatalogoTab from './parametros/CatalogoTab.jsx'; // Importa tab generico que renderiza CRUD por catalogo.
 
-const CATALOGOS_CONFIG = [ // Define un unico arreglo configurable para los 18 catalogos permitidos.
+const CATALOGOS_CONFIG = [ // Define un unico arreglo configurable para los catalogos habilitados.
   { tabla: 'tipo_departamento', label: 'Tipo de departamento', idField: 'id_tipo_departamento', hiddenFields: [], fields: ['id_tipo_departamento', 'nombre_departamento', 'descripcion', 'estado'] }, // Configura catalogo 1.
   { tabla: 'categorias_productos', label: 'Categorias de productos', idField: 'id_categoria_producto', hiddenFields: [], fields: ['id_categoria_producto', 'nombre_categoria', 'codigo_categoria', 'descripcion', 'estado'] }, // Configura catalogo 2.
   { tabla: 'unidades_medida', label: 'Unidades de medida', idField: 'id_unidad_medida', hiddenFields: [], fields: ['id_unidad_medida', 'nombre', 'simbolo', 'factor_base'] }, // Configura catalogo 3.
   { tabla: 'tipo_cliente', label: 'Tipo de cliente', idField: 'id_tipo_cliente', hiddenFields: [], fields: ['id_tipo_cliente', 'tipo_cliente'] }, // Configura catalogo 4.
   { tabla: 'tipo_notificacion', label: 'Tipo de notificacion', idField: 'id_tipo_notificacion', hiddenFields: [], fields: ['id_tipo_notificacion', 'descripcion_tipo_notificacion'] }, // Configura catalogo 5.
   { tabla: 'estados_pedido', label: 'Estados de pedido', idField: 'id_estado_pedido', hiddenFields: [], fields: ['id_estado_pedido', 'descripcion'] }, // Configura catalogo 6.
-  { tabla: 'tipo_archivo', label: 'Tipo de archivo', idField: 'id_tipo_archivo', hiddenFields: [], fields: ['id_tipo_archivo', 'nombre_tipo_archivo'] }, // Configura catalogo 7.
-  { tabla: 'marcas', label: 'Marcas', idField: 'id_marcas', hiddenFields: [], fields: ['id_marcas', 'marca'] }, // Configura catalogo 8.
   { tabla: 'dispositivos_biometricos', label: 'Dispositivos biometricos', idField: 'id_dispositivo', hiddenFields: [], fields: ['id_dispositivo', 'nombre_dispositivo'] }, // Configura catalogo 9.
   { tabla: 'tipo_hora_extra', label: 'Tipo de hora extra', idField: 'id_tipo_hora', hiddenFields: [], fields: ['id_tipo_hora', 'descripcion'] }, // Configura catalogo 10.
-  { tabla: 'factor_horas_extra', label: 'Factor de horas extra', idField: 'id_factor_horas_extra', hiddenFields: [], fields: ['id_factor_horas_extra', 'cantidad_horas', 'precio_hora'] }, // Configura catalogo 11.
+  { tabla: 'factor_horas_extra', label: 'Factor de horas extra', idField: 'id_factor_horas_extras', hiddenFields: [], fields: ['id_factor_horas_extras', 'cantidad_horas', 'precio_hora'] }, // Configura catalogo 11.
   { tabla: 'tipo_nomina', label: 'Tipo de nomina', idField: 'id_tipo_nomina', hiddenFields: [], fields: ['id_tipo_nomina', 'descripcion_tipo_nomina'] }, // Configura catalogo 12.
   { tabla: 'tipo_naturaleza', label: 'Tipo de naturaleza', idField: 'id_tipo_naturaleza', hiddenFields: [], fields: ['id_tipo_naturaleza', 'tipo_naturaleza', 'descripcion'] }, // Configura catalogo 13.
-  { tabla: 'concepto_nomina', label: 'Concepto de nomina', idField: 'id_concepto_nomina', hiddenFields: [], fields: ['id_concepto_nomina', 'tipo_nomina', 'id_tipo_naturaleza', 'descripcion'] }, // Configura catalogo 14.
-  { tabla: 'estado_planilla', label: 'Estado de planilla', idField: 'id_estado_planilla', hiddenFields: [], fields: ['id_estado_planilla', 'descripcion'] }, // Configura catalogo 15.
-  { tabla: 'descuentos', label: 'Descuentos', idField: 'id_descuento', hiddenFields: [], fields: ['id_descuento', 'monto_descuento'] }, // Configura catalogo 16.
-  { tabla: 'almacenes', label: 'Almacenes', idField: 'id_almacen', hiddenFields: [], fields: ['id_almacen', 'id_sucursal', 'nombre'] }, // Configura catalogo 17.
-  { tabla: 'sucursales', label: 'Sucursales', idField: 'id_sucursal', hiddenFields: [], fields: ['id_sucursal', 'nombre_sucursal', 'id_direccion', 'id_telefono', 'id_correo', 'fecha_inauguracion', 'estado'] } // Configura catalogo 18.
+  { tabla: 'concepto_nomina', label: 'Concepto de nomina', idField: 'id_concepto_nomina', hiddenFields: [], fields: ['id_concepto_nomina', 'id_tipo_nomina', 'descripcion', 'id_tipo_naturaleza'] }, // Configura catalogo 14.
+  { tabla: 'estado_planilla', label: 'Estado de planilla', idField: 'id_estado_planilla', hiddenFields: [], fields: ['id_estado_planilla', 'descripcion'] } // Configura catalogo 15.
 ]; // Cierra arreglo de configuracion de catalogos.
 
 const DEFAULT_TAB = CATALOGOS_CONFIG[0].tabla; // Define tab inicial cuando no hay query valida.
