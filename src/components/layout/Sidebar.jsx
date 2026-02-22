@@ -1,11 +1,12 @@
-import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import logo from '../../assets/images/logo-jonnys.png'; //  logo del proyecto
 import Can from "../common/Can";
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
 
   // ==============================
@@ -97,7 +98,9 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
           flex: 1,
           minHeight: 0,
           paddingBottom: 8,
-{/* ✅ EL SIDEBAR AHORA SOLO MUESTRA MODULOS (SIN SUBMENUS) */}
+        }}
+      >
+        {/* ✅ EL SIDEBAR AHORA SOLO MUESTRA MODULOS (SIN SUBMENUS) */}
         {menuItems.map((item) => {
           // ✅ HU82: OCULTAR "SEGURIDAD" SI NO TIENE PERMISO
           if (item.name === 'Seguridad') {
