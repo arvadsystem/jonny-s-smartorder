@@ -33,16 +33,16 @@ function App() {
 
       {/* 2. RUTAS PROTEGIDAS */}
       <Route element={<ProtectedRoute />}>
-          <Route path="/dashboard" element={<DashboardLayout />}>
-            <Route index element={<Inicio />} />
-            <Route path="personas" element={<Personas />} />
-            <Route path="sucursales" element={<Sucursales />} />
-            <Route path="inventario" element={<Inventario />} />
-            <Route path="ventas" element={<PaginaEnConstruccion titulo="Ventas" />} />
-            <Route path="parametros" element={<Parametros />} /> {/* Registra la ruta protegida de Parametros/Catalogos. */}
-           
-          </Route>
+        <Route path="/dashboard" element={<DashboardLayout />}>
+          <Route index element={<Inicio />} />
+          <Route path="personas" element={<Personas />} />
+          <Route path="sucursales" element={<Sucursales />} />
+          <Route path="inventario" element={<Inventario />} />
+          <Route path="ventas" element={<PaginaEnConstruccion titulo="Ventas" />} />
+          <Route path="parametros" element={<Parametros />} />
+          
           <Route path="menu" element={<Menu />} />
+          
           {/* HU82: proteger la ruta Seguridad por permiso */}
           <Route
             path="seguridad"
@@ -55,8 +55,8 @@ function App() {
 
           <Route path="perfil" element={<Perfil />} />
           <Route path="configuracion" element={<PaginaEnConstruccion titulo="Configuración" />} />
-        </Route>
-      </Route>
+        </Route> {/* Cierra DashboardLayout */}
+      </Route> {/* Cierra ProtectedRoute */}
 
       {/* 3. Comodín */}
       <Route path="*" element={<Navigate to="/" />} />
