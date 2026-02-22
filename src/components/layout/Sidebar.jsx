@@ -19,6 +19,8 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
     { name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
     { name: 'Menú', path: '/dashboard/menu', icon: 'bi-journal-text' },
     { name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
+    // Inserta el acceso de Parametros antes de Configuracion para mantener coherencia funcional.
+    { name: 'Parámetros', path: '/dashboard/parametros', icon: 'bi-sliders' },
     { name: 'Configuración', path: '/dashboard/configuracion', icon: 'bi-gear' },
   ];
 
