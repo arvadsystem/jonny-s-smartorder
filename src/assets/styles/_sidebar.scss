@@ -1,0 +1,37 @@
+.sidebar-wrapper {
+  background: linear-gradient(180deg, var(--c-dark-2), var(--c-dark)) !important;
+  border-right: 1px solid rgba(157, 150, 112, 0.18);
+}
+
+.sidebar-wrapper .menu-item {
+  color: var(--c-muted-on-dark) !important;
+  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.sidebar-wrapper .menu-item i {
+  color: inherit !important;
+}
+
+.sidebar-wrapper .menu-item:hover {
+  color: var(--c-on-dark) !important;
+  background: rgba(243, 241, 216, 0.08) !important;
+}
+
+.sidebar-wrapper .menu-item.active {
+  color: var(--c-on-dark) !important;
+  background: linear-gradient(145deg, var(--c-accent-hover), var(--c-accent)) !important;
+  box-shadow: 0 6px 14px rgba(178, 45, 48, 0.22) !important;
+}
+
+.sidebar-wrapper .sidebar-footer .user-profile {
+  background: rgba(243, 241, 216, 0.08) !important;
+  border: 1px solid rgba(237, 235, 179, 0.18) !important;
+}
+
+.sidebar-wrapper .sidebar-footer .user-profile:hover {
+  background: rgba(243, 241, 216, 0.12) !important;
+}
+
+.sidebar-wrapper .sidebar-footer .user-email {
+  color: rgba(243, 241, 216, 0.7) !important;
+}

@@ -42,7 +42,7 @@ export default function Sucursales() {
       const data = await sucursalesService.getAll();
       setSucursales(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e?.message || "No se pudieron cargar las sucursales.");
+      setError(e?.message || "No se pudieron cargar las sucursales con exito.");
     } finally {
       setLoading(false);
     }
@@ -149,7 +149,7 @@ export default function Sucursales() {
 
     try {
       setError("");
-      await sucursalesService.remove(sucursal.id_sucursal);
+      await sucursalesService.delete(sucursal.id_sucursal);
       await loadSucursales();
     } catch (e) {
       setError(e?.message || "No se pudo eliminar la sucursal.");
@@ -403,10 +403,7 @@ export default function Sucursales() {
                       </div>
                     </div>
 
-                    <div className="small text-muted mt-3">
-                      * La tabla está lista para mostrar <strong>antigüedad_calculada</strong>{" "}
-                      si el backend la envía en el JSON.
-                    </div>
+                    
                   </div>
 
                   <div className="modal-footer">

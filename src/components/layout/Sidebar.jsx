@@ -1,17 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import logo from '../../assets/images/logo-jonnys.png'; //  logo del proyecto
 import Can from "../common/Can";
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { user, logout } = useAuth();
 
   // ==============================
-  // MENU PRINCIPAL 
+  // MENU PRINCIPAL
   // ==============================
+  // ✅ IMPORTANTE: SOLO MODULOS, SIN SUBMODULOS (INVENTARIO SE MANEJA EN NAVBAR)
   const menuItems = [
     { name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
     { name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
@@ -20,6 +20,8 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
     { name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
     { name: 'Menú', path: '/dashboard/menu', icon: 'bi-journal-text' },
     { name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
+    // Inserta el acceso de Parametros antes de Configuracion para mantener coherencia funcional.
+    { name: 'Parámetros', path: '/dashboard/parametros', icon: 'bi-sliders' },
     { name: 'Configuración', path: '/dashboard/configuracion', icon: 'bi-gear' },
   ];
 
@@ -95,12 +97,9 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
           flex: 1,
           minHeight: 0,
           paddingBottom: 8,
-          WebkitOverflowScrolling: 'touch'
-        }}
-      >
+{/* ✅ EL SIDEBAR AHORA SOLO MUESTRA MODULOS (SIN SUBMENUS) */}
         {menuItems.map((item) => {
           // ✅ HU82: OCULTAR "SEGURIDAD" SI NO TIENE PERMISO
-          // (no toca tu lógica de inventario/personas; solo envuelve el NavLink)
           if (item.name === 'Seguridad') {
             return (
               <Can perm="SEGURIDAD_VER" key={item.path}>
@@ -117,247 +116,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
             );
           }
 
-          // ==============================
-          // INVENTARIO CON SUBMENU 
-          // ==============================
-          if (item.name === 'Inventario') {
-            return (
-              <div key={item.path}>
-                <button
-                  type="button"
-                  className={`menu-item ${isInInventario ? 'active' : ''}`}
-                  title={isCollapsed ? item.name : ''}
-                  aria-expanded={openInventario}
-                  onClick={() => {
-                    if (!isInInventario) {
-                      navigate('/dashboard/inventario?tab=categorias');
-                      return;
-                    }
-
-                    // SI YA ESTAMOS EN INVENTARIO, SOLO ABRIR/CERRAR SUBMENU
-                    setOpenInventario((v) => !v);
-                  }}
-                  style={{
-                    width: '100%',
-                    border: 'none',
-                    background: 'transparent',
-                    textAlign: 'left',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  <i className={`bi ${item.icon}`}></i>
-                  <span>{item.name}</span>
-
-                  <i
-                    className={`bi ${openInventario ? 'bi-chevron-up' : 'bi-chevron-down'}`}
-                    style={{ marginLeft: 'auto' }}
-                  ></i>
-                </button>
-
-                {openInventario && (
-                  <div style={{ paddingLeft: isCollapsed ? 0 : 18 }}>
-                    <NavLink
-                      to="/dashboard/inventario?tab=categorias"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'categorias' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Categorías' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-tags"></i>
-                      <span>Categorías</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/inventario?tab=insumos"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'insumos' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Insumos' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-box"></i>
-                      <span>Insumos</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/inventario?tab=productos"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'productos' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Productos' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-basket2"></i>
-                      <span>Productos</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/inventario?tab=almacenes"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'almacenes' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Almacenes' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-building"></i>
-                      <span>Almacenes</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/inventario?tab=movimientos"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'movimientos' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Movimientos' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-arrow-left-right"></i>
-                      <span>Movimientos</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/inventario?tab=alertas"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'alertas' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Alertas' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-exclamation-triangle"></i>
-                      <span>Alertas</span>
-                    </NavLink>
-                  </div>
-                )}
-              </div>
-            );
-          }
-
-          // ==============================
-          // PERSONAS / EMPRESAS CON SUBMENU
-          // ==============================
-          if (item.name === 'Personas/Empresas') {
-            return (
-              <div key={item.path}>
-                <button
-                  type="button"
-                  className={`menu-item ${isInPersonasEmpresas ? 'active' : ''}`}
-                  title={isCollapsed ? item.name : ''}
-                  aria-expanded={openPersonasEmpresas}
-                  onClick={() => {
-                    if (!isInPersonasEmpresas) {
-                      navigate('/dashboard/personas?tab=personas');
-                      return;
-                    }
-                    setOpenPersonasEmpresas(v => !v);
-                  }}
-                  style={{
-                    width: '100%',
-                    border: 'none',
-                    background: 'transparent',
-                    textAlign: 'left',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  <i className={`bi ${item.icon}`}></i>
-                  <span>{item.name}</span>
-
-                  <i
-                    className={`bi ${openPersonasEmpresas ? 'bi-chevron-up' : 'bi-chevron-down'}`}
-                    style={{ marginLeft: 'auto' }}
-                  ></i>
-                </button>
-
-                {/* SUBMENÚ */}
-                {openPersonasEmpresas && (
-                  <div style={{ paddingLeft: isCollapsed ? 0 : 18 }}>
-                    <NavLink
-                      to="/dashboard/personas?tab=personas"
-                      className={() =>
-                        `menu-item ${tabPersonasEmpresas === 'personas' ? 'active' : ''}`
-                      }
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-person"></i>
-                      <span>Personas</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/personas?tab=empresas"
-                      className={() =>
-                        `menu-item ${tabPersonasEmpresas === 'empresas' ? 'active' : ''}`
-                      }
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-building"></i>
-                      <span>Empresas</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/personas?tab=empleados"
-                      className={() =>
-                        `menu-item ${tabPersonasEmpresas === 'empleados' ? 'active' : ''}`
-                      }
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-person-badge"></i>
-                      <span>Empleados</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/personas?tab=usuarios"
-                      className={() =>
-                        `menu-item ${tabPersonasEmpresas === 'usuarios' ? 'active' : ''}`
-                      }
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-person-lock"></i>
-                      <span>Usuarios</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/personas?tab=clientes"
-                      className={() =>
-                        `menu-item ${tabPersonasEmpresas === 'clientes' ? 'active' : ''}`
-                      }
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-people"></i>
-                      <span>Clientes</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/personas?tab=planillas"
-                      className={() =>
-                        `menu-item ${tabPersonasEmpresas === 'planillas' ? 'active' : ''}`
-                      }
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-cash-stack"></i>
-                      <span>Planillas / Nóminas</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/personas?tab=biometricos"
-                      className={() =>
-                        `menu-item ${tabPersonasEmpresas === 'biometricos' ? 'active' : ''}`
-                      }
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-fingerprint"></i>
-                      <span>Registros Biométricos</span>
-                    </NavLink>
-                  </div>
-                )}
-              </div>
-            );
-          }
-
-          // ==============================
-          // RESTO DE OPCIONES
-          // ==============================
+          // Para el resto de los módulos, se muestran normales sin submenús
           return (
             <NavLink
               key={item.path}

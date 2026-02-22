@@ -9,7 +9,7 @@ const sucursalesService = {
   // POST: Crear
   create: (data) => apiFetch('/sucursales', 'POST', data),
 
-  // PUT: Actualizar
+  // PUT: Actualizarr
   update: (id, campo, valor) => 
     apiFetch('/sucursales', 'PUT', {
       campo,

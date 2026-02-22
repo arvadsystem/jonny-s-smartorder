@@ -8,6 +8,7 @@ import Seguridad from "./pages/dashboard/Seguridad";
 import Perfil from "./pages/dashboard/Perfil";
 import Personas from './pages/dashboard/Personas';
 import Sucursales from './pages/dashboard/Sucursales';
+import Parametros from './pages/dashboard/Parametros'; // Importa la pagina de Parametros/Catalogos.
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from "./routes/RequirePerm";
 
@@ -32,19 +33,17 @@ function App() {
 
       {/* 2. RUTAS PROTEGIDAS */}
       <Route element={<ProtectedRoute />}>
-        <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route index element={<Inicio />} />
-
-          {/* ✅ IMPORTANTE: en tu código original estaba duplicada la ruta "personas" */}
-          <Route path="personas" element={<Personas />} />
-          <Route path="sucursales" element={<Sucursales />} />
-          <Route path="inventario" element={<Inventario />} />
-          <Route path="ventas" element={<PaginaEnConstruccion titulo="Ventas" />} />
-
-          {/* ✅ IMPORTANTE: en tu código original estaba duplicada la ruta "menu" */}
+          <Route path="/dashboard" element={<DashboardLayout />}>
+            <Route index element={<Inicio />} />
+            <Route path="personas" element={<Personas />} />
+            <Route path="sucursales" element={<Sucursales />} />
+            <Route path="inventario" element={<Inventario />} />
+            <Route path="ventas" element={<PaginaEnConstruccion titulo="Ventas" />} />
+            <Route path="parametros" element={<Parametros />} /> {/* Registra la ruta protegida de Parametros/Catalogos. */}
+           
+          </Route>
           <Route path="menu" element={<Menu />} />
-
-          {/* ✅ HU82: proteger la ruta Seguridad por permiso */}
+          {/* HU82: proteger la ruta Seguridad por permiso */}
           <Route
             path="seguridad"
             element={
