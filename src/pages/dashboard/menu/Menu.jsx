@@ -126,7 +126,7 @@ const Menu = () => {
         <div className="alert alert-secondary mt-4">
           Categoría seleccionada: <b>{selected.nombre_departamento}</b>
           <br />
-          <small>HU 65: productos por categoría.</small>
+          <small></small>
         </div>
       )}
 

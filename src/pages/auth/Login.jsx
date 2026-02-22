@@ -62,7 +62,7 @@ const Login = () => {
       <div className="login-card shadow-lg">
         <img src={logo} alt="Jonny's Logo" className="login-logo img-fluid" />
 
-        <h3>Jonny's Smart Orden</h3>
+        <h3>Jonny's Smart Order</h3>
 
         {error && <div className="alert alert-danger">{error}</div>}
 
