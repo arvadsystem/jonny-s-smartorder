@@ -1197,10 +1197,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, [createPanelOpen, scrollToSection]);
 
   // AJUSTE: en mobile, Nuevo abre sheet y cierra filtros para mantener exclusividad.
-  const abrirNuevoMobile = useCallback(() => {
+  const _abrirNuevoMobile = useCallback(() => {
     setFiltersOpen(false);
     setCreatePanelOpen(false);
     setShowCreateProductoSheet(true);
+  }, []);
+
+  // NEW: cierre compartido del shell lateral de Filtros/Nuevo cuando se usa overlay.
+  // WHY: mantener la UX de drawer lateral consistente con otros submodulos sin tocar la logica interna de formularios.
+  // IMPACT: solo controla apertura/cierre visual de paneles de Productos (Filtros/Nuevo).
+  const closePanelsDrawer = useCallback(() => {
+    setFiltersOpen(false);
+    setCreatePanelOpen(false);
   }, []);
 
   const resetFiltros = () => {
@@ -1256,8 +1264,27 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return items;
   }, [selectedProducto, editForm]);
 
+  // NEW: descripcion visible en el bloque de historial usando data ya cargada en el drawer.
+  // WHY: mostrar contexto del producto sin pedir datos extra al backend ni alterar la lista de movimientos.
+  // IMPACT: solo agrega una seccion de lectura en el historial; no modifica CRUD ni endpoints.
+  const drawerHistoryDescription = useMemo(() => {
+    const normalizeDescription = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    if (!selectedProducto) return 'Sin descripción';
+    const historyDescription = Array.isArray(selectedProducto?.historial)
+      ? normalizeDescription(selectedProducto.historial.find((entry) => normalizeDescription(entry?.descripcion))?.descripcion)
+      : '';
+    const description = normalizeDescription(
+      editForm?.descripcion_producto
+      ?? selectedProducto?.descripcion_producto
+      ?? selectedProducto?.descripcion
+      ?? historyDescription
+    );
+    return description || 'Sin descripción';
+  }, [selectedProducto, editForm]);
+
   const drawerEstadoActivo = selectedProducto ? resolveEstadoActivo(selectedProducto) : true;
   const drawerImageSrc = getProductoImageSrc(selectedProducto);
+  const productsAuxDrawerOpen = filtersOpen || createPanelOpen;
 
   const renderCreateImageField = (className = 'col-12') => (
     <div className={className}>
@@ -1364,9 +1391,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           <button
             type="button"
             className="inv-prod-toolbar-btn d-md-none"
-            // AJUSTE: en mobile se respeta exclusión mutua cerrando filtros al abrir Nuevo.
-            onClick={abrirNuevoMobile}
-            aria-label="Abrir modal de crear producto"
+            // NEW: en mobile se reutiliza el drawer lateral para mantener el mismo patron visual de Inventario.
+            // WHY: estandarizar Nuevo de Productos con el shell derecho (glass/overlay/animacion) sin cambiar el formulario.
+            // IMPACT: UI-only; el submit/validaciones del formulario permanecen intactos.
+            onClick={toggleNuevoDesktop}
+            aria-label="Abrir drawer de crear producto"
           >
             <i className="bi bi-plus-circle" />
             <span>Nuevo</span>
@@ -1386,18 +1415,50 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       <div className="card-body inv-prod-body">
         {error && <div className="alert alert-danger inv-prod-alert">{error}</div>}
 
+        {/* NEW: overlay compartido para drawers de Filtros y Nuevo reutilizando el shell visual de Categorias. */}
+        {/* WHY: unificar la experiencia de apertura/cierre lateral en Productos sin tocar el contenido interno. */}
+        {/* IMPACT: solo afecta paneles de Filtros/Nuevo; no altera otros modales ni el drawer de detalle. */}
+        <div
+          // NEW: clase hook exclusiva para separar el overlay de Filtros/Nuevo del drawer de detalle en desktop.
+          // WHY: permitir revertir solo el shell desktop de paneles auxiliares sin afectar responsive ni el drawer de detalle.
+          // IMPACT: solo agrega selector CSS para estilos por breakpoint; sin cambios funcionales.
+          className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop inv-prod-aux-backdrop ${productsAuxDrawerOpen ? 'show' : ''}`}
+          onClick={closePanelsDrawer}
+          aria-hidden={!productsAuxDrawerOpen}
+        />
+
         {/* FORM CREAR (SOLO DESKTOP/TABLET) */}
         <div
           id="inv-prod-create-panel"
           ref={createSectionRef}
-          className={`inv-prod-create-wrap d-none d-md-block ${createPanelOpen ? 'open' : ''}`}
+          // NEW: clase hook del panel Nuevo para aplicar look previo solo en desktop mediante media query.
+          // WHY: recuperar el estilo ligero anterior en desktop sin tocar el drawer actual de mobile/tablet.
+          // IMPACT: UI-only; mantiene handlers, validaciones y submit existentes.
+          className={`inv-prod-create-wrap inv-prod-drawer inv-cat-v2__drawer inv-prod-aux-panel ${createPanelOpen ? 'open show' : ''}`}
+          role="dialog"
+          aria-modal="true"
           aria-hidden={!createPanelOpen}
         >
-          <div className="inv-prod-section-head inv-prod-panel-head">
-            <div className="inv-prod-panel-eyebrow">Alta rápida</div>
-            <div className="inv-prod-section-title">Registro de producto</div>
-            <div className="inv-prod-section-sub">Completa los datos esenciales sin salir del catálogo</div>
+          <div className="inv-prod-drawer-head">
+            {/* NEW: icono de producto en header del drawer Nuevo con el mismo tratamiento visual del patron. */}
+            {/* WHY: reforzar consistencia del shell de Productos con el resto de submodulos sin redisenar el formulario. */}
+            {/* IMPACT: decorativo; no modifica el flujo de alta. */}
+            <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
+            <div>
+              <div className="inv-prod-drawer-title">Nuevo producto</div>
+              <div className="inv-prod-drawer-sub">Registro de producto</div>
+            </div>
+            <button type="button" className="inv-prod-drawer-close" onClick={() => setCreatePanelOpen(false)} aria-label="Cerrar nuevo producto">
+              <i className="bi bi-x-lg" />
+            </button>
           </div>
+
+          <div className="inv-prod-drawer-body">
+            <div className="inv-prod-section-head inv-prod-panel-head">
+              <div className="inv-prod-panel-eyebrow">Alta rápida</div>
+              <div className="inv-prod-section-title">Registro de producto</div>
+              <div className="inv-prod-section-sub">Completa los datos esenciales sin salir del catálogo</div>
+            </div>
 
           {USE_PREMIUM_NEW_FORM ? (
           <form onSubmit={onCrear} className="row g-3 mb-1 inv-prod-create-form inv-prod-create-form-premium">
@@ -1757,6 +1818,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </div>
           </form>
           )}
+          </div>
         </div>
 
         {/* FILTROS */}
@@ -1769,14 +1831,34 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         <div
           id="inv-prod-filters"
           ref={filtersSectionRef}
-          className={`inv-prod-filters ${filtersOpen ? 'open' : ''}`}
+          // NEW: clase hook del panel Filtros para revertir el shell solo en desktop.
+          // WHY: conservar la experiencia responsive actual y recuperar el formato compacto previo en desktop.
+          // IMPACT: visual por breakpoint; no altera filtros ni datos.
+          className={`inv-prod-filters inv-prod-drawer inv-cat-v2__drawer inv-prod-aux-panel ${filtersOpen ? 'open show' : ''}`}
+          role="dialog"
+          aria-modal="true"
           aria-hidden={!filtersOpen}
         >
-          <div className="inv-prod-panel-head inv-prod-filters-head">
-            <div className="inv-prod-panel-eyebrow">Búsqueda avanzada</div>
-            <div className="inv-prod-section-title">Filtros y Orden del Catálogo</div>
-            <div className="inv-prod-section-sub">Refina resultados por stock, categoría, almacén y departamento</div>
+          <div className="inv-prod-drawer-head">
+            {/* NEW: icono de producto en header del drawer de Filtros para homogeneidad con el shell de Inventario. */}
+            {/* WHY: mantener el lenguaje visual unificado entre Filtros/Nuevo en Productos. */}
+            {/* IMPACT: solo decorativo; no altera filtros ni consultas locales. */}
+            <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
+            <div>
+              <div className="inv-prod-drawer-title">Filtros de productos</div>
+              <div className="inv-prod-drawer-sub">Stock, estado, categoria, almacen y orden</div>
+            </div>
+            <button type="button" className="inv-prod-drawer-close" onClick={() => setFiltersOpen(false)} aria-label="Cerrar filtros">
+              <i className="bi bi-x-lg" />
+            </button>
           </div>
+
+          <div className="inv-prod-drawer-body">
+            <div className="inv-prod-panel-head inv-prod-filters-head">
+              <div className="inv-prod-panel-eyebrow">Búsqueda avanzada</div>
+              <div className="inv-prod-section-title">Filtros y Orden del Catálogo</div>
+              <div className="inv-prod-section-sub">Refina resultados por stock, categoría, almacén y departamento</div>
+            </div>
 
           <div className="row g-2 inv-prod-filters-grid">
             <div className="col-12 col-md-4">
@@ -1858,6 +1940,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 Limpiar filtros
               </button>
             </div>
+          </div>
           </div>
         </div>
 
@@ -2411,11 +2494,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         </div>
         ) : null}
 
-        <div className={`inv-prod-drawer-backdrop ${drawerOpen ? 'show' : ''}`} onClick={cerrarDrawerProducto} />
-        <aside className={`inv-prod-drawer ${drawerOpen ? 'show' : ''}`} aria-hidden={!drawerOpen}>
+        {/* NEW: shell glass del drawer de Categorias aplicado al drawer de detalle/edicion de Productos. */}
+        {/* WHY: unificar overlay, blur y animacion lateral en todo Inventario sin tocar el contenido del formulario. */}
+        {/* IMPACT: cambio solo visual del contenedor del drawer; la logica del detalle/edicion permanece igual. */}
+        <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${drawerOpen ? 'show' : ''}`} onClick={cerrarDrawerProducto} />
+        <aside className={`inv-prod-drawer inv-cat-v2__drawer ${drawerOpen ? 'show' : ''}`} aria-hidden={!drawerOpen}>
           {selectedProducto ? (
             <>
               <div className="inv-prod-drawer-head">
+                {/* NEW: watermark decorativo para igualar el header del drawer al patron visual de Categorias. */}
+                {/* WHY: mantener consistencia visual entre shells de drawers de Inventario. */}
+                {/* IMPACT: decorativo; no afecta foco ni controles. */}
+                <i className="bi bi-tags inv-cat-v2__drawer-mark" aria-hidden="true" />
                 <div>
                   <div className="inv-prod-drawer-title">{selectedProducto?.nombre_producto || 'Producto'}</div>
                   <div className="inv-prod-drawer-sub">{getCategoriaLabel(selectedProducto?.id_categoria_producto)}</div>
@@ -2539,6 +2629,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                 <div className="inv-prod-drawer-section">
                   <div className="inv-prod-drawer-section-title">Historial del producto</div>
+                  {/* NEW: descripcion visible en el historial con fallback seguro a la descripcion del producto ya cargada. */}
+                  {/* WHY: mejorar contexto del historial sin tocar backend ni cambiar la tabla/listado existente. */}
+                  {/* IMPACT: solo agrega una seccion informativa antes de la lista de historial. */}
+                  <div className="mb-2">
+                    <div className="small fw-semibold text-muted">Descripción</div>
+                    <p className="small mb-0 text-muted">{drawerHistoryDescription}</p>
+                  </div>
                   <ul className="inv-prod-history-list">
                     {historialDrawer.map((item) => (
                       <li key={item}>{item}</li>

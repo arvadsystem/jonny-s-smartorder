@@ -927,10 +927,17 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
           </section>
         </div>
       </div>
-      <div className={`inv-prod-drawer-backdrop ${isAnyDrawerOpen ? 'show' : ''}`} onClick={closeDrawer} aria-hidden={!isAnyDrawerOpen} />
+      {/* NEW: reutiliza el shell glass/backdrop de Categorias para unificar el drawer de Insumos sin tocar su contenido. */}
+      {/* WHY: mantener el mismo contenedor visual (overlay + blur + animacion) entre submodulos de Inventario. */}
+      {/* IMPACT: solo cambia la capa visual del drawer; formularios, filtros y handlers permanecen iguales. */}
+      <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? 'show' : ''}`} onClick={closeDrawer} aria-hidden={!isAnyDrawerOpen} />
 
-      <aside className={`inv-prod-drawer inv-ins-drawer ${drawer === 'filters' ? 'show' : ''}`} id="inv-ins-filters-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'filters'}>
+      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer ${drawer === 'filters' ? 'show' : ''}`} id="inv-ins-filters-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'filters'}>
         <div className="inv-prod-drawer-head">
+          {/* NEW: watermark decorativo del shell de Categorias para igualar jerarquia visual del header del drawer. */}
+          {/* WHY: replicar el acento visual del panel lateral sin afectar legibilidad ni foco. */}
+          {/* IMPACT: elemento puramente decorativo; sin impacto funcional. */}
+          <i className="bi bi-box-seam inv-cat-v2__drawer-mark" aria-hidden="true" />
           <div>
             <div className="inv-prod-drawer-title">Filtros de insumos</div>
             <div className="inv-prod-drawer-sub">Estados, categorias, almacenes y orden</div>
@@ -1000,8 +1007,12 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
         </div>
       </aside>
 
-      <aside className={`inv-prod-drawer inv-ins-drawer ${drawer === 'form' ? 'show' : ''}`} id="inv-ins-form-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'form'}>
+      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer ${drawer === 'form' ? 'show' : ''}`} id="inv-ins-form-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'form'}>
         <div className="inv-prod-drawer-head">
+          {/* NEW: watermark decorativo compartido con el patron de Categorias. */}
+          {/* WHY: unificar el shell del drawer de alta/edicion con el resto del modulo Inventario. */}
+          {/* IMPACT: solo presentacional; no altera validaciones ni submit. */}
+          <i className="bi bi-box-seam inv-cat-v2__drawer-mark" aria-hidden="true" />
           <div>
             <div className="inv-prod-drawer-title">{drawerMode === 'create' ? 'Nuevo insumo' : 'Editar insumo'}</div>
             <div className="inv-prod-drawer-sub">{drawerMode === 'create' ? 'Completa los campos y guarda.' : (selectedInsumo?.nombre_insumo || `Insumo #${selectedInsumo?.id_insumo ?? '-'}`)}</div>
