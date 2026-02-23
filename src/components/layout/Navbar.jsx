@@ -15,40 +15,55 @@ const INVENTORY_TABS = [
   { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
 ];
 
-// AJUSTE: se muestran 4 tabs fijos y el resto en "Mas".
+// ==================================
+// PERSONAS - SUBMODULOS
+// ==================================
+const PERSONAS_TABS = [
+  { key: 'personas', label: 'Personas', icon: 'bi bi-person' },
+  { key: 'empresas', label: 'Empresas', icon: 'bi bi-building' },
+  { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase' },
+  { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear' },
+  { key: 'clientes', label: 'Clientes', icon: 'bi bi-people' }
+];
+
 const MAX_VISIBLE_TABS = 4;
 
-const getTabFromSearch = (search) => {
+// ==================================
+// UTILIDAD GENERICA
+// ==================================
+const getTabFromSearch = (search, tabs, defaultKey) => {
   const sp = new URLSearchParams(search || '');
-  const t = String(sp.get('tab') || 'categorias').toLowerCase();
-  return INVENTORY_TABS.some((x) => x.key === t) ? t : 'categorias';
+  const t = String(sp.get('tab') || defaultKey).toLowerCase();
+  return tabs.some((x) => x.key === t) ? t : defaultKey;
 };
 
-const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
+// ==================================
+// COMPONENTE OVERFLOW (MISMO DISEÑO)
+// ==================================
+const TabsOverflow = ({ tabs, activeKey, onGoTab }) => {
   const rowRef = useRef(null);
   const sliderRef = useRef(null);
   const moreBtnRef = useRef(null);
   const moreWrapRef = useRef(null);
   const tabRefs = useRef({});
-
   const [moreOpen, setMoreOpen] = useState(false);
 
-  // AJUSTE: 4 FIJOS + EL RESTO EN "MÁS"
   const layout = useMemo(() => {
-    const keys = INVENTORY_TABS.map((t) => t.key);
-    const visibleKeys = keys.slice(0, MAX_VISIBLE_TABS);
-    const overflowKeys = keys.slice(MAX_VISIBLE_TABS);
-    return { visibleKeys, overflowKeys };
-  }, []);
+    const keys = tabs.map((t) => t.key);
+    return {
+      visibleKeys: keys.slice(0, MAX_VISIBLE_TABS),
+      overflowKeys: keys.slice(MAX_VISIBLE_TABS)
+    };
+  }, [tabs]);
 
   const visibleTabs = useMemo(
-    () => INVENTORY_TABS.filter((t) => layout.visibleKeys.includes(t.key)),
-    [layout.visibleKeys]
+    () => tabs.filter((t) => layout.visibleKeys.includes(t.key)),
+    [tabs, layout.visibleKeys]
   );
 
   const overflowTabs = useMemo(
-    () => INVENTORY_TABS.filter((t) => layout.overflowKeys.includes(t.key)),
-    [layout.overflowKeys]
+    () => tabs.filter((t) => layout.overflowKeys.includes(t.key)),
+    [tabs, layout.overflowKeys]
   );
 
   const isActiveInOverflow = useMemo(
@@ -63,9 +78,9 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
     const sliderEl = sliderRef.current;
     if (!rowEl || !sliderEl) return;
 
-    // FUNCIONALIDAD: SI EL ACTIVO ESTÁ EN OVERFLOW, LA PASTILLA ACTIVA SE VA A "MÁS"
     const activeEl =
-      tabRefs.current?.[activeKey] || (isActiveInOverflow ? moreBtnRef.current : null);
+      tabRefs.current?.[activeKey] ||
+      (isActiveInOverflow ? moreBtnRef.current : null);
 
     if (!activeEl) {
       sliderEl.style.opacity = '0';
@@ -74,34 +89,30 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
 
     const rowRect = rowEl.getBoundingClientRect();
     const btnRect = activeEl.getBoundingClientRect();
-    const left = btnRect.left - rowRect.left;
 
-    sliderEl.style.left = `${left}px`;
+    sliderEl.style.left = `${btnRect.left - rowRect.left}px`;
     sliderEl.style.width = `${btnRect.width}px`;
     sliderEl.style.opacity = '1';
   };
 
   useEffect(() => {
     updateSlider();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeKey, isActiveInOverflow, layout.visibleKeys.join('|')]);
+  }, [activeKey, isActiveInOverflow]);
 
   useEffect(() => {
-    // FUNCIONALIDAD: CIERRA EL MENU AL CAMBIAR TAB
     closeMore();
   }, [activeKey]);
 
   useEffect(() => {
-    // FUNCIONALIDAD: CERRAR "MÁS" AL HACER CLICK FUERA / ESC
     const onDown = (e) => {
       if (!moreOpen) return;
-      const wrap = moreWrapRef.current;
-      if (wrap && !wrap.contains(e.target)) setMoreOpen(false);
+      if (moreWrapRef.current && !moreWrapRef.current.contains(e.target)) {
+        setMoreOpen(false);
+      }
     };
 
     const onKey = (e) => {
-      if (!moreOpen) return;
-      if (e.key === 'Escape') setMoreOpen(false);
+      if (moreOpen && e.key === 'Escape') setMoreOpen(false);
     };
 
     document.addEventListener('mousedown', onDown);
@@ -124,13 +135,10 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
           {visibleTabs.map((t) => (
             <button
               key={t.key}
-              ref={(el) => {
-                if (el) tabRefs.current[t.key] = el;
-              }}
+              ref={(el) => (tabRefs.current[t.key] = el)}
               type="button"
               className={`inventory-tab-btn ${activeKey === t.key ? 'inventory-tab-active' : ''}`}
               onClick={() => onGoTab(t.key)}
-              aria-current={activeKey === t.key ? 'page' : undefined}
             >
               <span className="active-dot" />
               <i className={t.icon} />
@@ -145,21 +153,18 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
                 type="button"
                 className={`inventory-tab-btn inventory-more-btn ${isActiveInOverflow ? 'inventory-tab-active' : ''}`}
                 onClick={() => setMoreOpen((s) => !s)}
-                aria-expanded={moreOpen}
               >
                 <span className="active-dot" />
                 <i className="bi bi-three-dots" />
                 <span>Más</span>
-                <i className={`bi ${moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'} inventory-more-caret`} />
               </button>
 
               {moreOpen && (
-                <div className="inventory-more-menu" role="menu">
+                <div className="inventory-more-menu">
                   {overflowTabs.map((t) => (
                     <button
                       key={t.key}
                       type="button"
-                      role="menuitem"
                       className={`inventory-more-item ${activeKey === t.key ? 'active' : ''}`}
                       onClick={() => {
                         closeMore();
@@ -168,7 +173,6 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
                     >
                       <i className={t.icon} />
                       <span>{t.label}</span>
-                      {activeKey === t.key ? <span className="inventory-more-dot" /> : null}
                     </button>
                   ))}
                 </div>
@@ -181,13 +185,34 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
   );
 };
 
+// ==================================
+// NAVBAR PRINCIPAL (SIN TOCAR DISEÑO)
+// ==================================
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
 
-  const toggleDropdown = () => setIsOpen((s) => !s);
+  const moduleTabs = useMemo(() => {
+    if (location.pathname.startsWith('/dashboard/inventario')) {
+      return { key: 'inventario', tabs: INVENTORY_TABS };
+    }
+    if (location.pathname.startsWith('/dashboard/personas')) {
+      return { key: 'personas', tabs: PERSONAS_TABS };
+    }
+    return null;
+  }, [location.pathname]);
+
+  const activeKey = useMemo(() => {
+    if (!moduleTabs) return null;
+    return getTabFromSearch(location.search, moduleTabs.tabs, moduleTabs.tabs[0].key);
+  }, [location.search, moduleTabs]);
+
+  const goTab = (key) => {
+    if (!moduleTabs) return;
+    navigate(`/dashboard/${moduleTabs.key}?tab=${key}`);
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -197,28 +222,23 @@ const Navbar = () => {
   const userName = user?.nombre_usuario || 'Invitado';
   const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
 
-  // FUNCIONALIDAD: SOLO EN INVENTARIO SE MUESTRAN SUBMODULOS
-  const isInventario = location.pathname?.startsWith('/dashboard/inventario');
-  const activeKey = useMemo(() => getTabFromSearch(location.search), [location.search]);
-
-  const goInventarioTab = (key) => {
-    navigate(`/dashboard/inventario?tab=${key}`);
-  };
-
   return (
     <div className="top-navbar">
-      <div>{isInventario ? <InventoryTabsOverflow activeKey={activeKey} onGoTab={goInventarioTab} /> : null}</div>
+      {moduleTabs && (
+        <TabsOverflow
+          tabs={moduleTabs.tabs}
+          activeKey={activeKey}
+          onGoTab={goTab}
+        />
+      )}
 
-      <div className="user-profile-container" onClick={toggleDropdown}>
+      <div className="user-profile-container" onClick={() => setIsOpen((s) => !s)}>
         <div className="user-profile">
           <div className="text-info d-none d-sm-block">
             <h6>{userName}</h6>
             <p>{userRole}</p>
           </div>
           <img src={userAvatar} alt="Perfil" />
-
-          <i className={`bi bi-chevron-down small ms-2 text-muted ${isOpen ? 'd-none' : ''}`} style={{ fontSize: '0.8rem' }} />
-          <i className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`} style={{ fontSize: '0.8rem' }} />
         </div>
 
         {isOpen && (
