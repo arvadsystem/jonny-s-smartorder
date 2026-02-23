@@ -57,6 +57,27 @@ const boolish = (v) => {
   return null;
 };
 
+// NEW: helper visual para mini-grafica tipo Productos en stat cards de Inventario.
+// WHY: reutilizar el mismo estilo de sparkline en dashboards de Insumos sin dependencias nuevas.
+// IMPACT: solo afecta la presentacion del dashboard; no modifica datos ni filtros.
+const buildInventorySparkPoints = (series, width = 120, height = 44, padding = 4) => {
+  if (!Array.isArray(series) || series.length < 2) return '';
+  const values = series.map((value) => Number(value ?? 0));
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const safeWidth = Math.max(width - padding * 2, 1);
+  const safeHeight = Math.max(height - padding * 2, 1);
+
+  return values
+    .map((value, index) => {
+      const x = padding + (safeWidth * index) / (values.length - 1);
+      const y = padding + safeHeight - ((value - min) / range) * safeHeight;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(' ');
+};
+
 const getStatusUi = (activo, cantidad, stockMin) => {
   if (!activo) {
     return { key: 'inactivo', badge: 'INACTIVO', badgeClass: 'is-inactive', cardClass: 'is-inactive', primary: 'Ajustar stock', primaryBtn: 'inv-prod-btn-subtle' };
@@ -114,6 +135,18 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
     const m = new Map();
     for (const c of Array.isArray(categorias) ? categorias : []) m.set(String(c?.id_categoria_producto), c);
     return m;
+  }, [categorias]);
+
+  // NEW: categorias activas para selects/filtros que dependen del catalogo compartido.
+  // WHY: ocultar categorias inactivas en otros submodulos sin afectar labels historicos.
+  // IMPACT: `categoriasMap` conserva todas para mostrar etiquetas; los selects usan solo activas.
+  const categoriasActivas = useMemo(() => {
+    const isActive = (categoria) => {
+      const parsed = boolish(categoria?.estado);
+      if (parsed === null) return categoria?.estado === undefined || categoria?.estado === null || categoria?.estado === '';
+      return parsed;
+    };
+    return (Array.isArray(categorias) ? categorias : []).filter(isActive);
   }, [categorias]);
 
   const almacenesMap = useMemo(() => {
@@ -506,7 +539,7 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
   const categoriaOptions = useMemo(() => {
     if (!categoriaField && !categoriaLabelField) return [];
     if (categoriaField === 'id_categoria_producto' && categorias.length) {
-      return categorias
+      return categoriasActivas
         .map((c) => ({ value: String(c?.id_categoria_producto), label: String(c?.nombre_categoria || c?.id_categoria_producto) }))
         .filter((x) => x.value);
     }
@@ -518,7 +551,7 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
       if (!map.has(val)) map.set(val, label);
     }
     return [...map.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
-  }, [categoriaField, categoriaLabelField, categorias, getCategoriaLabel, getCategoriaValue, insumos]);
+  }, [categoriaField, categoriaLabelField, categorias, categoriasActivas, getCategoriaLabel, getCategoriaValue, insumos]);
 
   const filtered = useMemo(() => {
     const s = normalize(search);
@@ -581,6 +614,52 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
     }
     return { total: insumos.length, existencia, bajo, sin_stock, inactivo, cad };
   }, [insumos, snapshot]);
+
+  // NEW: series decorativas derivadas de KPIs para renderizar sparklines tipo Productos.
+  // WHY: unificar visualmente los dashboards sin persistencia historica adicional.
+  // IMPACT: no altera conteos; solo agrega linea SVG sutil en cada tarjeta.
+  const insumosKpiSeries = useMemo(() => {
+    const makeSeries = (value, neighbor = 0) => {
+      const v = Math.max(0, Number(value ?? 0));
+      const n = Math.max(0, Number(neighbor ?? 0));
+      const delta = Math.max(1, Math.round(Math.max(v, n) * 0.1));
+      return [
+        Math.max(0, v - delta),
+        Math.max(0, Math.round((v + n) / 2)),
+        v,
+        Math.max(0, v - Math.round(delta / 2)),
+        v
+      ];
+    };
+    return {
+      total: makeSeries(kpis.total, kpis.existencia),
+      existencia: makeSeries(kpis.existencia, kpis.total),
+      bajo: makeSeries(kpis.bajo, kpis.existencia),
+      sin_stock: makeSeries(kpis.sin_stock, kpis.bajo),
+      inactivo: makeSeries(kpis.inactivo, kpis.total),
+      cad: makeSeries(kpis.cad, kpis.sin_stock)
+    };
+  }, [kpis]);
+
+  // NEW: renderer del KPI con sparkline reutilizando markup visual de Productos.
+  // WHY: mantener consistencia y evitar duplicar SVG inline en cada tarjeta del dashboard.
+  // IMPACT: componente local de presentacion; no toca logica del resto del modulo.
+  const renderKpiCard = (key, label, value, className = '') => {
+    const points = buildInventorySparkPoints(insumosKpiSeries[key] || []);
+    return (
+      <div className={`inv-prod-kpi ${className}`.trim()}>
+        {points ? (
+          <svg className="inv-prod-kpi-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points={points} />
+          </svg>
+        ) : null}
+        <div className="inv-prod-kpi-content">
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      </div>
+    );
+  };
 
   const hasActiveFilters = useMemo(() => (
     search.trim() !== '' || appliedFilters.almacen !== 'todos' || appliedFilters.categoria !== 'todos' || appliedFilters.sortBy !== 'recientes' || appliedFilters.estados.length > 0
@@ -772,12 +851,12 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
         </div>
 
         <div className="inv-prod-kpis">
-          <div className="inv-prod-kpi"><div className="inv-prod-kpi-content"><span>Total</span><strong>{kpis.total}</strong></div></div>
-          <div className="inv-prod-kpi is-ok"><div className="inv-prod-kpi-content"><span>En existencia</span><strong>{kpis.existencia}</strong></div></div>
-          <div className="inv-prod-kpi is-low"><div className="inv-prod-kpi-content"><span>Stock bajo</span><strong>{kpis.bajo}</strong></div></div>
-          <div className="inv-prod-kpi is-empty"><div className="inv-prod-kpi-content"><span>Sin stock</span><strong>{kpis.sin_stock}</strong></div></div>
-          <div className="inv-prod-kpi"><div className="inv-prod-kpi-content"><span>Inactivos</span><strong>{kpis.inactivo}</strong></div></div>
-          <div className={`inv-prod-kpi ${kpis.cad > 0 ? 'is-low' : ''}`}><div className="inv-prod-kpi-content"><span>Por caducar (30d)</span><strong>{kpis.cad}</strong></div></div>
+          {renderKpiCard('total', 'Total', kpis.total)}
+          {renderKpiCard('existencia', 'En existencia', kpis.existencia, 'is-ok')}
+          {renderKpiCard('bajo', 'Stock bajo', kpis.bajo, 'is-low')}
+          {renderKpiCard('sin_stock', 'Sin stock', kpis.sin_stock, 'is-empty')}
+          {renderKpiCard('inactivo', 'Inactivos', kpis.inactivo)}
+          {renderKpiCard('cad', 'Por caducar (30d)', kpis.cad, kpis.cad > 0 ? 'is-low' : '')}
         </div>
 
         <div className="card-body inv-prod-body">

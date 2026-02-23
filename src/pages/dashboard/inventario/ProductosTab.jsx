@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -280,6 +280,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       m.set(String(c?.id_categoria_producto), c);
     }
     return m;
+  }, [categorias]);
+
+  // NEW: opciones de categorias activas para selects/listados de asignacion en Productos.
+  // WHY: evitar mostrar categorias inactivas al crear/editar/filtrar por categoria en otros submodulos.
+  // IMPACT: no cambia endpoints; el mapa de labels sigue usando todas las categorias para leer historicos.
+  const categoriasActivas = useMemo(() => {
+    const isActive = (categoria) => {
+      const raw = categoria?.estado;
+      if (raw === undefined || raw === null || raw === '') return true;
+      return raw === true || raw === 'true' || raw === 1 || raw === '1';
+    };
+    return (Array.isArray(categorias) ? categorias : []).filter(isActive);
   }, [categorias]);
 
   const almacenesMap = useMemo(() => {
@@ -1459,7 +1471,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     required
                   >
                     <option value="">Seleccione categoría</option>
-                    {categorias.map((c) => (
+                    {categoriasActivas.map((c) => (
                       <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                         {c.nombre_categoria}
                       </option>
@@ -1640,7 +1652,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 required
               >
                 <option value="">Seleccione categoría</option>
-                {categorias.map((c) => (
+                {categoriasActivas.map((c) => (
                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                     {c.nombre_categoria}
                   </option>
@@ -1795,7 +1807,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className="col-12 col-md-2">
               <select className="form-select" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
                 <option value="todos">CATEGORIAS</option>
-                {categorias.map((c) => (
+                {categoriasActivas.map((c) => (
                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                     {c.nombre_categoria}
                   </option>
@@ -2079,7 +2091,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 onChange={(e) => setEditForm((s) => ({ ...s, id_categoria_producto: e.target.value }))}
                               >
                                 <option value="">Seleccione</option>
-                                {categorias.map((c) => (
+                                {categoriasActivas.map((c) => (
                                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                                     {c.nombre_categoria}
                                   </option>
@@ -2259,7 +2271,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 onChange={(e) => setEditForm((s) => ({ ...s, id_categoria_producto: e.target.value }))}
                               >
                                 <option value="">Seleccione</option>
-                                {categorias.map((c) => (
+                                {categoriasActivas.map((c) => (
                                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                                     {c.nombre_categoria}
                                   </option>
@@ -2628,7 +2640,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         required
                       >
                         <option value="">Seleccione</option>
-                        {categorias.map((c) => (
+                        {categoriasActivas.map((c) => (
                           <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                             {c.nombre_categoria}
                           </option>
@@ -2790,4 +2802,5 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 };
 
 export default ProductosTab;
+
 

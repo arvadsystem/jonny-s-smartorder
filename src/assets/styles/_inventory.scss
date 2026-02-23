@@ -152,7 +152,7 @@
   position: relative;
   overflow: hidden !important;
   isolation: isolate;
-  transition: transform 260ms ease, box-shadow 260ms ease, border-color 260ms ease;
+  transition: transform 260ms ease, box-shadow 260ms ease, border-color 260ms ease, opacity 220ms ease, filter 220ms ease;
 }
 
 // NUEVO: card interactivo con puntero y foco accesible para apertura por click/teclado.
@@ -169,20 +169,40 @@
   outline-offset: 2px;
 }
 
-// NUEVO: halo decorativo animado para enfatizar hover/focus manteniendo la paleta actual.
+// NEW: watermark de categorias reemplaza el circulo decorativo y conserva micro-movimiento.
+// WHY: reforzar identidad visual del card con un icono sutil y menos generico.
+// IMPACT: solo cambia la capa decorativa `.inv-cat-card__halo`; no afecta contenido ni eventos.
 .inv-cat-card__halo {
   position: absolute;
-  width: 128px;
-  height: 128px;
-  border-radius: 999px;
-  top: -56px;
-  right: -44px;
-  background: rgba(178, 45, 48, 0.1);
-  opacity: 0.3;
-  transform: translate3d(0, 0, 0) scale(0.72);
-  transition: transform 320ms ease, opacity 260ms ease;
+  top: -18px;
+  right: -10px;
+  width: 132px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  opacity: 0.22;
+  transform: translate3d(0, 0, 0) rotate(-8deg) scale(0.96);
+  transition: transform 320ms ease, opacity 260ms ease, filter 260ms ease;
   pointer-events: none;
   z-index: 0;
+  filter: saturate(0.9);
+}
+
+.inv-cat-card__halo::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 24px;
+  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.6), rgba(178, 45, 48, 0.05) 52%, rgba(45, 107, 102, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.inv-cat-card__halo i {
+  position: relative;
+  font-size: 4rem;
+  line-height: 1;
+  color: rgba(178, 45, 48, 0.12);
+  transform: translate3d(4px, -2px, 0);
 }
 
 .inv-cat-card__title-wrap {
@@ -234,8 +254,9 @@
 
 .inv-catpro-item.inv-cat-card:hover .inv-cat-card__halo,
 .inv-catpro-item.inv-cat-card:focus-visible .inv-cat-card__halo {
-  transform: translate3d(-12px, 10px, 0) scale(1.24, 1.02);
-  opacity: 0.5;
+  transform: translate3d(-8px, 8px, 0) rotate(-3deg) scale(1.03);
+  opacity: 0.34;
+  filter: saturate(1);
 }
 
 .inv-catpro-item.inv-cat-card:hover .inv-cat-card__icon,
@@ -250,6 +271,28 @@
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+}
+
+// NEW: estado visual "bloqueado" para categorias inactivas con transicion suave.
+// WHY: comunicar de inmediato la inactivacion sin recargar toda la grilla.
+// IMPACT: conserva legibilidad y no deshabilita acciones existentes por si el flujo permite editar/reactivar.
+.inv-catpro-item.is-inactive-state {
+  opacity: 0.66;
+  filter: saturate(0.72);
+  border-color: rgba(157, 150, 112, 0.46) !important;
+}
+
+.inv-catpro-item.inv-cat-card.is-inactive-state {
+  box-shadow: 0 3px 10px rgba(var(--c-shadow-rgb), 0.1) !important;
+}
+
+.inv-catpro-item.inv-cat-card.is-inactive-state .inv-cat-card__halo {
+  opacity: 0.28;
+  filter: saturate(0.6);
+}
+
+.inv-catpro-item.inv-cat-card.is-inactive-state .inv-cat-card__halo i {
+  color: rgba(82, 44, 34, 0.11);
 }
 
 .inv-catpro-item .fw-bold {
@@ -442,6 +485,20 @@
     transform: translateY(0);
     pointer-events: auto;
   }
+
+  // NEW: alternativa sin hover para el watermark (visible siempre + micro feedback en tap/focus).
+  // WHY: en mobile/tablet no hay hover y se necesita conservar el acento visual de forma segura.
+  // IMPACT: solo afecta cards premium de Categorias en <=992px; no cambia interacciones funcionales.
+  .inv-catpro-item.inv-cat-card .inv-cat-card__halo {
+    opacity: 0.18;
+    transform: translate3d(-3px, 4px, 0) rotate(-6deg) scale(0.95);
+  }
+
+  .inv-catpro-item.inv-cat-card:active .inv-cat-card__halo,
+  .inv-catpro-item.inv-cat-card:focus-within .inv-cat-card__halo {
+    opacity: 0.26;
+    transform: translate3d(-6px, 6px, 0) rotate(-3deg) scale(0.99);
+  }
 }
 
 @media (max-width: 767.98px) {
@@ -628,6 +685,299 @@
   .inv-catpro-item.inv-cat-card .inv-cat-card__actions {
     transition: none !important;
     animation: none !important;
+  }
+}
+
+// NEW: ajustes visuales v2 para Categorias con el mismo patron de Insumos/Productos.
+// WHY: alinear header, dashboards, filtros y drawers sin reescribir estilos base reutilizables.
+// IMPACT: todas las reglas se limitan al prefijo `inv-cat-v2__*` o acciones de categoria.
+.inv-cat-v2 {
+  overflow: hidden;
+}
+
+.inv-cat-v2__header {
+  gap: 12px;
+}
+
+.inv-cat-v2__actions {
+  align-items: center;
+}
+
+.inv-cat-v2__kpis {
+  grid-template-columns: repeat(3, minmax(0, 220px)) !important;
+  justify-content: center;
+  max-width: 780px;
+  margin-inline: auto;
+}
+
+.inv-cat-v2__results-meta {
+  justify-content: space-between;
+}
+
+.inv-cat-v2__drawer-body {
+  display: grid;
+  gap: 10px;
+}
+
+.inv-cat-v2__drawer-body .form-label {
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.74rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.inv-cat-v2__drawer-body .form-select {
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.inv-cat-v2__drawer-body .form-select:focus {
+  border-color: rgba(178, 45, 48, 0.62);
+  box-shadow: 0 0 0 0.18rem rgba(178, 45, 48, 0.12);
+}
+
+.inv-cat-v2__drawer-actions .btn {
+  min-height: 36px;
+}
+
+// NEW: glass/water drawer de Categorias (desktop + responsive) con animacion de entrada/salida.
+// WHY: unificar la experiencia visual con un panel lateral mas moderno sin cambiar la logica del drawer.
+// IMPACT: se aplica solo a drawers de Categorias (`inv-cat-v2__drawer` y su backdrop compartido).
+.inv-cat-v2__drawer {
+  border-left: 1px solid rgba(255, 255, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.62) !important;
+  box-shadow: -14px 0 28px rgba(var(--c-shadow-rgb), 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+  transform-origin: right center;
+  transform: translate3d(110%, 0, 0) scale(0.992) !important;
+  opacity: 0;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease !important;
+  overflow: hidden;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.inv-cat-v2__drawer.show {
+  transform: translate3d(0, 0, 0) scale(1) !important;
+  opacity: 1;
+}
+
+.inv-cat-v2__drawer-backdrop {
+  background: rgba(23, 8, 10, 0.22) !important;
+  backdrop-filter: blur(4px) saturate(118%);
+  -webkit-backdrop-filter: blur(4px) saturate(118%);
+  transition: opacity 220ms ease, backdrop-filter 220ms ease, -webkit-backdrop-filter 220ms ease !important;
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-head {
+  position: relative;
+  background: rgba(255, 255, 255, 0.34);
+  border-bottom-color: rgba(255, 255, 255, 0.28) !important;
+  backdrop-filter: blur(10px) saturate(135%);
+  -webkit-backdrop-filter: blur(10px) saturate(135%);
+  overflow: hidden;
+}
+
+// NEW: watermark de categorias en header del drawer como alternativa visible en entornos sin hover.
+// WHY: conservar identidad visual tambien dentro del panel lateral con un acento sutil y no intrusivo.
+// IMPACT: pseudo-elemento decorativo en el header; no afecta foco ni interaccion.
+.inv-cat-v2__drawer-mark {
+  position: absolute;
+  right: 56px;
+  top: 8px;
+  font-size: 2rem;
+  line-height: 1;
+  color: rgba(178, 45, 48, 0.12);
+  pointer-events: none;
+  transform: rotate(-8deg) translate3d(0, 0, 0);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.inv-cat-v2__drawer.show .inv-cat-v2__drawer-mark {
+  opacity: 1;
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-head:focus-within .inv-cat-v2__drawer-mark {
+  transform: rotate(-4deg) translate3d(-2px, 2px, 0);
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-body {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-close {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  // NEW: fallback de legibilidad para navegadores sin soporte de blur.
+  // WHY: mantener contraste del panel y overlay sin depender de `backdrop-filter`.
+  // IMPACT: solo cambia opacidades; no altera posicion/animacion del drawer.
+  .inv-cat-v2__drawer {
+    background: rgba(255, 255, 255, 0.95) !important;
+  }
+
+  .inv-cat-v2__drawer .inv-prod-drawer-head {
+    background: rgba(255, 255, 255, 0.92);
+  }
+
+  .inv-cat-v2__drawer-backdrop {
+    background: rgba(23, 8, 10, 0.3) !important;
+  }
+}
+
+// NEW: estados visuales para accion rapida Activar/Inactivar en cards de categorias.
+// WHY: hacer evidente la accion secundaria sin romper la jerarquia cromatica existente.
+// IMPACT: solo afecta botones `inv-catpro-action` cuando usan `state-on` / `state-off`.
+.inv-catpro-action.state-on {
+  color: #2d6b66 !important;
+  border-color: rgba(45, 107, 102, 0.32) !important;
+  background: rgba(45, 107, 102, 0.06) !important;
+}
+
+.inv-catpro-action.state-off {
+  color: #c56f43 !important;
+  border-color: rgba(197, 111, 67, 0.34) !important;
+  background: rgba(197, 111, 67, 0.06) !important;
+}
+
+.inv-catpro-action.state-on:hover:not(:disabled) {
+  border-color: rgba(45, 107, 102, 0.48) !important;
+  background: rgba(45, 107, 102, 0.12) !important;
+}
+
+.inv-catpro-action.state-off:hover:not(:disabled) {
+  border-color: rgba(197, 111, 67, 0.48) !important;
+  background: rgba(197, 111, 67, 0.12) !important;
+}
+
+.inv-catpro-action:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+@media (max-width: 991.98px) {
+  .inv-cat-v2__kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    max-width: 560px;
+  }
+
+  // NEW: mejoras de touch targets para acciones del header en tablet/mobile.
+  // WHY: evitar botones pequeños y facilitar taps en Filtros/Nuevo manteniendo el estilo del sistema.
+  // IMPACT: aplica solo a Categorias en responsive; desktop permanece igual.
+  .inv-cat-v2__actions .inv-prod-toolbar-btn {
+    min-height: 44px;
+    padding: 0.55rem 0.9rem !important;
+    font-size: 0.88rem;
+  }
+
+  .inv-cat-v2__actions .inv-ins-search {
+    min-height: 44px;
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+  }
+
+  // NEW: ocultar FAB de agregar en mobile/tablet sin eliminar el componente.
+  // WHY: reducir ruido visual y evitar duplicidad con boton "Nuevo" en el header.
+  // IMPACT: desktop mantiene el comportamiento existente; solo se oculta por breakpoint.
+  .inv-catpro-fab {
+    display: none !important;
+  }
+
+  // NEW: drawer responsive con ancho parcial y animacion sutil (slide + fade + scale).
+  // WHY: evitar drawer full-screen en mobile/tablet y mejorar sensacion visual con apertura mas suave.
+  // IMPACT: se limita a drawers de Categorias (`inv-cat-v2__drawer`) y no altera Productos/Insumos.
+  .inv-cat-v2__drawer {
+    width: min(460px, 90vw) !important;
+    max-width: 90vw !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.35) !important;
+    background: rgba(255, 255, 255, 0.62) !important;
+    box-shadow: -14px 0 28px rgba(var(--c-shadow-rgb), 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+    transform-origin: right center;
+    transform: translate3d(110%, 0, 0) scale(0.992) !important;
+    opacity: 0;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease !important;
+    overflow: hidden;
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+  }
+
+  .inv-cat-v2__drawer.show {
+    transform: translate3d(0, 0, 0) scale(1) !important;
+    opacity: 1;
+  }
+
+  // NEW: overlay con blur ligero y oscurecido suave (efecto "agua" de fondo).
+  // WHY: separar el drawer del contenido sin bloquear visualmente toda la pantalla.
+  // IMPACT: solo afecta el backdrop compartido de Categorias en responsive.
+  .inv-cat-v2__drawer-backdrop {
+    background: rgba(23, 8, 10, 0.22) !important;
+    backdrop-filter: blur(4px) saturate(118%);
+    -webkit-backdrop-filter: blur(4px) saturate(118%);
+    transition: opacity 220ms ease, backdrop-filter 220ms ease, -webkit-backdrop-filter 220ms ease !important;
+  }
+
+  .inv-cat-v2__drawer .inv-prod-drawer-head {
+    background: rgba(255, 255, 255, 0.34);
+    border-bottom-color: rgba(255, 255, 255, 0.28) !important;
+    backdrop-filter: blur(10px) saturate(135%);
+    -webkit-backdrop-filter: blur(10px) saturate(135%);
+  }
+
+  .inv-cat-v2__drawer .inv-prod-drawer-body {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .inv-cat-v2__drawer .inv-prod-drawer-close {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-cat-v2__kpis {
+    grid-template-columns: 1fr !important;
+    max-width: 100%;
+  }
+
+  .inv-cat-v2__results-meta {
+    gap: 6px;
+  }
+
+  .inv-cat-v2__drawer-actions {
+    grid-template-columns: 1fr;
+  }
+
+  // NEW: mantiene margen izquierdo visible en mobile y evita full screen del drawer.
+  // WHY: reforzar el efecto de panel lateral sin cubrir todo el viewport.
+  // IMPACT: solo drawers de Categorias en mobile.
+  .inv-cat-v2__drawer {
+    width: min(420px, 92vw) !important;
+    max-width: 92vw !important;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (max-width: 991.98px) {
+    // NEW: fallback de legibilidad cuando no hay soporte de backdrop-filter.
+    // WHY: preservar contraste/lectura del drawer y overlay sin blur.
+    // IMPACT: solo se aplica en navegadores sin soporte; desktop intacto.
+    .inv-cat-v2__drawer {
+      background: rgba(255, 255, 255, 0.95) !important;
+    }
+
+    .inv-cat-v2__drawer .inv-prod-drawer-head {
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .inv-cat-v2__drawer-backdrop {
+      background: rgba(23, 8, 10, 0.3) !important;
+    }
   }
 }
 

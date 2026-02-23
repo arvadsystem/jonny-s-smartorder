@@ -72,6 +72,19 @@ const Inventario = () => {
     cargarCategorias();
   }, [cargarCategorias]);
 
+  // NEW: patch local de categorias en el estado compartido del modulo Inventario.
+  // WHY: permitir que CategoriasTab actualice una sola categoria (edit/estado) sin refetch global visible.
+  // IMPACT: Productos/Insumos reciben el cambio inmediatamente via props, sin alterar contratos de API.
+  const patchCategoriaLocal = useCallback((idCategoria, patch) => {
+    const idNum = Number(idCategoria ?? 0);
+    if (!idNum || !patch || typeof patch !== 'object') return;
+    setCategorias((prev) =>
+      (Array.isArray(prev) ? prev : []).map((item) =>
+        Number(item?.id_categoria_producto ?? 0) === idNum ? { ...item, ...patch } : item
+      )
+    );
+  }, []);
+
   const toastVariant = toast.variant || 'success';
 
   return (
@@ -83,6 +96,7 @@ const Inventario = () => {
           error={errorCategorias}
           setError={setErrorCategorias}
           reloadCategorias={cargarCategorias}
+          onCategoriaPatched={patchCategoriaLocal}
           openToast={openToast}
         />
       )}
