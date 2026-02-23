@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import userAvatar from '../../assets/images/logo-jonnys.png';
 
 // ==================================
-// INVENTARIO - SUBMODULOS (3 + MÁS)
+// INVENTARIO - SUBMODULOS (4 + MÁS)
 // ==================================
 const INVENTORY_TABS = [
   { key: 'categorias', label: 'Categorías', icon: 'bi bi-tag' },
@@ -15,7 +15,8 @@ const INVENTORY_TABS = [
   { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
 ];
 
-const MAX_VISIBLE_TABS = 3;
+// AJUSTE: se muestran 4 tabs fijos y el resto en "Mas".
+const MAX_VISIBLE_TABS = 4;
 
 const getTabFromSearch = (search) => {
   const sp = new URLSearchParams(search || '');
@@ -32,7 +33,7 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
 
   const [moreOpen, setMoreOpen] = useState(false);
 
-  // FUNCIONALIDAD: 3 FIJOS + EL RESTO EN "MÁS"
+  // AJUSTE: 4 FIJOS + EL RESTO EN "MÁS"
   const layout = useMemo(() => {
     const keys = INVENTORY_TABS.map((t) => t.key);
     const visibleKeys = keys.slice(0, MAX_VISIBLE_TABS);

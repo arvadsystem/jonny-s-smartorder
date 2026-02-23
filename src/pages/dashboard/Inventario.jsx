@@ -9,26 +9,16 @@ import AlmacenesTab from './inventario/AlmacenesTab.jsx';
 import MovimientosTab from './inventario/MovimientosTab.jsx';
 import AlertasTab from './inventario/AlertasTab.jsx';
 
+// AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
+const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'movimientos', 'alertas'];
+
 const Inventario = () => {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('categorias');
 
   useEffect(() => {
     const t = (searchParams.get('tab') || 'categorias').toLowerCase();
-
-    setActiveTab(
-      t === 'insumos'
-        ? 'insumos'
-        : t === 'productos'
-          ? 'productos'
-          : t === 'almacenes'
-            ? 'almacenes'
-            : t === 'movimientos'
-              ? 'movimientos'
-              : t === 'alertas'
-                ? 'alertas'
-                : 'categorias'
-    );
+    setActiveTab(INVENTARIO_TAB_KEYS.includes(t) ? t : 'categorias');
   }, [searchParams]);
 
   const [categorias, setCategorias] = useState([]);
@@ -82,6 +72,19 @@ const Inventario = () => {
     cargarCategorias();
   }, [cargarCategorias]);
 
+  // NEW: patch local de categorias en el estado compartido del modulo Inventario.
+  // WHY: permitir que CategoriasTab actualice una sola categoria (edit/estado) sin refetch global visible.
+  // IMPACT: Productos/Insumos reciben el cambio inmediatamente via props, sin alterar contratos de API.
+  const patchCategoriaLocal = useCallback((idCategoria, patch) => {
+    const idNum = Number(idCategoria ?? 0);
+    if (!idNum || !patch || typeof patch !== 'object') return;
+    setCategorias((prev) =>
+      (Array.isArray(prev) ? prev : []).map((item) =>
+        Number(item?.id_categoria_producto ?? 0) === idNum ? { ...item, ...patch } : item
+      )
+    );
+  }, []);
+
   const toastVariant = toast.variant || 'success';
 
   return (
@@ -93,11 +96,12 @@ const Inventario = () => {
           error={errorCategorias}
           setError={setErrorCategorias}
           reloadCategorias={cargarCategorias}
+          onCategoriaPatched={patchCategoriaLocal}
           openToast={openToast}
         />
       )}
 
-      {activeTab === 'insumos' && <InsumosTab openToast={openToast} />}
+      {activeTab === 'insumos' && <InsumosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
       {activeTab === 'movimientos' && <MovimientosTab openToast={openToast} />}
