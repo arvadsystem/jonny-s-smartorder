@@ -209,11 +209,15 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const searchWrapRef = useRef(null);
+  const searchInputRef = useRef(null);
 
   const toggleDropdown = () => setIsOpen((s) => !s);
+  const toggleSearch = () => setIsSearchOpen((s) => !s);
 
   const handleLogout = async () => {
     await logout();
@@ -255,9 +259,37 @@ const Navbar = () => {
     navigate(`/dashboard/personas?tab=${key}`);
   };
 
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    const timer = setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 0);
+
+    const onDown = (e) => {
+      const wrap = searchWrapRef.current;
+      if (wrap && !wrap.contains(e.target)) setIsSearchOpen(false);
+    };
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') setIsSearchOpen(false);
+    };
+
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [isSearchOpen]);
+
   return (
     <div className="top-navbar">
-      <div>
+      <div className="navbar-tabs-zone">
         {isInventario ? (
           <InventoryTabsOverflow
             tabs={INVENTORY_TABS}
@@ -283,38 +315,73 @@ const Navbar = () => {
         ) : null}
       </div>
 
-      <div className="user-profile-container" onClick={toggleDropdown}>
-        <div className="user-profile">
-          <div className="text-info d-none d-sm-block">
-            <h6>{userName}</h6>
-            <p>{userRole}</p>
-          </div>
-          <img src={userAvatar} alt="Perfil" />
-
-          <i
-            className={`bi bi-chevron-down small ms-2 text-muted ${isOpen ? 'd-none' : ''}`}
-            style={{ fontSize: '0.8rem' }}
-          />
-          <i
-            className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`}
-            style={{ fontSize: '0.8rem' }}
+      <div className="navbar-right">
+        <div
+          ref={searchWrapRef}
+          className={`search-container d-none d-md-flex ${isSearchOpen ? 'is-open' : 'is-collapsed'}`}
+          role="search"
+          aria-label="Buscar"
+        >
+          <button
+            type="button"
+            className="search-trigger"
+            onClick={toggleSearch}
+            aria-label={isSearchOpen ? 'Cerrar búsqueda' : 'Abrir búsqueda'}
+            aria-expanded={isSearchOpen}
+          >
+            <i className="bi bi-search" />
+          </button>
+          <input
+            ref={searchInputRef}
+            type="search"
+            placeholder="Buscar..."
+            tabIndex={isSearchOpen ? 0 : -1}
+            aria-hidden={!isSearchOpen}
           />
         </div>
 
-        {isOpen && (
-          <div className="dropdown-menu-custom">
-            <ul>
-              <li onClick={() => navigate('/dashboard/perfil')}>
-                <i className="bi bi-person-circle" />
-                Mi perfil
-              </li>
-              <li onClick={handleLogout}>
-                <i className="bi bi-box-arrow-right" />
-                Cerrar Sesion
-              </li>
-            </ul>
+        <div className="navbar-icon-group" aria-label="Acciones rápidas">
+          <button type="button" className="navbar-icon-btn" aria-label="Notificaciones">
+            <i className="bi bi-bell" />
+          </button>
+          <button type="button" className="navbar-icon-btn" aria-label="Configuración">
+            <i className="bi bi-gear" />
+          </button>
+        </div>
+
+        <div className="user-profile-container" onClick={toggleDropdown}>
+          <div className="user-profile">
+            <div className="text-info d-none d-sm-block">
+              <h6>{userName}</h6>
+              <p>{userRole}</p>
+            </div>
+            <img src={userAvatar} alt="Perfil" />
+
+            <i
+              className={`bi bi-chevron-down small ms-2 text-muted ${isOpen ? 'd-none' : ''}`}
+              style={{ fontSize: '0.8rem' }}
+            />
+            <i
+              className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`}
+              style={{ fontSize: '0.8rem' }}
+            />
           </div>
-        )}
+
+          {isOpen && (
+            <div className="dropdown-menu-custom">
+              <ul>
+                <li onClick={() => navigate('/dashboard/perfil')}>
+                  <i className="bi bi-person-circle" />
+                  Mi perfil
+                </li>
+                <li onClick={handleLogout}>
+                  <i className="bi bi-box-arrow-right" />
+                  Cerrar Sesion
+                </li>
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
