@@ -24,6 +24,17 @@ const SECURITY_TABS = [
   { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text' }
 ];
 
+// ==================================
+// PERSONAS - SUBMODULOS (NUEVO)
+// ==================================
+const PERSONAS_TABS = [
+  { key: 'personas', label: 'Personas', icon: 'bi bi-person' },
+  { key: 'empresas', label: 'Empresas', icon: 'bi bi-building' },
+  { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase' },
+  { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear' },
+  { key: 'clientes', label: 'Clientes', icon: 'bi bi-people' }
+];
+
 // AJUSTE: se muestran 4 tabs fijos y el resto en "Mas".
 const MAX_VISIBLE_TABS = 4;
 
@@ -152,14 +163,20 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
               <button
                 ref={moreBtnRef}
                 type="button"
-                className={`inventory-tab-btn inventory-more-btn ${isActiveInOverflow ? 'inventory-tab-active' : ''}`}
+                className={`inventory-tab-btn inventory-more-btn ${
+                  isActiveInOverflow ? 'inventory-tab-active' : ''
+                }`}
                 onClick={() => setMoreOpen((s) => !s)}
                 aria-expanded={moreOpen}
               >
                 <span className="active-dot" />
                 <i className="bi bi-three-dots" />
                 <span>Mas</span>
-                <i className={`bi ${moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'} inventory-more-caret`} />
+                <i
+                  className={`bi ${
+                    moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'
+                  } inventory-more-caret`}
+                />
               </button>
 
               {moreOpen && (
@@ -206,15 +223,23 @@ const Navbar = () => {
   const userName = user?.nombre_usuario || 'Invitado';
   const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
 
-  // FUNCIONALIDAD: SOLO EN INVENTARIO/SEGURIDAD SE MUESTRAN SUBMODULOS
+  // FUNCIONALIDAD: SOLO EN INVENTARIO/SEGURIDAD/PERSONAS SE MUESTRAN SUBMODULOS
   const isInventario = location.pathname?.startsWith('/dashboard/inventario');
   const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
+  const isPersonas = location.pathname?.startsWith('/dashboard/personas'); // NUEVO
+
   const activeInventoryKey = useMemo(
     () => getTabFromSearch(location.search, INVENTORY_TABS, 'categorias'),
     [location.search]
   );
+
   const activeSecurityKey = useMemo(
     () => getTabFromSearch(location.search, SECURITY_TABS, 'sesiones'),
+    [location.search]
+  );
+
+  const activePersonasKey = useMemo(
+    () => getTabFromSearch(location.search, PERSONAS_TABS, 'personas'),
     [location.search]
   );
 
@@ -224,6 +249,10 @@ const Navbar = () => {
 
   const goSeguridadTab = (key) => {
     navigate(`/dashboard/seguridad?tab=${key}`);
+  };
+
+  const goPersonasTab = (key) => {
+    navigate(`/dashboard/personas?tab=${key}`);
   };
 
   return (
@@ -236,11 +265,20 @@ const Navbar = () => {
             onGoTab={goInventarioTab}
           />
         ) : null}
+
         {isSeguridad ? (
           <InventoryTabsOverflow
             tabs={SECURITY_TABS}
             activeKey={activeSecurityKey}
             onGoTab={goSeguridadTab}
+          />
+        ) : null}
+
+        {isPersonas ? (
+          <InventoryTabsOverflow
+            tabs={PERSONAS_TABS}
+            activeKey={activePersonasKey}
+            onGoTab={goPersonasTab}
           />
         ) : null}
       </div>
@@ -253,8 +291,14 @@ const Navbar = () => {
           </div>
           <img src={userAvatar} alt="Perfil" />
 
-          <i className={`bi bi-chevron-down small ms-2 text-muted ${isOpen ? 'd-none' : ''}`} style={{ fontSize: '0.8rem' }} />
-          <i className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`} style={{ fontSize: '0.8rem' }} />
+          <i
+            className={`bi bi-chevron-down small ms-2 text-muted ${isOpen ? 'd-none' : ''}`}
+            style={{ fontSize: '0.8rem' }}
+          />
+          <i
+            className={`bi bi-chevron-up small ms-2 text-muted ${!isOpen ? 'd-none' : ''}`}
+            style={{ fontSize: '0.8rem' }}
+          />
         </div>
 
         {isOpen && (
