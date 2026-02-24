@@ -209,15 +209,11 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const searchWrapRef = useRef(null);
-  const searchInputRef = useRef(null);
 
   const toggleDropdown = () => setIsOpen((s) => !s);
-  const toggleSearch = () => setIsSearchOpen((s) => !s);
 
   const handleLogout = async () => {
     await logout();
@@ -259,34 +255,6 @@ const Navbar = () => {
     navigate(`/dashboard/personas?tab=${key}`);
   };
 
-  useEffect(() => {
-    if (!isSearchOpen) return;
-
-    const timer = setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 0);
-
-    const onDown = (e) => {
-      const wrap = searchWrapRef.current;
-      if (wrap && !wrap.contains(e.target)) setIsSearchOpen(false);
-    };
-
-    const onKey = (e) => {
-      if (e.key === 'Escape') setIsSearchOpen(false);
-    };
-
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('touchstart', onDown);
-    document.addEventListener('keydown', onKey);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('touchstart', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [isSearchOpen]);
-
   return (
     <div className="top-navbar">
       <div className="navbar-tabs-zone">
@@ -316,30 +284,6 @@ const Navbar = () => {
       </div>
 
       <div className="navbar-right">
-        <div
-          ref={searchWrapRef}
-          className={`search-container d-none d-md-flex ${isSearchOpen ? 'is-open' : 'is-collapsed'}`}
-          role="search"
-          aria-label="Buscar"
-        >
-          <button
-            type="button"
-            className="search-trigger"
-            onClick={toggleSearch}
-            aria-label={isSearchOpen ? 'Cerrar búsqueda' : 'Abrir búsqueda'}
-            aria-expanded={isSearchOpen}
-          >
-            <i className="bi bi-search" />
-          </button>
-          <input
-            ref={searchInputRef}
-            type="search"
-            placeholder="Buscar..."
-            tabIndex={isSearchOpen ? 0 : -1}
-            aria-hidden={!isSearchOpen}
-          />
-        </div>
-
         <div className="navbar-icon-group" aria-label="Acciones rápidas">
           <button type="button" className="navbar-icon-btn" aria-label="Notificaciones">
             <i className="bi bi-bell" />
