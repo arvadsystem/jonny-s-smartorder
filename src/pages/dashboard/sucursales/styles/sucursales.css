@@ -1,0 +1,46 @@
+.suc-page .inv-catpro-item.inv-cat-card,
+.suc-page .inv-catpro-item.inv-cat-card:hover,
+.suc-page .inv-catpro-item.inv-cat-card:focus-visible,
+.suc-page .inv-catpro-item.inv-cat-card.is-inactive-state {
+  background: linear-gradient(180deg, #ffffff, #fcfbf4) !important;
+}
+
+.suc-page .suc-page__card-details {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.35rem;
+}
+
+.suc-page .suc-page__card-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: rgba(108, 83, 68, 0.88);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.suc-page .suc-page__card-row i {
+  width: 14px;
+  text-align: center;
+  opacity: 0.9;
+  font-size: 0.8rem;
+}
+
+.suc-page .suc-page__card-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.suc-page .suc-page__card-row:nth-child(2),
+.suc-page .suc-page__card-row:nth-child(3) {
+  color: rgba(120, 94, 78, 0.82);
+}
+
+.suc-page .suc-page__card-row:last-child {
+  color: rgba(129, 101, 84, 0.78);
+}
+
+.suc-page .inv-cat-card.is-inactive-state .suc-page__card-row {
+  color: rgba(128, 112, 101, 0.8);
+}

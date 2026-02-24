@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { perfilService } from "../../services/perfilService";
 import usePasswordPolicies from "../../hooks/usePasswordPolicies";
 import { validatePassword } from "../../utils/passwordValidator";
+import { fmtHN } from "../../utils/dateTime";
 
 const Perfil = () => {
   const [data, setData] = useState(null);
@@ -329,7 +330,7 @@ const Perfil = () => {
               <h6 className="text-muted mb-2">Último acceso</h6>
               {ultimo ? (
                 <ul className="list-unstyled mb-0 small">
-                  <li><b>Fecha:</b> {new Date(ultimo.fecha_hora).toLocaleString()}</li>
+                  <li><b>Fecha:</b> {fmtHN(ultimo.fecha_hora)}</li>
                   <li><b>IP:</b> {ultimo.ip_origen || "—"}</li>
                   <li><b>Navegador:</b> {ultimo.navegador || "—"}</li>
                   <li><b>SO:</b> {ultimo.sistema_operativo || "—"}</li>
