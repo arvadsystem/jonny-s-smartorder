@@ -66,7 +66,7 @@ const PasswordPolicyTab = () => {
   if (noPermiso) return <SinPermiso permiso="SEGURIDAD_VER" />;
 
   return (
-    <div className="card shadow-sm">
+    <div className="card shadow-sm" style={{ backgroundColor: "#fff" }}>
       <div className="card-body">
         <div className="d-flex align-items-start justify-content-between gap-2">
           <div>

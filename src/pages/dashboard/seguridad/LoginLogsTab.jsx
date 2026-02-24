@@ -94,7 +94,7 @@ const LoginLogsTab = () => {
   }
 
   return (
-    <div className="card shadow-sm">
+    <div className="card shadow-sm" style={{ backgroundColor: "#fff" }}>
       <div className="card-body">
         <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
           <div>
