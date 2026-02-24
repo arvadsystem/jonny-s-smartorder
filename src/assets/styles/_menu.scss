@@ -1,0 +1,137 @@
+.menu-pos-shell {
+  overflow: hidden;
+}
+
+.menu-pos-body {
+  display: grid;
+  gap: 14px;
+}
+
+.menu-pos-section {
+  display: grid;
+  gap: 10px;
+}
+
+.menu-pos-cat-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  padding: 2px 2px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(157, 150, 112, 0.42) transparent;
+}
+
+.menu-pos-cat-strip::-webkit-scrollbar {
+  height: 6px;
+}
+
+.menu-pos-cat-strip::-webkit-scrollbar-thumb {
+  background: rgba(157, 150, 112, 0.42);
+  border-radius: 999px;
+}
+
+.menu-pos-cat-chip {
+  flex: 0 0 auto !important;
+  max-width: min(280px, 72vw);
+}
+
+.menu-pos-cat-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.18rem rgba(178, 45, 48, 0.12) !important;
+}
+
+.menu-pos-cat-chip span {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.menu-pos-cat-icon {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-pos-cat-label {
+  min-width: 0;
+}
+
+.menu-pos-heading-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.menu-pos-product-card {
+  cursor: default;
+}
+
+.menu-pos-product-body {
+  gap: 8px;
+}
+
+.menu-pos-product-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.menu-pos-product-name {
+  -webkit-line-clamp: 2;
+  min-height: 2.4em;
+}
+
+.menu-pos-product-footer {
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(237, 235, 179, 0.6);
+}
+
+.menu-pos-product-price {
+  color: #17080a;
+  font-weight: 800;
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.menu-pos-add-btn {
+  min-height: 36px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+}
+
+.menu-pos-add-btn:focus-visible {
+  box-shadow: 0 0 0 0.18rem rgba(178, 45, 48, 0.12) !important;
+}
+
+@media (max-width: 767.98px) {
+  .menu-pos-cat-chip {
+    max-width: 76vw;
+  }
+
+  .menu-pos-product-footer {
+    gap: 7px;
+    padding-top: 8px;
+  }
+
+  .menu-pos-add-btn {
+    min-height: 34px;
+    font-size: 0.78rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-pos-cat-strip {
+    scroll-behavior: auto;
+  }
+}

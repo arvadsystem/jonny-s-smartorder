@@ -1,150 +1,203 @@
-import { useEffect, useState } from 'react'; // Hooks de React
-import { apiFetch } from '../../../services/api'; // Servicio API del proyecto
-import ProductoGrid from './ProductoGrid'; // Componente: grid de productos (HU-65)
+import { useEffect, useState } from 'react';
+import { apiFetch } from '../../../services/api';
+import ProductoGrid from './ProductoGrid';
 
-// =====================================================
-// HU 64 - Menú POS
-// Visualizar categorías del menú (tipo_departamento)
-// HU 65 - Menú POS
-// Visualizar productos por categoría seleccionada
-// =====================================================
+const normalizeCategoriaNombre = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const getCategoriaEmoji = (nombre) => {
+  const n = normalizeCategoriaNombre(nombre);
+
+  if (!n) return '🍽️';
+  if (n.includes('hamburgues')) return '🍔';
+  if (n.includes('taco') || n.includes('birria')) return '🌮';
+  if (n.includes('hot dog') || n.includes('hotdog')) return '🌭';
+  if (n.includes('alita') || n.includes('tender') || n.includes('boneless')) return '🍗';
+  if (n.includes('jugo')) return '🧃';
+  if (n.includes('refresco') || n.includes('bebida') || n.includes('soda')) return '🥤';
+  if (n.includes('agua')) return '💧';
+  if (n.includes('cerveza') || n.includes('beer')) return '🍺';
+  if (n.includes('salsa')) return '🌶️';
+  if (n.includes('snack') || n.includes('nacho') || n.includes('papa')) return '🍟';
+  if (n.includes('sarita') || n.includes('helado') || n.includes('ice cream')) return '🍦';
+  if (n.includes('postre') || n.includes('dessert')) return '🍰';
+  if (n.includes('cafe') || n.includes('coffee')) return '☕';
+  if (n.includes('pizza')) return '🍕';
+
+  return '🍽️';
+};
+
+const CategoryIcon = ({ nombre, className }) => (
+  <span className={className} aria-hidden="true">
+    {getCategoriaEmoji(nombre)}
+  </span>
+);
+
+const CategorySelector = ({ categorias, selected, onSelect }) => {
+  return (
+    <div className="menu-pos-cat-strip" aria-label="Categorias del menu POS">
+      {categorias.map((categoria) => {
+        const isActive =
+          Number(selected?.id_tipo_departamento) ===
+          Number(categoria?.id_tipo_departamento);
+
+        return (
+          <button
+            key={categoria.id_tipo_departamento}
+            type="button"
+            aria-pressed={isActive}
+            className={`inv-prod-toolbar-btn menu-pos-cat-chip ${isActive ? 'is-on' : ''}`}
+            onClick={() => onSelect(categoria)}
+            title={categoria?.nombre_departamento || 'Categoria'}
+          >
+            <CategoryIcon
+              nombre={categoria?.nombre_departamento}
+              className="menu-pos-cat-icon"
+            />
+            <span className="menu-pos-cat-label text-truncate">
+              {categoria?.nombre_departamento || 'Categoria'}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 const Menu = () => {
-  const [categorias, setCategorias] = useState([]); // Categorías
-  const [selected, setSelected] = useState(null); // Categoría seleccionada
-  const [loading, setLoading] = useState(true); // Cargando categorías
-  const [error, setError] = useState(''); // Error categorías
-
-  const [productos, setProductos] = useState([]); // Productos por categoría (HU-65)
-  const [loadingProductos, setLoadingProductos] = useState(false); // Cargando productos
-  const [errorProductos, setErrorProductos] = useState(''); // Error productos
+  const [categorias, setCategorias] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [productos, setProductos] = useState([]);
+  const [loadingProductos, setLoadingProductos] = useState(false);
+  const [errorProductos, setErrorProductos] = useState('');
 
   useEffect(() => {
     const cargarCategorias = async () => {
       try {
-        setLoading(true); // Activa loading categorías
-        setError(''); // Limpia error categorías
+        setLoading(true);
+        setError('');
 
-        // Endpoint existente (HU-64)
-        const data = await apiFetch('/tipo_departamento', 'GET'); // Obtiene categorías
-        const lista = Array.isArray(data) ? data : []; // Asegura arreglo
+        const data = await apiFetch('/tipo_departamento', 'GET');
+        const lista = Array.isArray(data) ? data : [];
+        const activas = lista
+          .filter((d) => d.estado === true || d.estado === 'true' || d.estado === 1)
+          .filter(
+            (d) =>
+              String(d?.nombre_departamento || '')
+                .trim()
+                .toUpperCase() !== 'QA POST'
+          );
 
-        // Solo categorías activas
-        const activas = lista.filter(
-          (d) => d.estado === true || d.estado === 'true' || d.estado === 1
-        ); // Filtra activas
-
-        setCategorias(activas); // Guarda categorías
-        setSelected(activas[0] || null); // Selecciona la primera (si existe)
+        setCategorias(activas);
+        setSelected(activas[0] || null);
       } catch (e) {
-        setError(e?.message || 'Error al cargar categorías'); // Error controlado
+        setError(e?.message || 'Error al cargar categorias');
       } finally {
-        setLoading(false); // Finaliza loading categorías
+        setLoading(false);
       }
     };
 
-    cargarCategorias(); // Ejecuta al montar
+    cargarCategorias();
   }, []);
 
-  // =====================================================
-  // HU 65 - Cargar productos por categoría seleccionada
-  // Endpoint: GET /menu-pos/productos/:id_tipo_departamento
-  // =====================================================
   const cargarProductos = async (idTipoDepartamento) => {
     try {
-      setLoadingProductos(true); // Activa loading productos
-      setErrorProductos(''); // Limpia error productos
+      setLoadingProductos(true);
+      setErrorProductos('');
 
-      // Llama al backend HU-65 (tu endpoint funcional)
-      const resp = await apiFetch(`/menu-pos/productos/${idTipoDepartamento}`, 'GET'); // Obtiene productos
-
-      // Soporta ambas respuestas:
-      // 1) apiFetch devuelve [] directo
-      // 2) apiFetch devuelve { ok, total, data: [] }
+      const resp = await apiFetch(`/menu-pos/productos/${idTipoDepartamento}`, 'GET');
       const lista = Array.isArray(resp)
         ? resp
         : Array.isArray(resp?.data)
           ? resp.data
           : [];
 
-      setProductos(lista); // Guarda productos
+      setProductos(lista);
     } catch (e) {
-      setErrorProductos(e?.message || 'Error al cargar productos'); // Error controlado
-      setProductos([]); // Limpia productos si falla
+      setErrorProductos(e?.message || 'Error al cargar productos');
+      setProductos([]);
     } finally {
-      setLoadingProductos(false); // Finaliza loading productos
+      setLoadingProductos(false);
     }
   };
 
-  // =====================================================
-  // Cuando cambia la categoría seleccionada, cargamos productos (HU-65)
-  // =====================================================
   useEffect(() => {
     if (selected?.id_tipo_departamento) {
-      cargarProductos(selected.id_tipo_departamento); // Carga productos de esa categoría
-    } else {
-      setProductos([]); // Si no hay categoría, limpia productos
+      cargarProductos(selected.id_tipo_departamento);
+      return;
     }
+
+    setProductos([]);
+    setErrorProductos('');
   }, [selected]);
 
-  // =====================================================
-  // Acción rápida: Agregar al carrito (placeholder HU-66)
-  // =====================================================
   const onAgregarProducto = (producto) => {
-    // HU-66 lo conectamos con el carrito real
-    console.log('Agregar al carrito (HU-66):', producto); // Debug
+    console.log('Agregar al carrito (HU-66):', producto);
   };
 
   return (
     <div className="container-fluid p-3">
-      <h4 className="mb-3">Menú</h4>
+      <div className="card shadow-sm mb-3 inv-prod-card menu-pos-shell">
+        <div className="card-header inv-prod-header">
+          <div className="inv-prod-title-wrap">
+            <div className="inv-prod-title-row">
+              <i className="bi bi-shop inv-prod-title-icon" />
+              <span className="inv-prod-title">Menu POS</span>
+            </div>
+            <div className="inv-prod-subtitle">
+              Seleccion de categorias y productos para venta rapida
+            </div>
+          </div>
 
-      {loading && <div className="alert alert-info">Cargando categorías...</div>}
-      {error && <div className="alert alert-danger">{error}</div>}
-
-      {!loading && !error && (
-        <div className="d-flex flex-wrap gap-2">
-          {categorias.map((c) => {
-            const active =
-              Number(selected?.id_tipo_departamento) === Number(c.id_tipo_departamento);
-
-            return (
-              <button
-                key={c.id_tipo_departamento}
-                className={`btn btn-lg ${active ? 'btn-dark' : 'btn-outline-dark'}`}
-                style={{ minWidth: 190, minHeight: 58 }}
-                onClick={() => setSelected(c)} // Cambia categoría seleccionada
-              >
-                {c.nombre_departamento}
-              </button>
-            );
-          })}
+          <div className="inv-prod-header-actions">
+            {!loading ? (
+              <span className="inv-prod-active-filter-pill">
+                {categorias.length} categorias
+              </span>
+            ) : null}
+          </div>
         </div>
-      )}
 
-      {/* Info categoría seleccionada */}
-      {!loading && selected && (
-        <div className="alert alert-secondary mt-4">
-          Categoría seleccionada: <b>{selected.nombre_departamento}</b>
-          <br />
-          <small>HU 65: productos por categoría.</small>
+        <div className="card-body">
+          {/* Error categorías */}
+          {error && <div className="alert alert-danger mb-3">{error}</div>}
+
+          {/* Categorías */}
+          {!loading && !error && (
+            <CategorySelector
+              categorias={categorias}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          )}
+
+          {/* Info categoría seleccionada */}
+          {!loading && selected && (
+            <div className="alert alert-secondary mt-3 mb-0">
+              Categoría seleccionada: <b>{selected.nombre_departamento}</b>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* HU-65: Productos */}
       {!loading && !error && selected && (
         <div className="mt-3">
-          {errorProductos && <div className="alert alert-danger">{errorProductos}</div>}
+          {errorProductos && (
+            <div className="alert alert-danger">{errorProductos}</div>
+          )}
 
           <ProductoGrid
-            productos={productos} // Lista de productos
-            loading={loadingProductos} // Loading de productos
-            onAgregar={onAgregarProducto} // Acción rápida (HU-66 luego)
+            productos={productos}
+            loading={loadingProductos}
+            onAgregar={onAgregarProducto}
           />
-
-          {/* Debug temporal: confirma que están llegando productos */}
-          <div className="mt-2">
-            <small className="text-muted">Debug productos: {productos.length}</small>
-          </div>
         </div>
       )}
     </div>

@@ -1,26 +1,34 @@
-import ProductoCard from './ProductoCard'; // Tarjeta individual
+import ProductoCard from './ProductoCard';
 
-// =====================================================
-// HU 65 - Grid de productos (POS)
-// Renderiza tarjetas en layout tipo POS
-// =====================================================
 const ProductoGrid = ({ productos, loading, onAgregar }) => {
-  // Cargando productos
   if (loading) {
-    return <div className="alert alert-info">Cargando productos...</div>;
+    return (
+      <div className="inv-catpro-loading" role="status" aria-live="polite">
+        <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+        <span>Cargando productos...</span>
+      </div>
+    );
   }
 
-  // Sin productos
   if (!productos || productos.length === 0) {
-    return <div className="alert alert-warning">No hay productos en esta categoría.</div>;
+    return (
+      <div className="inv-catpro-empty">
+        <div className="inv-catpro-empty-icon">
+          <i className="bi bi-grid-3x3-gap-fill" />
+        </div>
+        <div className="inv-catpro-empty-title">No hay productos en esta categoria</div>
+        <div className="inv-catpro-empty-sub">
+          Selecciona otra categoria o verifica la configuracion del menu.
+        </div>
+      </div>
+    );
   }
 
-  // Grid de tarjetas
   return (
-    <div className="row g-3">
-      {productos.map((p) => (
-        <div className="col-6 col-md-4 col-lg-3" key={p.id_producto}>
-          <ProductoCard producto={p} onAgregar={onAgregar} />
+    <div className="row row-cols-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5 g-3">
+      {productos.map((producto) => (
+        <div className="col d-flex" key={producto.id_producto}>
+          <ProductoCard producto={producto} onAgregar={onAgregar} />
         </div>
       ))}
     </div>
