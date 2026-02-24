@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import userAvatar from '../../assets/images/logo-jonnys.png';
 
 // ==================================
-// INVENTARIO - SUBMODULOS (4 + MÁS)
+// INVENTARIO - SUBMODULOS (4 + MAS)
 // ==================================
 const INVENTORY_TABS = [
   { key: 'categorias', label: 'Categorías', icon: 'bi bi-tag' },
@@ -15,16 +15,25 @@ const INVENTORY_TABS = [
   { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
 ];
 
+// ==================================
+// SEGURIDAD - SUBMODULOS
+// ==================================
+const SECURITY_TABS = [
+  { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop' },
+  { key: 'password', label: 'Políticas de contraseña', icon: 'bi bi-key' },
+  { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text' }
+];
+
 // AJUSTE: se muestran 4 tabs fijos y el resto en "Mas".
 const MAX_VISIBLE_TABS = 4;
 
-const getTabFromSearch = (search) => {
+const getTabFromSearch = (search, tabs, fallbackKey) => {
   const sp = new URLSearchParams(search || '');
-  const t = String(sp.get('tab') || 'categorias').toLowerCase();
-  return INVENTORY_TABS.some((x) => x.key === t) ? t : 'categorias';
+  const t = String(sp.get('tab') || fallbackKey).toLowerCase();
+  return tabs.some((x) => x.key === t) ? t : fallbackKey;
 };
 
-const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
+const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
   const rowRef = useRef(null);
   const sliderRef = useRef(null);
   const moreBtnRef = useRef(null);
@@ -33,22 +42,22 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
 
   const [moreOpen, setMoreOpen] = useState(false);
 
-  // AJUSTE: 4 FIJOS + EL RESTO EN "MÁS"
+  // AJUSTE: 4 FIJOS + EL RESTO EN "MAS"
   const layout = useMemo(() => {
-    const keys = INVENTORY_TABS.map((t) => t.key);
+    const keys = tabs.map((t) => t.key);
     const visibleKeys = keys.slice(0, MAX_VISIBLE_TABS);
     const overflowKeys = keys.slice(MAX_VISIBLE_TABS);
     return { visibleKeys, overflowKeys };
-  }, []);
+  }, [tabs]);
 
   const visibleTabs = useMemo(
-    () => INVENTORY_TABS.filter((t) => layout.visibleKeys.includes(t.key)),
-    [layout.visibleKeys]
+    () => tabs.filter((t) => layout.visibleKeys.includes(t.key)),
+    [tabs, layout.visibleKeys]
   );
 
   const overflowTabs = useMemo(
-    () => INVENTORY_TABS.filter((t) => layout.overflowKeys.includes(t.key)),
-    [layout.overflowKeys]
+    () => tabs.filter((t) => layout.overflowKeys.includes(t.key)),
+    [tabs, layout.overflowKeys]
   );
 
   const isActiveInOverflow = useMemo(
@@ -63,7 +72,7 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
     const sliderEl = sliderRef.current;
     if (!rowEl || !sliderEl) return;
 
-    // FUNCIONALIDAD: SI EL ACTIVO ESTÁ EN OVERFLOW, LA PASTILLA ACTIVA SE VA A "MÁS"
+    // FUNCIONALIDAD: SI EL ACTIVO ESTA EN OVERFLOW, LA PASTILLA ACTIVA SE VA A "MAS"
     const activeEl =
       tabRefs.current?.[activeKey] || (isActiveInOverflow ? moreBtnRef.current : null);
 
@@ -92,7 +101,7 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
   }, [activeKey]);
 
   useEffect(() => {
-    // FUNCIONALIDAD: CERRAR "MÁS" AL HACER CLICK FUERA / ESC
+    // FUNCIONALIDAD: CERRAR "MAS" AL HACER CLICK FUERA / ESC
     const onDown = (e) => {
       if (!moreOpen) return;
       const wrap = moreWrapRef.current;
@@ -149,7 +158,7 @@ const InventoryTabsOverflow = ({ activeKey, onGoTab }) => {
               >
                 <span className="active-dot" />
                 <i className="bi bi-three-dots" />
-                <span>Más</span>
+                <span>Mas</span>
                 <i className={`bi ${moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'} inventory-more-caret`} />
               </button>
 
@@ -197,17 +206,44 @@ const Navbar = () => {
   const userName = user?.nombre_usuario || 'Invitado';
   const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
 
-  // FUNCIONALIDAD: SOLO EN INVENTARIO SE MUESTRAN SUBMODULOS
+  // FUNCIONALIDAD: SOLO EN INVENTARIO/SEGURIDAD SE MUESTRAN SUBMODULOS
   const isInventario = location.pathname?.startsWith('/dashboard/inventario');
-  const activeKey = useMemo(() => getTabFromSearch(location.search), [location.search]);
+  const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
+  const activeInventoryKey = useMemo(
+    () => getTabFromSearch(location.search, INVENTORY_TABS, 'categorias'),
+    [location.search]
+  );
+  const activeSecurityKey = useMemo(
+    () => getTabFromSearch(location.search, SECURITY_TABS, 'sesiones'),
+    [location.search]
+  );
 
   const goInventarioTab = (key) => {
     navigate(`/dashboard/inventario?tab=${key}`);
   };
 
+  const goSeguridadTab = (key) => {
+    navigate(`/dashboard/seguridad?tab=${key}`);
+  };
+
   return (
     <div className="top-navbar">
-      <div>{isInventario ? <InventoryTabsOverflow activeKey={activeKey} onGoTab={goInventarioTab} /> : null}</div>
+      <div>
+        {isInventario ? (
+          <InventoryTabsOverflow
+            tabs={INVENTORY_TABS}
+            activeKey={activeInventoryKey}
+            onGoTab={goInventarioTab}
+          />
+        ) : null}
+        {isSeguridad ? (
+          <InventoryTabsOverflow
+            tabs={SECURITY_TABS}
+            activeKey={activeSecurityKey}
+            onGoTab={goSeguridadTab}
+          />
+        ) : null}
+      </div>
 
       <div className="user-profile-container" onClick={toggleDropdown}>
         <div className="user-profile">
@@ -230,7 +266,7 @@ const Navbar = () => {
               </li>
               <li onClick={handleLogout}>
                 <i className="bi bi-box-arrow-right" />
-                Cerrar Sesión
+                Cerrar Sesion
               </li>
             </ul>
           </div>
