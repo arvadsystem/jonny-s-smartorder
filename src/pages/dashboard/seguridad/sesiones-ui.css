@@ -137,30 +137,41 @@
   background: #f3fff8;
 }
 
-.sec-badge {
+.sec-sesiones-table .sec-badge {
+  display: inline-flex !important;
+  width: fit-content;
+  max-width: max-content;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  white-space: nowrap;
+  line-height: 1;
+  vertical-align: middle;
   border-radius: 999px;
   font-weight: 700;
   font-size: 0.72rem;
   padding: 0.36rem 0.62rem;
   border: 1px solid transparent;
+  background-color: #f2f4f6 !important;
+  color: #576371 !important;
 }
 
-.sec-badge-active {
-  background: #e9f8ef;
-  color: #1f6f45;
-  border-color: #bde6cb;
+.sec-sesiones-table .sec-badge-active {
+  background-color: #e9f8ef !important;
+  color: #1f6f45 !important;
+  border-color: #bde6cb !important;
 }
 
-.sec-badge-closed {
-  background: #f2f4f6;
-  color: #576371;
-  border-color: #dbe1e6;
+.sec-sesiones-table .sec-badge-closed {
+  background-color: #f2f4f6 !important;
+  color: #576371 !important;
+  border-color: #dbe1e6 !important;
 }
 
-.sec-badge-fail {
-  background: #fdecef;
-  color: #8a1f2f;
-  border-color: #f4c1ca;
+.sec-sesiones-table .sec-badge-fail {
+  background-color: #fdecef !important;
+  color: #8a1f2f !important;
+  border-color: #f4c1ca !important;
 }
 
 @media (max-width: 992px) {
@@ -190,6 +201,11 @@
 
   .sec-sesiones-table-responsive {
     max-height: none;
+  }
+
+  .sec-sesiones-table .sec-badge {
+    font-size: 0.7rem;
+    padding: 0.32rem 0.56rem;
   }
 }
 
