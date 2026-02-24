@@ -9,26 +9,43 @@ const normalizeCategoriaNombre = (value) =>
     .toLowerCase()
     .trim();
 
+const getCategoriaDisplayName = (nombre) => {
+  const n = normalizeCategoriaNombre(nombre);
+
+  if (n.includes('perro caliente') || n.includes('perros calientes')) {
+    return 'Hot dog';
+  }
+
+  return nombre || 'Categoria';
+};
+
 const getCategoriaEmoji = (nombre) => {
   const n = normalizeCategoriaNombre(nombre);
 
-  if (!n) return '🍽️';
-  if (n.includes('hamburgues')) return '🍔';
-  if (n.includes('taco') || n.includes('birria')) return '🌮';
-  if (n.includes('hot dog') || n.includes('hotdog')) return '🌭';
-  if (n.includes('alita') || n.includes('tender') || n.includes('boneless')) return '🍗';
-  if (n.includes('jugo')) return '🧃';
-  if (n.includes('refresco') || n.includes('bebida') || n.includes('soda')) return '🥤';
-  if (n.includes('agua')) return '💧';
-  if (n.includes('cerveza') || n.includes('beer')) return '🍺';
-  if (n.includes('salsa')) return '🌶️';
-  if (n.includes('snack') || n.includes('nacho') || n.includes('papa')) return '🍟';
-  if (n.includes('sarita') || n.includes('helado') || n.includes('ice cream')) return '🍦';
-  if (n.includes('postre') || n.includes('dessert')) return '🍰';
-  if (n.includes('cafe') || n.includes('coffee')) return '☕';
-  if (n.includes('pizza')) return '🍕';
+  if (!n) return '\u{1F37D}\uFE0F'; // 🍽️
+  if (n.includes('hamburgues')) return '\u{1F354}'; // 🍔
+  if (n.includes('taco') || n.includes('birria')) return '\u{1F32E}'; // 🌮
+  if (
+    n.includes('hot dog') ||
+    n.includes('hotdog') ||
+    n.includes('perro caliente') ||
+    n.includes('perros calientes')
+  ) {
+    return '\u{1F32D}'; // 🌭
+  }
+  if (n.includes('alita') || n.includes('tender') || n.includes('boneless')) return '\u{1F357}'; // 🍗
+  if (n.includes('jugo')) return '\u{1F9C3}'; // 🧃
+  if (n.includes('refresco') || n.includes('bebida') || n.includes('soda')) return '\u{1F964}'; // 🥤
+  if (n.includes('agua')) return '\u{1F4A7}'; // 💧
+  if (n.includes('cerveza') || n.includes('beer')) return '\u{1F37A}'; // 🍺
+  if (n.includes('salsa')) return '\u{1F336}\uFE0F'; // 🌶️
+  if (n.includes('snack') || n.includes('nacho') || n.includes('papa') || n.includes('botana')) return '\u{1F35F}'; // 🍟
+  if (n.includes('sarita') || n.includes('helado') || n.includes('ice cream')) return '\u{1F366}'; // 🍦
+  if (n.includes('postre') || n.includes('dessert')) return '\u{1F370}'; // 🍰
+  if (n.includes('cafe') || n.includes('coffee')) return '\u{2615}'; // ☕
+  if (n.includes('pizza')) return '\u{1F355}'; // 🍕
 
-  return '🍽️';
+  return '\u{1F37D}\uFE0F'; // 🍽️
 };
 
 const CategoryIcon = ({ nombre, className }) => (
@@ -44,6 +61,7 @@ const CategorySelector = ({ categorias, selected, onSelect }) => {
         const isActive =
           Number(selected?.id_tipo_departamento) ===
           Number(categoria?.id_tipo_departamento);
+        const label = getCategoriaDisplayName(categoria?.nombre_departamento);
 
         return (
           <button
@@ -52,15 +70,13 @@ const CategorySelector = ({ categorias, selected, onSelect }) => {
             aria-pressed={isActive}
             className={`inv-prod-toolbar-btn menu-pos-cat-chip ${isActive ? 'is-on' : ''}`}
             onClick={() => onSelect(categoria)}
-            title={categoria?.nombre_departamento || 'Categoria'}
+            title={label}
           >
             <CategoryIcon
               nombre={categoria?.nombre_departamento}
               className="menu-pos-cat-icon"
             />
-            <span className="menu-pos-cat-label text-truncate">
-              {categoria?.nombre_departamento || 'Categoria'}
-            </span>
+            <span className="menu-pos-cat-label text-truncate">{label}</span>
           </button>
         );
       })}
@@ -141,6 +157,8 @@ const Menu = () => {
     console.log('Agregar al carrito (HU-66):', producto);
   };
 
+  const selectedLabel = getCategoriaDisplayName(selected?.nombre_departamento);
+
   return (
     <div className="container-fluid p-3">
       <div className="card shadow-sm mb-3 inv-prod-card menu-pos-shell">
@@ -157,18 +175,14 @@ const Menu = () => {
 
           <div className="inv-prod-header-actions">
             {!loading ? (
-              <span className="inv-prod-active-filter-pill">
-                {categorias.length} categorias
-              </span>
+              <span className="inv-prod-active-filter-pill">{categorias.length} categorias</span>
             ) : null}
           </div>
         </div>
 
         <div className="card-body">
-          {/* Error categorías */}
           {error && <div className="alert alert-danger mb-3">{error}</div>}
 
-          {/* Categorías */}
           {!loading && !error && (
             <CategorySelector
               categorias={categorias}
@@ -177,21 +191,17 @@ const Menu = () => {
             />
           )}
 
-          {/* Info categoría seleccionada */}
           {!loading && selected && (
             <div className="alert alert-secondary mt-3 mb-0">
-              Categoría seleccionada: <b>{selected.nombre_departamento}</b>
+              Categoria seleccionada: <b>{selectedLabel}</b>
             </div>
           )}
         </div>
       </div>
 
-      {/* HU-65: Productos */}
       {!loading && !error && selected && (
         <div className="mt-3">
-          {errorProductos && (
-            <div className="alert alert-danger">{errorProductos}</div>
-          )}
+          {errorProductos && <div className="alert alert-danger">{errorProductos}</div>}
 
           <ProductoGrid
             productos={productos}
