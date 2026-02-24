@@ -7,7 +7,7 @@ import Can from "../common/Can";
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
 
   // ==============================
   // MENU PRINCIPAL
@@ -58,16 +58,15 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
     navigate('/', { replace: true });
   };
 
-  const userName = user?.nombre_usuario || 'Usuario';
-  const userRole = user?.rol === 1 ? 'Administrador' : 'Empleado';
-  const userInitial = userName.charAt(0).toUpperCase();
-
   return (
     <div className={`sidebar-wrapper ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
         <div className="brand">
           <img className="brand-logo" src={logo} alt="Jonny's" />
-          <h4>Jonny's Smart</h4>
+          <div className="brand-copy">
+            <h4>Jonny's Smart</h4>
+            <p>Sistema de gestión</p>
+          </div>
         </div>
 
         <button
@@ -137,10 +136,11 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
 
       <div className="sidebar-footer">
         <div className="user-profile" onClick={handleLogout} title="Cerrar Sesión">
-          <div className="user-avatar">{userInitial}</div>
+          <div className="user-avatar is-logout" aria-hidden="true">
+            <i className="bi bi-box-arrow-right" />
+          </div>
           <div className="user-info">
-            <span className="user-name">{userName}</span>
-            <span className="user-email">{userRole}</span>
+            <span className="user-name">Salir</span>
           </div>
         </div>
       </div>
