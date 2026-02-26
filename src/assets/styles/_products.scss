@@ -43,11 +43,53 @@
   font-size: 0.82rem;
 }
 
+// NEW: tipografia de titulos principales mas grande para los 3 submodulos de Inventario (comparten `inv-prod-*`).
+// WHY: reforzar jerarquia visual en encabezados de pantalla sin cambiar layout ni componentes.
+// IMPACT: solo tipografia de titulo/subtitulo en cards de Inventario; sin impacto funcional.
+.inv-prod-card .inv-prod-title {
+  font-size: 1.16rem;
+  font-weight: 900;
+  line-height: 1.15;
+  letter-spacing: 0.12px;
+}
+
+.inv-prod-card .inv-prod-subtitle {
+  font-size: 0.88rem;
+  line-height: 1.28;
+}
+
 .inv-prod-header-actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+// NEW: evita salto de linea en desktop para alinear buscador + Filtros + Nuevo como en otros submodulos.
+// WHY: el buscador estaba ocupando demasiado ancho y empujaba el boton "Nuevo" a una segunda fila.
+// IMPACT: solo layout del header de Productos en desktop; mobile mantiene su comportamiento responsive.
+@media (min-width: 768px) {
+  .inv-prod-header-actions {
+    flex-wrap: nowrap;
+  }
+}
+
+// NEW: buscador local de Productos en header usando el patrón visual de Insumos.
+// WHY: mover búsqueda fuera del modal de filtros y mantener acceso directo en desktop/mobile.
+// IMPACT: solo layout/estilo del header de Productos; la lógica sigue usando `search`.
+.inv-prod-header-search {
+  flex: 0 1 clamp(240px, 24vw, 340px);
+  min-width: 240px;
+  max-width: 340px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.inv-prod-header-search:focus-within {
+  border-color: rgba(178, 45, 48, 0.42);
+  box-shadow:
+    0 0 0 0.16rem rgba(178, 45, 48, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
 .inv-prod-toolbar-btn {
@@ -342,6 +384,348 @@
   }
 }
 
+// NEW: shell modal local de Productos (Filtros/Nuevo) renderizado en portal con overlay glass centrado.
+// WHY: evitar recortes por `overflow` del card y reemplazar el drawer lateral por modal bottom-up.
+// IMPACT: aplica solo a clases `inv-prod-pmodal*`; no modifica el drawer de detalle ni otros modales.
+.inv-prod-pmodal {
+  position: fixed;
+  inset: 0;
+  z-index: 2480;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.inv-prod-pmodal.show {
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.inv-prod-pmodal__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(23, 8, 10, 0.24);
+  opacity: 0;
+  transition: opacity 220ms ease, backdrop-filter 220ms ease, -webkit-backdrop-filter 220ms ease;
+  backdrop-filter: blur(4px) saturate(118%);
+  -webkit-backdrop-filter: blur(4px) saturate(118%);
+}
+
+.inv-prod-pmodal.show .inv-prod-pmodal__overlay {
+  opacity: 1;
+}
+
+.inv-prod-pmodal__viewport {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 2.6vw, 24px);
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__viewport {
+  // NEW: scroll exterior para filtros (overlay/viewport), evitando scroll interno del modal.
+  // WHY: cumplir UX de filtros "directo" y conservar accesibilidad cuando el viewport es bajo.
+  // IMPACT: solo modal de filtros; el modal de Nuevo mantiene scroll interno.
+  place-items: start center;
+  overflow-y: auto;
+}
+
+.inv-prod-pmodal__panel {
+  position: relative;
+  width: min(96vw, 1100px);
+  max-height: min(90vh, 980px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow:
+    0 24px 42px rgba(var(--c-shadow-rgb), 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  overflow: hidden;
+  opacity: 0;
+  transform: translate3d(0, 24px, 0) scale(0.98);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+}
+
+.inv-prod-pmodal.show .inv-prod-pmodal__panel {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.inv-prod-pmodal__panel--filters {
+  width: clamp(760px, 70vw, 1100px);
+}
+
+.inv-prod-pmodal__panel--create {
+  width: clamp(860px, 75vw, 1200px);
+}
+
+.inv-prod-pmodal__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.85rem 0.95rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(10px) saturate(135%);
+  -webkit-backdrop-filter: blur(10px) saturate(135%);
+  overflow: hidden;
+}
+
+.inv-prod-pmodal__header-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.inv-prod-pmodal__header-copy .inv-prod-drawer-title,
+.inv-prod-pmodal__header-copy .inv-prod-drawer-sub {
+  max-width: 100%;
+}
+
+.inv-prod-pmodal__header .inv-cat-v2__drawer-mark {
+  right: 62px;
+  top: 10px;
+}
+
+.inv-prod-pmodal__counter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.18rem 0.56rem;
+  border-radius: 999px;
+  border: 1px solid rgba(178, 45, 48, 0.18);
+  background: rgba(178, 45, 48, 0.08);
+  color: #7a1e24;
+  font-size: 0.73rem;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.inv-prod-pmodal__form-shell {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+.inv-prod-pmodal__body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.9rem;
+  display: grid;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__panel {
+  max-height: none;
+  margin-block: auto;
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__body,
+.inv-prod-pmodal__body--filters {
+  overflow: visible;
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__body {
+  padding-top: 0.75rem;
+}
+
+.inv-prod-pmodal__lead {
+  margin-bottom: 0;
+}
+
+.inv-prod-pmodal__sections {
+  display: grid;
+  gap: 10px;
+}
+
+.inv-prod-pmodal__sections--filters {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inv-prod-pmodal__sections--filters .inv-prod-pmodal__section:last-child {
+  grid-column: 1 / -1;
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__sections--filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__sections--filters .inv-prod-pmodal__section:last-child {
+  grid-column: auto;
+}
+
+.inv-prod-pmodal__section {
+  display: grid;
+  gap: 10px;
+  padding: 0.8rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__section {
+  padding: 0.72rem;
+  gap: 8px;
+}
+
+.inv-prod-pmodal__section-head {
+  display: grid;
+  gap: 2px;
+}
+
+.inv-prod-pmodal__section-title {
+  color: #17080a;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.inv-prod-pmodal__section-sub {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.inv-prod-pmodal__panel .form-control,
+.inv-prod-pmodal__panel .form-select {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 8px 16px rgba(var(--c-shadow-rgb), 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.inv-prod-pmodal__panel .form-control:hover:not(:disabled),
+.inv-prod-pmodal__panel .form-select:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.52);
+}
+
+.inv-prod-pmodal__panel .form-control:focus,
+.inv-prod-pmodal__panel .form-select:focus {
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.inv-prod-pmodal__footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0.8rem 0.9rem 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(10px) saturate(135%);
+  -webkit-backdrop-filter: blur(10px) saturate(135%);
+}
+
+.inv-prod-pmodal--filters .inv-prod-pmodal__footer {
+  position: static;
+  padding-top: 0.72rem;
+}
+
+.inv-prod-pmodal__footer .btn {
+  min-height: 40px;
+}
+
+.inv-prod-pmodal__footer--create .inv-prod-btn-primary {
+  min-width: 136px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  // NEW: fallback de opacidad para navegadores sin blur en el modal de Productos.
+  // WHY: mantener contraste legible en overlay/panel sin depender de `backdrop-filter`.
+  // IMPACT: solo cambia opacidades del shell `inv-prod-pmodal*`; no toca layout ni animación.
+  .inv-prod-pmodal__overlay {
+    background: rgba(23, 8, 10, 0.3);
+  }
+
+  .inv-prod-pmodal__panel {
+    background: rgba(255, 255, 255, 0.95);
+  }
+
+  .inv-prod-pmodal__header,
+  .inv-prod-pmodal__footer {
+    background: rgba(255, 255, 255, 0.92);
+  }
+}
+
+@media (max-width: 991.98px) {
+  .inv-prod-pmodal__panel--filters,
+  .inv-prod-pmodal__panel--create {
+    width: min(96vw, 980px);
+  }
+
+  .inv-prod-pmodal__sections--filters {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-prod-pmodal__sections--filters .inv-prod-pmodal__section:last-child {
+    grid-column: auto;
+  }
+
+  .inv-prod-pmodal--filters .inv-prod-pmodal__sections--filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-prod-pmodal__viewport {
+    padding: 10px;
+  }
+
+  .inv-prod-pmodal__panel {
+    width: 96vw;
+    max-height: 90vh;
+    border-radius: 16px;
+  }
+
+  .inv-prod-pmodal__header {
+    padding: 0.78rem 0.8rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .inv-prod-pmodal__header .inv-cat-v2__drawer-mark {
+    right: 54px;
+    top: 8px;
+    font-size: 1.8rem;
+  }
+
+  .inv-prod-pmodal__counter {
+    order: 3;
+    margin-right: auto;
+  }
+
+  .inv-prod-pmodal__footer {
+    justify-content: stretch;
+    padding: 0.75rem 0.8rem 0.8rem;
+  }
+
+  .inv-prod-pmodal__footer .btn {
+    width: 100%;
+  }
+
+  .inv-prod-header-search {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+}
+
 .inv-prod-section-head {
   margin-bottom: 0.75rem;
 }
@@ -525,6 +909,17 @@
   font-weight: 700;
 }
 
+// NEW: labels de formularios/modales de Productos con mayor diferenciacion visual.
+// WHY: separar mejor label vs input/valor manteniendo consistencia con Categorias e Insumos.
+// IMPACT: solo tipografia local en formularios de Productos; validaciones y campos no cambian.
+.inv-prod-create-form .form-label,
+.inv-prod-filters-grid .form-label,
+.inv-prod-modal-body .form-label {
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
+}
+
 // AJUSTE: layout premium del formulario para distribuir campos y media en desktop.
 .inv-prod-create-form-premium {
   align-items: stretch;
@@ -590,6 +985,12 @@
 }
 
 .inv-prod-active-filter-pill {
+  // NEW: soporte de layout para texto + botón X de limpiar filtros.
+  // WHY: integrar el atajo dentro del pill sin crear estilos globales adicionales.
+  // IMPACT: solo presentación del pill compartido en Inventario; no afecta lógica.
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid rgba(178, 45, 48, 0.38);
   border-radius: 999px;
   background: rgba(178, 45, 48, 0.08);
@@ -597,6 +998,36 @@
   padding: 0.16rem 0.58rem;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.inv-prod-active-filter-pill__clear {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(122, 30, 36, 0.08);
+  color: inherit;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.inv-prod-active-filter-pill__clear i {
+  font-size: 0.65rem;
+}
+
+.inv-prod-active-filter-pill__clear:hover {
+  background: rgba(122, 30, 36, 0.16);
+  color: #5e161c;
+}
+
+.inv-prod-active-filter-pill__clear:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.13rem rgba(178, 45, 48, 0.18);
 }
 
 .inv-prod-filters {
@@ -902,6 +1333,20 @@
   border-bottom: 1px solid rgba(237, 235, 179, 0.62) !important;
 }
 
+// NEW: titulos de modales de Productos con mayor jerarquia visual.
+// WHY: mejorar legibilidad de encabezados sin alterar estructura del modal.
+// IMPACT: solo tipografia de header en modales de Productos (crear/eliminar).
+.inv-prod-modal-header .fw-semibold {
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.inv-prod-modal-header .small {
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
 .inv-prod-modal-header.danger {
   background: linear-gradient(145deg, rgba(122, 30, 36, 0.96), rgba(178, 45, 48, 0.94));
   color: #f7f7f7;
@@ -1172,11 +1617,12 @@
   overflow: hidden;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(var(--c-shadow-rgb), 0.12);
-  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease, opacity 180ms ease;
   // NUEVO: layout interno flex para igualar altura y anclar acciones al fondo.
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 292px;
 }
 
 .inv-prod-catalog-card:hover {
@@ -1192,6 +1638,15 @@
 
 .inv-prod-catalog-card.is-selected {
   border-color: rgba(178, 45, 48, 0.55);
+}
+
+// NEW: estado visual de salida para eliminar una card sin refrescar toda la grilla.
+// WHY: suavizar la remoción local tras delete exitoso manteniendo estable el carrusel.
+// IMPACT: solo presentación temporal con clase `is-removing`; no altera datos.
+.inv-prod-catalog-card.is-removing {
+  opacity: 0;
+  transform: translateY(6px) scale(0.985);
+  pointer-events: none;
 }
 
 .inv-prod-thumb-wrap {
@@ -1509,11 +1964,18 @@
 .inv-prod-drawer-title {
   color: #17080a;
   font-weight: 800;
+  // NEW: titulos de drawers mas notorios para Inventario.
+  // WHY: homogeneizar jerarquia visual en headers de drawers de Productos/Insumos/Categorias.
+  // IMPACT: solo tipografia; no cambia layout funcional del drawer.
+  font-size: 1.08rem;
+  line-height: 1.18;
+  letter-spacing: 0.12px;
 }
 
 .inv-prod-drawer-sub {
   color: rgba(82, 44, 34, 0.78);
   font-size: 0.8rem;
+  line-height: 1.25;
 }
 
 .inv-prod-drawer-close {
@@ -1618,8 +2080,12 @@
   display: block;
   margin-bottom: 2px;
   color: rgba(82, 44, 34, 0.78);
-  font-size: 0.74rem;
-  font-weight: 700;
+  // NEW: labels de campos en drawer de Productos con mayor jerarquia tipografica.
+  // WHY: mejorar lectura de formularios y consistencia con otros submodulos de Inventario.
+  // IMPACT: solo tipografia; inputs/validaciones sin cambios.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
 }
 
 .inv-prod-drawer-form input {
@@ -1629,6 +2095,16 @@
   background: #fff;
   color: #17080a;
   padding: 0.42rem 0.58rem;
+}
+
+.inv-prod-drawer-form input.is-invalid {
+  border-color: rgba(178, 45, 48, 0.58);
+  box-shadow: 0 0 0 0.16rem rgba(178, 45, 48, 0.12);
+}
+
+.inv-prod-drawer-form .invalid-feedback {
+  font-size: 0.73rem;
+  font-weight: 700;
 }
 
 .inv-prod-drawer-form input:disabled {
@@ -1651,7 +2127,8 @@
 .inv-prod-drawer-grid span {
   display: block;
   color: rgba(82, 44, 34, 0.75);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .inv-prod-drawer-grid strong {
@@ -1666,8 +2143,10 @@
 
 .inv-prod-drawer-section-title {
   color: #17080a;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.12px;
   margin-bottom: 8px;
 }
 
@@ -1799,6 +2278,8 @@
 @media (prefers-reduced-motion: reduce) {
   .inv-prod-catalog-card,
   .inv-prod-toolbar-btn,
+  .inv-prod-pmodal__overlay,
+  .inv-prod-pmodal__panel,
   .inv-prod-drawer,
   .inv-prod-drawer-backdrop,
   .inv-prod-skeleton-card,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
+import { toUpperSafe } from '../../../utils/toUpperSafe';
 
 const DEFAULT_FILTERS = Object.freeze({ estados: [], almacen: 'todos', categoria: 'todos', sortBy: 'recientes' });
 const STATUS_CHIPS = [
@@ -18,6 +19,11 @@ const SORTS = [
   ['stock_asc', 'Stock menor'],
   ['cad_asc', 'Caducidad proxima']
 ];
+
+// NEW: campos de texto elegibles para mayúsculas automáticas en formularios de Insumos.
+// WHY: aplicar la regla con whitelist local y evitar afectar números, fechas o selects.
+// IMPACT: `setField` usa esta whitelist en create/edit sin alterar validaciones ni payloads.
+const UPPERCASE_INSUMO_FIELDS = new Set(['nombre_insumo', 'descripcion']);
 
 const emptyForm = () => ({
   nombre_insumo: '',
@@ -104,6 +110,10 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
   const [search, setSearch] = useState('');
   const [appliedFilters, setAppliedFilters] = useState(() => cloneFilters(DEFAULT_FILTERS));
   const [draftFilters, setDraftFilters] = useState(() => cloneFilters(DEFAULT_FILTERS));
+  // NEW: toggle admin para incluir insumos inactivos en el GET del tab de Inventario.
+  // WHY: backend devuelve activos por defecto tras cambiar DELETE => inactivar.
+  // IMPACT: solo afecta la fuente del listado; filtros locales siguen iguales.
+  const [showInactiveInsumos, setShowInactiveInsumos] = useState(false);
 
   const [drawer, setDrawer] = useState(null); // null | filters | form
   const [drawerMode, setDrawerMode] = useState('create'); // create | edit
@@ -293,14 +303,14 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
     setLoading(true);
     setError('');
     try {
-      const data = await inventarioService.getInsumos();
+      const data = await inventarioService.getInsumos({ incluirInactivos: showInactiveInsumos });
       setInsumos(Array.isArray(data) ? data : []);
     } catch (e) {
       setError(apiError(e, 'ERROR CARGANDO INSUMOS'));
     } finally {
       setLoading(false);
     }
-  }, [apiError]);
+  }, [apiError, showInactiveInsumos]);
 
   const cargarAlmacenes = useCallback(async () => {
     setLoadingAlmacenes(true);
@@ -403,12 +413,16 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
 
   const setField = useCallback((field, value) => {
     setDrawerMsg('');
+    // NEW: normalización segura de mayúsculas centralizada para create/edit de Insumos.
+    // WHY: evitar duplicar lógica en cada `onChange` y mantener exclusiones por campo.
+    // IMPACT: solo transforma `nombre_insumo` y `descripcion`; demás campos permanecen igual.
+    const nextValue = UPPERCASE_INSUMO_FIELDS.has(String(field)) ? toUpperSafe(value, field) : value;
     if (drawerMode === 'create') {
-      setForm((s) => ({ ...s, [field]: value }));
+      setForm((s) => ({ ...s, [field]: nextValue }));
       setCreateErrors((s) => (s[field] ? { ...s, [field]: '' } : s));
       return;
     }
-    setEditForm((s) => ({ ...(s || emptyForm()), [field]: value }));
+    setEditForm((s) => ({ ...(s || emptyForm()), [field]: nextValue }));
     setEditErrors((s) => (s[field] ? { ...s, [field]: '' } : s));
   }, [drawerMode]);
 
@@ -486,9 +500,9 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
       if (Number(selectedId) === Number(confirmModal.idToDelete)) { closeDrawer(); cancelEdit(); }
       closeConfirm();
       await cargarInsumos();
-      safeToast('ELIMINADO', 'EL INSUMO SE ELIMINO CORRECTAMENTE.', 'success');
+      safeToast('INACTIVADO', 'EL INSUMO SE INACTIVO CORRECTAMENTE.', 'success');
     } catch (e) {
-      setError(apiError(e, 'ERROR ELIMINANDO INSUMO'));
+      setError(apiError(e, 'ERROR INACTIVANDO INSUMO'));
       closeConfirm();
     } finally {
       setDeleting(false);
@@ -865,7 +879,35 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
           <div className="inv-prod-results-meta">
             <span>{loading ? 'Cargando insumos...' : `${filtered.length} resultados`}</span>
             <span>{loading ? '' : `Total: ${insumos.length}`}</span>
-            {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
+            {/* NEW: toggle admin para incluir inactivos en la consulta del tab. */}
+            {/* WHY: el backend lista solo activos por defecto con soft delete. */}
+            {/* IMPACT: recarga el listado con el mismo endpoint (`?incluir_inactivos=1`). */}
+            <label className="form-check form-switch mb-0 inv-catpro-inline-toggle">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                checked={showInactiveInsumos}
+                onChange={(e) => setShowInactiveInsumos(e.target.checked)}
+              />
+              <span className="form-check-label">Mostrar inactivos</span>
+            </label>
+            {hasActiveFilters ? (
+              <span className="inv-prod-active-filter-pill">
+                <span>Filtros activos</span>
+                {/* NEW: atajo de limpieza total de filtros desde el resumen del listado. */}
+                {/* WHY: reutilizar `clearFilters` y evitar pasos extra para resetear filtros aplicados. */}
+                {/* IMPACT: no cambia cómo se filtra; solo agrega un acceso rápido. */}
+                <button
+                  type="button"
+                  className="inv-prod-active-filter-pill__clear"
+                  onClick={clearFilters}
+                  aria-label="Limpiar filtros"
+                  title="Limpiar filtros"
+                >
+                  <i className="bi bi-x-lg" aria-hidden="true" />
+                </button>
+              </span>
+            ) : null}
             {!estadoField ? <span className="inv-ins-inline-note">{'// TODO: backend support required (inactivo)'}</span> : null}
           </div>
 
@@ -1121,7 +1163,7 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
           <div className="inv-ins-drawer-footer">
             <button type="button" className="btn inv-prod-btn-subtle" onClick={closeDrawer} disabled={creating || savingEdit || togglingEstado}>Cancelar</button>
             {drawerMode === 'edit' ? (
-              <button type="button" className="btn inv-prod-btn-danger-lite" onClick={() => setConfirm(selectedInsumo?.id_insumo, selectedInsumo?.nombre_insumo)} disabled={savingEdit || togglingEstado || !selectedInsumo}>Eliminar</button>
+              <button type="button" className="btn inv-prod-btn-danger-lite" onClick={() => setConfirm(selectedInsumo?.id_insumo, selectedInsumo?.nombre_insumo)} disabled={savingEdit || togglingEstado || !selectedInsumo}>Inactivar</button>
             ) : (
               <button type="button" className="btn inv-prod-btn-subtle" onClick={resetCreate} disabled={creating}>Limpiar</button>
             )}
@@ -1137,18 +1179,18 @@ const InsumosTab = ({ openToast, categorias = [] }) => {
             <div className="modal-content shadow inv-prod-modal-content inv-prod-delete-modal">
               <div className="modal-header d-flex align-items-center justify-content-between inv-prod-modal-header danger">
                 <div>
-                  <div className="fw-semibold">Confirmar eliminacion</div>
-                  <div className="small text-muted">Esta accion no se puede deshacer</div>
+                  <div className="fw-semibold">Confirmar inactivacion</div>
+                  <div className="small text-muted">El insumo quedara marcado como inactivo</div>
                 </div>
                 <button type="button" className="btn btn-sm btn-light inv-prod-modal-close" onClick={closeConfirm}><i className="bi bi-x-lg" /></button>
               </div>
               <div className="modal-body inv-prod-modal-body">
-                <div className="mb-2">Deseas eliminar este insumo?</div>
+                <div className="mb-2">Deseas inactivar este insumo?</div>
                 {confirmModal.nombre ? <div className="text-muted small inv-prod-delete-name"><i className="bi bi-box2-heart" /> <span className="fw-semibold">{confirmModal.nombre}</span></div> : null}
               </div>
               <div className="modal-footer d-flex gap-2 inv-prod-modal-footer">
                 <button className="btn btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={closeConfirm} disabled={deleting}>Cancelar</button>
-                <button className="btn btn-danger inv-prod-btn-danger" type="button" onClick={deleteConfirmed} disabled={deleting}>{deleting ? 'Eliminando...' : 'Eliminar'}</button>
+                <button className="btn btn-danger inv-prod-btn-danger" type="button" onClick={deleteConfirmed} disabled={deleting}>{deleting ? 'Inactivando...' : 'Inactivar'}</button>
               </div>
             </div>
           </div>

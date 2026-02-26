@@ -1,6 +1,8 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
 import { useAuth } from '../../../hooks/useAuth';
+import { toUpperSafe } from '../../../utils/toUpperSafe';
 
 const getStockMeta = (cantidad) => {
   const qty = Number.parseInt(String(cantidad ?? '0'), 10);
@@ -15,6 +17,11 @@ const buildCreateImageState = () => ({
   loading: false,
   error: ''
 });
+
+// NEW: limite superior de INT32 usado por la BD/SPs para IDs de productos.
+// WHY: prevenir que un timestamp en ms (Date.now()) se use como `id_producto` en mutaciones.
+// IMPACT: validacion frontend local; no cambia endpoints ni payloads validos.
+const PRODUCTO_DB_INT32_MAX = 2147483647;
 
 const ProductosTab = ({ categorias = [], openToast }) => {
   // NUEVO: toma contexto de sesion existente para segmentar historial KPI por usuario/empresa/sucursal.
@@ -53,6 +60,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [almacenFiltro, setAlmacenFiltro] = useState('todos'); // todos | id_almacen
   const [deptoFiltro, setDeptoFiltro] = useState('todos'); // todos | id_tipo_departamento
   const [sortBy, setSortBy] = useState('recientes');
+  // NEW: toggle admin para incluir productos inactivos en el listado del tab.
+  // WHY: backend devuelve activos por defecto despues del cambio a soft delete.
+  // IMPACT: solo afecta la carga del listado de Productos; filtros locales se mantienen.
+  const [showInactiveProductos, setShowInactiveProductos] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [createPanelOpen, setCreatePanelOpen] = useState(false);
   // NUEVO: feature flag para mantener fallback del formulario legacy sin eliminar código funcional.
@@ -92,6 +103,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const currentPage = 1;
   const pageSize = 8;
   const renderLegacyLayouts = false;
+  // NEW: flag runtime local para conservar el código legacy de shells sin renderizarlo por defecto.
+  // WHY: evitar errores de lint por `false && (...)` mientras se mantiene un fallback visual para depuración.
+  // IMPACT: desactivado por defecto; no afecta la lógica funcional de Productos.
+  const enableLegacyProductosModalShellFallback =
+    typeof window !== 'undefined' && window.__INV_PRODUCTS_LEGACY_MODAL_SHELL__ === true;
 
   // ==============================
   // MODAL CREAR (RESPONSIVE)
@@ -136,10 +152,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     nombre: ''
   });
   const [deleting, setDeleting] = useState(false);
+  // NEW: error local del modal de confirmación de eliminar para mantenerlo abierto en fallos.
+  // WHY: mostrar feedback en el propio modal sin cerrarlo cuando la API responde con error.
+  // IMPACT: solo UX del confirm modal; no cambia la lógica de eliminación.
+  const [confirmDeleteError, setConfirmDeleteError] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerEditMode, setDrawerEditMode] = useState(false);
   const [selectedProductoId, setSelectedProductoId] = useState(null);
   const [localEstadoMap, setLocalEstadoMap] = useState({});
+  // NEW: marcas temporales para animar salida de cards eliminadas localmente.
+  // WHY: suavizar la desaparición del item sin refetch global de la lista.
+  // IMPACT: solo controla una clase CSS de transición en cards de Productos.
+  const [removingProductoIds, setRemovingProductoIds] = useState({});
   const [imageErrorMap, setImageErrorMap] = useState({});
   const [drawerMessage, setDrawerMessage] = useState('');
   const [togglingEstado, setTogglingEstado] = useState(false);
@@ -149,15 +173,37 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const createSectionRef = useRef(null);
   const [carouselState, setCarouselState] = useState({ canPrev: false, canNext: false });
   const [kpiHistory, setKpiHistory] = useState([]);
+  // NEW: target de portal local para modales de Productos.
+  // WHY: sacar Filtros/Nuevo del card para evitar recortes por `overflow: hidden`.
+  // IMPACT: solo define el nodo de render del shell visual; no cambia datos ni handlers.
+  const productsModalPortalTarget = typeof document !== 'undefined' ? document.body : null;
+  // NEW: registro de timeouts para remoción visual suave de cards sin fugas en unmount.
+  // WHY: permitir transición de salida al eliminar sin refrescar toda la lista.
+  // IMPACT: solo afecta la UX de remoción local; no toca backend ni filtros.
+  const removeCardTimeoutsRef = useRef(new Map());
+  // NEW: secuencia de IDs temporales negativos (int32-safe) para altas locales sin `id_producto` en respuesta.
+  // WHY: reemplazar el fallback `Date.now()` que produce valores fuera de rango para INT en backend/BD.
+  // IMPACT: solo IDs temporales en frontend; se sincronizan con IDs reales tras recarga silenciosa.
+  const tempProductoIdSeqRef = useRef(-1);
 
   const openConfirmDelete = (id, nombre) => {
+    setConfirmDeleteError('');
     setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
   };
 
   const closeConfirmDelete = () => {
+    setConfirmDeleteError('');
     setConfirmModal({ show: false, idToDelete: null, nombre: '' });
     setDeleting(false);
   };
+
+  // NEW: cierre unificado del modal de Nuevo producto (desktop y flujo mobile legacy).
+  // WHY: reutilizar un solo shell centrado sin tocar `onCrear`, validaciones ni payloads.
+  // IMPACT: solo centraliza el cierre visual del modal de alta en Productos.
+  const closeCreateProductoModal = useCallback(() => {
+    setCreatePanelOpen(false);
+    setShowCreateProductoSheet(false);
+  }, []);
 
   // ==============================
   // HELPERS
@@ -184,6 +230,36 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const sanitizeInteger = (value) => String(value ?? '').replace(/[^\d]/g, '');
 
+  // NEW: normalizador local para campos de texto elegibles del formulario de Productos.
+  // WHY: aplicar mayúsculas de forma segura solo en nombre/descripcion sin afectar números, fechas o selects.
+  // IMPACT: se reutiliza en create/edit; handlers, validaciones y submit permanecen iguales.
+  const normalizeProductoTextInput = useCallback((field, value) => {
+    if (field !== 'nombre_producto' && field !== 'descripcion_producto') return value;
+    return toUpperSafe(value, field);
+  }, []);
+
+  // NEW: valida IDs de productos persistidos contra el rango INT32 usado por la BD.
+  // WHY: cortar mutaciones con IDs temporales/corruptos antes de llegar a `pa_update` / `pa_delete`.
+  // IMPACT: solo prevencion en frontend; IDs validos siguen enviandose igual.
+  const parseProductoPersistedId = useCallback((rawId) => {
+    const parsed = Number.parseInt(String(rawId ?? ''), 10);
+    if (!Number.isSafeInteger(parsed)) return null;
+    if (parsed <= 0) return null;
+    if (parsed > PRODUCTO_DB_INT32_MAX) return null;
+    return parsed;
+  }, []);
+
+  // NEW: genera IDs temporales negativos y seguros para int32 cuando el POST no devuelve ID.
+  // WHY: evitar usar `Date.now()` como ID local y luego enviarlo accidentalmente en edit/delete.
+  // IMPACT: frontend-only; no cambia contratos API ni estructura de datos persistida.
+  const nextTempProductoId = useCallback(() => {
+    const currentRaw = Number(tempProductoIdSeqRef.current ?? -1);
+    const current = Number.isInteger(currentRaw) && currentRaw < 0 ? currentRaw : -1;
+    const next = current - 1;
+    tempProductoIdSeqRef.current = next < -PRODUCTO_DB_INT32_MAX ? -1 : next;
+    return current;
+  }, []);
+
   const formatMoney = (value) => {
     const n = Number.parseFloat(String(value ?? '0'));
     if (Number.isNaN(n)) return 'L. 0.00';
@@ -207,6 +283,26 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     }, {});
   }, []);
 
+  // NEW: sanitiza mensajes crudos de BD/SQL para no exponerlos en la UI de Productos.
+  // WHY: ocultar errores internos como `out of range for type integer` y mostrar feedback util al usuario.
+  // IMPACT: los detalles se pueden seguir ver en consola en desarrollo; la UI recibe mensaje seguro.
+  const toSafeProductoUiErrorMessage = useCallback((status, rawMessage, fallbackMessage) => {
+    const candidate = String(rawMessage || fallbackMessage || 'Error inesperado').trim();
+    const lower = candidate.toLowerCase();
+    const leaksDbDetail =
+      lower.includes('out of range') ||
+      lower.includes('for type integer') ||
+      lower.includes('numeric value out of range') ||
+      lower.includes('sqlstate') ||
+      lower.includes('postgres');
+
+    if (leaksDbDetail || status >= 500) {
+      return 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+    }
+
+    return candidate;
+  }, []);
+
   // NUEVO: centraliza lectura de mensaje y estado para toasts consistentes.
   const handleApiStatusError = useCallback((apiError, fallbackMessage, setFieldErrors) => {
     const status = Number(apiError?.status || 0);
@@ -221,7 +317,19 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         : status === 403
         ? 'No tienes autorizaci\u00F3n para realizar esta acci\u00F3n.'
         : fallbackMessage;
-    const message = String(backendMessage || apiError?.message || fallbackByStatus || 'Error inesperado');
+    const rawMessage = String(backendMessage || apiError?.message || fallbackByStatus || 'Error inesperado');
+    const message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
+
+    // NEW: conserva el detalle interno de error solo en desarrollo cuando se oculta en UI.
+    // WHY: facilitar diagnóstico sin exponer mensajes de BD al usuario final.
+    // IMPACT: solo logs en consola DEV; producción permanece sin cambios visuales.
+    if (import.meta.env.DEV && rawMessage !== message) {
+      console.error('PRODUCTOS API ERROR (detalle interno oculto en UI):', {
+        status,
+        rawMessage,
+        apiError
+      });
+    }
 
     if (typeof setFieldErrors === 'function') {
       const fieldErrors = mapApiFieldErrors(backendData);
@@ -241,7 +349,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     else safeToast('ERROR', message, 'danger');
 
     return message;
-  }, [mapApiFieldErrors, safeToast]);
+  }, [mapApiFieldErrors, safeToast, toSafeProductoUiErrorMessage]);
 
   // NUEVO: genera puntos SVG normalizados para sparkline de KPI.
   const buildSparklinePoints = useCallback((series, width = 120, height = 44, padding = 4) => {
@@ -270,6 +378,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       }
     };
   }, [createImage.previewUrl]);
+
+  useEffect(() => {
+    // NEW: limpia timeouts pendientes de remoción de cards al desmontar el tab.
+    // WHY: evitar callbacks tardíos sobre estado desmontado al cerrar/cambiar de vista.
+    // IMPACT: solo housekeeping de UX local; sin impacto en datos ni API.
+    const timeouts = removeCardTimeoutsRef.current;
+    return () => {
+      if (!timeouts || typeof timeouts.forEach !== 'function') return;
+      timeouts.forEach((timeoutId) => {
+        if (typeof window !== 'undefined') window.clearTimeout(timeoutId);
+      });
+      timeouts.clear();
+    };
+  }, []);
 
   // ==============================
   // MAPS PARA LABELS (NO MOSTRAR IDS)
@@ -333,6 +455,178 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!selectedProductoId) return null;
     return productos.find((p) => Number(p?.id_producto) === Number(selectedProductoId)) || null;
   }, [productos, selectedProductoId]);
+
+  // NEW: normalización local para detectar productos duplicados sin depender del backend.
+  // WHY: prevenir registros repetidos en create/edit usando los campos reales disponibles en el formulario.
+  // IMPACT: validación UX en frontend; backend y contratos permanecen intactos.
+  const normalizeProductoDuplicateText = useCallback(
+    (value) => String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase(),
+    []
+  );
+
+  const normalizeProductoDuplicateId = useCallback((value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isNaN(parsed)) return String(parsed);
+    return raw.toLowerCase();
+  }, []);
+
+  const buildProductoDuplicateKey = useCallback((data) => {
+    const nombre = normalizeProductoDuplicateText(data?.nombre_producto);
+    const categoria = normalizeProductoDuplicateId(data?.id_categoria_producto);
+    const almacen = normalizeProductoDuplicateId(data?.id_almacen);
+    const depto = normalizeProductoDuplicateId(data?.id_tipo_departamento);
+
+    // NEW: no se usa SKU/codigo porque el formulario actual de Productos no expone ese campo.
+    // WHY: aplicar criterio real del modelo disponible en UI (nombre + categoria + almacen + depto opcional).
+    // IMPACT: evita falsos positivos por campos inexistentes; no inventa atributos nuevos.
+    if (!nombre || !categoria || !almacen) return '';
+    return `${nombre}__cat:${categoria}__alm:${almacen}__dep:${depto || '-'}`;
+  }, [normalizeProductoDuplicateId, normalizeProductoDuplicateText]);
+
+  const findDuplicateProducto = useCallback((data, { excludeId = null } = {}) => {
+    const candidateKey = buildProductoDuplicateKey(data);
+    if (!candidateKey) return null;
+
+    return productos.find((item) => {
+      const sameRecord = excludeId !== null && Number(item?.id_producto) === Number(excludeId);
+      if (sameRecord) return false;
+      return buildProductoDuplicateKey(item) === candidateKey;
+    }) || null;
+  }, [buildProductoDuplicateKey, productos]);
+
+  // NEW: helpers locales para crear/editar/eliminar sin recargar visiblemente toda la grilla/carrusel.
+  // WHY: mantener cards estables y reflejar cambios inmediatos tras éxito de la API.
+  // IMPACT: solo sincronización de estado `productos`; no altera llamadas al backend.
+  const patchProductoLocalById = useCallback((id, patch) => {
+    if (!id || !patch || typeof patch !== 'object') return;
+    setProductos((prev) =>
+      prev.map((item) => (
+        Number(item?.id_producto) === Number(id)
+          ? { ...item, ...patch }
+          : item
+      ))
+    );
+  }, []);
+
+  const upsertProductoLocal = useCallback((producto) => {
+    if (!producto || typeof producto !== 'object') return;
+    const productId = Number(producto?.id_producto);
+    setProductos((prev) => {
+      const idx = prev.findIndex((item) => Number(item?.id_producto) === productId);
+      if (idx === -1) return [producto, ...prev];
+      const next = [...prev];
+      next[idx] = { ...prev[idx], ...producto };
+      return next;
+    });
+  }, []);
+
+  // NEW: sincronizacion silenciosa de productos sin vaciar lista ni activar loader global.
+  // WHY: obtener IDs reales despues de crear cuando el backend responde solo con mensaje (sin `id_producto`).
+  // IMPACT: refresca estado local de `productos` sin cambiar contratos API ni UX de loaders.
+  const syncProductosSilently = useCallback(async () => {
+    try {
+      const data = await inventarioService.getProductos({ incluirInactivos: showInactiveProductos });
+      if (!Array.isArray(data)) return false;
+      setProductos(data);
+      return true;
+    } catch (syncError) {
+      // NEW: logging solo en DEV para diagnosticar fallos de sincronizacion sin ensuciar la UI.
+      // WHY: el usuario ya recibe feedback del create; la sincronizacion posterior debe ser silenciosa.
+      // IMPACT: no altera flujos; solo agrega diagnostico en desarrollo.
+      if (import.meta.env.DEV) {
+        console.error('PRODUCTOS syncProductosSilently error:', syncError);
+      }
+      return false;
+    }
+  }, [showInactiveProductos]);
+
+  const removeProductoLocalById = useCallback((id, { animate = false } = {}) => {
+    if (!id) return;
+    const numericId = Number(id);
+    const commitRemove = () => {
+      setProductos((prev) => prev.filter((item) => Number(item?.id_producto) !== numericId));
+      setRemovingProductoIds((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, numericId)) return prev;
+        const next = { ...prev };
+        delete next[numericId];
+        return next;
+      });
+    };
+
+    if (!animate || typeof window === 'undefined') {
+      commitRemove();
+      return;
+    }
+
+    setRemovingProductoIds((prev) => ({ ...prev, [numericId]: true }));
+
+    const previousTimeout = removeCardTimeoutsRef.current.get(numericId);
+    if (previousTimeout) window.clearTimeout(previousTimeout);
+
+    const timeoutId = window.setTimeout(() => {
+      removeCardTimeoutsRef.current.delete(numericId);
+      commitRemove();
+    }, 180);
+
+    removeCardTimeoutsRef.current.set(numericId, timeoutId);
+  }, []);
+
+  const buildLocalProductoFromCreateResponse = useCallback((cleaned, createResponse) => {
+    const directResponse = createResponse && typeof createResponse === 'object' && !Array.isArray(createResponse)
+      ? createResponse
+      : null;
+    const nestedProducto = directResponse?.producto && typeof directResponse.producto === 'object'
+      ? directResponse.producto
+      : null;
+    const nestedDataProducto = directResponse?.data?.producto && typeof directResponse.data.producto === 'object'
+      ? directResponse.data.producto
+      : null;
+    const nestedData = directResponse?.data && typeof directResponse.data === 'object' && !Array.isArray(directResponse.data)
+      ? directResponse.data
+      : null;
+
+    const apiProducto =
+      [nestedProducto, nestedDataProducto, nestedData, directResponse]
+        .find((candidate) => candidate && (candidate.id_producto || candidate.nombre_producto)) || null;
+
+    const rawId =
+      apiProducto?.id_producto
+      ?? directResponse?.id_producto
+      ?? directResponse?.insertId
+      ?? directResponse?.id;
+    const persistedId = parseProductoPersistedId(rawId);
+    const safeId = persistedId ?? nextTempProductoId();
+
+    const localProductoBase = {
+      id_producto: safeId,
+      nombre_producto: cleaned.nombre_producto,
+      precio: cleaned.precio,
+      cantidad: cleaned.cantidad,
+      stock_minimo: cleaned.stock_minimo,
+      descripcion_producto: cleaned.descripcion_producto || '',
+      fecha_ingreso_producto: cleaned.fecha_ingreso_producto || '',
+      fecha_caducidad: cleaned.fecha_caducidad || '',
+      id_categoria_producto: cleaned.id_categoria_producto,
+      id_almacen: cleaned.id_almacen,
+      id_tipo_departamento: cleaned.id_tipo_departamento ?? null,
+      estado: true,
+      // NEW: flag local para identificar cards creadas sin ID persistido y forzar sincronizacion silenciosa.
+      // WHY: evitar que un ID temporal llegue a edit/delete mientras el backend no retorna `id_producto`.
+      // IMPACT: propiedad solo frontend; desaparece al sincronizar desde GET /productos.
+      __local_temp_id: persistedId === null
+    };
+
+    return apiProducto
+      ? {
+          ...localProductoBase,
+          ...apiProducto,
+          id_producto: parseProductoPersistedId(apiProducto?.id_producto ?? safeId) ?? safeId,
+          __local_temp_id: parseProductoPersistedId(apiProducto?.id_producto ?? safeId) === null
+        }
+      : localProductoBase;
+  }, [nextTempProductoId, parseProductoPersistedId]);
 
   // AJUSTE: usa normalización estricta para mostrar estado activo/inactivo de forma consistente.
   const resolveEstadoActivo = useCallback((producto) => {
@@ -565,7 +859,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setError('');
     try {
       // COMENTARIO EN MAYÚSCULAS: PRODUCTOS SE CARGA DESDE EL BACKEND /productos
-      const data = await inventarioService.getProductos();
+      const data = await inventarioService.getProductos({ incluirInactivos: showInactiveProductos });
       setProductos(Array.isArray(data) ? data : []);
     } catch (e) {
       const msg = e?.message || 'ERROR CARGANDO PRODUCTOS';
@@ -607,11 +901,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   useEffect(() => {
     // COMENTARIO EN MAYÚSCULAS: CARGA INICIAL DEL TAB PRODUCTOS
-    cargarProductos();
     cargarAlmacenes();
     cargarTipoDepartamentos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    // NEW: recarga productos cuando cambia el toggle admin "Mostrar inactivos".
+    // WHY: el backend devuelve solo activos por defecto tras el cambio a soft delete.
+    // IMPACT: refresca solo `/productos`; no modifica otros catálogos ni handlers.
+    void cargarProductos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInactiveProductos]);
 
   // ==============================
   // RESET FORM CREAR
@@ -646,15 +947,33 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setCreateErrors(v.errors);
     if (!v.ok) return;
 
+    const duplicateProducto = findDuplicateProducto(v.cleaned);
+    if (duplicateProducto) {
+      // NEW: validación anti-duplicados en frontend usando los campos reales del formulario.
+      // WHY: evitar submits innecesarios y dar feedback inmediato antes de llamar al backend.
+      // IMPACT: bloquea el submit solo si coincide nombre+categoría+almacén(+depto opcional) con otro producto.
+      setCreateErrors((prev) => ({
+        ...prev,
+        nombre_producto: 'YA EXISTE UN PRODUCTO CON ESTOS DATOS (NOMBRE + CATEGORÍA + ALMACÉN).'
+      }));
+      return;
+    }
+
     setCreating(true);
     try {
       const payload = buildProductoPayload(v.cleaned);
-      await inventarioService.crearProducto(payload);
+      const createResp = await inventarioService.crearProducto(payload);
+      const createdProductoLocal = buildLocalProductoFromCreateResponse(v.cleaned, createResp);
+      upsertProductoLocal(createdProductoLocal);
+      if (createdProductoLocal?.__local_temp_id === true) {
+        // NEW: sincroniza la lista tras create cuando el backend no devolvio `id_producto`.
+        // WHY: reemplazar el ID temporal local por el ID real antes de futuras acciones (edit/delete).
+        // IMPACT: fetch silencioso de `/productos` sin loader global ni cambio de contrato del POST.
+        void syncProductosSilently();
+      }
 
       resetForm();
-      setCreatePanelOpen(false);
-      setShowCreateProductoSheet(false);
-      await cargarProductos();
+      closeCreateProductoModal();
 
       safeToast('CREADO', 'EL PRODUCTO SE CREÓ CORRECTAMENTE.', 'success');
     } catch (e2) {
@@ -761,6 +1080,17 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!selectedProducto || togglingEstado) return;
 
     const productId = selectedProducto?.id_producto;
+    const persistedProductId = parseProductoPersistedId(productId);
+    if (!persistedProductId) {
+      // NEW: evita mutar backend con IDs temporales/fuera de rango y fuerza sincronizacion silenciosa.
+      // WHY: cortar el error 500 (`out of range for type integer`) antes de llamar a `/productos`.
+      // IMPACT: no cambia el flujo normal; solo protege casos de cards locales sin ID real.
+      const safeMsg = 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
     const currentActive = resolveEstadoActivo(selectedProducto);
     const nextActive = !currentActive;
 
@@ -775,7 +1105,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       for (const estadoValue of estadoCandidates) {
         try {
-          await inventarioService.actualizarProductoCampo(productId, 'estado', estadoValue);
+          await inventarioService.actualizarProductoCampo(persistedProductId, 'estado', estadoValue);
           estadoUpdated = true;
           break;
         } catch (e) {
@@ -843,6 +1173,32 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       return;
     }
 
+    const duplicateProducto = findDuplicateProducto(v.cleaned, { excludeId: editId });
+    if (duplicateProducto) {
+      // NEW: bloqueo preventivo de duplicados también en edición.
+      // WHY: evitar dejar dos productos equivalentes tras editar nombre/categoría/almacén.
+      // IMPACT: no toca backend; muestra feedback y detiene el guardado localmente.
+      const duplicateMsg = 'YA EXISTE UN PRODUCTO CON ESTOS DATOS (NOMBRE + CATEGORÍA + ALMACÉN).';
+      setEditErrors((prev) => ({
+        ...prev,
+        nombre_producto: duplicateMsg
+      }));
+      setDrawerMessage(duplicateMsg);
+      return;
+    }
+
+    const persistedEditId = parseProductoPersistedId(editId);
+    if (!persistedEditId) {
+      // NEW: bloquea guardado si el item tiene ID temporal/fuera de rango y sincroniza IDs reales.
+      // WHY: evitar que `id_valor` llegue a `/productos` con un timestamp en ms y provoque 500 en BD.
+      // IMPACT: solo previene mutaciones inválidas; mantiene intacta la edición de productos persistidos.
+      const safeMsg = 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+
     setSavingEdit(true);
     try {
       // COMENTARIO EN MAYÚSCULAS: SOLO ACTUALIZAMOS CAMPOS QUE CAMBIARON
@@ -904,17 +1260,23 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       }
 
       for (const [campo, valor] of cambios) {
-        await inventarioService.actualizarProductoCampo(editId, campo, valor);
+        await inventarioService.actualizarProductoCampo(persistedEditId, campo, valor);
       }
-      await cargarProductos();
+      const patchLocal = Object.fromEntries(cambios);
+      patchProductoLocalById(persistedEditId, patchLocal);
       setLocalEstadoMap((prev) => {
-        if (!Object.prototype.hasOwnProperty.call(prev, editId)) return prev;
+        if (!Object.prototype.hasOwnProperty.call(prev, persistedEditId)) return prev;
         const next = { ...prev };
-        delete next[editId];
+        delete next[persistedEditId];
         return next;
       });
-      setDrawerMessage('Cambios guardados.');
-      setDrawerEditMode(false);
+      const shouldCloseDrawerAfterEdit = drawerOpen && Number(selectedProductoId) === Number(persistedEditId);
+      if (shouldCloseDrawerAfterEdit) {
+        cerrarDrawerProducto();
+      } else {
+        setDrawerMessage('Cambios guardados.');
+        setDrawerEditMode(false);
+      }
       safeToast('EXITO', 'Cambios guardados.', 'success');
     } catch (e) {
       // AJUSTE: se refleja status HTTP y errores por campo en la edición.
@@ -932,29 +1294,48 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
     if (!id || deleting) return;
+    const persistedDeleteId = parseProductoPersistedId(id);
+    if (!persistedDeleteId) {
+      // NEW: evita DELETE con IDs temporales/fuera de rango y refresca lista para recuperar IDs reales.
+      // WHY: impedir 500 por `valor_id` inválido en `pa_delete` y mostrar feedback profesional.
+      // IMPACT: solo protege un caso inválido; delete normal de productos persistidos no cambia.
+      const safeMsg = 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      setConfirmDeleteError(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
 
     setDeleting(true);
     setError('');
+    setConfirmDeleteError('');
     try {
-      // AJUSTE: se leen flags hard_deleted/soft_deleted para feedback correcto.
-      const resp = await inventarioService.eliminarProducto(id);
+      const resp = await inventarioService.eliminarProducto(persistedDeleteId);
       closeConfirmDelete();
-      await cargarProductos();
-      if (resp?.soft_deleted === true) {
-        safeToast('DESACTIVADO', resp?.message || 'Producto desactivado porque esta en uso.', 'warning');
-        return;
+      if (Number(selectedProductoId) === Number(persistedDeleteId) && drawerOpen) {
+        if (showInactiveProductos) {
+          setDrawerMessage(resp?.message || 'Producto inactivado.');
+        } else {
+          cerrarDrawerProducto();
+        }
       }
-      if (resp?.hard_deleted === true) {
-        safeToast('ELIMINADO', resp?.message || 'Producto eliminado.', 'success');
-        return;
+      patchProductoLocalById(persistedDeleteId, { estado: false });
+      if (!showInactiveProductos) {
+        removeProductoLocalById(persistedDeleteId, { animate: true });
       }
-      // AJUSTE: compatibilidad con respuestas antiguas sin flags.
-
-      safeToast('ELIMINADO', 'EL PRODUCTO SE ELIMINÓ CORRECTAMENTE.', 'success');
+      setLocalEstadoMap((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, persistedDeleteId)) return prev;
+        const next = { ...prev };
+        delete next[persistedDeleteId];
+        return next;
+      });
+      safeToast('INACTIVADO', resp?.message || 'PRODUCTO INACTIVADO.', 'success');
     } catch (e) {
-      closeConfirmDelete();
-      const msg = handleApiStatusError(e, 'ERROR ELIMINANDO PRODUCTO');
+      const msg = handleApiStatusError(e, 'ERROR INACTIVANDO PRODUCTO');
       setError(msg);
+      setConfirmDeleteError(msg);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1116,6 +1497,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     );
   }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy]);
 
+  // NEW: contador derivado de filtros activos para reforzar el header del modal de Filtros.
+  // WHY: aprovechar el estado actual (filtros live) sin introducir lógica draft adicional.
+  // IMPACT: solo UI informativa; no altera cómo se filtra o se ordena el catálogo.
+  const activeFiltersCount = useMemo(() => {
+    return [
+      search.trim() !== '',
+      stockFiltro !== 'todos',
+      estadoFiltro !== 'todos',
+      categoriaFiltro !== 'todos',
+      almacenFiltro !== 'todos',
+      deptoFiltro !== 'todos',
+      sortBy !== 'recientes'
+    ].filter(Boolean).length;
+  }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy]);
+
   const productosPaginados = productosFiltrados;
   const rangoHasta = productosFiltrados.length;
 
@@ -1210,6 +1606,44 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setFiltersOpen(false);
     setCreatePanelOpen(false);
   }, []);
+
+  // NEW: flags derivados para unificar apertura de modales auxiliares de Productos.
+  // WHY: compartir scroll-lock y shell portal entre `createPanelOpen` y `showCreateProductoSheet`.
+  // IMPACT: estado derivado de UI; no modifica flujos de creación/filtros existentes.
+  const createProductoModalOpen = createPanelOpen || showCreateProductoSheet;
+  const productsAuxModalOpen = filtersOpen || createProductoModalOpen;
+
+  // NEW: bloqueo de scroll del body mientras Filtros/Nuevo están abiertos en overlay.
+  // WHY: evitar desplazamiento del fondo y mantener foco visual en el modal activo.
+  // IMPACT: solo modifica temporalmente `body.style.overflow`; no toca lógica de CRUD.
+  useEffect(() => {
+    if (typeof document === 'undefined' || !productsAuxModalOpen) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [productsAuxModalOpen]);
+
+  // NEW: focus al primer campo inválido del formulario de Nuevo producto.
+  // WHY: mejorar UX al mostrar errores existentes sin cambiar reglas de validación.
+  // IMPACT: mueve foco solo dentro del modal de alta cuando hay `createErrors`.
+  useEffect(() => {
+    if (!createProductoModalOpen) return undefined;
+    if (!createErrors || Object.keys(createErrors).length === 0) return undefined;
+    if (typeof window === 'undefined') return undefined;
+
+    const rafId = window.requestAnimationFrame(() => {
+      const firstInvalid = createSectionRef.current?.querySelector?.('.is-invalid');
+      if (!firstInvalid || typeof firstInvalid.focus !== 'function') return;
+      firstInvalid.focus({ preventScroll: true });
+      firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [createErrors, createProductoModalOpen]);
 
   const resetFiltros = () => {
     setSearch('');
@@ -1360,10 +1794,23 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <i className="bi bi-bag-check inv-prod-title-icon" />
             <span className="inv-prod-title">Productos</span>
           </div>
-          <div className="inv-prod-subtitle">Gestión visual del catálogo con filtros y acciones en línea</div>
+          <div className="inv-prod-subtitle">Gestión del Catálogo de Productos</div>
         </div>
 
         <div className="inv-prod-header-actions">
+          {/* NEW: buscador en header como patrón de Categorías/Insumos, reutilizando el mismo estado `search`. */}
+          {/* WHY: sacar la búsqueda del modal de filtros y mantener acceso directo sin cambiar la lógica de filtrado. */}
+          {/* IMPACT: solo reubica la UI del input; `productosFiltrados` sigue usando `search` igual. */}
+          <label className="inv-ins-search inv-prod-header-search" aria-label="Buscar productos">
+            <i className="bi bi-search" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar productos..."
+            />
+          </label>
+
           <button
             type="button"
             className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
@@ -1415,6 +1862,424 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       <div className="card-body inv-prod-body">
         {error && <div className="alert alert-danger inv-prod-alert">{error}</div>}
 
+        {/* NEW: portal local de Productos para evitar recortes por `overflow/transform` del card contenedor. */}
+        {/* WHY: renderizar Filtros y Nuevo sobre `document.body` con overlay completo y animación centrada bottom-up. */}
+        {/* IMPACT: solo reemplaza el shell visual de Filtros/Nuevo; handlers, filtros y submit siguen iguales. */}
+        {productsModalPortalTarget ? createPortal(
+          <>
+            <div className={`inv-prod-pmodal inv-prod-pmodal--filters ${filtersOpen ? 'show' : ''}`} aria-hidden={!filtersOpen}>
+              <div className="inv-prod-pmodal__overlay" onClick={() => setFiltersOpen(false)} />
+
+              <div className="inv-prod-pmodal__viewport">
+                <section
+                  id="inv-prod-filters"
+                  ref={filtersSectionRef}
+                  className="inv-prod-pmodal__panel inv-prod-pmodal__panel--filters"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="inv-prod-filters-title"
+                  aria-describedby="inv-prod-filters-sub"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="inv-prod-pmodal__header">
+                    <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
+                    <div className="inv-prod-pmodal__header-copy">
+                      <div id="inv-prod-filters-title" className="inv-prod-drawer-title">Filtros de productos</div>
+                      <div id="inv-prod-filters-sub" className="inv-prod-drawer-sub">
+                        Stock, estado, categoria, almacen y orden
+                      </div>
+                    </div>
+                    {activeFiltersCount > 0 ? (
+                      <span className="inv-prod-pmodal__counter" aria-label={`${activeFiltersCount} filtros activos`}>
+                        {activeFiltersCount} activos
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="inv-prod-drawer-close"
+                      onClick={() => setFiltersOpen(false)}
+                      aria-label="Cerrar filtros"
+                    >
+                      <i className="bi bi-x-lg" />
+                    </button>
+                  </div>
+
+                  <form
+                    className="inv-prod-pmodal__form-shell"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      setFiltersOpen(false);
+                    }}
+                  >
+                    <div className="inv-prod-pmodal__body inv-prod-pmodal__body--filters">
+                      <div className="inv-prod-pmodal__sections inv-prod-pmodal__sections--filters">
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Estado y stock</div>
+                            <div className="inv-prod-pmodal__section-sub">Filtra disponibilidad y estado del producto.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-filters-grid">
+                            <div className="col-12 col-sm-6">
+                              <select className="form-select" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+                                <option value="todos">ESTADOS</option>
+                                <option value="activo">Activos</option>
+                                <option value="inactivo">Inactivos</option>
+                              </select>
+                            </div>
+
+                            <div className="col-12 col-sm-6">
+                              <select className="form-select" value={stockFiltro} onChange={(e) => setStockFiltro(e.target.value)}>
+                                <option value="todos">STOCK</option>
+                                <option value="con_stock">Con stock</option>
+                                <option value="sin_stock">Sin stock</option>
+                              </select>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Clasificación</div>
+                            <div className="inv-prod-pmodal__section-sub">Filtra por categoría, almacén y departamento.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-filters-grid">
+                            <div className="col-12 col-md-4">
+                              <select className="form-select" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
+                                <option value="todos">CATEGORIAS</option>
+                                {categoriasActivas.map((c) => (
+                                  <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                                    {c.nombre_categoria}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="col-12 col-md-4">
+                              <select className="form-select" value={almacenFiltro} onChange={(e) => setAlmacenFiltro(e.target.value)}>
+                                <option value="todos">ALMACENES</option>
+                                {almacenes.map((a) => (
+                                  <option key={a.id_almacen} value={a.id_almacen}>
+                                    {a.nombre} (Sucursal {a.id_sucursal})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="col-12 col-md-4">
+                              <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
+                                <option value="todos">DEPTOS</option>
+                                {tipoDepartamentos.map((d) => (
+                                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Ordenamiento</div>
+                            <div className="inv-prod-pmodal__section-sub">El filtrado es inmediato; usa Aplicar para cerrar el modal.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-filters-grid">
+                            <div className="col-12 col-md-6">
+                              <select className="form-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                                <option value="recientes">{'M\u00E1s recientes'}</option>
+                                <option value="nombre_asc">Nombre A-Z</option>
+                                <option value="nombre_desc">Nombre Z-A</option>
+                                <option value="precio_desc">Precio mayor</option>
+                                <option value="precio_asc">Precio menor</option>
+                                <option value="stock_desc">Stock mayor</option>
+                                <option value="stock_asc">Stock menor</option>
+                              </select>
+                            </div>
+                          </div>
+                        </section>
+                      </div>
+                    </div>
+
+                    <div className="inv-prod-pmodal__footer">
+                      <button
+                        className="btn btn-outline-secondary inv-prod-btn-subtle"
+                        type="button"
+                        onClick={resetFiltros}
+                      >
+                        Limpiar filtros
+                      </button>
+                      <button className="btn inv-prod-btn-primary" type="submit">
+                        Aplicar
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              </div>
+            </div>
+
+            <div className={`inv-prod-pmodal inv-prod-pmodal--create ${createProductoModalOpen ? 'show' : ''}`} aria-hidden={!createProductoModalOpen}>
+              <div className="inv-prod-pmodal__overlay" onClick={closeCreateProductoModal} />
+
+              <div className="inv-prod-pmodal__viewport">
+                <section
+                  id="inv-prod-create-panel"
+                  ref={createSectionRef}
+                  className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="inv-prod-create-title"
+                  aria-describedby="inv-prod-create-sub"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="inv-prod-pmodal__header">
+                    <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
+                    <div className="inv-prod-pmodal__header-copy">
+                      <div id="inv-prod-create-title" className="inv-prod-drawer-title">Nuevo producto</div>
+                      <div id="inv-prod-create-sub" className="inv-prod-drawer-sub">Registro de producto</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="inv-prod-drawer-close"
+                      onClick={closeCreateProductoModal}
+                      aria-label="Cerrar nuevo producto"
+                    >
+                      <i className="bi bi-x-lg" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={onCrear} className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
+                    <div className="inv-prod-pmodal__body">
+                      <div className="inv-prod-section-head inv-prod-panel-head inv-prod-pmodal__lead">
+                        <div className="inv-prod-panel-eyebrow">Alta rápida</div>
+                        <div className="inv-prod-section-title">Registro de producto</div>
+                        <div className="inv-prod-section-sub">Completa los datos esenciales sin salir del catálogo</div>
+                      </div>
+
+                      <div className="inv-prod-pmodal__sections">
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Datos principales</div>
+                            <div className="inv-prod-pmodal__section-sub">Nombre, categoría y descripción del producto.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            <div className="col-12 col-lg-8">
+                              <label className="form-label mb-1">Nombre del producto</label>
+                              <input
+                                className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
+                                placeholder="Ej: Hamburguesa clásica"
+                                value={form.nombre_producto}
+                                onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                required
+                              />
+                              {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
+                            </div>
+
+                            <div className="col-12 col-md-6 col-lg-4">
+                              <label className="form-label mb-1">Categoría</label>
+                              <select
+                                className={`form-select ${createErrors.id_categoria_producto ? 'is-invalid' : ''}`}
+                                value={String(form.id_categoria_producto ?? '')}
+                                onChange={(e) => setForm((s) => ({ ...s, id_categoria_producto: e.target.value }))}
+                                required
+                              >
+                                <option value="">Seleccione categoría</option>
+                                {categoriasActivas.map((c) => (
+                                  <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                                    {c.nombre_categoria}
+                                  </option>
+                                ))}
+                              </select>
+                              {createErrors.id_categoria_producto && (
+                                <div className="invalid-feedback">{createErrors.id_categoria_producto}</div>
+                              )}
+                            </div>
+
+                            <div className="col-12">
+                              <label className="form-label mb-1">Descripción (opcional)</label>
+                              <input
+                                className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
+                                placeholder="Ej: Incluye papas y bebida"
+                                value={form.descripcion_producto}
+                                onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                              />
+                              {createErrors.descripcion_producto && (
+                                <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
+                              )}
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Inventario</div>
+                            <div className="inv-prod-pmodal__section-sub">Cantidad inicial, stock mínimo y ubicación.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            <div className="col-12 col-sm-6 col-lg-3">
+                              <label className="form-label mb-1">Cantidad</label>
+                              <input
+                                className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
+                                type="number"
+                                step="1"
+                                min="0"
+                                inputMode="numeric"
+                                placeholder="Ej: 10"
+                                value={form.cantidad}
+                                onKeyDown={blockNonIntegerKeys}
+                                onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
+                                required
+                              />
+                              {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
+                            </div>
+
+                            <div className="col-12 col-sm-6 col-lg-3">
+                              <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
+                              <input
+                                className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
+                                type="number"
+                                step="1"
+                                min="0"
+                                inputMode="numeric"
+                                value={form.stock_minimo}
+                                onKeyDown={blockNonIntegerKeys}
+                                onChange={(e) => setForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }))}
+                              />
+                              {createErrors.stock_minimo && <div className="invalid-feedback">{createErrors.stock_minimo}</div>}
+                            </div>
+
+                            <div className="col-12 col-md-6 col-lg-3">
+                              <label className="form-label mb-1">Almacén</label>
+                              <select
+                                className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
+                                value={String(form.id_almacen ?? '')}
+                                onChange={(e) => setForm((s) => ({ ...s, id_almacen: e.target.value }))}
+                                required
+                                disabled={loadingAlmacenes}
+                              >
+                                <option value="">
+                                  {loadingAlmacenes ? 'Cargando almacenes...' : 'Seleccione almacén'}
+                                </option>
+                                {almacenes.map((a) => (
+                                  <option key={a.id_almacen} value={a.id_almacen}>
+                                    {a.nombre} (Sucursal {a.id_sucursal})
+                                  </option>
+                                ))}
+                              </select>
+                              {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
+                            </div>
+
+                            <div className="col-12 col-lg-3">
+                              <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                              <select
+                                className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                                value={String(form.id_tipo_departamento ?? '')}
+                                onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                                disabled={loadingTipoDepto}
+                              >
+                                <option value="">
+                                  {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
+                                </option>
+                                {tipoDepartamentos.map((d) => (
+                                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                              {createErrors.id_tipo_departamento && (
+                                <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                              )}
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Precio</div>
+                            <div className="inv-prod-pmodal__section-sub">Configura el precio de venta inicial.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            <div className="col-12 col-md-6 col-lg-4">
+                              <label className="form-label mb-1">Precio</label>
+                              <input
+                                className={`form-control ${createErrors.precio ? 'is-invalid' : ''}`}
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="Ej: 150.00"
+                                value={form.precio}
+                                onChange={(e) => setForm((s) => ({ ...s, precio: e.target.value }))}
+                                required
+                              />
+                              {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Fechas</div>
+                            <div className="inv-prod-pmodal__section-sub">Campos opcionales de ingreso y caducidad.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            <div className="col-12 col-md-6">
+                              <label className="form-label mb-1">Fecha ingreso (opcional)</label>
+                              <input
+                                className={`form-control ${createErrors.fecha_ingreso_producto ? 'is-invalid' : ''}`}
+                                type="date"
+                                value={form.fecha_ingreso_producto}
+                                onChange={(e) => setForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }))}
+                              />
+                              {createErrors.fecha_ingreso_producto && (
+                                <div className="invalid-feedback">{createErrors.fecha_ingreso_producto}</div>
+                              )}
+                            </div>
+
+                            <div className="col-12 col-md-6">
+                              <label className="form-label mb-1">Fecha caducidad (opcional)</label>
+                              <input
+                                className={`form-control ${createErrors.fecha_caducidad ? 'is-invalid' : ''}`}
+                                type="date"
+                                value={form.fecha_caducidad}
+                                onChange={(e) => setForm((s) => ({ ...s, fecha_caducidad: e.target.value }))}
+                              />
+                              {createErrors.fecha_caducidad && <div className="invalid-feedback">{createErrors.fecha_caducidad}</div>}
+                            </div>
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Imagen</div>
+                            <div className="inv-prod-pmodal__section-sub">Carga opcional con preview y validación actual.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            {renderCreateImageField('col-12')}
+                          </div>
+                        </section>
+                      </div>
+                    </div>
+
+                    <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                      <button className="btn inv-prod-btn-subtle" type="button" onClick={resetForm} disabled={creating}>
+                        Limpiar
+                      </button>
+                      <button className="btn inv-prod-btn-subtle" type="button" onClick={closeCreateProductoModal} disabled={creating}>
+                        Cancelar
+                      </button>
+                      <button className="btn inv-prod-btn-primary" type="submit" disabled={creating}>
+                        {creating ? 'Guardando...' : 'Guardar'}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              </div>
+            </div>
+          </>,
+          productsModalPortalTarget
+        ) : null}
+
+        {enableLegacyProductosModalShellFallback && (
+        <>
         {/* NEW: overlay compartido para drawers de Filtros y Nuevo reutilizando el shell visual de Categorias. */}
         {/* WHY: unificar la experiencia de apertura/cierre lateral en Productos sin tocar el contenido interno. */}
         {/* IMPACT: solo afecta paneles de Filtros/Nuevo; no altera otros modales ni el drawer de detalle. */}
@@ -1470,7 +2335,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
                     placeholder="Ej: Hamburguesa clásica"
                     value={form.nombre_producto}
-                    onChange={(e) => setForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                    onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
                     required
                   />
                   {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -1592,7 +2457,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
                     placeholder="Ej: Incluye papas y bebida"
                     value={form.descripcion_producto}
-                    onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: e.target.value }))}
+                    onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
                   />
                   {createErrors.descripcion_producto && (
                     <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
@@ -1651,7 +2516,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
                 placeholder="Ej: Hamburguesa clásica"
                 value={form.nombre_producto}
-                onChange={(e) => setForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
                 required
               />
               {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -1797,7 +2662,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
                 placeholder="Ej: Incluye papas y bebida"
                 value={form.descripcion_producto}
-                onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: e.target.value }))}
+                onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
               />
               {createErrors.descripcion_producto && (
                 <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
@@ -1820,14 +2685,45 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           )}
           </div>
         </div>
+        </>
+        )}
 
         {/* FILTROS */}
         <div className="inv-prod-results-meta">
           <span>{loadingProductos ? 'Cargando productos...' : `${productosFiltrados.length} resultados`}</span>
           <span>{loadingProductos ? '' : `Mostrando ${rangoHasta} de ${productos.length}`}</span>
-          {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
+          {/* NEW: toggle admin para incluir productos inactivos en el GET del tab. */}
+          {/* WHY: backend lista solo activos por defecto despues del cambio a soft delete. */}
+          {/* IMPACT: recarga usando el mismo endpoint; filtros locales se mantienen. */}
+          <label className="form-check form-switch mb-0 inv-catpro-inline-toggle">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              checked={showInactiveProductos}
+              onChange={(e) => setShowInactiveProductos(e.target.checked)}
+            />
+            <span className="form-check-label">Mostrar inactivos</span>
+          </label>
+          {hasActiveFilters ? (
+            <span className="inv-prod-active-filter-pill">
+              <span>Filtros activos</span>
+              {/* NEW: acceso rápido para resetear todos los filtros desde el resumen. */}
+              {/* WHY: reutilizar `resetFiltros` existente sin abrir el panel/modal de filtros. */}
+              {/* IMPACT: no cambia la lógica de filtrado; solo agrega un atajo de UX. */}
+              <button
+                type="button"
+                className="inv-prod-active-filter-pill__clear"
+                onClick={resetFiltros}
+                aria-label="Limpiar filtros"
+                title="Limpiar filtros"
+              >
+                <i className="bi bi-x-lg" aria-hidden="true" />
+              </button>
+            </span>
+          ) : null}
         </div>
 
+        {enableLegacyProductosModalShellFallback && (
         <div
           id="inv-prod-filters"
           ref={filtersSectionRef}
@@ -1943,6 +2839,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           </div>
           </div>
         </div>
+        )}
 
         <div className="inv-prod-catalog-zone">
           {loadingProductos ? (
@@ -1986,7 +2883,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   return (
                     <article
                       key={p.id_producto}
-                      className={`inv-prod-catalog-card ${Number(selectedProductoId) === Number(p.id_producto) && drawerOpen ? 'is-selected' : ''}`}
+                      className={`inv-prod-catalog-card ${Number(selectedProductoId) === Number(p.id_producto) && drawerOpen ? 'is-selected' : ''} ${removingProductoIds[Number(p.id_producto)] ? 'is-removing' : ''}`}
                       role="button"
                       tabIndex={0}
                       onClick={() => abrirDrawerProducto(p)}
@@ -2047,11 +2944,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               openConfirmDelete(p?.id_producto, p?.nombre_producto);
                             }}
                             onKeyDown={(e) => e.stopPropagation()}
-                            aria-label={`Eliminar ${p?.nombre_producto || 'producto'}`}
-                            title="Eliminar producto"
+                            aria-label={`Inactivar ${p?.nombre_producto || 'producto'}`}
+                            title="Inactivar producto"
                           >
                             <i className="bi bi-trash" />
-                            <span className="inv-prod-card-action-label">Eliminar</span>
+                            <span className="inv-prod-card-action-label">Inactivar</span>
                           </button>
                         </div>
                       </div>
@@ -2114,7 +3011,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             <input
                               className={`form-control form-control-sm ${editErrors.nombre_producto ? 'is-invalid' : ''}`}
                               value={editForm.nombre_producto}
-                              onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                              onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
                             />
                             {editErrors.nombre_producto && <div className="invalid-feedback">{editErrors.nombre_producto}</div>}
                           </>
@@ -2250,7 +3147,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               <input
                                 className={`form-control form-control-sm ${editErrors.descripcion_producto ? 'is-invalid' : ''}`}
                                 value={editForm.descripcion_producto}
-                                onChange={(e) => setEditForm((s) => ({ ...s, descripcion_producto: e.target.value }))}
+                                onChange={(e) => setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
                               />
                               {editErrors.descripcion_producto && (
                                 <div className="invalid-feedback">{editErrors.descripcion_producto}</div>
@@ -2281,7 +3178,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 type="button"
                                 onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
                               >
-                                <i className="bi bi-trash3" /> Eliminar
+                                <i className="bi bi-trash3" /> Inactivar
                               </button>
                             </div>
                           )}
@@ -2333,7 +3230,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               <input
                                 className={`form-control form-control-sm ${editErrors.nombre_producto ? 'is-invalid' : ''}`}
                                 value={editForm.nombre_producto}
-                                onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                                onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
                               />
                               {editErrors.nombre_producto && <div className="invalid-feedback">{editErrors.nombre_producto}</div>}
                             </>
@@ -2479,7 +3376,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 type="button"
                                 onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
                               >
-                                <i className="bi bi-trash3" /> Eliminar
+                                <i className="bi bi-trash3" /> Inactivar
                               </button>
                             </div>
                           )}
@@ -2547,18 +3444,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   <div>
                     <label>Nombre</label>
                     <input
+                      className={editErrors?.nombre_producto ? 'is-invalid' : ''}
                       type="text"
                       value={editForm?.nombre_producto ?? ''}
                       onChange={(e) => {
                         setDrawerEditMode(true);
-                        setEditForm((s) => ({ ...s, nombre_producto: e.target.value }));
+                        setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }));
                       }}
                       disabled={!drawerEditMode}
                     />
+                    {editErrors?.nombre_producto ? <div className="invalid-feedback d-block">{editErrors.nombre_producto}</div> : null}
                   </div>
                   <div>
                     <label>Precio (L.)</label>
                     <input
+                      className={editErrors?.precio ? 'is-invalid' : ''}
                       type="number"
                       step="0.01"
                       min="0"
@@ -2569,6 +3469,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       }}
                       disabled={!drawerEditMode}
                     />
+                    {editErrors?.precio ? <div className="invalid-feedback d-block">{editErrors.precio}</div> : null}
                   </div>
                 </div>
 
@@ -2650,7 +3551,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         {/* ==============================
             SHEET CREAR PRODUCTO (MÓVIL CENTRADO)
             ============================== */}
-        {showCreateProductoSheet && (
+        {enableLegacyProductosModalShellFallback && showCreateProductoSheet && (
           <div
             className="modal fade show inv-prod-modal-backdrop"
             style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2500 }}
@@ -2677,7 +3578,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       <input
                         className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
                         value={form.nombre_producto}
-                        onChange={(e) => setForm((s) => ({ ...s, nombre_producto: e.target.value }))}
+                        onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
                         required
                       />
                       {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -2796,7 +3697,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       <input
                         className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
                         value={form.descripcion_producto}
-                        onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: e.target.value }))}
+                        onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
                       />
                       {createErrors.descripcion_producto && (
                         <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
@@ -2860,8 +3761,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               <div className="modal-content shadow inv-prod-modal-content inv-prod-delete-modal">
                 <div className="modal-header d-flex align-items-center justify-content-between inv-prod-modal-header danger">
                   <div>
-                    <div className="fw-semibold">Confirmar eliminación</div>
-                    <div className="small text-muted">Esta acción no se puede deshacer</div>
+                    <div className="fw-semibold">Confirmar inactivación</div>
+                    <div className="small text-muted">El producto quedará marcado como inactivo</div>
                   </div>
                   <button type="button" className="btn btn-sm btn-light inv-prod-modal-close" onClick={closeConfirmDelete}>
                     <i className="bi bi-x-lg" />
@@ -2870,7 +3771,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                 <div className="modal-body inv-prod-modal-body">
                   <div className="mb-2">
-                    ¿Deseas eliminar este producto?
+                    ¿Deseas inactivar este producto?
                   </div>
                   {confirmModal.nombre && (
                     <div className="text-muted small inv-prod-delete-name">
@@ -2878,6 +3779,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       <span className="fw-semibold">{confirmModal.nombre}</span>
                     </div>
                   )}
+                  {confirmDeleteError ? (
+                    <div className="alert alert-danger py-2 px-3 mt-3 mb-0" role="alert">
+                      {confirmDeleteError}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="modal-footer d-flex gap-2 inv-prod-modal-footer">
@@ -2885,7 +3791,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     Cancelar
                   </button>
                   <button className="btn btn-danger inv-prod-btn-danger" type="button" onClick={eliminarConfirmado} disabled={deleting}>
-                    {deleting ? 'Eliminando...' : 'Eliminar'}
+                    {deleting ? 'Inactivando...' : 'Inactivar'}
                   </button>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
+import { toUpperSafe } from '../../../utils/toUpperSafe';
 
 const resolveCardsPerPage = (width) => {
   if (width >= 1200) return 6; // 3x2 desktop
@@ -28,12 +29,18 @@ const buildInventorySparkPoints = (series, width = 120, height = 44, padding = 4
     .join(' ');
 };
 
+// NEW: mensaje UX exacto para bloqueo de inactivacion cuando la categoria tiene productos activos asignados.
+// WHY: centralizar el texto requerido y reutilizarlo en validacion preventiva y manejo de error backend.
+// IMPACT: solo afecta mensajes UI de Categorias; no cambia endpoints ni logica de negocio.
+const CATEGORY_DELETE_BLOCKED_MESSAGE = 'NO SE PUEDE INACTIVAR LA CATEGORIA PORQUE TIENE PRODUCTOS ASIGNADOS. REASIGNA O ACTUALIZA ESOS PRODUCTOS Y LUEGO INTENTA DE NUEVO.';
+
 const CategoriasTab = ({
   categorias = [],
   loading = false,
   error = '',
   setError,
   reloadCategorias,
+  includeInactive = false,
   onCategoriaPatched,
   openToast
 }) => {
@@ -143,6 +150,11 @@ const CategoriasTab = ({
   const closeDrawer = () => setDrawerOpen(false);
   const closeFiltersDrawer = () => setFiltersOpen(false);
 
+  // NEW: normalizador local de texto para campos elegibles del formulario de Categorías.
+  // WHY: aplicar mayúsculas con exclusiones seguras sin tocar el flujo de validación ni submit.
+  // IMPACT: solo afecta `nombre_categoria` y `descripcion` en create/edit; código mantiene `normalizeCodigo`.
+  const normalizeCategoriaTextInput = (field, value) => toUpperSafe(value, field);
+
   // NEW: helpers del drawer de filtros con borrador aplicado.
   // WHY: replicar UX de drawer derecho de Insumos/Productos.
   // IMPACT: solo afecta estados locales de filtros.
@@ -170,6 +182,20 @@ const CategoriasTab = ({
     setFiltersOpen(false);
   };
 
+  // NEW: toggle admin para incluir categorias inactivas usando el mismo GET con query param.
+  // WHY: el backend filtra por `estado=true` por defecto despues del cambio a soft delete.
+  // IMPACT: recarga solo datos del tab; no altera filtros visuales ni contratos existentes.
+  const toggleIncludeInactive = async () => {
+    if (typeof reloadCategorias !== 'function') return;
+    const next = !includeInactive;
+    safeSetError('');
+    try {
+      await reloadCategorias({ incluirInactivos: next });
+    } catch {
+      // noop: el padre ya maneja error/toast de la carga.
+    }
+  };
+
   // ==============================
   // ELIMINAR (CONFIRMACION)
   // ==============================
@@ -178,9 +204,55 @@ const CategoriasTab = ({
     idToDelete: null,
     nombre: ''
   });
+  // NEW: alerta roja local no bloqueante para restricciones de eliminacion (auto-dismiss 6s).
+  // WHY: reemplazar la confirmacion cuando hay productos asignados y dar feedback claro sin bloquear la pantalla.
+  // IMPACT: UI-only en Categorias; flujo de eliminacion valido permanece intacto.
+  const [deleteBlockedAlert, setDeleteBlockedAlert] = useState('');
+  const deleteBlockedAlertTimerRef = useRef(null);
 
-  const openConfirmDelete = (id, nombre) => setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
+  // NEW: helper para limpiar timer de alerta y evitar timers sueltos en reintentos/unmount.
+  // WHY: garantizar auto-dismiss correcto y prevenir estados colgantes al navegar/cambiar de pantalla.
+  // IMPACT: solo manejo de lifecycle de la alerta local.
+  const clearDeleteBlockedAlertTimer = () => {
+    if (deleteBlockedAlertTimerRef.current) {
+      clearTimeout(deleteBlockedAlertTimerRef.current);
+      deleteBlockedAlertTimerRef.current = null;
+    }
+  };
+
+  // NEW: muestra la alerta roja exacta por 6 segundos y reinicia el timer si se intenta de nuevo.
+  // WHY: cumplir el requerimiento UX sin reutilizar modales bloqueantes ni toasts globales.
+  // IMPACT: no cambia CRUD; solo feedback visual temporal en la pantalla de Categorias.
+  const showDeleteBlockedAlert = () => {
+    clearDeleteBlockedAlertTimer();
+    setDeleteBlockedAlert(CATEGORY_DELETE_BLOCKED_MESSAGE);
+    deleteBlockedAlertTimerRef.current = setTimeout(() => {
+      setDeleteBlockedAlert('');
+      deleteBlockedAlertTimerRef.current = null;
+    }, 6000);
+  };
+
   const closeConfirmDelete = () => setConfirmModal({ show: false, idToDelete: null, nombre: '' });
+  const openConfirmDelete = (id, nombre) => {
+    const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_producto ?? 0) === Number(id ?? 0));
+    const countProductos = getProductosAsignadosCount(categoriaActual);
+    if (countProductos !== null && countProductos > 0) {
+      closeConfirmDelete();
+      safeSetError('');
+      showDeleteBlockedAlert();
+      return;
+    }
+    clearDeleteBlockedAlertTimer();
+    setDeleteBlockedAlert('');
+    setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
+  };
+
+  useEffect(() => () => {
+    if (deleteBlockedAlertTimerRef.current) {
+      clearTimeout(deleteBlockedAlertTimerRef.current);
+      deleteBlockedAlertTimerRef.current = null;
+    }
+  }, []);
 
   // ==============================
   // HELPERS
@@ -215,15 +287,15 @@ const CategoriasTab = ({
     return { ok: Object.keys(errors).length === 0, errors, cleaned };
   };
 
-  // NEW: detecta conteo de productos si el backend ya lo incluye en la categoria.
-  // WHY: evitar llamada DELETE cuando el frontend conoce que existe relacion con productos.
-  // IMPACT: usa solo campos existentes si vienen; si no, cae al manejo backend.
+  // NEW: detecta conteo de productos activos si el backend ya lo incluye en la categoria.
+  // WHY: evitar pre-bloqueos incorrectos cuando solo existan productos inactivos.
+  // IMPACT: si no viene conteo de activos, la validacion final queda en el backend (409).
   const getProductosAsignadosCount = (categoria) => {
     const candidates = [
-      categoria?.cantidad_productos,
-      categoria?.productos_count,
-      categoria?.total_productos,
-      categoria?.conteo_productos
+      categoria?.cantidad_productos_activos,
+      categoria?.productos_activos_count,
+      categoria?.total_productos_activos,
+      categoria?.conteo_productos_activos
     ];
     for (const raw of candidates) {
       const parsed = Number.parseInt(String(raw ?? ''), 10);
@@ -514,21 +586,26 @@ const CategoriasTab = ({
       const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_producto ?? 0) === Number(id ?? 0));
       const countProductos = getProductosAsignadosCount(categoriaActual);
       if (countProductos !== null && countProductos > 0) {
-        // NEW: validacion preventiva si el frontend ya conoce productos asignados.
-        // WHY: evita request innecesaria y da feedback mas claro al usuario.
-        // IMPACT: no cambia backend; solo mejora UX.
-        const msg = 'NO SE PUEDE ELIMINAR LA CATEGORIA PORQUE TIENE PRODUCTOS ASIGNADOS. REASIGNA LOS PRODUCTOS Y VUELVE A INTENTAR.';
         closeConfirmDelete();
-        safeSetError(msg);
-        safeToast('CATEGORIA EN USO', msg, 'warning');
+        safeSetError('');
+        showDeleteBlockedAlert();
         return;
       }
 
       await inventarioService.eliminarCategoria(id);
       closeConfirmDelete();
       if (typeof reloadCategorias === 'function') await reloadCategorias();
-      safeToast('ELIMINADO', 'LA CATEGORIA SE ELIMINO CORRECTAMENTE.', 'success');
+      safeToast('INACTIVADA', 'LA CATEGORIA SE INACTIVO CORRECTAMENTE.', 'success');
     } catch (err) {
+      const backendCode = String(err?.data?.code || '');
+      const backendExactMessage = String(err?.data?.message || err?.data?.mensaje || '');
+      if (Number(err?.status || 0) === 409 && backendCode === 'CATEGORY_HAS_ACTIVE_PRODUCTS') {
+        closeConfirmDelete();
+        safeSetError('');
+        showDeleteBlockedAlert();
+        if (backendExactMessage) safeToast('BLOQUEADO', backendExactMessage, 'warning');
+        return;
+      }
       const backendMessage = String(err?.data?.message || err?.data?.mensaje || err?.message || '').toLowerCase();
       const restrictionKeywords = ['foreign', 'constraint', 'referenc', 'fk', 'producto', 'asignad', 'uso', 'relacion'];
       const isRestriction = restrictionKeywords.some((k) => backendMessage.includes(k));
@@ -536,10 +613,16 @@ const CategoriasTab = ({
       // WHY: la accion debe explicar claramente por que no se puede eliminar y que hacer.
       // IMPACT: solo cambia el texto mostrado al usuario; el flujo backend permanece igual.
       const msg = isRestriction
-        ? 'NO SE PUEDE ELIMINAR LA CATEGORIA PORQUE TIENE PRODUCTOS ASIGNADOS. REASIGNA O ACTUALIZA ESOS PRODUCTOS Y LUEGO INTENTA DE NUEVO.'
-        : (err?.message || 'ERROR ELIMINANDO CATEGORIA');
-      safeSetError(msg);
-      safeToast(isRestriction ? 'CATEGORIA EN USO' : 'ERROR', msg, isRestriction ? 'warning' : 'danger');
+        ? CATEGORY_DELETE_BLOCKED_MESSAGE
+        : (err?.message || 'ERROR INACTIVANDO CATEGORIA');
+      if (isRestriction) {
+        closeConfirmDelete();
+        safeSetError('');
+        showDeleteBlockedAlert();
+      } else {
+        safeSetError(msg);
+        safeToast('ERROR', msg, 'danger');
+      }
     }
   };
 
@@ -612,6 +695,14 @@ const CategoriasTab = ({
 
         {/* FUNCIONALIDAD: BODY */}
         <div className="inv-catpro-body inv-prod-body p-3">
+          {deleteBlockedAlert ? (
+            // NEW: alerta roja no bloqueante con auto-dismiss para restriccion de eliminacion por productos asignados.
+            // WHY: reemplazar confirm modal cuando la categoria no se puede eliminar y permitir seguir usando la pantalla.
+            // IMPACT: solo presentacion local en Categorias; no altera el flujo normal de eliminacion cuando si procede.
+            <div className="alert alert-danger inv-cat-v2__delete-alert mb-3" role="alert" aria-live="assertive">
+              {deleteBlockedAlert}
+            </div>
+          ) : null}
           {error ? (
             <div className="alert alert-danger mb-3" role="alert">
               {error}
@@ -621,7 +712,36 @@ const CategoriasTab = ({
           <div className="inv-prod-results-meta inv-cat-v2__results-meta">
             <span>{loading ? 'Cargando categorías...' : `${categoriasFiltradas.length} resultados`}</span>
             <span>{loading ? '' : `Total: ${categoriasLocal.length}`}</span>
-            {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
+            {/* NEW: toggle admin para pedir categorias inactivas al backend sin cambiar filtros locales. */}
+            {/* WHY: los GET de inventario retornan activos por defecto tras el cambio a soft delete. */}
+            {/* IMPACT: recarga usando el mismo endpoint; no altera contratos ni layout principal. */}
+            <label className="form-check form-switch mb-0 inv-catpro-inline-toggle">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                checked={!!includeInactive}
+                onChange={() => { void toggleIncludeInactive(); }}
+                disabled={loading}
+              />
+              <span className="form-check-label">Mostrar inactivos</span>
+            </label>
+            {hasActiveFilters ? (
+              <span className="inv-prod-active-filter-pill">
+                <span>Filtros activos</span>
+                {/* NEW: acceso rápido para limpiar todos los filtros desde el resumen. */}
+                {/* WHY: reutilizar el reset existente sin abrir el drawer de filtros. */}
+                {/* IMPACT: usa `clearAllFilters`; la lógica de filtrado permanece intacta. */}
+                <button
+                  type="button"
+                  className="inv-prod-active-filter-pill__clear"
+                  onClick={clearAllFilters}
+                  aria-label="Limpiar filtros"
+                  title="Limpiar filtros"
+                >
+                  <i className="bi bi-x-lg" aria-hidden="true" />
+                </button>
+              </span>
+            ) : null}
           </div>
 
           {/* FUNCIONALIDAD: LISTADO */}
@@ -737,10 +857,10 @@ const CategoriasTab = ({
                                           openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria);
                                         }}
                                         onKeyDown={(e) => e.stopPropagation()}
-                                        title="Eliminar"
+                                        title="Inactivar"
                                       >
                                         <i className="bi bi-trash" />
-                                        <span className="inv-catpro-action-label">Eliminar</span>
+                                        <span className="inv-catpro-action-label">Inactivar</span>
                                       </button>
                                     </div>
                                   </div>
@@ -842,11 +962,11 @@ const CategoriasTab = ({
                                         openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria);
                                       }}
                                       onKeyDown={(e) => e.stopPropagation()}
-                                        title="Eliminar"
+                                        title="Inactivar"
                                         disabled={isToggling}
                                       >
                                         <i className="bi bi-trash" />
-                                        <span className="inv-catpro-action-label">Eliminar</span>
+                                        <span className="inv-catpro-action-label">Inactivar</span>
                                     </button>
                                   </div>
                                 </div>
@@ -1000,7 +1120,7 @@ const CategoriasTab = ({
             <input
               className={`form-control ${nombreErrorMsg ? 'is-invalid' : ''}`}
               value={form.nombre_categoria}
-              onChange={(e) => setForm((s) => ({ ...s, nombre_categoria: String(e.target.value ?? '').toUpperCase() }))}
+              onChange={(e) => setForm((s) => ({ ...s, nombre_categoria: normalizeCategoriaTextInput('nombre_categoria', e.target.value) }))}
               placeholder="Ej: Bebidas"
             />
             {nombreErrorMsg ? <div className="invalid-feedback d-block">{nombreErrorMsg}</div> : null}
@@ -1022,7 +1142,7 @@ const CategoriasTab = ({
             <input
               className={`form-control ${formErrors.descripcion ? 'is-invalid' : ''}`}
               value={form.descripcion}
-              onChange={(e) => setForm((s) => ({ ...s, descripcion: e.target.value }))}
+              onChange={(e) => setForm((s) => ({ ...s, descripcion: normalizeCategoriaTextInput('descripcion', e.target.value) }))}
               placeholder="Ej: Categoria para bebidas frias y calientes"
             />
             {formErrors.descripcion ? <div className="invalid-feedback">{formErrors.descripcion}</div> : null}
@@ -1052,7 +1172,7 @@ const CategoriasTab = ({
         </form>
       </aside>
 
-      {/* FUNCIONALIDAD: MODAL CONFIRMAR ELIMINACION */}
+      {/* FUNCIONALIDAD: MODAL CONFIRMAR INACTIVACION */}
       {confirmModal.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
           <div className="inv-pro-confirm-panel" onClick={(e) => e.stopPropagation()}>
@@ -1061,8 +1181,8 @@ const CategoriasTab = ({
                 <i className="bi bi-exclamation-triangle-fill" />
               </div>
               <div>
-                <div className="inv-pro-confirm-title">Confirmar eliminacion</div>
-                <div className="inv-pro-confirm-sub">Esta accion es permanente</div>
+                <div className="inv-pro-confirm-title">Confirmar inactivacion</div>
+                <div className="inv-pro-confirm-sub">La categoria quedara marcada como inactiva</div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
                 <i className="bi bi-x-lg" />
@@ -1070,7 +1190,7 @@ const CategoriasTab = ({
             </div>
 
             <div className="inv-pro-confirm-body">
-              <div className="inv-pro-confirm-question">Deseas eliminar esta categoria?</div>
+              <div className="inv-pro-confirm-question">Deseas inactivar esta categoria?</div>
               <div className="inv-pro-confirm-name">
                 <i className="bi bi-tag" />
                 <span>{confirmModal.nombre || 'Categoria seleccionada'}</span>
@@ -1083,7 +1203,7 @@ const CategoriasTab = ({
               </button>
               <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
                 <i className="bi bi-trash3" />
-                <span>Eliminar</span>
+                  <span>Inactivar</span>
               </button>
             </div>
           </div>

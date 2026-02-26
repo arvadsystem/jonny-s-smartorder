@@ -131,8 +131,11 @@
 }
 
 .inv-catpro-item {
-  background: var(--c-surface) !important;
-  border: 1px solid rgba(237, 235, 179, 0.78) !important;
+  // NEW: color de card alineado al look de Productos/Insumos (solo fondo y borde).
+  // WHY: unificar la paleta visual de cards en Inventario sin modificar layout ni comportamiento.
+  // IMPACT: cambio exclusivamente cromatico en cards de Categorias.
+  background: linear-gradient(180deg, #ffffff, #fcfbf4) !important;
+  border: 1px solid rgba(237, 235, 179, 0.65) !important;
   box-shadow: 0 3px 10px rgba(var(--c-shadow-rgb), 0.14) !important;
   border-radius: 16px !important;
   padding: 14px !important;
@@ -639,10 +642,18 @@
 
 .inv-pro-confirm-title {
   color: #F7F7F7 !important;
+  // NEW: titulo del modal de confirmacion con mayor jerarquia tipografica.
+  // WHY: mejorar legibilidad/jerarquia de headers de modal en Inventario.
+  // IMPACT: solo tipografia; no cambia layout ni acciones del modal.
+  font-size: 1.04rem;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .inv-pro-confirm-sub {
   color: rgba(247, 247, 247, 0.84) !important;
+  font-size: 0.84rem;
+  line-height: 1.25;
 }
 
 .inv-pro-confirm-close {
@@ -658,6 +669,8 @@
 
 .inv-pro-confirm-question {
   color: var(--c-text) !important;
+  font-size: 0.92rem;
+  font-weight: 700;
 }
 
 .inv-pro-confirm-name {
@@ -714,6 +727,19 @@
   justify-content: space-between;
 }
 
+// NEW: alerta roja local para bloqueo de eliminacion por productos asignados.
+// WHY: mostrar feedback no bloqueante y claro sin abrir confirm modal cuando la categoria esta en uso.
+// IMPACT: solo presentacion de una alerta temporal en Categorias.
+.inv-cat-v2__delete-alert {
+  border: 1px solid rgba(178, 45, 48, 0.34) !important;
+  background: linear-gradient(150deg, rgba(178, 45, 48, 0.12), rgba(122, 30, 36, 0.08)) !important;
+  color: #7a1e24 !important;
+  box-shadow: 0 8px 18px rgba(178, 45, 48, 0.08);
+  font-weight: 800;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
 .inv-cat-v2__drawer-body {
   display: grid;
   gap: 10px;
@@ -721,9 +747,23 @@
 
 .inv-cat-v2__drawer-body .form-label {
   color: rgba(82, 44, 34, 0.82);
-  font-size: 0.74rem;
-  font-weight: 700;
+  // NEW: mayor jerarquia visual para labels de campos en drawers de Categorias.
+  // WHY: separar con claridad label vs valor/input manteniendo accesibilidad.
+  // IMPACT: solo tipografia de labels; sin impacto funcional.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
   margin-bottom: 4px;
+}
+
+.inv-catpro-drawer-body-lite .form-label,
+.inv-catpro-drawer-body-lite .form-check-label {
+  // NEW: tipografia de labels del formulario Nuevo/Editar de Categorias con mayor jerarquia.
+  // WHY: mantener consistencia de labels entre drawers de Categorias/Insumos/Productos.
+  // IMPACT: solo cambia font-size/weight de labels en el formulario lateral.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
 }
 
 .inv-cat-v2__drawer-body .form-select {
@@ -1467,8 +1507,12 @@
 
 .inv-ins-drawer-fields .form-label {
   color: rgba(82, 44, 34, 0.82);
-  font-size: 0.74rem;
-  font-weight: 700;
+  // NEW: labels mas notorios en drawer de Insumos para unificar jerarquia con Productos/Categorias.
+  // WHY: mejorar lectura y consistencia de formularios de Inventario.
+  // IMPACT: tipografia solamente; validaciones y campos no cambian.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
   margin-bottom: 4px;
 }
 

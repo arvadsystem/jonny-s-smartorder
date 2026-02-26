@@ -24,6 +24,10 @@ const Inventario = () => {
   const [categorias, setCategorias] = useState([]);
   const [loadingCategorias, setLoadingCategorias] = useState(true);
   const [errorCategorias, setErrorCategorias] = useState('');
+  // NEW: controla si el tab de Categorias debe incluir registros inactivos en el GET.
+  // WHY: el backend ahora filtra activos por defecto y el tab admin necesita un toggle explicito.
+  // IMPACT: solo afecta la carga de CategoriasTab; contratos/endpoints se mantienen.
+  const [categoriasIncludeInactive, setCategoriasIncludeInactive] = useState(false);
 
   const [toast, setToast] = useState({
     show: false,
@@ -53,11 +57,21 @@ const Inventario = () => {
     return 'bi bi-check2-circle';
   };
 
-  const cargarCategorias = useCallback(async () => {
+  const cargarCategorias = useCallback(async (options = {}) => {
+    const incluirInactivos =
+      typeof options?.incluirInactivos === 'boolean'
+        ? options.incluirInactivos
+        : categoriasIncludeInactive;
+    // NEW: persiste la preferencia local del toggle de "Mostrar inactivos" para recargas posteriores.
+    // WHY: reusar `reloadCategorias()` existente desde el tab sin perder el estado del filtro admin.
+    // IMPACT: llamadas existentes sin argumentos siguen funcionando.
+    if (typeof options?.incluirInactivos === 'boolean') {
+      setCategoriasIncludeInactive(options.incluirInactivos);
+    }
     setLoadingCategorias(true);
     setErrorCategorias('');
     try {
-      const data = await inventarioService.getCategorias();
+      const data = await inventarioService.getCategorias({ incluirInactivos });
       setCategorias(Array.isArray(data) ? data : []);
     } catch (e) {
       const msg = e?.message || 'ERROR CARGANDO CATEGORIAS';
@@ -66,11 +80,15 @@ const Inventario = () => {
     } finally {
       setLoadingCategorias(false);
     }
-  }, []);
+  }, [categoriasIncludeInactive]);
 
   useEffect(() => {
     cargarCategorias();
-  }, [cargarCategorias]);
+    // NEW: mount-only para evitar doble fetch cuando cambia la preferencia y se recarga manualmente desde el tab.
+    // WHY: `cargarCategorias` depende de `categoriasIncludeInactive`.
+    // IMPACT: la carga inicial se mantiene; recargas posteriores siguen entrando por `reloadCategorias`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // NEW: patch local de categorias en el estado compartido del modulo Inventario.
   // WHY: permitir que CategoriasTab actualice una sola categoria (edit/estado) sin refetch global visible.
@@ -96,6 +114,7 @@ const Inventario = () => {
           error={errorCategorias}
           setError={setErrorCategorias}
           reloadCategorias={cargarCategorias}
+          includeInactive={categoriasIncludeInactive}
           onCategoriaPatched={patchCategoriaLocal}
           openToast={openToast}
         />

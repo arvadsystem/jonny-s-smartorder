@@ -1,8 +1,16 @@
 import { apiFetch } from './api';
 
+// NEW: helper para agregar `?incluir_inactivos=1` de forma retrocompatible.
+// WHY: permitir listados admin con inactivos sin cambiar endpoints ni contratos existentes.
+// IMPACT: los `get*` siguen funcionando igual si no se pasa opciones.
+const withInactivosParam = (path, options) => {
+  if (!options || options.incluirInactivos !== true) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}incluir_inactivos=1`;
+};
+
 export const inventarioService = {
   // ===== CATEGORIAS PRODUCTOS =====
-  getCategorias: () => apiFetch('/categorias_productos', 'GET'),
+  getCategorias: (options) => apiFetch(withInactivosParam('/categorias_productos', options), 'GET'),
   crearCategoria: (data) => apiFetch('/categorias_productos', 'POST', data),
   actualizarCategoriaCampo: (id, campo, valor) =>
     apiFetch('/categorias_productos', 'PUT', {
@@ -18,7 +26,7 @@ export const inventarioService = {
     }),
 
   // ===== INSUMOS =====
-  getInsumos: () => apiFetch('/insumos', 'GET'),
+  getInsumos: (options) => apiFetch(withInactivosParam('/insumos', options), 'GET'),
   getAlmacenes: () => apiFetch('/almacenes', 'GET'),
   crearInsumo: (data) => apiFetch('/insumos', 'POST', data),
   actualizarInsumoCampo: (id, campo, valor) =>
@@ -35,7 +43,7 @@ export const inventarioService = {
     }),
 
   // ===== PRODUCTOS =====
-  getProductos: () => apiFetch('/productos', 'GET'),
+  getProductos: (options) => apiFetch(withInactivosParam('/productos', options), 'GET'),
   crearProducto: (data) => apiFetch('/productos', 'POST', data),
   actualizarProductoCampo: (id, campo, valor) =>
     apiFetch('/productos', 'PUT', {
