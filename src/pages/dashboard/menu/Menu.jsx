@@ -1,4 +1,20 @@
 import { useEffect, useState } from 'react';
+import {
+  FaBeer,
+  FaBirthdayCake,
+  FaCoffee,
+  FaCookieBite,
+  FaDrumstickBite,
+  FaGlassWhiskey,
+  FaHamburger,
+  FaHotdog,
+  FaIceCream,
+  FaPepperHot,
+  FaPizzaSlice,
+  FaTint,
+  FaUtensils,
+} from 'react-icons/fa';
+import { GiTacos } from 'react-icons/gi';
 import { apiFetch } from '../../../services/api';
 import ProductoGrid from './ProductoGrid';
 
@@ -19,40 +35,54 @@ const getCategoriaDisplayName = (nombre) => {
   return nombre || 'Categoria';
 };
 
-const getCategoriaEmoji = (nombre) => {
+const getCategoriaIcon = (nombre) => {
   const n = normalizeCategoriaNombre(nombre);
 
-  if (!n) return '\u{1F37D}\uFE0F'; // 🍽️
-  if (n.includes('hamburgues')) return '\u{1F354}'; // 🍔
-  if (n.includes('taco') || n.includes('birria')) return '\u{1F32E}'; // 🌮
+  if (!n) return 'default';
+  if (n.includes('hamburgues')) return 'hamburguesas';
+  if (n.includes('taco') || n.includes('birria')) return 'tacos-birria';
   if (
     n.includes('hot dog') ||
     n.includes('hotdog') ||
     n.includes('perro caliente') ||
     n.includes('perros calientes')
   ) {
-    return '\u{1F32D}'; // 🌭
+    return 'hot-dogs';
   }
-  if (n.includes('alita') || n.includes('tender') || n.includes('boneless')) return '\u{1F357}'; // 🍗
-  if (n.includes('jugo')) return '\u{1F9C3}'; // 🧃
-  if (n.includes('refresco') || n.includes('bebida') || n.includes('soda')) return '\u{1F964}'; // 🥤
-  if (n.includes('agua')) return '\u{1F4A7}'; // 💧
-  if (n.includes('cerveza') || n.includes('beer')) return '\u{1F37A}'; // 🍺
-  if (n.includes('salsa')) return '\u{1F336}\uFE0F'; // 🌶️
-  if (n.includes('snack') || n.includes('nacho') || n.includes('papa') || n.includes('botana')) return '\u{1F35F}'; // 🍟
-  if (n.includes('sarita') || n.includes('helado') || n.includes('ice cream')) return '\u{1F366}'; // 🍦
-  if (n.includes('postre') || n.includes('dessert')) return '\u{1F370}'; // 🍰
-  if (n.includes('cafe') || n.includes('coffee')) return '\u{2615}'; // ☕
-  if (n.includes('pizza')) return '\u{1F355}'; // 🍕
+  if (n.includes('alita') || n.includes('tender') || n.includes('boneless')) return 'alitas-tenders';
+  if (n.includes('jugo')) return 'jugos-naturales';
+  if (n.includes('refresco') || n.includes('bebida') || n.includes('soda')) return 'refrescos-agua';
+  if (n.includes('agua')) return 'refrescos-agua';
+  if (n.includes('cerveza') || n.includes('beer')) return 'cervezas';
+  if (n.includes('salsa')) return 'salsas';
+  if (n.includes('snack') || n.includes('nacho') || n.includes('papa') || n.includes('botana')) return 'snacks';
+  if (n.includes('sarita') || n.includes('helado') || n.includes('ice cream')) return 'productos-sarita';
+  if (n.includes('postre') || n.includes('dessert')) return 'postres';
+  if (n.includes('cafe') || n.includes('coffee')) return 'cafe';
+  if (n.includes('pizza')) return 'pizza';
 
-  return '\u{1F37D}\uFE0F'; // 🍽️
+  return 'default';
 };
 
-const CategoryIcon = ({ nombre, className }) => (
-  <span className={className} aria-hidden="true">
-    {getCategoriaEmoji(nombre)}
-  </span>
-);
+const CategoryIcon = ({ nombre, className }) => {
+  const icon = getCategoriaIcon(nombre);
+
+  if (icon === 'hamburguesas') return <FaHamburger className={className} aria-hidden="true" />;
+  if (icon === 'jugos-naturales') return <FaGlassWhiskey className={className} aria-hidden="true" />;
+  if (icon === 'alitas-tenders') return <FaDrumstickBite className={className} aria-hidden="true" />;
+  if (icon === 'tacos-birria') return <GiTacos className={className} aria-hidden="true" />;
+  if (icon === 'hot-dogs') return <FaHotdog className={className} aria-hidden="true" />;
+  if (icon === 'cervezas') return <FaBeer className={className} aria-hidden="true" />;
+  if (icon === 'snacks') return <FaCookieBite className={className} aria-hidden="true" />;
+  if (icon === 'refrescos-agua') return <FaTint className={className} aria-hidden="true" />;
+  if (icon === 'productos-sarita') return <FaIceCream className={className} aria-hidden="true" />;
+  if (icon === 'postres') return <FaBirthdayCake className={className} aria-hidden="true" />;
+  if (icon === 'cafe') return <FaCoffee className={className} aria-hidden="true" />;
+  if (icon === 'pizza') return <FaPizzaSlice className={className} aria-hidden="true" />;
+  if (icon === 'salsas') return <FaPepperHot className={className} aria-hidden="true" />;
+
+  return <FaUtensils className={className} aria-hidden="true" />;
+};
 
 const CategorySelector = ({ categorias, selected, onSelect }) => {
   return (
@@ -74,7 +104,7 @@ const CategorySelector = ({ categorias, selected, onSelect }) => {
           >
             <CategoryIcon
               nombre={categoria?.nombre_departamento}
-              className="menu-pos-cat-icon"
+              className="menu-pos-cat-icon fs-5 me-2"
             />
             <span className="menu-pos-cat-label text-truncate">{label}</span>
           </button>
