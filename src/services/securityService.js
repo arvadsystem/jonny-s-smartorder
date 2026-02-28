@@ -1,14 +1,40 @@
-import { apiFetch } from "./api";
+import { apiFetch } from './api';
 
 export const securityService = {
-  // HU79
-  getSesiones: async () => apiFetch("/seguridad/sesiones", "GET"),
-  cerrarSesion: async (id_sesion) =>
-    apiFetch("/seguridad/sesiones/cerrar", "POST", { id_sesion }),
-  cerrarOtras: async () => apiFetch("/seguridad/sesiones/cerrar-otras", "POST"),
+  // HU78
+  getLoginLogs: async (qs = '') => {
+    return apiFetch(`/seguridad/logins${qs ? `?${qs}` : ''}`, 'GET');
+  },
 
-  // HU81
-  getPasswordPolicies: async () => apiFetch("/seguridad/configuracion/password", "GET"),
-  updatePasswordPolicies: async (payload) =>
-    apiFetch("/seguridad/configuracion/password", "PUT", payload),
+  // HU79 - Sesiones (usuario actual)
+  // ✅ Nota: ahora acepta querystring opcional (para cache-bust con _ts)
+  getSesiones: async (qs = '') => {
+    return apiFetch(`/seguridad/sesiones${qs ? `?${qs}` : ''}`, 'GET');
+  },
+
+  cerrarSesion: async (id_sesion) => {
+    return apiFetch('/seguridad/sesiones/cerrar', 'POST', { id_sesion });
+  },
+
+  cerrarOtras: async () => {
+    return apiFetch('/seguridad/sesiones/cerrar-otras', 'POST');
+  },
+
+  // Sprint 3 - GLOBAL (Super Admin)
+  getSesionesGlobal: async (qs = '') => {
+    return apiFetch(`/seguridad/sesiones/global${qs ? `?${qs}` : ''}`, 'GET');
+  },
+
+  cerrarGlobalMenosActual: async () => {
+    return apiFetch('/seguridad/sesiones/cerrar-global-menos-actual', 'POST');
+  },
+
+  // HU81 - Políticas contraseña
+  getPasswordPolicies: async () => {
+    return apiFetch('/seguridad/configuracion/password', 'GET');
+  },
+
+  updatePasswordPolicies: async (payload) => {
+    return apiFetch('/seguridad/configuracion/password', 'PUT', payload);
+  },
 };
