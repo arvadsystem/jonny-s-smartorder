@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { personaService } from "../../../services/personasService";
 import Filtros from "./components/Filtros";
 import HeaderPersonas from "./components/HeaderPersonas";
-import KPICards from "./components/KPICards";
-import PersonaCard from "./components/PersonaCard";
 import "../sucursales/styles/sucursales.css";
+import { buildKpiSeries, buildSparklinePoints } from "../sucursales/utils/sucursalHelpers";
 
 const emptyForm = {
   nombre: "",
@@ -52,6 +51,14 @@ const findFkId = (record, fkKey, textKeys, catalog, idKey, labelKey) => {
   return found?.[idKey] ? String(found[idKey]) : "";
 };
 
+const getCatalogTextById = (catalog, idKey, labelKey, idValue) => {
+  if (!idValue) return "";
+  const found = (Array.isArray(catalog) ? catalog : []).find(
+    (item) => String(item?.[idKey]) === String(idValue)
+  );
+  return found?.[labelKey] ? String(found[labelKey]) : "";
+};
+
 const toDateInputValue = (value) => {
   if (!value) return "";
   const raw = String(value);
@@ -93,6 +100,47 @@ const isGeneroMasculino = (value) => {
   return genero === "m" || genero === "masculino";
 };
 
+const toDisplayCardValue = (value, fallback = "No disponible") => {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text ? text : fallback;
+};
+
+const formatFechaNacimientoCard = (value) => {
+  if (!value) return "Sin fecha";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sin fecha";
+  return date.toLocaleDateString("es-HN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+};
+
+const formatGeneroCard = (value) => {
+  const genero = normalizeGenero(value);
+  if (!genero) return "";
+  if (genero === "f" || genero === "femenino") return "Femenino";
+  if (genero === "m" || genero === "masculino") return "Masculino";
+  return String(value).trim();
+};
+
+function KpiCard({ label, value, points }) {
+  return (
+    <div className="inv-prod-kpi">
+      {points ? (
+        <svg className="inv-prod-kpi-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+          <polyline points={points} />
+        </svg>
+      ) : null}
+      <div className="inv-prod-kpi-content">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  );
+}
+
 export default function Personas({ openToast }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
@@ -108,6 +156,7 @@ export default function Personas({ openToast }) {
   const [personas, setPersonas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [sortBy, setSortBy] = useState("recientes");
@@ -168,7 +217,11 @@ export default function Personas({ openToast }) {
     const requestId = ++requestIdRef.current;
 
     try {
-      const response = await personaService.getPersonasDetalle(page, limit);
+      const response = await personaService.getPersonas({
+        page,
+        limit,
+        search: debouncedSearch,
+      });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
       const { items, total: totalResp } = normalizeListResponse(response);
@@ -184,7 +237,7 @@ export default function Personas({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -202,6 +255,16 @@ export default function Personas({ openToast }) {
   }, [cargarPersonas]);
 
   useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      const nextSearch = String(search ?? "").trim();
+      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+      setPage((prev) => (prev === 1 ? prev : 1));
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
+  }, [search]);
+
+  useEffect(() => {
     const onResize = () => setCardsPerPage(resolveCardsPerPage(window.innerWidth));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -215,31 +278,45 @@ export default function Personas({ openToast }) {
       rtn: persona?.rtn || "",
       genero: persona?.genero || "",
       fecha_nacimiento: toDateInputValue(persona?.fecha_nacimiento),
-      id_telefono: findFkId(
-        persona,
-        "id_telefono",
-        ["telefono", "telefono_numero", "numero_telefono"],
-        telefonos,
-        "id_telefono",
-        "telefono"
-      ),
-      id_direccion: findFkId(
-        persona,
-        "id_direccion",
-        ["direccion", "direccion_detalle"],
-        direcciones,
-        "id_direccion",
-        "direccion"
-      ),
-      id_correo: findFkId(
-        persona,
-        "id_correo",
-        ["correo", "direccion_correo", "email"],
-        correos,
-        "id_correo",
-        "direccion_correo"
-      ),
+      id_telefono:
+        persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono ?? "",
+      id_direccion: persona?.direccion ?? persona?.direccion_detalle ?? "",
+      id_correo: persona?.direccion_correo ?? persona?.correo ?? persona?.email ?? "",
     }),
+    [telefonos, direcciones, correos]
+  );
+
+  const buildPersonaPayloadFromForm = useCallback(
+    (sourceForm, personaBase = null) => {
+      const textoTelefono =
+        String(sourceForm?.id_telefono ?? "").trim() ||
+        String(
+          personaBase?.telefono ??
+            personaBase?.telefono_numero ??
+            personaBase?.numero_telefono ??
+            ""
+        ).trim();
+
+      const textoDireccion =
+        String(sourceForm?.id_direccion ?? "").trim() ||
+        String(personaBase?.direccion ?? "").trim();
+
+      const textoCorreo =
+        String(sourceForm?.id_correo ?? "").trim() ||
+        String(personaBase?.direccion_correo ?? personaBase?.correo ?? personaBase?.email ?? "").trim();
+
+      return {
+        nombre: sourceForm?.nombre ?? "",
+        apellido: sourceForm?.apellido ?? "",
+        fecha_nacimiento: sourceForm?.fecha_nacimiento ?? "",
+        genero: sourceForm?.genero ?? "",
+        dni: sourceForm?.dni ?? "",
+        rtn: sourceForm?.rtn ?? "",
+        texto_direccion: textoDireccion,
+        texto_telefono: textoTelefono,
+        texto_correo: textoCorreo,
+      };
+    },
     [telefonos, direcciones, correos]
   );
 
@@ -269,6 +346,19 @@ export default function Personas({ openToast }) {
       .replace(/^(\d{4}-\d{4})(\d)/, "$1-$2");
   };
 
+  const handleTelefonoChange = (event) => {
+    const raw = String(event.target.value ?? "");
+    const digits = raw.replace(/\D/g, "").slice(0, 8);
+    const formatted =
+      digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
+
+    setForm((state) =>
+      state.id_telefono === formatted
+        ? state
+        : { ...state, id_telefono: formatted }
+    );
+  };
+
   const validar = () => {
     const currentErrors = {};
     const today = new Date().toISOString().split("T")[0];
@@ -276,12 +366,9 @@ export default function Personas({ openToast }) {
     if (!form.nombre) currentErrors.nombre = "Requerido";
     if (!form.apellido) currentErrors.apellido = "Requerido";
     if (!/^\d{4}-\d{4}-\d{5}$/.test(form.dni)) currentErrors.dni = "Formato invalido";
-    if (!/^\d{1}$/.test(form.rtn)) currentErrors.rtn = "Debe ingresar solo el numero de complemento";
+    if (form.rtn && !/^\d{1}$/.test(form.rtn)) currentErrors.rtn = "Debe ingresar solo el numero de complemento";
     if (!form.genero) currentErrors.genero = "Seleccione";
-    if (!form.fecha_nacimiento || form.fecha_nacimiento > today) currentErrors.fecha_nacimiento = "Fecha invalida";
-    if (!form.id_telefono) currentErrors.id_telefono = "Seleccione";
-    if (!form.id_direccion) currentErrors.id_direccion = "Seleccione";
-    if (!form.id_correo) currentErrors.id_correo = "Seleccione";
+    if (form.fecha_nacimiento && form.fecha_nacimiento > today) currentErrors.fecha_nacimiento = "Fecha invalida";
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
@@ -309,19 +396,13 @@ export default function Personas({ openToast }) {
         if (!changedFields.length) {
           safeToast("INFO", "No hay cambios para guardar", "info");
         } else {
-          for (const key of changedFields) {
-            try {
-              await personaService.actualizarPersonaCampo(editId, key, form[key]);
-            } catch (error) {
-              const fieldError = new Error(error?.message || "Error al actualizar campo");
-              fieldError.campo = key;
-              throw fieldError;
-            }
-          }
+          const payload = buildPersonaPayloadFromForm(form, personaOriginal);
+          await personaService.updatePersona(editId, payload);
           safeToast("OK", "Persona actualizada");
         }
       } else {
-        await personaService.crearPersona(form);
+        const payload = buildPersonaPayloadFromForm(form);
+        await personaService.createPersona(payload);
         safeToast("OK", "Persona creada");
       }
 
@@ -393,7 +474,6 @@ export default function Personas({ openToast }) {
   };
 
   const personasFiltradas = useMemo(() => {
-    const needle = search.trim().toLowerCase();
     const list = [...(Array.isArray(personas) ? personas : [])];
 
     const filtered = list.filter((persona) => {
@@ -401,27 +481,7 @@ export default function Personas({ openToast }) {
       const matchEstado =
         estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activa : !activa;
       if (!matchEstado) return false;
-
-      if (!needle) return true;
-
-      const hay = [
-        persona?.nombre,
-        persona?.apellido,
-        persona?.dni,
-        persona?.rtn,
-        persona?.direccion,
-        persona?.telefono,
-        persona?.telefono_numero,
-        persona?.numero_telefono,
-        persona?.correo,
-        persona?.direccion_correo,
-        persona?.email,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return hay.includes(needle);
+      return true;
     });
 
     filtered.sort((a, b) => {
@@ -443,7 +503,7 @@ export default function Personas({ openToast }) {
     });
 
     return filtered;
-  }, [personas, search, estadoFiltro, sortBy]);
+  }, [personas, estadoFiltro, sortBy]);
 
   const stats = useMemo(() => {
     const totalFiltradas = personasFiltradas.length;
@@ -512,7 +572,35 @@ export default function Personas({ openToast }) {
           onOpenCreate={openCreate}
         />
 
-        <KPICards stats={stats} />
+        <div className="inv-prod-kpis inv-cat-v2__kpis" aria-label="Resumen de personas">
+          <KpiCard
+            label="Total de personas"
+            value={stats.total}
+            points={buildSparklinePoints(buildKpiSeries(stats).total)}
+          />
+          <KpiCard
+            label="Femenino"
+            value={stats.femenino ?? 0}
+            points={buildSparklinePoints([
+              Math.max(0, Number(stats?.femenino ?? 0) - 1),
+              Math.max(0, Number(stats?.femenino ?? 0)),
+              Math.max(0, Number(stats?.femenino ?? 0) + 1),
+              Math.max(0, Number(stats?.femenino ?? 0)),
+              Math.max(0, Number(stats?.femenino ?? 0)),
+            ])}
+          />
+          <KpiCard
+            label="Masculino"
+            value={stats.masculino ?? 0}
+            points={buildSparklinePoints([
+              Math.max(0, Number(stats?.masculino ?? 0) - 1),
+              Math.max(0, Number(stats?.masculino ?? 0)),
+              Math.max(0, Number(stats?.masculino ?? 0) + 1),
+              Math.max(0, Number(stats?.masculino ?? 0)),
+              Math.max(0, Number(stats?.masculino ?? 0)),
+            ])}
+          />
+        </div>
 
         <div className="inv-catpro-body inv-prod-body p-3">
           <div className="inv-prod-results-meta inv-cat-v2__results-meta">
@@ -550,17 +638,99 @@ export default function Personas({ openToast }) {
               </div>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
-                {personasFiltradas.map((persona, idx) => (
-                  <PersonaCard
-                    key={persona?.id_persona ?? idx}
-                    persona={persona}
-                    index={idx}
-                    onOpenEdit={iniciarEdicion}
-                    onOpenDelete={openConfirmDelete}
-                    actionLoading={actionLoading}
-                    deletingId={deletingId}
-                  />
-                ))}
+                {personasFiltradas.map((persona, idx) => {
+                  const isActive = isPersonaActiva(persona);
+                  const dotClass = isActive ? "ok" : "off";
+                  const idPersona = persona?.id_persona;
+                  const deleting = deletingId === idPersona;
+                  const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
+                  const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
+                  const direccion = persona?.direccion ?? persona?.direccion_detalle;
+                  const correo = persona?.direccion_correo ?? persona?.correo ?? persona?.email;
+                  const genero = formatGeneroCard(persona?.genero);
+
+                  return (
+                    <div
+                      key={persona?.id_persona ?? idx}
+                      className={`inv-catpro-item inv-cat-card inv-anim-in ${isActive ? "" : "is-inactive-state"}`}
+                      style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
+                    >
+                      <div className="inv-cat-card__halo" aria-hidden="true">
+                        <i className="bi bi-people" />
+                      </div>
+
+                      <div className="inv-catpro-item-top">
+                        <div className="inv-cat-card__title-wrap">
+                          <span className="inv-cat-card__icon" aria-hidden="true">
+                            <i className="bi bi-person-vcard" />
+                          </span>
+                          <div>
+                            <div className="fw-bold">
+                              {idx + 1}. {nombreCompleto}
+                            </div>
+                            <div className="text-muted small">DNI: {toDisplayCardValue(persona?.dni)}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="suc-page__card-details">
+                        <div className="suc-page__card-row">
+                          <i className="bi bi-geo-alt" />
+                          <span>{toDisplayCardValue(direccion, "No disponible")}</span>
+                        </div>
+                        <div className="suc-page__card-row">
+                          <i className="bi bi-telephone" />
+                          <span>{toDisplayCardValue(telefono, "No disponible")}</span>
+                        </div>
+                        <div className="suc-page__card-row">
+                          <i className="bi bi-envelope" />
+                          <span>{toDisplayCardValue(correo, "No disponible")}</span>
+                        </div>
+                        <div className="suc-page__card-row">
+                          <i className="bi bi-calendar-event" />
+                          <span>{formatFechaNacimientoCard(persona?.fecha_nacimiento)}</span>
+                        </div>
+                        {genero ? (
+                          <div className="suc-page__card-row">
+                            <i className="bi bi-gender-ambiguous" />
+                            <span>{genero}</span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="inv-catpro-meta inv-catpro-item-footer">
+                        <div className="inv-catpro-code-wrap">
+                          <span className={`inv-catpro-state-dot ${dotClass}`} />
+                          <span className="inv-catpro-code">PER-{String(idPersona ?? "-")}</span>
+                        </div>
+
+                        <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions">
+                          <button
+                            type="button"
+                            className="inv-catpro-action edit inv-catpro-action-compact"
+                            onClick={() => iniciarEdicion(persona)}
+                            title="Editar"
+                            disabled={actionLoading || deleting}
+                          >
+                            <i className="bi bi-pencil-square" />
+                            <span className="inv-catpro-action-label">Editar</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="inv-catpro-action danger inv-catpro-action-compact"
+                            onClick={() => openConfirmDelete(persona)}
+                            title="Eliminar"
+                            disabled={actionLoading || deleting}
+                          >
+                            <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
+                            <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -640,9 +810,10 @@ export default function Personas({ openToast }) {
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
           <div className="row g-3">
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Nombre</label>
+              <label className="form-label" style={{ color: "#000" }}>Nombre</label>
               <input
                 className={`form-control ${errors.nombre ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
                 placeholder="Ej: Maria"
                 value={form.nombre}
                 onChange={(event) => setForm((state) => ({ ...state, nombre: capitalizeWords(event.target.value) }))}
@@ -651,9 +822,10 @@ export default function Personas({ openToast }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Apellido</label>
+              <label className="form-label" style={{ color: "#000" }}>Apellido</label>
               <input
                 className={`form-control ${errors.apellido ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
                 placeholder="Ej: Rodriguez"
                 value={form.apellido}
                 onChange={(event) => setForm((state) => ({ ...state, apellido: capitalizeWords(event.target.value) }))}
@@ -662,9 +834,10 @@ export default function Personas({ openToast }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">DNI</label>
+              <label className="form-label" style={{ color: "#000" }}>DNI</label>
               <input
                 className={`form-control ${errors.dni ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
                 placeholder="0000-0000-00000"
                 value={form.dni}
                 onChange={(event) => setForm((state) => ({ ...state, dni: formatDNI(event.target.value) }))}
@@ -673,9 +846,10 @@ export default function Personas({ openToast }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">RTN</label>
+              <label className="form-label" style={{ color: "#000" }}>RTN</label>
               <input
                 className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
                 placeholder="9"
                 maxLength={1}
                 inputMode="numeric"
@@ -692,9 +866,10 @@ export default function Personas({ openToast }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Genero</label>
+              <label className="form-label" style={{ color: "#000" }}>Genero</label>
               <select
                 className={`form-select ${errors.genero ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
                 value={form.genero}
                 onChange={(event) => setForm((state) => ({ ...state, genero: event.target.value }))}
               >
@@ -706,10 +881,11 @@ export default function Personas({ openToast }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Fecha nacimiento</label>
+              <label className="form-label" style={{ color: "#000" }}>Fecha nacimiento</label>
               <input
                 type="date"
                 className={`form-control ${errors.fecha_nacimiento ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
                 value={form.fecha_nacimiento}
                 onChange={(event) => setForm((state) => ({ ...state, fecha_nacimiento: event.target.value }))}
               />
@@ -717,53 +893,43 @@ export default function Personas({ openToast }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Telefono</label>
-              <select
-                className={`form-select ${errors.id_telefono ? "is-invalid" : ""}`}
+              <label className="form-label" style={{ color: "#000" }}>Telefono</label>
+              <input
+                type="text"
+                className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
+                placeholder="0000-0000"
+                inputMode="numeric"
+                maxLength={9}
                 value={form.id_telefono}
-                onChange={(event) => setForm((state) => ({ ...state, id_telefono: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {telefonos.map((telefono) => (
-                  <option key={telefono.id_telefono} value={telefono.id_telefono}>
-                    {telefono.telefono}
-                  </option>
-                ))}
-              </select>
+                onChange={handleTelefonoChange}
+              />
               {errors.id_telefono && <div className="invalid-feedback d-block">{errors.id_telefono}</div>}
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Direccion</label>
-              <select
-                className={`form-select ${errors.id_direccion ? "is-invalid" : ""}`}
+              <label className="form-label" style={{ color: "#000" }}>Direccion</label>
+              <input
+                type="text"
+                className={`form-control ${errors.id_direccion ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
+                placeholder="Ej: Lomas de Santa Lucia"
                 value={form.id_direccion}
                 onChange={(event) => setForm((state) => ({ ...state, id_direccion: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {direcciones.map((direccion) => (
-                  <option key={direccion.id_direccion} value={direccion.id_direccion}>
-                    {direccion.direccion}
-                  </option>
-                ))}
-              </select>
+              />
               {errors.id_direccion && <div className="invalid-feedback d-block">{errors.id_direccion}</div>}
             </div>
 
             <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Correo</label>
-              <select
-                className={`form-select ${errors.id_correo ? "is-invalid" : ""}`}
+              <label className="form-label" style={{ color: "#000" }}>Correo</label>
+              <input
+                type="text"
+                className={`form-control ${errors.id_correo ? "is-invalid" : ""}`}
+                style={{ color: "#000" }}
+                placeholder="ejemplo@correo.com"
                 value={form.id_correo}
                 onChange={(event) => setForm((state) => ({ ...state, id_correo: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {correos.map((correo) => (
-                  <option key={correo.id_correo} value={correo.id_correo}>
-                    {correo.direccion_correo}
-                  </option>
-                ))}
-              </select>
+              />
               {errors.id_correo && <div className="invalid-feedback d-block">{errors.id_correo}</div>}
             </div>
           </div>
