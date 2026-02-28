@@ -389,6 +389,8 @@ const SesionesTabGlobal = () => {
   const [offset, setOffset] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(null);
 
+  const [closingId, setClosingId] = useState(null);
+
   const load = async ({ silent = false } = {}) => {
     if (!silent) {
       setLoading(true);
@@ -458,6 +460,20 @@ const SesionesTabGlobal = () => {
     }
   };
 
+  const onCerrarSesionGlobal = async (id_sesion, esActual) => {
+    if (esActual) return;
+
+    setClosingId(id_sesion);
+    try {
+      await securityService.cerrarSesionGlobal(id_sesion);
+      await load({ silent: true });
+    } catch (e) {
+      alert(e?.message || "No se pudo cerrar la sesión");
+    } finally {
+      setClosingId(null);
+    }
+  };
+
   if (noPermiso) return <SinPermiso permiso="SEGURIDAD_VER" detalle="Solo Super Admin." />;
 
   return (
@@ -521,12 +537,13 @@ const SesionesTabGlobal = () => {
                         <th>IP</th>
                         <th>Inicio de sesión</th>
                         <th>Última actividad</th>
+                        <th className="text-end">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {rows.length === 0 && (
                         <tr>
-                          <td colSpan="8" className="text-center text-muted py-4">
+                          <td colSpan="9" className="text-center text-muted py-4">
                             No hay sesiones activas para el filtro.
                           </td>
                         </tr>
@@ -554,6 +571,22 @@ const SesionesTabGlobal = () => {
                             <td>{s.ip_origen || "—"}</td>
                             <td>{fmtDate(s.fecha_inicio)}</td>
                             <td>{fmtDate(s.ultima_actividad)}</td>
+                            <td className="text-end">
+                              <ConfirmButton
+                                className="btn btn-sm btn-outline-danger"
+                                confirmText="¿Esta seguro de cerrar esta sesión para este usuario?"
+                                onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
+                                disabled={esActual || closingId === s.id_sesion}
+                              >
+                                {closingId === s.id_sesion ? (
+                                  <span className="spinner-border spinner-border-sm" />
+                                ) : esActual ? (
+                                  "Actual"
+                                ) : (
+                                  "Cerrar"
+                                )}
+                              </ConfirmButton>
+                            </td>
                           </tr>
                         );
                       })}
@@ -563,9 +596,7 @@ const SesionesTabGlobal = () => {
               </div>
 
               <div className="d-flex justify-content-between align-items-center mt-3">
-                <small className="text-muted">
-                  Mostrando {shown} de {total}
-                </small>
+                <small className="text-muted">Mostrando {shown} de {total}</small>
 
                 <div className="btn-group">
                   <button

@@ -29,6 +29,11 @@ export const securityService = {
     return apiFetch('/seguridad/sesiones/cerrar-global-menos-actual', 'POST');
   },
 
+  // HU84 - Cerrar 1 sesión específica (Super Admin)
+  cerrarSesionGlobal: async (id_sesion) => {
+    return apiFetch('/seguridad/sesiones/cerrar-global', 'POST', { id_sesion });
+  },
+
   // HU81 - Políticas contraseña
   getPasswordPolicies: async () => {
     return apiFetch('/seguridad/configuracion/password', 'GET');
