@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import ProductoCard from './ProductoCard';
 
-const ProductoGrid = ({ productos, loading, onAgregar }) => {
+const ProductoGrid = ({ productos, loading, onAgregar, onOpenDetail }) => {
   if (loading) {
     return (
       <div className="inv-catpro-loading" role="status" aria-live="polite">
@@ -31,11 +32,15 @@ const ProductoGrid = ({ productos, loading, onAgregar }) => {
           className="col d-flex"
           key={producto.id_producto || `combo-${producto.id_combo}`}
         >
-          <ProductoCard producto={producto} onAgregar={onAgregar} />
+          <ProductoCard
+            producto={producto}
+            onAgregar={onAgregar}
+            onOpenDetail={onOpenDetail}
+          />
         </div>
       ))}
     </div>
   );
 };
 
-export default ProductoGrid;
+export default memo(ProductoGrid);

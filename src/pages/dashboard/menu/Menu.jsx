@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   FaBeer,
   FaBirthdayCake,
@@ -15,7 +15,10 @@ import {
   FaUtensils,
 } from 'react-icons/fa';
 import { GiTacos } from 'react-icons/gi';
+import '../../../assets/styles/_menu.scss';
 import { apiFetch } from '../../../services/api';
+import CurrentOrderPanel from './CurrentOrderPanel';
+import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
 
 const normalizeCategoriaNombre = (value) =>
@@ -36,6 +39,12 @@ const getCategoriaDisplayName = (nombre) => {
 };
 
 const isComboCategoria = (nombre) => normalizeCategoriaNombre(nombre).includes('combo');
+
+const getMenuItemKey = (producto) =>
+  producto?.id_producto ? `producto-${producto.id_producto}` : `combo-${producto?.id_combo}`;
+
+const getMenuItemName = (producto) =>
+  producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre';
 
 const getCategoriaIcon = (nombre) => {
   const n = normalizeCategoriaNombre(nombre);
@@ -86,35 +95,32 @@ const CategoryIcon = ({ nombre, className }) => {
   return <FaUtensils className={className} aria-hidden="true" />;
 };
 
-const CategorySelector = ({ categorias, selected, onSelect }) => {
-  return (
-    <div className="menu-pos-cat-strip" aria-label="Categorias del menu POS">
-      {categorias.map((categoria) => {
-        const isActive =
-          Number(selected?.id_tipo_departamento) ===
-          Number(categoria?.id_tipo_departamento);
-        const label = getCategoriaDisplayName(categoria?.nombre_departamento);
+const CategorySelector = ({ categorias, selected, onSelect }) => (
+  <div className="menu-pos-cat-strip" aria-label="Categorias del menu POS">
+    {categorias.map((categoria) => {
+      const isActive =
+        Number(selected?.id_tipo_departamento) === Number(categoria?.id_tipo_departamento);
+      const label = getCategoriaDisplayName(categoria?.nombre_departamento);
 
-        return (
-          <button
-            key={categoria.id_tipo_departamento}
-            type="button"
-            aria-pressed={isActive}
-            className={`inv-prod-toolbar-btn menu-pos-cat-chip ${isActive ? 'is-on' : ''}`}
-            onClick={() => onSelect(categoria)}
-            title={label}
-          >
-            <CategoryIcon
-              nombre={categoria?.nombre_departamento}
-              className="menu-pos-cat-icon fs-5 me-2"
-            />
-            <span className="menu-pos-cat-label text-truncate">{label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-};
+      return (
+        <button
+          key={categoria.id_tipo_departamento}
+          type="button"
+          aria-pressed={isActive}
+          className={`inv-prod-toolbar-btn menu-pos-cat-chip ${isActive ? 'is-on' : ''}`}
+          onClick={() => onSelect(categoria)}
+          title={label}
+        >
+          <CategoryIcon
+            nombre={categoria?.nombre_departamento}
+            className="menu-pos-cat-icon fs-5 me-2"
+          />
+          <span className="menu-pos-cat-label text-truncate">{label}</span>
+        </button>
+      );
+    })}
+  </div>
+);
 
 const Menu = () => {
   const [categorias, setCategorias] = useState([]);
@@ -124,6 +130,9 @@ const Menu = () => {
   const [productos, setProductos] = useState([]);
   const [loadingProductos, setLoadingProductos] = useState(false);
   const [errorProductos, setErrorProductos] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [orderItems, setOrderItems] = useState([]);
 
   useEffect(() => {
     const cargarCategorias = async () => {
@@ -154,7 +163,7 @@ const Menu = () => {
     cargarCategorias();
   }, []);
 
-  const cargarProductos = async (idTipoDepartamento, nombreDepartamento) => {
+  const cargarProductos = useCallback(async (idTipoDepartamento, nombreDepartamento) => {
     try {
       setLoadingProductos(true);
       setErrorProductos('');
@@ -172,9 +181,7 @@ const Menu = () => {
           }))
         : [];
 
-      const lista = isComboCategoria(nombreDepartamento)
-        ? listaCombos
-        : listaProductos;
+      const lista = isComboCategoria(nombreDepartamento) ? listaCombos : listaProductos;
 
       setProductos(lista);
     } catch (e) {
@@ -183,7 +190,7 @@ const Menu = () => {
     } finally {
       setLoadingProductos(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (selected?.id_tipo_departamento) {
@@ -193,13 +200,73 @@ const Menu = () => {
 
     setProductos([]);
     setErrorProductos('');
-  }, [selected]);
+  }, [cargarProductos, selected]);
 
-  const onAgregarProducto = (producto) => {
-    console.log('Agregar al carrito (HU-66):', producto);
-  };
+  const onAgregarProducto = useCallback((producto) => {
+    setOrderItems((current) => {
+      const itemKey = getMenuItemKey(producto);
+      const existingIndex = current.findIndex((item) => item.itemKey === itemKey);
+
+      if (existingIndex === -1) {
+        return [
+          ...current,
+          {
+            itemKey,
+            id_producto: producto?.id_producto ?? null,
+            id_combo: producto?.id_combo ?? null,
+            nombre: getMenuItemName(producto),
+            precio: Number(producto?.precio || 0),
+            cantidad: 1,
+          },
+        ];
+      }
+
+      return current.map((item, index) =>
+        index === existingIndex
+          ? { ...item, cantidad: item.cantidad + 1 }
+          : item
+      );
+    });
+  }, []);
+
+  const onIncreaseItem = useCallback((itemKey) => {
+    setOrderItems((current) =>
+      current.map((item) =>
+        item.itemKey === itemKey ? { ...item, cantidad: item.cantidad + 1 } : item
+      )
+    );
+  }, []);
+
+  const onDecreaseItem = useCallback((itemKey) => {
+    setOrderItems((current) =>
+      current.map((item) =>
+        item.itemKey === itemKey
+          ? { ...item, cantidad: Math.max(1, item.cantidad - 1) }
+          : item
+      )
+    );
+  }, []);
+
+  const onRemoveItem = useCallback((itemKey) => {
+    setOrderItems((current) => current.filter((item) => item.itemKey !== itemKey));
+  }, []);
+
+  const onOpenDetail = useCallback((producto) => {
+    setSelectedProduct(producto);
+    setIsDetailOpen(true);
+  }, []);
+
+  const onCloseDetail = useCallback(() => {
+    setIsDetailOpen(false);
+  }, []);
+
+  const onDetailExited = useCallback(() => {
+    setSelectedProduct(null);
+  }, []);
 
   const selectedLabel = getCategoriaDisplayName(selected?.nombre_departamento);
+  const totalItems = orderItems.reduce((acc, item) => acc + item.cantidad, 0);
+  const totalAmount = orderItems.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
 
   return (
     <div className="container-fluid p-3">
@@ -242,16 +309,36 @@ const Menu = () => {
       </div>
 
       {!loading && !error && selected && (
-        <div className="mt-3">
-          {errorProductos && <div className="alert alert-danger">{errorProductos}</div>}
+        <div className="menu-pos-main-layout mt-3">
+          <section className="menu-pos-catalog-column">
+            {errorProductos && <div className="alert alert-danger">{errorProductos}</div>}
 
-          <ProductoGrid
-            productos={productos}
-            loading={loadingProductos}
-            onAgregar={onAgregarProducto}
+            <ProductoGrid
+              productos={productos}
+              loading={loadingProductos}
+              onAgregar={onAgregarProducto}
+              onOpenDetail={onOpenDetail}
+            />
+          </section>
+
+          <CurrentOrderPanel
+            items={orderItems}
+            totalAmount={totalAmount}
+            totalItems={totalItems}
+            onDecrease={onDecreaseItem}
+            onIncrease={onIncreaseItem}
+            onRemove={onRemoveItem}
           />
         </div>
       )}
+
+      <ProductDetailOverlay
+        isOpen={isDetailOpen}
+        product={selectedProduct}
+        onAdd={onAgregarProducto}
+        onClose={onCloseDetail}
+        onExited={onDetailExited}
+      />
     </div>
   );
 };

@@ -1,15 +1,57 @@
-// =====================================================
-// HU 65 - Tarjeta de producto (POS)
-// Muestra nombre + precio + botón rápido
-// =====================================================
-const ProductoCard = ({ producto, onAgregar }) => {
+import { memo, useEffect, useRef, useState } from 'react';
+import { FaImage, FaPlus } from 'react-icons/fa';
+
+const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
   const nombre = producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre';
   const precio = Number(producto?.precio || 0);
   const imageSrc = String(producto?.url_imagen || '').trim();
   const descripcion = producto?.descripcion_producto || producto?.descripcion || '';
+  const feedbackTimeoutRef = useRef(null);
+  const [isAddFeedbackOn, setIsAddFeedbackOn] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        window.clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const triggerAddFeedback = () => {
+    if (feedbackTimeoutRef.current) {
+      window.clearTimeout(feedbackTimeoutRef.current);
+    }
+
+    setIsAddFeedbackOn(true);
+    feedbackTimeoutRef.current = window.setTimeout(() => {
+      setIsAddFeedbackOn(false);
+      feedbackTimeoutRef.current = null;
+    }, 220);
+  };
+
+  const handleAgregar = (event) => {
+    event.stopPropagation();
+    triggerAddFeedback();
+    onAgregar(producto);
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.target !== event.currentTarget) return;
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onOpenDetail(producto);
+    }
+  };
 
   return (
-    <div className="card h-100 shadow-sm menu-pos-product-card">
+    <div
+      className="card h-100 shadow-sm menu-pos-product-card"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenDetail(producto)}
+      onKeyDown={handleKeyDown}
+    >
       <div className="menu-pos-product-media">
         {imageSrc ? (
           <img
@@ -25,7 +67,7 @@ const ProductoCard = ({ producto, onAgregar }) => {
           />
         ) : null}
         <div className={`menu-pos-product-placeholder ${imageSrc ? 'd-none' : ''}`}>
-          <i className="bi bi-image fs-4" />
+          <FaImage className="fs-4" />
           <span>Sin imagen</span>
         </div>
       </div>
@@ -33,20 +75,21 @@ const ProductoCard = ({ producto, onAgregar }) => {
       <div className="card-body d-flex flex-column menu-pos-product-body">
         <div className="menu-pos-product-copy">
           <h6 className="card-title mb-0 menu-pos-product-name">{nombre}</h6>
-          <div className="text-muted small">{descripcion || 'Disponible en menu POS'}</div>
+          {descripcion ? <div className="text-muted small">{descripcion}</div> : null}
         </div>
 
         <div className="menu-pos-product-footer">
-          <div className="menu-pos-product-price">
-            L {precio.toFixed(2)}
-          </div>
+          <div className="menu-pos-product-price">L. {precio.toFixed(2)}</div>
 
           <button
             type="button"
-            className="btn btn-primary btn-sm w-100 menu-pos-add-btn"
-            onClick={() => onAgregar(producto)}
+            className={`btn btn-primary btn-sm menu-pos-add-btn ${isAddFeedbackOn ? 'is-feedback' : ''}`}
+            onPointerDown={triggerAddFeedback}
+            onClick={handleAgregar}
+            onKeyDown={(event) => event.stopPropagation()}
+            aria-label={`Agregar ${nombre}`}
           >
-            Agregar
+            <FaPlus />
           </button>
         </div>
       </div>
@@ -54,4 +97,4 @@ const ProductoCard = ({ producto, onAgregar }) => {
   );
 };
 
-export default ProductoCard;
+export default memo(ProductoCard);
