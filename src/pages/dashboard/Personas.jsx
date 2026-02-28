@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import PersonasTab from "./personas/personasTab";
+import PersonasTab from "./personas/PersonasTab";
 import EmpresasTab from "./personas/EmpresasTab";
 import EmpleadosTab from "./personas/EmpleadosTab";
 import UsuariosTab from "./personas/UsuariosTab";
@@ -56,13 +56,13 @@ export default function Personas() {
     return () => clearTimeout(timer);
   }, [toast.show]);
 
-  const openToast = (title, message, variant = "success") => {
+  const openToast = useCallback((title, message, variant = "success") => {
     setToast({ show: true, title, message, variant });
-  };
+  }, []);
 
-  const closeToast = () => {
+  const closeToast = useCallback(() => {
     setToast((s) => ({ ...s, show: false }));
-  };
+  }, []);
 
   const toastIconClass = (variant) => {
     if (variant === "danger") return "bi bi-x-octagon-fill";
