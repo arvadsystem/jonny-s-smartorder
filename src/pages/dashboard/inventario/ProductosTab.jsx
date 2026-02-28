@@ -3,13 +3,61 @@ import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
 import { useAuth } from '../../../hooks/useAuth';
 import { toUpperSafe } from '../../../utils/toUpperSafe';
+import {
+  buildInventarioImageUploadPayload,
+  getInventarioImageFileError,
+  resolveInventarioImageUrl
+} from '../../../utils/inventarioImagenes';
 
-const getStockMeta = (cantidad) => {
+const getStockMeta = (cantidad, stockMinimo = 0) => {
   const qty = Number.parseInt(String(cantidad ?? '0'), 10);
+  const minQty = Math.max(0, Number.parseInt(String(stockMinimo ?? '0'), 10) || 0);
   if (Number.isNaN(qty) || qty <= 0) return { qty: 0, label: 'Sin stock', className: 'is-empty' };
-  if (qty <= 5) return { qty, label: 'Stock bajo', className: 'is-low' };
+  if (minQty > 0 && qty <= minQty) return { qty, label: 'Stock bajo', className: 'is-low' };
   return { qty, label: 'Con stock', className: 'is-ok' };
 };
+
+const getStockPriorityRank = (cantidad, stockMinimo = 0) => {
+  const stockMeta = getStockMeta(cantidad, stockMinimo);
+  if (stockMeta.qty <= 0) return 0;
+  if (stockMeta.className === 'is-low') return 1;
+  return 2;
+};
+
+// NEW: configuracion responsive del carrusel principal de Productos.
+// WHY: el usuario pidio el mismo patron paginado de Insumos pero con 4x2 en desktop.
+// IMPACT: solo reorganiza la presentacion del carrusel; filtros, cards y handlers se mantienen.
+const getProductosCarouselConfig = (viewportWidth) => {
+  if (viewportWidth >= 1280) return { perPage: 8, columns: 4 };
+  if (viewportWidth >= 768) return { perPage: 4, columns: 2 };
+  return { perPage: 2, columns: 1 };
+};
+
+// NEW: helper local para agrupar productos visibles en paginas del carrusel.
+// WHY: reemplazar el scroll horizontal libre por paginas fijas del mismo estilo de Insumos.
+// IMPACT: mantiene el dataset actual intacto y solo lo divide para render.
+const chunkProductosCarouselPages = (items, pageSize) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  const safePageSize = Math.max(1, Number(pageSize) || 1);
+  const pages = [];
+
+  for (let index = 0; index < safeItems.length; index += safePageSize) {
+    pages.push(safeItems.slice(index, index + safePageSize));
+  }
+
+  return pages;
+};
+
+// NEW: copy e iconografia unificados para todas las confirmaciones de inactivacion en Inventario.
+// WHY: el usuario pidio el mismo mensaje y el mismo icono en todos los modulos al confirmar la inactivacion.
+// IMPACT: solo estandariza el modal de confirmacion; no cambia handlers, endpoints ni estados locales.
+const INACTIVATE_CONFIRM_COPY = Object.freeze({
+  title: 'Confirmar inactivación',
+  subtitle: 'Este registro quedará marcado como inactivo',
+  question: '¿Deseas inactivar este registro?',
+  fallbackName: 'Registro seleccionado',
+  iconClass: 'bi bi-slash-circle'
+});
 
 const buildCreateImageState = () => ({
   file: null,
@@ -18,10 +66,19 @@ const buildCreateImageState = () => ({
   error: ''
 });
 
+const buildDrawerImageActionState = () => ({
+  loading: false,
+  error: ''
+});
+
 // NEW: limite superior de INT32 usado por la BD/SPs para IDs de productos.
 // WHY: prevenir que un timestamp en ms (Date.now()) se use como `id_producto` en mutaciones.
 // IMPACT: validacion frontend local; no cambia endpoints ni payloads validos.
 const PRODUCTO_DB_INT32_MAX = 2147483647;
+// NEW: se oculta `tipo_departamento` en el modulo de Productos.
+// WHY: el usuario indico que Departamentos ya no se necesitara en Productos.
+// IMPACT: solo frontend de Productos; backend y otros modulos siguen intactos.
+const SHOW_PRODUCTO_DEPARTAMENTOS = false;
 
 const ProductosTab = ({ categorias = [], openToast }) => {
   // NUEVO: toma contexto de sesion existente para segmentar historial KPI por usuario/empresa/sucursal.
@@ -167,11 +224,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [imageErrorMap, setImageErrorMap] = useState({});
   const [drawerMessage, setDrawerMessage] = useState('');
   const [togglingEstado, setTogglingEstado] = useState(false);
-  const catalogCarouselRef = useRef(null);
+  const [drawerImageAction, setDrawerImageAction] = useState(buildDrawerImageActionState);
   // NUEVO: refs para desplazar viewport a paneles cuando el usuario abre Nuevo/Filtros.
   const filtersSectionRef = useRef(null);
   const createSectionRef = useRef(null);
-  const [carouselState, setCarouselState] = useState({ canPrev: false, canNext: false });
+  const [carouselPageIndex, setCarouselPageIndex] = useState(0);
+  const [carouselViewportWidth, setCarouselViewportWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
   const [kpiHistory, setKpiHistory] = useState([]);
   // NEW: target de portal local para modales de Productos.
   // WHY: sacar Filtros/Nuevo del card para evitar recortes por `overflow: hidden`.
@@ -181,10 +239,24 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // WHY: permitir transición de salida al eliminar sin refrescar toda la lista.
   // IMPACT: solo afecta la UX de remoción local; no toca backend ni filtros.
   const removeCardTimeoutsRef = useRef(new Map());
+  const drawerImageInputRef = useRef(null);
+  // NEW: referencia explicita del input de imagen en create.
+  // WHY: al quitar imagen se debe vaciar tambien el valor del `<input type="file">` para evitar estados colgados.
+  // IMPACT: solo sincroniza UI local del formulario de alta; el flujo de upload no cambia.
+  const createImageInputRef = useRef(null);
   // NEW: secuencia de IDs temporales negativos (int32-safe) para altas locales sin `id_producto` en respuesta.
   // WHY: reemplazar el fallback `Date.now()` que produce valores fuera de rango para INT en backend/BD.
   // IMPACT: solo IDs temporales en frontend; se sincronizan con IDs reales tras recarga silenciosa.
   const tempProductoIdSeqRef = useRef(-1);
+
+  useEffect(() => {
+    // NEW: escucha el ancho del viewport para recalcular paginas 4x2/2x2/1x2 sin remount del modulo.
+    // WHY: mantener el carrusel de Productos alineado con el patron responsive de Insumos.
+    // IMPACT: solo actualiza la agrupacion visual del carrusel.
+    const onResize = () => setCarouselViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const openConfirmDelete = (id, nombre) => {
     setConfirmDeleteError('');
@@ -380,6 +452,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, [createImage.previewUrl]);
 
   useEffect(() => {
+    setDrawerImageAction(buildDrawerImageActionState());
+  }, [drawerOpen, selectedProductoId]);
+
+  useEffect(() => {
     // NEW: limpia timeouts pendientes de remoción de cards al desmontar el tab.
     // WHY: evitar callbacks tardíos sobre estado desmontado al cerrar/cambiar de vista.
     // IMPACT: solo housekeeping de UX local; sin impacto en datos ni API.
@@ -476,10 +552,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const nombre = normalizeProductoDuplicateText(data?.nombre_producto);
     const categoria = normalizeProductoDuplicateId(data?.id_categoria_producto);
     const almacen = normalizeProductoDuplicateId(data?.id_almacen);
-    const depto = normalizeProductoDuplicateId(data?.id_tipo_departamento);
+    const depto = SHOW_PRODUCTO_DEPARTAMENTOS ? normalizeProductoDuplicateId(data?.id_tipo_departamento) : '';
 
     // NEW: no se usa SKU/codigo porque el formulario actual de Productos no expone ese campo.
-    // WHY: aplicar criterio real del modelo disponible en UI (nombre + categoria + almacen + depto opcional).
+    // WHY: aplicar criterio real del modelo disponible en UI (nombre + categoria + almacen).
     // IMPACT: evita falsos positivos por campos inexistentes; no inventa atributos nuevos.
     if (!nombre || !categoria || !almacen) return '';
     return `${nombre}__cat:${categoria}__alm:${almacen}__dep:${depto || '-'}`;
@@ -527,7 +603,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // IMPACT: refresca estado local de `productos` sin cambiar contratos API ni UX de loaders.
   const syncProductosSilently = useCallback(async () => {
     try {
-      const data = await inventarioService.getProductos({ incluirInactivos: showInactiveProductos });
+      // NEW: sincronizacion silenciosa siempre contra dataset global (activos + inactivos).
+      // WHY: mantener KPIs y "Total" estables aunque el toggle solo cambie el listado visible.
+      // IMPACT: `syncProductosSilently` sigue usando el mismo endpoint; no cambia contratos.
+      const data = await inventarioService.getProductos({ incluirInactivos: true });
       if (!Array.isArray(data)) return false;
       setProductos(data);
       return true;
@@ -540,7 +619,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       }
       return false;
     }
-  }, [showInactiveProductos]);
+  }, []);
 
   const removeProductoLocalById = useCallback((id, { animate = false } = {}) => {
     if (!id) return;
@@ -610,7 +689,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       fecha_caducidad: cleaned.fecha_caducidad || '',
       id_categoria_producto: cleaned.id_categoria_producto,
       id_almacen: cleaned.id_almacen,
-      id_tipo_departamento: cleaned.id_tipo_departamento ?? null,
+      id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS ? (cleaned.id_tipo_departamento ?? null) : null,
       estado: true,
       // NEW: flag local para identificar cards creadas sin ID persistido y forzar sincronizacion silenciosa.
       // WHY: evitar que un ID temporal llegue a edit/delete mientras el backend no retorna `id_producto`.
@@ -639,13 +718,17 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const resolveEstadoProducto = useCallback((producto) => {
     if (!resolveEstadoActivo(producto)) return { label: 'Inactivo', className: 'is-inactive' };
 
-    const stockMeta = getStockMeta(producto?.cantidad);
+    const stockMeta = getStockMeta(producto?.cantidad, producto?.stock_minimo);
     if (stockMeta.qty <= 0) return { label: 'Sin existencias', className: 'is-empty' };
-    if (stockMeta.qty <= 5) return { label: 'Stock bajo', className: 'is-low' };
+    if (stockMeta.className === 'is-low') return { label: 'Stock bajo', className: 'is-low' };
     return { label: 'En existencia', className: 'is-ok' };
   }, [resolveEstadoActivo]);
 
   const clearCreateImage = useCallback(() => {
+    // NEW: limpia tambien el valor del input file de alta.
+    // WHY: permite volver a seleccionar el mismo archivo despues de "Quitar imagen" sin quedar pegado al valor previo.
+    // IMPACT: solo UX/estado local del formulario de create.
+    if (createImageInputRef.current) createImageInputRef.current.value = '';
     setCreateImage(buildCreateImageState());
   }, []);
 
@@ -665,23 +748,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       return;
     }
 
-    if (!String(file.type || '').startsWith('image/')) {
+    const fileError = getInventarioImageFileError(file);
+    if (fileError) {
       setCreateImage((prev) => ({
         ...prev,
         loading: false,
-        error: 'Selecciona una imagen válida (JPG, PNG o WEBP).'
-      }));
-      input.value = '';
-      return;
-    }
-
-    const maxSizeMb = 6;
-    const maxSizeBytes = maxSizeMb * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      setCreateImage((prev) => ({
-        ...prev,
-        loading: false,
-        error: `La imagen supera ${maxSizeMb} MB.`
+        error: fileError
       }));
       input.value = '';
       return;
@@ -729,8 +801,15 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!producto) return '';
     const id = producto?.id_producto;
     if (imageErrorMap[id]) return '';
-    return String(producto?.imagen_url || producto?.imagen || '').trim();
+    return resolveInventarioImageUrl(
+      producto?.imagen_principal_url || producto?.imagen_url || producto?.imagen || producto?.url_publica || ''
+    );
   }, [imageErrorMap]);
+
+  const uploadProductoImageFile = useCallback(async (file) => {
+    const payload = await buildInventarioImageUploadPayload(file);
+    return inventarioService.crearArchivoImagen(payload);
+  }, []);
 
   // ==============================
   // VALIDACIÓN MÍNIMA (PRODUCTOS)
@@ -747,7 +826,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
     const categoriaRaw = String(data?.id_categoria_producto ?? '').trim();
     const almacenRaw = String(data?.id_almacen ?? '').trim();
-    const deptoRaw = String(data?.id_tipo_departamento ?? '').trim(); // OPCIONAL
+    const deptoRaw = SHOW_PRODUCTO_DEPARTAMENTOS ? String(data?.id_tipo_departamento ?? '').trim() : '';
 
     const fechaIngreso = String(data?.fecha_ingreso_producto ?? '').trim();
     const fechaCaducidad = String(data?.fecha_caducidad ?? '').trim();
@@ -846,7 +925,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (cleaned.fecha_caducidad) payload.fecha_caducidad = cleaned.fecha_caducidad;
 
     // COMENTARIO EN MAYÚSCULAS: SOLO ENVIAR id_tipo_departamento SI VIENE CON VALOR (NO NULL)
-    if (cleaned.id_tipo_departamento) payload.id_tipo_departamento = cleaned.id_tipo_departamento;
+    if (SHOW_PRODUCTO_DEPARTAMENTOS && cleaned.id_tipo_departamento) payload.id_tipo_departamento = cleaned.id_tipo_departamento;
 
     return payload;
   };
@@ -859,7 +938,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setError('');
     try {
       // COMENTARIO EN MAYÚSCULAS: PRODUCTOS SE CARGA DESDE EL BACKEND /productos
-      const data = await inventarioService.getProductos({ incluirInactivos: showInactiveProductos });
+      // NEW: se pide siempre el dataset global (activos + inactivos) para KPIs y "Total" global.
+      // WHY: el toggle "Ver inactivos" ahora debe afectar solo el listado visible (filtro local).
+      // IMPACT: no cambia endpoint ni contrato; la vista usa el mismo `productos` con filtro por estado.
+      const data = await inventarioService.getProductos({ incluirInactivos: true });
       setProductos(Array.isArray(data) ? data : []);
     } catch (e) {
       const msg = e?.message || 'ERROR CARGANDO PRODUCTOS';
@@ -902,17 +984,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   useEffect(() => {
     // COMENTARIO EN MAYÚSCULAS: CARGA INICIAL DEL TAB PRODUCTOS
     cargarAlmacenes();
-    cargarTipoDepartamentos();
+    if (SHOW_PRODUCTO_DEPARTAMENTOS) cargarTipoDepartamentos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    // NEW: recarga productos cuando cambia el toggle admin "Mostrar inactivos".
-    // WHY: el backend devuelve solo activos por defecto tras el cambio a soft delete.
-    // IMPACT: refresca solo `/productos`; no modifica otros catálogos ni handlers.
+    if (!SHOW_PRODUCTO_DEPARTAMENTOS) setDeptoFiltro('todos');
+  }, []);
+
+  useEffect(() => {
+    // NEW: carga inicial del dataset global de productos (activos + inactivos) para KPIs y listado.
+    // WHY: el toggle "Ver inactivos" ahora filtra localmente y no requiere refetch para cambiar la vista.
+    // IMPACT: reduce recargas visibles en el toggle; CRUD y `cargarProductos()` manual siguen intactos.
     void cargarProductos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showInactiveProductos]);
+  }, []);
 
   // ==============================
   // RESET FORM CREAR
@@ -962,8 +1048,29 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setCreating(true);
     try {
       const payload = buildProductoPayload(v.cleaned);
+      let uploadedImage = null;
+
+      // NEW: si hay imagen seleccionada, se crea primero en `archivos` y luego se envia la FK al POST /productos.
+      // WHY: mantener el flujo actual del formulario sin introducir multipart ni romper el contrato existente.
+      // IMPACT: el create solo agrega `id_archivo_imagen_principal` cuando la imagen se subio correctamente.
+      if (createImage.file) {
+        const archivoResp = await uploadProductoImageFile(createImage.file);
+        const archivoId = Number.parseInt(String(archivoResp?.id_archivo ?? ''), 10);
+        if (!Number.isInteger(archivoId) || archivoId <= 0) {
+          throw new Error('No se pudo obtener el archivo de imagen creado.');
+        }
+        payload.id_archivo_imagen_principal = archivoId;
+        uploadedImage = {
+          id_archivo_imagen_principal: archivoId,
+          imagen_principal_url: resolveInventarioImageUrl(archivoResp?.url_publica || '')
+        };
+      }
+
       const createResp = await inventarioService.crearProducto(payload);
-      const createdProductoLocal = buildLocalProductoFromCreateResponse(v.cleaned, createResp);
+      const createdProductoLocal = {
+        ...buildLocalProductoFromCreateResponse(v.cleaned, createResp),
+        ...(uploadedImage || {})
+      };
       upsertProductoLocal(createdProductoLocal);
       if (createdProductoLocal?.__local_temp_id === true) {
         // NEW: sincroniza la lista tras create cuando el backend no devolvio `id_producto`.
@@ -1004,7 +1111,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       fecha_caducidad: toDateInputValue(p.fecha_caducidad),
       id_categoria_producto: String(p.id_categoria_producto ?? ''),
       id_almacen: String(p.id_almacen ?? ''),
-      id_tipo_departamento: p.id_tipo_departamento ? String(p.id_tipo_departamento) : ''
+      id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && p.id_tipo_departamento ? String(p.id_tipo_departamento) : ''
     });
   };
 
@@ -1018,7 +1125,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const abrirDrawerProducto = (producto) => {
     iniciarEdicion(producto);
     setSelectedProductoId(producto?.id_producto ?? null);
-    setDrawerEditMode(false);
+    // NEW: el drawer de Productos abre directamente en modo edicion.
+    // WHY: el usuario pidio ver todos los campos modificables sin una capa previa de detalle.
+    // IMPACT: solo cambia el estado inicial del drawer; el guardado y validaciones permanecen.
+    setDrawerEditMode(true);
     setDrawerMessage('');
     setDrawerOpen(true);
   };
@@ -1030,6 +1140,139 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setSelectedProductoId(null);
     cancelarEdicion();
   };
+
+  const clearProductoImageError = useCallback((productoId) => {
+    if (!productoId) return;
+    setImageErrorMap((prev) => {
+      if (!Object.prototype.hasOwnProperty.call(prev, productoId)) return prev;
+      const next = { ...prev };
+      delete next[productoId];
+      return next;
+    });
+  }, []);
+
+  const openDrawerImagePicker = useCallback(() => {
+    if (drawerImageAction.loading) return;
+    drawerImageInputRef.current?.click();
+  }, [drawerImageAction.loading]);
+
+  const onDrawerImageChange = useCallback(async (event) => {
+    const input = event.target;
+    const file = input?.files?.[0];
+
+    if (!file || !selectedProducto) {
+      if (input) input.value = '';
+      return;
+    }
+
+    const fileError = getInventarioImageFileError(file);
+    if (fileError) {
+      setDrawerImageAction({ loading: false, error: fileError });
+      if (input) input.value = '';
+      return;
+    }
+
+    const persistedProductId = parseProductoPersistedId(selectedProducto?.id_producto);
+    if (!persistedProductId) {
+      const safeMsg = 'No se pudo completar la accion. Verifica los datos e intenta de nuevo.';
+      setDrawerImageAction({ loading: false, error: safeMsg });
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      if (input) input.value = '';
+      return;
+    }
+
+    setDrawerImageAction({ loading: true, error: '' });
+    try {
+      const archivoResp = await uploadProductoImageFile(file);
+      const archivoId = Number.parseInt(String(archivoResp?.id_archivo ?? ''), 10);
+      if (!Number.isInteger(archivoId) || archivoId <= 0) {
+        throw new Error('No se pudo obtener el archivo de imagen creado.');
+      }
+
+      await inventarioService.actualizarProductoCampo(
+        persistedProductId,
+        'id_archivo_imagen_principal',
+        archivoId
+      );
+
+      clearProductoImageError(persistedProductId);
+      patchProductoLocalById(persistedProductId, {
+        id_archivo_imagen_principal: archivoId,
+        imagen_principal_url: resolveInventarioImageUrl(archivoResp?.url_publica || '')
+      });
+      setDrawerImageAction({ loading: false, error: '' });
+      setDrawerMessage('Imagen actualizada.');
+      safeToast('ACTUALIZADO', 'LA IMAGEN DEL PRODUCTO SE ACTUALIZO CORRECTAMENTE.', 'success');
+    } catch (errorUpload) {
+      const msg = handleApiStatusError(errorUpload, 'NO SE PUDO ACTUALIZAR LA IMAGEN DEL PRODUCTO.');
+      setDrawerImageAction({ loading: false, error: msg });
+      setDrawerMessage(msg);
+    } finally {
+      if (input) input.value = '';
+    }
+  }, [
+    clearProductoImageError,
+    handleApiStatusError,
+    parseProductoPersistedId,
+    patchProductoLocalById,
+    safeToast,
+    selectedProducto,
+    syncProductosSilently,
+    uploadProductoImageFile
+  ]);
+
+  const removeDrawerImage = useCallback(async () => {
+    if (drawerImageAction.loading || !selectedProducto) return;
+
+    const persistedProductId = parseProductoPersistedId(selectedProducto?.id_producto);
+    if (!persistedProductId) {
+      const safeMsg = 'No se pudo completar la accion. Verifica los datos e intenta de nuevo.';
+      setDrawerImageAction({ loading: false, error: safeMsg });
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+
+    const currentImageSrc = getProductoImageSrc(selectedProducto);
+    if (!currentImageSrc && !selectedProducto?.id_archivo_imagen_principal) return;
+
+    setDrawerImageAction({ loading: true, error: '' });
+    try {
+      await inventarioService.actualizarProductoCampo(
+        persistedProductId,
+        'id_archivo_imagen_principal',
+        null
+      );
+
+      clearProductoImageError(persistedProductId);
+      patchProductoLocalById(persistedProductId, {
+        id_archivo_imagen_principal: null,
+        imagen_principal_url: null
+      });
+      // NEW: limpia el file input oculto del drawer al desvincular la imagen.
+      // WHY: evita reenvios accidentales o que el navegador retenga el mismo archivo seleccionado.
+      // IMPACT: solo sincroniza el estado visual del picker del drawer.
+      if (drawerImageInputRef.current) drawerImageInputRef.current.value = '';
+      setDrawerImageAction({ loading: false, error: '' });
+      setDrawerMessage('Imagen eliminada.');
+      safeToast('ACTUALIZADO', 'LA IMAGEN DEL PRODUCTO SE ELIMINO CORRECTAMENTE.', 'success');
+    } catch (errorUpload) {
+      const msg = handleApiStatusError(errorUpload, 'NO SE PUDO ELIMINAR LA IMAGEN DEL PRODUCTO.');
+      setDrawerImageAction({ loading: false, error: msg });
+      setDrawerMessage(msg);
+    }
+  }, [
+    clearProductoImageError,
+    drawerImageAction.loading,
+    getProductoImageSrc,
+    handleApiStatusError,
+    parseProductoPersistedId,
+    patchProductoLocalById,
+    safeToast,
+    selectedProducto,
+    syncProductosSilently
+  ]);
 
   const duplicarProductoDesdeDrawer = () => {
     if (!selectedProducto) return;
@@ -1054,7 +1297,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       fecha_caducidad: toDateInputValue(productoBase?.fecha_caducidad),
       id_categoria_producto: String(productoBase?.id_categoria_producto ?? ''),
       id_almacen: String(productoBase?.id_almacen ?? ''),
-      id_tipo_departamento: productoBase?.id_tipo_departamento ? String(productoBase?.id_tipo_departamento) : ''
+      id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && productoBase?.id_tipo_departamento ? String(productoBase?.id_tipo_departamento) : ''
     });
     setCreateErrors({});
     clearCreateImage();
@@ -1146,6 +1389,78 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       setTogglingEstado(false);
     }
   };
+
+  // NEW: reactivacion directa desde card cuando el listado visible es de productos inactivos.
+  // WHY: corregir la coherencia del CTA del card (ACTIVAR/INACTIVAR) sin obligar al usuario a abrir el drawer.
+  // IMPACT: reutiliza `actualizarProductoCampo` y el estado local existente; no cambia contratos ni el DELETE actual.
+  const activarProductoDesdeCard = useCallback(async (producto) => {
+    if (!producto || togglingEstado || deleting) return;
+
+    const productId = producto?.id_producto;
+    const persistedProductId = parseProductoPersistedId(productId);
+    if (!persistedProductId) {
+      // NEW: evita mutar backend con IDs temporales/fuera de rango y fuerza sincronizacion silenciosa.
+      // WHY: proteger el flujo de activacion con la misma validacion de ID usada en otras mutaciones.
+      // IMPACT: no afecta productos persistidos; solo corta casos invalidos y recupera datos desde GET.
+      const safeMsg = 'No se pudo completar la acción. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      if (drawerOpen && Number(selectedProductoId) === Number(productId)) setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+
+    setTogglingEstado(true);
+    setError('');
+    if (drawerOpen && Number(selectedProductoId) === Number(persistedProductId)) {
+      setDrawerMessage('Activando producto...');
+    }
+
+    try {
+      let done = false;
+      let lastError = null;
+      for (const candidate of [1, '1', true]) {
+        try {
+          await inventarioService.actualizarProductoCampo(persistedProductId, 'estado', candidate);
+          done = true;
+          break;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      if (!done) throw (lastError || new Error('No se pudo activar el producto.'));
+
+      patchProductoLocalById(persistedProductId, { estado: true });
+      setLocalEstadoMap((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, persistedProductId)) return prev;
+        const next = { ...prev };
+        delete next[persistedProductId];
+        return next;
+      });
+
+      if (drawerOpen && Number(selectedProductoId) === Number(persistedProductId)) {
+        setDrawerMessage('Producto activado.');
+      }
+      safeToast('EXITO', 'Producto activado.', 'success');
+    } catch (e) {
+      const msg = handleApiStatusError(e, 'No se pudo activar el producto. Intenta de nuevo.');
+      setError(msg);
+      if (drawerOpen && Number(selectedProductoId) === Number(persistedProductId)) {
+        setDrawerMessage(msg);
+      }
+    } finally {
+      setTogglingEstado(false);
+    }
+  }, [
+    deleting,
+    drawerOpen,
+    handleApiStatusError,
+    parseProductoPersistedId,
+    patchProductoLocalById,
+    safeToast,
+    selectedProductoId,
+    syncProductosSilently,
+    togglingEstado
+  ]);
 
   // ==============================
   // GUARDAR EDICIÓN (CAMPO POR CAMPO)
@@ -1249,7 +1564,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       }
 
       // TIPO_DEPARTAMENTO: SOLO ENVIAR SI EL USUARIO SELECCIONÓ UNO (NO NULL)
-      if (v.cleaned.id_tipo_departamento && v.cleaned.id_tipo_departamento !== deptoActual) {
+      if (SHOW_PRODUCTO_DEPARTAMENTOS && v.cleaned.id_tipo_departamento && v.cleaned.id_tipo_departamento !== deptoActual) {
         cambios.push(['id_tipo_departamento', v.cleaned.id_tipo_departamento]);
       }
 
@@ -1320,9 +1635,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         }
       }
       patchProductoLocalById(persistedDeleteId, { estado: false });
-      if (!showInactiveProductos) {
-        removeProductoLocalById(persistedDeleteId, { animate: true });
-      }
+      // NEW: el producto inactivado se conserva en memoria para que aparezca al instante en "Ver inactivos".
+      // WHY: evitar recarga/refetch y asegurar que el toggle de inactivos lo encuentre inmediatamente.
+      // IMPACT: el card sigue saliendo de la vista activa por filtrado local, pero ya no se elimina del dataset global.
       setLocalEstadoMap((prev) => {
         if (!Object.prototype.hasOwnProperty.call(prev, persistedDeleteId)) return prev;
         const next = { ...prev };
@@ -1346,7 +1661,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const s = search.trim().toLowerCase();
 
     const filtered = [...productos].filter((p) => {
-      const texto = `${p.nombre_producto ?? ''} ${p.descripcion_producto ?? ''} ${getCategoriaLabel(p.id_categoria_producto)} ${getAlmacenLabel(p.id_almacen)} ${getDeptoLabel(p.id_tipo_departamento)}`.toLowerCase();
+      const deptoTexto = SHOW_PRODUCTO_DEPARTAMENTOS ? getDeptoLabel(p.id_tipo_departamento) : '';
+      const texto = `${p.nombre_producto ?? ''} ${p.descripcion_producto ?? ''} ${getCategoriaLabel(p.id_categoria_producto)} ${getAlmacenLabel(p.id_almacen)} ${deptoTexto}`.toLowerCase();
       const matchTexto = s ? texto.includes(s) : true;
 
       const cant = Number.parseInt(String(p.cantidad ?? '0'), 10);
@@ -1362,39 +1678,60 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         almacenFiltro === 'todos' ? true : String(p.id_almacen) === String(almacenFiltro);
 
       const matchDepto =
-        deptoFiltro === 'todos'
+        !SHOW_PRODUCTO_DEPARTAMENTOS || deptoFiltro === 'todos'
           ? true
           : String(p.id_tipo_departamento ?? '') === String(deptoFiltro);
 
       // AJUSTE: filtro por estado usando normalizacion de activo/inactivo.
       const activo = resolveEstadoActivo(p);
+      // NEW: modo "Ver inactivos" fuerza listado exclusivo de inactivos; OFF deja solo activos.
+      // WHY: evitar mezclar estados cuando el backend devuelve ambos con `incluir_inactivos=1`.
+      // IMPACT: filtro local adicional en la grilla/carrusel; no altera handlers ni paginación visual.
+      const matchViewEstado = showInactiveProductos ? !activo : activo;
       const matchEstado =
         estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? activo : !activo;
 
-      return matchTexto && matchStock && matchEstado && matchCategoria && matchAlmacen && matchDepto;
+      return matchTexto && matchStock && matchEstado && matchCategoria && matchAlmacen && matchDepto && matchViewEstado;
     });
 
     filtered.sort((a, b) => {
+      // NEW: prioridad operativa fija para mostrar primero sin stock y luego stock bajo.
+      // WHY: el usuario necesita ver faltantes al inicio sin importar si la vista es cards o listado.
+      // IMPACT: respeta filtros activos y aplica el `sortBy` actual solo dentro de cada grupo de prioridad.
+      const stockRankDiff =
+        getStockPriorityRank(a?.cantidad, a?.stock_minimo) - getStockPriorityRank(b?.cantidad, b?.stock_minimo);
+      if (stockRankDiff !== 0) return stockRankDiff;
+
+      let sortDiff = 0;
       if (sortBy === 'nombre_asc') {
-        return String(a?.nombre_producto ?? '').localeCompare(String(b?.nombre_producto ?? ''), 'es', { sensitivity: 'base' });
+        sortDiff = String(a?.nombre_producto ?? '').localeCompare(String(b?.nombre_producto ?? ''), 'es', { sensitivity: 'base' });
+      } else if (sortBy === 'nombre_desc') {
+        sortDiff = String(b?.nombre_producto ?? '').localeCompare(String(a?.nombre_producto ?? ''), 'es', { sensitivity: 'base' });
+      } else if (sortBy === 'precio_desc') {
+        sortDiff = Number(b?.precio ?? 0) - Number(a?.precio ?? 0);
+      } else if (sortBy === 'precio_asc') {
+        sortDiff = Number(a?.precio ?? 0) - Number(b?.precio ?? 0);
+      } else if (sortBy === 'stock_desc') {
+        sortDiff = Number(b?.cantidad ?? 0) - Number(a?.cantidad ?? 0);
+      } else if (sortBy === 'stock_asc') {
+        sortDiff = Number(a?.cantidad ?? 0) - Number(b?.cantidad ?? 0);
+      } else {
+        sortDiff = Number(b?.id_producto ?? 0) - Number(a?.id_producto ?? 0);
       }
-      if (sortBy === 'nombre_desc') {
-        return String(b?.nombre_producto ?? '').localeCompare(String(a?.nombre_producto ?? ''), 'es', { sensitivity: 'base' });
-      }
-      if (sortBy === 'precio_desc') return Number(b?.precio ?? 0) - Number(a?.precio ?? 0);
-      if (sortBy === 'precio_asc') return Number(a?.precio ?? 0) - Number(b?.precio ?? 0);
-      if (sortBy === 'stock_desc') return Number(b?.cantidad ?? 0) - Number(a?.cantidad ?? 0);
-      if (sortBy === 'stock_asc') return Number(a?.cantidad ?? 0) - Number(b?.cantidad ?? 0);
-      return Number(b?.id_producto ?? 0) - Number(a?.id_producto ?? 0);
+      if (sortDiff !== 0) return sortDiff;
+
+      const byName = String(a?.nombre_producto ?? '').localeCompare(String(b?.nombre_producto ?? ''), 'es', { sensitivity: 'base' });
+      if (byName !== 0) return byName;
+      return Number(a?.id_producto ?? 0) - Number(b?.id_producto ?? 0);
     });
 
     return filtered;
-  }, [productos, search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy, getCategoriaLabel, getAlmacenLabel, getDeptoLabel, resolveEstadoActivo]);
+  }, [productos, search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy, showInactiveProductos, getCategoriaLabel, getAlmacenLabel, getDeptoLabel, resolveEstadoActivo]);
 
   const kpis = useMemo(() => {
     const total = Array.isArray(productos) ? productos.length : 0;
-    const conStock = (productos || []).filter((p) => getStockMeta(p?.cantidad).qty > 0).length;
-    const stockBajo = (productos || []).filter((p) => getStockMeta(p?.cantidad).className === 'is-low').length;
+    const conStock = (productos || []).filter((p) => getStockMeta(p?.cantidad, p?.stock_minimo).qty > 0).length;
+    const stockBajo = (productos || []).filter((p) => getStockMeta(p?.cantidad, p?.stock_minimo).className === 'is-low').length;
     const sinStock = total - conStock;
     // AJUSTE: se agregan KPIs de activas/inactivas con la misma regla de estado.
     const activas = (productos || []).filter((p) => resolveEstadoActivo(p)).length;
@@ -1492,7 +1829,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       estadoFiltro !== 'todos' ||
       categoriaFiltro !== 'todos' ||
       almacenFiltro !== 'todos' ||
-      deptoFiltro !== 'todos' ||
+      (SHOW_PRODUCTO_DEPARTAMENTOS && deptoFiltro !== 'todos') ||
       sortBy !== 'recientes'
     );
   }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy]);
@@ -1507,54 +1844,29 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       estadoFiltro !== 'todos',
       categoriaFiltro !== 'todos',
       almacenFiltro !== 'todos',
-      deptoFiltro !== 'todos',
+      SHOW_PRODUCTO_DEPARTAMENTOS && deptoFiltro !== 'todos',
       sortBy !== 'recientes'
     ].filter(Boolean).length;
   }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltro, deptoFiltro, sortBy]);
 
   const productosPaginados = productosFiltrados;
-  const rangoHasta = productosFiltrados.length;
-
-  const updateCarouselState = useCallback(() => {
-    const el = catalogCarouselRef.current;
-    if (!el) {
-      setCarouselState({ canPrev: false, canNext: false });
-      return;
-    }
-
-    const canPrev = el.scrollLeft > 6;
-    const canNext = el.scrollLeft + el.clientWidth < el.scrollWidth - 6;
-    setCarouselState((prev) => (
-      prev.canPrev === canPrev && prev.canNext === canNext
-        ? prev
-        : { canPrev, canNext }
-    ));
-  }, []);
+  const carouselConfig = useMemo(
+    () => getProductosCarouselConfig(carouselViewportWidth),
+    [carouselViewportWidth]
+  );
+  const carouselPages = useMemo(
+    () => chunkProductosCarouselPages(productosPaginados, carouselConfig.perPage),
+    [carouselConfig.perPage, productosPaginados]
+  );
+  const carouselPageCount = Math.max(1, carouselPages.length || 0);
+  const currentCarouselItems = carouselPages[carouselPageIndex] || [];
 
   useEffect(() => {
-    const el = catalogCarouselRef.current;
-    if (!el) return undefined;
-
-    updateCarouselState();
-    const onScroll = () => updateCarouselState();
-    const onResize = () => updateCarouselState();
-
-    el.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onResize);
-
-    return () => {
-      el.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onResize);
-    };
-  }, [updateCarouselState, productosPaginados.length, loadingProductos]);
-
-  const scrollCatalog = (direction) => {
-    const el = catalogCarouselRef.current;
-    if (!el) return;
-    const distance = Math.max(280, Math.floor(el.clientWidth * 0.82));
-    const left = direction === 'next' ? distance : -distance;
-    el.scrollBy({ left, behavior: 'smooth' });
-  };
+    // NEW: mantiene la pagina actual del carrusel dentro de rango tras filtros o cambios locales.
+    // WHY: evitar saltos al inicio y conservar la posicion visual despues de crear/editar/inactivar.
+    // IMPACT: el carrusel solo corrige indices invalidos; no dispara refetch ni cambia el orden.
+    setCarouselPageIndex((prev) => Math.min(prev, Math.max(0, carouselPageCount - 1)));
+  }, [carouselPageCount]);
 
   // NUEVO: helper de scroll para enfocar paneles abiertos sin cambiar rutas ni navegacion.
   const scrollToSection = useCallback((sectionRef) => {
@@ -1656,66 +1968,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setSortBy('recientes');
   };
 
-  const activarEdicionDrawer = () => {
-    if (!selectedProducto) return;
-    iniciarEdicion(selectedProducto);
-    setDrawerEditMode(true);
-    setDrawerMessage('');
-  };
-
-  const ajustarCantidadDrawer = (delta) => {
-    setDrawerEditMode(true);
-    setEditForm((s) => {
-      if (!s) return s;
-      const actual = Number.parseInt(String(s.cantidad ?? '0'), 10);
-      const next = Math.max(0, (Number.isNaN(actual) ? 0 : actual) + delta);
-      return { ...s, cantidad: String(next) };
-    });
-  };
-
-  const onCantidadDrawerChange = (value) => {
-    setDrawerEditMode(true);
-    setEditForm((s) => {
-      if (!s) return s;
-      return { ...s, cantidad: sanitizeInteger(value) };
-    });
-  };
-
-  const guardarDrawerCambios = async () => {
-    await guardarEdicion();
-  };
-
-  const historialDrawer = useMemo(() => {
-    if (!selectedProducto) return [];
-    const items = [];
-    if (selectedProducto?.fecha_ingreso_producto) {
-      items.push(`Ingreso registrado: ${toDateInputValue(selectedProducto.fecha_ingreso_producto)}`);
-    }
-    if (selectedProducto?.fecha_caducidad) {
-      items.push(`Caducidad programada: ${toDateInputValue(selectedProducto.fecha_caducidad)}`);
-    }
-    items.push(`Stock actual: ${Number.parseInt(String(editForm?.cantidad ?? selectedProducto?.cantidad ?? '0'), 10) || 0}`);
-    return items;
-  }, [selectedProducto, editForm]);
-
-  // NEW: descripcion visible en el bloque de historial usando data ya cargada en el drawer.
-  // WHY: mostrar contexto del producto sin pedir datos extra al backend ni alterar la lista de movimientos.
-  // IMPACT: solo agrega una seccion de lectura en el historial; no modifica CRUD ni endpoints.
-  const drawerHistoryDescription = useMemo(() => {
-    const normalizeDescription = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
-    if (!selectedProducto) return 'Sin descripción';
-    const historyDescription = Array.isArray(selectedProducto?.historial)
-      ? normalizeDescription(selectedProducto.historial.find((entry) => normalizeDescription(entry?.descripcion))?.descripcion)
-      : '';
-    const description = normalizeDescription(
-      editForm?.descripcion_producto
-      ?? selectedProducto?.descripcion_producto
-      ?? selectedProducto?.descripcion
-      ?? historyDescription
-    );
-    return description || 'Sin descripción';
-  }, [selectedProducto, editForm]);
-
   const drawerEstadoActivo = selectedProducto ? resolveEstadoActivo(selectedProducto) : true;
   const drawerImageSrc = getProductoImageSrc(selectedProducto);
   const productsAuxDrawerOpen = filtersOpen || createPanelOpen;
@@ -1742,7 +1994,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
         <div className="inv-prod-image-actions">
           <label className="btn inv-prod-btn-subtle inv-prod-image-picker">
-            <input type="file" accept="image/*" onChange={onCreateImageChange} />
+            <input ref={createImageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={onCreateImageChange} />
             <i className="bi bi-upload" />
             <span>{createImage.previewUrl ? 'Cambiar imagen' : 'Seleccionar imagen'}</span>
           </label>
@@ -1786,8 +2038,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     );
   };
 
+  // NEW: helper class para habilitar sticky del header del submódulo Productos.
+  // WHY: el sticky requiere un override local de `overflow` en el card contenedor.
+  // IMPACT: solo comportamiento visual del header al scrollear; no cambia CRUD ni filtros.
   return (
-    <div className="card shadow-sm mb-3 inv-prod-card">
+    <div className="card shadow-sm mb-3 inv-prod-card inv-has-sticky-header">
       <div className="card-header inv-prod-header">
         <div className="inv-prod-title-wrap">
           <div className="inv-prod-title-row">
@@ -1965,16 +2220,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               </select>
                             </div>
 
-                            <div className="col-12 col-md-4">
-                              <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
-                                <option value="todos">DEPTOS</option>
-                                {tipoDepartamentos.map((d) => (
-                                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
+                            {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                              <div className="col-12 col-md-4">
+                                <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
+                                  <option value="todos">DEPTOS</option>
+                                  {tipoDepartamentos.map((d) => (
+                                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : null}
                           </div>
                         </section>
 
@@ -2168,27 +2425,29 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
                             </div>
 
-                            <div className="col-12 col-lg-3">
-                              <label className="form-label mb-1">Tipo departamento (opcional)</label>
-                              <select
-                                className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                                value={String(form.id_tipo_departamento ?? '')}
-                                onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                                disabled={loadingTipoDepto}
-                              >
-                                <option value="">
-                                  {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                                </option>
-                                {tipoDepartamentos.map((d) => (
-                                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                            {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                              <div className="col-12 col-lg-3">
+                                <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                                <select
+                                  className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                                  value={String(form.id_tipo_departamento ?? '')}
+                                  onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                                  disabled={loadingTipoDepto}
+                                >
+                                  <option value="">
+                                    {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                                   </option>
-                                ))}
-                              </select>
-                              {createErrors.id_tipo_departamento && (
-                                <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
-                              )}
-                            </div>
+                                  {tipoDepartamentos.map((d) => (
+                                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                {createErrors.id_tipo_departamento && (
+                                  <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                                )}
+                              </div>
+                            ) : null}
                           </div>
                         </section>
 
@@ -2429,27 +2688,29 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
                 </div>
 
-                <div className="col-12 col-md-4">
-                  <label className="form-label mb-1">Tipo departamento (opcional)</label>
-                  <select
-                    className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                    value={String(form.id_tipo_departamento ?? '')}
-                    onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                    disabled={loadingTipoDepto}
-                  >
-                    <option value="">
-                      {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                    </option>
-                    {tipoDepartamentos.map((d) => (
-                      <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                        {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                  <div className="col-12 col-md-4">
+                    <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                    <select
+                      className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                      value={String(form.id_tipo_departamento ?? '')}
+                      onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                      disabled={loadingTipoDepto}
+                    >
+                      <option value="">
+                        {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                       </option>
-                    ))}
-                  </select>
-                  {createErrors.id_tipo_departamento && (
-                    <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
-                  )}
-                </div>
+                      {tipoDepartamentos.map((d) => (
+                        <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                          {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {createErrors.id_tipo_departamento && (
+                      <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                    )}
+                  </div>
+                ) : null}
 
                 <div className="col-12">
                   <label className="form-label mb-1">Descripción (opcional)</label>
@@ -2610,27 +2871,29 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
             </div>
 
-            <div className="col-12 col-md-3">
-              <label className="form-label mb-1">Tipo departamento (opcional)</label>
-              <select
-                className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                value={String(form.id_tipo_departamento ?? '')}
-                onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                disabled={loadingTipoDepto}
-              >
-                <option value="">
-                  {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                </option>
-                {tipoDepartamentos.map((d) => (
-                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+            {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+              <div className="col-12 col-md-3">
+                <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                <select
+                  className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                  value={String(form.id_tipo_departamento ?? '')}
+                  onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                  disabled={loadingTipoDepto}
+                >
+                  <option value="">
+                    {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                   </option>
-                ))}
-              </select>
-              {createErrors.id_tipo_departamento && (
-                <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
-              )}
-            </div>
+                  {tipoDepartamentos.map((d) => (
+                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {createErrors.id_tipo_departamento && (
+                  <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                )}
+              </div>
+            ) : null}
 
             <div className="col-12 col-md-3">
               <label className="form-label mb-1">Fecha ingreso (opcional)</label>
@@ -2689,9 +2952,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         )}
 
         {/* FILTROS */}
-        <div className="inv-prod-results-meta">
+        <div className="inv-prod-results-meta inv-inventory-results-meta">
           <span>{loadingProductos ? 'Cargando productos...' : `${productosFiltrados.length} resultados`}</span>
-          <span>{loadingProductos ? '' : `Mostrando ${rangoHasta} de ${productos.length}`}</span>
+          <span>{loadingProductos ? '' : `Total: ${productos.length}`}</span>
           {/* NEW: toggle admin para incluir productos inactivos en el GET del tab. */}
           {/* WHY: backend lista solo activos por defecto despues del cambio a soft delete. */}
           {/* IMPACT: recarga usando el mismo endpoint; filtros locales se mantienen. */}
@@ -2702,7 +2965,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               checked={showInactiveProductos}
               onChange={(e) => setShowInactiveProductos(e.target.checked)}
             />
-            <span className="form-check-label">Mostrar inactivos</span>
+            <span className="form-check-label">Ver inactivos</span>
           </label>
           {hasActiveFilters ? (
             <span className="inv-prod-active-filter-pill">
@@ -2804,16 +3067,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               </select>
             </div>
 
-            <div className="col-12 col-md-2">
-              <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
-                <option value="todos">DEPTOS</option>
-                {tipoDepartamentos.map((d) => (
-                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+              <div className="col-12 col-md-2">
+                <select className="form-select" value={deptoFiltro} onChange={(e) => setDeptoFiltro(e.target.value)}>
+                  <option value="todos">DEPTOS</option>
+                  {tipoDepartamentos.map((d) => (
+                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
 
             <div className="col-12 col-md-2">
               <select className="form-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
@@ -2860,21 +3125,26 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           ) : (
             <div className="inv-prod-catalog-shell">
               <div className="inv-prod-carousel-caption">Carrusel de productos</div>
-              <div className="inv-prod-carousel-stage">
+              <div className="inv-prod-carousel-meta">
+                <span>{`Pagina ${carouselPageIndex + 1} de ${carouselPageCount}`}</span>
+                <span>{`${productosPaginados.length} productos visibles`}</span>
+              </div>
+              <div className="inv-prod-carousel-stage inv-prod-carousel-stage--paged">
                 <button
                   type="button"
-                  className={`btn inv-prod-carousel-float is-prev ${carouselState.canPrev ? 'is-visible' : ''}`}
-                  aria-label="Desplazar carrusel a la izquierda"
-                  onClick={() => scrollCatalog('prev')}
-                  disabled={!carouselState.canPrev}
+                  className={`btn inv-prod-carousel-float is-prev ${carouselPageIndex > 0 ? 'is-visible' : ''}`}
+                  aria-label="Pagina anterior del carrusel de productos"
+                  onClick={() => setCarouselPageIndex((prev) => Math.max(0, prev - 1))}
+                  disabled={carouselPageIndex <= 0}
                 >
                   <i className="bi bi-chevron-left" />
                 </button>
 
-                <div className="inv-prod-catalog-grid inv-prod-catalog-carousel" ref={catalogCarouselRef}>
-                {productosPaginados.map((p, index) => {
+                <div className={`inv-prod-carousel-page cols-${carouselConfig.columns}`} key={`productos-page-${carouselPageIndex}`}>
+                {currentCarouselItems.map((p) => {
+                  const cardIsActive = resolveEstadoActivo(p);
                   const estado = resolveEstadoProducto(p);
-                  const stock = getStockMeta(p.cantidad);
+                  const stock = getStockMeta(p.cantidad, p?.stock_minimo);
                   const imgSrc = getProductoImageSrc(p);
                   const stockMin = Number.parseInt(String(p?.stock_minimo ?? 0), 10);
                   const ratioBase = stockMin > 0 ? stock.qty / (stockMin * 2) : stock.qty / 20;
@@ -2883,7 +3153,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   return (
                     <article
                       key={p.id_producto}
-                      className={`inv-prod-catalog-card ${Number(selectedProductoId) === Number(p.id_producto) && drawerOpen ? 'is-selected' : ''} ${removingProductoIds[Number(p.id_producto)] ? 'is-removing' : ''}`}
+                      className={`inv-prod-catalog-card ${estado.className} ${Number(selectedProductoId) === Number(p.id_producto) && drawerOpen ? 'is-selected' : ''} ${removingProductoIds[Number(p.id_producto)] ? 'is-removing' : ''}`}
                       role="button"
                       tabIndex={0}
                       onClick={() => abrirDrawerProducto(p)}
@@ -2932,23 +3202,30 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             <div className="inv-prod-stock-ring" style={{ '--stock-ratio': ratio }} />
                             <div className="inv-prod-stock-copy">
                               <span>{stock.label}</span>
-                              <small>Ítem #{index + 1}</small>
                             </div>
                           </div>
 
+                          {/* NEW: CTA de estado dinamico para que el card sea coherente en activos vs. solo inactivos. */}
+                          {/* WHY: cuando el producto esta inactivo el usuario debe poder activarlo desde el card sin abrir drawer. */}
+                          {/* IMPACT: `Inactivar` conserva el flujo actual (DELETE + confirm); `Activar` reutiliza PUT por campo `estado`. */}
                           <button
                             type="button"
-                            className="btn inv-prod-card-action danger inv-prod-card-action-compact"
+                            className={`btn inv-prod-card-action ${cardIsActive ? 'inactivate' : ''} inv-prod-card-action-compact`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              openConfirmDelete(p?.id_producto, p?.nombre_producto);
+                              if (cardIsActive) {
+                                openConfirmDelete(p?.id_producto, p?.nombre_producto);
+                                return;
+                              }
+                              void activarProductoDesdeCard(p);
                             }}
                             onKeyDown={(e) => e.stopPropagation()}
-                            aria-label={`Inactivar ${p?.nombre_producto || 'producto'}`}
-                            title="Inactivar producto"
+                            aria-label={`${cardIsActive ? 'Inactivar' : 'Activar'} ${p?.nombre_producto || 'producto'}`}
+                            title={`${cardIsActive ? 'Inactivar' : 'Activar'} producto`}
+                            disabled={togglingEstado || deleting}
                           >
-                            <i className="bi bi-trash" />
-                            <span className="inv-prod-card-action-label">Inactivar</span>
+                            <i className={`bi ${cardIsActive ? 'bi-trash' : 'bi-check-circle'}`} />
+                            <span className="inv-prod-card-action-label">{cardIsActive ? 'Inactivar' : 'Activar'}</span>
                           </button>
                         </div>
                       </div>
@@ -2959,10 +3236,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                 <button
                   type="button"
-                  className={`btn inv-prod-carousel-float is-next ${carouselState.canNext ? 'is-visible' : ''}`}
-                  aria-label="Desplazar carrusel a la derecha"
-                  onClick={() => scrollCatalog('next')}
-                  disabled={!carouselState.canNext}
+                  className={`btn inv-prod-carousel-float is-next ${carouselPageIndex < carouselPageCount - 1 ? 'is-visible' : ''}`}
+                  aria-label="Pagina siguiente del carrusel de productos"
+                  onClick={() => setCarouselPageIndex((prev) => Math.min(carouselPageCount - 1, prev + 1))}
+                  disabled={carouselPageIndex >= carouselPageCount - 1}
                 >
                   <i className="bi bi-chevron-right" />
                 </button>
@@ -2982,7 +3259,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className="d-flex flex-column gap-2 inv-prod-mobile-list">
               {productosPaginados.map((p, index) => {
                 const isEditing = editId === p.id_producto;
-                const stockMeta = getStockMeta(p.cantidad);
+                const stockMeta = getStockMeta(p.cantidad, p?.stock_minimo);
 
                 return (
                   <div key={p.id_producto} className={`card border inv-prod-mobile-card ${isEditing ? 'is-editing' : ''}`}>
@@ -3112,33 +3389,35 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           )}
                         </div>
 
-                        <div className="col-12">
-                          <div className="small text-muted">Departamento (opcional)</div>
-                          {isEditing ? (
-                            <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                                value={String(editForm.id_tipo_departamento ?? '')}
-                                onChange={(e) => setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                                disabled={loadingTipoDepto}
-                              >
-                                <option value="">
-                                  {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                                </option>
-                                {tipoDepartamentos.map((d) => (
-                                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                        {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                          <div className="col-12">
+                            <div className="small text-muted">Departamento (opcional)</div>
+                            {isEditing ? (
+                              <>
+                                <select
+                                  className={`form-select form-select-sm ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                                  value={String(editForm.id_tipo_departamento ?? '')}
+                                  onChange={(e) => setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                                  disabled={loadingTipoDepto}
+                                >
+                                  <option value="">
+                                    {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                                   </option>
-                                ))}
-                              </select>
-                              {editErrors.id_tipo_departamento && (
-                                <div className="invalid-feedback">{editErrors.id_tipo_departamento}</div>
-                              )}
-                            </>
-                          ) : (
-                            <div>{getDeptoLabel(p.id_tipo_departamento)}</div>
-                          )}
-                        </div>
+                                  {tipoDepartamentos.map((d) => (
+                                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                {editErrors.id_tipo_departamento && (
+                                  <div className="invalid-feedback">{editErrors.id_tipo_departamento}</div>
+                                )}
+                              </>
+                            ) : (
+                              <div>{getDeptoLabel(p.id_tipo_departamento)}</div>
+                            )}
+                          </div>
+                        ) : null}
 
                         <div className="col-12">
                           <div className="small text-muted">Descripción (opcional)</div>
@@ -3209,7 +3488,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     <th>Nombre</th>
                     <th>Categoría</th>
                     <th>Almacén</th>
-                    <th>Departamento</th>
+                    {SHOW_PRODUCTO_DEPARTAMENTOS ? <th>Departamento</th> : null}
                     <th className="text-end">Precio</th>
                     <th className="text-end">Cantidad</th>
                     <th style={{ width: 220 }}>Acciones</th>
@@ -3218,7 +3497,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 <tbody>
                   {productosPaginados.map((p, index) => {
                     const isEditing = editId === p.id_producto;
-                    const stockMeta = getStockMeta(p.cantidad);
+                    const stockMeta = getStockMeta(p.cantidad, p?.stock_minimo);
 
                     return (
                       <tr key={p.id_producto} className={isEditing ? 'is-editing' : ''}>
@@ -3291,32 +3570,34 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           )}
                         </td>
 
-                        <td>
-                          {isEditing ? (
-                            <>
-                              <select
-                                className={`form-select form-select-sm ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                                value={String(editForm.id_tipo_departamento ?? '')}
-                                onChange={(e) => setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                                disabled={loadingTipoDepto}
-                              >
-                                <option value="">
-                                  {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                                </option>
-                                {tipoDepartamentos.map((d) => (
-                                  <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                                    {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                        {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                          <td>
+                            {isEditing ? (
+                              <>
+                                <select
+                                  className={`form-select form-select-sm ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                                  value={String(editForm.id_tipo_departamento ?? '')}
+                                  onChange={(e) => setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                                  disabled={loadingTipoDepto}
+                                >
+                                  <option value="">
+                                    {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                                   </option>
-                                ))}
-                              </select>
-                              {editErrors.id_tipo_departamento && (
-                                <div className="invalid-feedback">{editErrors.id_tipo_departamento}</div>
-                              )}
-                            </>
-                          ) : (
-                            <span>{getDeptoLabel(p.id_tipo_departamento)}</span>
-                          )}
-                        </td>
+                                  {tipoDepartamentos.map((d) => (
+                                    <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                                      {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                {editErrors.id_tipo_departamento && (
+                                  <div className="invalid-feedback">{editErrors.id_tipo_departamento}</div>
+                                )}
+                              </>
+                            ) : (
+                              <span>{getDeptoLabel(p.id_tipo_departamento)}</span>
+                            )}
+                          </td>
+                        ) : null}
 
                         <td className="text-end">
                           {isEditing ? (
@@ -3404,8 +3685,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 {/* IMPACT: decorativo; no afecta foco ni controles. */}
                 <i className="bi bi-tags inv-cat-v2__drawer-mark" aria-hidden="true" />
                 <div>
-                  <div className="inv-prod-drawer-title">{selectedProducto?.nombre_producto || 'Producto'}</div>
-                  <div className="inv-prod-drawer-sub">{getCategoriaLabel(selectedProducto?.id_categoria_producto)}</div>
+                  <div className="inv-prod-drawer-title">{editForm?.nombre_producto || selectedProducto?.nombre_producto || 'Producto'}</div>
+                  <div className="inv-prod-drawer-sub">{getCategoriaLabel(editForm?.id_categoria_producto ?? selectedProducto?.id_categoria_producto)}</div>
                 </div>
                 <button type="button" className="inv-prod-drawer-close" onClick={cerrarDrawerProducto} aria-label="Cerrar detalle">
                   <i className="bi bi-x-lg" />
@@ -3429,19 +3710,49 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     )}
                   </div>
 
-                  <div className="inv-prod-drawer-price">
-                    <div className="inv-prod-drawer-price-main">{formatMoney(editForm?.precio ?? selectedProducto?.precio)}</div>
-                    <div className="inv-prod-drawer-price-sub">
-                      Costo: {formatMoney(selectedProducto?.costo ?? selectedProducto?.costo_producto ?? selectedProducto?.precio ?? 0)}
-                    </div>
+                  <div className="inv-prod-drawer-meta">
+                    <input
+                      ref={drawerImageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="d-none"
+                      onChange={onDrawerImageChange}
+                    />
                     <span className={`inv-prod-drawer-status-pill ${drawerEstadoActivo ? 'is-active' : 'is-inactive'}`}>
                       {drawerEstadoActivo ? 'Activo' : 'Inactivo'}
                     </span>
+                    <div className="inv-prod-drawer-image-actions">
+                      <button
+                        type="button"
+                        className="btn inv-prod-btn-subtle"
+                        onClick={openDrawerImagePicker}
+                        disabled={drawerImageAction.loading}
+                      >
+                        <i className="bi bi-upload" /> {drawerImageSrc ? 'Cambiar imagen' : 'Agregar imagen'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn inv-prod-btn-outline"
+                        onClick={removeDrawerImage}
+                        disabled={drawerImageAction.loading || (!drawerImageSrc && !selectedProducto?.id_archivo_imagen_principal)}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                    {drawerImageAction.loading ? (
+                      <div className="inv-prod-image-feedback">Procesando imagen...</div>
+                    ) : drawerImageAction.error ? (
+                      <div className="inv-prod-image-feedback is-error">{drawerImageAction.error}</div>
+                    ) : (
+                      <div className="inv-prod-image-feedback">JPG, PNG o WEBP hasta 6 MB.</div>
+                    )}
                   </div>
                 </div>
 
-                <div className="inv-prod-drawer-form">
-                  <div>
+                <div className="inv-prod-drawer-section">
+                  <div className="inv-prod-drawer-section-title">Datos editables del producto</div>
+                  <div className="inv-prod-drawer-form inv-prod-drawer-form-grid">
+                  <div className="inv-prod-drawer-field--span-2">
                     <label>Nombre</label>
                     <input
                       className={editErrors?.nombre_producto ? 'is-invalid' : ''}
@@ -3451,7 +3762,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }));
                       }}
-                      disabled={!drawerEditMode}
                     />
                     {editErrors?.nombre_producto ? <div className="invalid-feedback d-block">{editErrors.nombre_producto}</div> : null}
                   </div>
@@ -3467,51 +3777,147 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, precio: e.target.value }));
                       }}
-                      disabled={!drawerEditMode}
                     />
                     {editErrors?.precio ? <div className="invalid-feedback d-block">{editErrors.precio}</div> : null}
                   </div>
-                </div>
-
-                <div className="inv-prod-drawer-grid">
                   <div>
-                    <span>Existencias actuales</span>
-                    <strong>{Number.parseInt(String(editForm?.cantidad ?? selectedProducto?.cantidad ?? '0'), 10) || 0}</strong>
-                  </div>
-                  <div>
-                    <span>{'Stock m\u00EDnimo'}</span>
-                    <strong>{Number.parseInt(String(selectedProducto?.stock_minimo ?? 0), 10) || 0}</strong>
-                  </div>
-                  <div>
-                    <span>Unidad</span>
-                    <strong>{selectedProducto?.unidad_medida || selectedProducto?.unidad || 'Unidad'}</strong>
-                  </div>
-                  <div>
-                    <span>Almacen / sucursal</span>
-                    <strong>{getAlmacenLabel(selectedProducto?.id_almacen)}</strong>
-                  </div>
-                </div>
-
-                <div className="inv-prod-drawer-section">
-                  <div className="inv-prod-drawer-section-title">Ajustar existencias</div>
-                  <div className="inv-prod-stepper">
-                    <button type="button" onClick={() => ajustarCantidadDrawer(-1)} aria-label="Disminuir existencia">
-                      −
-                    </button>
+                    <label>Existencias</label>
                     <input
-                      type="text"
+                      className={editErrors?.cantidad ? 'is-invalid' : ''}
+                      type="number"
+                      step="1"
+                      min="0"
                       inputMode="numeric"
-                      value={String(editForm?.cantidad ?? selectedProducto?.cantidad ?? '')}
-                      onChange={(e) => onCantidadDrawerChange(e.target.value)}
+                      value={String(editForm?.cantidad ?? '')}
+                      onKeyDown={blockNonIntegerKeys}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }));
+                      }}
                     />
-                    <button type="button" onClick={() => ajustarCantidadDrawer(1)} aria-label="Aumentar existencia">
-                      +
-                    </button>
+                    {editErrors?.cantidad ? <div className="invalid-feedback d-block">{editErrors.cantidad}</div> : null}
+                  </div>
+                  <div>
+                    <label>{'Stock m\u00EDnimo'}</label>
+                    <input
+                      className={editErrors?.stock_minimo ? 'is-invalid' : ''}
+                      type="number"
+                      step="1"
+                      min="0"
+                      inputMode="numeric"
+                      value={String(editForm?.stock_minimo ?? '')}
+                      onKeyDown={blockNonIntegerKeys}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }));
+                      }}
+                    />
+                    {editErrors?.stock_minimo ? <div className="invalid-feedback d-block">{editErrors.stock_minimo}</div> : null}
+                  </div>
+                  <div>
+                    <label>Categoría</label>
+                    <select
+                      className={`form-select ${editErrors?.id_categoria_producto ? 'is-invalid' : ''}`}
+                      value={String(editForm?.id_categoria_producto ?? '')}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, id_categoria_producto: e.target.value }));
+                      }}
+                    >
+                      <option value="">Seleccione</option>
+                      {categoriasActivas.map((c) => (
+                        <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
+                          {c.nombre_categoria}
+                        </option>
+                      ))}
+                    </select>
+                    {editErrors?.id_categoria_producto ? <div className="invalid-feedback d-block">{editErrors.id_categoria_producto}</div> : null}
+                  </div>
+                  <div>
+                    <label>Almacén</label>
+                    <select
+                      className={`form-select ${editErrors?.id_almacen ? 'is-invalid' : ''}`}
+                      value={String(editForm?.id_almacen ?? '')}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, id_almacen: e.target.value }));
+                      }}
+                      disabled={loadingAlmacenes}
+                    >
+                      <option value="">{loadingAlmacenes ? 'Cargando...' : 'Seleccione'}</option>
+                      {almacenes.map((a) => (
+                        <option key={a.id_almacen} value={a.id_almacen}>
+                          {a.nombre} (Sucursal {a.id_sucursal})
+                        </option>
+                      ))}
+                    </select>
+                    {editErrors?.id_almacen ? <div className="invalid-feedback d-block">{editErrors.id_almacen}</div> : null}
+                  </div>
+                  {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                    <div>
+                      <label>Departamento (opcional)</label>
+                      <select
+                        className={`form-select ${editErrors?.id_tipo_departamento ? 'is-invalid' : ''}`}
+                        value={String(editForm?.id_tipo_departamento ?? '')}
+                        onChange={(e) => {
+                          setDrawerEditMode(true);
+                          setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }));
+                        }}
+                        disabled={loadingTipoDepto}
+                      >
+                        <option value="">{loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}</option>
+                        {tipoDepartamentos.map((d) => (
+                          <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                            {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {editErrors?.id_tipo_departamento ? <div className="invalid-feedback d-block">{editErrors.id_tipo_departamento}</div> : null}
+                    </div>
+                  ) : null}
+                  <div>
+                    <label>Fecha de ingreso</label>
+                    <input
+                      className={editErrors?.fecha_ingreso_producto ? 'is-invalid' : ''}
+                      type="date"
+                      value={editForm?.fecha_ingreso_producto ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }));
+                      }}
+                    />
+                    {editErrors?.fecha_ingreso_producto ? <div className="invalid-feedback d-block">{editErrors.fecha_ingreso_producto}</div> : null}
+                  </div>
+                  <div>
+                    <label>Fecha de caducidad</label>
+                    <input
+                      className={editErrors?.fecha_caducidad ? 'is-invalid' : ''}
+                      type="date"
+                      value={editForm?.fecha_caducidad ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, fecha_caducidad: e.target.value }));
+                      }}
+                    />
+                    {editErrors?.fecha_caducidad ? <div className="invalid-feedback d-block">{editErrors.fecha_caducidad}</div> : null}
+                  </div>
+                  <div className="inv-prod-drawer-field--span-2">
+                    <label>Descripción (opcional)</label>
+                    <textarea
+                      className={`form-control ${editErrors?.descripcion_producto ? 'is-invalid' : ''}`}
+                      rows={4}
+                      value={editForm?.descripcion_producto ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }));
+                      }}
+                    />
+                    {editErrors?.descripcion_producto ? <div className="invalid-feedback d-block">{editErrors.descripcion_producto}</div> : null}
                   </div>
                 </div>
+                </div>
 
-                <div className="inv-prod-drawer-actions">
-                  <button type="button" className="btn inv-prod-btn-outline" onClick={activarEdicionDrawer} disabled={togglingEstado}>Editar</button>
+                <div className="inv-prod-drawer-actions inv-prod-drawer-actions--edit">
                   <button type="button" className="btn inv-prod-btn-subtle" onClick={duplicarProductoDesdeDrawer} disabled={togglingEstado}>Duplicar</button>
                   <button
                     type="button"
@@ -3521,28 +3927,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   >
                     {togglingEstado ? 'Procesando...' : drawerEstadoActivo ? 'Desactivar' : 'Activar'}
                   </button>
-                  <button type="button" className="btn inv-prod-btn-primary" onClick={guardarDrawerCambios} disabled={savingEdit || togglingEstado}>
+                  <button type="button" className="btn inv-prod-btn-primary" onClick={guardarEdicion} disabled={savingEdit || togglingEstado}>
                     {savingEdit ? 'Guardando...' : 'Guardar cambios'}
                   </button>
                 </div>
 
                 {drawerMessage ? <div className="inv-prod-drawer-feedback">{drawerMessage}</div> : null}
-
-                <div className="inv-prod-drawer-section">
-                  <div className="inv-prod-drawer-section-title">Historial del producto</div>
-                  {/* NEW: descripcion visible en el historial con fallback seguro a la descripcion del producto ya cargada. */}
-                  {/* WHY: mejorar contexto del historial sin tocar backend ni cambiar la tabla/listado existente. */}
-                  {/* IMPACT: solo agrega una seccion informativa antes de la lista de historial. */}
-                  <div className="mb-2">
-                    <div className="small fw-semibold text-muted">Descripción</div>
-                    <p className="small mb-0 text-muted">{drawerHistoryDescription}</p>
-                  </div>
-                  <ul className="inv-prod-history-list">
-                    {historialDrawer.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
               </div>
             </>
           ) : null}
@@ -3670,27 +4060,29 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       {createErrors.id_almacen && <div className="invalid-feedback">{createErrors.id_almacen}</div>}
                     </div>
 
-                    <div className="col-12">
-                      <label className="form-label mb-1">Tipo departamento (opcional)</label>
-                      <select
-                        className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
-                        value={String(form.id_tipo_departamento ?? '')}
-                        onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
-                        disabled={loadingTipoDepto}
-                      >
-                        <option value="">
-                          {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
-                        </option>
-                        {tipoDepartamentos.map((d) => (
-                          <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
-                            {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                    {SHOW_PRODUCTO_DEPARTAMENTOS ? (
+                      <div className="col-12">
+                        <label className="form-label mb-1">Tipo departamento (opcional)</label>
+                        <select
+                          className={`form-select ${createErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                          value={String(form.id_tipo_departamento ?? '')}
+                          onChange={(e) => setForm((s) => ({ ...s, id_tipo_departamento: e.target.value }))}
+                          disabled={loadingTipoDepto}
+                        >
+                          <option value="">
+                            {loadingTipoDepto ? 'Cargando...' : 'Sin departamento'}
                           </option>
-                        ))}
-                      </select>
-                      {createErrors.id_tipo_departamento && (
-                        <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
-                      )}
-                    </div>
+                          {tipoDepartamentos.map((d) => (
+                            <option key={d.id_tipo_departamento} value={d.id_tipo_departamento}>
+                              {d.nombre_departamento}{d.estado === false ? ' (Inactivo)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {createErrors.id_tipo_departamento && (
+                          <div className="invalid-feedback">{createErrors.id_tipo_departamento}</div>
+                        )}
+                      </div>
+                    ) : null}
 
                     <div className="col-12">
                       <label className="form-label mb-1">Descripción (opcional)</label>
@@ -3760,9 +4152,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className="modal-dialog modal-dialog-centered inv-prod-modal-dialog" onClick={(e) => e.stopPropagation()}>
               <div className="modal-content shadow inv-prod-modal-content inv-prod-delete-modal">
                 <div className="modal-header d-flex align-items-center justify-content-between inv-prod-modal-header danger">
-                  <div>
-                    <div className="fw-semibold">Confirmar inactivación</div>
-                    <div className="small text-muted">El producto quedará marcado como inactivo</div>
+                  <div className="d-flex align-items-start gap-2">
+                    <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                    <div>
+                      <div className="fw-semibold">{INACTIVATE_CONFIRM_COPY.title}</div>
+                      <div className="small text-muted">{INACTIVATE_CONFIRM_COPY.subtitle}</div>
+                    </div>
                   </div>
                   <button type="button" className="btn btn-sm btn-light inv-prod-modal-close" onClick={closeConfirmDelete}>
                     <i className="bi bi-x-lg" />
@@ -3771,14 +4166,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                 <div className="modal-body inv-prod-modal-body">
                   <div className="mb-2">
-                    ¿Deseas inactivar este producto?
+                    {INACTIVATE_CONFIRM_COPY.question}
                   </div>
-                  {confirmModal.nombre && (
-                    <div className="text-muted small inv-prod-delete-name">
-                      <i className="bi bi-tag" />
-                      <span className="fw-semibold">{confirmModal.nombre}</span>
-                    </div>
-                  )}
+                  <div className="text-muted small inv-prod-delete-name">
+                    <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                    <span className="fw-semibold">{confirmModal.nombre || INACTIVATE_CONFIRM_COPY.fallbackName}</span>
+                  </div>
                   {confirmDeleteError ? (
                     <div className="alert alert-danger py-2 px-3 mt-3 mb-0" role="alert">
                       {confirmDeleteError}
@@ -3790,8 +4183,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   <button className="btn btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={closeConfirmDelete} disabled={deleting}>
                     Cancelar
                   </button>
-                  <button className="btn btn-danger inv-prod-btn-danger" type="button" onClick={eliminarConfirmado} disabled={deleting}>
-                    {deleting ? 'Inactivando...' : 'Inactivar'}
+                  <button className="btn inv-prod-btn-inactivate" type="button" onClick={eliminarConfirmado} disabled={deleting}>
+                    <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                    <span>{deleting ? 'Inactivando...' : 'Inactivar'}</span>
                   </button>
                 </div>
               </div>

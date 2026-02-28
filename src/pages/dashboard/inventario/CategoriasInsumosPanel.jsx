@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
 import { toUpperSafe } from '../../../utils/toUpperSafe';
-import CategoriasInsumosPanel from './CategoriasInsumosPanel.jsx';
-import CompactHeaderSwitch from './CompactHeaderSwitch.jsx';
+
+// NEW: panel de Categorias de Insumos clonado desde el panel de Categorias (Productos) para mantener paridad visual/UX.
+// WHY: garantizar mismo diseÃ±o, componentes, animaciones y reglas sin reescribir ni alterar el panel original de productos.
+// IMPACT: agrega un panel equivalente para `categorias_insumos`; el switch y el panel de productos permanecen intactos.
 
 const resolveCardsPerPage = (width) => {
   if (width >= 1200) return 6; // 3x2 desktop
@@ -41,17 +43,17 @@ const resolveCategoriaActiva = (categoria) => {
   return String(raw).trim().toLowerCase() === 'true';
 };
 
-// NEW: mensaje UX exacto para bloqueo de inactivacion cuando la categoria tiene productos activos asignados.
+// NEW: mensaje UX exacto para bloqueo de inactivacion cuando la categoria tiene insumos activos asignados.
 // WHY: centralizar el texto requerido y reutilizarlo en validacion preventiva y manejo de error backend.
 // IMPACT: solo afecta mensajes UI de Categorias; no cambia endpoints ni logica de negocio.
-const CATEGORY_DELETE_BLOCKED_MESSAGE = 'NO SE PUEDE INACTIVAR LA CATEGORIA PORQUE TIENE PRODUCTOS ASIGNADOS. REASIGNA O ACTUALIZA ESOS PRODUCTOS Y LUEGO INTENTA DE NUEVO.';
-// NEW: prefijo por defecto para codigos de categorias de productos.
-// WHY: el usuario pidio que el alta de categorias de productos inicie con `PRO-`.
-// IMPACT: solo prellena el formulario de create en Categorias de Productos.
-const PRODUCT_CATEGORY_CODE_PREFIX = 'PRO-';
+const CATEGORY_DELETE_BLOCKED_MESSAGE = 'NO SE PUEDE INACTIVAR LA CATEGORIA PORQUE TIENE INSUMOS ASIGNADOS. REASIGNA O ACTUALIZA ESOS INSUMOS Y LUEGO INTENTA DE NUEVO.';
+// NEW: prefijo por defecto para codigos de categorias de insumos.
+// WHY: el usuario pidio que el alta de categorias de insumos inicie con `INS-`.
+// IMPACT: solo prellena el formulario de create en Categorias de Insumos.
+const INPUT_CATEGORY_CODE_PREFIX = 'INS-';
 // NEW: copy e iconografia unificados para todas las confirmaciones de inactivacion en Inventario.
 // WHY: el usuario pidio el mismo mensaje y el mismo icono en todos los modulos al confirmar la inactivacion.
-// IMPACT: solo homologa el modal de confirmacion de Categorias; no toca activacion, filtros ni cards.
+// IMPACT: solo homologa el modal de confirmacion de Categorias de Insumos; no cambia el resto del panel.
 const INACTIVATE_CONFIRM_COPY = Object.freeze({
   title: 'Confirmar inactivación',
   subtitle: 'Este registro quedará marcado como inactivo',
@@ -60,48 +62,43 @@ const INACTIVATE_CONFIRM_COPY = Object.freeze({
   iconClass: 'bi bi-slash-circle'
 });
 
-// NEW: merge local/global de categorias por id para conservar activos e inactivos sin recargar la grilla.
-// WHY: "Ver inactivos" debe responder con el dataset en memoria, incluso despues de inactivar o refrescar props activas.
-// IMPACT: solo sincroniza estado local del tab; no modifica contratos ni estructura del backend.
-const mergeCategoriasProductoById = (current, incoming) => {
+// NEW: merge local/global de categorias de insumos por id para conservar activos e inactivos sin recargar la grilla.
+// WHY: el toggle "Ver inactivos" debe usar memoria local y reflejar inmediatamente las inactivaciones exitosas.
+// IMPACT: sincroniza solo estado del panel; no altera endpoints ni el resto del modulo.
+const mergeCategoriasInsumosById = (current, incoming) => {
   const map = new Map();
   (Array.isArray(current) ? current : []).forEach((item) => {
-    const id = Number(item?.id_categoria_producto ?? 0);
+    const id = Number(item?.id_categoria_insumo ?? 0);
     if (id) map.set(id, item);
   });
   (Array.isArray(incoming) ? incoming : []).forEach((item) => {
-    const id = Number(item?.id_categoria_producto ?? 0);
+    const id = Number(item?.id_categoria_insumo ?? 0);
     if (!id) return;
     map.set(id, { ...(map.get(id) || {}), ...item });
   });
   return Array.from(map.values());
 };
 
-const buildProductCategoryForm = () => ({
+const buildInputCategoryForm = () => ({
   nombre_categoria: '',
-  codigo_categoria: PRODUCT_CATEGORY_CODE_PREFIX,
+  codigo_categoria: INPUT_CATEGORY_CODE_PREFIX,
   descripcion: '',
   estado: true
 });
 
-const CategoriasTab = ({
-  categorias = [],
+const CategoriasInsumosPanel = ({
+  categoriasInsumos = [],
   loading = false,
   error = '',
   setError,
-  reloadCategorias,
+  reloadCategoriasInsumos,
   includeInactive = false,
   onIncludeInactiveChange,
-  onCategoriaPatched,
-  categoriasInsumos = [],
-  loadingCategoriasInsumos = false,
-  errorCategoriasInsumos = '',
-  setErrorCategoriasInsumos,
-  reloadCategoriasInsumos,
-  includeInactiveCategoriasInsumos = false,
-  onIncludeInactiveCategoriasInsumosChange,
   onCategoriaInsumoPatched,
-  openToast
+  openToast,
+  catalogSwitch = null,
+  headerTitle = 'Categorías de Insumos',
+  headerSubtitle = 'Gestión visual de categorías de insumos'
 }) => {
   // FUNCIONALIDAD: TOAST SEGURO
   const safeToast = (title, message, variant = 'success') => {
@@ -112,28 +109,11 @@ const CategoriasTab = ({
   const safeSetError = (msg) => {
     if (typeof setError === 'function') setError(msg);
   };
-  // NEW: switch maestro del submódulo Categorías (INSUMOS/PRODUCTOS) con default INSUMOS.
-  // WHY: unificar la UI en un solo submódulo sin refactorizar el panel existente de categorías de productos.
-  // IMPACT: solo cambia qué panel se renderiza; la lógica actual de categorías de productos se conserva intacta.
-  const [categoriaCatalogScope, setCategoriaCatalogScope] = useState('insumos');
-  // NEW: copy del header principal sincronizado con el switch INSUMOS/PRODUCTOS.
-  // WHY: el título visible del submódulo Categorías debe reflejar el catálogo activo sin recargar la vista.
-  // IMPACT: solo texto de UI; no cambia filtros, datos, endpoints ni lógica del switch.
-  const activeCategoriasHeaderCopy = useMemo(
-    () => (
-      categoriaCatalogScope === 'insumos'
-        ? {
-            title: 'Categorías de Insumos',
-            subtitle: 'Gestión visual de categorías de insumos'
-          }
-        : {
-            title: 'Categorías de Productos',
-            subtitle: 'Gestión visual de categorías de productos'
-          }
-    ),
-    [categoriaCatalogScope]
-  );
-
+  // NEW: copy visible normalizado del panel de categorías de insumos (incluye fallback y evita mojibake en UI).
+  // WHY: el archivo base clonado arrastró cadenas con codificación incorrecta y el título ahora debe venir del switch.
+  // IMPACT: solo textos/labels del panel; no altera lógica de filtros, CRUD ni endpoints.
+  const panelHeaderTitle = String(headerTitle || 'Categorías de Insumos');
+  const panelHeaderSubtitle = String(headerSubtitle || 'Gestión visual de categorías de insumos');
   // ==============================
   // FILTROS
   // ==============================
@@ -157,17 +137,17 @@ const CategoriasTab = ({
   // IMPACT: solo controla UX local; usa el mismo endpoint existente.
   const [quickTogglingEstadoId, setQuickTogglingEstadoId] = useState(null);
 
-  const [form, setForm] = useState(buildProductCategoryForm);
+  const [form, setForm] = useState(buildInputCategoryForm);
 
   const [formErrors, setFormErrors] = useState({});
   // NEW: espejo local de categorias para parches parciales en edit/activar-inactivar (desktop y responsive).
   // WHY: evitar refetch completo visible de la grilla tras cambios de un solo item.
-  // IMPACT: sincroniza con props `categorias`; si hay recarga del padre, prevalece la data remota.
-  const [categoriasLocal, setCategoriasLocal] = useState(() => (Array.isArray(categorias) ? categorias : []));
+  // IMPACT: sincroniza con props `categoriasInsumos`; si hay recarga del padre, prevalece la data remota.
+  const [categoriasLocal, setCategoriasLocal] = useState(() => (Array.isArray(categoriasInsumos) ? categoriasInsumos : []));
   // NEW: dataset global (activos + inactivos) exclusivo para KPIs y "Total" del header.
   // WHY: el toggle "Ver inactivos" debe afectar solo el listado visible, no los conteos globales.
   // IMPACT: realiza una carga adicional local a CategoriasTab; no modifica endpoints ni contratos.
-  const [categoriasGlobalMetricsData, setCategoriasGlobalMetricsData] = useState(() => (Array.isArray(categorias) ? categorias : []));
+  const [categoriasGlobalMetricsData, setCategoriasGlobalMetricsData] = useState(() => (Array.isArray(categoriasInsumos) ? categoriasInsumos : []));
   // NEW: flag de viewport responsive siguiendo breakpoints estandar del modulo (<= 991.98px).
   // WHY: aplicar cambios exclusivamente mobile/tablet sin afectar desktop.
   // IMPACT: controla UX de taps, drawers y estrategia de actualizacion local.
@@ -192,24 +172,24 @@ const CategoriasTab = ({
   }, []);
 
   useEffect(() => {
-    // NEW: fusiona props activas con el espejo local para no perder categorias inactivas ya hidratadas.
-    // WHY: el padre puede seguir trayendo solo activas, pero el toggle "Ver inactivos" necesita conservar ambas en memoria.
-    // IMPACT: evita vaciar la lista local al recibir nuevas props; el filtrado visual sigue igual.
-    setCategoriasLocal((prev) => mergeCategoriasProductoById(prev, categorias));
-    setCategoriasGlobalMetricsData((prev) => mergeCategoriasProductoById(prev, categorias));
-  }, [categorias]);
+    // NEW: fusiona props activas con el espejo local para no perder categorias inactivas ya cargadas.
+    // WHY: el padre puede seguir cargando activas por defecto, pero el panel necesita ambos estados en memoria.
+    // IMPACT: el toggle "Ver inactivos" ya no depende de refetch para mostrar el registro recien inactivado.
+    setCategoriasLocal((prev) => mergeCategoriasInsumosById(prev, categoriasInsumos));
+    setCategoriasGlobalMetricsData((prev) => mergeCategoriasInsumosById(prev, categoriasInsumos));
+  }, [categoriasInsumos]);
 
   useEffect(() => {
-    // NEW: hidrata silenciosamente el dataset completo de categorias (activas + inactivas) al montar el tab.
-    // WHY: el toggle "Ver inactivos" debe filtrar localmente sin disparar recarga visible de cards.
-    // IMPACT: los KPIs y el listado comparten una fuente completa en memoria; el flujo CRUD actual no cambia.
+    // NEW: hidrata silenciosamente el dataset completo de categorias de insumos al montar el panel.
+    // WHY: el toggle "Ver inactivos" debe cambiar la vista sin recarga visible ni fetch bloqueante.
+    // IMPACT: los cards filtran sobre data completa en memoria; el CRUD existente sigue intacto.
     let cancelled = false;
     const syncGlobalCategoriasMetrics = async () => {
       try {
-        const data = await inventarioService.getCategorias({ incluirInactivos: true });
+        const data = await inventarioService.getCategoriasInsumos({ incluirInactivos: true });
         if (!cancelled && Array.isArray(data)) {
           setCategoriasGlobalMetricsData(data);
-          setCategoriasLocal((prev) => mergeCategoriasProductoById(prev, data));
+          setCategoriasLocal((prev) => mergeCategoriasInsumosById(prev, data));
         }
       } catch {
         // noop: el tab ya muestra errores de carga del listado visible; los KPIs mantienen el ultimo dataset global valido.
@@ -230,7 +210,7 @@ const CategoriasTab = ({
     setFiltersOpen(false);
     setDrawerMode('create');
     setEditId(null);
-    setForm(buildProductCategoryForm());
+    setForm(buildInputCategoryForm());
     setFormErrors({});
     setDrawerOpen(true);
   };
@@ -242,7 +222,7 @@ const CategoriasTab = ({
     // IMPACT: compatibilidad total con flujo actual de edicion.
     setFiltersOpen(false);
     setDrawerMode('edit');
-    setEditId(c?.id_categoria_producto ?? null);
+    setEditId(c?.id_categoria_insumo ?? null);
     setForm({
       nombre_categoria: String(c?.nombre_categoria ?? '').toUpperCase(),
       codigo_categoria: normalizeCodigo(c?.codigo_categoria ?? ''),
@@ -256,9 +236,9 @@ const CategoriasTab = ({
   const closeDrawer = () => setDrawerOpen(false);
   const closeFiltersDrawer = () => setFiltersOpen(false);
 
-  // NEW: normalizador local de texto para campos elegibles del formulario de Categorías.
-  // WHY: aplicar mayúsculas con exclusiones seguras sin tocar el flujo de validación ni submit.
-  // IMPACT: solo afecta `nombre_categoria` y `descripcion` en create/edit; código mantiene `normalizeCodigo`.
+  // NEW: normalizador local de texto para campos elegibles del formulario de CategorÃ­as.
+  // WHY: aplicar mayÃºsculas con exclusiones seguras sin tocar el flujo de validaciÃ³n ni submit.
+  // IMPACT: solo afecta `nombre_categoria` y `descripcion` en create/edit; cÃ³digo mantiene `normalizeCodigo`.
   const normalizeCategoriaTextInput = (field, value) => toUpperSafe(value, field);
 
   // NEW: helpers del drawer de filtros con borrador aplicado.
@@ -294,9 +274,9 @@ const CategoriasTab = ({
   const toggleIncludeInactive = async () => {
     const next = !includeInactive;
     safeSetError('');
-    // NEW: el toggle solo cambia el filtro visible; ya no refetcha la grilla.
-    // WHY: el dataset completo vive en memoria y el usuario pidio evitar recarga/flicker al abrir inactivos.
-    // IMPACT: mantiene el mismo checkbox/UX, pero el cambio de vista es inmediato.
+    // NEW: el toggle ahora solo cambia el filtro local visible; ya no recarga cards.
+    // WHY: el usuario pidio que los inactivos aparezcan automaticamente y sin flicker.
+    // IMPACT: mantiene el mismo control, pero la transicion se resuelve en memoria.
     if (typeof onIncludeInactiveChange === 'function') {
       onIncludeInactiveChange(next);
     }
@@ -311,7 +291,7 @@ const CategoriasTab = ({
     nombre: ''
   });
   // NEW: alerta roja local no bloqueante para restricciones de eliminacion (auto-dismiss 6s).
-  // WHY: reemplazar la confirmacion cuando hay productos asignados y dar feedback claro sin bloquear la pantalla.
+  // WHY: reemplazar la confirmacion cuando hay insumos asignados y dar feedback claro sin bloquear la pantalla.
   // IMPACT: UI-only en Categorias; flujo de eliminacion valido permanece intacto.
   const [deleteBlockedAlert, setDeleteBlockedAlert] = useState('');
   const deleteBlockedAlertTimerRef = useRef(null);
@@ -340,9 +320,9 @@ const CategoriasTab = ({
 
   const closeConfirmDelete = () => setConfirmModal({ show: false, idToDelete: null, nombre: '' });
   const openConfirmDelete = (id, nombre) => {
-    const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_producto ?? 0) === Number(id ?? 0));
-    const countProductos = getProductosAsignadosCount(categoriaActual);
-    if (countProductos !== null && countProductos > 0) {
+    const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_insumo ?? 0) === Number(id ?? 0));
+    const countInsumos = getInsumosAsignadosCount(categoriaActual);
+    if (countInsumos !== null && countInsumos > 0) {
       closeConfirmDelete();
       safeSetError('');
       showDeleteBlockedAlert();
@@ -393,11 +373,15 @@ const CategoriasTab = ({
     return { ok: Object.keys(errors).length === 0, errors, cleaned };
   };
 
-  // NEW: detecta conteo de productos activos si el backend ya lo incluye en la categoria.
-  // WHY: evitar pre-bloqueos incorrectos cuando solo existan productos inactivos.
+  // NEW: detecta conteo de insumos activos si el backend ya lo incluye en la categoria.
+  // WHY: evitar pre-bloqueos incorrectos cuando solo existan insumos inactivos.
   // IMPACT: si no viene conteo de activos, la validacion final queda en el backend (409).
-  const getProductosAsignadosCount = (categoria) => {
+  const getInsumosAsignadosCount = (categoria) => {
     const candidates = [
+      categoria?.cantidad_insumos_activos,
+      categoria?.insumos_activos_count,
+      categoria?.total_insumos_activos,
+      categoria?.conteo_insumos_activos,
       categoria?.cantidad_productos_activos,
       categoria?.productos_activos_count,
       categoria?.total_productos_activos,
@@ -412,9 +396,9 @@ const CategoriasTab = ({
 
   // NEW: helper de bloqueo UI para inactivación usando el conteo ya disponible en la card (si el backend lo expone).
   // WHY: deshabilitar la acción de inactivar de forma consistente en desktop y responsive sin endpoints nuevos.
-  // IMPACT: solo UI; si no hay conteo disponible, el fallback sigue siendo `openConfirmDelete` + validación backend 409.
+  // IMPACT: solo UI; si no hay conteo disponible, el fallback sigue siendo confirmación + validación backend 409.
   const isCategoriaUiBlockedForInactivation = (categoria) => {
-    const count = getProductosAsignadosCount(categoria);
+    const count = getInsumosAsignadosCount(categoria);
     return count !== null && count > 0;
   };
 
@@ -426,22 +410,22 @@ const CategoriasTab = ({
     if (!idNum) return;
     setCategoriasLocal((prev) =>
       (Array.isArray(prev) ? prev : []).map((item) =>
-        Number(item?.id_categoria_producto ?? 0) === idNum ? { ...item, ...patch } : item
+        Number(item?.id_categoria_insumo ?? 0) === idNum ? { ...item, ...patch } : item
       )
     );
     setCategoriasGlobalMetricsData((prev) =>
       (Array.isArray(prev) ? prev : []).map((item) =>
-        Number(item?.id_categoria_producto ?? 0) === idNum ? { ...item, ...patch } : item
+        Number(item?.id_categoria_insumo ?? 0) === idNum ? { ...item, ...patch } : item
       )
     );
-    if (typeof onCategoriaPatched === 'function' && patch && typeof patch === 'object') {
+    if (typeof onCategoriaInsumoPatched === 'function' && patch && typeof patch === 'object') {
       try {
-        onCategoriaPatched(idNum, patch);
+        onCategoriaInsumoPatched(idNum, patch);
       } catch {
         // NEW: fallback defensivo si el patch compartido del padre falla por cualquier motivo.
         // WHY: mantener consistencia entre tabs sin romper el flujo exitoso del CRUD.
         // IMPACT: dispara recarga segura solo en casos excepcionales; comportamiento normal no cambia.
-        if (typeof reloadCategorias === 'function') void reloadCategorias();
+        if (typeof reloadCategoriasInsumos === 'function') void reloadCategoriasInsumos();
       }
     }
   };
@@ -512,7 +496,7 @@ const CategoriasTab = ({
   // ==============================
   const categoriasFiltradas = useMemo(() => {
     const lista = [...(categoriasLocal || [])].sort(
-      (a, b) => (a?.id_categoria_producto ?? 0) - (b?.id_categoria_producto ?? 0)
+      (a, b) => (a?.id_categoria_insumo ?? 0) - (b?.id_categoria_insumo ?? 0)
     );
 
     const s = search.trim().toLowerCase();
@@ -520,7 +504,7 @@ const CategoriasTab = ({
       const texto = `${c?.nombre_categoria ?? ''} ${c?.codigo_categoria ?? ''} ${c?.descripcion ?? ''}`.toLowerCase();
       const matchTexto = s ? texto.includes(s) : true;
       // NEW: modo "Ver inactivos" muestra exclusivamente estado=false; modo normal solo activos.
-      // WHY: evitar mezclar activos e inactivos cuando el toggle admin está encendido.
+      // WHY: evitar mezclar activos e inactivos cuando el toggle admin estÃ¡ encendido.
       // IMPACT: filtrado local de la grilla; no altera la carga ni el resto de filtros.
       const isActive = resolveCategoriaActiva(c);
       const matchViewEstado = includeInactive ? !isActive : isActive;
@@ -548,7 +532,7 @@ const CategoriasTab = ({
       if (sortBy === 'codigo_desc') {
         return String(b?.codigo_categoria ?? '').localeCompare(String(a?.codigo_categoria ?? ''), 'es', { sensitivity: 'base' });
       }
-      return Number(b?.id_categoria_producto ?? 0) - Number(a?.id_categoria_producto ?? 0);
+      return Number(b?.id_categoria_insumo ?? 0) - Number(a?.id_categoria_insumo ?? 0);
     });
 
     return filtradas;
@@ -565,7 +549,7 @@ const CategoriasTab = ({
   const baseCategorias = Array.isArray(categoriasLocal) ? categoriasLocal : [];
   const isSameRecord = (cat) =>
     drawerMode === 'edit' &&
-    Number(cat?.id_categoria_producto ?? 0) === Number(editId ?? 0);
+    Number(cat?.id_categoria_insumo ?? 0) === Number(editId ?? 0);
 
   const nombreDuplicado =
     normalizedNombre.length > 0 &&
@@ -597,22 +581,22 @@ const CategoriasTab = ({
 
   useEffect(() => {
     // NEW: mantiene el indice del carrusel dentro del rango valido al cambiar filtros o breakpoints.
-    // WHY: conservar el patron paginado tipo Insumos sin dejar paginas vacias en Categorias.
+    // WHY: conservar el patron paginado tipo Insumos sin dejar paginas vacias en Categorias de Insumos.
     // IMPACT: solo corrige el estado visual del carrusel; no toca handlers ni datos.
     setCarouselPageIndex((prev) => Math.min(prev, Math.max(0, categoriasPageCount - 1)));
   }, [categoriasPageCount]);
 
-  // NEW: referencia del registro en edición para aplicar las mismas reglas de bloqueo del card en el drawer responsive/desktop.
-  // WHY: evitar bypass al intentar inactivar desde el checkbox `Activo` del formulario de edición.
-  // IMPACT: solo deshabilita la opción de inactivar cuando el conteo de productos activos ya viene en la data.
+  // NEW: referencia del registro en edición para aplicar la misma regla de bloqueo en el drawer (desktop/responsive).
+  // WHY: evitar bypass al intentar inactivar desde el checkbox `Activo` del formulario.
+  // IMPACT: solo deshabilita la opción cuando el conteo de insumos activos ya está disponible en la data.
   const editingCategoriaActual = useMemo(
-    () => (Array.isArray(categoriasLocal) ? categoriasLocal.find((c) => Number(c?.id_categoria_producto ?? 0) === Number(editId ?? 0)) || null : null),
+    () => (Array.isArray(categoriasLocal) ? categoriasLocal.find((c) => Number(c?.id_categoria_insumo ?? 0) === Number(editId ?? 0)) || null : null),
     [categoriasLocal, editId]
   );
   const editDrawerInactivationBlocked = useMemo(
     () => {
       if (drawerMode !== 'edit' || !editingCategoriaActual || !resolveCategoriaActiva(editingCategoriaActual)) return false;
-      const count = getProductosAsignadosCount(editingCategoriaActual);
+      const count = getInsumosAsignadosCount(editingCategoriaActual);
       return count !== null && count > 0;
     },
     [drawerMode, editingCategoriaActual]
@@ -636,8 +620,8 @@ const CategoriasTab = ({
 
     try {
       if (drawerMode === 'create') {
-        await inventarioService.crearCategoria(v.cleaned);
-        safeToast('CREADO', 'LA CATEGORIA SE CREO CORRECTAMENTE.', 'success');
+        await inventarioService.crearCategoriaInsumo(v.cleaned);
+        safeToast('CREADO', 'LA CATEGORIA DE INSUMO SE CREO CORRECTAMENTE.', 'success');
       } else {
         if (!editId) return;
 
@@ -650,12 +634,12 @@ const CategoriasTab = ({
         ];
 
         for (const [campo, valor] of updates) {
-          await inventarioService.actualizarCategoriaCampo(editId, campo, valor);
+          await inventarioService.actualizarCategoriaInsumoCampo(editId, campo, valor);
         }
 
         // NEW: parche local/compartido del registro editado para evitar refetch visible de toda la grilla.
         // WHY: mejorar UX en desktop y mobile/tablet manteniendo el card estable tras guardar.
-        // IMPACT: Productos/Insumos reciben el cambio si el padre expone `onCategoriaPatched`; create/delete siguen con refetch.
+        // IMPACT: Productos/Insumos reciben el cambio si el padre expone `onCategoriaInsumoPatched`; create/delete siguen con refetch.
         patchCategoriaLocalById(editId, {
           nombre_categoria: v.cleaned.nombre_categoria,
           codigo_categoria: v.cleaned.codigo_categoria,
@@ -663,22 +647,22 @@ const CategoriasTab = ({
           estado: v.cleaned.estado
         });
 
-        safeToast('ACTUALIZADO', 'LA CATEGORIA SE ACTUALIZO CORRECTAMENTE.', 'success');
+        safeToast('ACTUALIZADO', 'LA CATEGORIA DE INSUMO SE ACTUALIZO CORRECTAMENTE.', 'success');
       }
 
       closeDrawer();
       // NEW: se evita refetch global en edit para no "recargar" visualmente toda la grilla.
       // WHY: el item editado ya se parchea localmente y en el estado compartido del modulo cuando hay callback.
-      // IMPACT: create mantiene `reloadCategorias`; si el patch local fallara, el catch preserva el flujo y puede recargarse manualmente.
+      // IMPACT: create mantiene `reloadCategoriasInsumos`; si el patch local fallara, el catch preserva el flujo y puede recargarse manualmente.
       const shouldReloadAfterSave = drawerMode === 'create';
-      if (shouldReloadAfterSave && typeof reloadCategorias === 'function') await reloadCategorias();
+      if (shouldReloadAfterSave && typeof reloadCategoriasInsumos === 'function') await reloadCategoriasInsumos();
     } catch (err) {
       const backendCode = String(err?.data?.code || '');
       const backendExactMessage = String(err?.data?.message || err?.data?.mensaje || '');
-      if (Number(err?.status || 0) === 409 && backendCode === 'CATEGORY_HAS_ACTIVE_PRODUCTS') {
+      if (Number(err?.status || 0) === 409 && backendCode === 'CATEGORY_INSUMO_HAS_ACTIVE_ITEMS') {
         // NEW: manejo explícito del bloqueo también en guardado por drawer (PUT estado=false).
-        // WHY: responsive/desktop pueden intentar inactivar desde el checkbox "Activo"; debe mostrar el mismo mensaje y no guardar.
-        // IMPACT: UI-only; el backend ya es la fuente de verdad con 409.
+        // WHY: la inactivación desde el checkbox debe responder igual en desktop y responsive.
+        // IMPACT: UI-only; backend sigue imponiendo la regla con 409.
         safeSetError('');
         showDeleteBlockedAlert();
         if (v.cleaned?.estado === false) {
@@ -687,7 +671,7 @@ const CategoriasTab = ({
         if (backendExactMessage) safeToast('BLOQUEADO', backendExactMessage, 'warning');
         return;
       }
-      const msg = err?.message || 'ERROR GUARDANDO CATEGORIA';
+      const msg = err?.message || 'ERROR GUARDANDO CATEGORIA DE INSUMO';
       safeSetError(msg);
       safeToast('ERROR', msg, 'danger');
     }
@@ -698,7 +682,7 @@ const CategoriasTab = ({
   // IMPACT: reutiliza `actualizarCategoriaCampo` y recarga categorias existente.
   const _toggleEstadoCategoriaRapido = async (categoria, nextEstado) => {
     if (!categoria || quickTogglingEstadoId) return;
-    setQuickTogglingEstadoId(categoria.id_categoria_producto);
+    setQuickTogglingEstadoId(categoria.id_categoria_insumo);
     safeSetError('');
     try {
       const candidates = [nextEstado, nextEstado ? 1 : 0, nextEstado ? '1' : '0'];
@@ -706,7 +690,7 @@ const CategoriasTab = ({
       let lastError = null;
       for (const candidate of candidates) {
         try {
-          await inventarioService.actualizarCategoriaCampo(categoria.id_categoria_producto, 'estado', candidate);
+          await inventarioService.actualizarCategoriaInsumoCampo(categoria.id_categoria_insumo, 'estado', candidate);
           updated = true;
           break;
         } catch (err) {
@@ -717,10 +701,10 @@ const CategoriasTab = ({
       // NEW: patch local/compartido de estado para evitar refetch completo visible al activar/inactivar.
       // WHY: activar/inactivar solo afecta una card y sus KPIs; no requiere recarga total inmediata.
       // IMPACT: mantiene la grilla estable; si el backend cambia mas campos, un refetch posterior re-sincroniza.
-      patchCategoriaLocalById(categoria.id_categoria_producto, { estado: !!nextEstado });
-      safeToast('ACTUALIZADO', nextEstado ? 'CATEGORIA ACTIVADA.' : 'CATEGORIA INACTIVADA.', 'success');
+      patchCategoriaLocalById(categoria.id_categoria_insumo, { estado: !!nextEstado });
+      safeToast('ACTUALIZADO', nextEstado ? 'CATEGORIA DE INSUMO ACTIVADA.' : 'CATEGORIA DE INSUMO INACTIVADA.', 'success');
     } catch (err) {
-      const msg = err?.message || 'ERROR ACTUALIZANDO ESTADO DE CATEGORIA';
+      const msg = err?.message || 'ERROR ACTUALIZANDO ESTADO DE CATEGORIA DE INSUMO';
       safeSetError(msg);
       safeToast('ERROR', msg, 'danger');
     } finally {
@@ -737,26 +721,26 @@ const CategoriasTab = ({
 
     safeSetError('');
     try {
-      const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_producto ?? 0) === Number(id ?? 0));
-      const countProductos = getProductosAsignadosCount(categoriaActual);
-      if (countProductos !== null && countProductos > 0) {
+      const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_insumo ?? 0) === Number(id ?? 0));
+      const countInsumos = getInsumosAsignadosCount(categoriaActual);
+      if (countInsumos !== null && countInsumos > 0) {
         closeConfirmDelete();
         safeSetError('');
         showDeleteBlockedAlert();
         return;
       }
 
-      await inventarioService.eliminarCategoria(id);
+      await inventarioService.eliminarCategoriaInsumo(id);
       closeConfirmDelete();
-      // NEW: la categoria inactivada permanece en memoria y cambia de vista por filtro local al instante.
-      // WHY: evitar refetch visible y asegurar que aparezca de inmediato al activar "Ver inactivos".
-      // IMPACT: conserva la UX estable de cards; el backend sigue siendo quien confirma la inactivacion.
+      // NEW: la categoria de insumo inactivada se conserva en memoria para verse al instante en "Ver inactivos".
+      // WHY: evitar recarga global de cards y cumplir la UX pedida para cambios de estado.
+      // IMPACT: el panel cambia de vista por filtro local; el backend sigue ejecutando la inactivacion real.
       patchCategoriaLocalById(id, { estado: false });
-      safeToast('INACTIVADA', 'LA CATEGORIA SE INACTIVO CORRECTAMENTE.', 'success');
+      safeToast('INACTIVADA', 'LA CATEGORIA DE INSUMO SE INACTIVO CORRECTAMENTE.', 'success');
     } catch (err) {
       const backendCode = String(err?.data?.code || '');
       const backendExactMessage = String(err?.data?.message || err?.data?.mensaje || '');
-      if (Number(err?.status || 0) === 409 && backendCode === 'CATEGORY_HAS_ACTIVE_PRODUCTS') {
+      if (Number(err?.status || 0) === 409 && backendCode === 'CATEGORY_INSUMO_HAS_ACTIVE_ITEMS') {
         closeConfirmDelete();
         safeSetError('');
         showDeleteBlockedAlert();
@@ -764,14 +748,14 @@ const CategoriasTab = ({
         return;
       }
       const backendMessage = String(err?.data?.message || err?.data?.mensaje || err?.message || '').toLowerCase();
-      const restrictionKeywords = ['foreign', 'constraint', 'referenc', 'fk', 'producto', 'asignad', 'uso', 'relacion'];
+      const restrictionKeywords = ['foreign', 'constraint', 'referenc', 'fk', 'producto', 'insumo', 'asignad', 'uso', 'relacion'];
       const isRestriction = restrictionKeywords.some((k) => backendMessage.includes(k));
       // NEW: mensaje UX especifico cuando la categoria esta relacionada con productos.
       // WHY: la accion debe explicar claramente por que no se puede eliminar y que hacer.
       // IMPACT: solo cambia el texto mostrado al usuario; el flujo backend permanece igual.
       const msg = isRestriction
         ? CATEGORY_DELETE_BLOCKED_MESSAGE
-        : (err?.message || 'ERROR INACTIVANDO CATEGORIA');
+        : (err?.message || 'ERROR INACTIVANDO CATEGORIA DE INSUMO');
       if (isRestriction) {
         closeConfirmDelete();
         safeSetError('');
@@ -793,63 +777,33 @@ const CategoriasTab = ({
   };
   const canTapCardToEdit = !isResponsiveViewport;
 
-  // NEW: switch compacto del header para alternar INSUMOS/PRODUCTOS reutilizando el mismo estado `categoriaCatalogScope`.
-  // WHY: mover el control al header principal y mantener una UX unificada sin tocar la lógica de paneles.
-  // IMPACT: solo cambia presentación/ubicación del switch; el render condicional y CRUD permanecen intactos.
-  const renderCatalogScopeSwitch = () => (
-    <CompactHeaderSwitch
-      value={categoriaCatalogScope}
-      onChange={setCategoriaCatalogScope}
-      ariaLabel="Cambiar catálogo de categorías"
-    />
-  );
-
-  if (categoriaCatalogScope === 'insumos') {
-    return (
-      <CategoriasInsumosPanel
-        categoriasInsumos={categoriasInsumos}
-        loading={loadingCategoriasInsumos}
-        error={errorCategoriasInsumos}
-        setError={setErrorCategoriasInsumos}
-        reloadCategoriasInsumos={reloadCategoriasInsumos}
-        includeInactive={includeInactiveCategoriasInsumos}
-        onIncludeInactiveChange={onIncludeInactiveCategoriasInsumosChange}
-        onCategoriaInsumoPatched={onCategoriaInsumoPatched}
-        openToast={openToast}
-        catalogSwitch={renderCatalogScopeSwitch()}
-        headerTitle={activeCategoriasHeaderCopy.title}
-        headerSubtitle={activeCategoriasHeaderCopy.subtitle}
-      />
-    );
-  }
-
   return (
     <>
-      {/* NEW: helper class para habilitar sticky del header sin afectar otros cards reutilizados. */}
-      {/* WHY: `position: sticky` falla si el contenedor mantiene `overflow: hidden`; el override se limita a este shell. */}
-      {/* IMPACT: solo layout visual del header de Categorías; no cambia lógica ni eventos. */}
+      {/* NEW: helper class para activar sticky del header del panel de categorías de insumos. */}
+      {/* WHY: habilita el override local de overflow requerido por `position: sticky` sin afectar otros módulos. */}
+      {/* IMPACT: solo comportamiento visual del encabezado al scrollear; no cambia lógica CRUD. */}
       <div className="inv-catpro-card inv-prod-card inv-cat-v2 inv-has-sticky-header mb-3">
         {/* FUNCIONALIDAD: HEADER */}
         <div className="inv-prod-header inv-cat-v2__header inv-cat-v3__header">
-          {/* NEW: layout de header en dos columnas (izquierda: título+buscador / derecha: switch+acciones). */}
-          {/* WHY: replicar la distribución de referencia manteniendo el mismo DOM funcional de búsqueda, switch y botones. */}
-          {/* IMPACT: solo reorganiza presentación del header en Categorías; no modifica handlers ni lógica de estado. */}
+          {/* NEW: layout de header en dos columnas para igualar distribución visual entre insumos y productos. */}
+          {/* WHY: mantener switch arriba a la derecha y apilar acciones debajo sin tocar lógica de filtros/switch. */}
+          {/* IMPACT: solo presentación del header de Categorías de Insumos; handlers y CRUD permanecen intactos. */}
           <div className="inv-cat-v3__layout">
             <div className="inv-cat-v3__title">
               <div className="inv-prod-title-wrap">
                 <div className="inv-prod-title-row">
                   <i className="bi bi-tag inv-prod-title-icon" />
-                  <span className="inv-prod-title">{activeCategoriasHeaderCopy.title}</span>
+                  <span className="inv-prod-title">{panelHeaderTitle}</span>
                 </div>
-                <div className="inv-prod-subtitle">{activeCategoriasHeaderCopy.subtitle}</div>
+                <div className="inv-prod-subtitle">{panelHeaderSubtitle}</div>
               </div>
             </div>
 
             <div className="inv-cat-v3__switch-slot">
-              {renderCatalogScopeSwitch()}
+              {catalogSwitch}
             </div>
 
-            <label className="inv-ins-search inv-cat-v3__search" aria-label="Buscar categorías">
+            <label className="inv-ins-search inv-cat-v3__search" aria-label="Buscar categorías de insumos">
               <i className="bi bi-search" />
               <input
                 type="search"
@@ -888,7 +842,7 @@ const CategoriasTab = ({
         {/* NEW: dashboards centrados bajo el header, replicando forma/jerarquía de Insumos. */}
         {/* WHY: unificar layout visual entre submódulos de inventario. */}
         {/* IMPACT: solo presentación; se reutiliza `kpis` existente. */}
-        <div className="inv-prod-kpis inv-cat-v2__kpis inv-cat-unified-panel-shell" aria-label="Resumen de categorías">
+        <div className="inv-prod-kpis inv-cat-v2__kpis inv-cat-unified-panel-shell" aria-label="Resumen de categorías de insumos">
           {renderKpiCard('total', 'Total', kpis.total)}
           {renderKpiCard('activas', 'Activas', kpis.activas, 'is-ok')}
           {renderKpiCard('inactivas', 'Inactivas', kpis.inactivas, 'is-empty')}
@@ -897,7 +851,7 @@ const CategoriasTab = ({
         {/* FUNCIONALIDAD: BODY */}
         <div className="inv-catpro-body inv-prod-body p-3 inv-cat-unified-panel-shell">
           {deleteBlockedAlert ? (
-            // NEW: alerta roja no bloqueante con auto-dismiss para restriccion de eliminacion por productos asignados.
+            // NEW: alerta roja no bloqueante con auto-dismiss para restriccion de eliminacion por insumos asignados.
             // WHY: reemplazar confirm modal cuando la categoria no se puede eliminar y permitir seguir usando la pantalla.
             // IMPACT: solo presentacion local en Categorias; no altera el flujo normal de eliminacion cuando si procede.
             <div className="alert alert-danger inv-cat-v2__delete-alert mb-3" role="alert" aria-live="assertive">
@@ -911,7 +865,7 @@ const CategoriasTab = ({
           ) : null}
 
           <div className="inv-prod-results-meta inv-cat-v2__results-meta inv-inventory-results-meta">
-            <span>{loading ? 'Cargando categorías...' : `${categoriasFiltradas.length} resultados`}</span>
+            <span>{loading ? 'Cargando categorías de insumos...' : `${categoriasFiltradas.length} resultados`}</span>
             <span>{loading ? '' : `Total: ${categoriasDatasetGlobal.length}`}</span>
             {/* NEW: toggle admin para pedir categorias inactivas al backend sin cambiar filtros locales. */}
             {/* WHY: los GET de inventario retornan activos por defecto tras el cambio a soft delete. */}
@@ -929,9 +883,9 @@ const CategoriasTab = ({
             {hasActiveFilters ? (
               <span className="inv-prod-active-filter-pill">
                 <span>Filtros activos</span>
-                {/* NEW: acceso rápido para limpiar todos los filtros desde el resumen. */}
+                {/* NEW: acceso rÃ¡pido para limpiar todos los filtros desde el resumen. */}
                 {/* WHY: reutilizar el reset existente sin abrir el drawer de filtros. */}
-                {/* IMPACT: usa `clearAllFilters`; la lógica de filtrado permanece intacta. */}
+                {/* IMPACT: usa `clearAllFilters`; la lÃ³gica de filtrado permanece intacta. */}
                 <button
                   type="button"
                   className="inv-prod-active-filter-pill__clear"
@@ -950,16 +904,16 @@ const CategoriasTab = ({
             {loading ? (
               <div className="inv-catpro-loading" role="status" aria-live="polite">
                 <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-                <span>Cargando categorias...</span>
+                <span>Cargando categorias de insumos...</span>
               </div>
             ) : categoriasFiltradas.length === 0 ? (
               <div className="inv-catpro-empty">
                 <div className="inv-catpro-empty-icon">
                   <i className="bi bi-inbox-fill" />
                 </div>
-                <div className="inv-catpro-empty-title">No hay categorias para mostrar</div>
+                <div className="inv-catpro-empty-title">No hay categorias de insumos para mostrar</div>
                 <div className="inv-catpro-empty-sub">
-                  {hasActiveFilters ? 'Prueba limpiar filtros o crea una nueva categoria.' : 'Crea tu primera categoria.'}
+                  {hasActiveFilters ? 'Prueba limpiar filtros o crea una nueva categoria de insumo.' : 'Crea tu primera categoria de insumo.'}
                 </div>
 
                 <div className="d-flex gap-2 justify-content-center flex-wrap">
@@ -974,7 +928,7 @@ const CategoriasTab = ({
                   ) : null}
 
                   <button type="button" className="btn btn-primary" onClick={openCreate}>
-                    Nueva categoria
+                    Nueva categoria de insumo
                   </button>
                 </div>
               </div>
@@ -997,20 +951,20 @@ const CategoriasTab = ({
                   <i className="bi bi-chevron-left" />
                 </button>
 
-                <div className={`inv-catpro-grid inv-catpro-grid-page ${cardsPerPage >= 6 ? 'cols-3' : cardsPerPage >= 4 ? 'cols-2' : 'cols-1'}`} key={`categorias-page-${carouselPageIndex}`}>
+                <div className={`inv-catpro-grid inv-catpro-grid-page ${cardsPerPage >= 6 ? 'cols-3' : cardsPerPage >= 4 ? 'cols-2' : 'cols-1'}`} key={`categorias-insumos-page-${carouselPageIndex}`}>
                           {currentCategoriasPage.map((c, idx) => {
                             const globalIdx = carouselPageIndex * cardsPerPage + idx;
                             const isActive = resolveCategoriaActiva(c);
                             const code = c?.codigo_categoria ?? '';
                             const dotClass = isActive ? 'ok' : 'off';
-                            const isToggling = quickTogglingEstadoId === c?.id_categoria_producto;
+                            const isToggling = quickTogglingEstadoId === c?.id_categoria_insumo;
                             const isInactivateUiBlocked = isActive && isCategoriaUiBlockedForInactivation(c);
 
                             // AJUSTE: se mantiene fallback del card actual cuando el modo premium esta desactivado.
                             if (!USE_PREMIUM_CATEGORY_CARDS) {
                               return (
                                 <div
-                                  key={c?.id_categoria_producto ?? globalIdx}
+                                  key={c?.id_categoria_insumo ?? globalIdx}
                                   className={`inv-catpro-item inv-anim-in ${isActive ? '' : 'is-inactive-state'}`}
                                   style={{ animationDelay: `${Math.min(globalIdx * 40, 240)}ms` }}
                                   role={canTapCardToEdit ? 'button' : undefined}
@@ -1061,14 +1015,14 @@ const CategoriasTab = ({
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if (isActive) {
-                                            openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria);
+                                            openConfirmDelete(c?.id_categoria_insumo, c?.nombre_categoria);
                                             return;
                                           }
                                           void _toggleEstadoCategoriaRapido(c, true);
                                         }}
                                         onKeyDown={(e) => e.stopPropagation()}
-                                        title={isInactivateUiBlocked ? 'No se puede inactivar: tiene productos activos asignados' : (isActive ? 'Inactivar' : 'Activar')}
-                                        aria-label={`${isActive ? 'Inactivar' : 'Activar'} ${c?.nombre_categoria || 'categoria'}`}
+                                        title={isInactivateUiBlocked ? 'No se puede inactivar: tiene insumos activos asignados' : (isActive ? 'Inactivar' : 'Activar')}
+                                        aria-label={`${isActive ? 'Inactivar' : 'Activar'} ${c?.nombre_categoria || 'categoria de insumo'}`}
                                         disabled={isToggling || isInactivateUiBlocked}
                                       >
                                         <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
@@ -1082,7 +1036,7 @@ const CategoriasTab = ({
 
                             return (
                               <div
-                                key={c?.id_categoria_producto ?? globalIdx}
+                                key={c?.id_categoria_insumo ?? globalIdx}
                                 // AJUSTE: card premium agrega capas visuales, manteniendo handlers y estructura base.
                                 className={`inv-catpro-item inv-cat-card inv-anim-in ${isActive ? '' : 'is-inactive-state'}`}
                                 style={{ animationDelay: `${Math.min(globalIdx * 40, 240)}ms` }}
@@ -1131,8 +1085,8 @@ const CategoriasTab = ({
                                   </div>
 
                                   <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions">
-                                      {/* NEW: acciones hover para igualar patrón de Insumos/Productos. */}
-                                      {/* WHY: exponer edición/estado/eliminación de forma consistente sin perder click en card. */}
+                                      {/* NEW: acciones hover para igualar patrÃ³n de Insumos/Productos. */}
+                                      {/* WHY: exponer ediciÃ³n/estado/eliminaciÃ³n de forma consistente sin perder click en card. */}
                                       {/* IMPACT: reutiliza los mismos handlers/endpoints existentes. */}
                                       <button
                                         type="button"
@@ -1149,9 +1103,9 @@ const CategoriasTab = ({
                                         <span className="inv-catpro-action-label">Editar</span>
                                       </button>
 
-                                      {/* NEW: se oculta el botón intermedio de activar/inactivar para evitar acción duplicada en el card. */}
-                                      {/* WHY: dejar solo el botón de advertencia/confirmación (`openConfirmDelete`) como flujo correcto en Categorías. */}
-                                      {/* IMPACT: no elimina handlers ni lógica; solo quita un render duplicado en la UI del card. */}
+                                      {/* NEW: se oculta el botÃ³n intermedio de activar/inactivar para evitar acciÃ³n duplicada en el card. */}
+                                      {/* WHY: dejar solo el botÃ³n de advertencia/confirmaciÃ³n (`openConfirmDelete`) como flujo correcto en CategorÃ­as. */}
+                                      {/* IMPACT: no elimina handlers ni lÃ³gica; solo quita un render duplicado en la UI del card. */}
 
                                       <button
                                         type="button"
@@ -1159,14 +1113,14 @@ const CategoriasTab = ({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         if (isActive) {
-                                          openConfirmDelete(c?.id_categoria_producto, c?.nombre_categoria);
+                                          openConfirmDelete(c?.id_categoria_insumo, c?.nombre_categoria);
                                           return;
                                         }
                                         void _toggleEstadoCategoriaRapido(c, true);
                                       }}
                                       onKeyDown={(e) => e.stopPropagation()}
-                                        title={isInactivateUiBlocked ? 'No se puede inactivar: tiene productos activos asignados' : (isActive ? 'Inactivar' : 'Activar')}
-                                        aria-label={`${isActive ? 'Inactivar' : 'Activar'} ${c?.nombre_categoria || 'categoria'}`}
+                                        title={isInactivateUiBlocked ? 'No se puede inactivar: tiene insumos activos asignados' : (isActive ? 'Inactivar' : 'Activar')}
+                                        aria-label={`${isActive ? 'Inactivar' : 'Activar'} ${c?.nombre_categoria || 'categoria de insumo'}`}
                                         disabled={isToggling || isInactivateUiBlocked}
                                       >
                                         <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
@@ -1227,7 +1181,7 @@ const CategoriasTab = ({
           {/* IMPACT: decorativo; no afecta el contenido ni la interaccion del drawer. */}
           <i className="bi bi-tags inv-cat-v2__drawer-mark" aria-hidden="true" />
           <div>
-            <div className="inv-prod-drawer-title">Filtros de categorias</div>
+            <div className="inv-prod-drawer-title">Filtros de categorias de insumos</div>
             <div className="inv-prod-drawer-sub">Estado y orden visual del carrusel</div>
           </div>
           <button type="button" className="inv-prod-drawer-close" onClick={closeFiltersDrawer} title="Cerrar">
@@ -1306,7 +1260,7 @@ const CategoriasTab = ({
           {/* IMPACT: decorativo; no cambia el flujo ni los campos del formulario. */}
           <i className="bi bi-tags inv-cat-v2__drawer-mark" aria-hidden="true" />
           <div>
-            <div className="inv-prod-drawer-title">{drawerMode === 'create' ? 'Nueva categoria' : 'Editar categoria'}</div>
+            <div className="inv-prod-drawer-title">{drawerMode === 'create' ? 'Nueva categoria de insumo' : 'Editar categoria de insumo'}</div>
             <div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div>
           </div>
           {/* AJUSTE: se iguala el boton de cierre al patron de Productos para mantener diseno consistente. */}
@@ -1333,7 +1287,7 @@ const CategoriasTab = ({
               className={`form-control ${codigoErrorMsg ? 'is-invalid' : ''}`}
               value={form.codigo_categoria}
               onChange={(e) => setForm((s) => ({ ...s, codigo_categoria: normalizeCodigo(e.target.value) }))}
-              placeholder="Ej: PRO-BEB"
+              placeholder="Ej: INS-BEB"
             />
             {codigoErrorMsg ? <div className="invalid-feedback d-block">{codigoErrorMsg}</div> : null}
           </div>
@@ -1344,7 +1298,7 @@ const CategoriasTab = ({
               className={`form-control ${formErrors.descripcion ? 'is-invalid' : ''}`}
               value={form.descripcion}
               onChange={(e) => setForm((s) => ({ ...s, descripcion: normalizeCategoriaTextInput('descripcion', e.target.value) }))}
-              placeholder="Ej: Categoria para bebidas frias y calientes"
+              placeholder="Ej: Categoria para materia prima seca o refrigerada"
             />
             {formErrors.descripcion ? <div className="invalid-feedback">{formErrors.descripcion}</div> : null}
           </div>
@@ -1355,9 +1309,9 @@ const CategoriasTab = ({
               type="checkbox"
               id="cat_estado"
               checked={!!form.estado}
-              // NEW: bloquea la inactivación desde el checkbox cuando la categoría tiene productos activos (si el conteo está disponible).
-              // WHY: mantener el mismo comportamiento en desktop y responsive que en la acción principal de la card.
-              // IMPACT: solo UI del drawer; el backend sigue validando y devolviendo 409 como fuente de verdad.
+              // NEW: bloquea la inactivación desde el checkbox cuando la categoría tiene insumos activos (si el conteo está disponible).
+              // WHY: mantener la misma regla de UX que el botón de card en desktop y responsive.
+              // IMPACT: solo UI del drawer; el backend valida siempre con 409.
               disabled={Boolean(loading) || (editDrawerInactivationBlocked && !!form.estado)}
               onChange={(e) => setForm((s) => ({ ...s, estado: e.target.checked }))}
             />
@@ -1421,5 +1375,6 @@ const CategoriasTab = ({
   );
 };
 
-export default CategoriasTab;
+export default CategoriasInsumosPanel;
+
 

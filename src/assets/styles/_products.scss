@@ -15,6 +15,22 @@
   padding: 14px 16px !important;
 }
 
+// NEW: soporte de header sticky en Inventario (Categorías/Insumos/Productos) usando una clase helper local.
+// WHY: `position: sticky` no funciona correctamente si el card padre mantiene `overflow: hidden`.
+// IMPACT: solo afecta los cards que declaran `inv-has-sticky-header`; no modifica otros contenedores.
+.inv-has-sticky-header {
+  overflow: visible;
+}
+
+.inv-has-sticky-header > .inv-prod-header {
+  position: sticky;
+  top: 0;
+  z-index: 14;
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  box-shadow: 0 10px 18px rgba(var(--c-shadow-rgb), 0.08);
+}
+
 .inv-prod-title-wrap {
   min-width: 0;
 }
@@ -984,6 +1000,37 @@
   font-size: 0.86rem;
 }
 
+// NEW: layout de 3 zonas para el header de resultados en Inventario (resultados / total / toggle).
+// WHY: mantener "Total" centrado y el toggle a la derecha como el patrón de Categorías, sin afectar otros módulos.
+// IMPACT: solo aplica a barras que agregan la clase `inv-inventory-results-meta`.
+.inv-inventory-results-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 8px;
+}
+
+.inv-inventory-results-meta > span:nth-child(1) {
+  justify-self: start;
+  min-width: 0;
+}
+
+.inv-inventory-results-meta > span:nth-child(2) {
+  justify-self: center;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.inv-inventory-results-meta > .inv-catpro-inline-toggle {
+  justify-self: end;
+}
+
+.inv-inventory-results-meta > .inv-prod-active-filter-pill {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
 .inv-prod-active-filter-pill {
   // NEW: soporte de layout para texto + botón X de limpiar filtros.
   // WHY: integrar el atajo dentro del pill sin crear estilos globales adicionales.
@@ -1189,6 +1236,30 @@
 
 .inv-prod-btn-danger-lite:hover:not(:disabled) {
   background: rgba(178, 45, 48, 0.12) !important;
+}
+
+// NEW: variante visual "Inactivar" alineada al estilo state-off de Categorías.
+// WHY: unificar la acción de inactivación en Productos e Insumos sin tocar estilos globales de otros módulos.
+// IMPACT: solo afecta botones que usen la clase `inv-prod-btn-inactivate`.
+.inv-prod-btn-inactivate {
+  border-color: rgba(197, 111, 67, 0.34) !important;
+  color: #c56f43 !important;
+  background: rgba(197, 111, 67, 0.06) !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.inv-prod-btn-inactivate:hover:not(:disabled) {
+  background: rgba(197, 111, 67, 0.12) !important;
+  border-color: rgba(197, 111, 67, 0.48) !important;
+  color: #c56f43 !important;
+}
+
+.inv-prod-btn-inactivate:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.17rem rgba(197, 111, 67, 0.16) !important;
 }
 
 .inv-prod-btn-success-lite {
@@ -1508,11 +1579,32 @@
   font-weight: 700;
 }
 
+.inv-prod-carousel-meta {
+  // NEW: resumen superior del carrusel paginado de Productos.
+  // WHY: replicar el mismo contexto visual del carrusel de Insumos sin tocar la data de productos.
+  // IMPACT: solo añade informacion de pagina y total visible.
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .inv-prod-carousel-stage {
   position: relative;
   border-radius: 16px;
   overflow: hidden;
   padding: 2px 0 10px;
+}
+
+.inv-prod-carousel-stage--paged {
+  // NEW: stage paginado del carrusel principal.
+  // WHY: alojar flechas flotantes y dejar visible la reticula 4x2 como en Insumos.
+  // IMPACT: solo afecta el carrusel principal de Productos.
+  padding: 0.35rem 1.75rem;
 }
 
 .inv-prod-carousel-float {
@@ -1610,6 +1702,43 @@
   scroll-snap-align: start;
 }
 
+.inv-prod-carousel-page {
+  // NEW: pagina visible del carrusel principal.
+  // WHY: reemplazar el scroll libre por paginas fijas 4x2/2x2/1x2.
+  // IMPACT: la grilla actual de cards conserva sus componentes y acciones.
+  display: grid;
+  // NEW: se reduce el gutter para ganar ancho util por card sin cambiar el 4x2.
+  // WHY: el usuario pidio cards mas anchas hacia los lados, no mas altas.
+  // IMPACT: solo crece el ancho util de cada columna del carrusel principal.
+  gap: 9px;
+  align-items: stretch;
+  animation: inv-prod-carousel-page-in 180ms ease;
+}
+
+.inv-prod-carousel-page.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.inv-prod-carousel-page.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inv-prod-carousel-page.cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@keyframes inv-prod-carousel-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .inv-prod-catalog-card {
   border: 1px solid rgba(237, 235, 179, 0.65);
   border-radius: 16px;
@@ -1622,7 +1751,34 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  // NEW: se restaura la altura base para que el crecimiento del card sea horizontal, no vertical.
+  // WHY: el usuario pidio cards mas anchas hacia los lados y no mas largas.
+  // IMPACT: solo vuelve a la altura original del card.
   min-height: 292px;
+  position: relative;
+}
+
+.inv-prod-catalog-card::before {
+  // NEW: linea lateral fina tipo Insumos para identificar estado de stock en Productos.
+  // WHY: el usuario pidio el mismo patron visual lateral para stock normal, bajo y sin stock.
+  // IMPACT: solo agrega un acento visual al card; contenido y acciones no cambian.
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: rgba(45, 107, 102, 0.74);
+}
+
+.inv-prod-catalog-card.is-low::before {
+  background: rgba(197, 111, 67, 0.82);
+}
+
+.inv-prod-catalog-card.is-empty::before {
+  background: rgba(178, 45, 48, 0.86);
+}
+
+.inv-prod-catalog-card.is-inactive::before {
+  background: rgba(82, 44, 34, 0.48);
 }
 
 .inv-prod-catalog-card:hover {
@@ -1748,10 +1904,24 @@
 }
 
 .inv-prod-card-metrics {
-  margin-top: 0.58rem;
+  // NEW: separador visual fino entre identidad del producto y metricas operativas.
+  // WHY: el usuario pidio una linea profesional entre nombre y el bloque de Precio/Existencias.
+  // IMPACT: solo agrega jerarquia visual en cards de Productos.
+  margin-top: 0.72rem;
+  padding-top: 0.62rem;
+  border-top: 1px solid rgba(157, 150, 112, 0.24);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.inv-prod-card-metrics > div {
+  // NEW: centra el contenido de Precio y Existencias dentro del card.
+  // WHY: el usuario pidio ambas metricas centradas visualmente.
+  // IMPACT: solo afecta las dos celdas del bloque de metricas en cards de Productos.
+  display: grid;
+  justify-items: center;
+  text-align: center;
 }
 
 .inv-prod-card-label {
@@ -1789,7 +1959,10 @@
 // NUEVO: contenedor con alto controlado para texto de stock e item sin generar cards mas altos.
 .inv-prod-stock-copy {
   min-width: 0;
-  min-height: 34px;
+  // NEW: se compacta la caja de stock al remover el texto `Item #`.
+  // WHY: aprovechar mejor el ancho disponible y mejorar la lectura del estado.
+  // IMPACT: solo ajusta el layout del bloque inferior del card de Productos.
+  min-height: 30px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1829,22 +2002,16 @@
 
 .inv-prod-stock-copy span {
   display: block;
-  color: #17080a;
-  font-size: 0.75rem;
-  font-weight: 700;
-  // AJUSTE: se fuerza una sola linea para evitar saltos que alteren la altura del card.
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.1;
-}
-
-.inv-prod-stock-copy small {
-  display: block;
-  color: rgba(82, 44, 34, 0.72);
-  font-size: 0.7rem;
-  white-space: nowrap;
-  line-height: 1.1;
+  // NEW: se refuerza la leyenda principal de stock para lectura rapida.
+  // WHY: el usuario pidio que el estado de stock se lea mejor dentro del card.
+  // IMPACT: solo estiliza el texto visible del estado.
+  color: #2b1208;
+  font-size: 0.81rem;
+  font-weight: 800;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.18;
 }
 
 .inv-prod-card-action {
@@ -1866,11 +2033,14 @@
 }
 
 .inv-prod-card-action-compact {
-  width: 100px;
-  min-width: 100px;
-  height: 34px;
+  // NEW: se reduce el CTA de estado para que no domine visualmente el footer del card.
+  // WHY: el usuario pidio un boton de Inactivar menos grande.
+  // IMPACT: el flujo sigue igual; solo cambia el tamano visible del boton.
+  width: 38px;
+  min-width: 38px;
+  height: 32px;
   border-radius: 10px;
-  padding: 0 8px !important;
+  padding: 0 !important;
   justify-content: center;
   overflow: hidden;
 }
@@ -1893,10 +2063,24 @@
   border-color: rgba(178, 45, 48, 0.38) !important;
 }
 
+// NEW: variante de card action para el botón "Inactivar" en Productos.
+// WHY: replicar el lenguaje visual de Categorías (`state-off`) en la acción que reemplaza "Eliminar".
+// IMPACT: solo afecta botones `inv-prod-card-action` que agregan la clase `inactivate`.
+.inv-prod-card-action.inactivate {
+  color: #c56f43 !important;
+  border-color: rgba(197, 111, 67, 0.34) !important;
+  background: rgba(197, 111, 67, 0.06) !important;
+}
+
 .inv-prod-card-action:hover {
   background: rgba(255, 255, 255, 0.78) !important;
   border-color: rgba(178, 45, 48, 0.5) !important;
   box-shadow: 0 2px 6px rgba(var(--c-shadow-rgb), 0.16) !important;
+}
+
+.inv-prod-card-action.inactivate:hover {
+  border-color: rgba(197, 111, 67, 0.48) !important;
+  background: rgba(197, 111, 67, 0.12) !important;
 }
 
 .inv-prod-card-action:focus-visible {
@@ -1904,16 +2088,14 @@
   box-shadow: 0 0 0 0.17rem rgba(178, 45, 48, 0.16) !important;
 }
 
+.inv-prod-card-action.inactivate:focus-visible {
+  box-shadow: 0 0 0 0.17rem rgba(197, 111, 67, 0.16) !important;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .inv-prod-card-action-compact:hover {
-    padding: 0 8px !important;
-    justify-content: flex-start;
-  }
-
-  .inv-prod-card-action:hover .inv-prod-card-action-label {
-    max-width: 64px;
-    opacity: 1;
-    margin-left: 5px;
+    padding: 0 !important;
+    justify-content: center;
   }
 }
 
@@ -2000,6 +2182,16 @@
   gap: 10px;
 }
 
+.inv-prod-drawer-meta {
+  // NEW: panel lateral minimo del drawer de edicion.
+  // WHY: reemplazar resumenes redundantes por un bloque simple de estado e imagen.
+  // IMPACT: solo presentacion del drawer de Productos.
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
 .inv-prod-drawer-image {
   width: 84px;
   height: 84px;
@@ -2070,10 +2262,29 @@
   background: rgba(178, 45, 48, 0.08);
 }
 
+.inv-prod-drawer-image-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .inv-prod-drawer-form {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
+}
+
+.inv-prod-drawer-form-grid {
+  // NEW: reticula de edicion completa para mostrar todos los campos del producto sin amontonarlos.
+  // WHY: el usuario pidio ver todos los campos modificables y quitar informacion sobrante.
+  // IMPACT: solo ordena el formulario del drawer; validaciones y payloads no cambian.
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.inv-prod-drawer-field--span-2 {
+  grid-column: 1 / -1;
 }
 
 .inv-prod-drawer-form label {
@@ -2097,7 +2308,23 @@
   padding: 0.42rem 0.58rem;
 }
 
+.inv-prod-drawer-form textarea {
+  width: 100%;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  padding: 0.52rem 0.58rem;
+  resize: vertical;
+  min-height: 104px;
+}
+
 .inv-prod-drawer-form input.is-invalid {
+  border-color: rgba(178, 45, 48, 0.58);
+  box-shadow: 0 0 0 0.16rem rgba(178, 45, 48, 0.12);
+}
+
+.inv-prod-drawer-form textarea.is-invalid {
   border-color: rgba(178, 45, 48, 0.58);
   box-shadow: 0 0 0 0.16rem rgba(178, 45, 48, 0.12);
 }
@@ -2108,6 +2335,10 @@
 }
 
 .inv-prod-drawer-form input:disabled {
+  background: rgba(243, 241, 216, 0.42);
+}
+
+.inv-prod-drawer-form textarea:disabled {
   background: rgba(243, 241, 216, 0.42);
 }
 
@@ -2181,6 +2412,13 @@
   gap: 8px;
 }
 
+.inv-prod-drawer-actions--edit {
+  // NEW: tres acciones utiles del drawer de edicion.
+  // WHY: mantener Duplicar, estado y guardar sin volver a cargar informacion redundante.
+  // IMPACT: solo layout del footer de acciones.
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .inv-prod-drawer-feedback {
   border: 1px solid rgba(45, 107, 102, 0.35);
   border-radius: 10px;
@@ -2220,6 +2458,11 @@
     flex: 1 1 0;
   }
 
+  .inv-prod-carousel-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .inv-prod-carousel-stage {
     padding-left: 0;
     padding-right: 0;
@@ -2236,6 +2479,28 @@
 
   .inv-prod-carousel-float.is-next {
     right: 4px;
+  }
+
+  .inv-prod-carousel-stage--paged {
+    padding-inline: 0.25rem;
+  }
+
+  .inv-prod-carousel-stage--paged .inv-prod-carousel-float {
+    top: auto;
+    bottom: -0.35rem;
+    transform: none;
+  }
+
+  .inv-prod-carousel-stage--paged .inv-prod-carousel-float.is-prev {
+    left: 0;
+  }
+
+  .inv-prod-carousel-stage--paged .inv-prod-carousel-float.is-next {
+    right: 0;
+  }
+
+  .inv-prod-carousel-page {
+    padding-bottom: 2.25rem;
   }
 
   .inv-prod-catalog-carousel {
@@ -2264,13 +2529,38 @@
   }
 }
 
+@media (max-width: 1279.98px) {
+  .inv-prod-carousel-stage--paged {
+    padding-inline: 2.1rem;
+  }
+}
+
 @media (max-width: 520px) {
+  // NEW: apila la barra de resultados de Inventario en mobile manteniendo legibilidad.
+  // WHY: preservar alineacion y espacio en 375px sin perder el orden visual de resultados/total/toggle.
+  // IMPACT: solo afecta `.inv-inventory-results-meta` en pantallas pequenas.
+  .inv-inventory-results-meta {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .inv-inventory-results-meta > span:nth-child(2),
+  .inv-inventory-results-meta > .inv-catpro-inline-toggle {
+    justify-self: start;
+    text-align: left;
+  }
+
   .inv-prod-catalog-carousel {
     grid-auto-columns: 82vw;
     gap: 10px;
   }
 
   .inv-prod-drawer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-prod-drawer-form-grid,
+  .inv-prod-drawer-actions--edit {
     grid-template-columns: 1fr;
   }
 }
