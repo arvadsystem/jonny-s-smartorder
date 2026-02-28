@@ -27,7 +27,10 @@ const ProductoGrid = ({ productos, loading, onAgregar }) => {
   return (
     <div className="row row-cols-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-5 g-3">
       {productos.map((producto) => (
-        <div className="col d-flex" key={producto.id_producto}>
+        <div
+          className="col d-flex"
+          key={producto.id_producto || `combo-${producto.id_combo}`}
+        >
           <ProductoCard producto={producto} onAgregar={onAgregar} />
         </div>
       ))}

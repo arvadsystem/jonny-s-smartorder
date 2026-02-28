@@ -71,6 +71,32 @@
   cursor: default;
 }
 
+.menu-pos-product-media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #f5f2e8;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.6);
+}
+
+.menu-pos-product-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.menu-pos-product-placeholder {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  color: #7a695a;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .menu-pos-product-body {
   gap: 8px;
 }

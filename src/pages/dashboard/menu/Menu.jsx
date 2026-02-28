@@ -35,6 +35,8 @@ const getCategoriaDisplayName = (nombre) => {
   return nombre || 'Categoria';
 };
 
+const isComboCategoria = (nombre) => normalizeCategoriaNombre(nombre).includes('combo');
+
 const getCategoriaIcon = (nombre) => {
   const n = normalizeCategoriaNombre(nombre);
 
@@ -152,17 +154,27 @@ const Menu = () => {
     cargarCategorias();
   }, []);
 
-  const cargarProductos = async (idTipoDepartamento) => {
+  const cargarProductos = async (idTipoDepartamento, nombreDepartamento) => {
     try {
       setLoadingProductos(true);
       setErrorProductos('');
 
-      const resp = await apiFetch(`/menu-pos/productos/${idTipoDepartamento}`, 'GET');
-      const lista = Array.isArray(resp)
-        ? resp
-        : Array.isArray(resp?.data)
-          ? resp.data
-          : [];
+      const resp = await apiFetch(`/menu-pos/catalogo-imagenes/${idTipoDepartamento}`, 'GET');
+      const listaProductos = Array.isArray(resp?.productos) ? resp.productos : [];
+      const listaCombos = Array.isArray(resp?.combos)
+        ? resp.combos.map((combo) => ({
+            ...combo,
+            id_producto: null,
+            nombre_producto: combo?.descripcion || `Combo #${combo?.id_combo || ''}`,
+            descripcion_producto: combo?.descripcion || '',
+            cantidad: combo?.cant_personas,
+            es_combo: true,
+          }))
+        : [];
+
+      const lista = isComboCategoria(nombreDepartamento)
+        ? listaCombos
+        : listaProductos;
 
       setProductos(lista);
     } catch (e) {
@@ -175,7 +187,7 @@ const Menu = () => {
 
   useEffect(() => {
     if (selected?.id_tipo_departamento) {
-      cargarProductos(selected.id_tipo_departamento);
+      cargarProductos(selected.id_tipo_departamento, selected?.nombre_departamento);
       return;
     }
 
