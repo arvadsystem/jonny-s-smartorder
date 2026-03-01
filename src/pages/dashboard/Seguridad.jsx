@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -6,6 +6,7 @@ import SesionesTab from "./seguridad/SesionesTab";
 import UsuariosTab from "./seguridad/UsuariosTab";
 import PasswordPolicyTab from "./seguridad/PasswordPolicyTab";
 import LoginLogsTab from "./seguridad/LoginLogsTab";
+import UsuarioAuditDetail from "./seguridad/UsuarioAuditDetail";
 
 const Seguridad = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -18,21 +19,41 @@ const Seguridad = () => {
     return isSuperAdmin ? ["sesiones", "usuarios", ...base.slice(1)] : base;
   }, [isSuperAdmin]);
 
-  const [activeTab, setActiveTab] = useState("sesiones");
+  const rawTab = (searchParams.get("tab") || "sesiones").toLowerCase();
+  const activeTab = allowedTabs.includes(rawTab) ? rawTab : "sesiones";
 
   useEffect(() => {
-    const raw = (searchParams.get("tab") || "sesiones").toLowerCase();
-    const resolved = allowedTabs.includes(raw) ? raw : "sesiones";
-
-    setActiveTab(resolved);
-
     // Normaliza URL si viene algo inválido (o usuarios sin ser SuperAdmin)
-    if (raw !== resolved) {
+    if (rawTab !== activeTab) {
       const next = new URLSearchParams(searchParams);
-      next.set("tab", resolved);
+      next.set("tab", activeTab);
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams, allowedTabs]);
+  }, [rawTab, activeTab, searchParams, setSearchParams]);
+
+  const detailView = String(searchParams.get("view") || "").toLowerCase();
+  const detailUserId = Number(searchParams.get("uid") || 0);
+  const showUsuarioDetalle =
+    activeTab === "usuarios" &&
+    detailView === "detalle" &&
+    Number.isInteger(detailUserId) &&
+    detailUserId > 0;
+
+  const openUsuarioDetalle = (row) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", "usuarios");
+    next.set("view", "detalle");
+    next.set("uid", String(row?.id_usuario));
+    setSearchParams(next);
+  };
+
+  const backToUsuarios = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("view");
+    next.delete("uid");
+    next.set("tab", "usuarios");
+    setSearchParams(next);
+  };
 
   return (
     <div className="p-4">
@@ -44,7 +65,17 @@ const Seguridad = () => {
       </div>
 
       {activeTab === "sesiones" && <SesionesTab />}
-      {activeTab === "usuarios" && <UsuariosTab />}
+      {activeTab === "usuarios" && (
+        <>
+          <div style={{ display: showUsuarioDetalle ? "none" : "block" }}>
+            <UsuariosTab onOpenAudit={openUsuarioDetalle} />
+          </div>
+
+          {showUsuarioDetalle && (
+            <UsuarioAuditDetail userId={detailUserId} onBack={backToUsuarios} />
+          )}
+        </>
+      )}
       {activeTab === "password" && <PasswordPolicyTab />}
       {activeTab === "logins" && <LoginLogsTab />}
     </div>
