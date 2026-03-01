@@ -11,6 +11,7 @@ import {
   FaIceCream,
   FaPepperHot,
   FaPizzaSlice,
+  FaTags,
   FaTint,
   FaUtensils,
 } from 'react-icons/fa';
@@ -50,6 +51,7 @@ const getCategoriaIcon = (nombre) => {
   const n = normalizeCategoriaNombre(nombre);
 
   if (!n) return 'default';
+  if (n.includes('combo')) return 'combos';
   if (n.includes('hamburgues')) return 'hamburguesas';
   if (n.includes('taco') || n.includes('birria')) return 'tacos-birria';
   if (
@@ -78,6 +80,7 @@ const getCategoriaIcon = (nombre) => {
 const CategoryIcon = ({ nombre, className }) => {
   const icon = getCategoriaIcon(nombre);
 
+  if (icon === 'combos') return <FaTags className={className} aria-hidden="true" />;
   if (icon === 'hamburguesas') return <FaHamburger className={className} aria-hidden="true" />;
   if (icon === 'jugos-naturales') return <FaGlassWhiskey className={className} aria-hidden="true" />;
   if (icon === 'alitas-tenders') return <FaDrumstickBite className={className} aria-hidden="true" />;
