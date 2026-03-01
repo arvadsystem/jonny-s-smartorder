@@ -483,9 +483,9 @@ const SesionesTabGlobal = () => {
           <div className="inv-prod-title-wrap">
             <div className="inv-prod-title-row">
               <i className="bi bi-shield-lock inv-prod-title-icon" />
-              <span className="inv-prod-title">Sesiones (Global)</span>
+              <span className="inv-prod-title">SESIONES</span>
             </div>
-            <div className="inv-prod-subtitle">Vista Super Admin · Auto 15s</div>
+            <div className="inv-prod-subtitle">Vista Super Admin</div>
           </div>
 
           <div className="inv-prod-header-actions sec-sesiones-header-actions">
