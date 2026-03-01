@@ -43,6 +43,35 @@
   overflow: hidden;
 }
 
+.inv-catpro-carousel-shell {
+  // NEW: shell paginado de Categorias alineado al patron visual de Insumos.
+  // WHY: unificar la lectura del carrusel sin tocar cards, filtros ni drawers.
+  // IMPACT: solo afecta la presentacion del carrusel en Categorias y Categorias de Insumos.
+  display: grid;
+  gap: 0.8rem;
+}
+
+.inv-catpro-carousel-meta {
+  // NEW: meta superior del carrusel con pagina actual y total visible.
+  // WHY: replicar el resumen compacto del carrusel de Insumos en Categorias.
+  // IMPACT: solo añade contexto visual; no altera datos ni interacciones.
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-catpro-carousel-stage {
+  // NEW: padding lateral para alojar flechas flotantes sin invadir la grilla.
+  // WHY: igualar la respiracion lateral del carrusel de Insumos.
+  // IMPACT: solo cambia el layout del stage.
+  padding: 0.35rem 2.85rem;
+}
+
 .inv-catpro-carousel-nav {
   width: 38px;
   border: 1px solid rgba(157, 150, 112, 0.35) !important;
@@ -95,6 +124,7 @@
 .inv-catpro-grid-page {
   display: grid;
   gap: 12px;
+  animation: inv-ins-carousel-page-in 180ms ease;
 }
 
 .inv-catpro-grid-page.cols-3 {
@@ -131,8 +161,11 @@
 }
 
 .inv-catpro-item {
-  background: var(--c-surface) !important;
-  border: 1px solid rgba(237, 235, 179, 0.78) !important;
+  // NEW: color de card alineado al look de Productos/Insumos (solo fondo y borde).
+  // WHY: unificar la paleta visual de cards en Inventario sin modificar layout ni comportamiento.
+  // IMPACT: cambio exclusivamente cromatico en cards de Categorias.
+  background: linear-gradient(180deg, #ffffff, #fcfbf4) !important;
+  border: 1px solid rgba(237, 235, 179, 0.65) !important;
   box-shadow: 0 3px 10px rgba(var(--c-shadow-rgb), 0.14) !important;
   border-radius: 16px !important;
   padding: 14px !important;
@@ -462,6 +495,10 @@
     display: block;
   }
 
+  .inv-catpro-carousel-stage {
+    padding-inline: 2.55rem;
+  }
+
   .inv-catpro-carousel-nav {
     display: none;
   }
@@ -502,10 +539,31 @@
 }
 
 @media (max-width: 767.98px) {
-  // AJUSTE: se replica el padding compacto del carrusel de Productos en mobile.
-  .inv-catpro-carousel {
-    padding-left: 6px;
-    padding-right: 6px;
+  .inv-catpro-carousel-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inv-catpro-carousel-stage {
+    padding-inline: 0.25rem;
+  }
+
+  .inv-catpro-carousel-stage .inv-prod-carousel-float {
+    top: auto;
+    bottom: -0.35rem;
+    transform: none;
+  }
+
+  .inv-catpro-carousel-stage .inv-prod-carousel-float.is-prev {
+    left: 0;
+  }
+
+  .inv-catpro-carousel-stage .inv-prod-carousel-float.is-next {
+    right: 0;
+  }
+
+  .inv-catpro-grid-page {
+    padding-bottom: 2.25rem;
   }
 }
 
@@ -639,10 +697,18 @@
 
 .inv-pro-confirm-title {
   color: #F7F7F7 !important;
+  // NEW: titulo del modal de confirmacion con mayor jerarquia tipografica.
+  // WHY: mejorar legibilidad/jerarquia de headers de modal en Inventario.
+  // IMPACT: solo tipografia; no cambia layout ni acciones del modal.
+  font-size: 1.04rem;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .inv-pro-confirm-sub {
   color: rgba(247, 247, 247, 0.84) !important;
+  font-size: 0.84rem;
+  line-height: 1.25;
 }
 
 .inv-pro-confirm-close {
@@ -658,6 +724,8 @@
 
 .inv-pro-confirm-question {
   color: var(--c-text) !important;
+  font-size: 0.92rem;
+  font-weight: 700;
 }
 
 .inv-pro-confirm-name {
@@ -670,6 +738,10 @@
   background: var(--c-accent) !important;
   border: 1px solid var(--c-accent) !important;
   color: #F7F7F7 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .inv-pro-btn-danger:hover {
@@ -703,6 +775,85 @@
   align-items: center;
 }
 
+// NEW: layout del header v3 con dos columnas para replicar la distribución de referencia.
+// WHY: dejar buscador protagonista a la izquierda y mantener switch + acciones en una columna derecha fija.
+// IMPACT: se limita al header de `Categorias` (`inv-cat-v3__*`); no toca lógica funcional ni otros módulos.
+.inv-cat-v3__header {
+  display: block !important;
+}
+
+.inv-cat-v3__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(220px, 23vw, 290px);
+  grid-template-areas:
+    "title switch"
+    "search actions";
+  align-items: start;
+  gap: 12px 16px;
+}
+
+.inv-cat-v3__title {
+  grid-area: title;
+  min-width: 0;
+}
+
+.inv-cat-v3__switch-slot {
+  grid-area: switch;
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+// NEW: forzar que el switch use todo el ancho de la columna derecha del header.
+// WHY: los botones de acciones deben caber justo debajo dentro del mismo ancho visual.
+// IMPACT: solo afecta el tamaño del switch en el header de Categorías.
+.inv-cat-v3__switch-slot .inv-cat-compact-switch {
+  width: 100%;
+}
+
+.inv-cat-v3__search {
+  grid-area: search;
+  width: 100%;
+  min-width: 0;
+}
+
+// NEW: acciones del header en fila (Filtros + Nuevo) debajo del switch.
+// WHY: evitar apilado vertical y cumplir el layout solicitado con ambos botones al lado.
+// IMPACT: solo cambia distribución visual de botones en Categorías; handlers siguen iguales.
+.inv-cat-v3__actions-stack {
+  grid-area: actions;
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+// NEW: botones ligeramente más compactos dentro de la columna del switch.
+// WHY: hacer que ambos botones entren cómodamente en el mismo ancho del switch.
+// IMPACT: ajuste visual local de tamaño en el header de Categorías.
+.inv-cat-v3__actions-stack .inv-prod-toolbar-btn {
+  width: 100%;
+  min-height: auto;
+  padding: 0.34rem 0.72rem !important;
+  font-size: 0.82rem !important;
+  justify-content: center;
+}
+
+// NEW: botón "Nuevo" destacado en el stack derecho del header.
+// WHY: respetar jerarquía visual de la referencia sin cambiar handlers ni clases funcionales.
+// IMPACT: solo estilo del botón Nuevo en Categorías; la acción sigue siendo la misma.
+.inv-cat-v3__new-btn {
+  background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
+  border-color: rgba(122, 30, 36, 0.72) !important;
+  color: #f7f7f7 !important;
+}
+
+.inv-cat-v3__new-btn:hover {
+  color: #ffffff !important;
+}
+
 .inv-cat-v2__kpis {
   grid-template-columns: repeat(3, minmax(0, 220px)) !important;
   justify-content: center;
@@ -714,6 +865,188 @@
   justify-content: space-between;
 }
 
+// NEW: switch compacto "segmented pill" con thumb deslizante para el header de Categorías.
+// WHY: reemplazar el switch grande por una versión más profesional, compacta y coherente con el espacio del título.
+// IMPACT: solo UI/animación del toggle; usa el mismo estado y handlers existentes.
+.inv-cat-compact-switch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  width: clamp(220px, 23vw, 290px);
+  min-height: 36px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.3);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(247, 241, 231, 0.9));
+  box-shadow:
+    0 8px 18px rgba(82, 44, 34, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  transition: box-shadow 220ms ease, transform 180ms ease;
+}
+
+.inv-cat-compact-switch__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  height: calc(100% - 6px);
+  border-radius: 999px;
+  border: 1px solid rgba(197, 111, 67, 0.34);
+  background: linear-gradient(135deg, rgba(197, 111, 67, 0.24), rgba(197, 111, 67, 0.08));
+  box-shadow:
+    0 8px 14px rgba(197, 111, 67, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.48);
+  transform: translateX(0);
+  transition:
+    transform 230ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 220ms ease,
+    box-shadow 220ms ease;
+  pointer-events: none;
+}
+
+.inv-cat-compact-switch.is-productos .inv-cat-compact-switch__thumb {
+  transform: translateX(100%);
+}
+
+.inv-cat-compact-switch__option {
+  position: relative;
+  z-index: 1;
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  transition: color 180ms ease, font-weight 180ms ease, transform 140ms ease;
+}
+
+.inv-cat-compact-switch__option.is-active {
+  color: #7a3f1f;
+  font-weight: 800;
+}
+
+.inv-cat-compact-switch__option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.14rem rgba(197, 111, 67, 0.22);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inv-cat-compact-switch:hover {
+    box-shadow:
+      0 10px 22px rgba(82, 44, 34, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  }
+
+  .inv-cat-compact-switch__option:hover {
+    color: rgba(122, 63, 31, 0.96);
+  }
+}
+
+.inv-cat-compact-switch:active {
+  transform: scale(0.98);
+}
+
+// NEW: switch maestro INSUMOS/PRODUCTOS dentro del submódulo Categorías.
+// WHY: unificar ambos catálogos en una sola pantalla manteniendo un control visual grande y claro.
+// IMPACT: solo afecta la vista de Categorías en Inventario; no cambia estilos globales de otros módulos.
+.inv-cat-unified-switch-row {
+  display: flex;
+  justify-content: center;
+  padding: 8px 14px 0;
+}
+
+.inv-cat-unified-switch {
+  position: relative;
+  width: min(100%, 390px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  padding: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 241, 231, 0.92));
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  box-shadow: 0 10px 24px rgba(82, 44, 34, 0.08);
+}
+
+.inv-cat-unified-switch__thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(197, 111, 67, 0.18), rgba(197, 111, 67, 0.08));
+  border: 1px solid rgba(197, 111, 67, 0.26);
+  box-shadow: 0 6px 14px rgba(197, 111, 67, 0.12);
+  transform: translateX(0);
+  transition: transform 220ms ease, background 220ms ease, box-shadow 220ms ease;
+  pointer-events: none;
+}
+
+.inv-cat-unified-switch.is-products .inv-cat-unified-switch__thumb {
+  transform: translateX(100%);
+}
+
+.inv-cat-unified-switch__option {
+  position: relative;
+  z-index: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.85);
+  font-weight: 800;
+  font-size: 0.88rem;
+  letter-spacing: 0.02em;
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.inv-cat-unified-switch__option.is-active {
+  color: #7a3f1f;
+}
+
+.inv-cat-unified-switch__option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.15rem rgba(197, 111, 67, 0.18);
+}
+
+// NEW: microanimación del panel al alternar el switch.
+// WHY: reforzar el cambio de contexto (insumos/productos) sin reestructurar componentes existentes.
+// IMPACT: solo presentación; no toca el flujo de datos ni handlers.
+.inv-cat-unified-panel-shell {
+  animation: inv-cat-unified-panel-enter 220ms ease;
+}
+
+@keyframes inv-cat-unified-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// NEW: alerta roja local para bloqueo de eliminacion por productos asignados.
+// WHY: mostrar feedback no bloqueante y claro sin abrir confirm modal cuando la categoria esta en uso.
+// IMPACT: solo presentacion de una alerta temporal en Categorias.
+.inv-cat-v2__delete-alert {
+  border: 1px solid rgba(178, 45, 48, 0.34) !important;
+  background: linear-gradient(150deg, rgba(178, 45, 48, 0.12), rgba(122, 30, 36, 0.08)) !important;
+  color: #7a1e24 !important;
+  box-shadow: 0 8px 18px rgba(178, 45, 48, 0.08);
+  font-weight: 800;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
 .inv-cat-v2__drawer-body {
   display: grid;
   gap: 10px;
@@ -721,9 +1054,23 @@
 
 .inv-cat-v2__drawer-body .form-label {
   color: rgba(82, 44, 34, 0.82);
-  font-size: 0.74rem;
-  font-weight: 700;
+  // NEW: mayor jerarquia visual para labels de campos en drawers de Categorias.
+  // WHY: separar con claridad label vs valor/input manteniendo accesibilidad.
+  // IMPACT: solo tipografia de labels; sin impacto funcional.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
   margin-bottom: 4px;
+}
+
+.inv-catpro-drawer-body-lite .form-label,
+.inv-catpro-drawer-body-lite .form-check-label {
+  // NEW: tipografia de labels del formulario Nuevo/Editar de Categorias con mayor jerarquia.
+  // WHY: mantener consistencia de labels entre drawers de Categorias/Insumos/Productos.
+  // IMPACT: solo cambia font-size/weight de labels en el formulario lateral.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
 }
 
 .inv-cat-v2__drawer-body .form-select {
@@ -861,6 +1208,26 @@
 }
 
 @media (max-width: 991.98px) {
+  // NEW: en tablet el header pasa a bloque vertical para evitar choques entre título, switch y acciones.
+  // WHY: mantener legibilidad y taps cómodos cuando no hay ancho suficiente para dos columnas.
+  // IMPACT: solo refluye el header de Categorías en <= 991.98px.
+  .inv-cat-v3__layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "title"
+      "switch"
+      "search"
+      "actions";
+  }
+
+  .inv-cat-v3__switch-slot {
+    justify-content: flex-start;
+  }
+
+  .inv-cat-v3__actions-stack.inv-ins-header-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .inv-cat-v2__kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     max-width: 560px;
@@ -875,10 +1242,19 @@
     font-size: 0.88rem;
   }
 
-  .inv-cat-v2__actions .inv-ins-search {
-    min-height: 44px;
-    padding-top: 0.45rem;
-    padding-bottom: 0.45rem;
+  // NEW: iguala tamaños de botones del header de Categorías con el estándar de otros submódulos.
+  // WHY: mantener consistencia visual de Filtros/Nuevo con Productos/Insumos sin tocar layout.
+  // IMPACT: solo tamaño de botones en el header v3 de Categorías; lógica y handlers intactos.
+  .inv-cat-v3__actions-stack.inv-cat-v2__actions .inv-prod-toolbar-btn {
+    min-height: auto;
+    padding: 0.34rem 0.72rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  .inv-cat-v3__search {
+    min-height: auto;
+    padding-top: 0.32rem;
+    padding-bottom: 0.32rem;
   }
 
   // NEW: ocultar FAB de agregar en mobile/tablet sin eliminar el componente.
@@ -940,6 +1316,22 @@
 }
 
 @media (max-width: 767.98px) {
+  .inv-cat-v3__layout {
+    gap: 10px;
+  }
+
+  .inv-cat-v3__switch-slot {
+    justify-content: flex-start;
+  }
+
+  .inv-cat-compact-switch {
+    width: min(100%, 290px);
+  }
+
+  .inv-cat-v3__actions-stack.inv-ins-header-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .inv-cat-v2__kpis {
     grid-template-columns: 1fr !important;
     max-width: 100%;
@@ -947,6 +1339,14 @@
 
   .inv-cat-v2__results-meta {
     gap: 6px;
+  }
+
+  .inv-cat-unified-switch-row {
+    padding: 8px 12px 0;
+  }
+
+  .inv-cat-unified-switch {
+    width: min(100%, 100%);
   }
 
   .inv-cat-v2__drawer-actions {
@@ -959,6 +1359,15 @@
   .inv-cat-v2__drawer {
     width: min(420px, 92vw) !important;
     max-width: 92vw !important;
+  }
+}
+
+// NEW: mantiene Filtros/Nuevo en una sola fila también en móviles angostos.
+// WHY: respetar el requerimiento de botones al lado y justo debajo del switch.
+// IMPACT: conserva distribución de dos botones por fila en el header de Categorías.
+@media (max-width: 420px) {
+  .inv-cat-v3__actions-stack.inv-ins-header-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1467,8 +1876,12 @@
 
 .inv-ins-drawer-fields .form-label {
   color: rgba(82, 44, 34, 0.82);
-  font-size: 0.74rem;
-  font-weight: 700;
+  // NEW: labels mas notorios en drawer de Insumos para unificar jerarquia con Productos/Categorias.
+  // WHY: mejorar lectura y consistencia de formularios de Inventario.
+  // IMPACT: tipografia solamente; validaciones y campos no cambian.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
   margin-bottom: 4px;
 }
 
@@ -1545,6 +1958,644 @@
   grid-template-columns: 1fr 1fr !important;
 }
 
+.inv-ins-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.36);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.inv-ins-view-toggle__option {
+  width: 38px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.inv-ins-view-toggle__option:hover,
+.inv-ins-view-toggle__option:focus-visible {
+  color: #7a1e24;
+  background: rgba(243, 241, 216, 0.78);
+  outline: none;
+}
+
+.inv-ins-view-toggle__option.is-active {
+  color: #fff7f3;
+  background: linear-gradient(135deg, #7a1e24, #b22d30);
+  box-shadow: 0 10px 18px rgba(122, 30, 36, 0.18);
+}
+
+.inv-ins-track .inv-ins-card-v3 {
+  scroll-snap-align: start;
+}
+
+.inv-ins-card-v3 {
+  min-height: 100%;
+}
+
+.inv-ins-card-v3.is-selected {
+  border-color: rgba(178, 45, 48, 0.55);
+}
+
+.inv-ins-card-v3.is-inactive {
+  opacity: 0.72;
+}
+
+.inv-ins-card-v3__thumb-wrap {
+  height: 144px;
+}
+
+.inv-ins-card-v3__body {
+  gap: 8px;
+}
+
+.inv-ins-card-v3__meta {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.77rem;
+  line-height: 1.35;
+  margin-top: 3px;
+  min-height: 2.1em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v3__metrics {
+  margin-top: 0.62rem;
+}
+
+.inv-ins-card-v3__footer {
+  min-height: 54px;
+  align-items: stretch;
+}
+
+.inv-ins-card-v3__footer .inv-prod-stock-copy small {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v3__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inv-ins-card-v3__action {
+  min-height: 34px;
+}
+
+.inv-ins-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.14rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.inv-ins-status-pill.is-ok {
+  border-color: rgba(45, 107, 102, 0.36);
+  color: #2d6b66;
+  background: rgba(45, 107, 102, 0.08);
+}
+
+.inv-ins-status-pill.is-low {
+  border-color: rgba(197, 111, 67, 0.36);
+  color: #c56f43;
+  background: rgba(197, 111, 67, 0.1);
+}
+
+.inv-ins-status-pill.is-empty {
+  border-color: rgba(178, 45, 48, 0.36);
+  color: #b22d30;
+  background: rgba(178, 45, 48, 0.08);
+}
+
+.inv-ins-status-pill.is-inactive {
+  border-color: rgba(157, 150, 112, 0.42);
+  color: #522c22;
+  background: rgba(157, 150, 112, 0.14);
+}
+
+.inv-ins-table-wrap {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  border-radius: 18px;
+  padding: 0.35rem 0.45rem;
+}
+
+.inv-ins-table thead th {
+  vertical-align: middle;
+}
+
+.inv-ins-table tbody td {
+  vertical-align: middle;
+}
+
+.inv-ins-table-thumb-wrap {
+  width: 56px;
+  height: 56px;
+}
+
+.inv-ins-table-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(243, 241, 216, 0.55);
+  display: block;
+}
+
+.inv-ins-table-thumb.is-placeholder {
+  display: grid;
+  place-items: center;
+  color: rgba(82, 44, 34, 0.52);
+}
+
+.inv-ins-table-desc {
+  min-width: 220px;
+  max-width: 280px;
+  color: rgba(82, 44, 34, 0.88);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inv-ins-table-action-icon {
+  // NEW: acciones compactas del listado (Ver/Editar/Activar-Inactivar) con hit area consistente.
+  // WHY: replicar la referencia visual por iconos sin recargar la tabla de Insumos.
+  // IMPACT: solo presentacion de botones del listado; handlers y flujo CRUD permanecen iguales.
+  width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(157, 150, 112, 0.36) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #8c5a20 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none !important;
+}
+
+.inv-ins-table-action-icon:hover:not(:disabled),
+.inv-ins-table-action-icon:focus-visible {
+  color: #7a1e24 !important;
+  border-color: rgba(122, 30, 36, 0.42) !important;
+  background: rgba(243, 241, 216, 0.84) !important;
+  box-shadow: 0 0 0 0.16rem rgba(178, 45, 48, 0.1) !important;
+  outline: none;
+}
+
+.inv-ins-table-action-icon.is-danger {
+  color: #c56f43 !important;
+  border-color: rgba(197, 111, 67, 0.34) !important;
+  background: rgba(197, 111, 67, 0.08) !important;
+}
+
+.inv-ins-table-action-icon.is-success {
+  color: #2d6b66 !important;
+  border-color: rgba(45, 107, 102, 0.34) !important;
+  background: rgba(45, 107, 102, 0.08) !important;
+}
+
+.inv-ins-detail-modal-dialog {
+  max-width: min(980px, 94vw);
+}
+
+.inv-ins-detail-modal {
+  background: linear-gradient(180deg, #ffffff, #fbfaf3);
+}
+
+.inv-ins-detail-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 1rem 1.1rem;
+  background: linear-gradient(145deg, rgba(23, 8, 10, 0.98), rgba(82, 44, 34, 0.96));
+  color: #f7f7f7;
+}
+
+.inv-ins-detail-modal__title-wrap,
+.inv-ins-detail-modal__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inv-ins-detail-modal__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(237, 235, 179, 0.22);
+  background: rgba(243, 241, 216, 0.08);
+  display: grid;
+  place-items: center;
+  color: #f3f1d8;
+  flex-shrink: 0;
+}
+
+.inv-ins-detail-modal__body {
+  display: grid;
+  gap: 16px;
+  padding: 1rem 1.1rem;
+}
+
+.inv-ins-detail-modal__hero {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inv-ins-detail-modal__hero-card,
+.inv-ins-detail-modal__item,
+.inv-ins-detail-modal__image-meta {
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  border-radius: 16px;
+  background: rgba(247, 247, 247, 0.94);
+  padding: 0.85rem 0.95rem;
+}
+
+.inv-ins-detail-modal__hero-card span,
+.inv-ins-detail-modal__item span,
+.inv-ins-detail-modal__image-meta span {
+  display: block;
+  color: rgba(82, 44, 34, 0.74);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08px;
+  margin-bottom: 4px;
+}
+
+.inv-ins-detail-modal__hero-card strong,
+.inv-ins-detail-modal__item strong,
+.inv-ins-detail-modal__image-meta strong {
+  color: #17080a;
+  font-size: 0.96rem;
+  line-height: 1.3;
+  font-weight: 800;
+}
+
+.inv-ins-detail-modal__section {
+  display: grid;
+  gap: 10px;
+}
+
+.inv-ins-detail-modal__section-title {
+  color: #17080a;
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.inv-ins-detail-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inv-ins-detail-modal__image-block {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.inv-ins-detail-modal__image {
+  width: 100%;
+  min-height: 200px;
+  border-radius: 18px;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(243, 241, 216, 0.44);
+  object-fit: cover;
+}
+
+.inv-ins-detail-modal__image--placeholder {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  color: rgba(82, 44, 34, 0.62);
+  font-weight: 700;
+}
+
+.inv-ins-detail-modal__footer {
+  justify-content: flex-end;
+}
+
+// NEW: layout y jerarquia visual especificos para Insumos con cards 3/2/1, tabla compacta y modal segmentado.
+// WHY: la version previa mezclaba estilos heredados y no daba una lectura limpia entre cards, listado y detalle.
+// IMPACT: solo afecta la presentacion del submodulo Insumos; no modifica estilos globales ni otros modulos.
+.inv-ins-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.inv-ins-card-v3 {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100%;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.inv-ins-card-v3__header {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 0.95rem;
+  align-items: start;
+}
+
+.inv-ins-card-v3__media {
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(243, 241, 216, 0.8), rgba(237, 235, 179, 0.62));
+  border: 1px solid rgba(237, 235, 179, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.inv-ins-card-v3__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.inv-ins-card-v3__image--placeholder {
+  display: grid;
+  place-items: center;
+  gap: 0.2rem;
+  color: rgba(82, 44, 34, 0.62);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.inv-ins-card-v3__image--placeholder i {
+  font-size: 1.15rem;
+}
+
+.inv-ins-card-v3__header-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.inv-ins-card-v3__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.inv-ins-card-v3__name {
+  min-width: 0;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v3__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.inv-ins-card-v3__stock-chip {
+  margin: 0;
+}
+
+.inv-ins-card-v3__meta {
+  margin: 0;
+  min-height: 0;
+}
+
+.inv-ins-card-v3__body {
+  display: grid;
+  align-content: space-between;
+  gap: 0.95rem;
+  padding-top: 0.25rem;
+}
+
+.inv-ins-card-v3__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.inv-ins-card-v3__stat {
+  border-radius: 18px;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.72rem 0.8rem;
+  min-width: 0;
+}
+
+.inv-ins-card-v3__stat span {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: rgba(82, 44, 34, 0.7);
+  margin-bottom: 0.25rem;
+}
+
+.inv-ins-card-v3__stat strong {
+  display: block;
+  font-size: 0.96rem;
+  line-height: 1.3;
+  color: #17080a;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-ins-card-v3__actions-primary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.inv-ins-card-v3__action {
+  min-height: 40px;
+  padding-inline: 0.72rem !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease !important;
+}
+
+.inv-ins-card-v3__action:hover:not(:disabled),
+.inv-ins-card-v3__action:focus-visible {
+  transform: translateY(-1px);
+}
+
+.inv-ins-card-v3__action span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-ins-card-v3__body > .inv-prod-card-name,
+.inv-ins-card-v3__body > .inv-prod-card-category,
+.inv-ins-card-v3__body > .inv-ins-card-v3__meta:not(:first-child),
+.inv-ins-card-v3__body > .inv-prod-card-metrics,
+.inv-ins-card-v3__body > .inv-prod-stock-line {
+  display: none !important;
+}
+
+.inv-ins-table-main {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.inv-ins-table-main__copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.inv-ins-table-main__copy strong,
+.inv-ins-table-main__copy span,
+.inv-ins-table-main__copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inv-ins-table-main__copy small {
+  color: rgba(82, 44, 34, 0.68);
+}
+
+.inv-ins-table-action {
+  min-height: 36px;
+  padding-inline: 0.72rem !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+}
+
+.inv-ins-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inv-ins-pagination__page {
+  min-width: 132px;
+  text-align: center;
+  padding: 0.65rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(255, 255, 255, 0.86);
+  color: #522c22;
+  font-weight: 800;
+}
+
+.inv-ins-detail-modal__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.15rem 0 0.2rem;
+  background: linear-gradient(180deg, rgba(251, 250, 243, 0.98), rgba(251, 250, 243, 0.85));
+  backdrop-filter: blur(8px);
+}
+
+.inv-ins-detail-modal__tab {
+  border: 1px solid rgba(157, 150, 112, 0.32);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #6f3c2c;
+  font-weight: 800;
+  font-size: 0.8rem;
+  padding: 0.55rem 0.85rem;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.inv-ins-detail-modal__tab:hover,
+.inv-ins-detail-modal__tab:focus-visible {
+  border-color: rgba(122, 30, 36, 0.35);
+  color: #7a1e24;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.inv-ins-detail-modal__tab.is-active {
+  background: linear-gradient(135deg, #7a1e24, #b22d30);
+  border-color: transparent;
+  color: #fff7f3;
+  box-shadow: 0 10px 18px rgba(122, 30, 36, 0.18);
+}
+
+.inv-ins-detail-modal__panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.inv-ins-detail-modal__section {
+  padding: 0.2rem 0 0;
+}
+
+.inv-ins-detail-modal__image-meta strong {
+  word-break: break-word;
+}
+
+@media (min-width: 768px) {
+  .inv-ins-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .inv-ins-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1199.98px) {
   .inv-ins-track.is-frequent {
     grid-auto-columns: calc((100% - (var(--inv-ins-pad) * 2) - var(--inv-ins-gap)) / 2);
@@ -1558,19 +2609,31 @@
   .inv-ins-skeleton-track.is-all {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .inv-ins-card-v3__actions-primary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-ins-detail-modal__hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 767.98px) {
   .inv-ins-header-actions {
     width: 100%;
     display: grid !important;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 8px;
   }
 
   .inv-ins-search {
     grid-column: 1 / -1;
     min-width: 0;
+  }
+
+  .inv-ins-view-toggle {
+    justify-self: start;
   }
 
   .inv-ins-header-actions .inv-prod-toolbar-btn {
@@ -1618,6 +2681,84 @@
   .inv-ins-skeleton-track.is-frequent,
   .inv-ins-skeleton-track.is-all {
     grid-template-columns: 1fr;
+  }
+
+  .inv-ins-card-v3__header {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .inv-ins-card-v3__media {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+  }
+
+  .inv-ins-card-v3__stats,
+  .inv-ins-card-v3__actions-primary {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-table-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-ins-table-desc {
+    min-width: 160px;
+  }
+
+  .inv-ins-detail-modal-dialog {
+    max-width: 100vw;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  .inv-ins-detail-modal {
+    min-height: 100vh;
+    border-radius: 0 !important;
+  }
+
+  .inv-ins-detail-modal__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .inv-ins-detail-modal__header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .inv-ins-detail-modal__tabs {
+    top: -0.2rem;
+    margin-inline: -0.1rem;
+    padding-right: 0.1rem;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .inv-ins-detail-modal__tab {
+    flex: 0 0 auto;
+  }
+
+  .inv-ins-detail-modal__hero,
+  .inv-ins-detail-modal__grid,
+  .inv-ins-detail-modal__image-block {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-card-v3__action,
+  .inv-ins-table-action,
+  .inv-ins-pagination__page {
+    width: 100%;
+  }
+
+  .inv-ins-detail-modal__body {
+    padding: 0.95rem;
+  }
+
+  .inv-ins-pagination {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
@@ -1744,5 +2885,495 @@
   .inv-ins-module .dropdown-menu {
     background-color: rgba(255, 255, 255, 0.9);
     background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+// NEW: overrides finales del carrusel/cards/modal de Insumos para dejar el submodulo solo en cards.
+// WHY: aislar la nueva UI de Insumos al final del archivo evita tocar reglas legacy que aun usan otros layouts del modulo.
+// IMPACT: solo afecta selectores `inv-ins-*`; Productos y otros submodulos conservan sus estilos actuales.
+.inv-ins-carousel-shell {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.inv-ins-carousel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-ins-carousel-stage {
+  padding: 0.35rem 2.85rem;
+}
+
+.inv-ins-carousel-page {
+  display: grid;
+  gap: 0.95rem;
+  align-items: stretch;
+  animation: inv-ins-carousel-page-in 180ms ease;
+}
+
+.inv-ins-carousel-page.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.inv-ins-carousel-page.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inv-ins-carousel-page.cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@keyframes inv-ins-carousel-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inv-ins-card-v4 {
+  min-height: 248px;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.9), transparent 36%),
+    linear-gradient(180deg, #fffdf8, #f8f4ea);
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  position: relative;
+  overflow: hidden;
+}
+
+.inv-ins-card-v4::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: rgba(157, 150, 112, 0.44);
+}
+
+.inv-ins-card-v4.is-low::before {
+  background: rgba(197, 111, 67, 0.8);
+}
+
+.inv-ins-card-v4.is-empty::before {
+  background: rgba(178, 45, 48, 0.84);
+}
+
+.inv-ins-card-v4.is-inactive::before {
+  background: rgba(82, 44, 34, 0.46);
+}
+
+.inv-ins-card-v4__surface {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 100%;
+  padding: 1rem 1rem 1.05rem 1.15rem;
+}
+
+.inv-ins-card-v4__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.inv-ins-card-v4__name-wrap {
+  min-width: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.inv-ins-card-v4__name {
+  color: #17080a;
+  font-size: 1.02rem;
+  font-weight: 800;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v4__category {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v4__stock-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.34rem 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.inv-ins-card-v4__stock-pill.is-low {
+  color: #a9582d;
+  background: rgba(197, 111, 67, 0.14);
+}
+
+.inv-ins-card-v4__stock-pill.is-empty {
+  color: #b22d30;
+  background: rgba(178, 45, 48, 0.12);
+}
+
+.inv-ins-card-v4__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.inv-ins-card-v4__metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.inv-ins-card-v4__metric {
+  border-radius: 18px;
+  border: 1px solid rgba(237, 235, 179, 0.76);
+  background: rgba(255, 255, 255, 0.86);
+  padding: 0.8rem 0.85rem;
+  min-width: 0;
+}
+
+.inv-ins-card-v4__metric span {
+  display: block;
+  color: rgba(82, 44, 34, 0.68);
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-bottom: 0.24rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-ins-card-v4__metric strong {
+  display: block;
+  color: #17080a;
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.32;
+}
+
+.inv-ins-card-v4__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.inv-ins-card-v4__action {
+  min-height: 40px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding-inline: 0.8rem !important;
+  font-size: 0.82rem !important;
+  font-weight: 800 !important;
+}
+
+.inv-ins-card-v4__action .spinner-border {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.inv-ins-detail-modal-dialog {
+  // NEW: se ensancha el modal de detalle de Insumos en desktop.
+  // WHY: el usuario pidio una lectura mas horizontal y amplia en pantallas grandes.
+  // IMPACT: solo afecta el ancho maximo desktop; mobile mantiene sus overrides propios.
+  max-width: min(1360px, 97.5vw);
+}
+
+.inv-ins-detail-modal {
+  border-radius: 28px !important;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.96), transparent 34%),
+    linear-gradient(180deg, #fffdf9, #f8f4ea 90%);
+}
+
+.inv-ins-detail-modal__header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 1.2rem 1.45rem;
+  background: linear-gradient(135deg, #2b1208, #3a1607 58%, #52200f);
+}
+
+.inv-ins-detail-modal__title-wrap .text-muted,
+.inv-ins-detail-modal__header .text-muted {
+  color: rgba(255, 245, 239, 0.82) !important;
+}
+
+.inv-ins-detail-modal__body {
+  gap: 1.2rem;
+  padding: 1.3rem 1.45rem 1.45rem;
+  background: #f7f4f2;
+}
+
+.inv-ins-detail-modal__hero {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.inv-ins-detail-modal__hero-card,
+.inv-ins-detail-modal__item,
+.inv-ins-detail-modal__image-meta {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(226, 220, 214, 0.92);
+  box-shadow: none;
+}
+
+.inv-ins-detail-modal__status {
+  padding: 0.55rem 0.95rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.inv-ins-detail-modal__status.is-ok {
+  color: #22a055;
+  background: rgba(34, 160, 85, 0.12);
+  border-color: transparent;
+}
+
+.inv-ins-detail-modal__status.is-low,
+.inv-ins-detail-modal__status.is-empty,
+.inv-ins-detail-modal__status.is-inactive {
+  border-color: transparent;
+}
+
+.inv-ins-detail-modal__close {
+  width: 42px;
+  height: 42px;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: rgba(255, 245, 239, 0.9) !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none !important;
+}
+
+.inv-ins-detail-modal__close:hover,
+.inv-ins-detail-modal__close:focus-visible {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  outline: none;
+}
+
+.inv-ins-detail-modal__hero-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.45rem;
+}
+
+.inv-ins-detail-modal__hero-head i {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #a15526;
+  background: rgba(161, 85, 38, 0.08);
+  font-size: 0.95rem;
+}
+
+.inv-ins-detail-modal__hero-head span {
+  margin-bottom: 0 !important;
+}
+
+.inv-ins-detail-modal__section-title {
+  margin-bottom: 0;
+  color: #2b1a12;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.inv-ins-detail-modal__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.inv-ins-detail-modal__column {
+  display: grid;
+  gap: 1rem;
+}
+
+.inv-ins-detail-modal__section-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(226, 220, 214, 0.96);
+  min-width: 0;
+}
+
+.inv-ins-detail-modal__section-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inv-ins-detail-modal__info-card {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(232, 227, 221, 0.96);
+  border-radius: 18px;
+  background: rgba(248, 245, 242, 0.92);
+  min-height: 132px;
+  min-width: 0;
+}
+
+.inv-ins-detail-modal__info-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.inv-ins-detail-modal__info-head i {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #a15526;
+  background: rgba(161, 85, 38, 0.08);
+  font-size: 1rem;
+}
+
+.inv-ins-detail-modal__info-head span {
+  display: block;
+  color: rgba(116, 92, 77, 0.9);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.inv-ins-detail-modal__info-card strong {
+  color: #17080a;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  font-weight: 800;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.inv-ins-detail-modal__image-block {
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+}
+
+@media (max-width: 1279.98px) {
+  .inv-ins-carousel-stage {
+    padding-inline: 2.55rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-ins-carousel-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inv-ins-carousel-stage {
+    padding-inline: 0.25rem;
+  }
+
+  .inv-ins-carousel-stage .inv-prod-carousel-float {
+    top: auto;
+    bottom: -0.35rem;
+    transform: none;
+  }
+
+  .inv-ins-carousel-stage .inv-prod-carousel-float.is-prev {
+    left: 0;
+  }
+
+  .inv-ins-carousel-stage .inv-prod-carousel-float.is-next {
+    right: 0;
+  }
+
+  .inv-ins-carousel-page {
+    padding-bottom: 2.25rem;
+  }
+
+  .inv-ins-card-v4 {
+    min-height: 224px;
+  }
+
+  .inv-ins-card-v4__metric-grid,
+  .inv-ins-card-v4__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-detail-modal-dialog {
+    max-width: 100vw;
+  }
+
+  .inv-ins-detail-modal {
+    min-height: 100vh;
+    border-radius: 0 !important;
+  }
+
+  .inv-ins-detail-modal__hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-ins-detail-modal__section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-detail-modal__info-card {
+    min-height: 0;
+  }
+
+  .inv-ins-detail-modal__content,
+  .inv-ins-detail-modal__column {
+    gap: 0.85rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .inv-ins-detail-modal__hero {
+    grid-template-columns: 1fr;
   }
 }
