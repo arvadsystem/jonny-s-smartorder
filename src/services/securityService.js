@@ -34,6 +34,11 @@ export const securityService = {
     return apiFetch('/seguridad/sesiones/cerrar-global', 'POST', { id_sesion });
   },
 
+  // HU1085 - Usuarios globales (Super Admin)
+  getUsuariosGlobal: async (qs = '') => {
+    return apiFetch(`/seguridad/usuarios/global${qs ? `?${qs}` : ''}`, 'GET');
+  },
+
   // HU81 - Políticas contraseña
   getPasswordPolicies: async () => {
     return apiFetch('/seguridad/configuracion/password', 'GET');

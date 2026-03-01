@@ -16,9 +16,10 @@ const INVENTORY_TABS = [
 ];
 
 // ==================================
-// SEGURIDAD - SUBMODULOS
+// SEGURIDAD - SUBMODULOS (BASE)
+// (Usuarios se inyecta dinámicamente solo para Super Admin)
 // ==================================
-const SECURITY_TABS = [
+const SECURITY_TABS_BASE = [
   { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop' },
   { key: 'password', label: 'Políticas de contraseña', icon: 'bi bi-key' },
   { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text' }
@@ -223,6 +224,16 @@ const Navbar = () => {
   const userName = user?.nombre_usuario || 'Invitado';
   const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
 
+  // ✅ SECURITY TABS dinámicos (Usuarios SOLO Super Admin)
+  const securityTabs = useMemo(() => {
+    const tabs = [...SECURITY_TABS_BASE];
+    if (Number(user?.rol) === 1) {
+      // Lo metemos después de Sesiones activas
+      tabs.splice(1, 0, { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people' });
+    }
+    return tabs;
+  }, [user?.rol]);
+
   // FUNCIONALIDAD: SOLO EN INVENTARIO/SEGURIDAD/PERSONAS SE MUESTRAN SUBMODULOS
   const isInventario = location.pathname?.startsWith('/dashboard/inventario');
   const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
@@ -234,8 +245,8 @@ const Navbar = () => {
   );
 
   const activeSecurityKey = useMemo(
-    () => getTabFromSearch(location.search, SECURITY_TABS, 'sesiones'),
-    [location.search]
+    () => getTabFromSearch(location.search, securityTabs, 'sesiones'),
+    [location.search, securityTabs]
   );
 
   const activePersonasKey = useMemo(
@@ -268,7 +279,7 @@ const Navbar = () => {
 
         {isSeguridad ? (
           <InventoryTabsOverflow
-            tabs={SECURITY_TABS}
+            tabs={securityTabs}
             activeKey={activeSecurityKey}
             onGoTab={goSeguridadTab}
           />
