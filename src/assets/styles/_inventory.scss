@@ -673,80 +673,343 @@
   background: rgba(23, 8, 10, 0.36) !important;
 }
 
+// NEW: shell premium unificado para los modales de confirmación de Inventario.
+// WHY: el usuario pidió rediseñar Categorías, Insumos y Productos con una misma línea visual más fina.
+// IMPACT: solo estiliza y anima los confirm modals `inv-pro-confirm-*`; no cambia lógica, handlers ni contratos.
 .inv-pro-confirm-backdrop {
-  background: rgba(23, 8, 10, 0.46) !important;
-  backdrop-filter: blur(3px) !important;
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(23, 8, 10, 0.56) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(120%) !important;
+  animation: inv-pro-confirm-backdrop-in 180ms ease;
 }
 
 .inv-pro-confirm-panel {
-  background: #fffdf6 !important;
+  position: relative;
+  width: min(520px, calc(100vw - 2rem));
+  border-radius: 24px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fffdfa 0%, #fff8ef 100%) !important;
   color: var(--c-text) !important;
   border: 1px solid rgba(237, 235, 179, 0.62) !important;
-  box-shadow: 0 10px 26px rgba(var(--c-shadow-rgb), 0.28) !important;
+  box-shadow:
+    0 30px 60px rgba(var(--c-shadow-rgb), 0.32),
+    0 10px 22px rgba(23, 8, 10, 0.12) !important;
+  animation: inv-pro-confirm-panel-in 260ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.inv-pro-confirm-glow {
+  position: absolute;
+  top: -88px;
+  right: -38px;
+  width: 210px;
+  height: 210px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 176, 98, 0.26) 0%, rgba(255, 176, 98, 0.1) 34%, rgba(255, 176, 98, 0) 72%);
+  pointer-events: none;
+  filter: blur(4px);
 }
 
 .inv-pro-confirm-head {
-  background: linear-gradient(145deg, var(--c-accent-hover), var(--c-accent)) !important;
-  border-bottom: 1px solid rgba(237, 235, 179, 0.32) !important;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.15rem 1.15rem 1rem;
+  background: linear-gradient(135deg, #260c05 0%, #5f1c0f 52%, #8e2f17 100%) !important;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.24) !important;
+}
+
+.inv-pro-confirm-head-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.inv-pro-confirm-head-copy {
+  min-width: 0;
 }
 
 .inv-pro-confirm-head-icon {
-  background: rgba(255, 255, 255, 0.22) !important;
-  color: #fff3f3 !important;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff7f0 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  animation: inv-pro-confirm-icon-float 2.8s ease-in-out infinite;
+}
+
+.inv-pro-confirm-head-icon i {
+  font-size: 1.55rem;
+}
+
+.inv-pro-confirm-kicker {
+  color: rgba(255, 232, 221, 0.72);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 0.2rem;
 }
 
 .inv-pro-confirm-title {
   color: #F7F7F7 !important;
-  // NEW: titulo del modal de confirmacion con mayor jerarquia tipografica.
-  // WHY: mejorar legibilidad/jerarquia de headers de modal en Inventario.
-  // IMPACT: solo tipografia; no cambia layout ni acciones del modal.
-  font-size: 1.04rem;
+  font-size: 1.12rem;
   font-weight: 900;
-  line-height: 1.2;
+  line-height: 1.14;
 }
 
 .inv-pro-confirm-sub {
-  color: rgba(247, 247, 247, 0.84) !important;
+  color: rgba(247, 247, 247, 0.82) !important;
   font-size: 0.84rem;
-  line-height: 1.25;
+  line-height: 1.3;
+  margin-top: 0.2rem;
 }
 
 .inv-pro-confirm-close {
-  background: rgba(255, 255, 255, 0.18) !important;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.12) !important;
   color: #F7F7F7 !important;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.inv-pro-confirm-close:hover:not(:disabled),
+.inv-pro-confirm-close:focus-visible {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
 }
 
 .inv-pro-confirm-body,
 .inv-pro-confirm-footer {
-  background: #fffdf6 !important;
+  background: transparent !important;
   border-color: rgba(237, 235, 179, 0.45) !important;
+}
+
+.inv-pro-confirm-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.05rem 1.15rem 0.95rem;
+}
+
+.inv-pro-confirm-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.72rem;
+  padding: 0.8rem 0.92rem;
+  border-radius: 16px;
+  border: 1px solid rgba(197, 111, 67, 0.2);
+  background: linear-gradient(135deg, rgba(197, 111, 67, 0.08), rgba(255, 255, 255, 0.78));
+  color: rgba(82, 44, 34, 0.92);
+  font-size: 0.83rem;
+  line-height: 1.42;
+}
+
+.inv-pro-confirm-note i {
+  color: #c56f43;
+  font-size: 1rem;
+  margin-top: 0.06rem;
 }
 
 .inv-pro-confirm-question {
   color: var(--c-text) !important;
-  font-size: 0.92rem;
-  font-weight: 700;
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .inv-pro-confirm-name {
-  background: rgba(243, 241, 216, 0.88) !important;
-  border: 1px solid rgba(157, 150, 112, 0.34) !important;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1px solid rgba(157, 150, 112, 0.28) !important;
   color: var(--c-text-soft) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.inv-pro-confirm-name-label {
+  color: rgba(122, 97, 80, 0.82);
+  font-size: 0.69rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.inv-pro-confirm-name-value {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+  color: #17080a;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.28;
+}
+
+.inv-pro-confirm-name-value i {
+  color: var(--c-accent);
+  font-size: 1.05rem;
+}
+
+.inv-pro-confirm-error {
+  border-radius: 16px !important;
+  border: 1px solid rgba(178, 45, 48, 0.18) !important;
+  background: rgba(178, 45, 48, 0.08) !important;
+  color: #7a1e24 !important;
+  padding: 0.78rem 0.92rem !important;
+  font-size: 0.83rem;
+}
+
+.inv-pro-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.8rem;
+  padding: 0 1.15rem 1.15rem;
+}
+
+.inv-pro-confirm-footer .inv-pro-btn-cancel,
+.inv-pro-confirm-footer .inv-pro-btn-danger {
+  min-width: 148px;
+  min-height: 44px;
+  border-radius: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.inv-pro-confirm-footer .inv-pro-btn-cancel {
+  border: 1px solid rgba(82, 44, 34, 0.14) !important;
+  color: #5a4137 !important;
+  background: rgba(255, 255, 255, 0.84) !important;
+}
+
+.inv-pro-confirm-footer .inv-pro-btn-cancel:hover:not(:disabled),
+.inv-pro-confirm-footer .inv-pro-btn-cancel:focus-visible {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(82, 44, 34, 0.22) !important;
+  box-shadow: 0 10px 18px rgba(var(--c-shadow-rgb), 0.12) !important;
+  transform: translateY(-1px);
 }
 
 .inv-pro-btn-danger {
-  background: var(--c-accent) !important;
-  border: 1px solid var(--c-accent) !important;
+  background: linear-gradient(135deg, var(--c-accent-hover), var(--c-accent)) !important;
+  border: 1px solid rgba(122, 30, 36, 0.94) !important;
   color: #F7F7F7 !important;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 12px 22px rgba(122, 30, 36, 0.22);
 }
 
-.inv-pro-btn-danger:hover {
-  background: var(--c-accent-hover) !important;
-  border-color: var(--c-accent-hover) !important;
+.inv-pro-btn-danger::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 16%, rgba(255, 255, 255, 0.38) 46%, transparent 74%);
+  transform: translateX(-145%);
+  transition: transform 280ms ease;
+}
+
+.inv-pro-btn-danger:hover:not(:disabled),
+.inv-pro-btn-danger:focus-visible {
+  background: linear-gradient(135deg, #8f231c, #c13d31) !important;
+  border-color: #8f231c !important;
+  transform: translateY(-1px);
+  box-shadow: 0 16px 26px rgba(122, 30, 36, 0.26);
+}
+
+.inv-pro-btn-danger:hover:not(:disabled)::after,
+.inv-pro-btn-danger:focus-visible::after {
+  transform: translateX(145%);
+}
+
+@keyframes inv-pro-confirm-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes inv-pro-confirm-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes inv-pro-confirm-icon-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@media (max-width: 767.98px) {
+  // NEW: compactación responsive del modal de confirmación para móvil.
+  // WHY: mantener legibilidad y controles accesibles sin romper la nueva composición premium.
+  // IMPACT: solo ajusta paddings y ancho en pantallas pequeñas.
+  .inv-pro-confirm-backdrop {
+    padding: 0.85rem;
+  }
+
+  .inv-pro-confirm-panel {
+    width: min(100%, 100%);
+    border-radius: 20px;
+  }
+
+  .inv-pro-confirm-head {
+    padding: 1rem;
+  }
+
+  .inv-pro-confirm-head-icon {
+    width: 54px;
+    height: 54px;
+    flex-basis: 54px;
+  }
+
+  .inv-pro-confirm-title {
+    font-size: 1.02rem;
+  }
+
+  .inv-pro-confirm-body {
+    padding: 0.92rem 1rem 0.88rem;
+  }
+
+  .inv-pro-confirm-footer {
+    flex-direction: column-reverse;
+    padding: 0 1rem 1rem;
+  }
+
+  .inv-pro-confirm-footer .inv-pro-btn-cancel,
+  .inv-pro-confirm-footer .inv-pro-btn-danger {
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1071,6 +1334,7 @@
   font-size: 0.79rem;
   font-weight: 800;
   letter-spacing: 0.12px;
+  text-transform: capitalize;
 }
 
 .inv-cat-v2__drawer-body .form-select {
@@ -1133,10 +1397,10 @@
 .inv-cat-v2__drawer-mark {
   position: absolute;
   right: 56px;
-  top: 8px;
-  font-size: 2rem;
+  top: 10px;
+  font-size: 1.5rem;
   line-height: 1;
-  color: rgba(178, 45, 48, 0.12);
+  color: rgba(178, 45, 48, 0.09);
   pointer-events: none;
   transform: rotate(-8deg) translate3d(0, 0, 0);
   transition: opacity 220ms ease, transform 220ms ease;
@@ -1154,10 +1418,256 @@
   background: rgba(255, 255, 255, 0.16);
 }
 
+// NEW: compactacion del header en drawers de Categorias.
+// WHY: el usuario reporto que el bloque superior se percibe sobredimensionado frente al contenido del formulario.
+// IMPACT: solo reduce tipografia y espaciado del header de Categorias/ Categorias de Insumos.
+.inv-cat-v2__drawer .inv-prod-drawer-title {
+  font-size: 0.98rem;
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-sub {
+  font-size: 0.75rem;
+}
+
 .inv-cat-v2__drawer .inv-prod-drawer-close {
   width: 40px;
   height: 40px;
   min-width: 40px;
+}
+
+// NEW: variante premium del drawer de alta para Categorias.
+// WHY: distinguir visualmente el flujo de "Nuevo" sin tocar edición ni filtros.
+// IMPACT: solo afecta `inv-cat-v2__drawer--create` y los bloques nuevos del formulario de alta.
+.inv-cat-v2__drawer--create .inv-prod-drawer-head {
+  background:
+    radial-gradient(circle at top right, rgba(255, 199, 120, 0.22), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.46), rgba(255, 250, 240, 0.3));
+}
+
+.inv-catpro-drawer-body-lite--create {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.inv-cat-create-hero {
+  position: relative;
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.82rem 0.88rem;
+  border-radius: 18px;
+  border: 1px solid rgba(197, 111, 67, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(255, 190, 113, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(255, 249, 240, 0.82));
+  box-shadow: 0 16px 28px rgba(var(--c-shadow-rgb), 0.1);
+  overflow: hidden;
+}
+
+// NEW: boton de cierre integrado al hero de Categorias.
+// WHY: el header superior del formulario se retiro por redundancia y la X debe seguir visible.
+// IMPACT: solo cambia la ubicacion del boton cerrar en nuevo/editar de Categorias.
+.inv-cat-create-hero__close {
+  position: absolute;
+  top: 0.72rem;
+  right: 0.72rem;
+  z-index: 3;
+}
+
+.inv-cat-create-hero__icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  color: #fff8f0;
+  box-shadow: 0 10px 18px rgba(122, 30, 36, 0.18);
+}
+
+.inv-cat-create-hero__icon i {
+  font-size: 1rem;
+}
+
+.inv-cat-create-hero__kicker {
+  color: rgba(122, 30, 36, 0.72);
+  font-size: 0.58rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  margin-bottom: 0.16rem;
+}
+
+.inv-cat-create-hero__title {
+  color: #17080a;
+  font-size: 0.94rem;
+  font-weight: 900;
+  line-height: 1.18;
+}
+
+.inv-cat-create-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.inv-cat-create-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.38rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  background: rgba(255, 255, 255, 0.78);
+  color: #5a4137;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.inv-cat-create-hero.is-edit {
+  border-color: rgba(45, 107, 102, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(105, 176, 171, 0.14), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(245, 250, 248, 0.82));
+}
+
+.inv-cat-create-grid.is-create,
+.inv-cat-create-grid.is-edit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.inv-cat-create-grid.is-create > .mb-2,
+.inv-cat-create-grid.is-edit > .mb-2,
+.inv-catpro-drawer-body-lite--create > .mb-2,
+.inv-catpro-drawer-body-lite--create > .form-check,
+.inv-catpro-drawer-body-lite--edit > .mb-2,
+.inv-catpro-drawer-body-lite--edit > .form-check {
+  margin-bottom: 0 !important;
+  padding: 0.88rem 0.92rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+// NEW: corrección estructural del bloque Activo en drawers de Categorías.
+// WHY: Bootstrap desplaza el checkbox hacia afuera con `float` y margen negativo, rompiendo la composición premium del formulario.
+// IMPACT: solo alinea el bloque `form-check` dentro del drawer; el campo y su lógica no cambian.
+.inv-catpro-drawer-body-lite .form-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 0.72rem;
+  row-gap: 0.42rem;
+  padding-left: 0 !important;
+}
+
+// NEW: contenedor especifico del checkbox Activo en drawers de Categorias.
+// WHY: asegurar que el control quede visualmente dentro del cuadro y no pegado al borde del drawer.
+// IMPACT: solo refuerza padding/alineacion del bloque Activo; no altera el valor ni la interaccion.
+.inv-catpro-form-check-row {
+  padding: 0.9rem 0.92rem 0.82rem 0.92rem !important;
+  overflow: hidden;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 16px;
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+// NEW: estado visual del bloque Activo/Inactivo para drawers de Categorias.
+// WHY: el usuario pidio que el estado cambie de color de forma clara al activar o desactivar.
+// IMPACT: solo cambia la presentacion del checkbox; la logica del campo sigue intacta.
+.inv-catpro-form-check-row.is-active {
+  background: linear-gradient(145deg, rgba(236, 249, 240, 0.95), rgba(245, 252, 247, 0.88));
+  border-color: rgba(86, 153, 106, 0.26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 20px rgba(86, 153, 106, 0.08);
+}
+
+.inv-catpro-form-check-row.is-inactive {
+  background: linear-gradient(145deg, rgba(255, 241, 241, 0.95), rgba(255, 247, 247, 0.88));
+  border-color: rgba(201, 94, 94, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 20px rgba(164, 69, 69, 0.08);
+}
+
+.inv-catpro-drawer-body-lite .form-check-input {
+  float: none;
+  margin: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  align-self: center;
+  position: relative;
+  left: 0;
+  accent-color: #2f8f57;
+}
+
+.inv-catpro-form-check-row.is-inactive .form-check-input {
+  accent-color: #b44a4a;
+}
+
+.inv-catpro-drawer-body-lite .form-check-label {
+  margin: 0;
+  align-self: center;
+  justify-self: stretch;
+  text-align: center;
+  transition: color 180ms ease;
+}
+
+.inv-catpro-form-check-row.is-active .form-check-label {
+  color: #236846;
+}
+
+.inv-catpro-form-check-row.is-inactive .form-check-label {
+  color: #9a3f3f;
+}
+
+.inv-catpro-drawer-body-lite .form-check .form-text {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0;
+}
+
+.inv-cat-create-actions,
+.inv-cat-edit-actions {
+  margin-top: 0.2rem;
+}
+
+.inv-cat-create-actions .btn,
+.inv-cat-edit-actions .btn {
+  min-height: 42px;
+  border-radius: 14px;
+}
+
+.inv-cat-v2__drawer--filters .inv-prod-drawer-body {
+  gap: 0.95rem;
+}
+
+.inv-cat-filter-hero {
+  gap: 0.72rem;
+}
+
+.inv-cat-filter-hero .inv-cat-create-hero__icon {
+  background: linear-gradient(145deg, #7a1e24, #c56f43);
+}
+
+.inv-cat-filter-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.inv-cat-filter-card {
+  padding: 0.88rem 0.92rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.inv-cat-filter-card .inv-prod-drawer-section-title {
+  margin-bottom: 0.55rem;
+}
+
+.inv-cat-filter-actions .btn {
+  min-height: 42px;
+  border-radius: 14px;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -1852,6 +2362,137 @@
   gap: 10px;
 }
 
+// NEW: variante premium del drawer de alta para Insumos.
+// WHY: hacer el flujo "Nuevo insumo" más llamativo sin alterar edición ni el resto del módulo.
+// IMPACT: solo afecta `inv-ins-drawer--create` y los bloques visuales nuevos del create drawer.
+.inv-ins-drawer--create .inv-prod-drawer-head {
+  background:
+    radial-gradient(circle at top right, rgba(255, 200, 132, 0.2), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.46), rgba(255, 249, 240, 0.3));
+}
+
+.inv-ins-drawer-body--create,
+.inv-ins-drawer-body--edit {
+  gap: 0.95rem !important;
+}
+
+.inv-ins-drawer--filters .inv-prod-drawer-body {
+  gap: 0.95rem;
+}
+
+.inv-ins-create-hero {
+  position: relative;
+  display: grid;
+  gap: 0.78rem;
+  padding: 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(197, 111, 67, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(255, 190, 113, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(255, 249, 240, 0.82));
+  box-shadow: 0 16px 28px rgba(var(--c-shadow-rgb), 0.1);
+}
+
+// NEW: boton de cierre integrado al hero de Insumos.
+// WHY: quitar el header duplicado sin perder una salida clara del drawer.
+// IMPACT: solo reposiciona la X dentro del bloque principal del formulario.
+.inv-ins-create-hero__close {
+  position: absolute;
+  top: 0.78rem;
+  right: 0.78rem;
+  z-index: 3;
+}
+
+.inv-ins-create-hero.is-edit {
+  border-color: rgba(45, 107, 102, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(105, 176, 171, 0.14), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(245, 250, 248, 0.82));
+}
+
+.inv-ins-create-hero__icon {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  color: #fff8f0;
+  box-shadow: 0 14px 24px rgba(122, 30, 36, 0.2);
+}
+
+.inv-ins-create-hero__icon i {
+  font-size: 1.4rem;
+}
+
+.inv-ins-create-hero__kicker {
+  color: rgba(122, 30, 36, 0.72);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  margin-bottom: 0.26rem;
+}
+
+.inv-ins-create-hero__title {
+  color: #17080a;
+  font-size: 1.08rem;
+  font-weight: 900;
+  line-height: 1.14;
+}
+
+.inv-ins-create-hero__text {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  margin-top: 0.26rem;
+}
+
+.inv-ins-create-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.inv-ins-create-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.48rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.8);
+  color: #5a4137;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.inv-ins-filter-hero .inv-ins-create-hero__icon {
+  background: linear-gradient(145deg, #7a1e24, #c56f43);
+}
+
+.inv-ins-filter-grid {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.inv-ins-filter-card {
+  padding: 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.inv-ins-filter-card .inv-prod-drawer-section-title {
+  margin-bottom: 0.6rem;
+}
+
+.inv-ins-filter-actions .btn {
+  min-height: 44px;
+  border-radius: 14px;
+}
+
 .inv-ins-drawer-hero {
   display: flex;
   align-items: center;
@@ -1861,6 +2502,14 @@
   border: 1px solid rgba(237, 235, 179, 0.7);
   border-radius: 12px;
   background: rgba(243, 241, 216, 0.42);
+}
+
+.inv-ins-drawer-hero.is-create,
+.inv-ins-drawer-hero.is-edit {
+  border-radius: 16px;
+  border-color: rgba(197, 111, 67, 0.22);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(255, 249, 240, 0.8));
+  box-shadow: 0 10px 18px rgba(var(--c-shadow-rgb), 0.08);
 }
 
 .inv-ins-drawer-hero__price {
@@ -1874,6 +2523,17 @@
   gap: 10px;
 }
 
+.inv-ins-drawer-fields--create > div,
+.inv-ins-drawer-fields--create > .inv-ins-drawer-grid,
+.inv-ins-drawer-fields--edit > div,
+.inv-ins-drawer-fields--edit > .inv-ins-drawer-grid {
+  padding: 0.9rem 0.92rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
 .inv-ins-drawer-fields .form-label {
   color: rgba(82, 44, 34, 0.82);
   // NEW: labels mas notorios en drawer de Insumos para unificar jerarquia con Productos/Categorias.
@@ -1883,6 +2543,7 @@
   font-weight: 800;
   letter-spacing: 0.12px;
   margin-bottom: 4px;
+  text-transform: capitalize;
 }
 
 .inv-ins-drawer-fields .form-control,
@@ -2943,14 +3604,22 @@
 }
 
 .inv-ins-card-v4 {
-  min-height: 248px;
+  min-height: 232px;
   border-radius: 20px;
   background:
     radial-gradient(circle at top right, rgba(255, 255, 255, 0.9), transparent 36%),
     linear-gradient(180deg, #fffdf8, #f8f4ea);
   border: 1px solid rgba(237, 235, 179, 0.72);
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  box-shadow: 0 12px 22px rgba(82, 44, 34, 0.08);
+}
+
+.inv-ins-card-v4:hover {
+  transform: translateY(-3px);
+  border-color: rgba(197, 111, 67, 0.38);
+  box-shadow: 0 18px 30px rgba(82, 44, 34, 0.12);
 }
 
 .inv-ins-card-v4::before {
@@ -2976,42 +3645,64 @@
 .inv-ins-card-v4__surface {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.78rem;
   min-height: 100%;
-  padding: 1rem 1rem 1.05rem 1.15rem;
+  padding: 0.92rem 0.96rem 0.96rem 1.08rem;
+  position: relative;
+}
+
+/* NEW: icono de fondo tipo premium, inspirado en el comportamiento hover de Categorias. */
+/* WHY: el usuario pidio sacar el icono decorativo del header y dejarlo como acento visual amigable del card. */
+/* IMPACT: solo decoracion del card v4; no altera contenido, acciones ni eventos. */
+.inv-ins-card-v4__bg-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  width: 118px;
+  height: 118px;
+  border-radius: 36px;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.48), rgba(157, 150, 112, 0.05) 58%, rgba(157, 150, 112, 0.015) 100%);
+  color: rgba(122, 30, 36, 0.06);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 0;
+  transform: translate(-50%, -50%) scale(0.94) rotate(8deg);
+  transition: transform 220ms ease, color 220ms ease, background 220ms ease;
+}
+
+.inv-ins-card-v4__bg-icon i {
+  font-size: 3rem;
+}
+
+.inv-ins-card-v4:hover .inv-ins-card-v4__bg-icon,
+.inv-ins-card-v4:focus-visible .inv-ins-card-v4__bg-icon {
+  transform: translate(-50%, -50%) scale(1.12) rotate(4deg);
+  color: rgba(122, 30, 36, 0.1);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.56), rgba(197, 111, 67, 0.05) 58%, rgba(157, 150, 112, 0.02) 100%);
 }
 
 .inv-ins-card-v4__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.8rem;
+  gap: 0.7rem;
+  position: relative;
+  z-index: 1;
 }
 
 .inv-ins-card-v4__name-wrap {
   min-width: 0;
-  display: grid;
-  gap: 0.4rem;
 }
 
 .inv-ins-card-v4__name {
   color: #17080a;
-  font-size: 1.02rem;
+  font-size: 0.94rem;
   font-weight: 800;
-  line-height: 1.35;
+  line-height: 1.28;
   display: -webkit-box;
   -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.inv-ins-card-v4__category {
-  color: rgba(82, 44, 34, 0.78);
-  font-size: 0.82rem;
-  font-weight: 700;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -3022,11 +3713,16 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  padding: 0.34rem 0.7rem;
-  font-size: 0.7rem;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.64rem;
   font-weight: 900;
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+.inv-ins-card-v4__stock-pill.is-ok {
+  color: #2d6b66;
+  background: rgba(45, 107, 102, 0.12);
 }
 
 .inv-ins-card-v4__stock-pill.is-low {
@@ -3039,61 +3735,152 @@
   background: rgba(178, 45, 48, 0.12);
 }
 
+.inv-ins-card-v4__stock-pill.is-inactive {
+  color: #52342d;
+  background: rgba(82, 44, 34, 0.1);
+}
+
 .inv-ins-card-v4__body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.72rem;
+  position: relative;
+  z-index: 1;
 }
 
-.inv-ins-card-v4__metric-grid {
+/* NEW: fila visual pareja para Categoria y Cantidad, con el mismo lenguaje visual. */
+/* WHY: el usuario pidio que ambas midan lo mismo y se vean uniformes entre si. */
+/* IMPACT: solo reorganiza el contenido del card; no cambia datos ni acciones. */
+.inv-ins-card-v4__feature-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.8rem;
+  gap: 0.62rem;
+  margin-top: 0.26rem;
 }
 
-.inv-ins-card-v4__metric {
-  border-radius: 18px;
-  border: 1px solid rgba(237, 235, 179, 0.76);
-  background: rgba(255, 255, 255, 0.86);
-  padding: 0.8rem 0.85rem;
+.inv-ins-card-v4__feature {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  padding-block: 0.26rem 0.34rem;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+}
+
+.inv-ins-card-v4__feature-icon,
+.inv-ins-card-v4__timeline-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(157, 150, 112, 0.1);
+  color: #a9582d;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.inv-ins-card-v4__feature-icon i,
+.inv-ins-card-v4__timeline-icon i {
+  font-size: 1.06rem;
+}
+
+.inv-ins-card-v4__feature-copy,
+.inv-ins-card-v4__timeline-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.16rem;
+}
+
+.inv-ins-card-v4__section-title {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.71rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.inv-ins-card-v4__feature-value {
+  color: rgba(23, 8, 10, 0.94);
+  font-size: 0.79rem;
+  font-weight: 500;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v4__timeline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.inv-ins-card-v4__timeline-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 0.52rem;
   min-width: 0;
 }
 
-.inv-ins-card-v4__metric span {
-  display: block;
-  color: rgba(82, 44, 34, 0.68);
-  font-size: 0.72rem;
-  font-weight: 800;
-  margin-bottom: 0.24rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.inv-ins-card-v4__timeline-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
 }
 
-.inv-ins-card-v4__metric strong {
-  display: block;
-  color: #17080a;
-  font-size: 0.98rem;
-  font-weight: 800;
-  line-height: 1.32;
+.inv-ins-card-v4__timeline-value {
+  color: rgba(23, 8, 10, 0.9);
+  font-size: 0.77rem;
+  font-weight: 500;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .inv-ins-card-v4__actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.7rem;
+  gap: 0.58rem;
+  position: relative;
+  z-index: 2;
 }
 
 .inv-ins-card-v4__action {
-  min-height: 40px;
+  min-height: 38px;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  padding-inline: 0.8rem !important;
-  font-size: 0.82rem !important;
-  font-weight: 800 !important;
+  padding-inline: 0.72rem !important;
+  font-size: 0.76rem !important;
+  font-weight: 700 !important;
+}
+
+/* NEW: refuerzo visual del CTA de inactivacion dentro del card para separarlo del icono decorativo de fondo. */
+/* WHY: al crecer el icono de fondo en hover, el boton debia conservar contraste y lectura propia. */
+/* IMPACT: solo cambia el boton de estado en cards de Insumos; no afecta otros modulos ni otros botones. */
+.inv-ins-card-v4__action.inv-prod-btn-inactivate,
+.inv-ins-card-v4__action.inv-prod-btn-success-lite {
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 8px 16px rgba(82, 44, 34, 0.08);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.inv-ins-card-v4__action.inv-prod-btn-inactivate {
+  background: rgba(255, 248, 244, 0.96) !important;
+  border-color: rgba(197, 111, 67, 0.42) !important;
+}
+
+.inv-ins-card-v4__action.inv-prod-btn-inactivate:hover:not(:disabled),
+.inv-ins-card-v4__action.inv-prod-btn-inactivate:focus-visible {
+  background: rgba(255, 242, 233, 0.98) !important;
+  border-color: rgba(197, 111, 67, 0.56) !important;
 }
 
 .inv-ins-card-v4__action .spinner-border {
@@ -3340,7 +4127,8 @@
     min-height: 224px;
   }
 
-  .inv-ins-card-v4__metric-grid,
+  .inv-ins-card-v4__feature-row,
+  .inv-ins-card-v4__timeline,
   .inv-ins-card-v4__actions {
     grid-template-columns: 1fr;
   }
@@ -3375,5 +4163,318 @@
 @media (max-width: 575.98px) {
   .inv-ins-detail-modal__hero {
     grid-template-columns: 1fr;
+  }
+}
+
+/* NEW: variante editorial del modal de detalle de Insumos con solo los campos requeridos. */
+/* WHY: el usuario pidio un modal mas llamativo, fino y sin cuadros, mostrando unicamente precio, unidad, almacen, descripcion y stock minimo. */
+/* IMPACT: solo cambia la presentacion del modal "Ver detalle" de Insumos; cards, drawer y endpoints no se alteran. */
+.inv-ins-detail-modal--editorial {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(197, 111, 67, 0.08), transparent 34%),
+    linear-gradient(180deg, #fffdf9, #f7f1e7 92%);
+}
+
+.inv-ins-detail-modal--editorial .inv-ins-detail-modal__header {
+  padding: 0.95rem 1.25rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.inv-ins-detail-modal--editorial .inv-ins-detail-modal__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff6ef;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.inv-ins-detail-modal--editorial .inv-ins-detail-modal__icon i {
+  font-size: 1.04rem;
+}
+
+.inv-ins-detail-modal--editorial .inv-ins-detail-modal__header-actions {
+  justify-content: flex-end;
+}
+
+.inv-ins-detail-modal__body--editorial {
+  position: relative;
+  overflow: hidden;
+  padding: 1rem 1.25rem 1.1rem;
+  background: transparent;
+}
+
+.inv-ins-detail-modal__ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.inv-ins-detail-modal__ambient span {
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+  filter: blur(0);
+  opacity: 0.7;
+  animation: inv-ins-detail-float 8s ease-in-out infinite;
+}
+
+.inv-ins-detail-modal__ambient .is-one {
+  top: 22px;
+  right: 96px;
+  width: 168px;
+  height: 168px;
+  background: radial-gradient(circle, rgba(197, 111, 67, 0.12), rgba(197, 111, 67, 0.01) 68%);
+}
+
+.inv-ins-detail-modal__ambient .is-two {
+  bottom: 26px;
+  left: 24px;
+  width: 132px;
+  height: 132px;
+  background: radial-gradient(circle, rgba(82, 44, 34, 0.08), rgba(82, 44, 34, 0.01) 68%);
+  animation-delay: -2.5s;
+}
+
+.inv-ins-detail-modal__ambient .is-three {
+  top: 48%;
+  left: 48%;
+  width: 220px;
+  height: 220px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.02) 72%);
+  animation-delay: -4s;
+}
+
+.inv-ins-detail-modal__editorial-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.inv-ins-detail-modal__lead {
+  position: relative;
+  min-width: 0;
+  padding: 0 0 0.75rem;
+  text-align: center;
+  justify-items: center;
+}
+
+.inv-ins-detail-modal__lead::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(180px, 82%);
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(197, 111, 67, 0.74), rgba(197, 111, 67, 0));
+  transform: translateX(-50%);
+}
+
+.inv-ins-detail-modal__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: rgba(122, 30, 36, 0.78);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inv-ins-detail-modal__lead-price {
+  display: block;
+  margin-top: 0.18rem;
+  color: #220b08;
+  font-size: clamp(1.55rem, 2vw, 2.15rem);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+.inv-ins-detail-modal__lead-copy {
+  display: none;
+}
+
+.inv-ins-detail-modal__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 0.9rem;
+  min-width: 0;
+}
+
+.inv-ins-detail-modal__line {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: start;
+  padding: 0.62rem 0;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.18);
+  animation: inv-ins-detail-line-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.inv-ins-detail-modal__line.is-description {
+  grid-column: auto;
+}
+
+.inv-ins-detail-modal__line:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.inv-ins-detail-modal__line:hover {
+  transform: translateX(4px);
+}
+
+.inv-ins-detail-modal__line.is-description {
+  align-items: flex-start;
+}
+
+.inv-ins-detail-modal__line-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: #a9582d;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 241, 0.74)),
+    rgba(255, 255, 255, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(197, 111, 67, 0.12),
+    0 10px 20px rgba(82, 44, 34, 0.06);
+}
+
+.inv-ins-detail-modal__line-icon i {
+  font-size: 1.02rem;
+}
+
+.inv-ins-detail-modal__line-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+  padding-top: 0.12rem;
+}
+
+.inv-ins-detail-modal__line-copy span {
+  color: rgba(122, 30, 36, 0.76);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.inv-ins-detail-modal__line-copy strong {
+  color: #210b08;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.32;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.inv-ins-detail-modal__line.is-description .inv-ins-detail-modal__line-copy strong {
+  max-width: none;
+  font-size: 0.84rem;
+  line-height: 1.42;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@keyframes inv-ins-detail-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0) scale(1.04);
+  }
+}
+
+@keyframes inv-ins-detail-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 991.98px) {
+  .inv-ins-detail-modal__editorial-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .inv-ins-detail-modal__list {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .inv-ins-detail-modal__line.is-description {
+    grid-column: auto;
+  }
+
+  .inv-ins-detail-modal__lead {
+    padding-bottom: 0.9rem;
+  }
+
+  .inv-ins-detail-modal__lead-copy {
+    max-width: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  // NEW: ajuste móvil de los heroes de alta para mantenerlos limpios y legibles.
+  // WHY: los nuevos bloques premium deben seguir viéndose ordenados en pantallas pequeñas.
+  // IMPACT: solo responsive en create drawers de Categorías e Insumos.
+  .inv-cat-create-grid.is-create,
+  .inv-cat-create-grid.is-edit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inv-cat-create-hero,
+  .inv-ins-create-hero {
+    padding: 0.88rem;
+  }
+
+  .inv-ins-create-hero__chips,
+  .inv-cat-create-hero__chips {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .inv-ins-detail-modal__body--editorial {
+    padding: 0.9rem 0.95rem 1rem;
+  }
+
+  .inv-ins-detail-modal__line {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 0.78rem;
+    padding: 0.8rem 0;
+  }
+
+  .inv-ins-detail-modal__line-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+  }
+
+  .inv-ins-detail-modal__line-copy strong {
+    font-size: 0.94rem;
   }
 }

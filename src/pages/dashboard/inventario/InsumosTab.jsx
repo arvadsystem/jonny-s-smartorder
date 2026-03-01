@@ -25,6 +25,7 @@ const SORTS = [
   ['stock_asc', 'Stock menor'],
   ['cad_asc', 'Caducidad proxima']
 ];
+const INSUMO_FILTER_SORT_LABELS = Object.freeze(Object.fromEntries(SORTS));
 const INSUMOS_LIST_PAGE_SIZE = 10;
 const DETAIL_SECTION_DEFAULT = 'summary';
 const INSUMO_DB_INT32_MAX = 2147483647;
@@ -283,6 +284,54 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     if (nombre && simbolo) return `${nombre} (${simbolo})`;
     return nombre || simbolo || 'Sin unidad';
   }, [unidadesMedidaMap]);
+
+  // NEW: abreviatura visual de unidad para cards de Insumos.
+  // WHY: el usuario pidio mostrar la unidad en formato corto (`Lb`, `Kg`, etc.) sin ensuciar el card.
+  // IMPACT: solo cambia la presentacion del card; formularios, filtros y detalles siguen usando la etiqueta completa.
+  const getUnidadMedidaShortLabel = useCallback((id) => {
+    const unidad = unidadesMedidaMap.get(String(id));
+    if (!unidad) return String(id || '').trim() ? `Unidad #${id}` : 'Sin unidad';
+
+    const simboloRaw = String(unidad?.simbolo || '').trim();
+    if (simboloRaw) {
+      const cleaned = simboloRaw.replace(/\./g, '').trim().toLowerCase();
+      if (!cleaned) return 'Sin unidad';
+      if (cleaned.length === 1) return cleaned.toUpperCase();
+      return `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`;
+    }
+
+    const nombreRaw = String(unidad?.nombre || '').trim().toLowerCase();
+    const compactMap = {
+      kilogramo: 'Kg',
+      kilogramos: 'Kg',
+      kilo: 'Kg',
+      kilos: 'Kg',
+      libra: 'Lb',
+      libras: 'Lb',
+      gramo: 'G',
+      gramos: 'G',
+      litro: 'L',
+      litros: 'L',
+      mililitro: 'Ml',
+      mililitros: 'Ml',
+      unidad: 'Und',
+      unidades: 'Und',
+      onza: 'Oz',
+      onzas: 'Oz',
+      paquete: 'Paq',
+      paquetes: 'Paq'
+    };
+    return compactMap[nombreRaw] || 'Sin unidad';
+  }, [unidadesMedidaMap]);
+
+  // NEW: version corta del almacen para la vista card.
+  // WHY: el nombre completo con sucursal ocupa demasiado y el usuario pidio cards mas limpios.
+  // IMPACT: solo afecta el texto del card; detalle y drawer siguen usando la etiqueta completa existente.
+  const getAlmacenCardLabel = useCallback((id) => {
+    const almacen = almacenesMap.get(String(id));
+    if (!almacen) return String(id || '').trim() ? `Almacen #${id}` : 'Sin almacen';
+    return String(almacen?.nombre || '').trim() || `Almacen #${id}`;
+  }, [almacenesMap]);
 
   const estadoField = useMemo(() => {
     if (!insumos.length) return null;
@@ -951,6 +1000,10 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       }
       for (const [campo, valor] of changes) await inventarioService.actualizarInsumoCampo(editId, campo, valor);
       patchInsumoLocalById(editId, Object.fromEntries(changes));
+      // NEW: cerrar el drawer inmediatamente despues de persistir la edicion.
+      // WHY: el usuario pidio que al modificar un insumo el modal/drawer no quede abierto.
+      // IMPACT: el card se actualiza con el parche local actual sin recargar la grilla ni la pagina.
+      closeDrawer();
       setDrawerMsg('CAMBIOS GUARDADOS.');
       safeToast('ACTUALIZADO', 'EL INSUMO SE ACTUALIZO CORRECTAMENTE.', 'success');
     } catch (e) {
@@ -960,7 +1013,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     } finally {
       setSavingEdit(false);
     }
-  }, [apiError, editForm, editId, insumos, patchInsumoLocalById, safeToast, savingEdit, validarInsumo]);
+  }, [apiError, closeDrawer, editForm, editId, insumos, patchInsumoLocalById, safeToast, savingEdit, validarInsumo]);
 
   const setConfirm = useCallback((id, nombre) => setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' }), []);
   const closeConfirm = useCallback(() => { setConfirmModal({ show: false, idToDelete: null, nombre: '' }); setDeleting(false); }, []);
@@ -1023,6 +1076,18 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       setTogglingEstadoId(null);
     }
   }, [estadoField, safeToast, showInsumoEstadoErrorToast, showInsumoInactivatedToast, togglingEstado]);
+
+  // NEW: ruta única para el cambio de estado desde cards/listado de Insumos.
+  // WHY: al inactivar debe mostrarse el mismo modal de confirmación que ya usan los otros módulos.
+  // IMPACT: activar sigue siendo directo; inactivar abre `confirmModal` sin cambiar endpoints ni persistencia.
+  const requestEstadoChange = useCallback((insumo, nextActive) => {
+    if (!insumo || !estadoField) return;
+    if (nextActive) {
+      void toggleEstado(insumo, true);
+      return;
+    }
+    setConfirm(insumo?.id_insumo, insumo?.nombre_insumo);
+  }, [estadoField, setConfirm, toggleEstado]);
 
   const clearFilters = useCallback(() => {
     setSearch('');
@@ -1396,6 +1461,40 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
     return sections;
   }, [detailCostRows, detailInsumo, detailSnap, getAlmacenLabel, getCategoriaLabel, getUnidadMedidaLabel]);
+
+  // NEW: campos visibles del modal refinado de detalle de Insumos.
+  // WHY: el usuario pidio un modal mas fino y minimalista, mostrando unicamente precio, unidad, almacen, descripcion y stock minimo.
+  // IMPACT: solo cambia el contenido del modal "Ver detalle"; no modifica endpoints, cards ni drawer.
+  const detailDisplayFields = useMemo(() => {
+    if (!detailInsumo || !detailSnap) return [];
+
+    return [
+      {
+        key: 'stock_minimo',
+        icon: 'bi-speedometer2',
+        label: 'Stock minimo',
+        value: String(detailSnap.stockMin)
+      },
+      {
+        key: 'unidad',
+        icon: 'bi-rulers',
+        label: 'Unidad de medida',
+        value: getUnidadMedidaLabel(detailInsumo?.id_unidad_medida)
+      },
+      {
+        key: 'almacen',
+        icon: 'bi-shop',
+        label: 'Almacen',
+        value: getAlmacenLabel(detailInsumo?.id_almacen)
+      },
+      {
+        key: 'descripcion',
+        icon: 'bi-text-paragraph',
+        label: 'Descripcion',
+        value: sanitizeSpaces(detailInsumo?.descripcion) || 'Sin descripcion'
+      }
+    ];
+  }, [detailInsumo, detailSnap, getAlmacenLabel, getUnidadMedidaLabel]);
   const submitDrawer = async (e) => { e.preventDefault(); if (drawerMode === 'create') await saveCreate(); else await saveEdit(); };
   const blockNonIntegerKeys = (e) => { if (['.', ',', 'e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); };
   const intInput = (v) => String(v ?? '').replace(/[^\d]/g, '');
@@ -1525,9 +1624,9 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 className={`btn inv-ins-card-v3__action ${inactive ? 'inv-prod-btn-success-lite' : 'inv-prod-btn-inactivate'}`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  void toggleEstado(i, inactive);
+                  requestEstadoChange(i, inactive);
                 }}
-                disabled={togglingEstado}
+                disabled={togglingEstado || deleting}
                 title={inactive ? 'Activar' : 'Inactivar'}
                 aria-label={`${inactive ? 'Activar' : 'Inactivar'} ${i?.nombre_insumo || 'insumo'}`}
               >
@@ -1588,9 +1687,9 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                   className={`btn inv-prod-card-action inv-prod-card-action-compact ${inactive ? '' : 'inactivate'}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    void toggleEstado(i, inactive);
+                    requestEstadoChange(i, inactive);
                   }}
-                  disabled={togglingEstado}
+                  disabled={togglingEstado || deleting}
                   title={inactive ? 'Activar' : 'Inactivar'}
                   aria-label={`${inactive ? 'Activar' : 'Inactivar'} ${i?.nombre_insumo || 'insumo'}`}
                 >
@@ -1662,8 +1761,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
               <button
                 type="button"
                 className={`btn inv-ins-table-action ${inactive ? 'inv-prod-btn-success-lite' : 'inv-prod-btn-inactivate'}`}
-                onClick={() => void toggleEstado(i, inactive)}
-                disabled={togglingEstado}
+                onClick={() => requestEstadoChange(i, inactive)}
+                disabled={togglingEstado || deleting}
                 title={inactive ? 'Activar' : 'Inactivar'}
                 aria-label={`${inactive ? 'Activar' : 'Inactivar'} ${i?.nombre_insumo || 'insumo'}`}
               >
@@ -1681,7 +1780,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const snapInfo = snapshot(insumo);
     const inactive = snapInfo.ui.key === 'inactivo';
     const categoriaText = getCategoriaLabel(insumo) || 'Sin categoria';
-    const unidadText = getUnidadMedidaLabel(insumo?.id_unidad_medida);
+    const ingresoLabel = toDateInputValue(insumo?.fecha_ingreso_insumo) ? dateLabel(insumo?.fecha_ingreso_insumo) : 'Sin fecha';
     const caducidadLabel = toDateInputValue(insumo?.fecha_caducidad) ? dateLabel(insumo?.fecha_caducidad) : 'No registrada';
     const isSelected = drawer === 'form' && Number(selectedId) === Number(insumo?.id_insumo);
     const isCardTogglePending = Number(togglingEstadoId) === Number(insumo?.id_insumo);
@@ -1704,25 +1803,58 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
         {/* WHY: reducir densidad visual y usar el modal para el detalle completo sin perder rapidez operativa. */}
         {/* IMPACT: la edicion sigue en el drawer existente; solo cambia la composicion visible del card. */}
         <div className="inv-ins-card-v4__surface">
+          <div className="inv-ins-card-v4__bg-icon" aria-hidden="true">
+            <i className="bi bi-box-seam" />
+          </div>
+
           <div className="inv-ins-card-v4__header">
             <div className="inv-ins-card-v4__name-wrap">
               <div className="inv-ins-card-v4__name">{insumo?.nombre_insumo || `Insumo #${insumo?.id_insumo ?? '-'}`}</div>
-              <div className="inv-ins-card-v4__category">{categoriaText}</div>
             </div>
-            {snapInfo.ui.key === 'bajo' || snapInfo.ui.key === 'sin_stock' ? (
-              <span className={`inv-ins-card-v4__stock-pill ${resolveInsumoStatusClass(snapInfo.ui.key)}`}>{snapInfo.ui.badge}</span>
-            ) : null}
+            <span className={`inv-ins-card-v4__stock-pill ${resolveInsumoStatusClass(snapInfo.ui.key)}`}>{snapInfo.ui.badge}</span>
           </div>
 
           <div className="inv-ins-card-v4__body">
-            <div className="inv-ins-card-v4__metric-grid">
-              <div className="inv-ins-card-v4__metric">
-                <span>Existencia</span>
-                <strong>{`${snapInfo.cantidad} ${unidadText}`}</strong>
+            <div className="inv-ins-card-v4__feature-row">
+              <div className="inv-ins-card-v4__feature">
+                <div className="inv-ins-card-v4__feature-icon" aria-hidden="true">
+                  <i className="bi bi-tags" />
+                </div>
+                <div className="inv-ins-card-v4__feature-copy">
+                  <span className="inv-ins-card-v4__section-title">Categoria</span>
+                  <span className="inv-ins-card-v4__feature-value">{categoriaText}</span>
+                </div>
               </div>
-              <div className="inv-ins-card-v4__metric">
-                <span>Caducidad</span>
-                <strong>{caducidadLabel}</strong>
+
+              <div className="inv-ins-card-v4__feature">
+                <div className="inv-ins-card-v4__feature-icon" aria-hidden="true">
+                  <i className="bi bi-box-seam" />
+                </div>
+                <div className="inv-ins-card-v4__feature-copy">
+                  <span className="inv-ins-card-v4__section-title">Cantidad</span>
+                  <span className="inv-ins-card-v4__feature-value">{snapInfo.cantidad}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="inv-ins-card-v4__timeline">
+              <div className="inv-ins-card-v4__timeline-item">
+                <div className="inv-ins-card-v4__timeline-icon" aria-hidden="true">
+                  <i className="bi bi-calendar-plus" />
+                </div>
+                <div className="inv-ins-card-v4__timeline-copy">
+                  <span className="inv-ins-card-v4__section-title">Ingreso</span>
+                  <span className="inv-ins-card-v4__timeline-value">{ingresoLabel}</span>
+                </div>
+              </div>
+              <div className="inv-ins-card-v4__timeline-item">
+                <div className="inv-ins-card-v4__timeline-icon" aria-hidden="true">
+                  <i className="bi bi-calendar-event" />
+                </div>
+                <div className="inv-ins-card-v4__timeline-copy">
+                  <span className="inv-ins-card-v4__section-title">Caducidad</span>
+                  <span className="inv-ins-card-v4__timeline-value">{caducidadLabel}</span>
+                </div>
               </div>
             </div>
 
@@ -1744,9 +1876,9 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                   className={`btn inv-ins-card-v4__action ${inactive ? 'inv-prod-btn-success-lite' : 'inv-prod-btn-inactivate'}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    void toggleEstado(insumo, inactive);
+                    requestEstadoChange(insumo, inactive);
                   }}
-                  disabled={isCardTogglePending}
+                  disabled={isCardTogglePending || deleting}
                   title={inactive ? 'Activar' : 'Inactivar'}
                   aria-label={`${inactive ? 'Activar' : 'Inactivar'} ${insumo?.nombre_insumo || 'insumo'}`}
                 >
@@ -1839,17 +1971,6 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           </div>
 
           <section className="inv-ins-section">
-            <div className="inv-ins-section__head">
-              <div>
-                <div className="inv-prod-panel-eyebrow">Carrusel</div>
-                <div className="inv-ins-section__title">Insumos</div>
-                <div className="inv-ins-section__sub">Se muestran primero los insumos sin stock y luego los de stock bajo.</div>
-              </div>
-              <button type="button" className="btn inv-prod-btn-subtle inv-ins-clear" onClick={clearFilters}>
-                <i className="bi bi-arrow-counterclockwise" /> <span>Limpiar</span>
-              </button>
-            </div>
-
             {loading ? (
               <div className="inv-ins-skeleton-track is-all">
                 {Array.from({ length: carouselConfig.perPage }).map((_, i) => <div key={i} className="inv-ins-skeleton-card" />)}
@@ -1897,96 +2018,138 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       {/* IMPACT: solo cambia la capa visual del drawer; formularios, filtros y handlers permanecen iguales. */}
       <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? 'show' : ''}`} onClick={closeDrawer} aria-hidden={!isAnyDrawerOpen} />
 
-      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer ${drawer === 'filters' ? 'show' : ''}`} id="inv-ins-filters-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'filters'}>
-        <div className="inv-prod-drawer-head">
-          {/* NEW: watermark decorativo del shell de Categorias para igualar jerarquia visual del header del drawer. */}
-          {/* WHY: replicar el acento visual del panel lateral sin afectar legibilidad ni foco. */}
-          {/* IMPACT: elemento puramente decorativo; sin impacto funcional. */}
-          <i className="bi bi-box-seam inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">Filtros de insumos</div>
-            <div className="inv-prod-drawer-sub">Estados, categorias, almacenes y orden</div>
+      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer inv-ins-drawer--filters ${drawer === 'filters' ? 'show' : ''}`} id="inv-ins-filters-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'filters'}>
+        <div className="inv-prod-drawer-body inv-ins-filter-drawer-body">
+          <div className="inv-ins-create-hero inv-ins-filter-hero">
+            <button type="button" className="inv-prod-drawer-close inv-ins-create-hero__close" onClick={closeDrawer}>
+              <i className="bi bi-x-lg" />
+            </button>
+            <div className="inv-ins-create-hero__icon">
+              <i className="bi bi-funnel" aria-hidden="true" />
+            </div>
+            <div className="inv-ins-create-hero__copy">
+              <div className="inv-ins-create-hero__kicker">Vista De Filtros</div>
+              <div className="inv-ins-create-hero__title">Ajusta estados, almacen y orden del inventario</div>
+            </div>
+            <div className="inv-ins-create-hero__chips">
+              <span className="inv-ins-create-hero__chip">
+                <i className="bi bi-sliders2" aria-hidden="true" />
+                {draftFilters.estados.length ? `${draftFilters.estados.length} Estados` : 'Todos Los Estados'}
+              </span>
+              <span className="inv-ins-create-hero__chip">
+                <i className="bi bi-arrow-down-up" aria-hidden="true" />
+                {INSUMO_FILTER_SORT_LABELS[draftFilters.sortBy] || 'Mas recientes'}
+              </span>
+            </div>
           </div>
-          <button type="button" className="inv-prod-drawer-close" onClick={closeDrawer}><i className="bi bi-x-lg" /></button>
-        </div>
 
-        <div className="inv-prod-drawer-body">
-          <div className="inv-prod-drawer-section">
-            <div className="inv-prod-drawer-section-title">Estados</div>
-            <div className="inv-ins-chip-grid">
-              {STATUS_CHIPS.map((chip) => {
-                const on = draftFilters.estados.includes(chip.key);
-                return (
-                  <button
-                    key={chip.key}
-                    type="button"
-                    className={`inv-ins-chip ${on ? 'is-active' : ''}`}
-                    onClick={() => setDraftFilters((s) => ({ ...s, estados: on ? s.estados.filter((x) => x !== chip.key) : [...s.estados, chip.key] }))}
+          <div className="inv-ins-filter-grid">
+            <div className="inv-prod-drawer-section inv-ins-filter-card">
+              <div className="inv-prod-drawer-section-title">Estados</div>
+              <div className="inv-ins-chip-grid">
+                {STATUS_CHIPS.map((chip) => {
+                  const on = draftFilters.estados.includes(chip.key);
+                  return (
+                    <button
+                      key={chip.key}
+                      type="button"
+                      className={`inv-ins-chip ${on ? 'is-active' : ''}`}
+                      onClick={() => setDraftFilters((s) => ({ ...s, estados: on ? s.estados.filter((x) => x !== chip.key) : [...s.estados, chip.key] }))}
+                    >
+                      {chip.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="inv-ins-help">Si no seleccionas estados, se muestran todos.</div>
+            </div>
+
+            <div className="inv-prod-drawer-section inv-ins-filter-card">
+              <div className="inv-prod-drawer-section-title">Filtros adicionales</div>
+              <div className="inv-ins-drawer-fields">
+                <div>
+                  <label className="form-label">Almacen</label>
+                  <select className="form-select" value={String(draftFilters.almacen)} onChange={(e) => setDraftFilters((s) => ({ ...s, almacen: e.target.value }))}>
+                    <option value="todos">Todos los almacenes</option>
+                    {almacenes.map((a) => <option key={a.id_almacen} value={a.id_almacen}>{a.nombre} (Sucursal {a.id_sucursal})</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="form-label">Categoria</label>
+                  <select
+                    className="form-select"
+                    value={String(draftFilters.categoria)}
+                    onChange={(e) => setDraftFilters((s) => ({ ...s, categoria: e.target.value }))}
+                    disabled={categoriaOptions.length === 0}
                   >
-                    {chip.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="inv-ins-help">Si no seleccionas estados, se muestran todos.</div>
-          </div>
+                    <option value="todos">{categoriaOptions.length ? 'Todas las categorias' : 'No disponible'}</option>
+                    {categoriaOptions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                  {!categoriaOptions.length ? <div className="inv-ins-help">{categoriaField || categoriaLabelField ? 'Sin datos suficientes para filtrar.' : 'No se detecto categoria en insumos.'}</div> : null}
+                </div>
 
-          <div className="inv-prod-drawer-section">
-            <div className="inv-prod-drawer-section-title">Filtros adicionales</div>
-            <div className="inv-ins-drawer-fields">
-              <div>
-                <label className="form-label">Almacen</label>
-                <select className="form-select" value={String(draftFilters.almacen)} onChange={(e) => setDraftFilters((s) => ({ ...s, almacen: e.target.value }))}>
-                  <option value="todos">Todos los almacenes</option>
-                  {almacenes.map((a) => <option key={a.id_almacen} value={a.id_almacen}>{a.nombre} (Sucursal {a.id_sucursal})</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="form-label">Categoria</label>
-                <select
-                  className="form-select"
-                  value={String(draftFilters.categoria)}
-                  onChange={(e) => setDraftFilters((s) => ({ ...s, categoria: e.target.value }))}
-                  disabled={categoriaOptions.length === 0}
-                >
-                  <option value="todos">{categoriaOptions.length ? 'Todas las categorias' : 'No disponible'}</option>
-                  {categoriaOptions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-                {!categoriaOptions.length ? <div className="inv-ins-help">{categoriaField || categoriaLabelField ? 'Sin datos suficientes para filtrar.' : 'No se detecto categoria en insumos.'}</div> : null}
-              </div>
-
-              <div>
-                <label className="form-label">Orden</label>
-                <select className="form-select" value={String(draftFilters.sortBy)} onChange={(e) => setDraftFilters((s) => ({ ...s, sortBy: e.target.value }))}>
-                  {SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
+                <div>
+                  <label className="form-label">Orden</label>
+                  <select className="form-select" value={String(draftFilters.sortBy)} onChange={(e) => setDraftFilters((s) => ({ ...s, sortBy: e.target.value }))}>
+                    {SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="inv-prod-drawer-actions inv-ins-drawer-actions">
+          <div className="inv-prod-drawer-actions inv-ins-drawer-actions inv-ins-filter-actions">
             <button type="button" className="btn inv-prod-btn-subtle" onClick={clearFilters}>Limpiar</button>
             <button type="button" className="btn inv-prod-btn-primary" onClick={applyFilters}>Aplicar</button>
           </div>
         </div>
       </aside>
 
-      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer ${drawer === 'form' ? 'show' : ''}`} id="inv-ins-form-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'form'}>
-        <div className="inv-prod-drawer-head">
-          {/* NEW: watermark decorativo compartido con el patron de Categorias. */}
-          {/* WHY: unificar el shell del drawer de alta/edicion con el resto del modulo Inventario. */}
-          {/* IMPACT: solo presentacional; no altera validaciones ni submit. */}
-          <i className="bi bi-box-seam inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{drawerMode === 'create' ? 'Nuevo insumo' : 'Editar insumo'}</div>
-            <div className="inv-prod-drawer-sub">{drawerMode === 'create' ? 'Completa los campos y guarda.' : (selectedInsumo?.nombre_insumo || `Insumo #${selectedInsumo?.id_insumo ?? '-'}`)}</div>
-          </div>
-          <button type="button" className="inv-prod-drawer-close" onClick={closeDrawer}><i className="bi bi-x-lg" /></button>
-        </div>
+      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer ${drawerMode === 'create' ? 'inv-ins-drawer--create' : 'inv-ins-drawer--edit'} ${drawer === 'form' ? 'show' : ''}`} id="inv-ins-form-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'form'}>
+        <form className={`inv-prod-drawer-body ${drawerMode === 'create' ? 'inv-ins-drawer-body--create' : 'inv-ins-drawer-body--edit'}`} onSubmit={submitDrawer}>
+          {false ? (
+            <div className="inv-ins-create-hero">
+              {/* NEW: hero visual del alta de insumos para dar una primera impresión más premium. */}
+              {/* WHY: el usuario pidió que el modal de nuevo de Insumos se vea más pro y llamativo. */}
+              {/* IMPACT: solo presentación del modo create; validaciones, campos y submit siguen intactos. */}
+              <div className="inv-ins-create-hero__icon">
+                <i className="bi bi-stars" aria-hidden="true" />
+              </div>
+              <div className="inv-ins-create-hero__copy">
+                <div className="inv-ins-create-hero__kicker">Nuevo registro</div>
+                <div className="inv-ins-create-hero__title">Alta rápida de insumo</div>
+                <div className="inv-ins-create-hero__text">Completa los datos operativos para dejar el insumo listo en inventario sin pasos extra.</div>
+              </div>
+              <div className="inv-ins-create-hero__chips">
+                <span className="inv-ins-create-hero__chip"><i className="bi bi-cash-stack" aria-hidden="true" /> {fmtMoney(formValues?.precio || 0)}</span>
+                <span className="inv-ins-create-hero__chip"><i className="bi bi-boxes" aria-hidden="true" /> {intInput(formValues?.cantidad || 0) || '0'} en existencia</span>
+              </div>
+            </div>
+          ) : null}
 
-        <form className="inv-prod-drawer-body" onSubmit={submitDrawer}>
-          <div className="inv-ins-drawer-hero">
+          {/* NEW: hero premium compartido entre crear y editar insumos. */}
+          {/* WHY: el usuario pidio el mismo estilo en editar y sin la frase descriptiva larga del hero. */}
+          {/* IMPACT: solo cambia la presentacion del drawer; campos, validaciones y submit siguen igual. */}
+          <div className={`inv-ins-create-hero ${drawerMode === 'create' ? 'is-create' : 'is-edit'}`}>
+            {/* NEW: cierre embebido en el hero para retirar el header redundante del drawer. */}
+            {/* WHY: dejar una sola cabecera visible en el formulario de nuevo/editar insumos. */}
+            {/* IMPACT: el boton cerrar usa el mismo handler existente; solo cambia su posicion. */}
+            <button type="button" className="inv-prod-drawer-close inv-ins-create-hero__close" onClick={closeDrawer}><i className="bi bi-x-lg" /></button>
+            <div className="inv-ins-create-hero__icon">
+              <i className="bi bi-stars" aria-hidden="true" />
+            </div>
+            <div className="inv-ins-create-hero__copy">
+              <div className="inv-ins-create-hero__kicker">{drawerMode === 'create' ? 'Nuevo Registro' : 'Edicion Activa'}</div>
+              <div className="inv-ins-create-hero__title">{drawerMode === 'create' ? 'Alta Rapida de Insumo' : 'Actualiza Tu Insumo'}</div>
+            </div>
+            <div className="inv-ins-create-hero__chips">
+              <span className="inv-ins-create-hero__chip"><i className="bi bi-cash-stack" aria-hidden="true" /> {fmtMoney(formValues?.precio || 0)}</span>
+              <span className="inv-ins-create-hero__chip"><i className="bi bi-boxes" aria-hidden="true" /> {intInput(formValues?.cantidad || 0) || '0'} En Existencia</span>
+            </div>
+          </div>
+
+          <div className={`inv-ins-drawer-hero ${drawerMode === 'create' ? 'is-create' : 'is-edit'}`}>
             <div className="inv-ins-drawer-hero__price">{fmtMoney(formValues?.precio || 0)}</div>
             {previewSnap ? <span className={`inv-ins-card__badge ${previewSnap.ui.badgeClass}`}>{previewSnap.ui.badge}</span> : null}
           </div>
@@ -1995,9 +2158,9 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           {/* WHY: el usuario pidio eliminar la imagen al crear o editar insumos sin afectar el resto del formulario. */}
           {/* IMPACT: la logica existente queda inertizada al no exponer controles visuales de carga/cambio de imagen. */}
 
-          <div className="inv-ins-drawer-fields">
+          <div className={`inv-ins-drawer-fields ${drawerMode === 'create' ? 'inv-ins-drawer-fields--create' : 'inv-ins-drawer-fields--edit'}`}>
             <div>
-              <label className="form-label">Nombre del insumo</label>
+              <label className="form-label">Nombre Del Insumo</label>
               <input ref={nombreInputRef} className={`form-control ${formErrors.nombre_insumo ? 'is-invalid' : ''}`} value={formValues.nombre_insumo ?? ''} onChange={(e) => setField('nombre_insumo', e.target.value)} placeholder="Ej: Queso mozzarella" />
               {fieldErr('nombre_insumo')}
             </div>
@@ -2014,7 +2177,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 {fieldErr('cantidad')}
               </div>
               <div>
-                <label className="form-label">Stock minimo</label>
+                <label className="form-label">Stock Minimo</label>
                 <input className={`form-control ${formErrors.stock_minimo ? 'is-invalid' : ''}`} type="number" step="1" min="0" inputMode="numeric" value={formValues.stock_minimo ?? ''} onKeyDown={blockNonIntegerKeys} onChange={(e) => setField('stock_minimo', intInput(e.target.value))} />
                 {fieldErr('stock_minimo')}
               </div>
@@ -2047,7 +2210,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 {fieldErr('id_categoria_insumo')}
               </div>
               <div>
-                <label className="form-label">Unidad de medida</label>
+                <label className="form-label">Unidad de Medida</label>
                 <select
                   className={`form-select ${formErrors.id_unidad_medida ? 'is-invalid' : ''}`}
                   value={String(formValues.id_unidad_medida ?? '')}
@@ -2064,19 +2227,19 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 {fieldErr('id_unidad_medida')}
               </div>
               <div>
-                <label className="form-label">Fecha ingreso (opcional)</label>
+                <label className="form-label">Fecha Ingreso (Opcional)</label>
                 <input className={`form-control ${formErrors.fecha_ingreso_insumo ? 'is-invalid' : ''}`} type="date" value={formValues.fecha_ingreso_insumo ?? ''} onChange={(e) => setField('fecha_ingreso_insumo', e.target.value)} />
                 {fieldErr('fecha_ingreso_insumo')}
               </div>
               <div>
-                <label className="form-label">Fecha caducidad (opcional)</label>
+                <label className="form-label">Fecha Caducidad (Opcional)</label>
                 <input className={`form-control ${formErrors.fecha_caducidad ? 'is-invalid' : ''}`} type="date" value={formValues.fecha_caducidad ?? ''} onChange={(e) => setField('fecha_caducidad', e.target.value)} />
                 {fieldErr('fecha_caducidad')}
               </div>
             </div>
 
             <div>
-              <label className="form-label">Descripcion (opcional)</label>
+              <label className="form-label">Descripcion (Opcional)</label>
               <textarea className={`form-control ${formErrors.descripcion ? 'is-invalid' : ''}`} rows="3" value={formValues.descripcion ?? ''} onChange={(e) => setField('descripcion', e.target.value)} />
               {fieldErr('descripcion')}
               <div className="inv-ins-help">Se sanitizan espacios extra al guardar.</div>
@@ -2108,11 +2271,11 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       {detailInsumo && detailSnap ? (
         <div className="modal fade show inv-prod-modal-backdrop" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2550 }} role="dialog" aria-modal="true" onClick={closeDetailModal}>
           <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable inv-prod-modal-dialog inv-ins-detail-modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content shadow inv-prod-modal-content inv-ins-detail-modal">
+            <div className="modal-content shadow inv-prod-modal-content inv-ins-detail-modal inv-ins-detail-modal--editorial">
               <div className="modal-header inv-ins-detail-modal__header">
                 <div className="inv-ins-detail-modal__title-wrap">
                   <div className="inv-ins-detail-modal__icon">
-                    <i className="bi bi-box2-heart" />
+                    <i className="bi bi-stars" />
                   </div>
                   <div>
                     <div className="fw-semibold">Detalle de insumo</div>
@@ -2120,69 +2283,43 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                   </div>
                 </div>
                 <div className="inv-ins-detail-modal__header-actions">
-                  <span className={`inv-ins-status-pill inv-ins-detail-modal__status ${resolveInsumoStatusClass(detailSnap.ui.key)}`}>{detailSnap.ui.badge}</span>
                   <button type="button" className="btn btn-sm inv-ins-detail-modal__close" onClick={closeDetailModal}><i className="bi bi-x-lg" /></button>
                 </div>
               </div>
 
-              <div className="modal-body inv-prod-modal-body inv-ins-detail-modal__body">
-                <div className="inv-ins-detail-modal__hero">
-                  {detailSummaryCards.map((card) => (
-                    <div key={card.key} className="inv-ins-detail-modal__hero-card">
-                      <div className="inv-ins-detail-modal__hero-head">
-                        <i className={`bi ${card.icon}`} aria-hidden="true" />
-                        <span>{card.label}</span>
-                      </div>
-                      <strong>{card.value}</strong>
-                    </div>
-                  ))}
+              <div className="modal-body inv-prod-modal-body inv-ins-detail-modal__body inv-ins-detail-modal__body--editorial">
+                <div className="inv-ins-detail-modal__ambient" aria-hidden="true">
+                  <span className="is-one" />
+                  <span className="is-two" />
+                  <span className="is-three" />
                 </div>
 
-                {/* NEW: composicion fija en bloques para replicar un modal horizontal tipo detalle de venta sin tabs ni footer de acciones. */}
-                {/* WHY: la referencia pide un detalle fino, mas ancho que alto y sin botones visibles dentro del contenido. */}
-                {/* IMPACT: solo reordena la presentacion del modal de consulta; no modifica endpoints ni flujos del resto del modulo. */}
-                <div className="inv-ins-detail-modal__content">
-                  <div className="inv-ins-detail-modal__column">
-                    {detailInfoSections
-                      .filter((section) => section.key !== 'related')
-                      .map((section) => (
-                        <section key={section.key} className="inv-ins-detail-modal__section-card">
-                          <div className="inv-ins-detail-modal__section-title">{section.title}</div>
-                          <div className="inv-ins-detail-modal__section-grid">
-                            {section.items.map((item) => (
-                              <article key={item.key} className="inv-ins-detail-modal__info-card">
-                                <div className="inv-ins-detail-modal__info-head">
-                                  <i className={`bi ${item.icon}`} aria-hidden="true" />
-                                  <span>{item.label}</span>
-                                </div>
-                                <strong>{item.value}</strong>
-                              </article>
-                            ))}
-                          </div>
-                        </section>
-                      ))}
-                  </div>
+                <div className="inv-ins-detail-modal__editorial-grid">
+                  <section className="inv-ins-detail-modal__lead">
+                    <span className="inv-ins-detail-modal__eyebrow">Precio actual</span>
+                    <strong className="inv-ins-detail-modal__lead-price">{fmtMoney(detailInsumo?.precio)}</strong>
+                    <p className="inv-ins-detail-modal__lead-copy">
+                      Vista puntual del insumo con los datos operativos que más importan al momento de consultarlo.
+                    </p>
+                  </section>
 
-                  <div className="inv-ins-detail-modal__column">
-                    {detailInfoSections
-                      .filter((section) => section.key === 'related')
-                      .map((section) => (
-                        <section key={section.key} className="inv-ins-detail-modal__section-card">
-                          <div className="inv-ins-detail-modal__section-title">{section.title}</div>
-                          <div className="inv-ins-detail-modal__section-grid">
-                            {section.items.map((item) => (
-                              <article key={item.key} className="inv-ins-detail-modal__info-card">
-                                <div className="inv-ins-detail-modal__info-head">
-                                  <i className={`bi ${item.icon}`} aria-hidden="true" />
-                                  <span>{item.label}</span>
-                                </div>
-                                <strong>{item.value}</strong>
-                              </article>
-                            ))}
-                          </div>
-                        </section>
-                      ))}
-                  </div>
+                  <section className="inv-ins-detail-modal__list" aria-label="Datos principales del insumo">
+                    {detailDisplayFields.map((item, index) => (
+                      <article
+                        key={item.key}
+                        className={`inv-ins-detail-modal__line ${item.key === 'descripcion' ? 'is-description' : ''}`}
+                        style={{ animationDelay: `${index * 70}ms` }}
+                      >
+                        <div className="inv-ins-detail-modal__line-icon" aria-hidden="true">
+                          <i className={`bi ${item.icon}`} />
+                        </div>
+                        <div className="inv-ins-detail-modal__line-copy">
+                          <span>{item.label}</span>
+                          <strong>{item.value}</strong>
+                        </div>
+                      </article>
+                    ))}
+                  </section>
                 </div>
               </div>
             </div>
@@ -2190,27 +2327,55 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
         </div>
       ) : null}
       {confirmModal.show && (
-        <div className="modal fade show inv-prod-modal-backdrop inv-prod-modal-backdrop-danger" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2600 }} role="dialog" aria-modal="true" onClick={closeConfirm}>
-          <div className="modal-dialog modal-dialog-centered inv-prod-modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content shadow inv-prod-modal-content inv-prod-delete-modal">
-              <div className="modal-header d-flex align-items-center justify-content-between inv-prod-modal-header danger">
-                <div className="d-flex align-items-start gap-2">
+        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirm}>
+          <div className="inv-pro-confirm-panel inv-pro-confirm-panel--danger" onClick={(e) => e.stopPropagation()}>
+            <div className="inv-pro-confirm-glow" aria-hidden="true" />
+
+            <div className="inv-pro-confirm-head">
+              <div className="inv-pro-confirm-head-main">
+                <div className="inv-pro-confirm-head-icon">
                   <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
-                  <div>
-                    <div className="fw-semibold">{INACTIVATE_CONFIRM_COPY.title}</div>
-                    <div className="small text-muted">{INACTIVATE_CONFIRM_COPY.subtitle}</div>
-                  </div>
                 </div>
-                <button type="button" className="btn btn-sm btn-light inv-prod-modal-close" onClick={closeConfirm}><i className="bi bi-x-lg" /></button>
+                <div className="inv-pro-confirm-head-copy">
+                  {/* NEW: etiqueta de módulo para alinear el patrón premium con Productos y Categorías. */}
+                  {/* WHY: el usuario pidió rediseñar los tres modales con una misma línea visual profesional. */}
+                  {/* IMPACT: solo mejora el encabezado del modal de confirmación. */}
+                  <div className="inv-pro-confirm-kicker">Insumos</div>
+                  <div className="inv-pro-confirm-title">{INACTIVATE_CONFIRM_COPY.title}</div>
+                  <div className="inv-pro-confirm-sub">{INACTIVATE_CONFIRM_COPY.subtitle}</div>
+                </div>
               </div>
-              <div className="modal-body inv-prod-modal-body">
-                <div className="mb-2">{INACTIVATE_CONFIRM_COPY.question}</div>
-                <div className="text-muted small inv-prod-delete-name"><i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" /> <span className="fw-semibold">{confirmModal.nombre || INACTIVATE_CONFIRM_COPY.fallbackName}</span></div>
+              <button type="button" className="inv-pro-confirm-close" onClick={closeConfirm} aria-label="Cerrar" disabled={deleting}>
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <div className="inv-pro-confirm-body">
+              {/* NEW: nota operativa breve para explicar el destino del registro sin recargar el modal. */}
+              {/* WHY: da contexto inmediato al usuario antes de confirmar la inactivación. */}
+              {/* IMPACT: solo mejora la comunicación visual; no toca el flujo de borrado lógico. */}
+              <div className="inv-pro-confirm-note">
+                <i className="bi bi-shield-exclamation" aria-hidden="true" />
+                <span>El insumo seguirá disponible en inactivos y podrás reactivarlo cuando lo necesites.</span>
               </div>
-              <div className="modal-footer d-flex gap-2 inv-prod-modal-footer">
-                <button className="btn btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={closeConfirm} disabled={deleting}>Cancelar</button>
-                <button className="btn inv-prod-btn-inactivate" type="button" onClick={deleteConfirmed} disabled={deleting}><i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" /><span>{deleting ? 'Inactivando...' : 'Inactivar'}</span></button>
+
+              <div className="inv-pro-confirm-question">{INACTIVATE_CONFIRM_COPY.question}</div>
+
+              <div className="inv-pro-confirm-name">
+                <div className="inv-pro-confirm-name-label">Registro seleccionado</div>
+                <div className="inv-pro-confirm-name-value">
+                  <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                  <span>{confirmModal.nombre || INACTIVATE_CONFIRM_COPY.fallbackName}</span>
+                </div>
               </div>
+            </div>
+
+            <div className="inv-pro-confirm-footer">
+              <button className="btn inv-pro-btn-cancel" type="button" onClick={closeConfirm} disabled={deleting}>Cancelar</button>
+              <button className="btn inv-pro-btn-danger" type="button" onClick={deleteConfirmed} disabled={deleting}>
+                <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                <span>{deleting ? 'Inactivando...' : 'Inactivar'}</span>
+              </button>
             </div>
           </div>
         </div>
