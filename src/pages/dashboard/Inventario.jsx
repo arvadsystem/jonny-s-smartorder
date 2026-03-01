@@ -49,13 +49,19 @@ const Inventario = () => {
     return () => clearTimeout(t);
   }, [toast.show]);
 
-  const openToast = (title, message, variant = 'success') => {
+  // NEW: callbacks estables para evitar que los submodulos de Inventario vuelvan a disparar efectos por cada render del padre.
+  // WHY: `InsumosTab` y otros tabs memoizan helpers sobre `openToast`; si cambia de referencia al mostrar/ocultar el toast, sus efectos de carga pueden re-ejecutarse.
+  // IMPACT: se elimina el refetch visual inducido por el toast sin alterar el comportamiento ni el contenido de las notificaciones.
+  const openToast = useCallback((title, message, variant = 'success') => {
     setToast({ show: true, title, message, variant });
-  };
+  }, []);
 
-  const closeToast = () => {
+  // NEW: cierre estable del toast para no propagar renders evitables hacia los submodulos.
+  // WHY: mantener las props de notificacion con referencias consistentes durante todo el ciclo del componente.
+  // IMPACT: el toast se sigue cerrando igual, pero ya no fuerza cargas derivadas por cambio de callback.
+  const closeToast = useCallback(() => {
     setToast((s) => ({ ...s, show: false }));
-  };
+  }, []);
 
   const toastIconClass = (variant) => {
     if (variant === 'danger') return 'bi bi-x-octagon-fill';

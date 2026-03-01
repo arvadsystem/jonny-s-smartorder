@@ -51,6 +51,13 @@ const CATEGORY_DELETE_BLOCKED_MESSAGE = 'NO SE PUEDE INACTIVAR LA CATEGORIA PORQ
 // WHY: el usuario pidio que el alta de categorias de insumos inicie con `INS-`.
 // IMPACT: solo prellena el formulario de create en Categorias de Insumos.
 const INPUT_CATEGORY_CODE_PREFIX = 'INS-';
+const CATEGORY_FILTER_SORT_LABELS = Object.freeze({
+  recientes: 'Mas recientes',
+  nombre_asc: 'Nombre (A-Z)',
+  nombre_desc: 'Nombre (Z-A)',
+  codigo_asc: 'Codigo (A-Z)',
+  codigo_desc: 'Codigo (Z-A)'
+});
 // NEW: copy e iconografia unificados para todas las confirmaciones de inactivacion en Inventario.
 // WHY: el usuario pidio el mismo mensaje y el mismo icono en todos los modulos al confirmar la inactivacion.
 // IMPACT: solo homologa el modal de confirmacion de Categorias de Insumos; no cambia el resto del panel.
@@ -1169,73 +1176,88 @@ const CategoriasInsumosPanel = ({
       {/* WHY: mover filtros a panel lateral con Aplicar/Limpiar y mantener header limpio. */}
       {/* IMPACT: reutiliza `filtersDraft`; filtrado sigue siendo local sin tocar servicios. */}
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${filtersOpen ? 'show' : ''}`}
+        className={`inv-prod-drawer inv-cat-v2__drawer inv-cat-v2__drawer--filters ${filtersOpen ? 'show' : ''}`}
         id="inv-cat-filters-drawer"
         role="dialog"
         aria-modal="true"
         aria-hidden={!filtersOpen}
       >
-        <div className="inv-prod-drawer-head">
-          {/* NEW: watermark del drawer para reforzar identidad visual de categorias. */}
-          {/* WHY: alternativa sutil sin hover y continuidad con el acento visual del card. */}
-          {/* IMPACT: decorativo; no afecta el contenido ni la interaccion del drawer. */}
-          <i className="bi bi-tags inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">Filtros de categorias de insumos</div>
-            <div className="inv-prod-drawer-sub">Estado y orden visual del carrusel</div>
-          </div>
-          <button type="button" className="inv-prod-drawer-close" onClick={closeFiltersDrawer} title="Cerrar">
-            <i className="bi bi-x-lg" />
-          </button>
-        </div>
-
         <div className="inv-prod-drawer-body inv-cat-v2__drawer-body">
-          <div className="inv-prod-drawer-section">
-            <div className="inv-prod-drawer-section-title">Estado</div>
-            <div className="inv-ins-chip-grid">
-              <button
-                type="button"
-                className={`inv-ins-chip ${filtersDraft.estadoFiltro === 'todos' ? 'is-active' : ''}`}
-                onClick={() => setFiltersDraft((s) => ({ ...s, estadoFiltro: 'todos' }))}
-              >
-                Todas
-              </button>
-              <button
-                type="button"
-                className={`inv-ins-chip ${filtersDraft.estadoFiltro === 'activo' ? 'is-active' : ''}`}
-                onClick={() => setFiltersDraft((s) => ({ ...s, estadoFiltro: 'activo' }))}
-              >
-                Activas
-              </button>
-              <button
-                type="button"
-                className={`inv-ins-chip ${filtersDraft.estadoFiltro === 'inactivo' ? 'is-active' : ''}`}
-                onClick={() => setFiltersDraft((s) => ({ ...s, estadoFiltro: 'inactivo' }))}
-              >
-                Inactivas
-              </button>
+          <div className="inv-cat-create-hero inv-cat-filter-hero">
+            <button type="button" className="inv-prod-drawer-close inv-cat-create-hero__close" onClick={closeFiltersDrawer} title="Cerrar">
+              <i className="bi bi-x-lg" />
+            </button>
+            <div className="inv-cat-create-hero__icon">
+              <i className="bi bi-funnel" aria-hidden="true" />
             </div>
-            <div className="inv-ins-help">Selecciona un estado o deja "Todas".</div>
+            <div className="inv-cat-create-hero__copy">
+              <div className="inv-cat-create-hero__kicker">Vista De Filtros</div>
+              <div className="inv-cat-create-hero__title">Ajusta el estado y el orden del catalogo</div>
+            </div>
+            <div className="inv-cat-create-hero__chips">
+              <span className="inv-cat-create-hero__chip">
+                <i className="bi bi-sliders2" aria-hidden="true" />
+                {filtersDraft.estadoFiltro === 'activo'
+                  ? 'Solo Activas'
+                  : filtersDraft.estadoFiltro === 'inactivo'
+                    ? 'Solo Inactivas'
+                    : 'Todas Las Categorias'}
+              </span>
+              <span className="inv-cat-create-hero__chip">
+                <i className="bi bi-arrow-down-up" aria-hidden="true" />
+                {CATEGORY_FILTER_SORT_LABELS[filtersDraft.sortBy] || 'Mas recientes'}
+              </span>
+            </div>
           </div>
 
-          <div className="inv-prod-drawer-section">
-            <div className="inv-prod-drawer-section-title">Orden</div>
-            <label className="form-label" htmlFor="cat_filter_sort">Ordenar por</label>
-            <select
-              id="cat_filter_sort"
-              className="form-select"
-              value={filtersDraft.sortBy}
-              onChange={(e) => setFiltersDraft((s) => ({ ...s, sortBy: e.target.value }))}
-            >
-              <option value="recientes">Mas recientes</option>
-              <option value="nombre_asc">Nombre (A-Z)</option>
-              <option value="nombre_desc">Nombre (Z-A)</option>
-              <option value="codigo_asc">Codigo (A-Z)</option>
-              <option value="codigo_desc">Codigo (Z-A)</option>
-            </select>
+          <div className="inv-cat-filter-grid">
+            <div className="inv-prod-drawer-section inv-cat-filter-card">
+              <div className="inv-prod-drawer-section-title">Estado</div>
+              <div className="inv-ins-chip-grid">
+                <button
+                  type="button"
+                  className={`inv-ins-chip ${filtersDraft.estadoFiltro === 'todos' ? 'is-active' : ''}`}
+                  onClick={() => setFiltersDraft((s) => ({ ...s, estadoFiltro: 'todos' }))}
+                >
+                  Todas
+                </button>
+                <button
+                  type="button"
+                  className={`inv-ins-chip ${filtersDraft.estadoFiltro === 'activo' ? 'is-active' : ''}`}
+                  onClick={() => setFiltersDraft((s) => ({ ...s, estadoFiltro: 'activo' }))}
+                >
+                  Activas
+                </button>
+                <button
+                  type="button"
+                  className={`inv-ins-chip ${filtersDraft.estadoFiltro === 'inactivo' ? 'is-active' : ''}`}
+                  onClick={() => setFiltersDraft((s) => ({ ...s, estadoFiltro: 'inactivo' }))}
+                >
+                  Inactivas
+                </button>
+              </div>
+              <div className="inv-ins-help">Selecciona un estado o deja "Todas".</div>
+            </div>
+
+            <div className="inv-prod-drawer-section inv-cat-filter-card">
+              <div className="inv-prod-drawer-section-title">Orden</div>
+              <label className="form-label" htmlFor="cat_filter_sort">Ordenar por</label>
+              <select
+                id="cat_filter_sort"
+                className="form-select"
+                value={filtersDraft.sortBy}
+                onChange={(e) => setFiltersDraft((s) => ({ ...s, sortBy: e.target.value }))}
+              >
+                <option value="recientes">Mas recientes</option>
+                <option value="nombre_asc">Nombre (A-Z)</option>
+                <option value="nombre_desc">Nombre (Z-A)</option>
+                <option value="codigo_asc">Codigo (A-Z)</option>
+                <option value="codigo_desc">Codigo (Z-A)</option>
+              </select>
+            </div>
           </div>
 
-          <div className="inv-prod-drawer-actions inv-cat-v2__drawer-actions">
+          <div className="inv-prod-drawer-actions inv-cat-v2__drawer-actions inv-cat-filter-actions">
             <button type="button" className="btn inv-prod-btn-subtle" onClick={clearVisualFilters}>
               Limpiar
             </button>
@@ -1248,29 +1270,58 @@ const CategoriasInsumosPanel = ({
 
       {/* AJUSTE: modal de categorias con patron lateral derecho igual al de Productos. */}
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${drawerOpen ? 'show' : ''}`}
+        className={`inv-prod-drawer inv-cat-v2__drawer ${drawerMode === 'create' ? 'inv-cat-v2__drawer--create' : 'inv-cat-v2__drawer--edit'} ${drawerOpen ? 'show' : ''}`}
         id="inv-cat-form-drawer"
         role="dialog"
         aria-modal="true"
         aria-hidden={!drawerOpen}
       >
-        <div className="inv-prod-drawer-head">
-          {/* NEW: watermark del drawer para reforzar identidad visual de categorias. */}
-          {/* WHY: mantener el lenguaje visual del submodulo tambien en nuevo/editar. */}
-          {/* IMPACT: decorativo; no cambia el flujo ni los campos del formulario. */}
-          <i className="bi bi-tags inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{drawerMode === 'create' ? 'Nueva categoria de insumo' : 'Editar categoria de insumo'}</div>
-            <div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div>
-          </div>
-          {/* AJUSTE: se iguala el boton de cierre al patron de Productos para mantener diseno consistente. */}
-          <button type="button" className="inv-prod-drawer-close" onClick={closeDrawer} title="Cerrar">
-            <i className="bi bi-x-lg" />
-          </button>
-        </div>
+        <form className={`inv-prod-drawer-body inv-catpro-drawer-body-lite inv-catpro-drawer-body-lite--premium ${drawerMode === 'create' ? 'inv-catpro-drawer-body-lite--create' : 'inv-catpro-drawer-body-lite--edit'}`} onSubmit={onSave}>
+          {false ? (
+            <div className="inv-cat-create-hero">
+              {/* NEW: hero visual del alta para categorias de insumos. */}
+              {/* WHY: el usuario pidió que el modal de nuevo se vea más pro y auténtico también en este catálogo. */}
+              {/* IMPACT: solo presentación en create; la lógica actual del formulario se conserva. */}
+              <div className="inv-cat-create-hero__icon">
+                <i className="bi bi-stars" aria-hidden="true" />
+              </div>
+              <div className="inv-cat-create-hero__copy">
+                <div className="inv-cat-create-hero__kicker">Nuevo registro</div>
+                <div className="inv-cat-create-hero__title">Ordena mejor tus insumos</div>
+                <div className="inv-cat-create-hero__text">Crea categorías consistentes para agrupar materia prima y facilitar filtros, lectura y control operativo.</div>
+              </div>
+              <div className="inv-cat-create-hero__chips">
+                <span className="inv-cat-create-hero__chip"><i className="bi bi-upc-scan" aria-hidden="true" /> {form.codigo_categoria || INPUT_CATEGORY_CODE_PREFIX}</span>
+                <span className="inv-cat-create-hero__chip"><i className="bi bi-check2-circle" aria-hidden="true" /> Activa por defecto</span>
+              </div>
+            </div>
+          ) : null}
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={onSave}>
-          <div className="mb-2">
+          {/* NEW: hero premium compartido entre crear y editar categorias de insumos. */}
+          {/* WHY: el usuario pidio el mismo estilo en editar y sin el texto descriptivo largo del hero. */}
+          {/* IMPACT: solo cambia la presentacion del drawer; el formulario mantiene su flujo actual. */}
+          <div className={`inv-cat-create-hero ${drawerMode === 'create' ? 'is-create' : 'is-edit'}`}>
+            {/* NEW: cierre embebido en el hero para retirar el header redundante del drawer. */}
+            {/* WHY: evitar duplicidad entre encabezado superior y bloque principal del formulario. */}
+            {/* IMPACT: el comportamiento de cierre no cambia; solo su ubicacion visual. */}
+            <button type="button" className="inv-prod-drawer-close inv-cat-create-hero__close" onClick={closeDrawer} title="Cerrar">
+              <i className="bi bi-x-lg" />
+            </button>
+            <div className="inv-cat-create-hero__icon">
+              <i className="bi bi-stars" aria-hidden="true" />
+            </div>
+              <div className="inv-cat-create-hero__copy">
+               <div className="inv-cat-create-hero__kicker">Catalogo de Insumos</div>
+               <div className="inv-cat-create-hero__title">{drawerMode === 'create' ? 'Nueva Categoria de Insumo' : 'Editar Categoria de Insumo'}</div>
+            </div>
+            <div className="inv-cat-create-hero__chips">
+              <span className="inv-cat-create-hero__chip"><i className="bi bi-upc-scan" aria-hidden="true" /> {form.codigo_categoria || INPUT_CATEGORY_CODE_PREFIX}</span>
+              <span className="inv-cat-create-hero__chip"><i className="bi bi-check2-circle" aria-hidden="true" /> {form.estado ? 'Estado Activo' : 'Estado Inactivo'}</span>
+            </div>
+          </div>
+
+          <div className={`inv-cat-create-grid ${drawerMode === 'create' ? 'is-create' : 'is-edit'}`}>
+            <div className="mb-2">
             <label className="form-label">Nombre</label>
             <input
               className={`form-control ${nombreErrorMsg ? 'is-invalid' : ''}`}
@@ -1291,9 +1342,10 @@ const CategoriasInsumosPanel = ({
             />
             {codigoErrorMsg ? <div className="invalid-feedback d-block">{codigoErrorMsg}</div> : null}
           </div>
+          </div>
 
           <div className="mb-2">
-            <label className="form-label">Descripcion (opcional)</label>
+            <label className="form-label">Descripcion (Opcional)</label>
             <input
               className={`form-control ${formErrors.descripcion ? 'is-invalid' : ''}`}
               value={form.descripcion}
@@ -1303,27 +1355,27 @@ const CategoriasInsumosPanel = ({
             {formErrors.descripcion ? <div className="invalid-feedback">{formErrors.descripcion}</div> : null}
           </div>
 
-          <div className="form-check mt-2 mb-3">
-            <input
-              className="form-check-input"
-              type="checkbox"
-              id="cat_estado"
+          <div className={`form-check mt-2 mb-3 inv-catpro-form-check-row ${form.estado ? 'is-active' : 'is-inactive'}`}>
+              <input
+                className="form-check-input"
+                type="checkbox"
+                id="cat_estado"
               checked={!!form.estado}
               // NEW: bloquea la inactivación desde el checkbox cuando la categoría tiene insumos activos (si el conteo está disponible).
               // WHY: mantener la misma regla de UX que el botón de card en desktop y responsive.
               // IMPACT: solo UI del drawer; el backend valida siempre con 409.
               disabled={Boolean(loading) || (editDrawerInactivationBlocked && !!form.estado)}
               onChange={(e) => setForm((s) => ({ ...s, estado: e.target.checked }))}
-            />
-            <label className="form-check-label" htmlFor="cat_estado">
-              Activo
-            </label>
+              />
+              <label className="form-check-label" htmlFor="cat_estado">
+                {form.estado ? 'Activo' : 'Inactivo'}
+              </label>
             {editDrawerInactivationBlocked && !!form.estado ? (
               <div className="form-text text-danger">{CATEGORY_DELETE_BLOCKED_MESSAGE}</div>
             ) : null}
           </div>
 
-          <div className="d-flex gap-2">
+          <div className={`d-flex gap-2 ${drawerMode === 'create' ? 'inv-cat-create-actions' : 'inv-cat-edit-actions'}`}>
             <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={closeDrawer}>
               Cancelar
             </button>
@@ -1337,14 +1389,22 @@ const CategoriasInsumosPanel = ({
       {/* FUNCIONALIDAD: MODAL CONFIRMAR INACTIVACION */}
       {confirmModal.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
-          <div className="inv-pro-confirm-panel" onClick={(e) => e.stopPropagation()}>
+          <div className="inv-pro-confirm-panel inv-pro-confirm-panel--danger" onClick={(e) => e.stopPropagation()}>
+            <div className="inv-pro-confirm-glow" aria-hidden="true" />
+
             <div className="inv-pro-confirm-head">
-              <div className="inv-pro-confirm-head-icon">
-                <i className={INACTIVATE_CONFIRM_COPY.iconClass} />
-              </div>
-              <div>
-                <div className="inv-pro-confirm-title">{INACTIVATE_CONFIRM_COPY.title}</div>
-                <div className="inv-pro-confirm-sub">{INACTIVATE_CONFIRM_COPY.subtitle}</div>
+              <div className="inv-pro-confirm-head-main">
+                <div className="inv-pro-confirm-head-icon">
+                  <i className={INACTIVATE_CONFIRM_COPY.iconClass} />
+                </div>
+                <div className="inv-pro-confirm-head-copy">
+                  {/* NEW: etiqueta contextual para distinguir el catálogo afectado sin cambiar el copy base. */}
+                  {/* WHY: mantener consistencia visual entre Productos, Insumos y ambas vistas de Categorías. */}
+                  {/* IMPACT: solo agrega jerarquía al header del modal. */}
+                  <div className="inv-pro-confirm-kicker">Categorías de insumos</div>
+                  <div className="inv-pro-confirm-title">{INACTIVATE_CONFIRM_COPY.title}</div>
+                  <div className="inv-pro-confirm-sub">{INACTIVATE_CONFIRM_COPY.subtitle}</div>
+                </div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
                 <i className="bi bi-x-lg" />
@@ -1352,10 +1412,21 @@ const CategoriasInsumosPanel = ({
             </div>
 
             <div className="inv-pro-confirm-body">
+              {/* NEW: apoyo visual de contexto para la acción de inactivación. */}
+              {/* WHY: el rediseño del modal debe verse más fino y autoexplicativo sin tocar lógica del módulo. */}
+              {/* IMPACT: solo presentación; el comportamiento de confirmar/cancelar sigue igual. */}
+              <div className="inv-pro-confirm-note">
+                <i className="bi bi-shield-exclamation" aria-hidden="true" />
+                <span>La categoría de insumo pasará a inactivos y podrá volver a activarse más adelante.</span>
+              </div>
+
               <div className="inv-pro-confirm-question">{INACTIVATE_CONFIRM_COPY.question}</div>
               <div className="inv-pro-confirm-name">
-                <i className={INACTIVATE_CONFIRM_COPY.iconClass} />
-                <span>{confirmModal.nombre || INACTIVATE_CONFIRM_COPY.fallbackName}</span>
+                <div className="inv-pro-confirm-name-label">Registro seleccionado</div>
+                <div className="inv-pro-confirm-name-value">
+                  <i className={INACTIVATE_CONFIRM_COPY.iconClass} />
+                  <span>{confirmModal.nombre || INACTIVATE_CONFIRM_COPY.fallbackName}</span>
+                </div>
               </div>
             </div>
 

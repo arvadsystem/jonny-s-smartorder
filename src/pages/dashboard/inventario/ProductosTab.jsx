@@ -79,6 +79,15 @@ const PRODUCTO_DB_INT32_MAX = 2147483647;
 // WHY: el usuario indico que Departamentos ya no se necesitara en Productos.
 // IMPACT: solo frontend de Productos; backend y otros modulos siguen intactos.
 const SHOW_PRODUCTO_DEPARTAMENTOS = false;
+const PRODUCTO_FILTER_SORT_LABELS = Object.freeze({
+  recientes: 'Mas recientes',
+  nombre_asc: 'Nombre A-Z',
+  nombre_desc: 'Nombre Z-A',
+  precio_desc: 'Precio mayor',
+  precio_asc: 'Precio menor',
+  stock_desc: 'Stock mayor',
+  stock_asc: 'Stock menor'
+});
 
 const ProductosTab = ({ categorias = [], openToast }) => {
   // NUEVO: toma contexto de sesion existente para segmentar historial KPI por usuario/empresa/sucursal.
@@ -228,6 +237,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // NUEVO: refs para desplazar viewport a paneles cuando el usuario abre Nuevo/Filtros.
   const filtersSectionRef = useRef(null);
   const createSectionRef = useRef(null);
+  const filtersBodyRef = useRef(null);
+  const createBodyRef = useRef(null);
+  const drawerBodyRef = useRef(null);
   const [carouselPageIndex, setCarouselPageIndex] = useState(0);
   const [carouselViewportWidth, setCarouselViewportWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
   const [kpiHistory, setKpiHistory] = useState([]);
@@ -1957,6 +1969,30 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     };
   }, [createErrors, createProductoModalOpen]);
 
+  useEffect(() => {
+    if (!filtersOpen || typeof window === 'undefined') return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      if (filtersBodyRef.current) filtersBodyRef.current.scrollTop = 0;
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [filtersOpen]);
+
+  useEffect(() => {
+    if (!createProductoModalOpen || typeof window === 'undefined') return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      if (createBodyRef.current) createBodyRef.current.scrollTop = 0;
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [createProductoModalOpen]);
+
+  useEffect(() => {
+    if (!drawerOpen || typeof window === 'undefined') return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      if (drawerBodyRef.current) drawerBodyRef.current.scrollTop = 0;
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [drawerOpen]);
+
   const resetFiltros = () => {
     setSearch('');
     setStockFiltro('todos');
@@ -2125,7 +2161,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className={`inv-prod-pmodal inv-prod-pmodal--filters ${filtersOpen ? 'show' : ''}`} aria-hidden={!filtersOpen}>
               <div className="inv-prod-pmodal__overlay" onClick={() => setFiltersOpen(false)} />
 
-              <div className="inv-prod-pmodal__viewport">
+              <div className="inv-prod-pmodal__viewport" onClick={() => setFiltersOpen(false)}>
                 <section
                   id="inv-prod-filters"
                   ref={filtersSectionRef}
@@ -2136,29 +2172,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   aria-describedby="inv-prod-filters-sub"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="inv-prod-pmodal__header">
-                    <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
-                    <div className="inv-prod-pmodal__header-copy">
-                      <div id="inv-prod-filters-title" className="inv-prod-drawer-title">Filtros de productos</div>
-                      <div id="inv-prod-filters-sub" className="inv-prod-drawer-sub">
-                        Stock, estado, categoria, almacen y orden
-                      </div>
-                    </div>
-                    {activeFiltersCount > 0 ? (
-                      <span className="inv-prod-pmodal__counter" aria-label={`${activeFiltersCount} filtros activos`}>
-                        {activeFiltersCount} activos
-                      </span>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="inv-prod-drawer-close"
-                      onClick={() => setFiltersOpen(false)}
-                      aria-label="Cerrar filtros"
-                    >
-                      <i className="bi bi-x-lg" />
-                    </button>
-                  </div>
-
                   <form
                     className="inv-prod-pmodal__form-shell"
                     onSubmit={(e) => {
@@ -2166,7 +2179,41 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       setFiltersOpen(false);
                     }}
                   >
-                    <div className="inv-prod-pmodal__body inv-prod-pmodal__body--filters">
+                    <div ref={filtersBodyRef} className="inv-prod-pmodal__body inv-prod-pmodal__body--filters">
+                      <div className="inv-ins-create-hero inv-ins-filter-hero">
+                        <button
+                          type="button"
+                          className="inv-prod-drawer-close inv-ins-create-hero__close"
+                          onClick={() => setFiltersOpen(false)}
+                          aria-label="Cerrar filtros"
+                        >
+                          <i className="bi bi-x-lg" />
+                        </button>
+                        <div className="inv-ins-create-hero__icon">
+                          <i className="bi bi-funnel" aria-hidden="true" />
+                        </div>
+                        <div className="inv-ins-create-hero__copy">
+                          <div id="inv-prod-filters-sub" className="inv-ins-create-hero__kicker">Vista De Filtros</div>
+                          <div id="inv-prod-filters-title" className="inv-ins-create-hero__title">
+                            Ajusta stock, categoria y orden del catalogo
+                          </div>
+                        </div>
+                        <div className="inv-ins-create-hero__chips">
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-sliders2" aria-hidden="true" />
+                            {activeFiltersCount > 0 ? `${activeFiltersCount} Activos` : 'Vista General'}
+                          </span>
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-tags" aria-hidden="true" />
+                            {categoriaFiltro !== 'todos' ? getCategoriaLabel(categoriaFiltro) : 'Todas Las Categorias'}
+                          </span>
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-arrow-down-up" aria-hidden="true" />
+                            {PRODUCTO_FILTER_SORT_LABELS[sortBy] || 'Mas recientes'}
+                          </span>
+                        </div>
+                      </div>
+
                       <div className="inv-prod-pmodal__sections inv-prod-pmodal__sections--filters">
                         <section className="inv-prod-pmodal__section">
                           <div className="inv-prod-pmodal__section-head">
@@ -2277,7 +2324,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className={`inv-prod-pmodal inv-prod-pmodal--create ${createProductoModalOpen ? 'show' : ''}`} aria-hidden={!createProductoModalOpen}>
               <div className="inv-prod-pmodal__overlay" onClick={closeCreateProductoModal} />
 
-              <div className="inv-prod-pmodal__viewport">
+              <div className="inv-prod-pmodal__viewport" onClick={closeCreateProductoModal}>
                 <section
                   id="inv-prod-create-panel"
                   ref={createSectionRef}
@@ -2288,28 +2335,38 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   aria-describedby="inv-prod-create-sub"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="inv-prod-pmodal__header">
-                    <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
-                    <div className="inv-prod-pmodal__header-copy">
-                      <div id="inv-prod-create-title" className="inv-prod-drawer-title">Nuevo producto</div>
-                      <div id="inv-prod-create-sub" className="inv-prod-drawer-sub">Registro de producto</div>
-                    </div>
-                    <button
-                      type="button"
-                      className="inv-prod-drawer-close"
-                      onClick={closeCreateProductoModal}
-                      aria-label="Cerrar nuevo producto"
-                    >
-                      <i className="bi bi-x-lg" />
-                    </button>
-                  </div>
-
                   <form onSubmit={onCrear} className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create">
-                    <div className="inv-prod-pmodal__body">
-                      <div className="inv-prod-section-head inv-prod-panel-head inv-prod-pmodal__lead">
-                        <div className="inv-prod-panel-eyebrow">Alta rápida</div>
-                        <div className="inv-prod-section-title">Registro de producto</div>
-                        <div className="inv-prod-section-sub">Completa los datos esenciales sin salir del catálogo</div>
+                    <div ref={createBodyRef} className="inv-prod-pmodal__body">
+                      <div className="inv-ins-create-hero is-create">
+                        <button
+                          type="button"
+                          className="inv-prod-drawer-close inv-ins-create-hero__close"
+                          onClick={closeCreateProductoModal}
+                          aria-label="Cerrar nuevo producto"
+                        >
+                          <i className="bi bi-x-lg" />
+                        </button>
+                        <div className="inv-ins-create-hero__icon">
+                          <i className="bi bi-stars" aria-hidden="true" />
+                        </div>
+                        <div className="inv-ins-create-hero__copy">
+                          <div id="inv-prod-create-sub" className="inv-ins-create-hero__kicker">Nuevo Registro</div>
+                          <div id="inv-prod-create-title" className="inv-ins-create-hero__title">Alta Rapida de Producto</div>
+                        </div>
+                        <div className="inv-ins-create-hero__chips">
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-cash-stack" aria-hidden="true" />
+                            {formatMoney(form?.precio || 0)}
+                          </span>
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-boxes" aria-hidden="true" />
+                            {String(form?.cantidad || '').trim() || '0'} En Inventario
+                          </span>
+                          <span className="inv-ins-create-hero__chip">
+                            <i className="bi bi-tags" aria-hidden="true" />
+                            {form?.id_categoria_producto ? getCategoriaLabel(form.id_categoria_producto) : 'Sin Categoria'}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="inv-prod-pmodal__sections">
@@ -3183,6 +3240,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       </div>
 
                       <div className="inv-prod-card-body">
+                        {/* NEW: icono decorativo centrado dentro del card de producto. */}
+                        {/* WHY: replicar el lenguaje visual premium aplicado en Insumos sin alterar el contenido operativo del card. */}
+                        {/* IMPACT: solo decoracion visual del card; no modifica acciones, datos ni eventos. */}
+                        <div className="inv-prod-card-bg-icon" aria-hidden="true">
+                          <i className="bi bi-box-seam" />
+                        </div>
+
                         <div className="inv-prod-card-name">{p?.nombre_producto || 'Producto sin nombre'}</div>
                         <div className="inv-prod-card-category">{getCategoriaLabel(p?.id_categoria_producto)}</div>
 
@@ -3224,7 +3288,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             title={`${cardIsActive ? 'Inactivar' : 'Activar'} producto`}
                             disabled={togglingEstado || deleting}
                           >
-                            <i className={`bi ${cardIsActive ? 'bi-trash' : 'bi-check-circle'}`} />
+                            <i className={`bi ${cardIsActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
                             <span className="inv-prod-card-action-label">{cardIsActive ? 'Inactivar' : 'Activar'}</span>
                           </button>
                         </div>
@@ -3676,24 +3740,52 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         {/* WHY: unificar overlay, blur y animacion lateral en todo Inventario sin tocar el contenido del formulario. */}
         {/* IMPACT: cambio solo visual del contenedor del drawer; la logica del detalle/edicion permanece igual. */}
         <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${drawerOpen ? 'show' : ''}`} onClick={cerrarDrawerProducto} />
-        <aside className={`inv-prod-drawer inv-cat-v2__drawer ${drawerOpen ? 'show' : ''}`} aria-hidden={!drawerOpen}>
+        <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer inv-ins-drawer--edit ${drawerOpen ? 'show' : ''}`} aria-hidden={!drawerOpen}>
           {selectedProducto ? (
             <>
-              <div className="inv-prod-drawer-head">
-                {/* NEW: watermark decorativo para igualar el header del drawer al patron visual de Categorias. */}
-                {/* WHY: mantener consistencia visual entre shells de drawers de Inventario. */}
-                {/* IMPACT: decorativo; no afecta foco ni controles. */}
-                <i className="bi bi-tags inv-cat-v2__drawer-mark" aria-hidden="true" />
-                <div>
-                  <div className="inv-prod-drawer-title">{editForm?.nombre_producto || selectedProducto?.nombre_producto || 'Producto'}</div>
-                  <div className="inv-prod-drawer-sub">{getCategoriaLabel(editForm?.id_categoria_producto ?? selectedProducto?.id_categoria_producto)}</div>
+              <div ref={drawerBodyRef} className="inv-prod-drawer-body inv-ins-drawer-body--edit">
+                <div className="inv-ins-create-hero is-edit">
+                  <button
+                    type="button"
+                    className="inv-prod-drawer-close inv-ins-create-hero__close"
+                    onClick={cerrarDrawerProducto}
+                    aria-label="Cerrar detalle"
+                  >
+                    <i className="bi bi-x-lg" />
+                  </button>
+                  <div className="inv-ins-create-hero__icon">
+                    <i className="bi bi-stars" aria-hidden="true" />
+                  </div>
+                  <div className="inv-ins-create-hero__copy">
+                    <div className="inv-ins-create-hero__kicker">Edicion Activa</div>
+                    <div className="inv-ins-create-hero__title">{editForm?.nombre_producto || selectedProducto?.nombre_producto || 'Producto'}</div>
+                  </div>
+                  <div className="inv-ins-create-hero__chips">
+                    <span className="inv-ins-create-hero__chip">
+                      <i className="bi bi-cash-stack" aria-hidden="true" />
+                      {formatMoney(editForm?.precio ?? selectedProducto?.precio ?? 0)}
+                    </span>
+                    <span className="inv-ins-create-hero__chip">
+                      <i className="bi bi-box-seam" aria-hidden="true" />
+                      {getStockMeta(
+                        editForm?.cantidad ?? selectedProducto?.cantidad,
+                        editForm?.stock_minimo ?? selectedProducto?.stock_minimo
+                      ).label}
+                    </span>
+                    <span className="inv-ins-create-hero__chip">
+                      <i className="bi bi-tags" aria-hidden="true" />
+                      {getCategoriaLabel(editForm?.id_categoria_producto ?? selectedProducto?.id_categoria_producto)}
+                    </span>
+                  </div>
                 </div>
-                <button type="button" className="inv-prod-drawer-close" onClick={cerrarDrawerProducto} aria-label="Cerrar detalle">
-                  <i className="bi bi-x-lg" />
-                </button>
-              </div>
 
-              <div className="inv-prod-drawer-body">
+                <div className="inv-ins-drawer-hero is-edit">
+                  <div className="inv-ins-drawer-hero__price">{formatMoney(editForm?.precio ?? selectedProducto?.precio ?? 0)}</div>
+                  <span className={`inv-prod-drawer-status-pill ${drawerEstadoActivo ? 'is-active' : 'is-inactive'}`}>
+                    {drawerEstadoActivo ? 'Activo' : 'Inactivo'}
+                  </span>
+                </div>
+
                 <div className="inv-prod-drawer-hero">
                   <div className={`inv-prod-drawer-image ${drawerImageSrc ? '' : 'placeholder'}`}>
                     {drawerImageSrc ? (
@@ -3917,7 +4009,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 </div>
                 </div>
 
-                <div className="inv-prod-drawer-actions inv-prod-drawer-actions--edit">
+                <div className="inv-prod-drawer-actions inv-prod-drawer-actions--edit inv-ins-drawer-footer">
                   <button type="button" className="btn inv-prod-btn-subtle" onClick={duplicarProductoDesdeDrawer} disabled={togglingEstado}>Duplicar</button>
                   <button
                     type="button"
@@ -4142,52 +4234,63 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             MODAL CONFIRMAR ELIMINAR
             ============================== */}
         {confirmModal.show && (
-          <div
-            className="modal fade show inv-prod-modal-backdrop inv-prod-modal-backdrop-danger"
-            style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2600 }}
-            role="dialog"
-            aria-modal="true"
-            onClick={closeConfirmDelete}
-          >
-            <div className="modal-dialog modal-dialog-centered inv-prod-modal-dialog" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-content shadow inv-prod-modal-content inv-prod-delete-modal">
-                <div className="modal-header d-flex align-items-center justify-content-between inv-prod-modal-header danger">
-                  <div className="d-flex align-items-start gap-2">
+          <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
+            <div className="inv-pro-confirm-panel inv-pro-confirm-panel--danger" onClick={(e) => e.stopPropagation()}>
+              <div className="inv-pro-confirm-glow" aria-hidden="true" />
+
+              <div className="inv-pro-confirm-head">
+                <div className="inv-pro-confirm-head-main">
+                  <div className="inv-pro-confirm-head-icon">
                     <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
-                    <div>
-                      <div className="fw-semibold">{INACTIVATE_CONFIRM_COPY.title}</div>
-                      <div className="small text-muted">{INACTIVATE_CONFIRM_COPY.subtitle}</div>
-                    </div>
                   </div>
-                  <button type="button" className="btn btn-sm btn-light inv-prod-modal-close" onClick={closeConfirmDelete}>
-                    <i className="bi bi-x-lg" />
-                  </button>
+                  <div className="inv-pro-confirm-head-copy">
+                    {/* NEW: etiqueta de contexto para que el modal deje claro el módulo afectado. */}
+                    {/* WHY: reforzar orientación visual sin cambiar los textos de confirmación ya unificados. */}
+                    {/* IMPACT: solo mejora jerarquía del encabezado del modal. */}
+                    <div className="inv-pro-confirm-kicker">Productos</div>
+                    <div className="inv-pro-confirm-title">{INACTIVATE_CONFIRM_COPY.title}</div>
+                    <div className="inv-pro-confirm-sub">{INACTIVATE_CONFIRM_COPY.subtitle}</div>
+                  </div>
+                </div>
+                <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar" disabled={deleting}>
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+
+              <div className="inv-pro-confirm-body">
+                {/* NEW: aviso breve con tono operativo para explicar el resultado de la acción. */}
+                {/* WHY: el usuario pidió un modal más profesional; este bloque aporta claridad sin recargar el contenido. */}
+                {/* IMPACT: solo agrega contexto visual al confirmar la inactivación. */}
+                <div className="inv-pro-confirm-note">
+                  <i className="bi bi-shield-exclamation" aria-hidden="true" />
+                  <span>El producto pasará a la vista de inactivos y podrá activarse nuevamente después.</span>
                 </div>
 
-                <div className="modal-body inv-prod-modal-body">
-                  <div className="mb-2">
-                    {INACTIVATE_CONFIRM_COPY.question}
-                  </div>
-                  <div className="text-muted small inv-prod-delete-name">
+                <div className="inv-pro-confirm-question">{INACTIVATE_CONFIRM_COPY.question}</div>
+
+                <div className="inv-pro-confirm-name">
+                  <div className="inv-pro-confirm-name-label">Registro seleccionado</div>
+                  <div className="inv-pro-confirm-name-value">
                     <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
-                    <span className="fw-semibold">{confirmModal.nombre || INACTIVATE_CONFIRM_COPY.fallbackName}</span>
+                    <span>{confirmModal.nombre || INACTIVATE_CONFIRM_COPY.fallbackName}</span>
                   </div>
-                  {confirmDeleteError ? (
-                    <div className="alert alert-danger py-2 px-3 mt-3 mb-0" role="alert">
-                      {confirmDeleteError}
-                    </div>
-                  ) : null}
                 </div>
 
-                <div className="modal-footer d-flex gap-2 inv-prod-modal-footer">
-                  <button className="btn btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={closeConfirmDelete} disabled={deleting}>
-                    Cancelar
-                  </button>
-                  <button className="btn inv-prod-btn-inactivate" type="button" onClick={eliminarConfirmado} disabled={deleting}>
-                    <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
-                    <span>{deleting ? 'Inactivando...' : 'Inactivar'}</span>
-                  </button>
-                </div>
+                {confirmDeleteError ? (
+                  <div className="alert alert-danger inv-pro-confirm-error mb-0" role="alert">
+                    {confirmDeleteError}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="inv-pro-confirm-footer">
+                <button className="btn inv-pro-btn-cancel" type="button" onClick={closeConfirmDelete} disabled={deleting}>
+                  Cancelar
+                </button>
+                <button className="btn inv-pro-btn-danger" type="button" onClick={eliminarConfirmado} disabled={deleting}>
+                  <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
+                  <span>{deleting ? 'Inactivando...' : 'Inactivar'}</span>
+                </button>
               </div>
             </div>
           </div>

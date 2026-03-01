@@ -400,20 +400,18 @@
   }
 }
 
-// NEW: shell modal local de Productos (Filtros/Nuevo) renderizado en portal con overlay glass centrado.
-// WHY: evitar recortes por `overflow` del card y reemplazar el drawer lateral por modal bottom-up.
-// IMPACT: aplica solo a clases `inv-prod-pmodal*`; no modifica el drawer de detalle ni otros modales.
+// NEW: shell portal de Productos ajustado como drawer lateral derecho, igual al patron de Insumos.
+// WHY: el usuario pidio que Nuevo/Filtros usen salida lateral desde la derecha en lugar de modal centrado.
+// IMPACT: solo cambia el contenedor visual `inv-prod-pmodal*`; handlers y contenido permanecen iguales.
 .inv-prod-pmodal {
   position: fixed;
   inset: 0;
   z-index: 2480;
   pointer-events: none;
-  visibility: hidden;
 }
 
 .inv-prod-pmodal.show {
   pointer-events: auto;
-  visibility: visible;
 }
 
 .inv-prod-pmodal__overlay {
@@ -435,50 +433,49 @@
   z-index: 1;
   height: 100vh;
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: clamp(12px, 2.6vw, 24px);
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
 }
 
 .inv-prod-pmodal--filters .inv-prod-pmodal__viewport {
-  // NEW: scroll exterior para filtros (overlay/viewport), evitando scroll interno del modal.
-  // WHY: cumplir UX de filtros "directo" y conservar accesibilidad cuando el viewport es bajo.
-  // IMPACT: solo modal de filtros; el modal de Nuevo mantiene scroll interno.
-  place-items: start center;
-  overflow-y: auto;
+  justify-content: flex-end;
+  align-items: stretch;
 }
 
 .inv-prod-pmodal__panel {
   position: relative;
-  width: min(96vw, 1100px);
-  max-height: min(90vh, 980px);
+  width: min(460px, 90vw);
+  max-height: none;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 0;
   background: rgba(255, 255, 255, 0.62);
-  box-shadow:
-    0 24px 42px rgba(var(--c-shadow-rgb), 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.36);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  box-shadow: -14px 0 28px rgba(var(--c-shadow-rgb), 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transform-origin: right center;
   overflow: hidden;
   opacity: 0;
-  transform: translate3d(0, 24px, 0) scale(0.98);
+  transform: translate3d(110%, 0, 0) scale(0.992);
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
 .inv-prod-pmodal.show .inv-prod-pmodal__panel {
-  opacity: 1;
   transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
 }
 
 .inv-prod-pmodal__panel--filters {
-  width: clamp(760px, 70vw, 1100px);
+  width: min(460px, 90vw);
 }
 
 .inv-prod-pmodal__panel--create {
-  width: clamp(860px, 75vw, 1200px);
+  width: min(460px, 90vw);
 }
 
 .inv-prod-pmodal__header {
@@ -524,6 +521,126 @@
   white-space: nowrap;
 }
 
+.inv-prod-modal-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px 16px;
+  padding: 1.08rem 1.1rem 1rem;
+  border-radius: 24px;
+  border: 1px solid rgba(208, 168, 117, 0.22);
+  background: linear-gradient(145deg, rgba(255, 250, 246, 0.98), rgba(245, 239, 229, 0.9));
+  box-shadow:
+    0 18px 34px rgba(var(--c-shadow-rgb), 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  overflow: hidden;
+}
+
+.inv-prod-modal-hero::after {
+  content: '';
+  position: absolute;
+  right: -42px;
+  top: -34px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 205, 167, 0.34), rgba(232, 205, 167, 0));
+  pointer-events: none;
+}
+
+.inv-prod-modal-hero--filters {
+  background: linear-gradient(145deg, rgba(255, 250, 246, 0.98), rgba(244, 236, 226, 0.92));
+}
+
+.inv-prod-modal-hero--create {
+  background: linear-gradient(145deg, rgba(254, 248, 243, 0.98), rgba(244, 236, 220, 0.94));
+}
+
+.inv-prod-modal-hero__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+}
+
+.inv-prod-modal-hero__icon {
+  position: relative;
+  z-index: 1;
+  width: 88px;
+  height: 88px;
+  border-radius: 28px;
+  display: grid;
+  place-items: center;
+  color: #fff7f3;
+  background: linear-gradient(160deg, #942b2d, #c96d3a);
+  box-shadow: 0 18px 28px rgba(148, 43, 45, 0.18);
+}
+
+.inv-prod-modal-hero__icon i {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.inv-prod-modal-hero__copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding-right: 44px;
+}
+
+.inv-prod-modal-hero__kicker {
+  color: rgba(138, 52, 54, 0.9);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.26em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.inv-prod-modal-hero__title {
+  color: #17080a;
+  font-size: clamp(1.36rem, 2vw, 2rem);
+  font-weight: 900;
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+  max-width: 16ch;
+}
+
+.inv-prod-modal-hero__chips {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inv-prod-modal-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0.52rem 0.94rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.76);
+  color: #6a4338;
+  box-shadow:
+    0 10px 18px rgba(var(--c-shadow-rgb), 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.inv-prod-modal-hero__chip i {
+  color: rgba(106, 67, 56, 0.74);
+  font-size: 0.92rem;
+}
+
 .inv-prod-pmodal__form-shell {
   min-height: 0;
   display: flex;
@@ -533,25 +650,13 @@
 
 .inv-prod-pmodal__body {
   min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding: 0.9rem;
   display: grid;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.inv-prod-pmodal--filters .inv-prod-pmodal__panel {
-  max-height: none;
-  margin-block: auto;
-}
-
-.inv-prod-pmodal--filters .inv-prod-pmodal__body,
-.inv-prod-pmodal__body--filters {
-  overflow: visible;
-}
-
-.inv-prod-pmodal--filters .inv-prod-pmodal__body {
-  padding-top: 0.75rem;
+  gap: 0.95rem;
+  align-content: start;
+  background: transparent;
 }
 
 .inv-prod-pmodal__lead {
@@ -560,38 +665,21 @@
 
 .inv-prod-pmodal__sections {
   display: grid;
-  gap: 10px;
+  gap: 0.95rem;
 }
 
 .inv-prod-pmodal__sections--filters {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.inv-prod-pmodal__sections--filters .inv-prod-pmodal__section:last-child {
-  grid-column: 1 / -1;
-}
-
-.inv-prod-pmodal--filters .inv-prod-pmodal__sections--filters {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.inv-prod-pmodal--filters .inv-prod-pmodal__sections--filters .inv-prod-pmodal__section:last-child {
-  grid-column: auto;
+  grid-template-columns: 1fr;
 }
 
 .inv-prod-pmodal__section {
   display: grid;
   gap: 10px;
-  padding: 0.8rem;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
-}
-
-.inv-prod-pmodal--filters .inv-prod-pmodal__section {
-  padding: 0.72rem;
-  gap: 8px;
+  padding: 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .inv-prod-pmodal__section-head {
@@ -635,29 +723,38 @@
 .inv-prod-pmodal__footer {
   position: sticky;
   bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
-  padding: 0.8rem 0.9rem 0.9rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.34);
-  backdrop-filter: blur(10px) saturate(135%);
-  -webkit-backdrop-filter: blur(10px) saturate(135%);
+  padding: 0.9rem;
+  border-top: 1px solid rgba(237, 235, 179, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(251, 250, 243, 0.98));
 }
 
 .inv-prod-pmodal--filters .inv-prod-pmodal__footer {
-  position: static;
-  padding-top: 0.72rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .inv-prod-pmodal__footer .btn {
-  min-height: 40px;
+  min-height: 36px;
+  width: 100%;
 }
 
 .inv-prod-pmodal__footer--create .inv-prod-btn-primary {
-  min-width: 136px;
+  min-width: 0;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-create-form,
+.inv-prod-pmodal__panel--filters .inv-prod-filters-grid {
+  margin-top: 0;
+}
+
+.inv-prod-pmodal__panel--create .inv-prod-create-form > [class*='col-'],
+.inv-prod-pmodal__panel--filters .inv-prod-filters-grid > [class*='col-'] {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -681,53 +778,18 @@
 @media (max-width: 991.98px) {
   .inv-prod-pmodal__panel--filters,
   .inv-prod-pmodal__panel--create {
-    width: min(96vw, 980px);
-  }
-
-  .inv-prod-pmodal__sections--filters {
-    grid-template-columns: 1fr;
-  }
-
-  .inv-prod-pmodal__sections--filters .inv-prod-pmodal__section:last-child {
-    grid-column: auto;
-  }
-
-  .inv-prod-pmodal--filters .inv-prod-pmodal__sections--filters {
-    grid-template-columns: 1fr;
+    width: min(460px, 90vw);
   }
 }
 
 @media (max-width: 767.98px) {
   .inv-prod-pmodal__viewport {
-    padding: 10px;
+    padding: 0;
   }
 
   .inv-prod-pmodal__panel {
-    width: 96vw;
-    max-height: 90vh;
-    border-radius: 16px;
-  }
-
-  .inv-prod-pmodal__header {
-    padding: 0.78rem 0.8rem;
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .inv-prod-pmodal__header .inv-cat-v2__drawer-mark {
-    right: 54px;
-    top: 8px;
-    font-size: 1.8rem;
-  }
-
-  .inv-prod-pmodal__counter {
-    order: 3;
-    margin-right: auto;
-  }
-
-  .inv-prod-pmodal__footer {
-    justify-content: stretch;
-    padding: 0.75rem 0.8rem 0.8rem;
+    width: 100%;
+    max-width: none;
   }
 
   .inv-prod-pmodal__footer .btn {
@@ -1876,6 +1938,51 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  // NEW: contexto relativo para el icono decorativo centrado del card.
+  // WHY: el usuario pidio un icono de producto en medio del card como en Insumos.
+  // IMPACT: solo agrega una capa visual de fondo; contenido y eventos siguen igual.
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+// NEW: mantiene el contenido util por encima del icono decorativo.
+// WHY: evitar que el acento visual tape nombre, metricas o CTA del card.
+// IMPACT: solo cambia el stacking visual interno del body del card.
+.inv-prod-card-body > *:not(.inv-prod-card-bg-icon) {
+  position: relative;
+  z-index: 1;
+}
+
+// NEW: acento visual centrado para reforzar la identidad de Productos sin recargar el card.
+// WHY: replicar el patron decorativo de Insumos con una version mas sobria compatible con cards que sí tienen thumbnail.
+// IMPACT: solo decoracion; no altera layout funcional, handlers ni responsive.
+.inv-prod-card-bg-icon {
+  position: absolute;
+  top: 51%;
+  left: 50%;
+  width: 126px;
+  height: 126px;
+  border-radius: 34px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 0;
+  color: rgba(122, 30, 36, 0.055);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.44), rgba(157, 150, 112, 0.05) 58%, rgba(157, 150, 112, 0.014) 100%);
+  transform: translate(-50%, -50%) scale(0.94) rotate(8deg);
+  transition: transform 220ms ease, color 220ms ease, background 220ms ease;
+}
+
+.inv-prod-card-bg-icon i {
+  font-size: 3.1rem;
+}
+
+.inv-prod-catalog-card:hover .inv-prod-card-bg-icon,
+.inv-prod-catalog-card:focus-visible .inv-prod-card-bg-icon {
+  transform: translate(-50%, -50%) scale(1.12) rotate(4deg);
+  color: rgba(122, 30, 36, 0.095);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.54), rgba(197, 111, 67, 0.05) 58%, rgba(157, 150, 112, 0.018) 100%);
 }
 
 .inv-prod-card-name {
@@ -2025,11 +2132,14 @@
   white-space: nowrap;
   gap: 0;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
   transition: padding 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
 }
 
 .inv-prod-card-action i {
   font-size: 0.84rem;
+  transition: transform 180ms ease;
 }
 
 .inv-prod-card-action-compact {
@@ -2072,6 +2182,18 @@
   background: rgba(197, 111, 67, 0.06) !important;
 }
 
+// NEW: velo animado para dar feedback fino al CTA de inactivar.
+// WHY: el usuario pidio que el boton de inactivar tenga una animacion clara al pasar el mouse.
+// IMPACT: solo afecta el hover/focus del CTA de inactivar dentro del card de Productos.
+.inv-prod-card-action.inactivate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.48) 42%, transparent 74%);
+  transform: translateX(-135%);
+  transition: transform 260ms ease;
+}
+
 .inv-prod-card-action:hover {
   background: rgba(255, 255, 255, 0.78) !important;
   border-color: rgba(178, 45, 48, 0.5) !important;
@@ -2081,6 +2203,17 @@
 .inv-prod-card-action.inactivate:hover {
   border-color: rgba(197, 111, 67, 0.48) !important;
   background: rgba(197, 111, 67, 0.12) !important;
+  transform: translateY(-1px) !important;
+}
+
+.inv-prod-card-action.inactivate:hover::after,
+.inv-prod-card-action.inactivate:focus-visible::after {
+  transform: translateX(135%);
+}
+
+.inv-prod-card-action.inactivate:hover i,
+.inv-prod-card-action.inactivate:focus-visible i {
+  transform: scale(1.14) rotate(-8deg);
 }
 
 .inv-prod-card-action:focus-visible {
@@ -2176,10 +2309,159 @@
   gap: 10px;
 }
 
+@media (max-width: 520px) {
+  .inv-prod-pmodal__footer,
+  .inv-prod-pmodal--filters .inv-prod-pmodal__footer {
+    grid-template-columns: 1fr;
+  }
+}
+
+.inv-prod-edit-hero {
+  position: relative;
+  display: grid;
+  gap: 12px 14px;
+  padding: 1.02rem;
+  border-radius: 24px;
+  border: 1px solid rgba(208, 168, 117, 0.22);
+  background: linear-gradient(145deg, rgba(255, 250, 246, 0.98), rgba(244, 236, 226, 0.92));
+  box-shadow:
+    0 16px 30px rgba(var(--c-shadow-rgb), 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  overflow: hidden;
+}
+
+.inv-prod-edit-hero::after {
+  content: '';
+  position: absolute;
+  right: -54px;
+  top: -44px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 205, 167, 0.34), rgba(232, 205, 167, 0));
+  pointer-events: none;
+}
+
+.inv-prod-edit-hero__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+}
+
+.inv-prod-edit-hero__icon {
+  position: relative;
+  z-index: 1;
+  width: 76px;
+  height: 76px;
+  border-radius: 24px;
+  display: grid;
+  place-items: center;
+  color: #fff7f3;
+  background: linear-gradient(160deg, #8f2428, #c06e42);
+  box-shadow: 0 16px 24px rgba(143, 36, 40, 0.18);
+}
+
+.inv-prod-edit-hero__icon i {
+  font-size: 1.74rem;
+  line-height: 1;
+}
+
+.inv-prod-edit-hero__copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-right: 40px;
+}
+
+.inv-prod-edit-hero__kicker {
+  color: rgba(138, 52, 54, 0.9);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.inv-prod-edit-hero__title {
+  color: #17080a;
+  font-size: 1.5rem;
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  max-width: 14ch;
+}
+
+.inv-prod-edit-hero__text {
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.inv-prod-edit-hero__chips {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.inv-prod-edit-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0.48rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.76);
+  color: #6a4338;
+  box-shadow:
+    0 10px 18px rgba(var(--c-shadow-rgb), 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.inv-prod-edit-hero__chip i {
+  color: rgba(106, 67, 56, 0.74);
+  font-size: 0.9rem;
+}
+
+.inv-prod-edit-hero__chip.is-active {
+  border-color: rgba(45, 107, 102, 0.3);
+  color: #2d6b66;
+  background: rgba(239, 250, 248, 0.84);
+}
+
+.inv-prod-edit-hero__chip.is-active i {
+  color: rgba(45, 107, 102, 0.74);
+}
+
+.inv-prod-edit-hero__chip.is-inactive {
+  border-color: rgba(178, 45, 48, 0.24);
+  color: #8e2528;
+  background: rgba(253, 242, 242, 0.9);
+}
+
+.inv-prod-edit-hero__chip.is-inactive i {
+  color: rgba(178, 45, 48, 0.72);
+}
+
 .inv-prod-drawer-hero {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-columns: 92px minmax(0, 1fr);
   gap: 10px;
+  padding: 0.9rem;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 208, 168, 0.38);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(247, 242, 233, 0.88));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  align-items: start;
 }
 
 .inv-prod-drawer-meta {
@@ -2527,6 +2809,40 @@
     width: 100%;
     max-width: none;
   }
+
+  .inv-prod-modal-hero,
+  .inv-prod-edit-hero {
+    border-radius: 20px;
+    padding: 0.92rem;
+  }
+
+  .inv-prod-modal-hero__icon,
+  .inv-prod-edit-hero__icon {
+    width: 70px;
+    height: 70px;
+    border-radius: 22px;
+  }
+
+  .inv-prod-modal-hero__icon i,
+  .inv-prod-edit-hero__icon i {
+    font-size: 1.56rem;
+  }
+
+  .inv-prod-modal-hero__copy,
+  .inv-prod-edit-hero__copy {
+    padding-right: 40px;
+  }
+
+  .inv-prod-modal-hero__title,
+  .inv-prod-edit-hero__title {
+    max-width: none;
+    font-size: 1.28rem;
+  }
+
+  .inv-prod-drawer-hero {
+    grid-template-columns: 78px minmax(0, 1fr);
+    padding: 0.82rem;
+  }
 }
 
 @media (max-width: 1279.98px) {
@@ -2553,6 +2869,36 @@
   .inv-prod-catalog-carousel {
     grid-auto-columns: 82vw;
     gap: 10px;
+  }
+
+  .inv-prod-modal-hero,
+  .inv-prod-edit-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-prod-modal-hero__copy,
+  .inv-prod-edit-hero__copy {
+    padding-right: 0;
+  }
+
+  .inv-prod-modal-hero__chips,
+  .inv-prod-edit-hero__chips {
+    gap: 8px;
+  }
+
+  .inv-prod-modal-hero__chip,
+  .inv-prod-edit-hero__chip {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .inv-prod-drawer-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-prod-drawer-image {
+    width: 92px;
+    height: 92px;
   }
 
   .inv-prod-drawer-grid {
