@@ -24,6 +24,17 @@ const Inventario = () => {
   const [categorias, setCategorias] = useState([]);
   const [loadingCategorias, setLoadingCategorias] = useState(true);
   const [errorCategorias, setErrorCategorias] = useState('');
+  // NEW: controla si el tab de Categorias debe incluir registros inactivos en el GET.
+  // WHY: el backend ahora filtra activos por defecto y el tab admin necesita un toggle explicito.
+  // IMPACT: solo afecta la carga de CategoriasTab; contratos/endpoints se mantienen.
+  const [categoriasIncludeInactive, setCategoriasIncludeInactive] = useState(false);
+  // NEW: estado del catálogo de categorías de insumos para la vista unificada de Categorías e integración en Insumos.
+  // WHY: cargar ambos catálogos en Inventario y compartirlos sin refetches innecesarios entre submódulos.
+  // IMPACT: solo agrega estado local y rutas de carga para `/categorias_insumos`.
+  const [categoriasInsumos, setCategoriasInsumos] = useState([]);
+  const [loadingCategoriasInsumos, setLoadingCategoriasInsumos] = useState(true);
+  const [errorCategoriasInsumos, setErrorCategoriasInsumos] = useState('');
+  const [categoriasInsumosIncludeInactive, setCategoriasInsumosIncludeInactive] = useState(false);
 
   const [toast, setToast] = useState({
     show: false,
@@ -38,13 +49,19 @@ const Inventario = () => {
     return () => clearTimeout(t);
   }, [toast.show]);
 
-  const openToast = (title, message, variant = 'success') => {
+  // NEW: callbacks estables para evitar que los submodulos de Inventario vuelvan a disparar efectos por cada render del padre.
+  // WHY: `InsumosTab` y otros tabs memoizan helpers sobre `openToast`; si cambia de referencia al mostrar/ocultar el toast, sus efectos de carga pueden re-ejecutarse.
+  // IMPACT: se elimina el refetch visual inducido por el toast sin alterar el comportamiento ni el contenido de las notificaciones.
+  const openToast = useCallback((title, message, variant = 'success') => {
     setToast({ show: true, title, message, variant });
-  };
+  }, []);
 
-  const closeToast = () => {
+  // NEW: cierre estable del toast para no propagar renders evitables hacia los submodulos.
+  // WHY: mantener las props de notificacion con referencias consistentes durante todo el ciclo del componente.
+  // IMPACT: el toast se sigue cerrando igual, pero ya no fuerza cargas derivadas por cambio de callback.
+  const closeToast = useCallback(() => {
     setToast((s) => ({ ...s, show: false }));
-  };
+  }, []);
 
   const toastIconClass = (variant) => {
     if (variant === 'danger') return 'bi bi-x-octagon-fill';
@@ -53,11 +70,21 @@ const Inventario = () => {
     return 'bi bi-check2-circle';
   };
 
-  const cargarCategorias = useCallback(async () => {
+  const cargarCategorias = useCallback(async (options = {}) => {
+    const incluirInactivos =
+      typeof options?.incluirInactivos === 'boolean'
+        ? options.incluirInactivos
+        : categoriasIncludeInactive;
+    // NEW: persiste la preferencia local del toggle de "Mostrar inactivos" para recargas posteriores.
+    // WHY: reusar `reloadCategorias()` existente desde el tab sin perder el estado del filtro admin.
+    // IMPACT: llamadas existentes sin argumentos siguen funcionando.
+    if (typeof options?.incluirInactivos === 'boolean') {
+      setCategoriasIncludeInactive(options.incluirInactivos);
+    }
     setLoadingCategorias(true);
     setErrorCategorias('');
     try {
-      const data = await inventarioService.getCategorias();
+      const data = await inventarioService.getCategorias({ incluirInactivos });
       setCategorias(Array.isArray(data) ? data : []);
     } catch (e) {
       const msg = e?.message || 'ERROR CARGANDO CATEGORIAS';
@@ -66,11 +93,41 @@ const Inventario = () => {
     } finally {
       setLoadingCategorias(false);
     }
-  }, []);
+  }, [categoriasIncludeInactive]);
+
+  const cargarCategoriasInsumos = useCallback(async (options = {}) => {
+    const incluirInactivos =
+      typeof options?.incluirInactivos === 'boolean'
+        ? options.incluirInactivos
+        : categoriasInsumosIncludeInactive;
+    // NEW: persiste la preferencia del toggle de categorías de insumos para recargas posteriores.
+    // WHY: reutilizar `reloadCategoriasInsumos()` desde el panel unificado sin perder el estado del filtro admin.
+    // IMPACT: llamadas existentes sin argumentos siguen funcionando (solo aplica al nuevo catálogo).
+    if (typeof options?.incluirInactivos === 'boolean') {
+      setCategoriasInsumosIncludeInactive(options.incluirInactivos);
+    }
+    setLoadingCategoriasInsumos(true);
+    setErrorCategoriasInsumos('');
+    try {
+      const data = await inventarioService.getCategoriasInsumos({ incluirInactivos });
+      setCategoriasInsumos(Array.isArray(data) ? data : []);
+    } catch (e) {
+      const msg = e?.message || 'ERROR CARGANDO CATEGORIAS DE INSUMOS';
+      setErrorCategoriasInsumos(msg);
+      openToast('ERROR', msg, 'danger');
+    } finally {
+      setLoadingCategoriasInsumos(false);
+    }
+  }, [categoriasInsumosIncludeInactive]);
 
   useEffect(() => {
     cargarCategorias();
-  }, [cargarCategorias]);
+    cargarCategoriasInsumos();
+    // NEW: mount-only para evitar doble fetch cuando cambia la preferencia y se recarga manualmente desde el tab.
+    // WHY: `cargarCategorias` depende de `categoriasIncludeInactive`.
+    // IMPACT: la carga inicial se mantiene; recargas posteriores siguen entrando por `reloadCategorias`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // NEW: patch local de categorias en el estado compartido del modulo Inventario.
   // WHY: permitir que CategoriasTab actualice una sola categoria (edit/estado) sin refetch global visible.
@@ -81,6 +138,19 @@ const Inventario = () => {
     setCategorias((prev) =>
       (Array.isArray(prev) ? prev : []).map((item) =>
         Number(item?.id_categoria_producto ?? 0) === idNum ? { ...item, ...patch } : item
+      )
+    );
+  }, []);
+
+  // NEW: patch local del catálogo de categorías de insumos compartido en Inventario.
+  // WHY: reflejar ediciones/cambios de estado desde el panel unificado sin recargar globalmente.
+  // IMPACT: solo sincroniza `categoriasInsumos` en memoria; no cambia contratos de API.
+  const patchCategoriaInsumoLocal = useCallback((idCategoria, patch) => {
+    const idNum = Number(idCategoria ?? 0);
+    if (!idNum || !patch || typeof patch !== 'object') return;
+    setCategoriasInsumos((prev) =>
+      (Array.isArray(prev) ? prev : []).map((item) =>
+        Number(item?.id_categoria_insumo ?? 0) === idNum ? { ...item, ...patch } : item
       )
     );
   }, []);
@@ -96,12 +166,22 @@ const Inventario = () => {
           error={errorCategorias}
           setError={setErrorCategorias}
           reloadCategorias={cargarCategorias}
+          includeInactive={categoriasIncludeInactive}
+          onIncludeInactiveChange={setCategoriasIncludeInactive}
           onCategoriaPatched={patchCategoriaLocal}
+          categoriasInsumos={categoriasInsumos}
+          loadingCategoriasInsumos={loadingCategoriasInsumos}
+          errorCategoriasInsumos={errorCategoriasInsumos}
+          setErrorCategoriasInsumos={setErrorCategoriasInsumos}
+          reloadCategoriasInsumos={cargarCategoriasInsumos}
+          includeInactiveCategoriasInsumos={categoriasInsumosIncludeInactive}
+          onIncludeInactiveCategoriasInsumosChange={setCategoriasInsumosIncludeInactive}
+          onCategoriaInsumoPatched={patchCategoriaInsumoLocal}
           openToast={openToast}
         />
       )}
 
-      {activeTab === 'insumos' && <InsumosTab categorias={categorias} openToast={openToast} />}
+      {activeTab === 'insumos' && <InsumosTab categorias={categorias} categoriasInsumos={categoriasInsumos} openToast={openToast} />}
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
       {activeTab === 'movimientos' && <MovimientosTab openToast={openToast} />}
