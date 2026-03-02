@@ -18,9 +18,137 @@ const emptyForm = {
 };
 
 const createInitialFiltersDraft = () => ({
-  estadoFiltro: "todos",
+  generoFiltro: "todos",
   sortBy: "recientes",
 });
+
+const GLOBAL_KPI_PAGE_SIZE = 200;
+const MAX_GLOBAL_KPI_PAGES = 200;
+const EMAIL_WITH_DOMAIN_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+};
+
+const pickFirstNumber = (...values) => {
+  for (const value of values) {
+    const num = toNumberOrNull(value);
+    if (num !== null) return num;
+  }
+  return null;
+};
+
+const pickFirstObject = (...values) => {
+  for (const value of values) {
+    if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  }
+  return null;
+};
+
+const getResponseTotal = (resp) =>
+  pickFirstNumber(
+    resp?.total,
+    resp?.totalItems,
+    resp?.count,
+    resp?.total_count,
+    resp?.meta?.total,
+    resp?.meta?.totalItems,
+    resp?.meta?.count,
+    resp?.pagination?.total,
+    resp?.pagination?.totalItems,
+    resp?.pagination?.count
+  );
+
+const extractGlobalStatsFromResponse = (resp) => {
+  if (!resp || Array.isArray(resp) || typeof resp !== "object") return null;
+
+  const statsSource = pickFirstObject(
+    resp?.stats,
+    resp?.totals,
+    resp?.meta?.stats,
+    resp?.meta?.totals,
+    resp?.pagination?.stats,
+    resp?.pagination?.totals
+  );
+
+  if (!statsSource) return null;
+
+  const total = pickFirstNumber(
+    statsSource?.total,
+    statsSource?.total_personas,
+    statsSource?.totalPersonas,
+    statsSource?.personas_total,
+    getResponseTotal(resp)
+  );
+
+  const femenino = pickFirstNumber(
+    statsSource?.femenino,
+    statsSource?.female,
+    statsSource?.females,
+    statsSource?.totalFemale,
+    statsSource?.total_female,
+    statsSource?.total_femenino,
+    statsSource?.genero_femenino,
+    statsSource?.mujeres
+  );
+
+  const masculino = pickFirstNumber(
+    statsSource?.masculino,
+    statsSource?.male,
+    statsSource?.males,
+    statsSource?.totalMale,
+    statsSource?.total_male,
+    statsSource?.total_masculino,
+    statsSource?.genero_masculino,
+    statsSource?.hombres
+  );
+
+  const activas = pickFirstNumber(
+    statsSource?.activas,
+    statsSource?.active,
+    statsSource?.activos,
+    statsSource?.totalActivas,
+    statsSource?.total_activas
+  );
+
+  const inactivas = pickFirstNumber(
+    statsSource?.inactivas,
+    statsSource?.inactive,
+    statsSource?.inactivos,
+    statsSource?.totalInactivas,
+    statsSource?.total_inactivas
+  );
+
+  if (total === null && femenino === null && masculino === null && activas === null && inactivas === null) {
+    return null;
+  }
+
+  const resolvedTotal = Math.max(0, total ?? (femenino ?? 0) + (masculino ?? 0));
+  const resolvedActivas = Math.max(
+    0,
+    Math.min(
+      resolvedTotal,
+      activas ?? (inactivas !== null ? Math.max(0, resolvedTotal - inactivas) : 0)
+    )
+  );
+  const resolvedInactivas = Math.max(
+    0,
+    Math.min(
+      resolvedTotal,
+      inactivas ?? Math.max(0, resolvedTotal - resolvedActivas)
+    )
+  );
+
+  return {
+    total: resolvedTotal,
+    activas: resolvedActivas,
+    inactivas: resolvedInactivas,
+    femenino: Math.max(0, femenino ?? 0),
+    masculino: Math.max(0, masculino ?? 0),
+  };
+};
 
 const normalizeListResponse = (resp) => {
   if (Array.isArray(resp)) {
@@ -29,34 +157,9 @@ const normalizeListResponse = (resp) => {
 
   const items =
     (resp && (resp.items || resp.data || resp.rows || resp.resultados || resp.personas)) || [];
-  const total =
-    (resp && (resp.total || resp.totalItems || resp.count || resp.total_count)) ||
-    (Array.isArray(items) ? items.length : 0);
+  const total = getResponseTotal(resp) ?? (Array.isArray(items) ? items.length : 0);
 
   return { items: Array.isArray(items) ? items : [], total: Number(total) || 0 };
-};
-
-const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
-
-const findFkId = (record, fkKey, textKeys, catalog, idKey, labelKey) => {
-  if (record?.[fkKey]) return String(record[fkKey]);
-
-  const recordTexts = textKeys.map((key) => normalizeValue(record?.[key])).filter(Boolean);
-  if (!recordTexts.length) return "";
-
-  const found = (Array.isArray(catalog) ? catalog : []).find((item) =>
-    recordTexts.includes(normalizeValue(item?.[labelKey]))
-  );
-
-  return found?.[idKey] ? String(found[idKey]) : "";
-};
-
-const getCatalogTextById = (catalog, idKey, labelKey, idValue) => {
-  if (!idValue) return "";
-  const found = (Array.isArray(catalog) ? catalog : []).find(
-    (item) => String(item?.[idKey]) === String(idValue)
-  );
-  return found?.[labelKey] ? String(found[labelKey]) : "";
 };
 
 const toDateInputValue = (value) => {
@@ -99,14 +202,31 @@ const isPersonaActiva = (persona) => {
 
 const normalizeGenero = (value) => String(value ?? "").trim().toLowerCase();
 
-const isGeneroFemenino = (value) => {
+const normalizeGeneroKey = (value) => {
   const genero = normalizeGenero(value);
-  return genero === "f" || genero === "femenino";
+  if (!genero) return "";
+  if (["f", "femenino", "female"].includes(genero)) return "femenino";
+  if (["m", "masculino", "male"].includes(genero)) return "masculino";
+  return "";
 };
 
-const isGeneroMasculino = (value) => {
-  const genero = normalizeGenero(value);
-  return genero === "m" || genero === "masculino";
+const getPersonaGeneroRaw = (persona) =>
+  persona?.genero ?? persona?.sexo ?? persona?.gender ?? persona?.Genero ?? persona?.Sexo ?? persona?.Gender ?? "";
+
+const getPersonaGeneroKey = (persona) => normalizeGeneroKey(getPersonaGeneroRaw(persona));
+
+const isGeneroFemenino = (valueOrPersona) => {
+  if (valueOrPersona && typeof valueOrPersona === "object") {
+    return getPersonaGeneroKey(valueOrPersona) === "femenino";
+  }
+  return normalizeGeneroKey(valueOrPersona) === "femenino";
+};
+
+const isGeneroMasculino = (valueOrPersona) => {
+  if (valueOrPersona && typeof valueOrPersona === "object") {
+    return getPersonaGeneroKey(valueOrPersona) === "masculino";
+  }
+  return normalizeGeneroKey(valueOrPersona) === "masculino";
 };
 
 const toDisplayCardValue = (value, fallback = "No disponible") => {
@@ -127,11 +247,31 @@ const formatFechaNacimientoCard = (value) => {
 };
 
 const formatGeneroCard = (value) => {
-  const genero = normalizeGenero(value);
+  const genero = normalizeGeneroKey(value);
   if (!genero) return "";
-  if (genero === "f" || genero === "femenino") return "Femenino";
-  if (genero === "m" || genero === "masculino") return "Masculino";
+  if (genero === "femenino") return "Femenino";
+  if (genero === "masculino") return "Masculino";
   return String(value).trim();
+};
+
+const getPersonaRtn = (persona) =>
+  String(persona?.rtn ?? persona?.RTN ?? persona?.rtn_persona ?? persona?.numero_rtn ?? "").trim();
+
+const buildStatsFromPersonas = (records, totalOverride = null) => {
+  const list = Array.isArray(records) ? records : [];
+  const totalValue = toNumberOrNull(totalOverride);
+  const total = Math.max(0, totalValue ?? list.length);
+  const activas = list.filter((item) => isPersonaActiva(item)).length;
+  const femenino = list.filter((item) => isGeneroFemenino(item)).length;
+  const masculino = list.filter((item) => isGeneroMasculino(item)).length;
+
+  return {
+    total,
+    activas: Math.max(0, Math.min(activas, total)),
+    inactivas: Math.max(0, total - Math.min(activas, total)),
+    femenino: Math.max(0, femenino),
+    masculino: Math.max(0, masculino),
+  };
 };
 
 export default function Personas({ openToast }) {
@@ -148,11 +288,12 @@ export default function Personas({ openToast }) {
 
   const [personas, setPersonas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState("");
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("personasViewMode"));
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const [estadoFiltro, setEstadoFiltro] = useState("todos");
+  const [generoFiltro, setGeneroFiltro] = useState("todos");
   const [sortBy, setSortBy] = useState("recientes");
   const [filtersDraft, setFiltersDraft] = useState(createInitialFiltersDraft);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -160,6 +301,15 @@ export default function Personas({ openToast }) {
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
   const [total, setTotal] = useState(0);
+  const [personasGlobalFiltrables, setPersonasGlobalFiltrables] = useState([]);
+  const [globalFilterLoading, setGlobalFilterLoading] = useState(false);
+  const [globalStats, setGlobalStats] = useState({
+    total: 0,
+    activas: 0,
+    inactivas: 0,
+    femenino: 0,
+    masculino: 0,
+  });
 
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -180,10 +330,27 @@ export default function Personas({ openToast }) {
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const globalKpiRequestIdRef = useRef(0);
+  const globalFilterRequestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const backendTotalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
+
+  const blurFocusedElementInside = useCallback((containerId) => {
+    if (typeof document === "undefined") return;
+    const container = document.getElementById(containerId);
+    const active = document.activeElement;
+    if (!container || !active) return;
+    if (container.contains(active) && typeof active.blur === "function") {
+      active.blur();
+    }
+  }, []);
+
+  const closeFormDrawer = useCallback(() => {
+    blurFocusedElementInside("per-form-drawer");
+    setShowModal(false);
+  }, [blurFocusedElementInside]);
 
   const cargarCatalogos = useCallback(async () => {
     if (catalogosCargadosRef.current) return;
@@ -208,6 +375,7 @@ export default function Personas({ openToast }) {
 
   const cargarPersonas = useCallback(async () => {
     setLoading(true);
+    setListError("");
     const requestId = ++requestIdRef.current;
 
     try {
@@ -221,17 +389,139 @@ export default function Personas({ openToast }) {
       const { items, total: totalResp } = normalizeListResponse(response);
       setPersonas(items);
       setTotal(totalResp);
+      setListError("");
     } catch (error) {
       if (!mountedRef.current) return;
       safeToast("ERROR", error.message || "No se pudo cargar personas", "danger");
       setPersonas([]);
       setTotal(0);
+      setListError(error.message || "No se pudo cargar personas");
     } finally {
       if (mountedRef.current && requestId === requestIdRef.current) {
         setLoading(false);
       }
     }
   }, [page, limit, debouncedSearch, safeToast]);
+
+  const cargarPersonasGlobalFiltrables = useCallback(
+    async (searchTerm = "") => {
+      const requestId = ++globalFilterRequestIdRef.current;
+      setGlobalFilterLoading(true);
+      setListError("");
+
+      try {
+        const firstResponse = await personaService.getPersonas({
+          page: 1,
+          limit: GLOBAL_KPI_PAGE_SIZE,
+          search: searchTerm,
+        });
+
+        if (!mountedRef.current || requestId !== globalFilterRequestIdRef.current) return;
+
+        const firstBatch = normalizeListResponse(firstResponse);
+        const explicitTotal = getResponseTotal(firstResponse);
+        let allItems = [...firstBatch.items];
+        let currentPage = 1;
+        let shouldContinue =
+          explicitTotal !== null
+            ? allItems.length < explicitTotal
+            : firstBatch.items.length === GLOBAL_KPI_PAGE_SIZE;
+
+        while (shouldContinue && currentPage < MAX_GLOBAL_KPI_PAGES) {
+          currentPage += 1;
+          const pageResponse = await personaService.getPersonas({
+            page: currentPage,
+            limit: GLOBAL_KPI_PAGE_SIZE,
+            search: searchTerm,
+          });
+
+          if (!mountedRef.current || requestId !== globalFilterRequestIdRef.current) return;
+
+          const { items } = normalizeListResponse(pageResponse);
+          if (!items.length) break;
+
+          allItems = allItems.concat(items);
+          shouldContinue =
+            explicitTotal !== null
+              ? allItems.length < explicitTotal
+              : items.length === GLOBAL_KPI_PAGE_SIZE;
+        }
+
+        if (!mountedRef.current || requestId !== globalFilterRequestIdRef.current) return;
+        setPersonasGlobalFiltrables(allItems);
+        setListError("");
+      } catch (error) {
+        if (!mountedRef.current || requestId !== globalFilterRequestIdRef.current) return;
+        setPersonasGlobalFiltrables([]);
+        safeToast("ERROR", error.message || "No se pudo aplicar el filtro global", "danger");
+        setListError(error.message || "No se pudo aplicar el filtro global");
+      } finally {
+        if (mountedRef.current && requestId === globalFilterRequestIdRef.current) {
+          setGlobalFilterLoading(false);
+        }
+      }
+    },
+    [safeToast]
+  );
+
+  const cargarKpiGlobales = useCallback(async () => {
+    const requestId = ++globalKpiRequestIdRef.current;
+
+    try {
+      const firstResponse = await personaService.getPersonas({
+        page: 1,
+        limit: GLOBAL_KPI_PAGE_SIZE,
+        search: "",
+      });
+
+      if (!mountedRef.current || requestId !== globalKpiRequestIdRef.current) return;
+
+      // Inspeccion explicita de shape para KPI global:
+      // response.total | response.meta.total | response.pagination.total
+      // response.stats | response.totals
+      const statsFromResponse = extractGlobalStatsFromResponse(firstResponse);
+      if (statsFromResponse) {
+        setGlobalStats(statsFromResponse);
+        return;
+      }
+
+      const firstBatch = normalizeListResponse(firstResponse);
+      const explicitTotal = getResponseTotal(firstResponse);
+      let allItems = [...firstBatch.items];
+      let currentPage = 1;
+      let shouldContinue =
+        explicitTotal !== null
+          ? allItems.length < explicitTotal
+          : firstBatch.items.length === GLOBAL_KPI_PAGE_SIZE;
+
+      while (shouldContinue && currentPage < MAX_GLOBAL_KPI_PAGES) {
+        currentPage += 1;
+        const pageResponse = await personaService.getPersonas({
+          page: currentPage,
+          limit: GLOBAL_KPI_PAGE_SIZE,
+          search: "",
+        });
+
+        if (!mountedRef.current || requestId !== globalKpiRequestIdRef.current) return;
+
+        const { items } = normalizeListResponse(pageResponse);
+        if (!items.length) break;
+
+        allItems = allItems.concat(items);
+        shouldContinue =
+          explicitTotal !== null
+            ? allItems.length < explicitTotal
+            : items.length === GLOBAL_KPI_PAGE_SIZE;
+      }
+
+      setGlobalStats(
+        buildStatsFromPersonas(allItems, explicitTotal !== null ? explicitTotal : allItems.length)
+      );
+    } catch (error) {
+      if (!mountedRef.current || requestId !== globalKpiRequestIdRef.current) return;
+      safeToast("ERROR", error.message || "No se pudieron cargar KPI globales", "danger");
+    }
+  }, [safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -245,8 +535,26 @@ export default function Personas({ openToast }) {
   }, [cargarCatalogos]);
 
   useEffect(() => {
+    if (generoFiltro !== "todos" || sortBy !== "recientes") return;
     cargarPersonas();
-  }, [cargarPersonas]);
+  }, [cargarPersonas, generoFiltro, sortBy]);
+
+  useEffect(() => {
+    cargarKpiGlobales();
+  }, [cargarKpiGlobales]);
+
+  useEffect(() => {
+    const shouldUseGlobal = generoFiltro !== "todos" || sortBy !== "recientes";
+    if (!shouldUseGlobal) {
+      globalFilterRequestIdRef.current += 1;
+      setPersonasGlobalFiltrables([]);
+      setGlobalFilterLoading(false);
+      return;
+    }
+
+    setPage(1);
+    cargarPersonasGlobalFiltrables(debouncedSearch);
+  }, [generoFiltro, sortBy, debouncedSearch, cargarPersonasGlobalFiltrables]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -364,6 +672,7 @@ export default function Personas({ openToast }) {
   const validar = () => {
     const currentErrors = {};
     const today = new Date().toISOString().split("T")[0];
+    const correoValue = String(form.id_correo ?? "").trim();
 
     if (!form.nombre) currentErrors.nombre = "Requerido";
     if (!form.apellido) currentErrors.apellido = "Requerido";
@@ -371,6 +680,9 @@ export default function Personas({ openToast }) {
     if (form.rtn && !/^\d{1}$/.test(form.rtn)) currentErrors.rtn = "Debe ingresar solo el numero de complemento";
     if (!form.genero) currentErrors.genero = "Seleccione";
     if (form.fecha_nacimiento && form.fecha_nacimiento > today) currentErrors.fecha_nacimiento = "Fecha invalida";
+    if (correoValue && !EMAIL_WITH_DOMAIN_REGEX.test(correoValue)) {
+      currentErrors.id_correo = "Ingrese un correo v\u00e1lido con dominio (ej: usuario@dominio.com)";
+    }
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
@@ -408,10 +720,14 @@ export default function Personas({ openToast }) {
         safeToast("OK", "Persona creada");
       }
 
-      setShowModal(false);
+      closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
       await cargarPersonas();
+      await cargarKpiGlobales();
+      if (generoFiltro !== "todos" || sortBy !== "recientes") {
+        await cargarPersonasGlobalFiltrables(debouncedSearch);
+      }
     } catch (error) {
       const campo = error?.campo ? ` (${error.campo})` : "";
       safeToast("ERROR", `${error.message || "No se pudo guardar"}${campo}`, "danger");
@@ -453,7 +769,7 @@ export default function Personas({ openToast }) {
       await personaService.eliminarPersona(id);
 
       if (String(editId) === String(id)) {
-        setShowModal(false);
+        closeFormDrawer();
         setEditId(null);
         setForm(emptyForm);
       }
@@ -463,6 +779,10 @@ export default function Personas({ openToast }) {
         setPage((prev) => Math.max(1, prev - 1));
       } else {
         await cargarPersonas();
+      }
+      await cargarKpiGlobales();
+      if (generoFiltro !== "todos" || sortBy !== "recientes") {
+        await cargarPersonasGlobalFiltrables(debouncedSearch);
       }
 
       safeToast("OK", "Persona eliminada");
@@ -475,14 +795,20 @@ export default function Personas({ openToast }) {
     }
   };
 
+  const useGlobalFilterData = generoFiltro !== "todos" || sortBy !== "recientes";
+  const personasFuente = useMemo(
+    () => (useGlobalFilterData ? personasGlobalFiltrables : personas),
+    [useGlobalFilterData, personasGlobalFiltrables, personas]
+  );
+  const isListLoading = useGlobalFilterData ? globalFilterLoading : loading;
+
   const personasFiltradas = useMemo(() => {
-    const list = [...(Array.isArray(personas) ? personas : [])];
+    const list = [...(Array.isArray(personasFuente) ? personasFuente : [])];
 
     const filtered = list.filter((persona) => {
-      const activa = isPersonaActiva(persona);
-      const matchEstado =
-        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activa : !activa;
-      if (!matchEstado) return false;
+      const genero = getPersonaGeneroKey(persona);
+      const matchGenero = generoFiltro === "todos" ? true : genero === generoFiltro;
+      if (!matchGenero) return false;
       return true;
     });
 
@@ -505,26 +831,27 @@ export default function Personas({ openToast }) {
     });
 
     return filtered;
-  }, [personas, estadoFiltro, sortBy]);
+  }, [personasFuente, generoFiltro, sortBy]);
 
-  const stats = useMemo(() => {
-    const totalFiltradas = personasFiltradas.length;
-    const activas = personasFiltradas.filter((item) => isPersonaActiva(item)).length;
-    const femenino = personasFiltradas.filter((item) => isGeneroFemenino(item?.genero)).length;
-    const masculino = personasFiltradas.filter((item) => isGeneroMasculino(item?.genero)).length;
+  const totalPages = useMemo(() => {
+    if (!useGlobalFilterData) return backendTotalPages;
+    return Math.max(1, Math.ceil(personasFiltradas.length / limit));
+  }, [useGlobalFilterData, backendTotalPages, personasFiltradas.length, limit]);
 
-    return {
-      total: totalFiltradas,
-      activas,
-      inactivas: totalFiltradas - activas,
-      femenino,
-      masculino,
-    };
-  }, [personasFiltradas]);
+  const personasRenderizadas = useMemo(() => {
+    if (!useGlobalFilterData) return personasFiltradas;
+    const start = (page - 1) * limit;
+    return personasFiltradas.slice(start, start + limit);
+  }, [useGlobalFilterData, personasFiltradas, page, limit]);
+
+  useEffect(() => {
+    if (page <= totalPages) return;
+    setPage(totalPages);
+  }, [page, totalPages]);
 
   const hasActiveFilters = useMemo(
-    () => search.trim() !== "" || estadoFiltro !== "todos" || sortBy !== "recientes",
-    [search, estadoFiltro, sortBy]
+    () => search.trim() !== "" || generoFiltro !== "todos" || sortBy !== "recientes",
+    [search, generoFiltro, sortBy]
   );
 
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
@@ -533,44 +860,58 @@ export default function Personas({ openToast }) {
       key: "total-personas",
       iconClass: "bi-people",
       label: "Total de personas",
-      value: stats.total,
+      value: globalStats.total,
       accent: "default",
     },
     {
       key: "femenino",
       iconClass: "bi-gender-female",
       label: "Femenino",
-      value: stats.femenino ?? 0,
+      value: globalStats.femenino ?? 0,
       accent: "info",
     },
     {
       key: "masculino",
       iconClass: "bi-gender-male",
       label: "Masculino",
-      value: stats.masculino ?? 0,
+      value: globalStats.masculino ?? 0,
       accent: "accent",
     },
   ];
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
-    setFiltersDraft({ estadoFiltro, sortBy });
+    closeFormDrawer();
+    setFiltersDraft({ generoFiltro, sortBy });
     setFiltersOpen(true);
   };
 
-  const closeFiltersDrawer = () => setFiltersOpen(false);
+  const focusFiltersTrigger = () => {
+    if (typeof document === "undefined") return;
+    const trigger = document.querySelector('button[aria-controls="per-filtros-drawer"]');
+    if (trigger && typeof trigger.focus === "function") trigger.focus();
+  };
+
+  const closeFiltersDrawer = () => {
+    blurFocusedElementInside("per-filtros-drawer");
+    setFiltersOpen(false);
+    if (typeof window !== "undefined") {
+      window.setTimeout(focusFiltersTrigger, 0);
+    }
+  };
 
   const applyFiltersDrawer = () => {
-    setEstadoFiltro(filtersDraft.estadoFiltro || "todos");
+    setGeneroFiltro(filtersDraft.generoFiltro || "todos");
     setSortBy(filtersDraft.sortBy || "recientes");
-    setFiltersOpen(false);
+    setPage(1);
+    closeFiltersDrawer();
   };
 
   const clearVisualFilters = () => {
-    setEstadoFiltro("todos");
+    setGeneroFiltro("todos");
     setSortBy("recientes");
     setFiltersDraft(createInitialFiltersDraft());
+    setPage(1);
   };
 
   const clearAllFilters = () => {
@@ -581,8 +922,17 @@ export default function Personas({ openToast }) {
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
+    blurFocusedElementInside("per-filtros-drawer");
     setFiltersOpen(false);
+  };
+
+  const retryListLoad = () => {
+    if (useGlobalFilterData) {
+      cargarPersonasGlobalFiltrables(debouncedSearch);
+      return;
+    }
+    cargarPersonas();
   };
 
   return (
@@ -603,16 +953,23 @@ export default function Personas({ openToast }) {
 
         <div className="inv-catpro-body inv-prod-body p-3">
           <div className="inv-prod-results-meta personas-page__results-meta">
-            <span>{loading ? "Cargando personas..." : `${personasFiltradas.length} resultados`}</span>
-            <span>{loading ? "" : `Total: ${total}`}</span>
+            <span>{isListLoading ? "Cargando personas..." : `${personasFiltradas.length} resultados`}</span>
+            <span>{isListLoading ? "" : `Total: ${useGlobalFilterData ? personasFuente.length : total}`}</span>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
           </div>
 
           <div className={`inv-catpro-list ${isAnyDrawerOpen ? "drawer-open" : ""}`}>
-            {loading ? (
+            {isListLoading ? (
               <div className="inv-catpro-loading" role="status" aria-live="polite">
                 <span className="spinner-border spinner-border-sm" aria-hidden="true" />
                 <span>Cargando personas...</span>
+              </div>
+            ) : listError ? (
+              <div className="alert alert-danger d-flex flex-wrap align-items-center justify-content-between gap-2 mb-0" role="alert">
+                <span>{listError}</span>
+                <button type="button" className="btn btn-sm btn-outline-danger" onClick={retryListLoad}>
+                  Reintentar
+                </button>
               </div>
             ) : personasFiltradas.length === 0 ? (
               <div className="inv-catpro-empty">
@@ -642,6 +999,7 @@ export default function Personas({ openToast }) {
                     <tr>
                       <th scope="col">Persona</th>
                       <th scope="col">DNI</th>
+                      <th scope="col">RTN</th>
                       <th scope="col">Direccion</th>
                       <th scope="col">Telefono</th>
                       <th scope="col">Correo</th>
@@ -652,28 +1010,31 @@ export default function Personas({ openToast }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {personasFiltradas.map((persona, idx) => {
+                    {personasRenderizadas.map((persona, idx) => {
                       const isActive = isPersonaActiva(persona);
                       const dotClass = isActive ? "ok" : "off";
                       const idPersona = persona?.id_persona;
                       const deleting = deletingId === idPersona;
+                      const tableIndex = (useGlobalFilterData ? (page - 1) * limit : 0) + idx;
                       const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
                       const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
                       const direccion = persona?.direccion ?? persona?.direccion_detalle;
                       const correo = persona?.direccion_correo ?? persona?.correo ?? persona?.email;
-                      const genero = formatGeneroCard(persona?.genero);
+                      const rtn = getPersonaRtn(persona);
+                      const genero = formatGeneroCard(getPersonaGeneroRaw(persona));
 
                       return (
                         <tr key={persona?.id_persona ?? idx} className={isActive ? "" : "is-inactive-state"}>
                           <td>
-                            <strong>{idx + 1}. {nombreCompleto}</strong>
+                            <strong>{tableIndex + 1}. {nombreCompleto}</strong>
                           </td>
                           <td>{toDisplayCardValue(persona?.dni)}</td>
+                          <td>{toDisplayCardValue(rtn, "\u2014")}</td>
                           <td>{toDisplayCardValue(direccion, "No disponible")}</td>
                           <td>{toDisplayCardValue(telefono, "No disponible")}</td>
                           <td>{toDisplayCardValue(correo, "No disponible")}</td>
                           <td>{formatFechaNacimientoCard(persona?.fecha_nacimiento)}</td>
-                          <td>{genero}</td>
+                          <td>{toDisplayCardValue(genero, "\u2014")}</td>
                           <td>
                             <div className="inv-catpro-code-wrap personas-page__table-code-wrap">
                               <span className={`inv-catpro-state-dot ${dotClass}`} />
@@ -713,16 +1074,18 @@ export default function Personas({ openToast }) {
               </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
-                {personasFiltradas.map((persona, idx) => {
+                {personasRenderizadas.map((persona, idx) => {
                   const isActive = isPersonaActiva(persona);
                   const dotClass = isActive ? "ok" : "off";
                   const idPersona = persona?.id_persona;
                   const deleting = deletingId === idPersona;
+                  const cardIndex = (useGlobalFilterData ? (page - 1) * limit : 0) + idx;
                   const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
                   const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
                   const direccion = persona?.direccion ?? persona?.direccion_detalle;
                   const correo = persona?.direccion_correo ?? persona?.correo ?? persona?.email;
-                  const genero = formatGeneroCard(persona?.genero);
+                  const rtn = getPersonaRtn(persona);
+                  const genero = formatGeneroCard(getPersonaGeneroRaw(persona));
 
                   return (
                     <div
@@ -741,7 +1104,7 @@ export default function Personas({ openToast }) {
                           </span>
                           <div>
                             <div className="fw-bold">
-                              {idx + 1}. {nombreCompleto}
+                              {cardIndex + 1}. {nombreCompleto}
                             </div>
                             <div className="text-muted small">DNI: {toDisplayCardValue(persona?.dni)}</div>
                           </div>
@@ -749,6 +1112,10 @@ export default function Personas({ openToast }) {
                       </div>
 
                       <div className="personas-page__card-details">
+                        <div className="personas-page__card-row">
+                          <i className="bi bi-file-earmark-text" />
+                          <span>RTN: {toDisplayCardValue(rtn, "\u2014")}</span>
+                        </div>
                         <div className="personas-page__card-row">
                           <i className="bi bi-geo-alt" />
                           <span>{toDisplayCardValue(direccion, "No disponible")}</span>
@@ -814,7 +1181,7 @@ export default function Personas({ openToast }) {
             <button
               type="button"
               className="btn btn-outline-secondary"
-              disabled={page === 1 || loading || actionLoading || !!deletingId}
+              disabled={page === 1 || isListLoading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev - 1)}
             >
               <i className="bi bi-chevron-left me-1" />
@@ -826,7 +1193,7 @@ export default function Personas({ openToast }) {
             <button
               type="button"
               className="btn btn-outline-secondary"
-              disabled={page >= totalPages || loading || actionLoading || !!deletingId}
+              disabled={page >= totalPages || isListLoading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev + 1)}
             >
               Siguiente
@@ -841,6 +1208,7 @@ export default function Personas({ openToast }) {
         className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? "is-hidden" : ""}`}
         onClick={openCreate}
         title="Nueva"
+        aria-label="Nueva persona"
       >
         <i className="bi bi-plus" />
       </button>
@@ -876,8 +1244,9 @@ export default function Personas({ openToast }) {
           <button
             type="button"
             className="inv-prod-drawer-close"
-            onClick={() => setShowModal(false)}
+            onClick={closeFormDrawer}
             title="Cerrar"
+            aria-label="Cerrar formulario"
             disabled={actionLoading}
           >
             <i className="bi bi-x-lg" />
@@ -1012,7 +1381,7 @@ export default function Personas({ openToast }) {
           </div>
 
           <div className="d-flex gap-2 mt-4">
-            <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={() => setShowModal(false)} disabled={actionLoading}>
+            <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={closeFormDrawer} disabled={actionLoading}>
               Cancelar
             </button>
             <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={actionLoading || !!deletingId}>
