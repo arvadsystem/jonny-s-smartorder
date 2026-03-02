@@ -109,3 +109,46 @@
     padding-right: 0.85rem !important;
   }
 }
+
+@media (max-width: 1024px) {
+  .dashboard-shell .sidebar-wrapper {
+    display: none;
+  }
+
+  .dashboard-shell .main-content {
+    margin-left: 0;
+    padding: 10px 10px 92px;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-shell .top-navbar {
+    top: 8px;
+    margin-bottom: 14px;
+    border-radius: 20px;
+  }
+
+  .dashboard-shell .navbar-tabs-zone {
+    min-width: 0;
+  }
+
+  .dashboard-shell .inventory-tabs-bar {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .dashboard-shell .inventory-tabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-shell .inventory-active-slider {
+    display: none;
+  }
+
+  .dashboard-shell .inventory-tab-btn.inventory-tab-active {
+    background: linear-gradient(135deg, var(--shell-pill-active), var(--shell-pill-active-strong));
+    box-shadow: 0 8px 18px rgba(161, 87, 35, 0.22);
+  }
+}
