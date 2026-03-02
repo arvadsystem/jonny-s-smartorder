@@ -1,0 +1,262 @@
+.personas-page {
+  --personas-ui-radius: 16px;
+  --personas-ui-border: rgba(237, 235, 179, 0.78);
+  --personas-ui-shadow: 0 3px 10px rgba(var(--c-shadow-rgb), 0.14);
+}
+
+.personas-page .personas-page__panel {
+  overflow: hidden;
+}
+
+.personas-page .personas-page__toolbar {
+  align-items: flex-start;
+}
+
+.personas-page .personas-page__toolbar-actions {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.personas-page .personas-page__toolbar-actions .inv-ins-search {
+  min-width: min(420px, 100%);
+}
+
+.personas-page .personas-page__view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(157, 150, 112, 0.38);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+}
+
+.personas-page .personas-page__view-btn {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.72);
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.personas-page .personas-page__view-btn.is-active {
+  background: linear-gradient(145deg, #9a5319, #b86821);
+  color: #fff;
+}
+
+.personas-page .personas-page__stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.personas-page .personas-page__stat-card {
+  gap: 12px;
+}
+
+.personas-page .personas-page__stat-card.is-accent {
+  background: rgba(243, 233, 216, 0.8);
+}
+
+.personas-page .personas-page__stat-card.is-info {
+  background: rgba(232, 240, 244, 0.9);
+}
+
+.personas-page .personas-page__stat-card.is-success {
+  background: rgba(229, 244, 236, 0.92);
+}
+
+.personas-page .personas-page__stat-card.is-warning {
+  background: rgba(251, 240, 228, 0.92);
+}
+
+.personas-page .personas-page__stat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  color: #9a5319;
+  box-shadow: inset 0 0 0 1px rgba(157, 150, 112, 0.2);
+}
+
+.personas-page .inv-catpro-item.inv-cat-card,
+.personas-page .inv-catpro-item.inv-cat-card:hover,
+.personas-page .inv-catpro-item.inv-cat-card:focus-visible {
+  background: linear-gradient(180deg, #ffffff, #fcfbf4) !important;
+  border-color: var(--personas-ui-border) !important;
+  box-shadow: var(--personas-ui-shadow) !important;
+  border-radius: var(--personas-ui-radius) !important;
+}
+
+.personas-page .personas-page__entity-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.personas-page .personas-page__card-details {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.35rem;
+  position: relative;
+  z-index: 1;
+}
+
+.personas-page .personas-page__card-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: rgba(108, 83, 68, 0.88);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.personas-page .personas-page__card-row i {
+  width: 14px;
+  text-align: center;
+  opacity: 0.9;
+  font-size: 0.8rem;
+}
+
+.personas-page .personas-page__card-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.personas-page .personas-page__card-row:nth-child(2),
+.personas-page .personas-page__card-row:nth-child(3) {
+  color: rgba(120, 94, 78, 0.82);
+}
+
+.personas-page .personas-page__card-row:last-child {
+  color: rgba(129, 101, 84, 0.78);
+}
+
+.personas-page .inv-cat-card.is-inactive-state .personas-page__card-row {
+  color: rgba(128, 112, 101, 0.8);
+}
+
+.personas-page .personas-page__results-meta {
+  margin-bottom: 0.7rem;
+}
+
+.personas-page .personas-page__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.personas-page .personas-page__pagination span {
+  color: rgba(82, 44, 34, 0.78);
+  font-weight: 700;
+}
+
+.personas-page .personas-page__table-card {
+  border: 1px solid var(--personas-ui-border);
+  border-radius: var(--personas-ui-radius);
+  background: linear-gradient(180deg, #ffffff, #fcfbf4);
+  box-shadow: var(--personas-ui-shadow);
+  overflow: hidden;
+}
+
+.personas-page .personas-page__table-wrap {
+  overflow: auto;
+}
+
+.personas-page .personas-page__table {
+  min-width: 980px;
+  margin: 0;
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: transparent;
+  --bs-table-hover-bg: transparent;
+  --bs-table-border-color: rgba(237, 235, 179, 0.82);
+}
+
+.personas-page .personas-page__table thead th {
+  padding: 0.95rem 1rem;
+  border-bottom-width: 1px;
+  background: rgba(243, 241, 216, 0.44);
+  color: rgba(117, 85, 61, 0.92);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.personas-page .personas-page__table tbody td {
+  padding: 0.95rem 1rem;
+  vertical-align: middle;
+  color: #2f1a10;
+  border-bottom-color: rgba(237, 235, 179, 0.82);
+}
+
+.personas-page .personas-page__table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.personas-page .personas-page__table tbody tr:hover {
+  background: rgba(243, 241, 216, 0.3);
+}
+
+.personas-page .personas-page__table tbody tr.is-inactive-state td {
+  color: rgba(128, 112, 101, 0.84);
+}
+
+.personas-page .personas-page__table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.personas-page .personas-page__table-code-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 991.98px) {
+  .personas-page .personas-page__toolbar {
+    flex-direction: column;
+  }
+
+  .personas-page .personas-page__toolbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .personas-page .personas-page__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .personas-page .personas-page__toolbar-actions .inv-ins-search {
+    min-width: 0;
+  }
+
+  .personas-page .personas-page__table {
+    min-width: 760px;
+  }
+
+  .personas-page .personas-page__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .personas-page .personas-page__pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .personas-page .personas-page__pagination .btn {
+    width: 100%;
+  }
+}

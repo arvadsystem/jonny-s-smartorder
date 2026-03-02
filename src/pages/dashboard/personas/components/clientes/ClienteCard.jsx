@@ -1,3 +1,5 @@
+import EntityCard from "../../../../../components/ui/EntityCard";
+
 const parseEstado = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return Boolean(record.estado);
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return Boolean(record.activo);
@@ -57,58 +59,23 @@ export default function ClienteCard({
   const empresaNombre = typeof getEmpresaNombre === "function" ? getEmpresaNombre(cliente) : "No registrado";
 
   return (
-    <div
-      className={`inv-catpro-item inv-cat-card inv-anim-in ${isActive ? "" : "is-inactive-state"}`}
-      style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
-    >
-      <div className="inv-cat-card__halo" aria-hidden="true">
-        <i className="bi bi-person-lines-fill" />
-      </div>
-
-      <div className="inv-catpro-item-top">
-        <div className="inv-cat-card__title-wrap">
-          <span className="inv-cat-card__icon" aria-hidden="true">
-            <i className="bi bi-person-vcard" />
-          </span>
-          <div>
-            <div className="fw-bold">
-              {index + 1}. {toDisplayValue(personaNombre, "Cliente sin nombre")}
-            </div>
-            <div className="text-muted small">{toDisplayValue(empresaNombre)}</div>
-          </div>
-        </div>
-
-        <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
-          {isActive ? "ACTIVO" : "INACTIVO"}
-        </span>
-      </div>
-
-      <div className="suc-page__card-details">
-        <div className="suc-page__card-row">
-          <i className="bi bi-person-vcard" />
-          <span>DNI: {toDisplayValue(getDni(cliente), "N/D")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-telephone" />
-          <span>{toDisplayValue(getTelefono(cliente), "Sin telefono")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-envelope" />
-          <span>{toDisplayValue(getCorreo(cliente), "Sin correo")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-calendar-event" />
-          <span>{formatDateLabel(getFechaRegistro(cliente))}</span>
-        </div>
-      </div>
-
-      <div className="inv-catpro-meta inv-catpro-item-footer">
-        <div className="inv-catpro-code-wrap">
+    <EntityCard
+      index={index}
+      iconClass="bi bi-person-lines-fill"
+      titleIconClass="bi bi-person-vcard"
+      title={`${index + 1}. ${toDisplayValue(personaNombre, "Cliente sin nombre")}`}
+      subtitle={toDisplayValue(empresaNombre)}
+      badge={isActive ? "ACTIVO" : "INACTIVO"}
+      badgeClass={isActive ? "is-ok" : "is-inactive"}
+      inactive={!isActive}
+      footerLeft={
+        <>
           <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
           <span className="inv-catpro-code">CLI-{String(idCliente ?? "-")}</span>
-        </div>
-
-        <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions">
+        </>
+      }
+      footerActions={
+        <>
           <button
             type="button"
             className="inv-catpro-action edit inv-catpro-action-compact"
@@ -130,8 +97,25 @@ export default function ClienteCard({
             <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
             <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="personas-page__card-row">
+        <i className="bi bi-person-vcard" />
+        <span>DNI: {toDisplayValue(getDni(cliente), "N/D")}</span>
       </div>
-    </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-telephone" />
+        <span>{toDisplayValue(getTelefono(cliente), "Sin telefono")}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-envelope" />
+        <span>{toDisplayValue(getCorreo(cliente), "Sin correo")}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-calendar-event" />
+        <span>{formatDateLabel(getFechaRegistro(cliente))}</span>
+      </div>
+    </EntityCard>
   );
 }
