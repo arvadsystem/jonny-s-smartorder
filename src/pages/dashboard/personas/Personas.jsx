@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { personaService } from "../../../services/personasService";
+import EntityTable from "../../../components/ui/EntityTable";
+import StatsCardsRow from "../../../components/ui/StatsCardsRow";
 import Filtros from "./components/Filtros";
 import HeaderPersonas from "./components/HeaderPersonas";
-import "../sucursales/styles/sucursales.css";
-import { buildKpiSeries, buildSparklinePoints } from "../sucursales/utils/sucursalHelpers";
 
 const emptyForm = {
   nombre: "",
@@ -75,6 +75,15 @@ const resolveCardsPerPage = (width) => {
   return 2;
 };
 
+const readViewMode = (storageKey) => {
+  if (typeof window === "undefined") return "cards";
+  try {
+    return window.localStorage.getItem(storageKey) === "table" ? "table" : "cards";
+  } catch {
+    return "cards";
+  }
+};
+
 const detectEstadoField = (persona) => {
   if (Object.prototype.hasOwnProperty.call(persona || {}, "estado")) return "estado";
   if (Object.prototype.hasOwnProperty.call(persona || {}, "activo")) return "activo";
@@ -125,22 +134,6 @@ const formatGeneroCard = (value) => {
   return String(value).trim();
 };
 
-function KpiCard({ label, value, points }) {
-  return (
-    <div className="inv-prod-kpi">
-      {points ? (
-        <svg className="inv-prod-kpi-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
-          <polyline points={points} />
-        </svg>
-      ) : null}
-      <div className="inv-prod-kpi-content">
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-    </div>
-  );
-}
-
 export default function Personas({ openToast }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
@@ -156,6 +149,7 @@ export default function Personas({ openToast }) {
   const [personas, setPersonas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState(() => readViewMode("personasViewMode"));
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -269,6 +263,14 @@ export default function Personas({ openToast }) {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("personasViewMode", viewMode);
+    } catch {
+      // Keep working even if storage is unavailable.
+    }
+  }, [viewMode]);
 
   const buildFormFromPersona = useCallback(
     (persona) => ({
@@ -526,6 +528,29 @@ export default function Personas({ openToast }) {
   );
 
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
+  const statsCards = [
+    {
+      key: "total-personas",
+      iconClass: "bi-people",
+      label: "Total de personas",
+      value: stats.total,
+      accent: "default",
+    },
+    {
+      key: "femenino",
+      iconClass: "bi-gender-female",
+      label: "Femenino",
+      value: stats.femenino ?? 0,
+      accent: "info",
+    },
+    {
+      key: "masculino",
+      iconClass: "bi-gender-male",
+      label: "Masculino",
+      value: stats.masculino ?? 0,
+      accent: "accent",
+    },
+  ];
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -561,8 +586,8 @@ export default function Personas({ openToast }) {
   };
 
   return (
-    <div className="suc-page">
-      <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
+    <div className="personas-page">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <HeaderPersonas
           search={search}
           onSearchChange={setSearch}
@@ -570,40 +595,14 @@ export default function Personas({ openToast }) {
           onOpenFilters={openFiltersDrawer}
           drawerOpen={showModal}
           onOpenCreate={openCreate}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
         />
 
-        <div className="inv-prod-kpis inv-cat-v2__kpis" aria-label="Resumen de personas">
-          <KpiCard
-            label="Total de personas"
-            value={stats.total}
-            points={buildSparklinePoints(buildKpiSeries(stats).total)}
-          />
-          <KpiCard
-            label="Femenino"
-            value={stats.femenino ?? 0}
-            points={buildSparklinePoints([
-              Math.max(0, Number(stats?.femenino ?? 0) - 1),
-              Math.max(0, Number(stats?.femenino ?? 0)),
-              Math.max(0, Number(stats?.femenino ?? 0) + 1),
-              Math.max(0, Number(stats?.femenino ?? 0)),
-              Math.max(0, Number(stats?.femenino ?? 0)),
-            ])}
-          />
-          <KpiCard
-            label="Masculino"
-            value={stats.masculino ?? 0}
-            points={buildSparklinePoints([
-              Math.max(0, Number(stats?.masculino ?? 0) - 1),
-              Math.max(0, Number(stats?.masculino ?? 0)),
-              Math.max(0, Number(stats?.masculino ?? 0) + 1),
-              Math.max(0, Number(stats?.masculino ?? 0)),
-              Math.max(0, Number(stats?.masculino ?? 0)),
-            ])}
-          />
-        </div>
+        <StatsCardsRow cards={statsCards} ariaLabel="Resumen de personas" />
 
         <div className="inv-catpro-body inv-prod-body p-3">
-          <div className="inv-prod-results-meta inv-cat-v2__results-meta">
+          <div className="inv-prod-results-meta personas-page__results-meta">
             <span>{loading ? "Cargando personas..." : `${personasFiltradas.length} resultados`}</span>
             <span>{loading ? "" : `Total: ${total}`}</span>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
@@ -636,6 +635,82 @@ export default function Personas({ openToast }) {
                   </button>
                 </div>
               </div>
+            ) : viewMode === "table" ? (
+              <EntityTable>
+                <table className="table personas-page__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Persona</th>
+                      <th scope="col">DNI</th>
+                      <th scope="col">Direccion</th>
+                      <th scope="col">Telefono</th>
+                      <th scope="col">Correo</th>
+                      <th scope="col">Fecha nacimiento</th>
+                      <th scope="col">Genero</th>
+                      <th scope="col">Codigo</th>
+                      <th scope="col" className="text-end">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {personasFiltradas.map((persona, idx) => {
+                      const isActive = isPersonaActiva(persona);
+                      const dotClass = isActive ? "ok" : "off";
+                      const idPersona = persona?.id_persona;
+                      const deleting = deletingId === idPersona;
+                      const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
+                      const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
+                      const direccion = persona?.direccion ?? persona?.direccion_detalle;
+                      const correo = persona?.direccion_correo ?? persona?.correo ?? persona?.email;
+                      const genero = formatGeneroCard(persona?.genero);
+
+                      return (
+                        <tr key={persona?.id_persona ?? idx} className={isActive ? "" : "is-inactive-state"}>
+                          <td>
+                            <strong>{idx + 1}. {nombreCompleto}</strong>
+                          </td>
+                          <td>{toDisplayCardValue(persona?.dni)}</td>
+                          <td>{toDisplayCardValue(direccion, "No disponible")}</td>
+                          <td>{toDisplayCardValue(telefono, "No disponible")}</td>
+                          <td>{toDisplayCardValue(correo, "No disponible")}</td>
+                          <td>{formatFechaNacimientoCard(persona?.fecha_nacimiento)}</td>
+                          <td>{genero}</td>
+                          <td>
+                            <div className="inv-catpro-code-wrap personas-page__table-code-wrap">
+                              <span className={`inv-catpro-state-dot ${dotClass}`} />
+                              <span className="inv-catpro-code">PER-{String(idPersona ?? "-")}</span>
+                            </div>
+                          </td>
+                          <td className="text-end">
+                            <div className="personas-page__table-actions">
+                              <button
+                                type="button"
+                                className="inv-catpro-action edit inv-catpro-action-compact"
+                                onClick={() => iniciarEdicion(persona)}
+                                title="Editar"
+                                disabled={actionLoading || deleting}
+                              >
+                                <i className="bi bi-pencil-square" />
+                                <span className="inv-catpro-action-label">Editar</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="inv-catpro-action danger inv-catpro-action-compact"
+                                onClick={() => openConfirmDelete(persona)}
+                                title="Eliminar"
+                                disabled={actionLoading || deleting}
+                              >
+                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
+                                <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
                 {personasFiltradas.map((persona, idx) => {
@@ -673,25 +748,25 @@ export default function Personas({ openToast }) {
                         </div>
                       </div>
 
-                      <div className="suc-page__card-details">
-                        <div className="suc-page__card-row">
+                      <div className="personas-page__card-details">
+                        <div className="personas-page__card-row">
                           <i className="bi bi-geo-alt" />
                           <span>{toDisplayCardValue(direccion, "No disponible")}</span>
                         </div>
-                        <div className="suc-page__card-row">
+                        <div className="personas-page__card-row">
                           <i className="bi bi-telephone" />
                           <span>{toDisplayCardValue(telefono, "No disponible")}</span>
                         </div>
-                        <div className="suc-page__card-row">
+                        <div className="personas-page__card-row">
                           <i className="bi bi-envelope" />
                           <span>{toDisplayCardValue(correo, "No disponible")}</span>
                         </div>
-                        <div className="suc-page__card-row">
+                        <div className="personas-page__card-row">
                           <i className="bi bi-calendar-event" />
                           <span>{formatFechaNacimientoCard(persona?.fecha_nacimiento)}</span>
                         </div>
                         {genero ? (
-                          <div className="suc-page__card-row">
+                          <div className="personas-page__card-row">
                             <i className="bi bi-gender-ambiguous" />
                             <span>{genero}</span>
                           </div>
@@ -735,20 +810,22 @@ export default function Personas({ openToast }) {
             )}
           </div>
 
-          <div className="d-flex justify-content-end mt-3 gap-2 flex-wrap">
-            <span className="badge rounded-pill text-bg-light border text-dark px-3 py-2 align-self-center">
-              Pagina {page} de {totalPages}
-            </span>
+          <div className="personas-page__pagination">
             <button
-              className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+              type="button"
+              className="btn btn-outline-secondary"
               disabled={page === 1 || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev - 1)}
             >
               <i className="bi bi-chevron-left me-1" />
               Anterior
             </button>
+            <span>
+              Pagina {page} de {totalPages}
+            </span>
             <button
-              className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+              type="button"
+              className="btn btn-outline-secondary"
               disabled={page >= totalPages || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev + 1)}
             >

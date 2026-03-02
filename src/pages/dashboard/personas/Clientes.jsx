@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { personaService } from "../../../services/personasService";
 import { parametrosService } from "../../../services/parametrosService";
+import EntityTable from "../../../components/ui/EntityTable";
 import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import ClienteCard from "./components/clientes/ClienteCard";
-import "../sucursales/styles/sucursales.css";
 
 const emptyForm = {
   id_persona: "",
@@ -63,6 +63,50 @@ const resolveCardsPerPage = (width) => {
   return 2;
 };
 
+const toDisplayValue = (value, fallback = "No registrado") => {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
+};
+
+const readViewMode = (storageKey) => {
+  if (typeof window === "undefined") return "cards";
+  try {
+    return window.localStorage.getItem(storageKey) === "table" ? "table" : "cards";
+  } catch {
+    return "cards";
+  }
+};
+
+const formatDateLabel = (value) => {
+  if (!value) return "Sin fecha";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString("es-HN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+};
+
+const getDni = (cliente) => cliente?.persona_dni ?? cliente?.dni;
+
+const getTelefono = (cliente) =>
+  cliente?.telefono ??
+  cliente?.telefono_numero ??
+  cliente?.numero_telefono ??
+  cliente?.persona_telefono ??
+  cliente?.telefono_persona;
+
+const getCorreo = (cliente) =>
+  cliente?.correo ??
+  cliente?.direccion_correo ??
+  cliente?.email ??
+  cliente?.persona_correo ??
+  cliente?.correo_persona;
+
+const getFechaRegistro = (cliente) => cliente?.fecha_registro ?? cliente?.fecha_ingreso ?? cliente?.created_at;
+
 const detectEstadoField = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return "estado";
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return "activo";
@@ -91,6 +135,7 @@ const Clientes = ({ openToast }) => {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState(() => readViewMode("clientesViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [sortBy, setSortBy] = useState("recientes");
@@ -313,6 +358,14 @@ const Clientes = ({ openToast }) => {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("clientesViewMode", viewMode);
+    } catch {
+      // Keep working even if storage is unavailable.
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     if (!showModal || !editId) return;
@@ -564,8 +617,8 @@ const Clientes = ({ openToast }) => {
   };
 
   return (
-    <div className="suc-page">
-      <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
+    <div className="personas-page">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <HeaderModulo
           iconClass="bi bi-person-lines-fill"
           title="Clientes"
@@ -581,12 +634,14 @@ const Clientes = ({ openToast }) => {
           createLabel="Nuevo"
           filtersControlsId="cli-filtros-drawer"
           formControlsId="cli-form-drawer"
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de clientes" />
 
         <div className="inv-catpro-body inv-prod-body p-3">
-          <div className="inv-prod-results-meta inv-cat-v2__results-meta">
+          <div className="inv-prod-results-meta personas-page__results-meta">
             <span>{loading ? "Cargando clientes..." : `${clientesFiltrados.length} resultados`}</span>
             <span>{loading ? "" : `Total: ${total}`}</span>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
@@ -619,6 +674,81 @@ const Clientes = ({ openToast }) => {
                   </button>
                 </div>
               </div>
+            ) : viewMode === "table" ? (
+              <EntityTable>
+                <table className="table personas-page__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Cliente</th>
+                      <th scope="col">Empresa</th>
+                      <th scope="col">DNI</th>
+                      <th scope="col">Telefono</th>
+                      <th scope="col">Correo</th>
+                      <th scope="col">Fecha registro</th>
+                      <th scope="col">Estado</th>
+                      <th scope="col">Codigo</th>
+                      <th scope="col" className="text-end">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientesFiltrados.map((cliente, idx) => {
+                      const isActive = isActivo(cliente);
+                      const idCliente = cliente?.id_cliente;
+                      const deleting = deletingId === idCliente;
+                      const tableIndex = (page - 1) * limit + idx;
+
+                      return (
+                        <tr key={cliente?.id_cliente ?? idx} className={isActive ? "" : "is-inactive-state"}>
+                          <td>
+                            <strong>{tableIndex + 1}. {toDisplayValue(getPersonaNombre(cliente), "Cliente sin nombre")}</strong>
+                          </td>
+                          <td>{toDisplayValue(getEmpresaNombre(cliente))}</td>
+                          <td>{toDisplayValue(getDni(cliente), "N/D")}</td>
+                          <td>{toDisplayValue(getTelefono(cliente), "Sin telefono")}</td>
+                          <td>{toDisplayValue(getCorreo(cliente), "Sin correo")}</td>
+                          <td>{formatDateLabel(getFechaRegistro(cliente))}</td>
+                          <td>
+                            <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
+                              {isActive ? "ACTIVO" : "INACTIVO"}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="inv-catpro-code-wrap personas-page__table-code-wrap">
+                              <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
+                              <span className="inv-catpro-code">CLI-{String(idCliente ?? "-")}</span>
+                            </div>
+                          </td>
+                          <td className="text-end">
+                            <div className="personas-page__table-actions">
+                              <button
+                                type="button"
+                                className="inv-catpro-action edit inv-catpro-action-compact"
+                                onClick={() => iniciarEdicion(cliente)}
+                                title="Editar"
+                                disabled={actionLoading || deleting}
+                              >
+                                <i className="bi bi-pencil-square" />
+                                <span className="inv-catpro-action-label">Editar</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="inv-catpro-action danger inv-catpro-action-compact"
+                                onClick={() => openConfirmDelete(cliente)}
+                                title="Eliminar"
+                                disabled={actionLoading || deleting}
+                              >
+                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
+                                <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
                 {clientesFiltrados.map((cliente, idx) => (
@@ -638,20 +768,22 @@ const Clientes = ({ openToast }) => {
             )}
           </div>
 
-          <div className="d-flex justify-content-end mt-3 gap-2 flex-wrap">
-            <span className="badge rounded-pill text-bg-light border text-dark px-3 py-2 align-self-center">
-              Pagina {page} de {totalPages}
-            </span>
+          <div className="personas-page__pagination">
             <button
-              className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+              type="button"
+              className="btn btn-outline-secondary"
               disabled={page === 1 || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev - 1)}
             >
               <i className="bi bi-chevron-left me-1" />
               Anterior
             </button>
+            <span>
+              Pagina {page} de {totalPages}
+            </span>
             <button
-              className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+              type="button"
+              className="btn btn-outline-secondary"
               disabled={page >= totalPages || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev + 1)}
             >

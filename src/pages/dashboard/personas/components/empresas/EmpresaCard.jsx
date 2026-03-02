@@ -1,3 +1,5 @@
+import EntityCard from "../../../../../components/ui/EntityCard";
+
 const parseEstado = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return Boolean(record.estado);
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return Boolean(record.activo);
@@ -30,58 +32,23 @@ export default function EmpresaCard({
   const direccion = empresa?.direccion ?? empresa?.direccion_detalle;
 
   return (
-    <div
-      className={`inv-catpro-item inv-cat-card inv-anim-in ${isActive ? "" : "is-inactive-state"}`}
-      style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
-    >
-      <div className="inv-cat-card__halo" aria-hidden="true">
-        <i className="bi bi-buildings" />
-      </div>
-
-      <div className="inv-catpro-item-top">
-        <div className="inv-cat-card__title-wrap">
-          <span className="inv-cat-card__icon" aria-hidden="true">
-            <i className="bi bi-building" />
-          </span>
-          <div>
-            <div className="fw-bold">
-              {index + 1}. {toDisplayValue(empresa?.nombre_empresa, "Empresa sin nombre")}
-            </div>
-            <div className="text-muted small">RTN: {toDisplayValue(empresa?.rtn, "N/D")}</div>
-          </div>
-        </div>
-
-        <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
-          {isActive ? "ACTIVO" : "INACTIVO"}
-        </span>
-      </div>
-
-      <div className="suc-page__card-details">
-        <div className="suc-page__card-row">
-          <i className="bi bi-file-earmark-text" />
-          <span>RTN: {toDisplayValue(empresa?.rtn, "N/D")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-telephone" />
-          <span>{toDisplayValue(telefono, "Sin telefono")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-envelope" />
-          <span>{toDisplayValue(correo, "Sin correo")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-geo-alt" />
-          <span>{toDisplayValue(direccion, "Sin direccion")}</span>
-        </div>
-      </div>
-
-      <div className="inv-catpro-meta inv-catpro-item-footer">
-        <div className="inv-catpro-code-wrap">
+    <EntityCard
+      index={index}
+      iconClass="bi bi-buildings"
+      titleIconClass="bi bi-building"
+      title={`${index + 1}. ${toDisplayValue(empresa?.nombre_empresa, "Empresa sin nombre")}`}
+      subtitle={`RTN: ${toDisplayValue(empresa?.rtn, "N/D")}`}
+      badge={isActive ? "ACTIVO" : "INACTIVO"}
+      badgeClass={isActive ? "is-ok" : "is-inactive"}
+      inactive={!isActive}
+      footerLeft={
+        <>
           <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
           <span className="inv-catpro-code">EMP-{String(idEmpresa ?? "-")}</span>
-        </div>
-
-        <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions">
+        </>
+      }
+      footerActions={
+        <>
           <button
             type="button"
             className="inv-catpro-action edit inv-catpro-action-compact"
@@ -116,8 +83,25 @@ export default function EmpresaCard({
             <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
             <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="personas-page__card-row">
+        <i className="bi bi-file-earmark-text" />
+        <span>RTN: {toDisplayValue(empresa?.rtn, "N/D")}</span>
       </div>
-    </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-telephone" />
+        <span>{toDisplayValue(telefono, "Sin telefono")}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-envelope" />
+        <span>{toDisplayValue(correo, "Sin correo")}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-geo-alt" />
+        <span>{toDisplayValue(direccion, "Sin direccion")}</span>
+      </div>
+    </EntityCard>
   );
 }
