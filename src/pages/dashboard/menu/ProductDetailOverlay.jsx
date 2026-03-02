@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react';
 import { FaImage, FaPlus, FaTimes } from 'react-icons/fa';
+import { resolveMenuItemImageSrc } from './menuImage';
 
 const ANIMATION_MS = 260;
 
@@ -49,7 +50,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
 
   const nombre = product?.nombre_producto || product?.descripcion || 'Producto sin nombre';
   const precio = Number(product?.precio || 0);
-  const imageSrc = String(product?.url_imagen || '').trim();
+  const imageSrc = resolveMenuItemImageSrc(product);
   const descripcion = product?.descripcion_producto || product?.descripcion || '';
   const shellClassName = `menu-pos-detail-overlay ${isOpen ? 'is-open' : 'is-closing'}`;
 
@@ -84,6 +85,8 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
                 src={imageSrc}
                 alt={nombre}
                 className="menu-pos-detail-image"
+                loading="lazy"
+                referrerPolicy="no-referrer"
                 onError={(event) => {
                   event.currentTarget.style.display = 'none';
                   const next = event.currentTarget.nextElementSibling;

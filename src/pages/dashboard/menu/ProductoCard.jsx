@@ -1,10 +1,11 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { FaImage, FaPlus } from 'react-icons/fa';
+import { resolveMenuItemImageSrc } from './menuImage';
 
 const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
   const nombre = producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre';
   const precio = Number(producto?.precio || 0);
-  const imageSrc = String(producto?.url_imagen || '').trim();
+  const imageSrc = resolveMenuItemImageSrc(producto);
   const descripcion = producto?.descripcion_producto || producto?.descripcion || '';
   const feedbackTimeoutRef = useRef(null);
   const [isAddFeedbackOn, setIsAddFeedbackOn] = useState(false);
@@ -59,6 +60,7 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
             alt={nombre}
             className="menu-pos-product-image"
             loading="lazy"
+            referrerPolicy="no-referrer"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
               const next = e.currentTarget.nextElementSibling;
