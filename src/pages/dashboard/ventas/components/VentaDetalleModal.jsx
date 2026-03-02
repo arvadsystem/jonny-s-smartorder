@@ -79,7 +79,7 @@ export default function VentaDetalleModal({ open, venta, loading, onClose }) {
               </div>
 
               <div className="ventas-detail-modal__section">
-                <div className="ventas-detail-modal__section-title">Productos</div>
+                <div className="ventas-detail-modal__section-title">Items</div>
 
                 {venta?.items?.length ? (
                   <div className="ventas-detail-modal__table-wrap">
@@ -87,7 +87,8 @@ export default function VentaDetalleModal({ open, venta, loading, onClose }) {
                       <thead>
                         <tr>
                           <th>#</th>
-                          <th>Producto</th>
+                          <th>Item</th>
+                          <th>Tipo</th>
                           <th>Cant.</th>
                           <th>P. Unit.</th>
                           <th>Subtotal</th>
@@ -95,9 +96,18 @@ export default function VentaDetalleModal({ open, venta, loading, onClose }) {
                       </thead>
                       <tbody>
                         {venta.items.map((item, index) => (
-                          <tr key={item.id_detalle || `${item.id_producto}-${index}`}>
+                          <tr
+                            key={
+                              item.id_detalle ||
+                              item.id_producto ||
+                              item.id_combo ||
+                              item.id_receta ||
+                              `${item.tipo_item}-${index}`
+                            }
+                          >
                             <td>{index + 1}</td>
-                            <td>{item.nombre_producto}</td>
+                            <td>{item.nombre_item || item.nombre_producto}</td>
+                            <td>{item.tipo_item}</td>
                             <td>{item.cantidad}</td>
                             <td>{formatCurrency(item.precio_unitario)}</td>
                             <td>{formatCurrency(item.total_linea || item.sub_total)}</td>

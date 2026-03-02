@@ -38,7 +38,7 @@ export default function VentasPage() {
 
   const filteredVentas = useMemo(() => {
     const rows = [...(Array.isArray(ventas) ? ventas : [])];
-    rows.sort((a, b) => Number(b?.id_pedido ?? 0) - Number(a?.id_pedido ?? 0));
+    rows.sort((a, b) => Number(b?.id_factura ?? 0) - Number(a?.id_factura ?? 0));
 
     return rows.filter((venta) => matchesVenta(venta, deferredSearch));
   }, [deferredSearch, ventas]);
@@ -70,13 +70,13 @@ export default function VentasPage() {
   }, [createOpen, detailOpen]);
 
   const openDetail = async (venta) => {
-    if (!venta?.id_pedido) return;
+    if (!venta?.id_factura) return;
 
     setSelectedVenta(venta);
     setDetailOpen(true);
 
     try {
-      const detail = await getVentaDetail(venta.id_pedido);
+      const detail = await getVentaDetail(venta.id_factura);
       setSelectedVenta(detail);
     } catch {
       // El hook ya gestiona el feedback visual.
@@ -87,9 +87,9 @@ export default function VentasPage() {
     const response = await createVenta(payload);
     setCreateOpen(false);
 
-    if (response?.id_pedido) {
+    if (response?.id_factura) {
       try {
-        const detail = await getVentaDetail(response.id_pedido);
+        const detail = await getVentaDetail(response.id_factura);
         setSelectedVenta(detail);
         setDetailOpen(true);
       } catch {

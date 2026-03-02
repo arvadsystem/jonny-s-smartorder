@@ -128,11 +128,11 @@ export const useVentas = () => {
     Promise.allSettled([loadVentas(), loadCatalogs()]);
   }, [loadCatalogs, loadVentas]);
 
-  const getVentaDetail = useCallback(async (idPedido) => {
+  const getVentaDetail = useCallback(async (idFactura) => {
     setDetailLoading(true);
 
     try {
-      const response = await ventasService.getById(idPedido);
+      const response = await ventasService.getById(idFactura);
       return normalizeVentaDetail(response);
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudo cargar el detalle de la venta.');

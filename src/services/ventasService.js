@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { createVentaNative } from './ventasNativeService';
 
 const buildQuery = (params = {}) => {
   const searchParams = new URLSearchParams();
@@ -16,7 +17,7 @@ const buildQuery = (params = {}) => {
 const ventasService = {
   list: (params = {}) => apiFetch(`/ventas${buildQuery(params)}`, 'GET'),
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
-  create: (payload) => apiFetch('/ventas', 'POST', payload),
+  create: (payload) => createVentaNative(payload),
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
   getProductosCatalog: () => apiFetch('/productos', 'GET'),
   getCategoriasCatalog: () => apiFetch('/tipo_departamento', 'GET')
