@@ -106,7 +106,14 @@ export default function VentaDetalleModal({ open, venta, loading, onClose }) {
                             }
                           >
                             <td>{index + 1}</td>
-                            <td>{item.nombre_item || item.nombre_producto}</td>
+                            <td>
+                              <div className="ventas-detail-modal__item-name">
+                                <span>{item.nombre_item || item.nombre_producto}</span>
+                                {item.observacion ? (
+                                  <small className="ventas-detail-modal__item-note">{item.observacion}</small>
+                                ) : null}
+                              </div>
+                            </td>
                             <td>{item.tipo_item}</td>
                             <td>{item.cantidad}</td>
                             <td>{formatCurrency(item.precio_unitario)}</td>

@@ -14,6 +14,8 @@ export default function VentasPage() {
     ventas,
     categorias,
     productos,
+    combos,
+    recetas,
     clientes,
     loading,
     catalogLoading,
@@ -164,6 +166,8 @@ export default function VentasPage() {
         saving={saving}
         catalogLoading={catalogLoading}
         productos={productos}
+        combos={combos}
+        recetas={recetas}
         categorias={categorias}
         clientes={clientes}
         onClose={() => {

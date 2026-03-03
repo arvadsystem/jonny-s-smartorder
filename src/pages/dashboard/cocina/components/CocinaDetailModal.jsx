@@ -76,6 +76,12 @@ export default function CocinaDetailModal({ open, pedido, now, onClose }) {
                           ))}
                         </div>
                       ) : null}
+                      {item.observacion ? (
+                        <div className="cocina-modal__item-note">
+                          <span>Nota</span>
+                          <p>{item.observacion}</p>
+                        </div>
+                      ) : null}
                     </article>
                   ))}
                 </div>

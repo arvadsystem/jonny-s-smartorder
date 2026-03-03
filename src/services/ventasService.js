@@ -19,6 +19,8 @@ const ventasService = {
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
   create: (payload) => createVentaNative(payload),
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
+  getCombosCatalog: () => apiFetch('/ventas/catalogos/combos', 'GET'),
+  getRecetasCatalog: () => apiFetch('/ventas/catalogos/recetas', 'GET'),
   getProductosCatalog: () => apiFetch('/productos', 'GET'),
   getCategoriasCatalog: () => apiFetch('/tipo_departamento', 'GET')
 };

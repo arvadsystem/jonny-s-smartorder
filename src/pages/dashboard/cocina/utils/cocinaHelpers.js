@@ -50,15 +50,28 @@ const parseDate = (value) => {
 
 const roundMoney = (value) => Number(Number(value || 0).toFixed(2));
 
+const splitObservationSegments = (value) => {
+  const source = String(value || '').trim();
+  if (!source) return [];
+
+  const separator = source.includes('|') ? '|' : ',';
+  return source
+    .split(separator)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+};
+
 const inferModifications = (item, fallbackText = '') => {
+  const itemObservation = String(item?.observacion || '').trim();
+  if (itemObservation) {
+    return splitObservationSegments(itemObservation);
+  }
+
   if (Array.isArray(item?.modificaciones) && item.modificaciones.length > 0) {
     return item.modificaciones.filter(Boolean).map((entry) => String(entry));
   }
 
-  return String(fallbackText || '')
-    .split('|')
-    .map((segment) => segment.trim())
-    .filter(Boolean);
+  return splitObservationSegments(fallbackText);
 };
 
 export const formatCurrency = (value) => `L ${roundMoney(value).toFixed(2)}`;
@@ -116,6 +129,7 @@ export const normalizeKitchenOrder = (row) => ({
     id_receta: Number(item?.id_receta ?? 0) || null,
     cantidad: Number(item?.cantidad ?? 0) || 0,
     nombre_item: String(item?.nombre_item ?? 'Item'),
+    observacion: String(item?.observacion ?? '').trim(),
     modificaciones: inferModifications(item, row?.descripcion_pedido)
   }))
 });
@@ -199,7 +213,13 @@ export const matchesKitchenOrder = (order, search) => {
     order?.nombre_sucursal,
     order?.tipo_servicio,
     order?.descripcion_pedido,
-    ...(Array.isArray(order?.items) ? order.items.map((item) => item?.nombre_item) : [])
+    ...(Array.isArray(order?.items)
+      ? order.items.flatMap((item) => [
+          item?.nombre_item,
+          item?.observacion,
+          ...(Array.isArray(item?.modificaciones) ? item.modificaciones : [])
+        ])
+      : [])
   ]
     .filter(Boolean)
     .join(' ');

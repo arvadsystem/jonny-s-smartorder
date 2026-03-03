@@ -50,25 +50,33 @@ export default function CocinaOrderCard({
       </div>
 
       <div className="cocina-order-card__items">
-        {pedido.items.map((item) => (
-          <div key={item.id_detalle || `${item.tipo_item}-${item.nombre_item}`} className="cocina-order-card__item">
-            <div className="cocina-order-card__item-main">
-              <span className="cocina-order-card__qty">{item.cantidad}</span>
-              <div>
-                <strong>{item.nombre_item}</strong>
-                {item.modificaciones?.length ? (
-                  <div className="cocina-order-card__tags">
-                    {item.modificaciones.slice(0, 3).map((tag) => (
-                      <span key={`${item.id_detalle}-${tag}`} className="cocina-tag is-alert">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
+        {pedido.items.map((item) => {
+          const visibleTags = item.modificaciones?.slice(0, 2) || [];
+          const hiddenCount = Math.max((item.modificaciones?.length || 0) - visibleTags.length, 0);
+
+          return (
+            <div key={item.id_detalle || `${item.tipo_item}-${item.nombre_item}`} className="cocina-order-card__item">
+              <div className="cocina-order-card__item-main">
+                <span className="cocina-order-card__qty">{item.cantidad}</span>
+                <div>
+                  <strong>{item.nombre_item}</strong>
+                  {visibleTags.length ? (
+                    <div className="cocina-order-card__tags">
+                      {visibleTags.map((tag) => (
+                        <span key={`${item.id_detalle}-${tag}`} className="cocina-tag is-alert">
+                          {tag}
+                        </span>
+                      ))}
+                      {hiddenCount > 0 ? (
+                        <span className="cocina-tag is-muted">+{hiddenCount}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button

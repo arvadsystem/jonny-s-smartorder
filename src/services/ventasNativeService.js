@@ -6,7 +6,6 @@ export const ventaPayloadExample = {
   metodo_pago: 'efectivo',
   descuento: 10,
   efectivo_entregado: 300,
-  descripcion_pedido: 'Hamburguesa clasica: sin cebolla | Combo familiar: extra salsa',
   descripcion_envio: 'Para llevar',
   items: [
     {
@@ -19,13 +18,15 @@ export const ventaPayloadExample = {
       id_producto: null,
       id_combo: 3,
       id_receta: null,
-      cantidad: 1
+      cantidad: 1,
+      observacion: 'sin cebolla, extra salsa'
     },
     {
       id_producto: null,
       id_combo: null,
       id_receta: 15,
-      cantidad: 1
+      cantidad: 1,
+      observacion: 'bien cocido'
     }
   ]
 };
