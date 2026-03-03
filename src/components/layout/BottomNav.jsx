@@ -171,15 +171,6 @@ const BottomNav = () => {
                 <button
                   type="button"
                   className="btn btn-outline-primary inv-submodule-option"
-                  onClick={() => goInventario('movimientos')}
-                >
-                  <i className="bi bi-arrow-left-right me-2"></i>
-                  Movimientos
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('alertas')}
                 >
                   <i className="bi bi-exclamation-triangle me-2"></i>
