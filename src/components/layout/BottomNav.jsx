@@ -1,19 +1,14 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import Can from "../common/Can";
+import Can from '../common/Can';
 
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
-
-  // ==============================
-  // ESTADO DEL "SHEET" INVENTARIO (RESPONSIVE)
-  // ==============================
   const [showInventarioSheet, setShowInventarioSheet] = useState(false);
 
-  // DETECTAR SI ESTAMOS EN INVENTARIO (PARA MARCAR ACTIVO)
   const isInInventario = location.pathname.startsWith('/dashboard/inventario');
 
   const menuItems = [
@@ -22,9 +17,10 @@ const BottomNav = () => {
     { name: 'Personas/Empresas', path: '/dashboard/personas', icon: 'bi-people' },
     { name: 'Inventario', path: '/dashboard/inventario', icon: 'bi-box-seam' },
     { name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
-    { name: 'Menú', path: '/dashboard/menu', icon: 'bi-journal-text' },
+    { name: 'Cocina', path: '/dashboard/cocina', icon: 'bi-display' },
+    { name: 'Menu', path: '/dashboard/menu', icon: 'bi-journal-text' },
     { name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
-    { name: 'Configuración', path: '/dashboard/configuracion', icon: 'bi-gear' },
+    { name: 'Configuracion', path: '/dashboard/configuracion', icon: 'bi-gear' }
   ];
 
   const handleLogout = async () => {
@@ -32,9 +28,6 @@ const BottomNav = () => {
     navigate('/', { replace: true });
   };
 
-  // ==============================
-  // NAVEGAR A SUBMODULO INVENTARIO (CIERRA SHEET)
-  // ==============================
   const goInventario = (tab) => {
     setShowInventarioSheet(false);
     navigate(`/dashboard/inventario?tab=${tab}`);
@@ -45,9 +38,6 @@ const BottomNav = () => {
       <div className="bottom-nav">
         <div className="bottom-nav-scroll">
           {menuItems.map((item) => {
-            // ==============================
-            // INVENTARIO: EN MOVIL ABRE MODAL DE SUBMODULOS
-            // ==============================
             if (item.name === 'Inventario') {
               return (
                 <button
@@ -57,13 +47,12 @@ const BottomNav = () => {
                   onClick={() => setShowInventarioSheet(true)}
                   title="Inventario"
                 >
-                  <i className={`bi ${item.icon}`}></i>
+                  <i className={`bi ${item.icon}`} />
                   <span>{item.name}</span>
                 </button>
               );
             }
 
-            // ✅ HU82: OCULTAR "SEGURIDAD" SI NO TIENE PERMISO
             if (item.name === 'Seguridad') {
               return (
                 <Can perm="SEGURIDAD_VER" key={item.path}>
@@ -73,16 +62,13 @@ const BottomNav = () => {
                     className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
                     title={item.name}
                   >
-                    <i className={`bi ${item.icon}`}></i>
+                    <i className={`bi ${item.icon}`} />
                     <span>{item.name}</span>
                   </NavLink>
                 </Can>
               );
             }
 
-            // ==============================
-            // RESTO DE OPCIONES
-            // ==============================
             return (
               <NavLink
                 key={item.path}
@@ -91,24 +77,20 @@ const BottomNav = () => {
                 className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
                 title={item.name}
               >
-                <i className={`bi ${item.icon}`}></i>
+                <i className={`bi ${item.icon}`} />
                 <span>{item.name}</span>
               </NavLink>
             );
           })}
 
-          {/*  Opción original (Salir) ahora en la barra inferior */}
           <button type="button" className="bottom-nav-item" onClick={handleLogout} title="Salir">
-            <i className="bi bi-box-arrow-right"></i>
+            <i className="bi bi-box-arrow-right" />
             <span>Salir</span>
           </button>
         </div>
       </div>
 
-      {/* ==============================
-          MODAL INVENTARIO (CENTRADO)
-          ============================== */}
-      {showInventarioSheet && (
+      {showInventarioSheet ? (
         <div
           className="modal fade show inv-submodule-modal"
           style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2000 }}
@@ -116,9 +98,10 @@ const BottomNav = () => {
           aria-modal="true"
           onClick={() => setShowInventarioSheet(false)}
         >
-          
-          
-          <div className="modal-dialog modal-dialog-centered inv-submodule-dialog" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-dialog modal-dialog-centered inv-submodule-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="modal-content shadow inv-submodule-content">
               <div className="modal-header d-flex align-items-center justify-content-between inv-submodule-header">
                 <div className="fw-semibold inv-submodule-title">Inventario</div>
@@ -127,7 +110,7 @@ const BottomNav = () => {
                   className="btn btn-sm btn-light inv-submodule-close"
                   onClick={() => setShowInventarioSheet(false)}
                 >
-                  ✕
+                  ×
                 </button>
               </div>
 
@@ -137,8 +120,8 @@ const BottomNav = () => {
                   className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('categorias')}
                 >
-                  <i className="bi bi-tags me-2"></i>
-                  Categorías
+                  <i className="bi bi-tags me-2" />
+                  Categorias
                 </button>
 
                 <button
@@ -146,7 +129,7 @@ const BottomNav = () => {
                   className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('insumos')}
                 >
-                  <i className="bi bi-box me-2"></i>
+                  <i className="bi bi-box me-2" />
                   Insumos
                 </button>
 
@@ -155,7 +138,7 @@ const BottomNav = () => {
                   className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('productos')}
                 >
-                  <i className="bi bi-basket2 me-2"></i>
+                  <i className="bi bi-basket2 me-2" />
                   Productos
                 </button>
 
@@ -164,7 +147,7 @@ const BottomNav = () => {
                   className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('almacenes')}
                 >
-                  <i className="bi bi-building me-2"></i>
+                  <i className="bi bi-building me-2" />
                   Almacenes
                 </button>
 
@@ -173,7 +156,7 @@ const BottomNav = () => {
                   className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('movimientos')}
                 >
-                  <i className="bi bi-arrow-left-right me-2"></i>
+                  <i className="bi bi-arrow-left-right me-2" />
                   Movimientos
                 </button>
 
@@ -182,13 +165,13 @@ const BottomNav = () => {
                   className="btn btn-outline-primary inv-submodule-option"
                   onClick={() => goInventario('alertas')}
                 >
-                  <i className="bi bi-exclamation-triangle me-2"></i>
+                  <i className="bi bi-exclamation-triangle me-2" />
                   Alertas
                 </button>
               </div>
 
               <div className="modal-footer inv-submodule-footer">
-                <div className="text-muted small me-auto inv-submodule-help">SELECCIONA UN SUBMÓDULO</div>
+                <div className="text-muted small me-auto inv-submodule-help">SELECCIONA UN SUBMODULO</div>
                 <button
                   type="button"
                   className="btn btn-outline-secondary inv-submodule-footer-btn"
@@ -200,10 +183,9 @@ const BottomNav = () => {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 };
 
 export default BottomNav;
-

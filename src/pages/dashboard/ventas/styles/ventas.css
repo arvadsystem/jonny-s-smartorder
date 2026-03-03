@@ -284,14 +284,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 12px;
   background: rgba(28, 12, 4, 0.48);
   backdrop-filter: blur(6px);
 }
 
 .ventas-modal {
   width: min(1120px, 100%);
-  max-height: calc(100vh - 40px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -357,6 +358,8 @@
 }
 
 .ventas-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   background: linear-gradient(180deg, #fff, #faf7f2);
 }
@@ -364,7 +367,8 @@
 .ventas-create-modal__body {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr);
-  min-height: 640px;
+  min-height: 0;
+  align-items: stretch;
 }
 
 .ventas-create-modal__catalog {
@@ -373,6 +377,39 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.ventas-create-modal__catalog-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ventas-create-modal__catalog-tab {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  background: rgba(249, 245, 240, 0.96);
+  color: rgba(82, 44, 34, 0.84);
+  padding: 9px 14px;
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.ventas-create-modal__catalog-tab.is-active {
+  background: linear-gradient(145deg, #9a5319, #b86821);
+  border-color: rgba(154, 83, 25, 0.58);
+  color: #fff;
+}
+
+.ventas-create-modal__catalog-hint {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(248, 244, 238, 0.92);
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  color: rgba(117, 85, 61, 0.82);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .ventas-create-modal__search {
@@ -430,7 +467,7 @@
 }
 
 .ventas-create-modal__results-meta {
-  margin: 16px 0 10px;
+  margin: 0;
   color: rgba(82, 44, 34, 0.72);
   font-weight: 700;
 }
@@ -440,9 +477,9 @@
   min-height: 0;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
-  padding-right: 8px;
+  padding-right: 4px;
 }
 
 .ventas-create-modal__product-card {
@@ -492,7 +529,7 @@
 }
 
 .ventas-create-modal__empty {
-  min-height: 220px;
+  min-height: 180px;
   border: 1px dashed rgba(157, 150, 112, 0.24);
   border-radius: 18px;
   display: flex;
@@ -509,6 +546,9 @@
   flex-direction: column;
   gap: 14px;
   background: linear-gradient(180deg, #fbf8f4, #f4eee8);
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
 }
 
 .ventas-create-modal__section {
@@ -628,6 +668,8 @@
 
 .ventas-create-modal__cart {
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .ventas-create-modal__cart-head {
@@ -647,15 +689,15 @@
 }
 
 .ventas-create-modal__cart-list {
-  min-height: 260px;
-  max-height: 340px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   display: grid;
   gap: 10px;
 }
 
 .ventas-create-modal__cart-empty {
-  min-height: 220px;
+  min-height: 180px;
   border: 1px dashed rgba(157, 150, 112, 0.22);
   border-radius: 18px;
   display: flex;
@@ -706,6 +748,14 @@
   color: rgba(117, 85, 61, 0.72);
 }
 
+.ventas-create-modal__cart-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .ventas-create-modal__line-total {
   color: #9a5319;
   font-size: 1.3rem;
@@ -748,12 +798,28 @@
   color: #c43b2c;
 }
 
+.ventas-create-modal__note-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.ventas-create-modal__note-label {
+  color: rgba(117, 85, 61, 0.84);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .ventas-create-modal__totals {
   margin-top: auto;
   display: grid;
   gap: 8px;
-  padding-top: 6px;
+  padding: 14px 0 0;
   border-top: 1px solid rgba(157, 150, 112, 0.18);
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(244, 238, 232, 0), #f4eee8 18%, #f4eee8 100%);
 }
 
 .ventas-create-modal__totals > div {
@@ -806,6 +872,8 @@
   padding: 22px;
   display: grid;
   gap: 18px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .ventas-detail-modal__loading {
@@ -883,6 +951,16 @@
   margin: 0;
 }
 
+.ventas-detail-modal__item-name {
+  display: grid;
+  gap: 4px;
+}
+
+.ventas-detail-modal__item-note {
+  color: rgba(117, 85, 61, 0.84);
+  font-size: 0.8rem;
+}
+
 .ventas-detail-modal__table thead th {
   background: rgba(250, 247, 243, 0.94);
   color: rgba(117, 85, 61, 0.92);
@@ -951,6 +1029,12 @@
   .ventas-create-modal__catalog {
     border-right: 0;
     border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+    max-height: min(44vh, 420px);
+    max-height: min(44dvh, 420px);
+  }
+
+  .ventas-create-modal__summary {
+    max-height: none;
   }
 }
 
@@ -979,13 +1063,17 @@
 
 @media (max-width: 767.98px) {
   .ventas-modal-backdrop {
-    padding: 12px;
-    align-items: flex-start;
+    padding: 6px;
+    align-items: stretch;
   }
 
   .ventas-modal {
-    max-height: calc(100vh - 24px);
-    border-radius: 18px;
+    width: 100%;
+    height: calc(100vh - 12px);
+    height: calc(100dvh - 12px);
+    max-height: calc(100vh - 12px);
+    max-height: calc(100dvh - 12px);
+    border-radius: 16px;
   }
 
   .ventas-modal__header {
@@ -1002,8 +1090,19 @@
     padding: 14px;
   }
 
+  .ventas-create-modal__catalog-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
   .ventas-create-modal__products {
     grid-template-columns: 1fr;
+  }
+
+  .ventas-create-modal__catalog {
+    max-height: min(38vh, 340px);
+    max-height: min(38dvh, 340px);
   }
 
   .ventas-create-modal__payment-group,
@@ -1018,6 +1117,24 @@
 
   .ventas-page .ventas-page__table {
     min-width: 760px;
+  }
+
+  .ventas-create-modal__cart-item-head,
+  .ventas-create-modal__cart-item-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ventas-create-modal__qty-control {
+    justify-content: space-between;
+  }
+
+  .ventas-create-modal__remove-btn {
+    width: 100%;
+  }
+
+  .ventas-create-modal__totals {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
   }
 
   .ventas-detail-modal__footer {

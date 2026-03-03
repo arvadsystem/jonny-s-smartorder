@@ -60,7 +60,7 @@ export default function VentasList({
               <div className="inv-catpro-grid ventas-page__sales-grid">
                 {ventas.map((venta, index) => (
                   <VentaCard
-                    key={venta?.id_pedido ?? `${venta?.numero_venta}-${index}`}
+                    key={venta?.id_factura ?? `${venta?.numero_venta}-${index}`}
                     venta={venta}
                     index={index}
                     view={view}
