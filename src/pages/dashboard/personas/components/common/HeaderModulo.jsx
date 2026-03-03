@@ -1,4 +1,5 @@
-import SearchBar from "../SearchBar";
+import ListHeader from "../../../../../components/ui/ListHeader";
+import ViewToggle from "../../../../../components/ui/ViewToggle";
 
 export default function HeaderModulo({
   iconClass,
@@ -15,47 +16,46 @@ export default function HeaderModulo({
   createLabel = "Nuevo",
   filtersControlsId,
   formControlsId,
+  viewMode,
+  onViewModeChange,
 }) {
+  const actions = (
+    <>
+      <button
+        type="button"
+        className={`inv-prod-toolbar-btn ${filtersOpen ? "is-on" : ""}`}
+        onClick={onOpenFilters}
+        title="Filtros"
+        aria-expanded={filtersOpen}
+        aria-controls={filtersControlsId}
+      >
+        <i className="bi bi-funnel" /> <span>Filtros</span>
+      </button>
+
+      <button
+        type="button"
+        className={`inv-prod-toolbar-btn ${createOpen ? "is-on" : ""}`}
+        onClick={onOpenCreate}
+        title={createLabel}
+        aria-expanded={createOpen}
+        aria-controls={formControlsId}
+      >
+        <i className="bi bi-plus-circle" /> <span>{createLabel}</span>
+      </button>
+    </>
+  );
+
   return (
-    <div className="inv-prod-header inv-cat-v2__header">
-      <div className="inv-prod-title-wrap">
-        <div className="inv-prod-title-row">
-          <i className={`${iconClass} inv-prod-title-icon`} />
-          <span className="inv-prod-title">{title}</span>
-        </div>
-        <div className="inv-prod-subtitle">{subtitle}</div>
-      </div>
-
-      <div className="inv-prod-header-actions inv-ins-header-actions inv-cat-v2__actions">
-        <SearchBar
-          value={search}
-          onChange={onSearchChange}
-          placeholder={searchPlaceholder}
-          ariaLabel={searchAriaLabel}
-        />
-
-        <button
-          type="button"
-          className={`inv-prod-toolbar-btn ${filtersOpen ? "is-on" : ""}`}
-          onClick={onOpenFilters}
-          title="Filtros"
-          aria-expanded={filtersOpen}
-          aria-controls={filtersControlsId}
-        >
-          <i className="bi bi-funnel" /> <span>Filtros</span>
-        </button>
-
-        <button
-          type="button"
-          className={`inv-prod-toolbar-btn ${createOpen ? "is-on" : ""}`}
-          onClick={onOpenCreate}
-          title={createLabel}
-          aria-expanded={createOpen}
-          aria-controls={formControlsId}
-        >
-          <i className="bi bi-plus-circle" /> <span>{createLabel}</span>
-        </button>
-      </div>
-    </div>
+    <ListHeader
+      iconClass={iconClass}
+      title={title}
+      subtitle={subtitle}
+      search={search}
+      onSearchChange={onSearchChange}
+      searchPlaceholder={searchPlaceholder}
+      searchAriaLabel={searchAriaLabel}
+      actions={actions}
+      viewToggle={viewMode ? <ViewToggle value={viewMode} onChange={onViewModeChange} /> : null}
+    />
   );
 }

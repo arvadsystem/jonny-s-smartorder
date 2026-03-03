@@ -9,6 +9,7 @@ import Perfil from "./pages/dashboard/Perfil";
 import Personas from './pages/dashboard/Personas';
 import Sucursales from './pages/dashboard/Sucursales';
 import Ventas from './pages/dashboard/Ventas';
+import Cocina from './pages/dashboard/Cocina';
 import Parametros from './pages/dashboard/Parametros'; // Importa la pagina de Parametros/Catalogos.
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from "./routes/RequirePerm";
@@ -40,6 +41,7 @@ function App() {
           <Route path="sucursales" element={<Sucursales />} />
           <Route path="inventario" element={<Inventario />} />
           <Route path="ventas" element={<Ventas />} />
+          <Route path="cocina" element={<Cocina />} />
           <Route path="parametros" element={<Parametros />} />
           
           <Route path="menu" element={<Menu />} />

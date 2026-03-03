@@ -106,7 +106,8 @@
 }
 
 .sec-sesiones-table-responsive {
-  max-height: 520px;
+  max-height: none; /* antes: 520px */
+  overflow-y: visible;
 }
 
 .sec-sesiones-table thead th {

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { personaService } from "../../../services/personasService";
 import sucursalesService from "../../../services/sucursalesService";
+import EntityTable from "../../../components/ui/EntityTable";
 import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpleadoCard from "./components/empleados/EmpleadoCard";
-import "../sucursales/styles/sucursales.css";
 
 const emptyForm = {
   id_persona: "",
@@ -62,6 +62,48 @@ const resolveCardsPerPage = (width) => {
   return 2;
 };
 
+const toDisplayValue = (value, fallback = "No registrado") => {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
+};
+
+const readViewMode = (storageKey) => {
+  if (typeof window === "undefined") return "cards";
+  try {
+    return window.localStorage.getItem(storageKey) === "table" ? "table" : "cards";
+  } catch {
+    return "cards";
+  }
+};
+
+const formatDateLabel = (value) => {
+  if (!value) return "Sin fecha";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString("es-HN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+};
+
+const getDni = (empleado) => empleado?.persona_dni ?? empleado?.dni;
+
+const getTelefono = (empleado) =>
+  empleado?.telefono ??
+  empleado?.telefono_numero ??
+  empleado?.numero_telefono ??
+  empleado?.persona_telefono ??
+  empleado?.telefono_persona;
+
+const getCargo = (empleado) =>
+  empleado?.cargo ??
+  empleado?.nombre_cargo ??
+  empleado?.cargo_nombre ??
+  empleado?.puesto ??
+  empleado?.rol;
+
 const detectEstadoField = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return "estado";
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return "activo";
@@ -89,6 +131,7 @@ export default function Empleados({ openToast }) {
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState(() => readViewMode("empleadosViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [sortBy, setSortBy] = useState("recientes");
@@ -299,6 +342,14 @@ export default function Empleados({ openToast }) {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("empleadosViewMode", viewMode);
+    } catch {
+      // Keep working even if storage is unavailable.
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     if (!showModal || !editId) return;
@@ -551,8 +602,8 @@ export default function Empleados({ openToast }) {
   };
 
   return (
-    <div className="suc-page">
-      <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
+    <div className="personas-page">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <HeaderModulo
           iconClass="bi bi-person-badge-fill"
           title="Empleados"
@@ -568,12 +619,14 @@ export default function Empleados({ openToast }) {
           createLabel="Nuevo"
           filtersControlsId="empd-filtros-drawer"
           formControlsId="empd-form-drawer"
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de empleados" />
 
         <div className="inv-catpro-body inv-prod-body p-3">
-          <div className="inv-prod-results-meta inv-cat-v2__results-meta">
+          <div className="inv-prod-results-meta personas-page__results-meta">
             <span>{loading ? "Cargando empleados..." : `${empleadosFiltrados.length} resultados`}</span>
             <span>{loading ? "" : `Total: ${total}`}</span>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
@@ -606,6 +659,81 @@ export default function Empleados({ openToast }) {
                   </button>
                 </div>
               </div>
+            ) : viewMode === "table" ? (
+              <EntityTable>
+                <table className="table personas-page__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Empleado</th>
+                      <th scope="col">Sucursal</th>
+                      <th scope="col">DNI</th>
+                      <th scope="col">Telefono</th>
+                      <th scope="col">Cargo</th>
+                      <th scope="col">Fecha ingreso</th>
+                      <th scope="col">Estado</th>
+                      <th scope="col">Codigo</th>
+                      <th scope="col" className="text-end">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {empleadosFiltrados.map((empleado, idx) => {
+                      const isActive = isActivo(empleado);
+                      const idEmpleado = empleado?.id_empleado;
+                      const deleting = deletingId === idEmpleado;
+                      const tableIndex = (page - 1) * limit + idx;
+
+                      return (
+                        <tr key={empleado?.id_empleado ?? idx} className={isActive ? "" : "is-inactive-state"}>
+                          <td>
+                            <strong>{tableIndex + 1}. {toDisplayValue(getPersonaNombre(empleado), "Empleado sin nombre")}</strong>
+                          </td>
+                          <td>{toDisplayValue(getSucursalNombre(empleado))}</td>
+                          <td>{toDisplayValue(getDni(empleado), "N/D")}</td>
+                          <td>{toDisplayValue(getTelefono(empleado), "Sin telefono")}</td>
+                          <td>{toDisplayValue(getCargo(empleado), "Sin cargo")}</td>
+                          <td>{formatDateLabel(empleado?.fecha_ingreso)}</td>
+                          <td>
+                            <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
+                              {isActive ? "ACTIVO" : "INACTIVO"}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="inv-catpro-code-wrap personas-page__table-code-wrap">
+                              <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
+                              <span className="inv-catpro-code">EMP-{String(idEmpleado ?? "-")}</span>
+                            </div>
+                          </td>
+                          <td className="text-end">
+                            <div className="personas-page__table-actions">
+                              <button
+                                type="button"
+                                className="inv-catpro-action edit inv-catpro-action-compact"
+                                onClick={() => iniciarEdicion(empleado)}
+                                title="Editar"
+                                disabled={actionLoading || deleting}
+                              >
+                                <i className="bi bi-pencil-square" />
+                                <span className="inv-catpro-action-label">Editar</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="inv-catpro-action danger inv-catpro-action-compact"
+                                onClick={() => openConfirmDelete(empleado)}
+                                title="Eliminar"
+                                disabled={actionLoading || deleting}
+                              >
+                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
+                                <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
                 {empleadosFiltrados.map((empleado, idx) => (
@@ -625,20 +753,22 @@ export default function Empleados({ openToast }) {
             )}
           </div>
 
-          <div className="d-flex justify-content-end mt-3 gap-2 flex-wrap">
-            <span className="badge rounded-pill text-bg-light border text-dark px-3 py-2 align-self-center">
-              Pagina {page} de {totalPages}
-            </span>
+          <div className="personas-page__pagination">
             <button
-              className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+              type="button"
+              className="btn btn-outline-secondary"
               disabled={page === 1 || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev - 1)}
             >
               <i className="bi bi-chevron-left me-1" />
               Anterior
             </button>
+            <span>
+              Pagina {page} de {totalPages}
+            </span>
             <button
-              className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+              type="button"
+              className="btn btn-outline-secondary"
               disabled={page >= totalPages || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev + 1)}
             >
