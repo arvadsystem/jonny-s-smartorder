@@ -5,7 +5,9 @@ import {
   extractApiMessage,
   normalizeCategoriaRecord,
   normalizeClienteOption,
+  normalizeComboRecord,
   normalizeProductoRecord,
+  normalizeRecetaRecord,
   normalizeVentaDetail,
   normalizeVentaRecord
 } from '../utils/ventasHelpers';
@@ -21,6 +23,8 @@ export const useVentas = () => {
   const [ventas, setVentas] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
+  const [combos, setCombos] = useState([]);
+  const [recetas, setRecetas] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -73,10 +77,18 @@ export const useVentas = () => {
     setCatalogLoading(true);
 
     try {
-      const [categoriasResponse, productosResponse, clientesResponse] = await Promise.all([
+      const [
+        categoriasResponse,
+        productosResponse,
+        clientesResponse,
+        combosResponse,
+        recetasResponse
+      ] = await Promise.all([
         ventasService.getCategoriasCatalog(),
         ventasService.getProductosCatalog(),
-        ventasService.getClientesCatalog()
+        ventasService.getClientesCatalog(),
+        ventasService.getCombosCatalog(),
+        ventasService.getRecetasCatalog()
       ]);
 
       const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
@@ -112,8 +124,28 @@ export const useVentas = () => {
           .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
       ];
 
+      const normalizedCombos = (Array.isArray(combosResponse) ? combosResponse : [])
+        .map(normalizeComboRecord)
+        .filter((combo) => combo.estado)
+        .sort((a, b) =>
+          a.descripcion.localeCompare(b.descripcion, 'es', {
+            sensitivity: 'base'
+          })
+        );
+
+      const normalizedRecetas = (Array.isArray(recetasResponse) ? recetasResponse : [])
+        .map(normalizeRecetaRecord)
+        .filter((receta) => receta.estado)
+        .sort((a, b) =>
+          a.nombre_receta.localeCompare(b.nombre_receta, 'es', {
+            sensitivity: 'base'
+          })
+        );
+
       setCategorias(normalizedCategorias);
       setProductos(normalizedProductos);
+      setCombos(normalizedCombos);
+      setRecetas(normalizedRecetas);
       setClientes(normalizedClientes);
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar los catalogos de ventas.');
@@ -128,11 +160,11 @@ export const useVentas = () => {
     Promise.allSettled([loadVentas(), loadCatalogs()]);
   }, [loadCatalogs, loadVentas]);
 
-  const getVentaDetail = useCallback(async (idPedido) => {
+  const getVentaDetail = useCallback(async (idFactura) => {
     setDetailLoading(true);
 
     try {
-      const response = await ventasService.getById(idPedido);
+      const response = await ventasService.getById(idFactura);
       return normalizeVentaDetail(response);
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudo cargar el detalle de la venta.');
@@ -173,6 +205,8 @@ export const useVentas = () => {
     ventas,
     categorias,
     productos,
+    combos,
+    recetas,
     clientes,
     loading,
     catalogLoading,

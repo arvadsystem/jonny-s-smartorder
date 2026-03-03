@@ -3,21 +3,71 @@ import { apiFetch } from './api';
 const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
+const toCleanString = (value) => {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+};
+
+const buildPersonaPayload = (data = {}) => {
+  if (!isPlainObject(data)) return {};
+
+  return {
+    nombre: toCleanString(data.nombre),
+    apellido: toCleanString(data.apellido),
+    fecha_nacimiento: toCleanString(data.fecha_nacimiento),
+    genero: toCleanString(data.genero),
+    dni: toCleanString(data.dni),
+    rtn: toCleanString(data.rtn),
+    texto_direccion: toCleanString(data.texto_direccion ?? data.direccion),
+    texto_telefono: toCleanString(data.texto_telefono ?? data.telefono),
+    texto_correo: toCleanString(data.texto_correo ?? data.direccion_correo ?? data.correo),
+  };
+};
+
+const resolvePersonasListArgs = (pageOrOptions = 1, limitArg = 10, searchArg = '') => {
+  if (isPlainObject(pageOrOptions)) {
+    const { page = 1, limit = 10, search = '' } = pageOrOptions;
+    return { page, limit, search };
+  }
+
+  return {
+    page: pageOrOptions ?? 1,
+    limit: limitArg ?? 10,
+    search: searchArg ?? ''
+  };
+};
+
 export const personaService = {
 
   // ==============================
   // PERSONAS
   // ==============================
 
-  getPersonasDetalle: (page = 1, limit = 10) =>
-  apiFetch(`/personas-detalle?page=${page}&limit=${limit}`, 'GET'),
+  getPersonas: (pageOrOptions = 1, limitArg = 10, searchArg = '') => {
+    const { page, limit, search } = resolvePersonasListArgs(pageOrOptions, limitArg, searchArg);
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    if (typeof search === 'string' && search.trim()) params.set('search', search.trim());
+    return apiFetch(`/personas?${params.toString()}`, 'GET');
+  },
+
+  // Alias por compatibilidad con modulos existentes
+  getPersonasDetalle: (pageOrOptions = 1, limitArg = 10, searchArg = '') =>
+    personaService.getPersonas(pageOrOptions, limitArg, searchArg),
 
 
   getTelefonos: () => apiFetch('/telefonos', 'GET'),
   getDirecciones: () => apiFetch('/direcciones', 'GET'),
   getCorreos: () => apiFetch('/correos', 'GET'),
 
-  crearPersona: (data) => apiFetch('/personas', 'POST', data),
+  createPersona: (data) => apiFetch('/personas', 'POST', buildPersonaPayload(data)),
+
+  // Alias por compatibilidad con modulos existentes
+  crearPersona: (data) => apiFetch('/personas', 'POST', buildPersonaPayload(data)),
+
+  updatePersona: (id, data) =>
+    apiFetch(`/personas/${id}`, 'PUT', buildPersonaPayload(data)),
 
   actualizarPersonaCampo: (id, campo, valor) =>
   apiFetch(`/personas/${id}`, 'PUT', {

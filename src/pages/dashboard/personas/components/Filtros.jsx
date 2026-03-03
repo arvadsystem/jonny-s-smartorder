@@ -6,6 +6,26 @@ export default function Filtros({
   onApply,
   onClear,
 }) {
+  const blurCurrentTarget = (event) => {
+    const target = event?.currentTarget;
+    if (target && typeof target.blur === "function") target.blur();
+  };
+
+  const handleClose = (event) => {
+    blurCurrentTarget(event);
+    if (typeof onClose === "function") onClose();
+  };
+
+  const handleApply = (event) => {
+    blurCurrentTarget(event);
+    if (typeof onApply === "function") onApply();
+  };
+
+  const handleClear = (event) => {
+    blurCurrentTarget(event);
+    if (typeof onClear === "function") onClear();
+  };
+
   return (
     <aside
       className={`inv-prod-drawer inv-cat-v2__drawer ${open ? "show" : ""}`}
@@ -18,40 +38,46 @@ export default function Filtros({
         <i className="bi bi-people-fill inv-cat-v2__drawer-mark" aria-hidden="true" />
         <div>
           <div className="inv-prod-drawer-title">Filtros de personas</div>
-          <div className="inv-prod-drawer-sub">Estado y orden visual del listado</div>
+          <div className="inv-prod-drawer-sub">Genero y orden visual del listado</div>
         </div>
-        <button type="button" className="inv-prod-drawer-close" onClick={onClose} title="Cerrar">
+        <button
+          type="button"
+          className="inv-prod-drawer-close"
+          onClick={handleClose}
+          title="Cerrar"
+          aria-label="Cerrar filtros"
+        >
           <i className="bi bi-x-lg" />
         </button>
       </div>
 
       <div className="inv-prod-drawer-body inv-cat-v2__drawer-body">
         <div className="inv-prod-drawer-section">
-          <div className="inv-prod-drawer-section-title">Estado</div>
+          <div className="inv-prod-drawer-section-title">Genero</div>
           <div className="inv-ins-chip-grid">
             <button
               type="button"
-              className={`inv-ins-chip ${draft.estadoFiltro === "todos" ? "is-active" : ""}`}
-              onClick={() => onChangeDraft((state) => ({ ...state, estadoFiltro: "todos" }))}
+              className={`inv-ins-chip ${draft.generoFiltro === "todos" ? "is-active" : ""}`}
+              onClick={() => onChangeDraft((state) => ({ ...state, generoFiltro: "todos" }))}
             >
-              Todas
+              Todos
             </button>
             <button
               type="button"
-              className={`inv-ins-chip ${draft.estadoFiltro === "activo" ? "is-active" : ""}`}
-              onClick={() => onChangeDraft((state) => ({ ...state, estadoFiltro: "activo" }))}
+              className={`inv-ins-chip ${draft.generoFiltro === "femenino" ? "is-active" : ""}`}
+              onClick={() => onChangeDraft((state) => ({ ...state, generoFiltro: "femenino" }))}
             >
-              Activas
+              Femenino
             </button>
             <button
               type="button"
-              className={`inv-ins-chip ${draft.estadoFiltro === "inactivo" ? "is-active" : ""}`}
-              onClick={() => onChangeDraft((state) => ({ ...state, estadoFiltro: "inactivo" }))}
+              className={`inv-ins-chip ${draft.generoFiltro === "masculino" ? "is-active" : ""}`}
+              onClick={() => onChangeDraft((state) => ({ ...state, generoFiltro: "masculino" }))}
             >
-              Inactivas
+              Masculino
             </button>
           </div>
-          <div className="inv-ins-help">Selecciona un estado o deja "Todas".</div>
+          <div className="inv-ins-help">Selecciona un genero o deja 'Todos'.</div>
         </div>
 
         <div className="inv-prod-drawer-section">
@@ -70,10 +96,10 @@ export default function Filtros({
         </div>
 
         <div className="inv-prod-drawer-actions inv-cat-v2__drawer-actions">
-          <button type="button" className="btn inv-prod-btn-subtle" onClick={onClear}>
+          <button type="button" className="btn inv-prod-btn-subtle" onClick={handleClear}>
             Limpiar
           </button>
-          <button type="button" className="btn inv-prod-btn-primary" onClick={onApply}>
+          <button type="button" className="btn inv-prod-btn-primary" onClick={handleApply}>
             Aplicar
           </button>
         </div>

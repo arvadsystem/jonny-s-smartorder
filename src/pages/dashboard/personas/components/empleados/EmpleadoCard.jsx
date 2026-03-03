@@ -1,3 +1,5 @@
+import EntityCard from "../../../../../components/ui/EntityCard";
+
 const parseEstado = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return Boolean(record.estado);
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return Boolean(record.activo);
@@ -55,58 +57,23 @@ export default function EmpleadoCard({
   const sucursalNombre = typeof getSucursalNombre === "function" ? getSucursalNombre(empleado) : "No registrado";
 
   return (
-    <div
-      className={`inv-catpro-item inv-cat-card inv-anim-in ${isActive ? "" : "is-inactive-state"}`}
-      style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
-    >
-      <div className="inv-cat-card__halo" aria-hidden="true">
-        <i className="bi bi-person-badge" />
-      </div>
-
-      <div className="inv-catpro-item-top">
-        <div className="inv-cat-card__title-wrap">
-          <span className="inv-cat-card__icon" aria-hidden="true">
-            <i className="bi bi-person-vcard" />
-          </span>
-          <div>
-            <div className="fw-bold">
-              {index + 1}. {toDisplayValue(personaNombre, "Empleado sin nombre")}
-            </div>
-            <div className="text-muted small">Sucursal: {toDisplayValue(sucursalNombre)}</div>
-          </div>
-        </div>
-
-        <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
-          {isActive ? "ACTIVO" : "INACTIVO"}
-        </span>
-      </div>
-
-      <div className="suc-page__card-details">
-        <div className="suc-page__card-row">
-          <i className="bi bi-person-vcard" />
-          <span>DNI: {toDisplayValue(getDni(empleado), "N/D")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-telephone" />
-          <span>{toDisplayValue(getTelefono(empleado), "Sin telefono")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-briefcase" />
-          <span>{toDisplayValue(getCargo(empleado), "Sin cargo")}</span>
-        </div>
-        <div className="suc-page__card-row">
-          <i className="bi bi-calendar-event" />
-          <span>{formatDateLabel(empleado?.fecha_ingreso)}</span>
-        </div>
-      </div>
-
-      <div className="inv-catpro-meta inv-catpro-item-footer">
-        <div className="inv-catpro-code-wrap">
+    <EntityCard
+      index={index}
+      iconClass="bi bi-person-badge"
+      titleIconClass="bi bi-person-vcard"
+      title={`${index + 1}. ${toDisplayValue(personaNombre, "Empleado sin nombre")}`}
+      subtitle={`Sucursal: ${toDisplayValue(sucursalNombre)}`}
+      badge={isActive ? "ACTIVO" : "INACTIVO"}
+      badgeClass={isActive ? "is-ok" : "is-inactive"}
+      inactive={!isActive}
+      footerLeft={
+        <>
           <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
           <span className="inv-catpro-code">EMP-{String(idEmpleado ?? "-")}</span>
-        </div>
-
-        <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions">
+        </>
+      }
+      footerActions={
+        <>
           <button
             type="button"
             className="inv-catpro-action edit inv-catpro-action-compact"
@@ -128,8 +95,25 @@ export default function EmpleadoCard({
             <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
             <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="personas-page__card-row">
+        <i className="bi bi-person-vcard" />
+        <span>DNI: {toDisplayValue(getDni(empleado), "N/D")}</span>
       </div>
-    </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-telephone" />
+        <span>{toDisplayValue(getTelefono(empleado), "Sin telefono")}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-briefcase" />
+        <span>{toDisplayValue(getCargo(empleado), "Sin cargo")}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-calendar-event" />
+        <span>{formatDateLabel(empleado?.fecha_ingreso)}</span>
+      </div>
+    </EntityCard>
   );
 }

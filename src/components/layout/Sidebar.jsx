@@ -8,6 +8,7 @@ const MENU_ITEMS = [
   { name: 'Personas/Empresas', path: '/dashboard/personas', icon: 'bi-people' },
   { name: 'Inventario', path: '/dashboard/inventario', icon: 'bi-box-seam' },
   { name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
+  { name: 'Cocina', path: '/dashboard/cocina', icon: 'bi-display' },
   { name: 'Menu', path: '/dashboard/menu', icon: 'bi-journal-text' },
   { name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
   { name: 'Parametros', path: '/dashboard/parametros', icon: 'bi-sliders' },
