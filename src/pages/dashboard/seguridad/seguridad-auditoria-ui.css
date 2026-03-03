@@ -1,0 +1,171 @@
+.sec-audit-profile-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 280px) 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.sec-audit-profile-focus {
+  border: 1px solid rgba(228, 227, 209, 0.95);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.sec-audit-profile-focus-name {
+  background: linear-gradient(145deg, #11b8a7, #17b0c2);
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.sec-audit-profile-focus-avatar {
+  min-height: 170px;
+  border-top: 1px solid rgba(228, 227, 209, 0.95);
+  border-bottom: 1px solid rgba(228, 227, 209, 0.95);
+  background: #f7f6ef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7a1e24;
+}
+
+.sec-audit-profile-focus-avatar i {
+  font-size: 5.8rem;
+  line-height: 1;
+}
+
+.sec-audit-profile-focus-stats {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sec-audit-profile-focus-status .badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sec-audit-profile-focus-status {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.sec-audit-header-actions {
+  justify-content: flex-end;
+}
+
+.sec-audit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 219, 199, 0.9);
+  background: #fff;
+  padding: 0.28rem 0.64rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #5a4639;
+}
+
+.sec-audit-tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid rgba(228, 227, 209, 0.95);
+}
+
+.sec-audit-tab-btn {
+  border: 1px solid rgba(220, 219, 199, 0.95);
+  background: #fff;
+  border-radius: 999px;
+  color: #5a4639;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.34rem 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.sec-audit-tab-btn.is-active {
+  border-color: rgba(122, 30, 36, 0.35);
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  color: #fff;
+}
+
+.sec-audit-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 14px 20px;
+  align-content: start;
+  border: 1px solid rgba(228, 227, 209, 0.95);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px 16px;
+}
+
+.sec-audit-profile-item {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 0;
+}
+
+.sec-audit-profile-item .label {
+  color: #8a8160;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sec-audit-profile-item .value {
+  margin-top: 4px;
+  color: #2d2a1e;
+  font-size: 0.9rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.sec-audit-table-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sec-audit-message {
+  margin: 0 16px 10px;
+}
+
+@media (max-width: 768px) {
+  .sec-audit-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 992px) {
+  .sec-audit-profile-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .sec-audit-profile-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 576px) {
+  .sec-audit-profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
