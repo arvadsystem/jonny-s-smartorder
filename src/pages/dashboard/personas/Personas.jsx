@@ -17,6 +17,28 @@ const emptyForm = {
   id_correo: "",
 };
 
+const createInitialTouched = () => ({
+  nombre: false,
+  apellido: false,
+  dni: false,
+  genero: false,
+  fechaNacimiento: false,
+  telefono: false,
+  correo: false,
+  rtn: false,
+});
+
+const formFieldToTouchedKey = {
+  nombre: "nombre",
+  apellido: "apellido",
+  dni: "dni",
+  genero: "genero",
+  fecha_nacimiento: "fechaNacimiento",
+  id_telefono: "telefono",
+  id_correo: "correo",
+  rtn: "rtn",
+};
+
 const createInitialFiltersDraft = () => ({
   generoFiltro: "todos",
   sortBy: "recientes",
@@ -187,6 +209,208 @@ const readViewMode = (storageKey) => {
   }
 };
 
+const lettersAndSpaces = (value) =>
+  String(value ?? "").replace(
+    /[^A-Za-z\u00C1\u00C9\u00CD\u00D3\u00DA\u00E1\u00E9\u00ED\u00F3\u00FA\u00D1\u00F1\u00DC\u00FC\s]/g,
+    ""
+  );
+
+const capitalizeFirstOnly = (value) => {
+  if (!value) return "";
+  const s = String(value).toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
+
+const limit = (value, max) => String(value ?? "").slice(0, max);
+
+const formatDNI = (digits13) => {
+  const d = String(digits13 ?? "");
+  const p1 = d.slice(0, 4);
+  const p2 = d.slice(4, 8);
+  const p3 = d.slice(8, 13);
+  if (d.length <= 4) return p1;
+  if (d.length <= 8) return `${p1}-${p2}`;
+  return `${p1}-${p2}-${p3}`;
+};
+
+const formatPhone = (digits8) => {
+  const d = String(digits8 ?? "");
+  const p1 = d.slice(0, 4);
+  const p2 = d.slice(4, 8);
+  if (d.length <= 4) return p1;
+  return `${p1}-${p2}`;
+};
+
+const LETTERS_INPUT_REGEX = /^[A-Za-z\u00C1\u00C9\u00CD\u00D3\u00DA\u00E1\u00E9\u00ED\u00F3\u00FA\u00D1\u00F1\u00DC\u00FC\s]+$/;
+const ALLOWED_EDITING_KEYS = new Set([
+  "Backspace",
+  "Delete",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "Tab",
+  "Enter",
+  "Escape",
+]);
+const DUPLICATE_MODAL_DEFAULT_MESSAGE = "Dato ya existe ya sea nombre, DNI, apellidos y telefonos";
+const UNIQUE_STATUS_CODES = new Set([400, 409, 500]);
+const UNIQUE_ERROR_HINTS = [
+  "duplicate",
+  "unique",
+  "already exists",
+  "already exist",
+  "violates unique",
+  "constraint",
+  "23505",
+  "personas_dni_unique",
+  "telefonos_unique",
+  "correos_unique",
+  "personas_nombre_apellido_unique",
+];
+
+const collectErrorTokens = (value, bucket = [], visited = new Set()) => {
+  if (value === null || value === undefined) return bucket;
+  const valueType = typeof value;
+  if (valueType === "string" || valueType === "number" || valueType === "boolean") {
+    const text = String(value).trim();
+    if (text) bucket.push(text);
+    return bucket;
+  }
+  if (valueType !== "object") return bucket;
+  if (visited.has(value)) return bucket;
+  visited.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectErrorTokens(item, bucket, visited));
+    return bucket;
+  }
+  Object.values(value).forEach((item) => collectErrorTokens(item, bucket, visited));
+  return bucket;
+};
+
+const normalizeErrorText = (error) =>
+  collectErrorTokens({
+    message: error?.message,
+    code: error?.code,
+    status: error?.status,
+    statusCode: error?.statusCode,
+    data: error?.data,
+    response: error?.response?.data,
+    constraint: error?.constraint ?? error?.data?.constraint ?? error?.response?.data?.constraint,
+    sqlState:
+      error?.sqlState ??
+      error?.data?.sqlState ??
+      error?.data?.sqlstate ??
+      error?.response?.data?.sqlState ??
+      error?.response?.data?.sqlstate,
+  })
+    .join(" ")
+    .toLowerCase();
+
+const readErrorStatus = (error) => {
+  const rawStatus =
+    error?.status ??
+    error?.statusCode ??
+    error?.response?.status ??
+    error?.response?.statusCode ??
+    error?.data?.status ??
+    error?.response?.data?.status;
+  const parsed = Number(rawStatus);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const isUniqueConstraintError = (error) => {
+  const status = readErrorStatus(error);
+  const normalizedText = normalizeErrorText(error);
+  const hasUniqueHint = UNIQUE_ERROR_HINTS.some((hint) => normalizedText.includes(hint));
+  if (status === 409) return true;
+  if (UNIQUE_STATUS_CODES.has(status) && hasUniqueHint) return true;
+  return hasUniqueHint;
+};
+
+const resolveDuplicateFieldLabel = (error) => {
+  const normalizedText = normalizeErrorText(error);
+  if (normalizedText.includes("personas_nombre_apellido_unique") || (normalizedText.includes("nombre") && normalizedText.includes("apellido"))) {
+    return "Nombre y Apellido";
+  }
+  if (normalizedText.includes("personas_dni_unique") || normalizedText.includes("dni")) return "DNI";
+  if (normalizedText.includes("telefonos_unique") || normalizedText.includes("telefono")) return "Telefono";
+  if (normalizedText.includes("correos_unique") || normalizedText.includes("correo") || normalizedText.includes("email")) {
+    return "Correo";
+  }
+  return "";
+};
+
+function PersonasActionModal({
+  show,
+  onClose,
+  title,
+  subtitle,
+  question,
+  detail = "",
+  detailIconClass = "bi bi-person-vcard",
+  cancelText = "Cancelar",
+  confirmText = "Confirmar",
+  onConfirm,
+  confirmButtonClass = "btn inv-pro-btn-danger",
+  confirmIconClass = "",
+  hideCancel = false,
+  confirmDisabled = false,
+}) {
+  if (!show) return null;
+  const handleClose = () => {
+    if (typeof onClose === "function") onClose();
+  };
+  const handleConfirm = () => {
+    if (typeof onConfirm === "function") onConfirm();
+  };
+
+  return (
+    <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={handleClose}>
+      <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="inv-pro-confirm-head">
+          <div className="inv-pro-confirm-head-icon">
+            <i className="bi bi-exclamation-triangle-fill" />
+          </div>
+          <div>
+            <div className="inv-pro-confirm-title">{title}</div>
+            <div className="inv-pro-confirm-sub">{subtitle}</div>
+          </div>
+          <button type="button" className="inv-pro-confirm-close" onClick={handleClose} aria-label="Cerrar">
+            <i className="bi bi-x-lg" />
+          </button>
+        </div>
+
+        <div className="inv-pro-confirm-body">
+          <div className="inv-pro-confirm-question">{question}</div>
+          {detail ? (
+            <div className="inv-pro-confirm-name">
+              <i className={detailIconClass} />
+              <span>{detail}</span>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="inv-pro-confirm-footer">
+          {!hideCancel ? (
+            <button type="button" className="btn inv-pro-btn-cancel" onClick={handleClose}>
+              {cancelText}
+            </button>
+          ) : null}
+          <button type="button" className={confirmButtonClass} onClick={handleConfirm} disabled={confirmDisabled}>
+            {confirmIconClass ? <i className={confirmIconClass} /> : null}
+            <span>{confirmText}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const detectEstadoField = (persona) => {
   if (Object.prototype.hasOwnProperty.call(persona || {}, "estado")) return "estado";
   if (Object.prototype.hasOwnProperty.call(persona || {}, "activo")) return "activo";
@@ -282,10 +506,6 @@ export default function Personas({ openToast }) {
     [openToast]
   );
 
-  const [telefonos, setTelefonos] = useState([]);
-  const [direcciones, setDirecciones] = useState([]);
-  const [correos, setCorreos] = useState([]);
-
   const [personas, setPersonas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -299,7 +519,7 @@ export default function Personas({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [personasGlobalFiltrables, setPersonasGlobalFiltrables] = useState([]);
   const [globalFilterLoading, setGlobalFilterLoading] = useState(false);
@@ -315,6 +535,7 @@ export default function Personas({ openToast }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState(createInitialTouched);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -323,6 +544,9 @@ export default function Personas({ openToast }) {
     idToDelete: null,
     nombre: "",
   });
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateMessage, setDuplicateMessage] = useState(DUPLICATE_MODAL_DEFAULT_MESSAGE);
+  const [duplicateFieldLabel, setDuplicateFieldLabel] = useState("");
 
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
@@ -332,9 +556,8 @@ export default function Personas({ openToast }) {
   const requestIdRef = useRef(0);
   const globalKpiRequestIdRef = useRef(0);
   const globalFilterRequestIdRef = useRef(0);
-  const catalogosCargadosRef = useRef(false);
 
-  const backendTotalPages = Math.max(1, Math.ceil(total / limit));
+  const backendTotalPages = Math.max(1, Math.ceil(total / pageSize));
   const isAnyDrawerOpen = showModal || filtersOpen;
 
   const blurFocusedElementInside = useCallback((containerId) => {
@@ -352,27 +575,6 @@ export default function Personas({ openToast }) {
     setShowModal(false);
   }, [blurFocusedElementInside]);
 
-  const cargarCatalogos = useCallback(async () => {
-    if (catalogosCargadosRef.current) return;
-
-    try {
-      const [telefonosResp, direccionesResp, correosResp] = await Promise.all([
-        personaService.getTelefonos(),
-        personaService.getDirecciones(),
-        personaService.getCorreos(),
-      ]);
-
-      if (!mountedRef.current) return;
-
-      setTelefonos(Array.isArray(telefonosResp) ? telefonosResp : []);
-      setDirecciones(Array.isArray(direccionesResp) ? direccionesResp : []);
-      setCorreos(Array.isArray(correosResp) ? correosResp : []);
-      catalogosCargadosRef.current = true;
-    } catch (error) {
-      safeToast("ERROR", error.message || "No se pudo cargar catalogos", "danger");
-    }
-  }, [safeToast]);
-
   const cargarPersonas = useCallback(async () => {
     setLoading(true);
     setListError("");
@@ -381,7 +583,7 @@ export default function Personas({ openToast }) {
     try {
       const response = await personaService.getPersonas({
         page,
-        limit,
+        limit: pageSize,
         search: debouncedSearch,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
@@ -401,7 +603,7 @@ export default function Personas({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, debouncedSearch, safeToast]);
+  }, [page, pageSize, debouncedSearch, safeToast]);
 
   const cargarPersonasGlobalFiltrables = useCallback(
     async (searchTerm = "") => {
@@ -531,13 +733,10 @@ export default function Personas({ openToast }) {
   }, []);
 
   useEffect(() => {
-    cargarCatalogos();
-  }, [cargarCatalogos]);
-
-  useEffect(() => {
     if (generoFiltro !== "todos" || sortBy !== "recientes") return;
+    if (String(search ?? "").trim() !== debouncedSearch) return;
     cargarPersonas();
-  }, [cargarPersonas, generoFiltro, sortBy]);
+  }, [cargarPersonas, debouncedSearch, generoFiltro, search, sortBy]);
 
   useEffect(() => {
     cargarKpiGlobales();
@@ -547,12 +746,12 @@ export default function Personas({ openToast }) {
     const shouldUseGlobal = generoFiltro !== "todos" || sortBy !== "recientes";
     if (!shouldUseGlobal) {
       globalFilterRequestIdRef.current += 1;
-      setPersonasGlobalFiltrables([]);
-      setGlobalFilterLoading(false);
+      setPersonasGlobalFiltrables((prev) => (prev.length ? [] : prev));
+      setGlobalFilterLoading((prev) => (prev ? false : prev));
       return;
     }
 
-    setPage(1);
+    setPage((prev) => (prev === 1 ? prev : 1));
     cargarPersonasGlobalFiltrables(debouncedSearch);
   }, [generoFiltro, sortBy, debouncedSearch, cargarPersonasGlobalFiltrables]);
 
@@ -560,11 +759,15 @@ export default function Personas({ openToast }) {
     const timerId = window.setTimeout(() => {
       const nextSearch = String(search ?? "").trim();
       setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
-      setPage((prev) => (prev === 1 ? prev : 1));
     }, 300);
 
     return () => window.clearTimeout(timerId);
   }, [search]);
+
+  const handleSearchChange = useCallback((value) => {
+    setSearch(value);
+    setPage((prev) => (prev === 1 ? prev : 1));
+  }, []);
 
   useEffect(() => {
     const onResize = () => setCardsPerPage(resolveCardsPerPage(window.innerWidth));
@@ -581,19 +784,25 @@ export default function Personas({ openToast }) {
   }, [viewMode]);
 
   const buildFormFromPersona = useCallback(
-    (persona) => ({
-      nombre: persona?.nombre || "",
-      apellido: persona?.apellido || "",
-      dni: persona?.dni || "",
-      rtn: persona?.rtn || "",
-      genero: persona?.genero || "",
-      fecha_nacimiento: toDateInputValue(persona?.fecha_nacimiento),
-      id_telefono:
-        persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono ?? "",
-      id_direccion: persona?.direccion ?? persona?.direccion_detalle ?? "",
-      id_correo: persona?.direccion_correo ?? persona?.correo ?? persona?.email ?? "",
-    }),
-    [telefonos, direcciones, correos]
+    (persona) => {
+      const dniRaw = limit(digitsOnly(persona?.dni ?? ""), 13);
+      const telefonoRaw = limit(
+        digitsOnly(persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono ?? ""),
+        8
+      );
+      return {
+        nombre: persona?.nombre || "",
+        apellido: persona?.apellido || "",
+        dni: formatDNI(dniRaw),
+        rtn: limit(digitsOnly(persona?.rtn ?? ""), 1),
+        genero: persona?.genero || "",
+        fecha_nacimiento: toDateInputValue(persona?.fecha_nacimiento),
+        id_telefono: formatPhone(telefonoRaw),
+        id_direccion: persona?.direccion ?? persona?.direccion_detalle ?? "",
+        id_correo: persona?.direccion_correo ?? persona?.correo ?? persona?.email ?? "",
+      };
+    },
+    []
   );
 
   const buildPersonaPayloadFromForm = useCallback(
@@ -627,7 +836,7 @@ export default function Personas({ openToast }) {
         texto_correo: textoCorreo,
       };
     },
-    [telefonos, direcciones, correos]
+    []
   );
 
   useEffect(() => {
@@ -647,51 +856,266 @@ export default function Personas({ openToast }) {
     });
   }, [showModal, editId, personas, buildFormFromPersona]);
 
-  const capitalizeWords = (value) => value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const validateField = useCallback((fieldName, value, _fullFormState = null) => {
+    void _fullFormState;
+    const currentValue = String(value ?? "");
+    const trimmedValue = currentValue.trim();
+    const today = new Date().toISOString().split("T")[0];
 
-  const formatDNI = (value) => {
-    const numbers = value.replace(/\D/g, "").slice(0, 13);
-    return numbers
-      .replace(/^(\d{4})(\d)/, "$1-$2")
-      .replace(/^(\d{4}-\d{4})(\d)/, "$1-$2");
+    switch (fieldName) {
+      case "nombre":
+      case "apellido":
+        return trimmedValue ? "" : "Requerido";
+      case "dni": {
+        const dniRaw = digitsOnly(currentValue);
+        if (dniRaw.length !== 13) return "Formato invalido";
+        return "";
+      }
+      case "rtn":
+        if (trimmedValue && !/^\d{1}$/.test(trimmedValue)) return "Debe ingresar solo el numero de complemento";
+        return "";
+      case "genero":
+        return trimmedValue ? "" : "Seleccione";
+      case "fecha_nacimiento":
+        if (trimmedValue && trimmedValue > today) return "Fecha invalida";
+        return "";
+      case "id_telefono": {
+        const telefonoRaw = digitsOnly(currentValue);
+        if (!telefonoRaw) return "";
+        if (telefonoRaw.length !== 8) return "Formato invalido";
+        return "";
+      }
+      case "id_correo":
+        if (trimmedValue && !EMAIL_WITH_DOMAIN_REGEX.test(trimmedValue)) {
+          return "Ingrese un correo v\u00e1lido con dominio (ej: usuario@dominio.com)";
+        }
+        return "";
+      default:
+        return "";
+    }
+  }, []);
+
+  const setFieldErrorState = useCallback((fieldName, errorMessage) => {
+    setErrors((prevErrors) => {
+      const nextErrors = { ...prevErrors };
+      if (errorMessage) nextErrors[fieldName] = errorMessage;
+      else delete nextErrors[fieldName];
+      return nextErrors;
+    });
+  }, []);
+
+  const updateFieldValue = useCallback(
+    (fieldName, nextValue, touchOnChange = true) => {
+      const touchedKey = formFieldToTouchedKey[fieldName];
+      const isTouched = touchedKey ? Boolean(touched[touchedKey]) : false;
+      const shouldValidate = Boolean(touchedKey && (isTouched || touchOnChange));
+
+      if (touchedKey && touchOnChange && !isTouched) {
+        setTouched((prev) => ({ ...prev, [touchedKey]: true }));
+      }
+
+      setForm((prevForm) => {
+        const nextForm =
+          prevForm[fieldName] === nextValue ? prevForm : { ...prevForm, [fieldName]: nextValue };
+        if (shouldValidate) {
+          const fieldError = validateField(fieldName, nextValue, nextForm);
+          setFieldErrorState(fieldName, fieldError);
+        }
+        return nextForm;
+      });
+    },
+    [setFieldErrorState, touched, validateField]
+  );
+
+  const handleFieldBlur = useCallback(
+    (fieldName) => () => {
+      const touchedKey = formFieldToTouchedKey[fieldName];
+      if (!touchedKey) return;
+      setTouched((prev) => (prev[touchedKey] ? prev : { ...prev, [touchedKey]: true }));
+      const fieldError = validateField(fieldName, form[fieldName], form);
+      setFieldErrorState(fieldName, fieldError);
+    },
+    [form, setFieldErrorState, validateField]
+  );
+
+  const handleLettersFieldChange = (field) => (event) => {
+    const normalized = capitalizeFirstOnly(lettersAndSpaces(event.target.value));
+    updateFieldValue(field, normalized, true);
+  };
+
+  const handleDniChange = (event) => {
+    const raw = limit(digitsOnly(event.target.value), 13);
+    const formatted = formatDNI(raw);
+    updateFieldValue("dni", formatted, true);
+  };
+
+  const handleRtnChange = (event) => {
+    const normalized = limit(digitsOnly(event.target.value), 1);
+    updateFieldValue("rtn", normalized, true);
   };
 
   const handleTelefonoChange = (event) => {
-    const raw = String(event.target.value ?? "");
-    const digits = raw.replace(/\D/g, "").slice(0, 8);
-    const formatted =
-      digits.length > 4 ? `${digits.slice(0, 4)}-${digits.slice(4)}` : digits;
-
-    setForm((state) =>
-      state.id_telefono === formatted
-        ? state
-        : { ...state, id_telefono: formatted }
-    );
+    const raw = limit(digitsOnly(event.target.value), 8);
+    const formatted = formatPhone(raw);
+    updateFieldValue("id_telefono", formatted, true);
   };
 
-  const validar = () => {
-    const currentErrors = {};
-    const today = new Date().toISOString().split("T")[0];
-    const correoValue = String(form.id_correo ?? "").trim();
-
-    if (!form.nombre) currentErrors.nombre = "Requerido";
-    if (!form.apellido) currentErrors.apellido = "Requerido";
-    if (!/^\d{4}-\d{4}-\d{5}$/.test(form.dni)) currentErrors.dni = "Formato invalido";
-    if (form.rtn && !/^\d{1}$/.test(form.rtn)) currentErrors.rtn = "Debe ingresar solo el numero de complemento";
-    if (!form.genero) currentErrors.genero = "Seleccione";
-    if (form.fecha_nacimiento && form.fecha_nacimiento > today) currentErrors.fecha_nacimiento = "Fecha invalida";
-    if (correoValue && !EMAIL_WITH_DOMAIN_REGEX.test(correoValue)) {
-      currentErrors.id_correo = "Ingrese un correo v\u00e1lido con dominio (ej: usuario@dominio.com)";
+  const blockInvalidNumericBeforeInput = useCallback((event, fieldName, maxDigits) => {
+    const data = event?.nativeEvent?.data ?? event?.data;
+    if (!data) return;
+    if (/\D/.test(data)) {
+      event.preventDefault();
+      return;
+    }
+    const currentFormatted = String(form[fieldName] ?? "");
+    const currentRaw = digitsOnly(currentFormatted);
+    if (currentRaw.length >= maxDigits) {
+      const input = event.currentTarget;
+      const hasSelection =
+        typeof input.selectionStart === "number" &&
+        typeof input.selectionEnd === "number" &&
+        input.selectionStart !== input.selectionEnd;
+      if (!hasSelection) {
+        event.preventDefault();
+        return;
+      }
     }
 
+    const input = event.currentTarget;
+    const selectionStart =
+      typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+    const selectionEnd =
+      typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+    const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+    const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+    const nextLength = currentRaw.length - (rawEnd - rawStart) + digitsOnly(data).length;
+    if (nextLength > maxDigits) event.preventDefault();
+  }, [form]);
+
+  const blockInvalidNumericKeyDown = useCallback((event, fieldName, maxDigits) => {
+    if (event.ctrlKey || event.metaKey) {
+      return;
+    }
+    if (ALLOWED_EDITING_KEYS.has(event.key)) return;
+    if (event.key.length !== 1) return;
+    if (!/\d/.test(event.key)) {
+      event.preventDefault();
+      return;
+    }
+    const input = event.currentTarget;
+    const currentFormatted = String(form[fieldName] ?? "");
+    const selectionStart =
+      typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+    const selectionEnd =
+      typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+    const currentRaw = digitsOnly(currentFormatted);
+    const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+    const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+    const nextLength = currentRaw.length - (rawEnd - rawStart) + 1;
+    if (nextLength > maxDigits) event.preventDefault();
+  }, [form]);
+
+  const handleDniPaste = useCallback((event) => {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData("text") ?? "";
+    const raw = limit(digitsOnly(pasted), 13);
+    updateFieldValue("dni", formatDNI(raw), true);
+  }, [updateFieldValue]);
+
+  const handleTelefonoPaste = useCallback((event) => {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData("text") ?? "";
+    const raw = limit(digitsOnly(pasted), 8);
+    updateFieldValue("id_telefono", formatPhone(raw), true);
+  }, [updateFieldValue]);
+
+  const sanitizeNumericPaste = useCallback(
+    (event, fieldName, maxDigits, formatter = (value) => value) => {
+      event.preventDefault();
+      const pastedRaw = digitsOnly(event.clipboardData?.getData("text") ?? "");
+      const currentFormatted = String(form[fieldName] ?? "");
+      const input = event.target;
+      const selectionStart =
+        typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+      const selectionEnd =
+        typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const currentRaw = digitsOnly(currentFormatted);
+      const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+      const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+      const mergedRaw = limit(
+        `${currentRaw.slice(0, rawStart)}${pastedRaw}${currentRaw.slice(rawEnd)}`,
+        maxDigits
+      );
+      updateFieldValue(fieldName, formatter(mergedRaw), true);
+    },
+    [form, updateFieldValue]
+  );
+
+  const blockInvalidLettersBeforeInput = useCallback((event) => {
+    const data = event?.nativeEvent?.data ?? event?.data;
+    if (!data) return;
+    if (!LETTERS_INPUT_REGEX.test(data)) event.preventDefault();
+  }, []);
+
+  const sanitizeLettersPaste = useCallback(
+    (event, fieldName) => {
+      event.preventDefault();
+      const pasted = String(event.clipboardData?.getData("text") ?? "");
+      const current = String(form[fieldName] ?? "");
+      const input = event.target;
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : current.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const merged = `${current.slice(0, selectionStart)}${pasted}${current.slice(selectionEnd)}`;
+      const normalized = capitalizeFirstOnly(lettersAndSpaces(merged));
+      updateFieldValue(fieldName, normalized, true);
+    },
+    [form, updateFieldValue]
+  );
+
+  const validar = () => {
+    const fieldsToValidate = [
+      "nombre",
+      "apellido",
+      "dni",
+      "rtn",
+      "genero",
+      "fecha_nacimiento",
+      "id_telefono",
+      "id_correo",
+    ];
+    const currentErrors = {};
+    fieldsToValidate.forEach((fieldName) => {
+      const fieldError = validateField(fieldName, form[fieldName], form);
+      if (fieldError) currentErrors[fieldName] = fieldError;
+    });
+
+    setTouched({
+      nombre: true,
+      apellido: true,
+      dni: true,
+      genero: true,
+      fechaNacimiento: true,
+      telefono: true,
+      correo: true,
+      rtn: true,
+    });
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
   };
+
+  const closeDuplicateModal = useCallback(() => {
+    setShowDuplicateModal(false);
+    setDuplicateMessage(DUPLICATE_MODAL_DEFAULT_MESSAGE);
+    setDuplicateFieldLabel("");
+  }, []);
 
   const guardar = async (event) => {
     event.preventDefault();
     if (!validar() || actionLoading) return;
 
+    setShowDuplicateModal(false);
+    setDuplicateFieldLabel("");
+    setDuplicateMessage(DUPLICATE_MODAL_DEFAULT_MESSAGE);
     setActionLoading(true);
     try {
       if (editId) {
@@ -723,12 +1147,20 @@ export default function Personas({ openToast }) {
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
+      setTouched(createInitialTouched());
       await cargarPersonas();
       await cargarKpiGlobales();
       if (generoFiltro !== "todos" || sortBy !== "recientes") {
         await cargarPersonasGlobalFiltrables(debouncedSearch);
       }
     } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const resolvedFieldLabel = resolveDuplicateFieldLabel(error);
+        setDuplicateFieldLabel(resolvedFieldLabel);
+        setDuplicateMessage(DUPLICATE_MODAL_DEFAULT_MESSAGE);
+        setShowDuplicateModal(true);
+        return;
+      }
       const campo = error?.campo ? ` (${error.campo})` : "";
       safeToast("ERROR", `${error.message || "No se pudo guardar"}${campo}`, "danger");
     } finally {
@@ -736,31 +1168,37 @@ export default function Personas({ openToast }) {
     }
   };
 
-  const iniciarEdicion = (persona) => {
+  const iniciarEdicion = useCallback((persona) => {
     setFiltersOpen(false);
+    closeDuplicateModal();
     setEditId(persona.id_persona);
     setErrors({});
+    setTouched(createInitialTouched());
     setForm(buildFormFromPersona(persona));
     setShowModal(true);
-  };
+  }, [buildFormFromPersona, closeDuplicateModal]);
 
-  const openCreate = () => {
+  const openCreate = useCallback(() => {
     setFiltersOpen(false);
+    closeDuplicateModal();
     setEditId(null);
     setErrors({});
+    setTouched(createInitialTouched());
     setForm(emptyForm);
     setShowModal(true);
-  };
+  }, [closeDuplicateModal]);
 
-  const openConfirmDelete = (persona) => {
+  const openConfirmDelete = useCallback((persona) => {
     const nombre = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim();
     setConfirmModal({ show: true, idToDelete: persona?.id_persona ?? null, nombre: nombre || "Persona seleccionada" });
-  };
+  }, []);
 
-  const closeConfirmDelete = () =>
-    setConfirmModal({ show: false, idToDelete: null, nombre: "" });
+  const closeConfirmDelete = useCallback(
+    () => setConfirmModal({ show: false, idToDelete: null, nombre: "" }),
+    []
+  );
 
-  const eliminarConfirmado = async () => {
+  const eliminarConfirmado = useCallback(async () => {
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
 
@@ -793,7 +1231,23 @@ export default function Personas({ openToast }) {
     } finally {
       if (mountedRef.current) setDeletingId(null);
     }
-  };
+  }, [
+    actionLoading,
+    cargarKpiGlobales,
+    cargarPersonas,
+    cargarPersonasGlobalFiltrables,
+    closeConfirmDelete,
+    closeFormDrawer,
+    debouncedSearch,
+    deletingId,
+    editId,
+    generoFiltro,
+    page,
+    personas.length,
+    confirmModal.idToDelete,
+    safeToast,
+    sortBy,
+  ]);
 
   const useGlobalFilterData = generoFiltro !== "todos" || sortBy !== "recientes";
   const personasFuente = useMemo(
@@ -835,14 +1289,14 @@ export default function Personas({ openToast }) {
 
   const totalPages = useMemo(() => {
     if (!useGlobalFilterData) return backendTotalPages;
-    return Math.max(1, Math.ceil(personasFiltradas.length / limit));
-  }, [useGlobalFilterData, backendTotalPages, personasFiltradas.length, limit]);
+    return Math.max(1, Math.ceil(personasFiltradas.length / pageSize));
+  }, [useGlobalFilterData, backendTotalPages, personasFiltradas.length, pageSize]);
 
   const personasRenderizadas = useMemo(() => {
     if (!useGlobalFilterData) return personasFiltradas;
-    const start = (page - 1) * limit;
-    return personasFiltradas.slice(start, start + limit);
-  }, [useGlobalFilterData, personasFiltradas, page, limit]);
+    const start = (page - 1) * pageSize;
+    return personasFiltradas.slice(start, start + pageSize);
+  }, [useGlobalFilterData, personasFiltradas, page, pageSize]);
 
   useEffect(() => {
     if (page <= totalPages) return;
@@ -854,93 +1308,99 @@ export default function Personas({ openToast }) {
     [search, generoFiltro, sortBy]
   );
 
-  const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
-  const statsCards = [
-    {
-      key: "total-personas",
-      iconClass: "bi-people",
-      label: "Total de personas",
-      value: globalStats.total,
-      accent: "default",
-    },
-    {
-      key: "femenino",
-      iconClass: "bi-gender-female",
-      label: "Femenino",
-      value: globalStats.femenino ?? 0,
-      accent: "info",
-    },
-    {
-      key: "masculino",
-      iconClass: "bi-gender-male",
-      label: "Masculino",
-      value: globalStats.masculino ?? 0,
-      accent: "accent",
-    },
-  ];
+  const colsClass = useMemo(
+    () => (cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1"),
+    [cardsPerPage]
+  );
+  const statsCards = useMemo(
+    () => [
+      {
+        key: "total-personas",
+        iconClass: "bi-people",
+        label: "Total de personas",
+        value: globalStats.total,
+        accent: "default",
+      },
+      {
+        key: "femenino",
+        iconClass: "bi-gender-female",
+        label: "Femenino",
+        value: globalStats.femenino ?? 0,
+        accent: "info",
+      },
+      {
+        key: "masculino",
+        iconClass: "bi-gender-male",
+        label: "Masculino",
+        value: globalStats.masculino ?? 0,
+        accent: "accent",
+      },
+    ],
+    [globalStats.femenino, globalStats.masculino, globalStats.total]
+  );
 
-  const openFiltersDrawer = () => {
+  const openFiltersDrawer = useCallback(() => {
     if (actionLoading) return;
     closeFormDrawer();
     setFiltersDraft({ generoFiltro, sortBy });
     setFiltersOpen(true);
-  };
+  }, [actionLoading, closeFormDrawer, generoFiltro, sortBy]);
 
-  const focusFiltersTrigger = () => {
+  const focusFiltersTrigger = useCallback(() => {
     if (typeof document === "undefined") return;
     const trigger = document.querySelector('button[aria-controls="per-filtros-drawer"]');
     if (trigger && typeof trigger.focus === "function") trigger.focus();
-  };
+  }, []);
 
-  const closeFiltersDrawer = () => {
+  const closeFiltersDrawer = useCallback(() => {
     blurFocusedElementInside("per-filtros-drawer");
     setFiltersOpen(false);
     if (typeof window !== "undefined") {
       window.setTimeout(focusFiltersTrigger, 0);
     }
-  };
+  }, [blurFocusedElementInside, focusFiltersTrigger]);
 
-  const applyFiltersDrawer = () => {
+  const applyFiltersDrawer = useCallback(() => {
     setGeneroFiltro(filtersDraft.generoFiltro || "todos");
     setSortBy(filtersDraft.sortBy || "recientes");
-    setPage(1);
+    setPage((prev) => (prev === 1 ? prev : 1));
     closeFiltersDrawer();
-  };
+  }, [closeFiltersDrawer, filtersDraft.generoFiltro, filtersDraft.sortBy]);
 
-  const clearVisualFilters = () => {
+  const clearVisualFilters = useCallback(() => {
     setGeneroFiltro("todos");
     setSortBy("recientes");
     setFiltersDraft(createInitialFiltersDraft());
-    setPage(1);
-  };
+    setPage((prev) => (prev === 1 ? prev : 1));
+  }, []);
 
-  const clearAllFilters = () => {
+  const clearAllFilters = useCallback(() => {
     setSearch("");
     clearVisualFilters();
     setFiltersOpen(false);
-  };
+  }, [clearVisualFilters]);
 
-  const closeAnyDrawer = () => {
+  const closeAnyDrawer = useCallback(() => {
     if (actionLoading) return;
     closeFormDrawer();
     blurFocusedElementInside("per-filtros-drawer");
     setFiltersOpen(false);
-  };
+  }, [actionLoading, blurFocusedElementInside, closeFormDrawer]);
 
-  const retryListLoad = () => {
+  const retryListLoad = useCallback(() => {
     if (useGlobalFilterData) {
       cargarPersonasGlobalFiltrables(debouncedSearch);
       return;
     }
     cargarPersonas();
-  };
+  }, [cargarPersonas, cargarPersonasGlobalFiltrables, debouncedSearch, useGlobalFilterData]);
 
   return (
     <div className="personas-page">
       <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <HeaderPersonas
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchChange}
           filtersOpen={filtersOpen}
           onOpenFilters={openFiltersDrawer}
           drawerOpen={showModal}
@@ -1015,7 +1475,7 @@ export default function Personas({ openToast }) {
                       const dotClass = isActive ? "ok" : "off";
                       const idPersona = persona?.id_persona;
                       const deleting = deletingId === idPersona;
-                      const tableIndex = (useGlobalFilterData ? (page - 1) * limit : 0) + idx;
+                      const tableIndex = (useGlobalFilterData ? (page - 1) * pageSize : 0) + idx;
                       const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
                       const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
                       const direccion = persona?.direccion ?? persona?.direccion_detalle;
@@ -1079,7 +1539,7 @@ export default function Personas({ openToast }) {
                   const dotClass = isActive ? "ok" : "off";
                   const idPersona = persona?.id_persona;
                   const deleting = deletingId === idPersona;
-                  const cardIndex = (useGlobalFilterData ? (page - 1) * limit : 0) + idx;
+                  const cardIndex = (useGlobalFilterData ? (page - 1) * pageSize : 0) + idx;
                   const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
                   const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
                   const direccion = persona?.direccion ?? persona?.direccion_detalle;
@@ -1258,99 +1718,119 @@ export default function Personas({ openToast }) {
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>Nombre</label>
               <input
-                className={`form-control ${errors.nombre ? "is-invalid" : ""}`}
+                className={`form-control ${touched.nombre && errors.nombre ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 placeholder="Ej: Maria"
                 value={form.nombre}
-                onChange={(event) => setForm((state) => ({ ...state, nombre: capitalizeWords(event.target.value) }))}
+                onChange={handleLettersFieldChange("nombre")}
+                onBeforeInput={blockInvalidLettersBeforeInput}
+                onPaste={(event) => sanitizeLettersPaste(event, "nombre")}
+                onBlur={handleFieldBlur("nombre")}
               />
-              {errors.nombre && <div className="invalid-feedback d-block">{errors.nombre}</div>}
+              {touched.nombre && errors.nombre && <div className="invalid-feedback d-block">{errors.nombre}</div>}
             </div>
 
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>Apellido</label>
               <input
-                className={`form-control ${errors.apellido ? "is-invalid" : ""}`}
+                className={`form-control ${touched.apellido && errors.apellido ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 placeholder="Ej: Rodriguez"
                 value={form.apellido}
-                onChange={(event) => setForm((state) => ({ ...state, apellido: capitalizeWords(event.target.value) }))}
+                onChange={handleLettersFieldChange("apellido")}
+                onBeforeInput={blockInvalidLettersBeforeInput}
+                onPaste={(event) => sanitizeLettersPaste(event, "apellido")}
+                onBlur={handleFieldBlur("apellido")}
               />
-              {errors.apellido && <div className="invalid-feedback d-block">{errors.apellido}</div>}
+              {touched.apellido && errors.apellido && <div className="invalid-feedback d-block">{errors.apellido}</div>}
             </div>
 
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>DNI</label>
               <input
-                className={`form-control ${errors.dni ? "is-invalid" : ""}`}
+                type="text"
+                className={`form-control ${touched.dni && errors.dni ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 placeholder="0000-0000-00000"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={15}
                 value={form.dni}
-                onChange={(event) => setForm((state) => ({ ...state, dni: formatDNI(event.target.value) }))}
+                onChange={handleDniChange}
+                onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "dni", 13)}
+                onKeyDown={(event) => blockInvalidNumericKeyDown(event, "dni", 13)}
+                onPaste={handleDniPaste}
+                onBlur={handleFieldBlur("dni")}
               />
-              {errors.dni && <div className="invalid-feedback d-block">{errors.dni}</div>}
+              {touched.dni && errors.dni && <div className="invalid-feedback d-block">{errors.dni}</div>}
             </div>
 
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>RTN</label>
               <input
-                className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
+                className={`form-control ${touched.rtn && errors.rtn ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 placeholder="9"
                 maxLength={1}
                 inputMode="numeric"
                 pattern="\d*"
                 value={form.rtn}
-                onChange={(event) =>
-                  setForm((state) => ({
-                    ...state,
-                    rtn: event.target.value.replace(/\D/g, "").slice(0, 1),
-                  }))
-                }
+                onChange={handleRtnChange}
+                onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "rtn", 1)}
+                onKeyDown={(event) => blockInvalidNumericKeyDown(event, "rtn", 1)}
+                onPaste={(event) => sanitizeNumericPaste(event, "rtn", 1)}
+                onBlur={handleFieldBlur("rtn")}
               />
-              {errors.rtn && <div className="invalid-feedback d-block">{errors.rtn}</div>}
+              {touched.rtn && errors.rtn && <div className="invalid-feedback d-block">{errors.rtn}</div>}
             </div>
 
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>Genero</label>
               <select
-                className={`form-select ${errors.genero ? "is-invalid" : ""}`}
+                className={`form-select ${touched.genero && errors.genero ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 value={form.genero}
-                onChange={(event) => setForm((state) => ({ ...state, genero: event.target.value }))}
+                onChange={(event) => updateFieldValue("genero", event.target.value, true)}
+                onBlur={handleFieldBlur("genero")}
               >
                 <option value="">Seleccione</option>
                 <option value="M">Masculino</option>
                 <option value="F">Femenino</option>
               </select>
-              {errors.genero && <div className="invalid-feedback d-block">{errors.genero}</div>}
+              {touched.genero && errors.genero && <div className="invalid-feedback d-block">{errors.genero}</div>}
             </div>
 
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>Fecha nacimiento</label>
               <input
                 type="date"
-                className={`form-control ${errors.fecha_nacimiento ? "is-invalid" : ""}`}
+                className={`form-control ${touched.fechaNacimiento && errors.fecha_nacimiento ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 value={form.fecha_nacimiento}
-                onChange={(event) => setForm((state) => ({ ...state, fecha_nacimiento: event.target.value }))}
+                onChange={(event) => updateFieldValue("fecha_nacimiento", event.target.value, true)}
+                onBlur={handleFieldBlur("fecha_nacimiento")}
               />
-              {errors.fecha_nacimiento && <div className="invalid-feedback d-block">{errors.fecha_nacimiento}</div>}
+              {touched.fechaNacimiento && errors.fecha_nacimiento && <div className="invalid-feedback d-block">{errors.fecha_nacimiento}</div>}
             </div>
 
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>Telefono</label>
               <input
                 type="text"
-                className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
+                className={`form-control ${touched.telefono && errors.id_telefono ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 placeholder="0000-0000"
                 inputMode="numeric"
+                autoComplete="tel"
                 maxLength={9}
                 value={form.id_telefono}
                 onChange={handleTelefonoChange}
+                onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "id_telefono", 8)}
+                onKeyDown={(event) => blockInvalidNumericKeyDown(event, "id_telefono", 8)}
+                onPaste={handleTelefonoPaste}
+                onBlur={handleFieldBlur("id_telefono")}
               />
-              {errors.id_telefono && <div className="invalid-feedback d-block">{errors.id_telefono}</div>}
+              {touched.telefono && errors.id_telefono && <div className="invalid-feedback d-block">{errors.id_telefono}</div>}
             </div>
 
             <div className="col-12 col-md-6">
@@ -1370,13 +1850,14 @@ export default function Personas({ openToast }) {
               <label className="form-label" style={{ color: "#000" }}>Correo</label>
               <input
                 type="text"
-                className={`form-control ${errors.id_correo ? "is-invalid" : ""}`}
+                className={`form-control ${touched.correo && errors.id_correo ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 placeholder="ejemplo@correo.com"
                 value={form.id_correo}
-                onChange={(event) => setForm((state) => ({ ...state, id_correo: event.target.value }))}
+                onChange={(event) => updateFieldValue("id_correo", event.target.value, true)}
+                onBlur={handleFieldBlur("id_correo")}
               />
-              {errors.id_correo && <div className="invalid-feedback d-block">{errors.id_correo}</div>}
+              {touched.correo && errors.id_correo && <div className="invalid-feedback d-block">{errors.id_correo}</div>}
             </div>
           </div>
 
@@ -1391,42 +1872,35 @@ export default function Personas({ openToast }) {
         </form>
       </aside>
 
-      {confirmModal.show && (
-        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
-          <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="inv-pro-confirm-head">
-              <div className="inv-pro-confirm-head-icon">
-                <i className="bi bi-exclamation-triangle-fill" />
-              </div>
-              <div>
-                <div className="inv-pro-confirm-title">Confirmar eliminacion</div>
-                <div className="inv-pro-confirm-sub">Esta accion es permanente</div>
-              </div>
-              <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
-                <i className="bi bi-x-lg" />
-              </button>
-            </div>
+      <PersonasActionModal
+        show={confirmModal.show}
+        onClose={closeConfirmDelete}
+        title="Confirmar eliminacion"
+        subtitle="Esta accion es permanente"
+        question="Deseas eliminar esta persona?"
+        detail={confirmModal.nombre || "Persona seleccionada"}
+        detailIconClass="bi bi-person-vcard"
+        cancelText="Cancelar"
+        confirmText="Eliminar"
+        onConfirm={eliminarConfirmado}
+        confirmButtonClass="btn inv-pro-btn-danger"
+        confirmIconClass="bi bi-trash3"
+      />
 
-            <div className="inv-pro-confirm-body">
-              <div className="inv-pro-confirm-question">Deseas eliminar esta persona?</div>
-              <div className="inv-pro-confirm-name">
-                <i className="bi bi-person-vcard" />
-                <span>{confirmModal.nombre || "Persona seleccionada"}</span>
-              </div>
-            </div>
-
-            <div className="inv-pro-confirm-footer">
-              <button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>
-                Cancelar
-              </button>
-              <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
-                <i className="bi bi-trash3" />
-                <span>Eliminar</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PersonasActionModal
+        show={showDuplicateModal}
+        onClose={closeDuplicateModal}
+        title="No se pudo guardar"
+        subtitle="Revisa los datos e intenta nuevamente"
+        question={duplicateMessage}
+        detail={duplicateFieldLabel ? `Campo duplicado: ${duplicateFieldLabel}` : ""}
+        detailIconClass="bi bi-exclamation-circle"
+        confirmText="Entendido"
+        onConfirm={closeDuplicateModal}
+        confirmButtonClass="btn inv-pro-btn-danger"
+        confirmIconClass="bi bi-check2-circle"
+        hideCancel
+      />
     </div>
   );
 }

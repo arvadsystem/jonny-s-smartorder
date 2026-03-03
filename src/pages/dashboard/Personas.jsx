@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import PersonasTab from "./personas/PersonasTab";
@@ -16,8 +16,7 @@ const PERSONAS_TAB_KEYS = [
 ];
 
 export default function Personas() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState("personas");
+  const [searchParams] = useSearchParams();
 
   const [toast, setToast] = useState({
     show: false,
@@ -26,23 +25,10 @@ export default function Personas() {
     variant: "success",
   });
 
-  // =============================
-  // CONTROL DE TAB POR URL
-  // =============================
-  useEffect(() => {
+  const activeTab = useMemo(() => {
     const t = (searchParams.get("tab") || "personas").toLowerCase();
-    setActiveTab(PERSONAS_TAB_KEYS.includes(t) ? t : "personas");
+    return PERSONAS_TAB_KEYS.includes(t) ? t : "personas";
   }, [searchParams]);
-
-  const changeTab = (newTab) => {
-    if (!PERSONAS_TAB_KEYS.includes(newTab)) return;
-
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      p.set("tab", newTab);
-      return p;
-    });
-  };
 
   // =============================
   // TOAST GLOBAL
@@ -73,7 +59,7 @@ export default function Personas() {
 
   const toastVariant = toast.variant || "success";
 
-  const renderTab = () => {
+  const tabContent = useMemo(() => {
     switch (activeTab) {
       case "empresas":
         return <EmpresasTab openToast={openToast} />;
@@ -86,13 +72,13 @@ export default function Personas() {
       default:
         return <PersonasTab openToast={openToast} />;
     }
-  };
+  }, [activeTab, openToast]);
 
   return (
     <div className="container-fluid p-3">
 
       {/* ================= CONTENIDO ================= */}
-      {renderTab()}
+      {tabContent}
 
       {/* ================= TOAST ================= */}
       {toast.show && (

@@ -1,7 +1,8 @@
+import { memo, useMemo } from "react";
 import ListHeader from "../../../../components/ui/ListHeader";
 import ViewToggle from "../../../../components/ui/ViewToggle";
 
-export default function HeaderPersonas({
+function HeaderPersonas({
   search,
   onSearchChange,
   filtersOpen,
@@ -11,30 +12,33 @@ export default function HeaderPersonas({
   viewMode,
   onViewModeChange,
 }) {
-  const actions = (
-    <>
-      <button
-        type="button"
-        className={`inv-prod-toolbar-btn ${filtersOpen ? "is-on" : ""}`}
-        onClick={onOpenFilters}
-        title="Filtros"
-        aria-expanded={filtersOpen}
-        aria-controls="per-filtros-drawer"
-      >
-        <i className="bi bi-funnel" /> <span>Filtros</span>
-      </button>
+  const actions = useMemo(
+    () => (
+      <>
+        <button
+          type="button"
+          className={`inv-prod-toolbar-btn ${filtersOpen ? "is-on" : ""}`}
+          onClick={onOpenFilters}
+          title="Filtros"
+          aria-expanded={filtersOpen}
+          aria-controls="per-filtros-drawer"
+        >
+          <i className="bi bi-funnel" /> <span>Filtros</span>
+        </button>
 
-      <button
-        type="button"
-        className={`inv-prod-toolbar-btn ${drawerOpen ? "is-on" : ""}`}
-        onClick={onOpenCreate}
-        title="Nueva persona"
-        aria-expanded={drawerOpen}
-        aria-controls="per-form-drawer"
-      >
-        <i className="bi bi-plus-circle" /> <span>Nuevo</span>
-      </button>
-    </>
+        <button
+          type="button"
+          className={`inv-prod-toolbar-btn ${drawerOpen ? "is-on" : ""}`}
+          onClick={onOpenCreate}
+          title="Nueva persona"
+          aria-expanded={drawerOpen}
+          aria-controls="per-form-drawer"
+        >
+          <i className="bi bi-plus-circle" /> <span>Nuevo</span>
+        </button>
+      </>
+    ),
+    [drawerOpen, filtersOpen, onOpenCreate, onOpenFilters]
   );
 
   return (
@@ -51,3 +55,5 @@ export default function HeaderPersonas({
     />
   );
 }
+
+export default memo(HeaderPersonas);
