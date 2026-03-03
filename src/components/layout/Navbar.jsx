@@ -8,7 +8,6 @@ const INVENTORY_TABS = [
   { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam' },
   { key: 'productos', label: 'Productos', icon: 'bi bi-basket' },
   { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building' },
-  { key: 'movimientos', label: 'Movimientos', icon: 'bi bi-arrow-left-right' },
   { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
 ];
 
@@ -36,6 +35,13 @@ const getTabFromSearch = (search, tabs, fallbackKey) => {
   const sp = new URLSearchParams(search || '');
   const current = String(sp.get('tab') || fallbackKey).toLowerCase();
   return tabs.some((tab) => tab.key === current) ? current : fallbackKey;
+};
+
+const getInventoryTabFromSearch = (search) => {
+  const sp = new URLSearchParams(search || '');
+  const current = String(sp.get('tab') || 'categorias').toLowerCase();
+  const normalized = current === 'movimientos' ? 'almacenes' : current;
+  return INVENTORY_TABS.some((tab) => tab.key === normalized) ? normalized : 'categorias';
 };
 
 const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
@@ -237,7 +243,7 @@ const Navbar = () => {
   const isPersonas = location.pathname?.startsWith('/dashboard/personas');
 
   const activeInventoryKey = useMemo(
-    () => getTabFromSearch(location.search, INVENTORY_TABS, 'categorias'),
+    () => getInventoryTabFromSearch(location.search),
     [location.search]
   );
 
