@@ -30,7 +30,13 @@ const ProductoGrid = ({ productos, loading, onAgregar, onOpenDetail }) => {
       {productos.map((producto) => (
         <div
           className="col d-flex"
-          key={producto.id_producto || `combo-${producto.id_combo}`}
+          key={
+            producto.id_combo
+              ? `combo-${producto.id_combo}`
+              : producto.id_receta
+                ? `receta-${producto.id_receta}`
+                : `producto-${producto.id_producto}`
+          }
         >
           <ProductoCard
             producto={producto}

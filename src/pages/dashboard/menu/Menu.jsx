@@ -21,6 +21,7 @@ import { apiFetch } from '../../../services/api';
 import CurrentOrderPanel from './CurrentOrderPanel';
 import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
+import { toDisplayTitle } from './textFormat';
 
 const normalizeCategoriaNombre = (value) =>
   String(value || '')
@@ -33,19 +34,100 @@ const getCategoriaDisplayName = (nombre) => {
   const n = normalizeCategoriaNombre(nombre);
 
   if (n.includes('perro caliente') || n.includes('perros calientes')) {
-    return 'Hot dog';
+    return 'Hot Dog';
   }
 
-  return nombre || 'Categoria';
+  return toDisplayTitle(nombre || 'Categoria');
 };
 
-const isComboCategoria = (nombre) => normalizeCategoriaNombre(nombre).includes('combo');
+const getSalsaSelectionKey = (salsaSelection) => (
+  (Array.isArray(salsaSelection?.salsasPorUnidad) ? salsaSelection.salsasPorUnidad : [])
+    .filter((item) => Number(item?.cantidad || 0) > 0)
+    .sort((a, b) => Number(a?.id_salsa || 0) - Number(b?.id_salsa || 0))
+    .map((item) => `${Number(item?.id_salsa || 0)}:${Number(item?.cantidad || 0)}`)
+    .join('|')
+);
 
-const getMenuItemKey = (producto) =>
-  producto?.id_producto ? `producto-${producto.id_producto}` : `combo-${producto?.id_combo}`;
+const getMenuItemKey = (producto, salsaSelection = null) => {
+  let baseKey = 'item-desconocido';
+
+  if (producto?.id_combo) {
+    baseKey = `combo-${producto.id_combo}`;
+  } else if (producto?.id_receta) {
+    baseKey = `receta-${producto.id_receta}`;
+  } else if (producto?.id_producto) {
+    baseKey = `producto-${producto.id_producto}`;
+  }
+
+  const salsaKey = getSalsaSelectionKey(salsaSelection);
+  return salsaKey ? `${baseKey}|salsas:${salsaKey}` : baseKey;
+};
 
 const getMenuItemName = (producto) =>
-  producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre';
+  toDisplayTitle(producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre');
+
+const normalizeSauceSelection = (salsaSelection) => (
+  (Array.isArray(salsaSelection?.salsasPorUnidad) ? salsaSelection.salsasPorUnidad : [])
+    .map((item) => ({
+      id_salsa: Number(item?.id_salsa || 0),
+      nombre: String(item?.nombre || 'Salsa'),
+      cantidad: Number(item?.cantidad || 0),
+    }))
+    .filter((item) => item.id_salsa > 0 && item.cantidad > 0)
+    .sort((a, b) => Number(a.id_salsa) - Number(b.id_salsa))
+);
+
+const getCatalogItemPriority = (item) => {
+  if (item?.id_combo) return 3;
+  if (item?.id_receta) return 2;
+  if (item?.id_producto) return 1;
+  return 0;
+};
+
+const getCatalogItemIdentity = (item) => {
+  if (item?.id_combo) return `combo-${item.id_combo}`;
+  if (item?.id_producto) return `producto-${item.id_producto}`;
+  if (item?.id_receta) return `receta-${item.id_receta}`;
+
+  return [
+    normalizeCategoriaNombre(item?.nombre_producto),
+    Number(item?.precio || 0),
+    Number(item?.id_tipo_departamento || 0),
+  ].join('|');
+};
+
+const dedupeCatalogItems = (items) => {
+  const map = new Map();
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const key = getCatalogItemIdentity(item);
+    const current = map.get(key);
+
+    if (!current) {
+      map.set(key, item);
+      continue;
+    }
+
+    const nextPriority = getCatalogItemPriority(item);
+    const currentPriority = getCatalogItemPriority(current);
+
+    if (nextPriority > currentPriority) {
+      map.set(key, item);
+      continue;
+    }
+
+    if (nextPriority === currentPriority) {
+      const currentHasImage = Boolean(current?.url_imagen);
+      const nextHasImage = Boolean(item?.url_imagen);
+
+      if (!currentHasImage && nextHasImage) {
+        map.set(key, item);
+      }
+    }
+  }
+
+  return Array.from(map.values());
+};
 
 const getCategoriaIcon = (nombre) => {
   const n = normalizeCategoriaNombre(nombre);
@@ -111,7 +193,7 @@ const CategorySelector = ({ categorias, selected, onSelect }) => (
           type="button"
           aria-pressed={isActive}
           className={`inv-prod-toolbar-btn menu-pos-cat-chip ${isActive ? 'is-on' : ''}`}
-          onClick={() => onSelect(categoria)}
+          onClick={() => onSelect(isActive ? null : categoria)}
           title={label}
         >
           <CategoryIcon
@@ -143,19 +225,11 @@ const Menu = () => {
         setLoading(true);
         setError('');
 
-        const data = await apiFetch('/tipo_departamento', 'GET');
-        const lista = Array.isArray(data) ? data : [];
-        const activas = lista
-          .filter((d) => d.estado === true || d.estado === 'true' || d.estado === 1)
-          .filter(
-            (d) =>
-              String(d?.nombre_departamento || '')
-                .trim()
-                .toUpperCase() !== 'QA POST'
-          );
+        const resp = await apiFetch('/menu-pos/categorias', 'GET');
+        const lista = Array.isArray(resp?.data) ? resp.data : [];
 
-        setCategorias(activas);
-        setSelected(activas[0] || null);
+        setCategorias(lista);
+        setSelected(null);
       } catch (e) {
         setError(e?.message || 'Error al cargar categorias');
       } finally {
@@ -166,27 +240,21 @@ const Menu = () => {
     cargarCategorias();
   }, []);
 
-  const cargarProductos = useCallback(async (idTipoDepartamento, nombreDepartamento) => {
+  const cargarProductos = useCallback(async (idTipoDepartamento = null) => {
     try {
       setLoadingProductos(true);
       setErrorProductos('');
 
-      const resp = await apiFetch(`/menu-pos/catalogo-imagenes/${idTipoDepartamento}`, 'GET');
-      const listaProductos = Array.isArray(resp?.productos) ? resp.productos : [];
-      const listaCombos = Array.isArray(resp?.combos)
-        ? resp.combos.map((combo) => ({
-            ...combo,
-            id_producto: null,
-            nombre_producto: combo?.descripcion || `Combo #${combo?.id_combo || ''}`,
-            descripcion_producto: combo?.descripcion || '',
-            cantidad: combo?.cant_personas,
-            es_combo: true,
-          }))
-        : [];
+      const params = new URLSearchParams();
 
-      const lista = isComboCategoria(nombreDepartamento) ? listaCombos : listaProductos;
+      if (idTipoDepartamento) {
+        params.set('id_tipo_departamento', String(idTipoDepartamento));
+      }
 
-      setProductos(lista);
+      const resp = await apiFetch(`/menu-pos/catalogo-imagenes?${params.toString()}`, 'GET');
+      const lista = Array.isArray(resp?.data) ? resp.data : [];
+
+      setProductos(dedupeCatalogItems(lista));
     } catch (e) {
       setErrorProductos(e?.message || 'Error al cargar productos');
       setProductos([]);
@@ -196,18 +264,17 @@ const Menu = () => {
   }, []);
 
   useEffect(() => {
-    if (selected?.id_tipo_departamento) {
-      cargarProductos(selected.id_tipo_departamento, selected?.nombre_departamento);
-      return;
-    }
-
-    setProductos([]);
-    setErrorProductos('');
+    cargarProductos(selected?.id_tipo_departamento ?? null);
   }, [cargarProductos, selected]);
 
-  const onAgregarProducto = useCallback((producto) => {
+  const onAgregarProducto = useCallback((producto, salsaSelection = null) => {
     setOrderItems((current) => {
-      const itemKey = getMenuItemKey(producto);
+      const normalizedSauces = normalizeSauceSelection(salsaSelection);
+      const nextSelection = {
+        salsasPorUnidad: normalizedSauces,
+        salsasRequeridasPorUnidad: Number(salsaSelection?.salsasRequeridasPorUnidad || 0),
+      };
+      const itemKey = getMenuItemKey(producto, nextSelection);
       const existingIndex = current.findIndex((item) => item.itemKey === itemKey);
 
       if (existingIndex === -1) {
@@ -217,9 +284,12 @@ const Menu = () => {
             itemKey,
             id_producto: producto?.id_producto ?? null,
             id_combo: producto?.id_combo ?? null,
+            id_receta: producto?.id_receta ?? null,
             nombre: getMenuItemName(producto),
             precio: Number(producto?.precio || 0),
             cantidad: 1,
+            salsasPorUnidad: normalizedSauces,
+            salsasRequeridasPorUnidad: Number(salsaSelection?.salsasRequeridasPorUnidad || 0),
           },
         ];
       }
@@ -267,7 +337,9 @@ const Menu = () => {
     setSelectedProduct(null);
   }, []);
 
-  const selectedLabel = getCategoriaDisplayName(selected?.nombre_departamento);
+  const selectedLabel = selected
+    ? getCategoriaDisplayName(selected?.nombre_departamento)
+    : 'Todas';
   const totalItems = orderItems.reduce((acc, item) => acc + item.cantidad, 0);
   const totalAmount = orderItems.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
 
@@ -303,15 +375,10 @@ const Menu = () => {
             />
           )}
 
-          {!loading && selected && (
-            <div className="alert alert-secondary mt-3 mb-0">
-              Categoria seleccionada: <b>{selectedLabel}</b>
-            </div>
-          )}
         </div>
       </div>
 
-      {!loading && !error && selected && (
+      {!loading && !error && (
         <div className="menu-pos-main-layout mt-3">
           <section className="menu-pos-catalog-column">
             {errorProductos && <div className="alert alert-danger">{errorProductos}</div>}

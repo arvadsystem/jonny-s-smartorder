@@ -1,13 +1,27 @@
 import { memo } from 'react';
 import { FaMinus, FaPlus, FaTimes } from 'react-icons/fa';
+import { toDisplayTitle } from './textFormat';
 
 const formatMoney = (value) => `L. ${Number(value || 0).toFixed(2)}`;
+
+const getSauceSummary = (item) => (
+  (Array.isArray(item?.salsasPorUnidad) ? item.salsasPorUnidad : [])
+    .filter((sauce) => Number(sauce?.cantidad || 0) > 0)
+    .map((sauce) => {
+      const totalCount = Number(sauce.cantidad || 0) * Math.max(1, Number(item?.cantidad || 1));
+      return `${toDisplayTitle(sauce.nombre)} x${totalCount}`;
+    })
+    .join(', ')
+);
 
 const OrderLineItem = memo(({ item, onDecrease, onIncrease, onRemove }) => (
   <article className="menu-order-item">
     <div className="menu-order-item-copy">
-      <div className="menu-order-item-name">{item.nombre}</div>
+      <div className="menu-order-item-name">{toDisplayTitle(item.nombre)}</div>
       <div className="menu-order-item-price">{formatMoney(item.precio)} c/u</div>
+      {getSauceSummary(item) ? (
+        <div className="small text-muted mt-1">Salsas: {getSauceSummary(item)}</div>
+      ) : null}
     </div>
 
     <div className="menu-order-item-actions">
@@ -91,7 +105,7 @@ const CurrentOrderPanel = ({
         </div>
 
         <button type="button" className="btn btn-primary btn-lg menu-order-confirm-btn">
-          Confirmar Venta
+          Confirmar Pedido
         </button>
       </div>
     </aside>

@@ -1,14 +1,28 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { FaImage, FaPlus } from 'react-icons/fa';
 import { resolveMenuItemImageSrc } from './menuImage';
+import { toDisplayTitle } from './textFormat';
+
+const getDisplayName = (value) =>
+  toDisplayTitle(
+    String(value || '')
+      .replace(/\s*\(demo\)\s*$/i, '')
+      .trim()
+  );
+
+const shouldHideDescription = (value) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return true;
+  return /^[A-Z]{4,}$/.test(normalized);
+};
 
 const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
-  const nombre = producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre';
+  const nombre = getDisplayName(producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre');
   const precio = Number(producto?.precio || 0);
   const imageSrc = resolveMenuItemImageSrc(producto);
-  const descripcion = producto?.descripcion_producto || producto?.descripcion || '';
   const feedbackTimeoutRef = useRef(null);
   const [isAddFeedbackOn, setIsAddFeedbackOn] = useState(false);
+  const requiresSauceSelection = producto?.salsas_requiere_seleccion === true;
 
   useEffect(() => {
     return () => {
@@ -33,6 +47,10 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
   const handleAgregar = (event) => {
     event.stopPropagation();
     triggerAddFeedback();
+    if (requiresSauceSelection) {
+      onOpenDetail(producto);
+      return;
+    }
     onAgregar(producto);
   };
 
@@ -77,7 +95,6 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
       <div className="card-body d-flex flex-column menu-pos-product-body">
         <div className="menu-pos-product-copy">
           <h6 className="card-title mb-0 menu-pos-product-name">{nombre}</h6>
-          {descripcion ? <div className="text-muted small">{descripcion}</div> : null}
         </div>
 
         <div className="menu-pos-product-footer">
