@@ -10,7 +10,6 @@ import UsuarioDetailModal from './components/usuarios/UsuarioDetailModal';
 
 const emptyForm = {
   id_empleado: '',
-  id_rol: '',
   estado: true,
 };
 
@@ -124,18 +123,16 @@ const readFileAsDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-export default function UsuariosTab({ openToast }) {
+export default function Usuarios({ openToast }) {
   const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
   }, [openToast]);
 
   const [usuarios, setUsuarios] = useState([]);
   const [empleadosCatalogo, setEmpleadosCatalogo] = useState([]);
-  const [rolesCatalogo, setRolesCatalogo] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
-  const [rolesLoading, setRolesLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState(() => readViewMode('usuariosViewMode'));
 
@@ -187,7 +184,6 @@ export default function UsuariosTab({ openToast }) {
   const getDni = useCallback((u) => normalizeText(u?.empleado?.dni || u?.dni), []);
   const getTelefono = useCallback((u) => normalizeText(u?.empleado?.telefono || u?.telefono), []);
   const getCorreo = useCallback((u) => normalizeText(u?.empleado?.correo || u?.correo), []);
-  const getRolNombre = useCallback((u) => normalizeText(u?.rol?.nombre || u?.rol_nombre || u?.nombre_rol), []);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const drawerMode = editId ? 'edit' : 'create';
@@ -233,22 +229,14 @@ export default function UsuariosTab({ openToast }) {
     });
   }, [empleadoSearch, empleadosCatalogo]);
 
-  const sortedRoles = useMemo(
-    () =>
-      [...rolesCatalogo].sort((a, b) => Number(a?.id_rol ?? 0) - Number(b?.id_rol ?? 0)),
-    [rolesCatalogo]
-  );
-
   const cargarCatalogos = useCallback(async () => {
     if (catalogLoadedRef.current) return;
 
     setCatalogLoading(true);
-    setRolesLoading(true);
     try {
-      const [empleadosResp, personasResp, rolesResp] = await Promise.all([
+      const [empleadosResp, personasResp] = await Promise.all([
         personaService.getEmpleados({ page: 1, limit: 100 }),
         personaService.getPersonasDetalle({ page: 1, limit: 100 }),
-        personaService.getRolesUsuariosV2(),
       ]);
 
       if (!mountedRef.current) return;
@@ -278,25 +266,12 @@ export default function UsuariosTab({ openToast }) {
         };
       }).filter((row) => row.id);
 
-      const rolesItems = Array.isArray(rolesResp)
-        ? rolesResp
-        : normalizeListResponse(rolesResp).items;
-
-      const parsedRoles = rolesItems
-        .map((role) => ({
-          id_rol: String(role?.id_rol ?? ''),
-          nombre: normalizeText(role?.nombre),
-        }))
-        .filter((role) => role.id_rol && role.nombre);
-
       setEmpleadosCatalogo(options);
-      setRolesCatalogo(parsedRoles);
       catalogLoadedRef.current = true;
     } catch (error) {
       safeToast('ERROR', error.message || 'No se pudieron cargar catalogos', 'danger');
     } finally {
       if (mountedRef.current) setCatalogLoading(false);
-      if (mountedRef.current) setRolesLoading(false);
     }
   }, [safeToast]);
 
@@ -361,7 +336,6 @@ export default function UsuariosTab({ openToast }) {
 
     setForm({
       id_empleado: String(current?.id_empleado || current?.empleado?.id_empleado || ''),
-      id_rol: String(current?.rol?.id_rol || ''),
       estado: parseBooleanField(current),
     });
     const photoValue = toImageValue(current?.foto_perfil);
@@ -385,7 +359,6 @@ export default function UsuariosTab({ openToast }) {
   const validateCreate = useCallback(() => {
     const currentErrors = {};
     if (!form.id_empleado) currentErrors.id_empleado = 'Seleccione un empleado';
-    if (!form.id_rol) currentErrors.id_rol = 'Seleccione un rol';
     if (selectedEmpleado && empleadosConUsuario.has(selectedEmpleado.id)) {
       currentErrors.id_empleado = 'Empleado ya tiene usuario';
     }
@@ -395,7 +368,7 @@ export default function UsuariosTab({ openToast }) {
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
-  }, [form.id_empleado, form.id_rol, selectedEmpleado, empleadosConUsuario]);
+  }, [form.id_empleado, selectedEmpleado, empleadosConUsuario]);
 
   const onFormImageChange = useCallback(async (event) => {
     const input = event.target;
@@ -485,7 +458,6 @@ export default function UsuariosTab({ openToast }) {
 
         const response = await personaService.createUsuarioV2({
           id_empleado: Number.parseInt(String(form.id_empleado), 10),
-          id_rol: Number.parseInt(String(form.id_rol), 10),
           estado: Boolean(form.estado),
         });
 
@@ -626,7 +598,6 @@ export default function UsuariosTab({ openToast }) {
         getDni(usuario),
         getTelefono(usuario),
         getCorreo(usuario),
-        getRolNombre(usuario),
         usuario?.nombre_usuario,
         usuario?.fecha_creacion,
       ].filter(Boolean).join(' ').toLowerCase();
@@ -641,7 +612,7 @@ export default function UsuariosTab({ openToast }) {
     });
 
     return filtered;
-  }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo, getRolNombre]);
+  }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo]);
 
   const stats = useMemo(() => {
     const totalRows = usuariosFiltrados.length;
@@ -739,17 +710,6 @@ export default function UsuariosTab({ openToast }) {
         allLabel="Todos" activeLabel="Activos" inactiveLabel="Inactivos" />
 
       <aside className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? 'show' : ''} ${drawerMode === 'create' ? 'is-create' : 'is-edit'}`} id="usr-form-drawer" role="dialog" aria-modal="true" aria-hidden={!showModal}>
-        <style>{`
-          #usr-form-drawer,
-          #usr-form-drawer * {
-            color: #000 !important;
-          }
-          #usr-form-drawer input::placeholder,
-          #usr-form-drawer textarea::placeholder {
-            color: #000 !important;
-            opacity: 1;
-          }
-        `}</style>
         <div className="inv-prod-drawer-head"><i className="bi bi-people inv-cat-v2__drawer-mark" aria-hidden="true" /><div><div className="inv-prod-drawer-title">{drawerMode === 'create' ? 'Nuevo usuario' : 'Editar usuario'}</div><div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div></div><button type="button" className="inv-prod-drawer-close" onClick={() => { setShowModal(false); resetFormState(); }} title="Cerrar"><i className="bi bi-x-lg" /></button></div>
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
           <div className="row g-3">
@@ -800,26 +760,6 @@ export default function UsuariosTab({ openToast }) {
                   />
                 </div>
                 <div className="col-12">
-                  <label className="form-label text-light text-opacity-75">Rol</label>
-                  <select
-                    className={`form-select ${errors.id_rol ? 'is-invalid' : ''}`}
-                    value={form.id_rol}
-                    onChange={(e) => {
-                      setForm((s) => ({ ...s, id_rol: e.target.value }));
-                      setErrors((s) => ({ ...s, id_rol: undefined }));
-                    }}
-                    disabled={rolesLoading}
-                  >
-                    <option value="">Seleccione rol</option>
-                    {sortedRoles.map((rol) => (
-                      <option key={rol.id_rol} value={rol.id_rol}>
-                        {rol.nombre}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.id_rol ? <div className="invalid-feedback d-block">{errors.id_rol}</div> : null}
-                </div>
-                <div className="col-12">
                   <div className="form-check">
                     <input
                       className="form-check-input"
@@ -829,7 +769,7 @@ export default function UsuariosTab({ openToast }) {
                       onChange={(e) => setForm((s) => ({ ...s, estado: e.target.checked }))}
                     />
                     <label className="form-check-label text-light text-opacity-75" htmlFor="usuario_estado_create">
-                      Usuario activo
+                      Registro activo
                     </label>
                   </div>
                 </div>
@@ -931,14 +871,14 @@ export default function UsuariosTab({ openToast }) {
                       onChange={(e) => setForm((s) => ({ ...s, estado: e.target.checked }))}
                     />
                     <label className="form-check-label text-light text-opacity-75" htmlFor="usuario_estado_edit">
-                      Usuario activo
+                      Registro activo
                     </label>
                   </div>
                 </div>
               </>
             )}
           </div>
-          <div className="d-flex gap-2 mt-4"><button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={() => { setShowModal(false); resetFormState(); }} disabled={actionLoading || !!deletingId}>Cancelar</button><button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={actionLoading || !!deletingId || catalogLoading || rolesLoading}>{actionLoading ? 'Guardando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}</button></div>
+          <div className="d-flex gap-2 mt-4"><button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={() => { setShowModal(false); resetFormState(); }} disabled={actionLoading || !!deletingId}>Cancelar</button><button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={actionLoading || !!deletingId || catalogLoading}>{actionLoading ? 'Guardando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}</button></div>
         </form>
       </aside>
 
