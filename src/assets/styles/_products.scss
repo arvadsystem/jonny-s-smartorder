@@ -438,6 +438,8 @@
   align-items: stretch;
   padding: 0;
   overflow: hidden;
+  // NEW: delega el click-away al overlay para evitar cierres por eventos nativos de selects/datepickers.
+  pointer-events: none;
 }
 
 .inv-prod-pmodal--filters .inv-prod-pmodal__viewport {
@@ -452,6 +454,7 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
+  pointer-events: auto;
   border-left: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 0;
   background: rgba(255, 255, 255, 0.62);

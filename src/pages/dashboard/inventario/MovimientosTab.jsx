@@ -683,7 +683,7 @@ const MovimientosTab = ({
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--filters show" aria-hidden={!showFiltersModal}>
             <div className="inv-prod-pmodal__overlay" onClick={() => setShowFiltersModal(false)} />
-            <div className="inv-prod-pmodal__viewport" onClick={() => setShowFiltersModal(false)}>
+            <div className="inv-prod-pmodal__viewport">
               <div
                 className="inv-prod-pmodal__panel inv-prod-pmodal__panel--filters"
                 role="dialog"
@@ -858,7 +858,7 @@ const MovimientosTab = ({
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showCreateModal}>
             <div className="inv-prod-pmodal__overlay" onClick={() => setShowCreateModal(false)} />
-            <div className="inv-prod-pmodal__viewport" onClick={() => setShowCreateModal(false)}>
+            <div className="inv-prod-pmodal__viewport">
               <div
                 className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
                 role="dialog"

@@ -2161,7 +2161,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className={`inv-prod-pmodal inv-prod-pmodal--filters ${filtersOpen ? 'show' : ''}`} aria-hidden={!filtersOpen}>
               <div className="inv-prod-pmodal__overlay" onClick={() => setFiltersOpen(false)} />
 
-              <div className="inv-prod-pmodal__viewport" onClick={() => setFiltersOpen(false)}>
+              <div className="inv-prod-pmodal__viewport">
                 <section
                   id="inv-prod-filters"
                   ref={filtersSectionRef}
@@ -2324,7 +2324,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className={`inv-prod-pmodal inv-prod-pmodal--create ${createProductoModalOpen ? 'show' : ''}`} aria-hidden={!createProductoModalOpen}>
               <div className="inv-prod-pmodal__overlay" onClick={closeCreateProductoModal} />
 
-              <div className="inv-prod-pmodal__viewport" onClick={closeCreateProductoModal}>
+              <div className="inv-prod-pmodal__viewport">
                 <section
                   id="inv-prod-create-panel"
                   ref={createSectionRef}

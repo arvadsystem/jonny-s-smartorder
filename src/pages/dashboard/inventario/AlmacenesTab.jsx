@@ -647,7 +647,7 @@ const AlmacenesTab = ({ openToast }) => {
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showCreateModal}>
             <div className="inv-prod-pmodal__overlay" onClick={closeCreate} />
-            <div className="inv-prod-pmodal__viewport" onClick={closeCreate}>
+            <div className="inv-prod-pmodal__viewport">
               <div
                 className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
                 role="dialog"
@@ -831,7 +831,7 @@ const AlmacenesTab = ({ openToast }) => {
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showEditModal}>
             <div className="inv-prod-pmodal__overlay" onClick={cancelarEdicion} />
-            <div className="inv-prod-pmodal__viewport" onClick={cancelarEdicion}>
+            <div className="inv-prod-pmodal__viewport">
               <div
                 className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
                 role="dialog"
