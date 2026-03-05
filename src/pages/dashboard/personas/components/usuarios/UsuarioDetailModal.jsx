@@ -1,4 +1,7 @@
 import { useEffect, useMemo } from 'react';
+import './usuarios-detail-modal.css';
+
+const FOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
 
 const toDisplayValue = (value, fallback = '—') => {
   if (value === null || value === undefined) return fallback;
@@ -6,7 +9,7 @@ const toDisplayValue = (value, fallback = '—') => {
   return text || fallback;
 };
 
-const formatDateLabel = (value) => {
+const formatDate = (value) => {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return toDisplayValue(value);
@@ -24,7 +27,7 @@ const detectEstado = (record) => {
   return null;
 };
 
-const getNombre = (usuario) =>
+const getNombreCompleto = (usuario) =>
   usuario?.empleado?.nombre_completo
   || usuario?.nombre_completo
   || `${usuario?.nombre || ''} ${usuario?.apellido || ''}`.trim();
@@ -34,6 +37,22 @@ const getDni = (usuario) => usuario?.empleado?.dni || usuario?.dni;
 const getTelefono = (usuario) => usuario?.empleado?.telefono || usuario?.telefono;
 const getCorreo = (usuario) => usuario?.empleado?.correo || usuario?.correo;
 const getRolNombre = (usuario) => usuario?.rol?.nombre || usuario?.rol_nombre || usuario?.nombre_rol;
+
+const isValidProfileUrl = (value) => FOTO_URL_RE.test(String(value ?? '').trim());
+
+const getInitials = (fullName) => {
+  const clean = String(fullName ?? '').trim();
+  if (!clean) return 'U';
+
+  const parts = clean
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const first = parts[0]?.charAt(0) || '';
+  const second = (parts.length > 1 ? parts[parts.length - 1]?.charAt(0) : '') || '';
+  return `${first}${second}`.toUpperCase() || first.toUpperCase() || 'U';
+};
 
 export default function UsuarioDetailModal({
   open = false,
@@ -51,28 +70,31 @@ export default function UsuarioDetailModal({
     return () => window.removeEventListener('keydown', handleEscape);
   }, [open, onClose]);
 
-  const nombre = toDisplayValue(getNombre(usuario), 'Usuario sin nombre');
+  const nombreCompleto = toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre');
+  const fotoPerfil = String(usuario?.foto_perfil || '').trim();
+  const showPhoto = isValidProfileUrl(fotoPerfil);
+  const initials = getInitials(nombreCompleto);
   const estado = detectEstado(usuario);
-  const foto = toDisplayValue(usuario?.foto_perfil, '');
+  const rolNombre = toDisplayValue(getRolNombre(usuario), '—');
 
-  const details = useMemo(
+  const tiles = useMemo(
     () => [
       {
         key: 'usuario',
         icon: 'bi-at',
-        label: 'Nombre de usuario',
+        label: 'NOMBRE DE USUARIO',
         value: toDisplayValue(usuario?.nombre_usuario),
       },
       {
         key: 'nombre',
         icon: 'bi-person-vcard',
-        label: 'Nombre completo',
-        value: nombre,
+        label: 'NOMBRE COMPLETO',
+        value: nombreCompleto,
       },
       {
         key: 'sucursal',
         icon: 'bi-shop',
-        label: 'Sucursal',
+        label: 'SUCURSAL',
         value: toDisplayValue(getSucursal(usuario)),
       },
       {
@@ -84,35 +106,35 @@ export default function UsuarioDetailModal({
       {
         key: 'telefono',
         icon: 'bi-telephone',
-        label: 'Telefono',
+        label: 'TELÉFONO',
         value: toDisplayValue(getTelefono(usuario)),
       },
       {
         key: 'correo',
         icon: 'bi-envelope',
-        label: 'Correo',
-        value: toDisplayValue(getCorreo(usuario), 'Sin correo'),
+        label: 'CORREO',
+        value: toDisplayValue(getCorreo(usuario)),
       },
       {
         key: 'rol',
-        icon: /admin/i.test(toDisplayValue(getRolNombre(usuario), '')) ? 'bi-shield-lock' : 'bi-person-badge',
-        label: 'Rol',
-        value: toDisplayValue(getRolNombre(usuario), '—'),
-      },
-      {
-        key: 'fecha',
-        icon: 'bi-calendar-event',
-        label: 'Fecha de creacion',
-        value: formatDateLabel(usuario?.fecha_creacion),
+        icon: /admin/i.test(rolNombre) ? 'bi-shield-lock' : 'bi-person-badge',
+        label: 'ROL',
+        value: rolNombre,
       },
       {
         key: 'estado',
         icon: 'bi-toggle-on',
-        label: 'Estado',
+        label: 'ESTADO',
         value: estado === null ? '—' : estado ? 'Activo' : 'Inactivo',
       },
+      {
+        key: 'fecha',
+        icon: 'bi-calendar-event',
+        label: 'FECHA DE CREACIÓN',
+        value: formatDate(usuario?.fecha_creacion),
+      },
     ],
-    [estado, nombre, usuario]
+    [estado, nombreCompleto, rolNombre, usuario]
   );
 
   if (!open || !usuario) return null;
@@ -126,75 +148,56 @@ export default function UsuarioDetailModal({
       onClick={onClose}
     >
       <div
-        className="modal-dialog modal-dialog-centered modal-dialog-scrollable inv-prod-modal-dialog inv-ins-detail-modal-dialog personas-emp-detail-dialog"
+        className="modal-dialog modal-dialog-centered modal-dialog-scrollable inv-prod-modal-dialog usuarios-detail-modal__dialog"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="modal-content shadow inv-prod-modal-content inv-ins-detail-modal inv-ins-detail-modal--editorial personas-emp-detail-modal">
-          <div className="modal-header inv-ins-detail-modal__header">
-            <div className="inv-ins-detail-modal__title-wrap">
-              <div className="inv-ins-detail-modal__icon">
-                <i className="bi bi-person-badge" />
-              </div>
-              <div>
-                <div className="fw-semibold">Detalle de usuario</div>
-                <div className="small text-muted">{nombre}</div>
+        <div className="modal-content shadow inv-prod-modal-content usuarios-detail-modal">
+          <div className="modal-header usuarios-detail-header">
+            <span className="usuarios-detail-header__spacer" aria-hidden="true" />
+            <h5 className="usuarios-detail-header__title">Detalle de usuario</h5>
+            <button
+              type="button"
+              className="btn usuarios-detail-header__close"
+              onClick={onClose}
+              aria-label="Cerrar detalle"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+
+          <div className="modal-body usuarios-detail-modal__body">
+            <div className="usuarios-detail-modal__intro">
+              <h4 className="usuarios-detail-modal__name">{nombreCompleto}</h4>
+              <div className={`usuarios-detail-modal__avatar ${showPhoto ? 'has-image' : ''}`}>
+                {showPhoto ? (
+                  <img src={fotoPerfil} alt={nombreCompleto} />
+                ) : (
+                  <span>{initials}</span>
+                )}
               </div>
             </div>
 
-            <div className="inv-ins-detail-modal__header-actions">
-              <button
-                type="button"
-                className="btn btn-sm inv-ins-detail-modal__close"
-                onClick={onClose}
-                aria-label="Cerrar detalle"
-              >
-                <i className="bi bi-x-lg" />
-              </button>
+            <hr className="usuarios-detail-modal__divider" />
+
+            <div className="usuarios-detail-grid" aria-label="Datos del usuario">
+              {tiles.map((item) => (
+                <article key={item.key} className="usuarios-detail-tile">
+                  <div className="usuarios-detail-tile__icon" aria-hidden="true">
+                    <i className={`bi ${item.icon}`} />
+                  </div>
+                  <div className="usuarios-detail-tile__copy">
+                    <span className="usuarios-detail-tile__label">{item.label}</span>
+                    <strong className="usuarios-detail-tile__value">{toDisplayValue(item.value)}</strong>
+                  </div>
+                </article>
+              ))}
             </div>
           </div>
 
-          <div className="modal-body inv-prod-modal-body inv-ins-detail-modal__body inv-ins-detail-modal__body--editorial">
-            <div className="inv-ins-detail-modal__ambient" aria-hidden="true">
-              <span className="is-one" />
-              <span className="is-two" />
-              <span className="is-three" />
-            </div>
-
-            <div className="inv-ins-detail-modal__editorial-grid">
-              <section className="inv-ins-detail-modal__lead personas-emp-detail__lead">
-                <span className="inv-ins-detail-modal__eyebrow">Usuario</span>
-                <strong className="inv-ins-detail-modal__lead-price personas-emp-detail__lead-price">{nombre}</strong>
-
-                <div className={`inv-prod-image-preview personas-emp-detail__image ${foto ? 'has-image' : ''}`}>
-                  {foto ? (
-                    <img src={foto} alt={nombre} />
-                  ) : (
-                    <div className="inv-prod-image-placeholder">
-                      <i className="bi bi-image" />
-                      <span>Sin imagen</span>
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              <section className="inv-ins-detail-modal__list" aria-label="Datos del usuario">
-                {details.map((item, index) => (
-                  <article
-                    key={item.key}
-                    className="inv-ins-detail-modal__line"
-                    style={{ animationDelay: `${index * 70}ms` }}
-                  >
-                    <div className="inv-ins-detail-modal__line-icon" aria-hidden="true">
-                      <i className={`bi ${item.icon}`} />
-                    </div>
-                    <div className="inv-ins-detail-modal__line-copy">
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
-                    </div>
-                  </article>
-                ))}
-              </section>
-            </div>
+          <div className="modal-footer usuarios-detail-modal__footer">
+            <button type="button" className="btn btn-outline-secondary usuarios-detail-modal__close-btn" onClick={onClose}>
+              Cerrar
+            </button>
           </div>
         </div>
       </div>

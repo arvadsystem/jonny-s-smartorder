@@ -248,5 +248,11 @@ export const personaService = {
 
   changePasswordUsuarioV2: (payload) =>
     apiFetch('/usuarios/v2/change-password', 'POST', payload),
+
+  generateUsuarioCredencialesV2: (payload) =>
+    apiFetch('/usuarios/v2/generate', 'POST', payload),
+
+  resetPasswordUsuarioV2: (id) =>
+    apiFetch(`/usuarios/v2/reset-password/${id}`, 'POST'),
 };
 
