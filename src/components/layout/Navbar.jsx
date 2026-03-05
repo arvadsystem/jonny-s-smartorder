@@ -11,7 +11,11 @@ const INVENTORY_TABS = [
   { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
 ];
 
-const SECURITY_TABS = [
+// ==================================
+// SEGURIDAD - SUBMODULOS (BASE)
+// (Usuarios se inyecta dinámicamente solo para Super Admin)
+// ==================================
+const SECURITY_TABS_BASE = [
   { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop' },
   { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key' },
   { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text' }
@@ -223,6 +227,17 @@ const Navbar = () => {
   const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
 
+  // ✅ SECURITY TABS dinámicos (Usuarios SOLO Super Admin)
+  const securityTabs = useMemo(() => {
+    const tabs = [...SECURITY_TABS_BASE];
+    if (Number(user?.rol) === 1) {
+      // Lo metemos después de Sesiones activas
+      tabs.splice(1, 0, { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people' });
+    }
+    return tabs;
+  }, [user?.rol]);
+
+  // FUNCIONALIDAD: SOLO EN INVENTARIO/SEGURIDAD/PERSONAS SE MUESTRAN SUBMODULOS
   const isInventario = location.pathname?.startsWith('/dashboard/inventario');
   const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
   const isPersonas = location.pathname?.startsWith('/dashboard/personas');
@@ -233,8 +248,8 @@ const Navbar = () => {
   );
 
   const activeSecurityKey = useMemo(
-    () => getTabFromSearch(location.search, SECURITY_TABS, 'sesiones'),
-    [location.search]
+    () => getTabFromSearch(location.search, securityTabs, 'sesiones'),
+    [location.search, securityTabs]
   );
 
   const activePersonasKey = useMemo(
@@ -283,7 +298,7 @@ const Navbar = () => {
 
     if (isSeguridad) {
       return {
-        tabs: SECURITY_TABS,
+        tabs: securityTabs, // <-- IMPORTANTE: Ahora utiliza los tabs dinámicos calculados arriba
         activeKey: activeSecurityKey,
         onGoTab: goSeguridadTab
       };
@@ -307,7 +322,8 @@ const Navbar = () => {
     goSeguridadTab,
     isInventario,
     isPersonas,
-    isSeguridad
+    isSeguridad,
+    securityTabs // <-- Añadido a las dependencias del useMemo
   ]);
 
   useEffect(() => {

@@ -25,9 +25,11 @@ body {
 
 .dashboard-shell .main-content {
   min-height: 100vh;
+  min-width: 0;
   margin-left: calc(var(--shell-sidebar-current) + 20px);
   padding: 10px 16px 32px 0;
   background: transparent !important;
+  overflow-x: hidden;
   transition: margin-left 180ms ease, padding 180ms ease;
 }
 

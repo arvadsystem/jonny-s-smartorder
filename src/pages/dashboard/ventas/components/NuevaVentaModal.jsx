@@ -7,7 +7,14 @@ const PAYMENT_OPTIONS = [
   { key: 'transferencia', label: 'Transfer.', icon: 'bi bi-arrow-left-right' }
 ];
 
+const CATALOG_TABS = [
+  { key: 'PRODUCTOS', label: 'Productos', icon: 'bi bi-bag' },
+  { key: 'COMBOS', label: 'Combos', icon: 'bi bi-collection' },
+  { key: 'RECETAS', label: 'Recetas', icon: 'bi bi-journal-richtext' }
+];
+
 const buildInitialState = () => ({
+  activeCatalog: 'PRODUCTOS',
   search: '',
   activeCategory: 'all',
   selectedClient: 'cf',
@@ -19,8 +26,87 @@ const buildInitialState = () => ({
   submitError: ''
 });
 
-const findLineIndex = (cart, productId) =>
-  cart.findIndex((line) => Number(line.id_producto) === Number(productId));
+const buildCartKey = (kind, entityId) => `${kind}:${entityId}`;
+
+const findLineIndex = (cart, cartKey) =>
+  cart.findIndex((line) => String(line.cartKey) === String(cartKey));
+
+const buildCatalogLine = (kind, row) => {
+  if (kind === 'PRODUCTO') {
+    return {
+      cartKey: buildCartKey(kind, row.id_producto),
+      kind,
+      entityId: row.id_producto,
+      id_producto: row.id_producto,
+      id_combo: null,
+      id_receta: null,
+      nombre_item: row.nombre_producto,
+      categoria_label: row.categoria_label || 'Productos',
+      descripcion_item: row.descripcion_producto || row.categoria_label || 'Producto',
+      precio_unitario: row.precio,
+      cantidad: 1,
+      observacion: ''
+    };
+  }
+
+  if (kind === 'COMBO') {
+    return {
+      cartKey: buildCartKey(kind, row.id_combo),
+      kind,
+      entityId: row.id_combo,
+      id_producto: null,
+      id_combo: row.id_combo,
+      id_receta: null,
+      nombre_item: row.descripcion,
+      categoria_label: 'Combos',
+      descripcion_item: row.descripcion || 'Combo',
+      precio_unitario: row.precio,
+      cantidad: 1,
+      observacion: ''
+    };
+  }
+
+  return {
+    cartKey: buildCartKey(kind, row.id_receta),
+    kind,
+    entityId: row.id_receta,
+    id_producto: null,
+    id_combo: null,
+    id_receta: row.id_receta,
+    nombre_item: row.nombre_receta,
+    categoria_label: 'Recetas',
+    descripcion_item: row.nombre_producto_base || row.nombre_receta || 'Receta',
+    precio_unitario: row.precio,
+    cantidad: 1,
+    observacion: ''
+  };
+};
+
+const filterBySearch = (rows, search, fields) => {
+  const needle = String(search || '').trim().toLowerCase();
+  if (!needle) return rows;
+
+  return rows.filter((row) =>
+    fields
+      .map((field) => row?.[field])
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(needle)
+  );
+};
+
+const getResultsLabel = (catalogKey, count) => {
+  if (catalogKey === 'COMBOS') {
+    return `${count} ${count === 1 ? 'combo' : 'combos'}`;
+  }
+
+  if (catalogKey === 'RECETAS') {
+    return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
+  }
+
+  return `${count} ${count === 1 ? 'producto' : 'productos'}`;
+};
 
 export default function NuevaVentaModal({
   open,
@@ -29,6 +115,8 @@ export default function NuevaVentaModal({
   productos,
   categorias,
   clientes,
+  combos,
+  recetas,
   onClose,
   onSubmit
 }) {
@@ -69,6 +157,13 @@ export default function NuevaVentaModal({
     };
   }, [state.clientPickerOpen]);
 
+  const setPartialState = (partial) => {
+    setState((current) => ({
+      ...current,
+      ...partial
+    }));
+  };
+
   const selectedClientLabel = useMemo(() => {
     const match = (Array.isArray(clientes) ? clientes : []).find(
       (cliente) => cliente.value === state.selectedClient
@@ -77,30 +172,39 @@ export default function NuevaVentaModal({
   }, [clientes, state.selectedClient]);
 
   const filteredProducts = useMemo(() => {
-    const needle = String(deferredSearch || '').trim().toLowerCase();
     const categoryValue = state.activeCategory;
+    const categoryFiltered = (Array.isArray(productos) ? productos : []).filter((producto) =>
+      categoryValue === 'all'
+        ? true
+        : Number(producto.id_tipo_departamento ?? 0) === Number(categoryValue)
+    );
 
-    return (Array.isArray(productos) ? productos : []).filter((producto) => {
-      const matchesCategory =
-        categoryValue === 'all'
-          ? true
-          : Number(producto.id_tipo_departamento ?? 0) === Number(categoryValue);
-
-      if (!matchesCategory) return false;
-      if (!needle) return true;
-
-      const haystack = [
-        producto?.nombre_producto,
-        producto?.descripcion_producto,
-        producto?.categoria_label
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return haystack.includes(needle);
-    });
+    return filterBySearch(categoryFiltered, deferredSearch, [
+      'nombre_producto',
+      'descripcion_producto',
+      'categoria_label'
+    ]);
   }, [deferredSearch, productos, state.activeCategory]);
+
+  const filteredCombos = useMemo(
+    () => filterBySearch(Array.isArray(combos) ? combos : [], deferredSearch, ['descripcion']),
+    [combos, deferredSearch]
+  );
+
+  const filteredRecetas = useMemo(
+    () =>
+      filterBySearch(Array.isArray(recetas) ? recetas : [], deferredSearch, [
+        'nombre_receta',
+        'nombre_producto_base'
+      ]),
+    [deferredSearch, recetas]
+  );
+
+  const currentCatalogRows = useMemo(() => {
+    if (state.activeCatalog === 'COMBOS') return filteredCombos;
+    if (state.activeCatalog === 'RECETAS') return filteredRecetas;
+    return filteredProducts;
+  }, [filteredCombos, filteredProducts, filteredRecetas, state.activeCatalog]);
 
   const cartCount = useMemo(
     () => state.cart.reduce((total, line) => total + Number(line.cantidad ?? 0), 0),
@@ -137,17 +241,12 @@ export default function NuevaVentaModal({
   const change = roundMoney(Math.max(cashValue - total, 0));
   const canSubmit = state.cart.length > 0 && state.paymentMethod === 'efectivo' && cashValue >= total;
 
-  const setPartialState = (partial) => {
-    setState((current) => ({
-      ...current,
-      ...partial
-    }));
-  };
+  const addCatalogItem = (kind, row) => {
+    const catalogLine = buildCatalogLine(kind, row);
 
-  const addProduct = (producto) => {
     setState((current) => {
       const nextCart = [...current.cart];
-      const index = findLineIndex(nextCart, producto.id_producto);
+      const index = findLineIndex(nextCart, catalogLine.cartKey);
 
       if (index >= 0) {
         nextCart[index] = {
@@ -155,14 +254,7 @@ export default function NuevaVentaModal({
           cantidad: Number(nextCart[index].cantidad ?? 0) + 1
         };
       } else {
-        nextCart.push({
-          id_producto: producto.id_producto,
-          nombre_producto: producto.nombre_producto,
-          categoria_label: producto.categoria_label,
-          precio_unitario: producto.precio,
-          cantidad: 1,
-          nota: ''
-        });
+        nextCart.push(catalogLine);
       }
 
       return {
@@ -173,20 +265,32 @@ export default function NuevaVentaModal({
     });
   };
 
-  const updateLine = (productId, updater) => {
+  const updateLine = (cartKey, updater) => {
     setState((current) => ({
       ...current,
       cart: current.cart
-        .map((line) => (Number(line.id_producto) === Number(productId) ? updater(line) : line))
+        .map((line) => (line.cartKey === cartKey ? updater(line) : line))
         .filter((line) => Number(line.cantidad ?? 0) > 0)
     }));
   };
 
   const handleSearchKeyDown = (event) => {
     if (event.key !== 'Enter') return;
-    if (filteredProducts.length === 0) return;
+    if (currentCatalogRows.length === 0) return;
+
     event.preventDefault();
-    addProduct(filteredProducts[0]);
+
+    if (state.activeCatalog === 'COMBOS') {
+      addCatalogItem('COMBO', currentCatalogRows[0]);
+      return;
+    }
+
+    if (state.activeCatalog === 'RECETAS') {
+      addCatalogItem('RECETA', currentCatalogRows[0]);
+      return;
+    }
+
+    addCatalogItem('PRODUCTO', currentCatalogRows[0]);
   };
 
   const handleSubmit = async (event) => {
@@ -201,7 +305,7 @@ export default function NuevaVentaModal({
 
     if (state.cart.length === 0) {
       setPartialState({
-        submitError: 'Agrega al menos un producto al carrito.'
+        submitError: 'Agrega al menos un item al carrito.'
       });
       return;
     }
@@ -213,25 +317,22 @@ export default function NuevaVentaModal({
       return;
     }
 
-    const notesSummary = state.cart
-      .map((line) => {
-        const note = String(line.nota || '').trim();
-        return note ? `${line.nombre_producto}: ${note}` : '';
-      })
-      .filter(Boolean)
-      .join(' | ')
-      .slice(0, 250);
-
     try {
       await onSubmit({
         id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
         metodo_pago: 'efectivo',
         descuento: discountValue,
         efectivo_entregado: cashValue,
-        descripcion_pedido: notesSummary || null,
+        descripcion_pedido: null,
         items: state.cart.map((line) => ({
-          id_producto: Number(line.id_producto),
-          cantidad: Number(line.cantidad)
+          id_producto: line.id_producto,
+          id_combo: line.id_combo,
+          id_receta: line.id_receta,
+          cantidad: Number(line.cantidad),
+          observacion:
+            line.kind === 'PRODUCTO'
+              ? undefined
+              : String(line.observacion || '').trim() || null
         }))
       });
     } catch (error) {
@@ -267,7 +368,13 @@ export default function NuevaVentaModal({
             <button type="button" className="ventas-modal__ghost-btn" title="Atajos">
               <i className="bi bi-keyboard" />
             </button>
-            <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={saving} aria-label="Cerrar">
+            <button
+              type="button"
+              className="ventas-modal__close-btn"
+              onClick={onClose}
+              disabled={saving}
+              aria-label="Cerrar"
+            >
               <i className="bi bi-x-lg" />
             </button>
           </div>
@@ -275,11 +382,47 @@ export default function NuevaVentaModal({
 
         <form className="ventas-modal__body ventas-create-modal__body" onSubmit={handleSubmit}>
           <div className="ventas-create-modal__catalog">
-            <label className="ventas-create-modal__search" aria-label="Buscar producto">
+            <div className="ventas-create-modal__catalog-tabs" role="tablist" aria-label="Tipos de venta">
+              {CATALOG_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`ventas-create-modal__catalog-tab ${
+                    state.activeCatalog === tab.key ? 'is-active' : ''
+                  }`}
+                  aria-pressed={state.activeCatalog === tab.key}
+                  onClick={() =>
+                    setPartialState({
+                      activeCatalog: tab.key,
+                      search: ''
+                    })
+                  }
+                >
+                  <i className={tab.icon} /> {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <label
+              className="ventas-create-modal__search"
+              aria-label={
+                state.activeCatalog === 'PRODUCTOS'
+                  ? 'Buscar producto'
+                  : state.activeCatalog === 'COMBOS'
+                    ? 'Buscar combo'
+                    : 'Buscar receta'
+              }
+            >
               <i className="bi bi-search" />
               <input
                 type="search"
-                placeholder="Buscar producto..."
+                placeholder={
+                  state.activeCatalog === 'PRODUCTOS'
+                    ? 'Buscar producto...'
+                    : state.activeCatalog === 'COMBOS'
+                      ? 'Buscar combo...'
+                      : 'Buscar receta...'
+                }
                 value={state.search}
                 onChange={(event) => setPartialState({ search: event.target.value })}
                 onKeyDown={handleSearchKeyDown}
@@ -287,63 +430,95 @@ export default function NuevaVentaModal({
               <span className="ventas-create-modal__search-hint">/</span>
             </label>
 
-            <div className="ventas-create-modal__chips" aria-label="Categorias">
-              <button
-                type="button"
-                className={`ventas-create-modal__chip ${state.activeCategory === 'all' ? 'is-active' : ''}`}
-                onClick={() => setPartialState({ activeCategory: 'all' })}
-              >
-                Todos
-              </button>
-              {(Array.isArray(categorias) ? categorias : []).map((categoria) => (
+            {state.activeCatalog === 'PRODUCTOS' ? (
+              <div className="ventas-create-modal__chips" aria-label="Categorias">
                 <button
-                  key={categoria.id_tipo_departamento}
                   type="button"
-                  className={`ventas-create-modal__chip ${
-                    String(state.activeCategory) === String(categoria.id_tipo_departamento) ? 'is-active' : ''
-                  }`}
-                  onClick={() =>
-                    setPartialState({
-                      activeCategory: String(categoria.id_tipo_departamento)
-                    })
-                  }
+                  className={`ventas-create-modal__chip ${state.activeCategory === 'all' ? 'is-active' : ''}`}
+                  onClick={() => setPartialState({ activeCategory: 'all' })}
                 >
-                  {categoria.nombre_departamento}
+                  Todos
                 </button>
-              ))}
-            </div>
+                {(Array.isArray(categorias) ? categorias : []).map((categoria) => (
+                  <button
+                    key={categoria.id_tipo_departamento}
+                    type="button"
+                    className={`ventas-create-modal__chip ${
+                      String(state.activeCategory) === String(categoria.id_tipo_departamento)
+                        ? 'is-active'
+                        : ''
+                    }`}
+                    onClick={() =>
+                      setPartialState({
+                        activeCategory: String(categoria.id_tipo_departamento)
+                      })
+                    }
+                  >
+                    {categoria.nombre_departamento}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="ventas-create-modal__catalog-hint">
+                {state.activeCatalog === 'COMBOS'
+                  ? 'Los combos y recetas generan pedido para cocina.'
+                  : 'Las notas por item solo se guardan para cocina.'}
+              </div>
+            )}
 
             <div className="ventas-create-modal__results-meta">
-              {catalogLoading ? 'Cargando catalogo...' : `${filteredProducts.length} productos`}
+              {catalogLoading
+                ? 'Cargando catalogo...'
+                : getResultsLabel(state.activeCatalog, currentCatalogRows.length)}
             </div>
 
             <div className="ventas-create-modal__products">
               {catalogLoading ? (
                 <div className="ventas-create-modal__empty">
                   <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-                  <span>Cargando productos...</span>
+                  <span>Cargando catalogo...</span>
                 </div>
-              ) : filteredProducts.length === 0 ? (
+              ) : currentCatalogRows.length === 0 ? (
                 <div className="ventas-create-modal__empty">
                   <i className="bi bi-search" />
-                  <span>No hay productos para ese filtro.</span>
+                  <span>No hay resultados para ese filtro.</span>
                 </div>
               ) : (
-                filteredProducts.map((producto) => (
-                  <button
-                    key={producto.id_producto}
-                    type="button"
-                    className="ventas-create-modal__product-card"
-                    onClick={() => addProduct(producto)}
-                  >
-                    <span className="ventas-create-modal__product-pill">{producto.categoria_label}</span>
-                    <strong>{producto.nombre_producto}</strong>
-                    <span className="ventas-create-modal__product-price">{formatCurrency(producto.precio)}</span>
-                    <span className="ventas-create-modal__product-desc">
-                      {producto.descripcion_producto || producto.categoria_label}
-                    </span>
-                  </button>
-                ))
+                currentCatalogRows.map((row) => {
+                  const isProducto = state.activeCatalog === 'PRODUCTOS';
+                  const isCombo = state.activeCatalog === 'COMBOS';
+                  const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : row.id_receta;
+                  const itemName = isProducto ? row.nombre_producto : isCombo ? row.descripcion : row.nombre_receta;
+                  const itemDesc = isProducto
+                    ? row.descripcion_producto || row.categoria_label
+                    : isCombo
+                      ? row.descripcion
+                      : row.nombre_producto_base || row.nombre_receta;
+                  const itemLabel = isProducto
+                    ? row.categoria_label
+                    : isCombo
+                      ? 'Combos'
+                      : row.nombre_producto_base || 'Recetas';
+
+                  return (
+                    <button
+                      key={`${state.activeCatalog}-${itemId}`}
+                      type="button"
+                      className="ventas-create-modal__product-card"
+                      onClick={() =>
+                        addCatalogItem(
+                          isProducto ? 'PRODUCTO' : isCombo ? 'COMBO' : 'RECETA',
+                          row
+                        )
+                      }
+                    >
+                      <span className="ventas-create-modal__product-pill">{itemLabel}</span>
+                      <strong>{itemName}</strong>
+                      <span className="ventas-create-modal__product-price">{formatCurrency(row.precio)}</span>
+                      <span className="ventas-create-modal__product-desc">{itemDesc}</span>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
@@ -462,19 +637,22 @@ export default function NuevaVentaModal({
                       <i className="bi bi-cart-x" />
                     </div>
                     <strong>Carrito vacio</strong>
-                    <span>Busca o selecciona productos a la izquierda.</span>
+                    <span>Busca o selecciona items a la izquierda.</span>
                   </div>
                 ) : (
                   state.cart.map((line) => {
                     const lineTotal = roundMoney(line.precio_unitario * line.cantidad);
+                    const supportsNotes = line.kind !== 'PRODUCTO';
 
                     return (
-                      <div key={line.id_producto} className="ventas-create-modal__cart-item">
+                      <div key={line.cartKey} className="ventas-create-modal__cart-item">
                         <div className="ventas-create-modal__cart-item-head">
                           <div>
-                            <strong>{line.nombre_producto}</strong>
-                            <span className="ventas-create-modal__product-pill">{line.categoria_label}</span>
-                            <small>{formatCurrency(line.precio_unitario)} c/u</small>
+                            <strong>{line.nombre_item}</strong>
+                            <div className="ventas-create-modal__cart-item-meta">
+                              <span className="ventas-create-modal__product-pill">{line.categoria_label}</span>
+                              <small>{formatCurrency(line.precio_unitario)} c/u</small>
+                            </div>
                           </div>
                           <strong className="ventas-create-modal__line-total">{formatCurrency(lineTotal)}</strong>
                         </div>
@@ -484,7 +662,7 @@ export default function NuevaVentaModal({
                             <button
                               type="button"
                               onClick={() =>
-                                updateLine(line.id_producto, (current) => ({
+                                updateLine(line.cartKey, (current) => ({
                                   ...current,
                                   cantidad: Number(current.cantidad ?? 0) - 1
                                 }))
@@ -496,7 +674,7 @@ export default function NuevaVentaModal({
                             <button
                               type="button"
                               onClick={() =>
-                                updateLine(line.id_producto, (current) => ({
+                                updateLine(line.cartKey, (current) => ({
                                   ...current,
                                   cantidad: Number(current.cantidad ?? 0) + 1
                                 }))
@@ -512,9 +690,7 @@ export default function NuevaVentaModal({
                             onClick={() =>
                               setState((current) => ({
                                 ...current,
-                                cart: current.cart.filter(
-                                  (item) => Number(item.id_producto) !== Number(line.id_producto)
-                                )
+                                cart: current.cart.filter((item) => item.cartKey !== line.cartKey)
                               }))
                             }
                             title="Eliminar item"
@@ -523,18 +699,26 @@ export default function NuevaVentaModal({
                           </button>
                         </div>
 
-                        <input
-                          type="text"
-                          className="ventas-create-modal__note-input"
-                          placeholder='Ej. "sin cebolla", "extra salsa"'
-                          value={line.nota}
-                          onChange={(event) =>
-                            updateLine(line.id_producto, (current) => ({
-                              ...current,
-                              nota: event.target.value
-                            }))
-                          }
-                        />
+                        {supportsNotes ? (
+                          <div className="ventas-create-modal__note-wrap">
+                            <div className="ventas-create-modal__note-label">
+                              <i className="bi bi-journal-text" /> Nota para cocina
+                            </div>
+                            <input
+                              type="text"
+                              className="ventas-create-modal__note-input"
+                              placeholder='Ej. "sin cebolla", "extra salsa"'
+                              value={line.observacion}
+                              maxLength={200}
+                              onChange={(event) =>
+                                updateLine(line.cartKey, (current) => ({
+                                  ...current,
+                                  observacion: event.target.value
+                                }))
+                              }
+                            />
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })
@@ -572,7 +756,7 @@ export default function NuevaVentaModal({
                     <span className="spinner-border spinner-border-sm" aria-hidden="true" /> Guardando...
                   </>
                 ) : state.cart.length === 0 ? (
-                  'Agrega productos para continuar'
+                  'Agrega items para continuar'
                 ) : (
                   <>
                     <i className="bi bi-cart-check" /> Completar Venta

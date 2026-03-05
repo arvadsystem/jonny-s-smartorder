@@ -36,7 +36,7 @@ export default function VentasTable({ ventas, onOpenDetail }) {
 
               return (
                 <tr
-                  key={venta?.id_pedido ?? `${venta?.numero_venta}-${index}`}
+                  key={venta?.id_factura ?? `${venta?.numero_venta}-${index}`}
                   className="ventas-page__table-row"
                   tabIndex={0}
                   onClick={() => onOpenDetail(venta)}

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { personaService } from "../../../services/personasService";
+import EntityTable from "../../../components/ui/EntityTable";
 import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpresaCard from "./components/empresas/EmpresaCard";
-import "../sucursales/styles/sucursales.css";
 
 const emptyForm = {
   rtn: "",
@@ -53,6 +53,21 @@ const resolveCardsPerPage = (width) => {
   return 2;
 };
 
+const toDisplayValue = (value, fallback = "No registrado") => {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
+};
+
+const readViewMode = (storageKey) => {
+  if (typeof window === "undefined") return "cards";
+  try {
+    return window.localStorage.getItem(storageKey) === "table" ? "table" : "cards";
+  } catch {
+    return "cards";
+  }
+};
+
 const detectEstadoField = (empresa) => {
   if (Object.prototype.hasOwnProperty.call(empresa || {}, "estado")) return "estado";
   if (Object.prototype.hasOwnProperty.call(empresa || {}, "activo")) return "activo";
@@ -81,6 +96,7 @@ export default function Empresas({ openToast }) {
   const [empresas, setEmpresas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState(() => readViewMode("empresasViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [sortBy, setSortBy] = useState("recientes");
@@ -219,6 +235,14 @@ export default function Empresas({ openToast }) {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("empresasViewMode", viewMode);
+    } catch {
+      // Keep working even if storage is unavailable.
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     if (!showModal || !editId) return;
@@ -477,8 +501,8 @@ export default function Empresas({ openToast }) {
   };
 
   return (
-    <div className="suc-page">
-      <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
+    <div className="personas-page">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <HeaderModulo
           iconClass="bi bi-buildings-fill"
           title="Empresas"
@@ -494,12 +518,14 @@ export default function Empresas({ openToast }) {
           createLabel="Nuevo"
           filtersControlsId="emp-filtros-drawer"
           formControlsId="emp-form-drawer"
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de empresas" />
 
         <div className="inv-catpro-body inv-prod-body p-3">
-          <div className="inv-prod-results-meta inv-cat-v2__results-meta">
+          <div className="inv-prod-results-meta personas-page__results-meta">
             <span>{loading ? "Cargando empresas..." : `${empresasFiltradas.length} resultados`}</span>
             <span>{loading ? "" : `Total: ${total}`}</span>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
@@ -532,6 +558,96 @@ export default function Empresas({ openToast }) {
                   </button>
                 </div>
               </div>
+            ) : viewMode === "table" ? (
+              <EntityTable>
+                <table className="table personas-page__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Empresa</th>
+                      <th scope="col">RTN</th>
+                      <th scope="col">Telefono</th>
+                      <th scope="col">Correo</th>
+                      <th scope="col">Direccion</th>
+                      <th scope="col">Estado</th>
+                      <th scope="col">Codigo</th>
+                      <th scope="col" className="text-end">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {empresasFiltradas.map((empresa, idx) => {
+                      const isActive = isEmpresaActiva(empresa);
+                      const idEmpresa = empresa?.id_empresa;
+                      const deleting = deletingId === idEmpresa;
+                      const toggling = togglingEstadoId === idEmpresa;
+                      const tableIndex = (page - 1) * limit + idx;
+                      const telefono = empresa?.telefono ?? empresa?.telefono_numero ?? empresa?.numero_telefono;
+                      const correo = empresa?.correo ?? empresa?.direccion_correo ?? empresa?.email;
+                      const direccion = empresa?.direccion ?? empresa?.direccion_detalle;
+
+                      return (
+                        <tr key={empresa?.id_empresa ?? idx} className={isActive ? "" : "is-inactive-state"}>
+                          <td>
+                            <strong>{tableIndex + 1}. {toDisplayValue(empresa?.nombre_empresa, "Empresa sin nombre")}</strong>
+                          </td>
+                          <td>{toDisplayValue(empresa?.rtn, "N/D")}</td>
+                          <td>{toDisplayValue(telefono, "Sin telefono")}</td>
+                          <td>{toDisplayValue(correo, "Sin correo")}</td>
+                          <td>{toDisplayValue(direccion, "Sin direccion")}</td>
+                          <td>
+                            <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
+                              {isActive ? "ACTIVO" : "INACTIVO"}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="inv-catpro-code-wrap personas-page__table-code-wrap">
+                              <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
+                              <span className="inv-catpro-code">EMP-{String(idEmpresa ?? "-")}</span>
+                            </div>
+                          </td>
+                          <td className="text-end">
+                            <div className="personas-page__table-actions">
+                              <button
+                                type="button"
+                                className="inv-catpro-action edit inv-catpro-action-compact"
+                                onClick={() => iniciarEdicion(empresa)}
+                                title="Editar"
+                                disabled={actionLoading || deleting || toggling}
+                              >
+                                <i className="bi bi-pencil-square" />
+                                <span className="inv-catpro-action-label">Editar</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                className={`inv-catpro-action ${isActive ? "state-off" : "state-on"} inv-catpro-action-compact`}
+                                onClick={() => toggleEstadoEmpresa(empresa, !isActive)}
+                                title={isActive ? "Inactivar" : "Activar"}
+                                disabled={actionLoading || deleting || toggling}
+                              >
+                                <i className={`bi ${isActive ? "bi-slash-circle" : "bi-check-circle"}`} />
+                                <span className="inv-catpro-action-label">
+                                  {toggling ? "Procesando" : isActive ? "Inactivar" : "Activar"}
+                                </span>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="inv-catpro-action danger inv-catpro-action-compact"
+                                onClick={() => openConfirmDelete(empresa)}
+                                title="Eliminar"
+                                disabled={actionLoading || deleting || toggling}
+                              >
+                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
+                                <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
                 {empresasFiltradas.map((empresa, idx) => (
@@ -551,22 +667,23 @@ export default function Empresas({ openToast }) {
             )}
           </div>
 
-          <div className="d-flex justify-content-end mt-3 gap-2 flex-wrap">
-            <span className="badge rounded-pill text-bg-light border text-dark px-3 py-2 align-self-center">
-              Pagina {page} de {totalPages}
-            </span>
-
+          <div className="personas-page__pagination">
             <button
-              className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+              type="button"
+              className="btn btn-outline-secondary"
               disabled={page === 1 || loading || actionLoading || !!deletingId || !!togglingEstadoId}
               onClick={() => setPage((prev) => prev - 1)}
             >
               <i className="bi bi-chevron-left me-1" />
               Anterior
             </button>
+            <span>
+              Pagina {page} de {totalPages}
+            </span>
 
             <button
-              className="btn btn-sm btn-outline-secondary rounded-pill px-3"
+              type="button"
+              className="btn btn-outline-secondary"
               disabled={page >= totalPages || loading || actionLoading || !!deletingId || !!togglingEstadoId}
               onClick={() => setPage((prev) => prev + 1)}
             >

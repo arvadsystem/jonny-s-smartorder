@@ -2,11 +2,32 @@ const FALLBACK_STATUS = {
   completed: 'Completada',
   pending: 'Pendiente'
 };
+const COMPLETED_STATUS_KEYS = new Set([
+  'venta_directa',
+  'completada',
+  'completado',
+  'finalizada',
+  'finalizado',
+  'pagada',
+  'pagado',
+  'cerrada',
+  'cerrado',
+  'lista',
+  'listo'
+]);
 
 export const parseBoolean = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
 export const roundMoney = (value) => Number(Number(value || 0).toFixed(2));
+
+const normalizeTextKey = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
 
 export const formatCurrency = (value) => `L ${roundMoney(value).toFixed(2)}`;
 
@@ -91,6 +112,24 @@ export const normalizeProductoRecord = (row, categoriasMap = new Map()) => {
   };
 };
 
+export const normalizeComboRecord = (row) => ({
+  ...row,
+  id_combo: Number(row?.id_combo ?? 0) || null,
+  descripcion: String(row?.descripcion ?? 'Combo'),
+  precio: roundMoney(row?.precio),
+  estado: parseBoolean(row?.estado)
+});
+
+export const normalizeRecetaRecord = (row) => ({
+  ...row,
+  id_receta: Number(row?.id_receta ?? 0) || null,
+  id_producto_base: Number(row?.id_producto_base ?? 0) || null,
+  nombre_receta: String(row?.nombre_receta ?? 'Receta'),
+  nombre_producto_base: String(row?.nombre_producto_base ?? ''),
+  precio: roundMoney(row?.precio),
+  estado: parseBoolean(row?.estado)
+});
+
 export const normalizeClienteOption = (row) => ({
   ...row,
   id_cliente: Number(row?.id_cliente ?? 0) || null,
@@ -100,7 +139,11 @@ export const normalizeClienteOption = (row) => ({
   es_consumidor_final: Boolean(row?.es_consumidor_final)
 });
 
-const inferStatusKey = (row) => (row?.id_factura ? 'completed' : 'pending');
+const inferStatusKey = (row) => {
+  if (!row?.id_pedido) return 'completed';
+  const statusKey = normalizeTextKey(row?.estado_pedido);
+  return COMPLETED_STATUS_KEYS.has(statusKey) ? 'completed' : 'pending';
+};
 
 export const normalizeVentaRecord = (row) => {
   const statusKey = inferStatusKey(row);
@@ -124,7 +167,7 @@ export const normalizeVentaRecord = (row) => {
     nombre_usuario: String(row?.nombre_usuario ?? 'Sin usuario'),
     metodo_pago: String(row?.metodo_pago ?? 'efectivo'),
     numero_venta: String(
-      row?.numero_venta || `VTA-${String(row?.id_pedido ?? 0).padStart(5, '0')}`
+      row?.numero_venta || `VTA-${String(row?.id_factura ?? 0).padStart(5, '0')}`
     ),
     statusKey,
     statusLabel: String(row?.estado_pedido ?? FALLBACK_STATUS[statusKey]),
@@ -141,12 +184,17 @@ export const normalizeVentaDetail = (row) => {
         ...item,
         id_detalle: Number(item?.id_detalle ?? 0) || null,
         id_producto: Number(item?.id_producto ?? 0) || null,
+        id_combo: Number(item?.id_combo ?? 0) || null,
+        id_receta: Number(item?.id_receta ?? 0) || null,
+        tipo_item: String(item?.tipo_item ?? 'PRODUCTO'),
         cantidad: Number(item?.cantidad ?? 0) || 0,
         precio_unitario: roundMoney(item?.precio_unitario),
         sub_total: roundMoney(item?.sub_total),
         total_linea: roundMoney(item?.total_linea),
         descuento: roundMoney(item?.descuento),
-        nombre_producto: String(item?.nombre_producto ?? 'Producto')
+        nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
+        nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
+        observacion: String(item?.observacion ?? '').trim()
       }))
     : [];
 
@@ -212,11 +260,13 @@ export const downloadVentaDetail = (venta) => {
     isv: venta.isv,
     total: venta.total,
     items: venta.items?.map((item) => ({
-      producto: item.nombre_producto,
+      producto: item.nombre_item || item.nombre_producto,
+      tipo_item: item.tipo_item,
       cantidad: item.cantidad,
       precio_unitario: item.precio_unitario,
       subtotal: item.sub_total,
-      total: item.total_linea
+      total: item.total_linea,
+      observacion: item.observacion || null
     }))
   };
 

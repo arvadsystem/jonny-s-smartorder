@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { securityService } from "../../../services/securityService";
 import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
 import ConfirmButton from "../../../components/common/ConfirmButton";
 import { fmtHN } from "../../../utils/dateTime";
+import { useAuth } from "../../../hooks/useAuth";
 import "./sesiones-ui.css";
 
 const PAGE_SIZE = 10;
+const AUTO_REFRESH_MS = 15000;
 
 const fmtDate = (value) => fmtHN(value);
 
@@ -25,7 +27,10 @@ const isSesionFallida = (sesion) => {
   return false;
 };
 
-const SesionesTab = () => {
+// ======================================================
+// PERSONAL (usuario normal) - HU79
+// ======================================================
+const SesionesTabPersonal = () => {
   const [sesiones, setSesiones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [noPermiso, setNoPermiso] = useState(false);
@@ -38,14 +43,21 @@ const SesionesTab = () => {
   const [segmento, setSegmento] = useState("todas");
   const [search, setSearch] = useState("");
 
-  const cargar = async () => {
-    setLoading(true);
-    setError("");
-    setNoPermiso(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const cargar = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+      setNoPermiso(false);
+    }
 
     try {
-      const data = await securityService.getSesiones();
+      // ✅ cache-bust para que el navegador no “guarde” el GET
+      const qs = new URLSearchParams({ _ts: String(Date.now()) }).toString();
+      const data = await securityService.getSesiones(qs);
       setSesiones(data?.sesiones || []);
+      setLastUpdated(Date.now());
     } catch (e) {
       if (e?.status === 403) {
         setNoPermiso(true);
@@ -53,12 +65,24 @@ const SesionesTab = () => {
       }
       setError(e?.message || "Error cargando sesiones");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
+  const cargarRef = useRef(cargar);
+  useEffect(() => {
+    cargarRef.current = cargar;
+  });
+
   useEffect(() => {
     cargar();
+    // Auto-refresh cada 15s
+    const t = setInterval(() => {
+      cargarRef.current?.({ silent: true });
+    }, AUTO_REFRESH_MS);
+
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sesionesActivas = useMemo(
@@ -86,7 +110,10 @@ const SesionesTab = () => {
 
       if (!term) return true;
 
-      const texto = `${s?.dispositivo ?? ""} ${s?.navegador ?? ""} ${s?.sistema_operativo ?? ""} ${s?.ip_origen ?? ""} ${fmtDate(s?.fecha_inicio)} ${fmtDate(s?.ultima_actividad)}`.toLowerCase();
+      const texto = `${s?.dispositivo ?? ""} ${s?.navegador ?? ""} ${s?.sistema_operativo ?? ""} ${
+        s?.ip_origen ?? ""
+      } ${fmtDate(s?.fecha_inicio)} ${fmtDate(s?.ultima_actividad)}`.toLowerCase();
+
       return texto.includes(term);
     });
   }, [sesiones, segmento, search]);
@@ -101,9 +128,7 @@ const SesionesTab = () => {
     [sesiones.length, sesionesActivas.length, sesionesCerradas.length, sesionesFallidas.length]
   );
 
-  // ----------------------
-  // PAGINACION (solo UI)
-  // ----------------------
+  // PAGINACION
   const totalPages = Math.max(1, Math.ceil(sesionesFiltradas.length / PAGE_SIZE));
   const start = (page - 1) * PAGE_SIZE;
   const paginated = sesionesFiltradas.slice(start, start + PAGE_SIZE);
@@ -120,7 +145,7 @@ const SesionesTab = () => {
     setClosingId(id_sesion);
     try {
       await securityService.cerrarSesion(id_sesion);
-      await cargar();
+      await cargar({ silent: true });
     } catch (e) {
       alert(e?.message || "No se pudo cerrar la sesion");
     } finally {
@@ -132,7 +157,7 @@ const SesionesTab = () => {
     setClosingOtras(true);
     try {
       await securityService.cerrarOtras();
-      await cargar();
+      await cargar({ silent: true });
     } catch (e) {
       alert(e?.message || "No se pudieron cerrar las otras sesiones");
     } finally {
@@ -238,7 +263,12 @@ const SesionesTab = () => {
               <div className="inv-prod-results-meta sec-sesiones-results-meta">
                 <span>{sesionesFiltradas.length} resultados</span>
                 <span>Total general: {sesiones.length}</span>
-                {segmento !== "todas" ? <span className="inv-prod-active-filter-pill">Filtro activo</span> : null}
+                <span className="text-muted">
+                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15s)
+                </span>
+                {segmento !== "todas" ? (
+                  <span className="inv-prod-active-filter-pill">Filtro activo</span>
+                ) : null}
               </div>
 
               <div className="sec-sesiones-table-card">
@@ -275,13 +305,13 @@ const SesionesTab = () => {
                           <tr key={s.id_sesion} className={esActual ? "sec-sesion-row-current" : ""}>
                             <td>
                               {esFallida ? (
-                                <span className="badge sec-badge sec-badge-fail">Fallido</span>
+                                <span className="badge bg-danger">Fallido</span>
                               ) : s.activa ? (
-                                <span className="badge sec-badge sec-badge-active">
+                                <span className={`badge ${esActual ? "bg-primary" : "bg-success"}`}>
                                   Activa{esActual ? " (Actual)" : ""}
                                 </span>
                               ) : (
-                                <span className="badge sec-badge sec-badge-closed">Cerrada</span>
+                                <span className="badge bg-secondary">Cerrada</span>
                               )}
                             </td>
                             <td>{s.dispositivo || "—"}</td>
@@ -340,6 +370,264 @@ const SesionesTab = () => {
       </div>
     </div>
   );
+};
+
+// ======================================================
+// GLOBAL (Super Admin) - Sprint 3
+// ======================================================
+const SesionesTabGlobal = () => {
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+
+  const [loading, setLoading] = useState(true);
+  const [noPermiso, setNoPermiso] = useState(false);
+  const [error, setError] = useState("");
+
+  const [buscarInput, setBuscarInput] = useState("");
+  const [buscar, setBuscar] = useState("");
+
+  const [offset, setOffset] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const [closingId, setClosingId] = useState(null);
+
+  const load = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+      setNoPermiso(false);
+    }
+
+    try {
+      const qs = new URLSearchParams();
+      if (buscar) qs.set("buscar", buscar);
+      qs.set("limit", String(PAGE_SIZE));
+      qs.set("offset", String(offset));
+      qs.set("_ts", String(Date.now())); // ✅ cache-bust
+
+      const data = await securityService.getSesionesGlobal(qs.toString());
+      setRows(data?.rows || []);
+      setTotal(data?.total || 0);
+      setLastUpdated(Date.now());
+    } catch (e) {
+      if (e?.status === 403) {
+        setNoPermiso(true);
+        return;
+      }
+      setError(e?.message || "Error cargando sesiones globales");
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
+
+  // debounce buscar
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setOffset(0);
+      setBuscar(buscarInput.trim());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [buscarInput]);
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscar, offset]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      loadRef.current?.({ silent: true });
+    }, AUTO_REFRESH_MS);
+    return () => clearInterval(t);
+  }, []);
+
+  const canPrev = offset > 0;
+  const canNext = offset + rows.length < total;
+  const shown = Math.min(offset + rows.length, total);
+
+  const onCerrarGlobalMenosActual = async () => {
+    try {
+      await securityService.cerrarGlobalMenosActual();
+      setOffset(0);
+      await load({ silent: true });
+    } catch (e) {
+      alert(e?.message || "No se pudieron cerrar las sesiones");
+    }
+  };
+
+  const onCerrarSesionGlobal = async (id_sesion, esActual) => {
+    if (esActual) return;
+
+    setClosingId(id_sesion);
+    try {
+      await securityService.cerrarSesionGlobal(id_sesion);
+      await load({ silent: true });
+    } catch (e) {
+      alert(e?.message || "No se pudo cerrar la sesión");
+    } finally {
+      setClosingId(null);
+    }
+  };
+
+  if (noPermiso) return <SinPermiso permiso="SEGURIDAD_VER" detalle="Solo Super Admin." />;
+
+  return (
+    <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
+      <div className="card-body p-0">
+        <div className="inv-prod-header sec-sesiones-header">
+          <div className="inv-prod-title-wrap">
+            <div className="inv-prod-title-row">
+              <i className="bi bi-shield-lock inv-prod-title-icon" />
+              <span className="inv-prod-title">SESIONES</span>
+            </div>
+            <div className="inv-prod-subtitle">Vista Super Admin</div>
+          </div>
+
+          <div className="inv-prod-header-actions sec-sesiones-header-actions">
+            <label className="inv-ins-search sec-sesiones-search" aria-label="Buscar sesiones globales">
+              <i className="bi bi-search" />
+              <input
+                type="search"
+                placeholder="Buscar por usuario / nombre / IP..."
+                value={buscarInput}
+                onChange={(e) => setBuscarInput(e.target.value)}
+              />
+            </label>
+
+            <ConfirmButton
+              className="btn btn-outline-danger"
+              confirmText="¿Cerrar TODAS las sesiones activas del sistema excepto la tuya actual?"
+              onConfirm={onCerrarGlobalMenosActual}
+              disabled={total <= 1}
+            >
+              <i className="bi bi-x-circle me-2"></i>
+              Cerrar sesiones globales (menos la actual)
+            </ConfirmButton>
+          </div>
+        </div>
+
+        <div className="inv-prod-body p-3 sec-sesiones-body">
+          {loading && <InlineLoader />}
+          {error && <div className="alert alert-danger">{error}</div>}
+
+          {!loading && !error && (
+            <>
+              <div className="inv-prod-results-meta sec-sesiones-results-meta">
+                <span>Mostrando {shown} de {total}</span>
+                <span className="text-muted">
+                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15s)
+                </span>
+              </div>
+
+              <div className="sec-sesiones-table-card">
+                <div className="table-responsive sec-sesiones-table-responsive">
+                  <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                    <thead>
+                      <tr>
+                        <th>Estado</th>
+                        <th>Usuario</th>
+                        <th>Dispositivo</th>
+                        <th>Navegador</th>
+                        <th>SO</th>
+                        <th>IP</th>
+                        <th>Inicio de sesión</th>
+                        <th>Última actividad</th>
+                        <th className="text-end">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.length === 0 && (
+                        <tr>
+                          <td colSpan="9" className="text-center text-muted py-4">
+                            No hay sesiones activas para el filtro.
+                          </td>
+                        </tr>
+                      )}
+
+                      {rows.map((s) => {
+                        const esActual = !!s.es_actual;
+
+                        return (
+                          <tr key={s.id_sesion} className={esActual ? "sec-sesion-row-current" : ""}>
+                            <td>
+                              <span className={`badge ${esActual ? "bg-primary" : "bg-success"}`}>
+                                Activa{esActual ? " (Actual)" : ""}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="fw-semibold">{s.nombre_usuario || "—"}</div>
+                              <div className="small text-muted">
+                                {[s.nombre, s.apellido].filter(Boolean).join(" ") || "—"}
+                              </div>
+                            </td>
+                            <td>{s.dispositivo || "—"}</td>
+                            <td>{s.navegador || "—"}</td>
+                            <td>{s.sistema_operativo || "—"}</td>
+                            <td>{s.ip_origen || "—"}</td>
+                            <td>{fmtDate(s.fecha_inicio)}</td>
+                            <td>{fmtDate(s.ultima_actividad)}</td>
+                            <td className="text-end">
+                              <ConfirmButton
+                                className="btn btn-sm btn-outline-danger"
+                                confirmText="¿Esta seguro de cerrar esta sesión para este usuario?"
+                                onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
+                                disabled={esActual || closingId === s.id_sesion}
+                              >
+                                {closingId === s.id_sesion ? (
+                                  <span className="spinner-border spinner-border-sm" />
+                                ) : esActual ? (
+                                  "Actual"
+                                ) : (
+                                  "Cerrar"
+                                )}
+                              </ConfirmButton>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="d-flex justify-content-between align-items-center mt-3">
+                <small className="text-muted">Mostrando {shown} de {total}</small>
+
+                <div className="btn-group">
+                  <button
+                    className="btn btn-sm btn-outline-secondary"
+                    disabled={!canPrev}
+                    onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    className="btn btn-sm btn-outline-secondary"
+                    disabled={!canNext}
+                    onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SesionesTab = () => {
+  const { user } = useAuth();
+  const isSuperAdmin = Number(user?.rol) === 1;
+
+  return isSuperAdmin ? <SesionesTabGlobal /> : <SesionesTabPersonal />;
 };
 
 export default SesionesTab;
