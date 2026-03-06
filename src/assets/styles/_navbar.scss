@@ -316,6 +316,21 @@
   background: #fff;
 }
 
+.dashboard-shell .user-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #fff;
+  color: #7a4a2d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .dashboard-shell .user-profile-caret {
   color: #95745d;
   font-size: 0.8rem;

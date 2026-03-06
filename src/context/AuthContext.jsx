@@ -1,7 +1,25 @@
 import { createContext, useEffect, useState } from 'react';
 import authService from '../services/authService';
+import { perfilService } from '../services/perfilService';
 
 export const AuthContext = createContext();
+
+const normalizePhoto = (value) => {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+};
+
+const enrichUserWithPerfil = async (usuario) => {
+  if (!usuario || typeof usuario !== 'object') return usuario ?? null;
+
+  try {
+    const perfilData = await perfilService.getPerfil();
+    const fotoPerfil = normalizePhoto(perfilData?.perfil?.foto_perfil);
+    return { ...usuario, foto_perfil: fotoPerfil };
+  } catch {
+    return usuario;
+  }
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -14,7 +32,9 @@ export const AuthProvider = ({ children }) => {
     (async () => {
       try {
         const data = await authService.me();
-        if (!cancelled) setUser(data?.usuario ?? null);
+        const baseUser = data?.usuario ?? null;
+        const nextUser = await enrichUserWithPerfil(baseUser);
+        if (!cancelled) setUser(nextUser);
       } catch {
         if (!cancelled) setUser(null);
       } finally {
@@ -27,14 +47,27 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-      useEffect(() => {
-      const handler = () => setUser(null);
-      window.addEventListener('auth:logout', handler);
-      return () => window.removeEventListener('auth:logout', handler);
-    }, []);
+  useEffect(() => {
+    const handler = () => setUser(null);
+    window.addEventListener('auth:logout', handler);
+    return () => window.removeEventListener('auth:logout', handler);
+  }, []);
 
   const login = (usuario) => {
-    setUser(usuario);
+    const baseUser = usuario ?? null;
+    setUser(baseUser);
+
+    if (!baseUser || typeof baseUser !== 'object') return;
+
+    void (async () => {
+      const nextUser = await enrichUserWithPerfil(baseUser);
+
+      setUser((current) => {
+        if (!current || typeof current !== 'object') return current;
+        if (String(current.id_usuario ?? '') !== String(baseUser.id_usuario ?? '')) return current;
+        return nextUser;
+      });
+    })();
   };
 
   const logout = async () => {
