@@ -1,7 +1,6 @@
 export default function VentasToolbar({
   search,
   onSearchChange,
-  createOpen,
   onOpenCreate
 }) {
   return (
@@ -27,7 +26,7 @@ export default function VentasToolbar({
 
         <button
           type="button"
-          className={`inv-prod-toolbar-btn ${createOpen ? 'is-on' : ''}`}
+          className="inv-prod-toolbar-btn"
           onClick={onOpenCreate}
         >
           <i className="bi bi-plus-circle" />
