@@ -7,6 +7,11 @@ import ModuleFiltros from './components/common/ModuleFiltros';
 import ModuleKPICards from './components/common/ModuleKPICards';
 import UsuarioCard from './components/usuarios/UsuarioCard';
 import UsuarioDetailModal from './components/usuarios/UsuarioDetailModal';
+import {
+  isUsuarioDataImageUrl,
+  isUsuarioRenderableImageValue,
+  isUsuarioUploadsImageUrl,
+} from './components/usuarios/imageSourcePolicy';
 
 const emptyForm = {
   id_empleado: '',
@@ -19,12 +24,10 @@ const createInitialFiltersDraft = () => ({
 });
 
 const IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const IMAGE_MAX_BYTES = 200 * 1024;
+const IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const FOTO_PERFIL_MAX_LENGTH = 500;
-const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'Imagen demasiado grande. Use una URL o una imagen mas ligera.';
-const FOTO_PERFIL_INVALID_MESSAGE = 'Formato de foto no valido. Use una URL (http/https o /uploads/...) o una imagen mas ligera.';
-const IMAGE_DATA_URL_RE = /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/i;
-const IMAGE_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
+const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'La imagen supera el limite de 20 MB.';
+const FOTO_PERFIL_INVALID_MESSAGE = 'Formato de foto no valido. Use una ruta /uploads/... o una imagen local.';
 
 const createImageDraftState = (previewUrl = '') => ({
   previewUrl: String(previewUrl || ''),
@@ -32,13 +35,29 @@ const createImageDraftState = (previewUrl = '') => ({
   error: '',
 });
 
+const getDataUrlByteSize = (value) => {
+  const normalized = String(value ?? '').trim();
+  const match = normalized.match(/^data:image\/(?:png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) return null;
+  const base64 = match[1] || '';
+  const paddingMatch = base64.match(/=+$/);
+  const padding = paddingMatch ? paddingMatch[0].length : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+};
+
 const validatePhotoValue = (value) => {
   const normalized = String(value ?? '').trim();
   if (!normalized) return { ok: true, value: '' };
-  if (normalized.length > FOTO_PERFIL_MAX_LENGTH) {
-    return { ok: false, message: FOTO_PERFIL_TOO_LARGE_MESSAGE };
+  if (isUsuarioDataImageUrl(normalized)) {
+    const imageBytes = getDataUrlByteSize(normalized);
+    if (imageBytes === null) return { ok: false, message: FOTO_PERFIL_INVALID_MESSAGE };
+    if (imageBytes > IMAGE_MAX_BYTES) return { ok: false, message: FOTO_PERFIL_TOO_LARGE_MESSAGE };
+    return { ok: true, value: normalized };
   }
-  if (IMAGE_DATA_URL_RE.test(normalized) || IMAGE_URL_RE.test(normalized)) {
+  if (isUsuarioUploadsImageUrl(normalized)) {
+    if (normalized.length > FOTO_PERFIL_MAX_LENGTH) {
+      return { ok: false, message: 'URL de imagen demasiado larga (maximo 500 caracteres).' };
+    }
     return { ok: true, value: normalized };
   }
   return { ok: false, message: FOTO_PERFIL_INVALID_MESSAGE };
@@ -339,8 +358,9 @@ export default function Usuarios({ openToast }) {
       estado: parseBooleanField(current),
     });
     const photoValue = toImageValue(current?.foto_perfil);
-    setFormImage(createImageDraftState(photoValue));
-    setFormImageUrl(IMAGE_URL_RE.test(photoValue) ? photoValue : '');
+    const safePhotoValue = isUsuarioRenderableImageValue(photoValue) ? photoValue : '';
+    setFormImage(createImageDraftState(safePhotoValue));
+    setFormImageUrl(isUsuarioUploadsImageUrl(photoValue) ? photoValue : '');
     setImageDirty(false);
   }, [showModal, editId, usuarios]);
 
@@ -384,7 +404,7 @@ export default function Usuarios({ openToast }) {
     }
 
     if (file.size > IMAGE_MAX_BYTES) {
-      setFormImage({ previewUrl: '', loading: false, error: 'La imagen supera 200 KB.' });
+      setFormImage({ previewUrl: '', loading: false, error: FOTO_PERFIL_TOO_LARGE_MESSAGE });
       setFormImageUrl('');
       setImageDirty(true);
       if (input) input.value = '';
@@ -424,7 +444,7 @@ export default function Usuarios({ openToast }) {
 
     if (!validation.ok) {
       setFormImage({
-        previewUrl: IMAGE_URL_RE.test(value) ? value : '',
+        previewUrl: isUsuarioUploadsImageUrl(value) ? value : '',
         loading: false,
         error: validation.message,
       });
@@ -508,15 +528,22 @@ export default function Usuarios({ openToast }) {
       resetFormState();
       await cargarUsuarios();
     } catch (error) {
-      const errorMessage = error?.message || 'No se pudo guardar';
-      const isTooLargeError = Number(error?.status) === 413 || /demasiado grande/i.test(errorMessage);
+      const errorMessage = String(error?.message || 'No se pudo guardar');
+      const statusCode = Number(error?.status);
+      const backendMessage = errorMessage.trim();
+      const isSizeLimitError =
+        /supera el limite de\s*20\s*MB/i.test(backendMessage) ||
+        /request entity too large/i.test(backendMessage);
 
-      if (isTooLargeError) {
-        setFormImage((prev) => ({ ...prev, error: FOTO_PERFIL_TOO_LARGE_MESSAGE, loading: false }));
-        openPhotoErrorModal(FOTO_PERFIL_TOO_LARGE_MESSAGE);
-        safeToast('ERROR', FOTO_PERFIL_TOO_LARGE_MESSAGE, 'danger');
+      if (statusCode === 413) {
+        const targetMessage = isSizeLimitError
+          ? FOTO_PERFIL_TOO_LARGE_MESSAGE
+          : (backendMessage || 'No se pudo guardar la foto de perfil.');
+        setFormImage((prev) => ({ ...prev, error: targetMessage, loading: false }));
+        openPhotoErrorModal(targetMessage);
+        safeToast('ERROR', targetMessage, 'danger');
       } else {
-        safeToast('ERROR', errorMessage, 'danger');
+        safeToast('ERROR', backendMessage || 'No se pudo guardar', 'danger');
       }
     } finally {
       if (mountedRef.current) setActionLoading(false);
@@ -809,7 +836,7 @@ export default function Usuarios({ openToast }) {
                           <span>Procesando imagen...</span>
                         </div>
                       ) : formImage.previewUrl ? (
-                        <img src={formImage.previewUrl} alt="Vista previa del usuario" />
+                        <img src={formImage.previewUrl} alt="Vista previa del usuario" referrerPolicy="no-referrer" />
                       ) : (
                         <div className="inv-prod-image-placeholder">
                           <i className="bi bi-image" />
@@ -842,21 +869,21 @@ export default function Usuarios({ openToast }) {
 
                     <div className="mt-2">
                       <label className="form-label text-light text-opacity-75 mb-1">URL de imagen (opcional)</label>
-                      <input
-                        type="url"
-                        className="form-control"
-                        placeholder="https://... o /uploads/..."
-                        value={formImageUrl}
-                        onChange={onFormImageUrlChange}
-                        disabled={formImage.loading || actionLoading}
-                      />
+                        <input
+                          type="url"
+                          className="form-control"
+                          placeholder="/uploads/... o https://tu-backend/uploads/..."
+                          value={formImageUrl}
+                          onChange={onFormImageUrlChange}
+                          disabled={formImage.loading || actionLoading}
+                        />
                     </div>
 
                     {formImage.error ? (
                       <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
                     ) : (
                       <div className="inv-prod-image-feedback">
-                        JPG, PNG o WEBP hasta 200 KB. El valor final debe ser menor o igual a 500 caracteres.
+                        JPG, PNG o WEBP hasta 20 MB.
                       </div>
                     )}
                   </div>

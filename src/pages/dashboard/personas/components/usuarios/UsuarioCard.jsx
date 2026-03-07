@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import './usuarios-card.css';
+import { resolveUserImageSrc } from './imageSourcePolicy';
 
 const toDisplayValue = (value, fallback = 'No registrado') => {
   if (value === null || value === undefined) return fallback;
@@ -20,10 +22,6 @@ const getNombreCompleto = (usuario) =>
 
 const getSucursal = (usuario) => usuario?.empleado?.sucursal_nombre || usuario?.sucursal_nombre;
 const getRolNombre = (usuario) => usuario?.rol?.nombre || usuario?.rol_nombre || usuario?.nombre_rol;
-
-const FOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
-
-const isValidPhotoUrl = (value) => FOTO_URL_RE.test(String(value ?? '').trim());
 
 const getInitials = (fullName) => {
   const clean = String(fullName ?? '').trim();
@@ -56,10 +54,12 @@ export default function UsuarioCard({
   const sucursal = toDisplayValue(getSucursal(usuario));
   const username = toDisplayValue(usuario?.nombre_usuario, 'Sin usuario');
   const foto = String(usuario?.foto_perfil || '').trim();
-  const showPhoto = isValidPhotoUrl(foto);
   const initials = getInitials(nombre);
   const rolNombre = toDisplayValue(getRolNombre(usuario), '-');
   const rolIcon = /admin/i.test(rolNombre) ? 'bi-shield-lock' : 'bi-person-badge';
+  const resolvedPhotoSrc = resolveUserImageSrc(foto);
+  const [failedImageSrc, setFailedImageSrc] = useState('');
+  const showPhoto = Boolean(resolvedPhotoSrc) && failedImageSrc !== resolvedPhotoSrc;
 
   return (
     <article
@@ -78,7 +78,13 @@ export default function UsuarioCard({
           <div className="usuarios-card__avatar-wrap">
             <div className={`usuarios-card__avatar ${showPhoto ? 'has-image' : ''}`}>
               {showPhoto ? (
-                <img src={foto} alt={nombre} loading="eager" />
+                <img
+                  src={resolvedPhotoSrc}
+                  alt={nombre}
+                  loading="eager"
+                  referrerPolicy="no-referrer"
+                  onError={() => setFailedImageSrc(resolvedPhotoSrc)}
+                />
               ) : (
                 <span>{initials}</span>
               )}
