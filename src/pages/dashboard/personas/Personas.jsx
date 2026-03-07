@@ -44,9 +44,53 @@ const createInitialFiltersDraft = () => ({
   sortBy: "recientes",
 });
 
-const GLOBAL_KPI_PAGE_SIZE = 200;
-const MAX_GLOBAL_KPI_PAGES = 200;
 const EMAIL_WITH_DOMAIN_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const isAbortError = (error) => error?.name === "AbortError";
+const MIN_CHARS_FOR_SUGGESTIONS = 2;
+const MAX_RECENT_SEARCHES = 8;
+const PERSONAS_RECENT_SEARCHES_KEY = "personasRecentSearchesV1";
+const SEARCH_INPUT_SELECTOR = '.personas-page .inv-ins-search input[type="search"]';
+
+const normalizeSearchText = (value) => String(value ?? "").trim();
+
+const readRecentSearches = () => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PERSONAS_RECENT_SEARCHES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => normalizeSearchText(item))
+      .filter(Boolean)
+      .slice(0, MAX_RECENT_SEARCHES);
+  } catch {
+    return [];
+  }
+};
+
+const persistRecentSearches = (items) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PERSONAS_RECENT_SEARCHES_KEY, JSON.stringify(items));
+  } catch {
+    // Keep working even if storage is unavailable.
+  }
+};
+
+const appendRecentSearch = (currentItems, term) => {
+  const normalized = normalizeSearchText(term);
+  if (!normalized) return currentItems;
+  const withoutDuplicate = (Array.isArray(currentItems) ? currentItems : []).filter(
+    (item) => normalizeSearchText(item).toLowerCase() !== normalized.toLowerCase()
+  );
+  return [normalized, ...withoutDuplicate].slice(0, MAX_RECENT_SEARCHES);
+};
+
+const findSearchInput = () => {
+  if (typeof document === "undefined") return null;
+  return document.querySelector(SEARCH_INPUT_SELECTOR);
+};
 
 const toNumberOrNull = (value) => {
   if (value === null || value === undefined || value === "") return null;
@@ -182,6 +226,44 @@ const normalizeListResponse = (resp) => {
   const total = getResponseTotal(resp) ?? (Array.isArray(items) ? items.length : 0);
 
   return { items: Array.isArray(items) ? items : [], total: Number(total) || 0 };
+};
+
+const normalizeSuggestionItems = (resp) => {
+  const directSuggestions = Array.isArray(resp?.suggestions) ? resp.suggestions : [];
+  const { items } = normalizeListResponse(resp);
+  const source = directSuggestions.length ? directSuggestions : items;
+  const seen = new Set();
+  const suggestions = [];
+
+  for (const item of source) {
+    const id = item?.id_persona ?? null;
+    const nombre = normalizeSearchText(item?.nombre || `${item?.nombre || ""} ${item?.apellido || ""}`);
+    const dni = normalizeSearchText(item?.dni);
+    const correo = normalizeSearchText(item?.correo ?? item?.direccion_correo);
+    const telefono = normalizeSearchText(item?.telefono);
+    const value = normalizeSearchText(item?.value || nombre || dni || correo || telefono);
+    if (!value) continue;
+
+    const detailParts = [];
+    if (dni) detailParts.push(`DNI: ${dni}`);
+    if (correo) detailParts.push(correo);
+    if (telefono) detailParts.push(telefono);
+    const detail = detailParts.join(" | ");
+    const key = `${value.toLowerCase()}|${detail.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    suggestions.push({
+      id: id ?? key,
+      value,
+      label: nombre || value,
+      detail,
+    });
+
+    if (suggestions.length >= MAX_RECENT_SEARCHES) break;
+  }
+
+  return suggestions;
 };
 
 const toDateInputValue = (value) => {
@@ -512,6 +594,11 @@ export default function Personas({ openToast }) {
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("personasViewMode"));
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
 
   const [generoFiltro, setGeneroFiltro] = useState("todos");
   const [sortBy, setSortBy] = useState("recientes");
@@ -521,8 +608,6 @@ export default function Personas({ openToast }) {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
-  const [personasGlobalFiltrables, setPersonasGlobalFiltrables] = useState([]);
-  const [globalFilterLoading, setGlobalFilterLoading] = useState(false);
   const [globalStats, setGlobalStats] = useState({
     total: 0,
     activas: 0,
@@ -555,7 +640,10 @@ export default function Personas({ openToast }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const globalKpiRequestIdRef = useRef(0);
-  const globalFilterRequestIdRef = useRef(0);
+  const listAbortRef = useRef(null);
+  const globalKpiAbortRef = useRef(null);
+  const suggestionsAbortRef = useRef(null);
+  const searchDropdownRef = useRef(null);
 
   const backendTotalPages = Math.max(1, Math.ceil(total / pageSize));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -579,12 +667,18 @@ export default function Personas({ openToast }) {
     setLoading(true);
     setListError("");
     const requestId = ++requestIdRef.current;
+    listAbortRef.current?.abort();
+    const controller = new AbortController();
+    listAbortRef.current = controller;
 
     try {
       const response = await personaService.getPersonas({
         page,
         limit: pageSize,
         search: debouncedSearch,
+        sort: sortBy,
+        genero: generoFiltro,
+        signal: controller.signal,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -593,6 +687,7 @@ export default function Personas({ openToast }) {
       setTotal(totalResp);
       setListError("");
     } catch (error) {
+      if (isAbortError(error)) return;
       if (!mountedRef.current) return;
       safeToast("ERROR", error.message || "No se pudo cargar personas", "danger");
       setPersonas([]);
@@ -603,77 +698,22 @@ export default function Personas({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, pageSize, debouncedSearch, safeToast]);
-
-  const cargarPersonasGlobalFiltrables = useCallback(
-    async (searchTerm = "") => {
-      const requestId = ++globalFilterRequestIdRef.current;
-      setGlobalFilterLoading(true);
-      setListError("");
-
-      try {
-        const firstResponse = await personaService.getPersonas({
-          page: 1,
-          limit: GLOBAL_KPI_PAGE_SIZE,
-          search: searchTerm,
-        });
-
-        if (!mountedRef.current || requestId !== globalFilterRequestIdRef.current) return;
-
-        const firstBatch = normalizeListResponse(firstResponse);
-        const explicitTotal = getResponseTotal(firstResponse);
-        let allItems = [...firstBatch.items];
-        let currentPage = 1;
-        let shouldContinue =
-          explicitTotal !== null
-            ? allItems.length < explicitTotal
-            : firstBatch.items.length === GLOBAL_KPI_PAGE_SIZE;
-
-        while (shouldContinue && currentPage < MAX_GLOBAL_KPI_PAGES) {
-          currentPage += 1;
-          const pageResponse = await personaService.getPersonas({
-            page: currentPage,
-            limit: GLOBAL_KPI_PAGE_SIZE,
-            search: searchTerm,
-          });
-
-          if (!mountedRef.current || requestId !== globalFilterRequestIdRef.current) return;
-
-          const { items } = normalizeListResponse(pageResponse);
-          if (!items.length) break;
-
-          allItems = allItems.concat(items);
-          shouldContinue =
-            explicitTotal !== null
-              ? allItems.length < explicitTotal
-              : items.length === GLOBAL_KPI_PAGE_SIZE;
-        }
-
-        if (!mountedRef.current || requestId !== globalFilterRequestIdRef.current) return;
-        setPersonasGlobalFiltrables(allItems);
-        setListError("");
-      } catch (error) {
-        if (!mountedRef.current || requestId !== globalFilterRequestIdRef.current) return;
-        setPersonasGlobalFiltrables([]);
-        safeToast("ERROR", error.message || "No se pudo aplicar el filtro global", "danger");
-        setListError(error.message || "No se pudo aplicar el filtro global");
-      } finally {
-        if (mountedRef.current && requestId === globalFilterRequestIdRef.current) {
-          setGlobalFilterLoading(false);
-        }
-      }
-    },
-    [safeToast]
-  );
+  }, [page, pageSize, debouncedSearch, generoFiltro, sortBy, safeToast]);
 
   const cargarKpiGlobales = useCallback(async () => {
     const requestId = ++globalKpiRequestIdRef.current;
+    globalKpiAbortRef.current?.abort();
+    const controller = new AbortController();
+    globalKpiAbortRef.current = controller;
 
     try {
       const firstResponse = await personaService.getPersonas({
         page: 1,
-        limit: GLOBAL_KPI_PAGE_SIZE,
+        limit: 1,
         search: "",
+        sort: "recientes",
+        genero: "todos",
+        signal: controller.signal,
       });
 
       if (!mountedRef.current || requestId !== globalKpiRequestIdRef.current) return;
@@ -689,37 +729,14 @@ export default function Personas({ openToast }) {
 
       const firstBatch = normalizeListResponse(firstResponse);
       const explicitTotal = getResponseTotal(firstResponse);
-      let allItems = [...firstBatch.items];
-      let currentPage = 1;
-      let shouldContinue =
-        explicitTotal !== null
-          ? allItems.length < explicitTotal
-          : firstBatch.items.length === GLOBAL_KPI_PAGE_SIZE;
-
-      while (shouldContinue && currentPage < MAX_GLOBAL_KPI_PAGES) {
-        currentPage += 1;
-        const pageResponse = await personaService.getPersonas({
-          page: currentPage,
-          limit: GLOBAL_KPI_PAGE_SIZE,
-          search: "",
-        });
-
-        if (!mountedRef.current || requestId !== globalKpiRequestIdRef.current) return;
-
-        const { items } = normalizeListResponse(pageResponse);
-        if (!items.length) break;
-
-        allItems = allItems.concat(items);
-        shouldContinue =
-          explicitTotal !== null
-            ? allItems.length < explicitTotal
-            : items.length === GLOBAL_KPI_PAGE_SIZE;
-      }
-
       setGlobalStats(
-        buildStatsFromPersonas(allItems, explicitTotal !== null ? explicitTotal : allItems.length)
+        buildStatsFromPersonas(
+          firstBatch.items,
+          explicitTotal !== null ? explicitTotal : firstBatch.items.length
+        )
       );
     } catch (error) {
+      if (isAbortError(error)) return;
       if (!mountedRef.current || requestId !== globalKpiRequestIdRef.current) return;
       safeToast("ERROR", error.message || "No se pudieron cargar KPI globales", "danger");
     }
@@ -729,45 +746,224 @@ export default function Personas({ openToast }) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      listAbortRef.current?.abort();
+      globalKpiAbortRef.current?.abort();
+      suggestionsAbortRef.current?.abort();
     };
   }, []);
 
   useEffect(() => {
-    if (generoFiltro !== "todos" || sortBy !== "recientes") return;
-    if (String(search ?? "").trim() !== debouncedSearch) return;
+    if (normalizeSearchText(search) !== debouncedSearch) return;
     cargarPersonas();
-  }, [cargarPersonas, debouncedSearch, generoFiltro, search, sortBy]);
-
-  useEffect(() => {
-    cargarKpiGlobales();
-  }, [cargarKpiGlobales]);
-
-  useEffect(() => {
-    const shouldUseGlobal = generoFiltro !== "todos" || sortBy !== "recientes";
-    if (!shouldUseGlobal) {
-      globalFilterRequestIdRef.current += 1;
-      setPersonasGlobalFiltrables((prev) => (prev.length ? [] : prev));
-      setGlobalFilterLoading((prev) => (prev ? false : prev));
-      return;
-    }
-
-    setPage((prev) => (prev === 1 ? prev : 1));
-    cargarPersonasGlobalFiltrables(debouncedSearch);
-  }, [generoFiltro, sortBy, debouncedSearch, cargarPersonasGlobalFiltrables]);
+  }, [cargarPersonas, debouncedSearch, search]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
-      const nextSearch = String(search ?? "").trim();
+      if (String(search ?? "").trim()) return;
+      cargarKpiGlobales();
+    }, 600);
+
+    return () => window.clearTimeout(timerId);
+  }, [cargarKpiGlobales, search]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      const nextSearch = normalizeSearchText(search);
       setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
     }, 300);
 
     return () => window.clearTimeout(timerId);
   }, [search]);
 
+  const pushRecentSearch = useCallback((term) => {
+    const normalized = normalizeSearchText(term);
+    if (!normalized) return;
+    setRecentSearches((prev) => {
+      const next = appendRecentSearch(prev, normalized);
+      persistRecentSearches(next);
+      return next;
+    });
+  }, []);
+
+  const applySearchSuggestion = useCallback(
+    (value) => {
+      const normalized = normalizeSearchText(value);
+      if (!normalized) return;
+      setSearch(normalized);
+      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+      setPage((prev) => (prev === 1 ? prev : 1));
+      setActiveSuggestionIndex(-1);
+      setIsSearchFocused(false);
+      pushRecentSearch(normalized);
+      const input = findSearchInput();
+      if (input && typeof input.blur === "function") input.blur();
+    },
+    [pushRecentSearch]
+  );
+
   const handleSearchChange = useCallback((value) => {
     setSearch(value);
     setPage((prev) => (prev === 1 ? prev : 1));
+    setActiveSuggestionIndex(-1);
   }, []);
+
+  useEffect(() => {
+    if (!debouncedSearch) return;
+    pushRecentSearch(debouncedSearch);
+  }, [debouncedSearch, pushRecentSearch]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const handleFocusIn = (event) => {
+      const input = findSearchInput();
+      if (!input) return;
+      const dropdown = searchDropdownRef.current;
+      const target = event.target;
+      const focusOnInput = target === input;
+      const focusInsideDropdown = Boolean(dropdown && dropdown.contains(target));
+
+      if (focusOnInput || focusInsideDropdown) {
+        setIsSearchFocused(true);
+        return;
+      }
+
+      setIsSearchFocused(false);
+      setActiveSuggestionIndex(-1);
+    };
+
+    const handleMouseDown = (event) => {
+      const input = findSearchInput();
+      const dropdown = searchDropdownRef.current;
+      const target = event.target;
+      const clickOnInput = Boolean(input && (target === input || input.contains(target)));
+      const clickInsideDropdown = Boolean(dropdown && dropdown.contains(target));
+      if (!clickOnInput && !clickInsideDropdown) {
+        setIsSearchFocused(false);
+        setActiveSuggestionIndex(-1);
+      }
+    };
+
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => {
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("mousedown", handleMouseDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    const searchTerm = normalizeSearchText(search);
+    suggestionsAbortRef.current?.abort();
+
+    if (!isSearchFocused || searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) {
+      setSuggestionsLoading(false);
+      setSuggestions([]);
+      setActiveSuggestionIndex(-1);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    suggestionsAbortRef.current = controller;
+    const timerId = window.setTimeout(async () => {
+      setSuggestionsLoading(true);
+      try {
+        const response = await personaService.getPersonaSuggestions({
+          search: searchTerm,
+          limit: MAX_RECENT_SEARCHES,
+          genero: generoFiltro,
+          sort: "relevancia",
+          signal: controller.signal,
+        });
+        if (!mountedRef.current || controller.signal.aborted) return;
+        setSuggestions(normalizeSuggestionItems(response));
+      } catch (error) {
+        if (isAbortError(error)) return;
+        if (!mountedRef.current) return;
+        setSuggestions([]);
+      } finally {
+        if (mountedRef.current && !controller.signal.aborted) {
+          setSuggestionsLoading(false);
+        }
+      }
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timerId);
+      controller.abort();
+    };
+  }, [generoFiltro, isSearchFocused, search]);
+
+  const isPredictiveSearch = normalizeSearchText(search).length >= MIN_CHARS_FOR_SUGGESTIONS;
+  const recentSearchSuggestionItems = useMemo(
+    () =>
+      recentSearches.map((value) => ({
+        id: `recent-${value.toLowerCase()}`,
+        value,
+        label: value,
+        detail: "Busqueda reciente",
+      })),
+    [recentSearches]
+  );
+  const searchSuggestionItems = useMemo(
+    () => (isPredictiveSearch ? suggestions : recentSearchSuggestionItems),
+    [isPredictiveSearch, suggestions, recentSearchSuggestionItems]
+  );
+  const shouldShowSearchSuggestions = useMemo(() => {
+    if (!isSearchFocused) return false;
+    if (isPredictiveSearch) return suggestionsLoading || searchSuggestionItems.length > 0;
+    return searchSuggestionItems.length > 0;
+  }, [isPredictiveSearch, isSearchFocused, searchSuggestionItems.length, suggestionsLoading]);
+
+  useEffect(() => {
+    setActiveSuggestionIndex((prev) =>
+      searchSuggestionItems.length === 0 ? -1 : Math.min(prev, searchSuggestionItems.length - 1)
+    );
+  }, [searchSuggestionItems.length]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const handleKeyDown = (event) => {
+      if (!isSearchFocused || !shouldShowSearchSuggestions || !searchSuggestionItems.length) return;
+      const input = findSearchInput();
+      if (!input || document.activeElement !== input) return;
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveSuggestionIndex((prev) =>
+          prev < searchSuggestionItems.length - 1 ? prev + 1 : searchSuggestionItems.length - 1
+        );
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveSuggestionIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        return;
+      }
+
+      if (event.key === "Enter" && activeSuggestionIndex >= 0) {
+        event.preventDefault();
+        applySearchSuggestion(searchSuggestionItems[activeSuggestionIndex]?.value);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        setIsSearchFocused(false);
+        setActiveSuggestionIndex(-1);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    activeSuggestionIndex,
+    applySearchSuggestion,
+    isSearchFocused,
+    searchSuggestionItems,
+    shouldShowSearchSuggestions,
+  ]);
 
   useEffect(() => {
     const onResize = () => setCardsPerPage(resolveCardsPerPage(window.innerWidth));
@@ -1150,9 +1346,6 @@ export default function Personas({ openToast }) {
       setTouched(createInitialTouched());
       await cargarPersonas();
       await cargarKpiGlobales();
-      if (generoFiltro !== "todos" || sortBy !== "recientes") {
-        await cargarPersonasGlobalFiltrables(debouncedSearch);
-      }
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         const resolvedFieldLabel = resolveDuplicateFieldLabel(error);
@@ -1219,9 +1412,6 @@ export default function Personas({ openToast }) {
         await cargarPersonas();
       }
       await cargarKpiGlobales();
-      if (generoFiltro !== "todos" || sortBy !== "recientes") {
-        await cargarPersonasGlobalFiltrables(debouncedSearch);
-      }
 
       safeToast("OK", "Persona eliminada");
       closeConfirmDelete();
@@ -1235,57 +1425,23 @@ export default function Personas({ openToast }) {
     actionLoading,
     cargarKpiGlobales,
     cargarPersonas,
-    cargarPersonasGlobalFiltrables,
     closeConfirmDelete,
     closeFormDrawer,
-    debouncedSearch,
     deletingId,
     editId,
-    generoFiltro,
     page,
     personas.length,
     confirmModal.idToDelete,
     safeToast,
-    sortBy,
   ]);
 
-  const useGlobalFilterData = generoFiltro !== "todos" || sortBy !== "recientes";
-  const personasFuente = useMemo(
-    () => (useGlobalFilterData ? personasGlobalFiltrables : personas),
-    [useGlobalFilterData, personasGlobalFiltrables, personas]
-  );
-  const isListLoading = useGlobalFilterData ? globalFilterLoading : loading;
+  const useGlobalFilterData = false;
+  const personasFuente = useMemo(() => personas, [personas]);
+  const isListLoading = loading;
 
   const personasFiltradas = useMemo(() => {
-    const list = [...(Array.isArray(personasFuente) ? personasFuente : [])];
-
-    const filtered = list.filter((persona) => {
-      const genero = getPersonaGeneroKey(persona);
-      const matchGenero = generoFiltro === "todos" ? true : genero === generoFiltro;
-      if (!matchGenero) return false;
-      return true;
-    });
-
-    filtered.sort((a, b) => {
-      if (sortBy === "nombre_asc") {
-        return `${a?.nombre || ""} ${a?.apellido || ""}`.localeCompare(
-          `${b?.nombre || ""} ${b?.apellido || ""}`,
-          "es",
-          { sensitivity: "base" }
-        );
-      }
-      if (sortBy === "nombre_desc") {
-        return `${b?.nombre || ""} ${b?.apellido || ""}`.localeCompare(
-          `${a?.nombre || ""} ${a?.apellido || ""}`,
-          "es",
-          { sensitivity: "base" }
-        );
-      }
-      return Number(b?.id_persona ?? 0) - Number(a?.id_persona ?? 0);
-    });
-
-    return filtered;
-  }, [personasFuente, generoFiltro, sortBy]);
+    return Array.isArray(personasFuente) ? personasFuente : [];
+  }, [personasFuente]);
 
   const totalPages = useMemo(() => {
     if (!useGlobalFilterData) return backendTotalPages;
@@ -1378,6 +1534,8 @@ export default function Personas({ openToast }) {
     setSearch("");
     clearVisualFilters();
     setFiltersOpen(false);
+    setSuggestions([]);
+    setActiveSuggestionIndex(-1);
   }, [clearVisualFilters]);
 
   const closeAnyDrawer = useCallback(() => {
@@ -1388,12 +1546,8 @@ export default function Personas({ openToast }) {
   }, [actionLoading, blurFocusedElementInside, closeFormDrawer]);
 
   const retryListLoad = useCallback(() => {
-    if (useGlobalFilterData) {
-      cargarPersonasGlobalFiltrables(debouncedSearch);
-      return;
-    }
     cargarPersonas();
-  }, [cargarPersonas, cargarPersonasGlobalFiltrables, debouncedSearch, useGlobalFilterData]);
+  }, [cargarPersonas]);
 
   return (
     <div className="personas-page">
@@ -1408,6 +1562,47 @@ export default function Personas({ openToast }) {
           viewMode={viewMode}
           onViewModeChange={setViewMode}
         />
+
+        {shouldShowSearchSuggestions ? (
+          <div className="px-3 pt-2" ref={searchDropdownRef}>
+            <div
+              className="list-group shadow-sm"
+              role="listbox"
+              aria-label="Sugerencias de busqueda"
+              style={{ maxHeight: "240px", overflowY: "auto" }}
+            >
+              <div className="list-group-item text-muted small">
+                {isPredictiveSearch ? "Sugerencias" : "Recientes"}
+              </div>
+
+              {suggestionsLoading && isPredictiveSearch ? (
+                <div className="list-group-item text-muted small">
+                  <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />
+                  Buscando sugerencias...
+                </div>
+              ) : null}
+
+              {searchSuggestionItems.map((suggestion, idx) => (
+                <button
+                  key={suggestion.id ?? `${suggestion.value}-${idx}`}
+                  type="button"
+                  className={`list-group-item list-group-item-action ${
+                    idx === activeSuggestionIndex ? "active" : ""
+                  }`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applySearchSuggestion(suggestion.value)}
+                >
+                  <div className="fw-semibold">{suggestion.label}</div>
+                  {suggestion.detail ? <div className="small text-muted">{suggestion.detail}</div> : null}
+                </button>
+              ))}
+
+              {!suggestionsLoading && isPredictiveSearch && searchSuggestionItems.length === 0 ? (
+                <div className="list-group-item text-muted small">Sin sugerencias para "{search.trim()}"</div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <StatsCardsRow cards={statsCards} ariaLabel="Resumen de personas" />
 

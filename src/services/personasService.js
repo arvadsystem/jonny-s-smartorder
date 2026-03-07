@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { API_URL } from '../utils/constants';
 
 const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -24,17 +25,94 @@ const buildPersonaPayload = (data = {}) => {
   };
 };
 
-const resolvePersonasListArgs = (pageOrOptions = 1, limitArg = 10, searchArg = '') => {
+const resolvePersonasListArgs = (
+  pageOrOptions = 1,
+  limitArg = 10,
+  searchArg = '',
+  requestOptions = {}
+) => {
   if (isPlainObject(pageOrOptions)) {
-    const { page = 1, limit = 10, search = '' } = pageOrOptions;
-    return { page, limit, search };
+    const {
+      page = 1,
+      limit = 10,
+      search = '',
+      sort = '',
+      genero = '',
+      estado,
+      suggest = false,
+      signal
+    } = pageOrOptions;
+    return {
+      page,
+      limit,
+      search,
+      sort,
+      genero,
+      estado,
+      suggest,
+      signal: signal ?? requestOptions?.signal ?? null
+    };
   }
 
   return {
     page: pageOrOptions ?? 1,
     limit: limitArg ?? 10,
-    search: searchArg ?? ''
+    search: searchArg ?? '',
+    sort: requestOptions?.sort ?? '',
+    genero: requestOptions?.genero ?? '',
+    estado: requestOptions?.estado,
+    suggest: requestOptions?.suggest ?? false,
+    signal: requestOptions?.signal ?? null
   };
+};
+
+const readResponseBody = async (response) => {
+  const text = await response.text().catch(() => '');
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
+const getErrorMessage = (payload, fallback) => {
+  if (payload && typeof payload === 'object') {
+    return payload.message || payload.mensaje || fallback;
+  }
+  if (typeof payload === 'string' && payload.trim()) return payload;
+  return fallback;
+};
+
+const fetchGetWithSignal = async (endpoint, signal) => {
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    credentials: 'include',
+    signal
+  });
+
+  const payload = await readResponseBody(response);
+
+  if (response.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+    }
+    throw new Error(getErrorMessage(payload, 'No autorizado'));
+  }
+
+  if (response.status === 403) {
+    throw new Error(getErrorMessage(payload, 'Acceso denegado'));
+  }
+
+  if (!response.ok) {
+    throw new Error(getErrorMessage(payload, `Error HTTP: ${response.status}`));
+  }
+
+  if (response.status === 204) return null;
+  return payload;
 };
 
 export const personaService = {
@@ -43,14 +121,46 @@ export const personaService = {
   // PERSONAS
   // ==============================
 
-  getPersonas: (pageOrOptions = 1, limitArg = 10, searchArg = '') => {
-    const { page, limit, search } = resolvePersonasListArgs(pageOrOptions, limitArg, searchArg);
+  getPersonas: (pageOrOptions = 1, limitArg = 10, searchArg = '', requestOptions = {}) => {
+    const { page, limit, search, sort, genero, estado, suggest, signal } = resolvePersonasListArgs(
+      pageOrOptions,
+      limitArg,
+      searchArg,
+      requestOptions
+    );
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
     if (typeof search === 'string' && search.trim()) params.set('search', search.trim());
-    return apiFetch(`/personas?${params.toString()}`, 'GET');
+    if (typeof sort === 'string' && sort.trim()) params.set('sort', sort.trim());
+    if (typeof genero === 'string' && genero.trim() && genero.trim().toLowerCase() !== 'todos') {
+      params.set('genero', genero.trim());
+    }
+    if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+    if (suggest) params.set('suggest', '1');
+    const endpoint = `/personas?${params.toString()}`;
+    if (signal) return fetchGetWithSignal(endpoint, signal);
+    return apiFetch(endpoint, 'GET');
   },
+
+  getPersonaSuggestions: ({
+    search = '',
+    limit = 8,
+    sort = 'relevancia',
+    genero = '',
+    estado,
+    signal
+  } = {}) =>
+    personaService.getPersonas({
+      page: 1,
+      limit,
+      search,
+      sort,
+      genero,
+      estado,
+      suggest: true,
+      signal
+    }),
 
   // Alias por compatibilidad con modulos existentes
   getPersonasDetalle: (pageOrOptions = 1, limitArg = 10, searchArg = '') =>
