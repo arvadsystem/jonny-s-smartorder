@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { securityService } from "../../../services/securityService";
 import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
@@ -76,7 +76,7 @@ const PasswordPolicyTab = () => {
               <span className="sec-panel-title">POLÍTICAS DE CONTRASEÑA</span>
             </div>
             <div className="sec-panel-subtitle">
-              Estas reglas se aplican al cambio de contraseña (HU81).
+              Estas reglas se aplican a las contraseñas al momento de realizar el cambio.
             </div>
           </div>
 
@@ -150,32 +150,6 @@ const PasswordPolicyTab = () => {
                   </select>
                 </div>
               </div>
-
-              <div className="mt-4">
-                <h6 className="text-muted mb-2">Valores actuales (BD)</h6>
-                <div className="sec-sesiones-table-card">
-                  <div className="table-responsive sec-sesiones-table-responsive">
-                    <table className="table table-hover align-middle mb-0 sec-sesiones-table">
-                      <thead>
-                        <tr>
-                          <th>Clave</th>
-                          <th>Valor</th>
-                          <th>Descripción</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {policies.map((p) => (
-                          <tr key={p.clave}>
-                            <td>{p.clave}</td>
-                            <td>{String(p.valor)}</td>
-                            <td>{p.descripcion || "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
             </>
           )}
         </div>
@@ -185,3 +159,4 @@ const PasswordPolicyTab = () => {
 };
 
 export default PasswordPolicyTab;
+
