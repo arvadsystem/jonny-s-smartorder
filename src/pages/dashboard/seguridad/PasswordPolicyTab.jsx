@@ -2,6 +2,7 @@
 import { securityService } from "../../../services/securityService";
 import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
+import "../perfil-toast.css";
 import "./sesiones-ui.css";
 
 const PasswordPolicyTab = () => {
@@ -10,6 +11,12 @@ const PasswordPolicyTab = () => {
   const [noPermiso, setNoPermiso] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [alerta, setAlerta] = useState({
+    visible: false,
+    titulo: "AVISO",
+    mensaje: "",
+    icono: "bi-exclamation-triangle-fill",
+  });
 
   const [form, setForm] = useState({
     password_min_length: "8",
@@ -42,23 +49,42 @@ const PasswordPolicyTab = () => {
     cargar();
   }, []);
 
+  useEffect(() => {
+    if (!alerta.visible) return undefined;
+    const timer = setTimeout(
+      () => setAlerta((prev) => ({ ...prev, visible: false })),
+      3200
+    );
+    return () => clearTimeout(timer);
+  }, [alerta.visible]);
+
+  const mostrarAlerta = (
+    mensaje,
+    { titulo = "AVISO", icono = "bi-exclamation-triangle-fill" } = {}
+  ) => {
+    setAlerta({ visible: true, titulo, mensaje, icono });
+  };
+
   const onChange = (k, v) => setForm((s) => ({ ...s, [k]: v }));
 
   const onGuardar = async () => {
     // Validacion minima
     const min = Number(form.password_min_length);
     if (!Number.isFinite(min) || min < 6 || min > 64) {
-      alert("La longitud mínima debe estar entre 6 y 64.");
+      mostrarAlerta("La longitud mínima debe estar entre 6 y 64.");
       return;
     }
 
     setSaving(true);
     try {
       await securityService.updatePasswordPolicies(form);
-      alert("Políticas actualizadas.");
+      mostrarAlerta("Políticas actualizadas.", {
+        titulo: "ACTUALIZADO",
+        icono: "bi-check-circle-fill",
+      });
       await cargar();
     } catch (e) {
-      alert(e?.message || "No se pudieron actualizar las políticas");
+      mostrarAlerta(e?.message || "No se pudieron actualizar las políticas");
     } finally {
       setSaving(false);
     }
@@ -67,7 +93,30 @@ const PasswordPolicyTab = () => {
   if (noPermiso) return <SinPermiso permiso="SEGURIDAD_VER" />;
 
   return (
-    <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
+    <>
+      {alerta.visible && (
+        <div className="perfil-save-toast" role="status" aria-live="polite">
+          <div className="perfil-save-toast__body">
+            <div className="perfil-save-toast__icon" aria-hidden="true">
+              <i className={`bi ${alerta.icono}`} />
+            </div>
+            <div className="perfil-save-toast__copy">
+              <div className="perfil-save-toast__title">{alerta.titulo}</div>
+              <div className="perfil-save-toast__subtitle">{alerta.mensaje}</div>
+            </div>
+            <button
+              type="button"
+              className="perfil-save-toast__close"
+              onClick={() => setAlerta((prev) => ({ ...prev, visible: false }))}
+              aria-label="Cerrar"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
       <div className="card-body p-0">
         <div className="sec-panel-header">
           <div className="sec-panel-title-wrap">
@@ -154,7 +203,8 @@ const PasswordPolicyTab = () => {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

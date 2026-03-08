@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { perfilService } from "../../services/perfilService";
 import { fmtHN } from "../../utils/dateTime";
+import "./perfil-toast.css";
 
 const Perfil = () => {
   const [roles, setRoles] = useState([]);
@@ -8,6 +9,7 @@ const Perfil = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   // Form editar perfil
   const [form, setForm] = useState({
@@ -46,10 +48,16 @@ const Perfil = () => {
     cargar();
   }, []);
 
+  useEffect(() => {
+    if (!showSaveConfirm) return undefined;
+    const timer = setTimeout(() => setShowSaveConfirm(false), 3200);
+    return () => clearTimeout(timer);
+  }, [showSaveConfirm]);
+
   const onSavePerfil = async () => {
     try {
       await perfilService.updatePerfil(form);
-      alert("Perfil actualizado.");
+      setShowSaveConfirm(true);
       await cargar();
     } catch (e) {
       alert(e?.message || "No se pudo actualizar el perfil");
@@ -61,6 +69,28 @@ const Perfil = () => {
 
   return (
     <div className="p-4">
+      {showSaveConfirm && (
+        <div className="perfil-save-toast" role="status" aria-live="polite">
+          <div className="perfil-save-toast__body">
+            <div className="perfil-save-toast__icon" aria-hidden="true">
+              <i className="bi bi-check-circle-fill" />
+            </div>
+            <div className="perfil-save-toast__copy">
+              <div className="perfil-save-toast__title">ACTUALIZADO</div>
+              <div className="perfil-save-toast__subtitle">Perfil actualizado correctamente</div>
+            </div>
+            <button
+              type="button"
+              className="perfil-save-toast__close"
+              onClick={() => setShowSaveConfirm(false)}
+              aria-label="Cerrar"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div>
           <h3 className="mb-0">Mi perfil</h3>

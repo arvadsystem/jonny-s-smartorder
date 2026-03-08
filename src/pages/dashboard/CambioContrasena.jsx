@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { perfilService } from "../../services/perfilService";
 import usePasswordPolicies from "../../hooks/usePasswordPolicies";
 import { validatePassword } from "../../utils/passwordValidator";
+import SecurityConfirmAction from "./seguridad/components/SecurityConfirmAction";
 import "./cambio-contrasena.css";
+import "./perfil-toast.css";
+import "./seguridad/sesiones-ui.css";
 
 const CambioContrasena = () => {
   const [pw, setPw] = useState({
@@ -15,6 +18,12 @@ const CambioContrasena = () => {
     actual: false,
     nueva: false,
     confirmacion: false,
+  });
+  const [alerta, setAlerta] = useState({
+    visible: false,
+    titulo: "AVISO",
+    mensaje: "",
+    icono: "bi-exclamation-triangle-fill",
   });
 
   const { policies, loading: loadingPolicies, error: policiesError } = usePasswordPolicies();
@@ -34,28 +43,69 @@ const CambioContrasena = () => {
     setPw((state) => ({ ...state, [field]: value }));
   };
 
+  useEffect(() => {
+    if (!alerta.visible) return undefined;
+    const timer = setTimeout(
+      () => setAlerta((prev) => ({ ...prev, visible: false })),
+      3200
+    );
+    return () => clearTimeout(timer);
+  }, [alerta.visible]);
+
+  const mostrarAlerta = (
+    mensaje,
+    { titulo = "AVISO", icono = "bi-exclamation-triangle-fill" } = {}
+  ) => {
+    setAlerta({ visible: true, titulo, mensaje, icono });
+  };
+
   const onChangePassword = async () => {
     if (pw.nueva !== pw.confirmacion) {
-      alert("La nueva contraseña y la confirmación no coinciden.");
+      mostrarAlerta("La nueva contraseña y la confirmación no coinciden.");
       return;
     }
 
     try {
       await perfilService.changePassword({
-        password_actual: pw.actual,
-        password_nueva: pw.nueva,
+        clave_actual: pw.actual,
+        clave_nueva: pw.nueva,
       });
 
-      alert("Contraseña actualizada.");
+      mostrarAlerta("Contraseña actualizada.", {
+        titulo: "ACTUALIZADO",
+        icono: "bi-check-circle-fill",
+      });
       setPw({ actual: "", nueva: "", confirmacion: "" });
       setShowPw({ actual: false, nueva: false, confirmacion: false });
     } catch (e) {
-      alert(e?.message || "No se pudo cambiar la contraseña");
+      mostrarAlerta(e?.message || "No se pudo cambiar la contraseña");
     }
   };
 
   return (
     <div className="p-4 password-page">
+      {alerta.visible && (
+        <div className="perfil-save-toast" role="status" aria-live="polite">
+          <div className="perfil-save-toast__body">
+            <div className="perfil-save-toast__icon" aria-hidden="true">
+              <i className={`bi ${alerta.icono}`} />
+            </div>
+            <div className="perfil-save-toast__copy">
+              <div className="perfil-save-toast__title">{alerta.titulo}</div>
+              <div className="perfil-save-toast__subtitle">{alerta.mensaje}</div>
+            </div>
+            <button
+              type="button"
+              className="perfil-save-toast__close"
+              onClick={() => setAlerta((prev) => ({ ...prev, visible: false }))}
+              aria-label="Cerrar"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="password-page__shell">
         <div className="d-flex align-items-center justify-content-between mb-3 password-page__header">
           <div>
@@ -160,18 +210,23 @@ const CambioContrasena = () => {
                   </div>
                 </div>
 
-                <button
+                <SecurityConfirmAction
                   className="btn btn-outline-dark w-100 password-page__submit"
-                  onClick={onChangePassword}
                   disabled={!canChangePassword}
-                  title={
+                  triggerTitle={
                     !canChangePassword
                       ? "Completa y cumple las políticas para habilitar"
                       : "Cambiar contraseña"
                   }
+                  title="CONFIRMAR CAMBIO DE CONTRASEÑA"
+                  subtitle="Se actualizará la contraseña de tu cuenta."
+                  question="¿Deseas actualizar la contraseña?"
+                  confirmLabel="Confirmar"
+                  cancelLabel="Cancelar"
+                  onConfirm={onChangePassword}
                 >
                   Actualizar contraseña
-                </button>
+                </SecurityConfirmAction>
 
                 {!confirmOk && pw.confirmacion.length > 0 && (
                   <div className="small text-danger mt-2">La confirmación no coincide.</div>
