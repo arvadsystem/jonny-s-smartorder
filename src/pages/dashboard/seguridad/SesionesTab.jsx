@@ -429,15 +429,6 @@ const SesionesTabGlobal = () => {
     loadRef.current = load;
   });
 
-  // debounce buscar
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setOffset(0);
-      setBuscar(buscarInput.trim());
-    }, 300);
-    return () => clearTimeout(t);
-  }, [buscarInput]);
-
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -453,6 +444,12 @@ const SesionesTabGlobal = () => {
   const canPrev = offset > 0;
   const canNext = offset + rows.length < total;
   const shown = Math.min(offset + rows.length, total);
+
+  const handleBuscarInput = (value) => {
+    setBuscarInput(value);
+    setOffset(0);
+    setBuscar(value.trim());
+  };
 
   const onCerrarGlobalMenosActual = async () => {
     try {
@@ -499,7 +496,8 @@ const SesionesTabGlobal = () => {
                 type="search"
                 placeholder="Buscar por usuario / nombre / IP..."
                 value={buscarInput}
-                onChange={(e) => setBuscarInput(e.target.value)}
+                onChange={(e) => handleBuscarInput(e.target.value)}
+                onInput={(e) => handleBuscarInput(e.currentTarget.value)}
               />
             </label>
 
@@ -550,7 +548,9 @@ const SesionesTabGlobal = () => {
                       {rows.length === 0 && (
                         <tr>
                           <td colSpan="9" className="text-center text-muted py-4">
-                            No hay sesiones activas para el filtro.
+                            {buscar
+                              ? "No existe sesión activa para el dato ingresado."
+                              : "No hay sesiones activas para el filtro."}
                           </td>
                         </tr>
                       )}
