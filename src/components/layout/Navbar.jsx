@@ -20,9 +20,11 @@ const SECURITY_TABS_BASE = [
 const PERSONAS_TABS = [
   { key: 'personas', label: 'Personas', icon: 'bi bi-person' },
   { key: 'empresas', label: 'Empresas', icon: 'bi bi-building' },
+  { key: 'clientes', label: 'Clientes', icon: 'bi bi-people' },
   { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase' },
   { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear' },
-  { key: 'clientes', label: 'Clientes', icon: 'bi bi-people' }
+  { key: 'roles', label: 'Roles y permisos', icon: 'bi bi-person-lock' },
+  
 ];
 
 const VENTAS_TABS = [

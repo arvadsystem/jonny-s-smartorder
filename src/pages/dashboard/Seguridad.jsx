@@ -23,7 +23,6 @@ const Seguridad = () => {
   const activeTab = allowedTabs.includes(rawTab) ? rawTab : "sesiones";
 
   useEffect(() => {
-    // Normaliza URL si viene algo inválido (o usuarios sin ser SuperAdmin)
     if (rawTab !== activeTab) {
       const next = new URLSearchParams(searchParams);
       next.set("tab", activeTab);
@@ -60,7 +59,7 @@ const Seguridad = () => {
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div>
           <h3 className="mb-0">Seguridad</h3>
-          <small className="text-muted">Sesiones y auditoría</small>
+          <small className="text-muted">Sesiones y auditoria</small>
         </div>
       </div>
 

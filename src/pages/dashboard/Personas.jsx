@@ -6,6 +6,7 @@ import EmpresasTab from "./personas/EmpresasTab";
 import EmpleadosTab from "./personas/EmpleadosTab";
 import UsuariosTab from "./personas/UsuariosTab";
 import ClientesTab from "./personas/ClientesTab";
+import RolesPermisosTab from "./personas/components/RolesPermisosTab";
 
 const PERSONAS_TAB_KEYS = [
   "personas",
@@ -13,6 +14,7 @@ const PERSONAS_TAB_KEYS = [
   "empleados",
   "usuarios",
   "clientes",
+  "roles",
 ];
 
 export default function Personas() {
@@ -67,6 +69,8 @@ export default function Personas() {
         return <EmpleadosTab openToast={openToast} />;
       case "usuarios":
         return <UsuariosTab openToast={openToast} />;
+      case "roles":
+        return <RolesPermisosTab openToast={openToast} />;
       case "clientes":
         return <ClientesTab openToast={openToast} />;
       default:
