@@ -6,11 +6,10 @@ import CategoriasTab from './inventario/CategoriasTab.jsx';
 import InsumosTab from './inventario/InsumosTab.jsx';
 import ProductosTab from './inventario/ProductosTab.jsx';
 import AlmacenesTab from './inventario/AlmacenesTab.jsx';
-import MovimientosTab from './inventario/MovimientosTab.jsx';
 import AlertasTab from './inventario/AlertasTab.jsx';
 
 // AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
-const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'movimientos', 'alertas'];
+const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'alertas'];
 
 const Inventario = () => {
   const [searchParams] = useSearchParams();
@@ -18,7 +17,8 @@ const Inventario = () => {
 
   useEffect(() => {
     const t = (searchParams.get('tab') || 'categorias').toLowerCase();
-    setActiveTab(INVENTARIO_TAB_KEYS.includes(t) ? t : 'categorias');
+    const normalizedTab = t === 'movimientos' ? 'almacenes' : t;
+    setActiveTab(INVENTARIO_TAB_KEYS.includes(normalizedTab) ? normalizedTab : 'categorias');
   }, [searchParams]);
 
   const [categorias, setCategorias] = useState([]);
@@ -184,7 +184,6 @@ const Inventario = () => {
       {activeTab === 'insumos' && <InsumosTab categorias={categorias} categoriasInsumos={categoriasInsumos} openToast={openToast} />}
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
-      {activeTab === 'movimientos' && <MovimientosTab openToast={openToast} />}
       {activeTab === 'alertas' && <AlertasTab openToast={openToast} />}
 
       {toast.show && (

@@ -8,14 +8,9 @@ const INVENTORY_TABS = [
   { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam' },
   { key: 'productos', label: 'Productos', icon: 'bi bi-basket' },
   { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building' },
-  { key: 'movimientos', label: 'Movimientos', icon: 'bi bi-arrow-left-right' },
   { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
 ];
 
-// ==================================
-// SEGURIDAD - SUBMODULOS (BASE)
-// (Usuarios se inyecta dinámicamente solo para Super Admin)
-// ==================================
 const SECURITY_TABS_BASE = [
   { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop' },
   { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key' },
@@ -30,6 +25,12 @@ const PERSONAS_TABS = [
   { key: 'clientes', label: 'Clientes', icon: 'bi bi-people' }
 ];
 
+const VENTAS_TABS = [
+  { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff' },
+  { key: 'caja', label: 'Caja', icon: 'bi bi-cart3' },
+  { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext' }
+];
+
 const MAX_VISIBLE_TABS = 3;
 const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
 
@@ -39,6 +40,7 @@ const getTabFromSearch = (search, tabs, fallbackKey) => {
   return tabs.some((tab) => tab.key === current) ? current : fallbackKey;
 };
 
+// --- INICIO DE CONFLICTO 1 RESUELTO (Mantenemos funciones de personas + función de dev) ---
 const normalizeText = (value) => String(value ?? '').trim();
 
 const getUserInitials = (value) => {
@@ -77,6 +79,14 @@ const resolveProfilePhotoSrc = (value) => {
 
   return '';
 };
+
+const getInventoryTabFromSearch = (search) => {
+  const sp = new URLSearchParams(search || '');
+  const current = String(sp.get('tab') || 'categorias').toLowerCase();
+  const normalized = current === 'movimientos' ? 'almacenes' : current;
+  return INVENTORY_TABS.some((tab) => tab.key === normalized) ? normalized : 'categorias';
+};
+// --- FIN DE CONFLICTO 1 RESUELTO ---
 
 const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
   const rowRef = useRef(null);
@@ -266,23 +276,24 @@ const Navbar = () => {
   const showUserPhoto = Boolean(userPhotoSrc) && failedPhotoSrc !== userPhotoSrc;
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
 
-  // ✅ SECURITY TABS dinámicos (Usuarios SOLO Super Admin)
   const securityTabs = useMemo(() => {
     const tabs = [...SECURITY_TABS_BASE];
+    // --- INICIO DE CONFLICTO 2 RESUELTO (Usamos validación limpia de la rama personas) ---
     if (isSuperAdmin) {
       // Lo metemos después de Sesiones activas
       tabs.splice(1, 0, { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people' });
     }
+    // --- FIN DE CONFLICTO 2 RESUELTO ---
     return tabs;
   }, [isSuperAdmin]);
 
-  // FUNCIONALIDAD: SOLO EN INVENTARIO/SEGURIDAD/PERSONAS SE MUESTRAN SUBMODULOS
   const isInventario = location.pathname?.startsWith('/dashboard/inventario');
   const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
   const isPersonas = location.pathname?.startsWith('/dashboard/personas');
+  const isVentas = location.pathname?.startsWith('/dashboard/ventas');
 
   const activeInventoryKey = useMemo(
-    () => getTabFromSearch(location.search, INVENTORY_TABS, 'categorias'),
+    () => getInventoryTabFromSearch(location.search),
     [location.search]
   );
 
@@ -293,6 +304,11 @@ const Navbar = () => {
 
   const activePersonasKey = useMemo(
     () => getTabFromSearch(location.search, PERSONAS_TABS, 'personas'),
+    [location.search]
+  );
+
+  const activeVentasKey = useMemo(
+    () => getTabFromSearch(location.search, VENTAS_TABS, 'ventas'),
     [location.search]
   );
 
@@ -326,6 +342,10 @@ const Navbar = () => {
     navigate(`/dashboard/personas?tab=${key}`);
   }, [navigate]);
 
+  const goVentasTab = useCallback((key) => {
+    navigate(`/dashboard/ventas?tab=${key}`);
+  }, [navigate]);
+
   const moduleTabsConfig = useMemo(() => {
     if (isInventario) {
       return {
@@ -337,7 +357,7 @@ const Navbar = () => {
 
     if (isSeguridad) {
       return {
-        tabs: securityTabs, // <-- IMPORTANTE: Ahora utiliza los tabs dinámicos calculados arriba
+        tabs: securityTabs,
         activeKey: activeSecurityKey,
         onGoTab: goSeguridadTab
       };
@@ -351,18 +371,29 @@ const Navbar = () => {
       };
     }
 
+    if (isVentas) {
+      return {
+        tabs: VENTAS_TABS,
+        activeKey: activeVentasKey,
+        onGoTab: goVentasTab
+      };
+    }
+
     return null;
   }, [
     activeInventoryKey,
     activePersonasKey,
     activeSecurityKey,
+    activeVentasKey,
     goInventarioTab,
     goPersonasTab,
     goSeguridadTab,
+    goVentasTab,
     isInventario,
     isPersonas,
     isSeguridad,
-    securityTabs // <-- Añadido a las dependencias del useMemo
+    isVentas,
+    securityTabs
   ]);
 
   useEffect(() => {
