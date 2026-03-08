@@ -220,4 +220,39 @@ export const personaService = {
   deleteCliente: (id) =>
     apiFetch(`/clientes/${id}`, 'DELETE'),
 
+  // ==============================
+  // USUARIOS (SUBMODULO PERSONAS)
+  // ==============================
+  getRolesUsuariosV2: () =>
+    apiFetch('/usuarios/v2/roles', 'GET'),
+
+  getUsuariosV2: ({ page = 1, limit = 10, q = '' } = {}) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    if (typeof q === 'string' && q.trim()) params.set('q', q.trim());
+    return apiFetch(`/usuarios/v2/list?${params.toString()}`, 'GET');
+  },
+
+  createUsuarioV2: (payload) =>
+    apiFetch('/usuarios/v2/create', 'POST', payload),
+
+  updateUsuarioV2: (id, payload) =>
+    apiFetch(`/usuarios/v2/update/${id}`, 'PUT', payload),
+
+  updateUsuarioFotoV2: (id, payload) =>
+    apiFetch(`/usuarios/v2/photo/${id}`, 'PUT', payload),
+
+  deleteUsuarioV2: (id) =>
+    apiFetch(`/usuarios/v2/delete/${id}`, 'DELETE'),
+
+  changePasswordUsuarioV2: (payload) =>
+    apiFetch('/usuarios/v2/change-password', 'POST', payload),
+
+  generateUsuarioCredencialesV2: (payload) =>
+    apiFetch('/usuarios/v2/generate', 'POST', payload),
+
+  resetPasswordUsuarioV2: (id) =>
+    apiFetch(`/usuarios/v2/reset-password/${id}`, 'POST'),
 };
+

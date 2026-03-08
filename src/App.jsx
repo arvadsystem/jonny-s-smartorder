@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
+import ForcePasswordChange from './pages/auth/ForcePasswordChange';
 import DashboardLayout from './components/layout/DashboardLayout';
 import Inicio from './pages/dashboard/Inicio';
 import ProtectedRoute from './routes/ProtectedRoute';
@@ -35,6 +36,7 @@ function App() {
 
       {/* 2. RUTAS PROTEGIDAS */}
       <Route element={<ProtectedRoute />}>
+        <Route path="/cambiar-password" element={<ForcePasswordChange />} />
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<Inicio />} />
           <Route path="personas" element={<Personas />} />

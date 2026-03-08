@@ -7,11 +7,9 @@ import ModuleFiltros from './components/common/ModuleFiltros';
 import ModuleKPICards from './components/common/ModuleKPICards';
 import UsuarioCard from './components/usuarios/UsuarioCard';
 import UsuarioDetailModal from './components/usuarios/UsuarioDetailModal';
-import UsuarioModal from './components/usuarios/UsuarioModal';
 
 const emptyForm = {
   id_empleado: '',
-  id_rol: '',
   estado: true,
 };
 
@@ -21,11 +19,11 @@ const createInitialFiltersDraft = () => ({
 });
 
 const IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const IMAGE_MAX_BYTES = 200 * 1024;
 const FOTO_PERFIL_MAX_LENGTH = 500;
 const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'Imagen demasiado grande. Use una URL o una imagen mas ligera.';
-const FOTO_PERFIL_INVALID_MESSAGE = 'URL de imagen no valida. Use una URL http/https o /uploads/...';
-const FOTO_PERFIL_FILE_ONLY_ERROR = 'No se puede guardar archivo directo; use URL de imagen o habilite almacenamiento en servidor.';
+const FOTO_PERFIL_INVALID_MESSAGE = 'Formato de foto no valido. Use una URL (http/https o /uploads/...) o una imagen mas ligera.';
+const IMAGE_DATA_URL_RE = /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/i;
 const IMAGE_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
 
 const createImageDraftState = (previewUrl = '') => ({
@@ -34,13 +32,13 @@ const createImageDraftState = (previewUrl = '') => ({
   error: '',
 });
 
-const validatePhotoUrlValue = (value) => {
+const validatePhotoValue = (value) => {
   const normalized = String(value ?? '').trim();
   if (!normalized) return { ok: true, value: '' };
   if (normalized.length > FOTO_PERFIL_MAX_LENGTH) {
     return { ok: false, message: FOTO_PERFIL_TOO_LARGE_MESSAGE };
   }
-  if (IMAGE_URL_RE.test(normalized)) {
+  if (IMAGE_DATA_URL_RE.test(normalized) || IMAGE_URL_RE.test(normalized)) {
     return { ok: true, value: normalized };
   }
   return { ok: false, message: FOTO_PERFIL_INVALID_MESSAGE };
@@ -117,20 +115,24 @@ const formatDateLabel = (value) => {
   return date.toLocaleDateString('es-HN', { year: 'numeric', month: 'short', day: '2-digit' });
 };
 
-const isValidUrlPhoto = (value) => IMAGE_URL_RE.test(String(value ?? '').trim());
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
 
-export default function UsuariosTab({ openToast }) {
+export default function Usuarios({ openToast }) {
   const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
   }, [openToast]);
 
   const [usuarios, setUsuarios] = useState([]);
   const [empleadosCatalogo, setEmpleadosCatalogo] = useState([]);
-  const [rolesCatalogo, setRolesCatalogo] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
-  const [rolesLoading, setRolesLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState(() => readViewMode('usuariosViewMode'));
 
@@ -149,29 +151,16 @@ export default function UsuariosTab({ openToast }) {
   const [errors, setErrors] = useState({});
   const [formImage, setFormImage] = useState(() => createImageDraftState());
   const [formImageUrl, setFormImageUrl] = useState('');
-  const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [imageDirty, setImageDirty] = useState(false);
 
+  const [empleadoSearch, setEmpleadoSearch] = useState('');
   const [detailUsuario, setDetailUsuario] = useState(null);
 
   const [actionLoading, setActionLoading] = useState(false);
-  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ show: false, idToDelete: null, nombre: '' });
   const [photoErrorModal, setPhotoErrorModal] = useState({ show: false, message: '' });
-  const [createCredentialsResult, setCreateCredentialsResult] = useState(null);
-  const [tempPasswordModal, setTempPasswordModal] = useState({
-    show: false,
-    title: '',
-    password: '',
-    username: '',
-    revealed: false,
-  });
   const closePhotoErrorModal = useCallback(() => setPhotoErrorModal({ show: false, message: '' }), []);
-  const closeTempPasswordModal = useCallback(
-    () => setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false }),
-    []
-  );
   const openPhotoErrorModal = useCallback((message) => {
     setPhotoErrorModal({
       show: true,
@@ -187,7 +176,6 @@ export default function UsuariosTab({ openToast }) {
   const requestIdRef = useRef(0);
   const catalogLoadedRef = useRef(false);
   const imageInputRef = useRef(null);
-  const objectUrlRef = useRef('');
 
   const getNombreCompleto = useCallback((u) =>
     normalizeText(u?.empleado?.nombre_completo || u?.nombre_completo || `${u?.nombre || ''} ${u?.apellido || ''}`) || 'No registrado',
@@ -196,7 +184,6 @@ export default function UsuariosTab({ openToast }) {
   const getDni = useCallback((u) => normalizeText(u?.empleado?.dni || u?.dni), []);
   const getTelefono = useCallback((u) => normalizeText(u?.empleado?.telefono || u?.telefono), []);
   const getCorreo = useCallback((u) => normalizeText(u?.empleado?.correo || u?.correo), []);
-  const getRolNombre = useCallback((u) => normalizeText(u?.rol?.nombre || u?.rol_nombre || u?.nombre_rol), []);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const drawerMode = editId ? 'edit' : 'create';
@@ -230,31 +217,26 @@ export default function UsuariosTab({ openToast }) {
     return buildUsernamePreview(selectedEmpleado, usernamesInUse);
   }, [drawerMode, selectedEmpleado, usernamesInUse]);
 
-  const filteredEmpleadoOptions = useMemo(() => empleadosCatalogo, [empleadosCatalogo]);
-
-  const sortedRoles = useMemo(
-    () =>
-      [...rolesCatalogo].sort((a, b) => Number(a?.id_rol ?? 0) - Number(b?.id_rol ?? 0)),
-    [rolesCatalogo]
-  );
-
-  const cleanupObjectUrl = useCallback(() => {
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = '';
-    }
-  }, []);
+  const filteredEmpleadoOptions = useMemo(() => {
+    const needle = normalizeText(empleadoSearch).toLowerCase();
+    return empleadosCatalogo.filter((item) => {
+      if (!needle) return true;
+      const haystack = [item.nombre_completo, item.dni, item.telefono, item.correo, item.sucursal_nombre]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [empleadoSearch, empleadosCatalogo]);
 
   const cargarCatalogos = useCallback(async () => {
     if (catalogLoadedRef.current) return;
 
     setCatalogLoading(true);
-    setRolesLoading(true);
     try {
-      const [empleadosResp, personasResp, rolesResp] = await Promise.all([
+      const [empleadosResp, personasResp] = await Promise.all([
         personaService.getEmpleados({ page: 1, limit: 100 }),
         personaService.getPersonasDetalle({ page: 1, limit: 100 }),
-        personaService.getRolesUsuariosV2(),
       ]);
 
       if (!mountedRef.current) return;
@@ -284,25 +266,12 @@ export default function UsuariosTab({ openToast }) {
         };
       }).filter((row) => row.id);
 
-      const rolesItems = Array.isArray(rolesResp)
-        ? rolesResp
-        : normalizeListResponse(rolesResp).items;
-
-      const parsedRoles = rolesItems
-        .map((role) => ({
-          id_rol: String(role?.id_rol ?? ''),
-          nombre: normalizeText(role?.nombre),
-        }))
-        .filter((role) => role.id_rol && role.nombre);
-
       setEmpleadosCatalogo(options);
-      setRolesCatalogo(parsedRoles);
       catalogLoadedRef.current = true;
     } catch (error) {
       safeToast('ERROR', error.message || 'No se pudieron cargar catalogos', 'danger');
     } finally {
       if (mountedRef.current) setCatalogLoading(false);
-      if (mountedRef.current) setRolesLoading(false);
     }
   }, [safeToast]);
 
@@ -331,9 +300,8 @@ export default function UsuariosTab({ openToast }) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      cleanupObjectUrl();
     };
-  }, [cleanupObjectUrl]);
+  }, []);
 
   useEffect(() => {
     cargarCatalogos();
@@ -366,54 +334,48 @@ export default function UsuariosTab({ openToast }) {
     const current = usuarios.find((item) => String(item.id_usuario) === String(editId));
     if (!current) return;
 
-    cleanupObjectUrl();
     setForm({
       id_empleado: String(current?.id_empleado || current?.empleado?.id_empleado || ''),
-      id_rol: String(current?.rol?.id_rol || ''),
       estado: parseBooleanField(current),
     });
     const photoValue = toImageValue(current?.foto_perfil);
     setFormImage(createImageDraftState(photoValue));
-    setFormImageUrl(isValidUrlPhoto(photoValue) ? photoValue : '');
-    setSelectedImageFile(null);
+    setFormImageUrl(IMAGE_URL_RE.test(photoValue) ? photoValue : '');
     setImageDirty(false);
-  }, [showModal, editId, usuarios, cleanupObjectUrl]);
+  }, [showModal, editId, usuarios]);
 
   const resetFormState = useCallback(() => {
-    cleanupObjectUrl();
     setEditId(null);
     setForm(emptyForm);
     setErrors({});
     setFormImage(createImageDraftState(''));
     setFormImageUrl('');
-    setSelectedImageFile(null);
     setImageDirty(false);
     setPhotoErrorModal({ show: false, message: '' });
-    setCreateCredentialsResult(null);
-    setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false });
+    setEmpleadoSearch('');
     if (imageInputRef.current) imageInputRef.current.value = '';
-  }, [cleanupObjectUrl]);
+  }, []);
 
   const validateCreate = useCallback(() => {
     const currentErrors = {};
     if (!form.id_empleado) currentErrors.id_empleado = 'Seleccione un empleado';
-    if (!form.id_rol) currentErrors.id_rol = 'Seleccione un rol';
     if (selectedEmpleado && empleadosConUsuario.has(selectedEmpleado.id)) {
       currentErrors.id_empleado = 'Empleado ya tiene usuario';
+    }
+    if (selectedEmpleado && !selectedEmpleado.correo) {
+      currentErrors.id_empleado = 'El empleado seleccionado no tiene correo';
     }
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
-  }, [form.id_empleado, form.id_rol, selectedEmpleado, empleadosConUsuario]);
+  }, [form.id_empleado, selectedEmpleado, empleadosConUsuario]);
 
-  const onFormImageChange = useCallback((event) => {
+  const onFormImageChange = useCallback(async (event) => {
     const input = event.target;
     const file = input?.files?.[0];
     if (!file) return;
 
     if (!IMAGE_ALLOWED_TYPES.has(file.type)) {
-      cleanupObjectUrl();
-      setSelectedImageFile(null);
       setFormImage({ previewUrl: '', loading: false, error: 'Solo JPG, PNG o WEBP.' });
       setFormImageUrl('');
       setImageDirty(true);
@@ -422,130 +384,67 @@ export default function UsuariosTab({ openToast }) {
     }
 
     if (file.size > IMAGE_MAX_BYTES) {
-      cleanupObjectUrl();
-      setFormImage({ previewUrl: '', loading: false, error: 'La imagen supera 5 MB.' });
-      setSelectedImageFile(null);
+      setFormImage({ previewUrl: '', loading: false, error: 'La imagen supera 200 KB.' });
+      setFormImageUrl('');
       setImageDirty(true);
       if (input) input.value = '';
       return;
     }
 
-    cleanupObjectUrl();
-    const objectUrl = URL.createObjectURL(file);
-    objectUrlRef.current = objectUrl;
+    setFormImage((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const preview = await readFileAsDataUrl(file);
+      const validation = validatePhotoValue(preview);
+      if (!validation.ok) {
+        setFormImage({ previewUrl: '', loading: false, error: validation.message });
+        setFormImageUrl('');
+        if (validation.message === FOTO_PERFIL_TOO_LARGE_MESSAGE) {
+          openPhotoErrorModal(validation.message);
+        }
+        setImageDirty(true);
+        return;
+      }
 
-    setSelectedImageFile(file);
-    setFormImage({ previewUrl: objectUrl, loading: false, error: '' });
-    setImageDirty(true);
-    if (input) input.value = '';
-  }, [cleanupObjectUrl]);
+      setFormImage(createImageDraftState(validation.value));
+      setFormImageUrl('');
+      setImageDirty(true);
+    } catch {
+      setFormImage({ previewUrl: '', loading: false, error: 'No se pudo procesar la imagen.' });
+      setFormImageUrl('');
+      setImageDirty(true);
+    } finally {
+      if (input) input.value = '';
+    }
+  }, [openPhotoErrorModal]);
 
   const onFormImageUrlChange = useCallback((event) => {
     const value = toImageValue(event.target.value);
     setFormImageUrl(value);
-    const validation = validatePhotoUrlValue(value);
+    const validation = validatePhotoValue(value);
 
     if (!validation.ok) {
       setFormImage({
-        previewUrl: selectedImageFile ? objectUrlRef.current : '',
+        previewUrl: IMAGE_URL_RE.test(value) ? value : '',
         loading: false,
         error: validation.message,
       });
+      if (validation.message === FOTO_PERFIL_TOO_LARGE_MESSAGE) {
+        openPhotoErrorModal(validation.message);
+      }
       setImageDirty(true);
       return;
     }
 
-    if (validation.value) {
-      setFormImage(createImageDraftState(validation.value));
-    } else {
-      setFormImage(createImageDraftState(selectedImageFile ? objectUrlRef.current : ''));
-    }
+    setFormImage(createImageDraftState(validation.value));
     setImageDirty(true);
-  }, [selectedImageFile]);
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  }, [openPhotoErrorModal]);
 
   const removeFormImage = useCallback(() => {
-    cleanupObjectUrl();
-    setSelectedImageFile(null);
     setFormImage(createImageDraftState(''));
     setFormImageUrl('');
     setImageDirty(true);
     if (imageInputRef.current) imageInputRef.current.value = '';
-  }, [cleanupObjectUrl]);
-
-  const buildPhotoChangePlan = useCallback((originalPhoto = '') => {
-    const urlValidation = validatePhotoUrlValue(formImageUrl);
-    if (!urlValidation.ok) {
-      return { ok: false, message: urlValidation.message };
-    }
-
-    if (selectedImageFile && !urlValidation.value) {
-      return { ok: false, message: FOTO_PERFIL_FILE_ONLY_ERROR };
-    }
-
-    if (!imageDirty) {
-      return { ok: true, shouldSend: false, value: null };
-    }
-
-    const currentValue = toImageValue(originalPhoto);
-    const nextValue = urlValidation.value;
-
-    if (nextValue === currentValue) {
-      return { ok: true, shouldSend: false, value: null };
-    }
-
-    return { ok: true, shouldSend: true, value: nextValue || null };
-  }, [formImageUrl, imageDirty, selectedImageFile]);
-
-  const copiarTempPassword = useCallback(async () => {
-    const text = normalizeText(tempPasswordModal.password);
-    if (!text) return;
-
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const el = document.createElement('textarea');
-        el.value = text;
-        el.setAttribute('readonly', '');
-        el.style.position = 'absolute';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-      }
-      safeToast('OK', 'Contrasena temporal copiada');
-    } catch {
-      safeToast('ERROR', 'No se pudo copiar la contrasena temporal', 'danger');
-    }
-  }, [tempPasswordModal.password, safeToast]);
-
-  const copiarUsernameTemporal = useCallback(async () => {
-    const text = normalizeText(tempPasswordModal.username);
-    if (!text) return;
-
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const el = document.createElement('textarea');
-        el.value = text;
-        el.setAttribute('readonly', '');
-        el.style.position = 'absolute';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-      }
-      safeToast('OK', 'Usuario copiado');
-    } catch {
-      safeToast('ERROR', 'No se pudo copiar el usuario', 'danger');
-    }
-  }, [tempPasswordModal.username, safeToast]);
-
-  const toggleTempPasswordReveal = useCallback(() => {
-    setTempPasswordModal((prev) => ({ ...prev, revealed: !prev.revealed }));
   }, []);
 
   const guardar = async (event) => {
@@ -557,40 +456,16 @@ export default function UsuariosTab({ openToast }) {
       if (drawerMode === 'create') {
         if (!validateCreate()) return;
 
-        const photoPlan = buildPhotoChangePlan('');
-        if (!photoPlan.ok) {
-          setFormImage((prev) => ({ ...prev, error: photoPlan.message, loading: false }));
-          openPhotoErrorModal(photoPlan.message);
-          return;
-        }
-
-        const response = await personaService.generateUsuarioCredencialesV2({
+        const response = await personaService.createUsuarioV2({
           id_empleado: Number.parseInt(String(form.id_empleado), 10),
-          id_rol: Number.parseInt(String(form.id_rol), 10),
+          estado: Boolean(form.estado),
         });
 
-        if (photoPlan.shouldSend && response?.usuario?.id_usuario) {
-          await personaService.updateUsuarioFotoV2(response.usuario.id_usuario, { foto_perfil: photoPlan.value });
-        }
-
-        setCreateCredentialsResult({
-          nombre_usuario: response?.usuario?.nombre_usuario || generatedUsernamePreview,
-        });
-        const tempPassword = normalizeText(response?.temp_password);
-        if (tempPassword) {
-          setTempPasswordModal({
-            show: true,
-            title: 'Credenciales temporales',
-            password: tempPassword,
-            username: normalizeText(response?.usuario?.nombre_usuario || generatedUsernamePreview),
-            revealed: false,
-          });
-        }
-        setImageDirty(false);
-
-        safeToast('OK', 'Usuario generado correctamente');
-
-        await cargarUsuarios();
+        safeToast(
+          'OK',
+          response?.correo?.delivered ? 'Usuario creado y correo enviado' : 'Usuario creado',
+          response?.correo?.delivered ? 'success' : 'info'
+        );
       } else {
         const original = usuarios.find((item) => String(item.id_usuario) === String(editId));
         if (!original) {
@@ -599,31 +474,26 @@ export default function UsuariosTab({ openToast }) {
           return;
         }
 
-        const photoPlan = buildPhotoChangePlan(original?.foto_perfil);
-        if (!photoPlan.ok) {
-          setFormImage((prev) => ({ ...prev, error: photoPlan.message, loading: false }));
-          openPhotoErrorModal(photoPlan.message);
-          return;
-        }
-
         const tasks = [];
-        const updatePayload = {};
-        const currentRoleId = String(original?.rol?.id_rol || '');
-
         if (Boolean(form.estado) !== Boolean(parseBooleanField(original))) {
-          updatePayload.estado = Boolean(form.estado);
+          tasks.push(personaService.updateUsuarioV2(editId, { estado: Boolean(form.estado) }));
         }
 
-        if (String(form.id_rol || '') && String(form.id_rol || '') !== currentRoleId) {
-          updatePayload.id_rol = Number.parseInt(String(form.id_rol), 10);
-        }
+        if (imageDirty) {
+          const photoValidation = validatePhotoValue(formImage.previewUrl);
+          if (!photoValidation.ok) {
+            setFormImage((prev) => ({ ...prev, error: photoValidation.message, loading: false }));
+            if (photoValidation.message === FOTO_PERFIL_TOO_LARGE_MESSAGE) {
+              openPhotoErrorModal(photoValidation.message);
+            }
+            return;
+          }
 
-        if (Object.keys(updatePayload).length) {
-          tasks.push(personaService.updateUsuarioV2(editId, updatePayload));
-        }
-
-        if (photoPlan.shouldSend) {
-          tasks.push(personaService.updateUsuarioFotoV2(editId, { foto_perfil: photoPlan.value }));
+          tasks.push(
+            personaService.updateUsuarioFotoV2(editId, {
+              foto_perfil: photoValidation.value || null,
+            })
+          );
         }
 
         if (tasks.length) {
@@ -632,21 +502,19 @@ export default function UsuariosTab({ openToast }) {
         } else {
           safeToast('INFO', 'No hay cambios para guardar', 'info');
         }
-
-        setShowModal(false);
-        resetFormState();
-        await cargarUsuarios();
       }
+
+      setShowModal(false);
+      resetFormState();
+      await cargarUsuarios();
     } catch (error) {
       const errorMessage = error?.message || 'No se pudo guardar';
       const isTooLargeError = Number(error?.status) === 413 || /demasiado grande/i.test(errorMessage);
-      const isFileNoUrlError = /archivo directo/i.test(errorMessage) || /URL de imagen/i.test(errorMessage);
 
-      if (isTooLargeError || isFileNoUrlError) {
-        const targetMessage = isTooLargeError ? FOTO_PERFIL_TOO_LARGE_MESSAGE : FOTO_PERFIL_FILE_ONLY_ERROR;
-        setFormImage((prev) => ({ ...prev, error: targetMessage, loading: false }));
-        openPhotoErrorModal(targetMessage);
-        safeToast('ERROR', targetMessage, 'danger');
+      if (isTooLargeError) {
+        setFormImage((prev) => ({ ...prev, error: FOTO_PERFIL_TOO_LARGE_MESSAGE, loading: false }));
+        openPhotoErrorModal(FOTO_PERFIL_TOO_LARGE_MESSAGE);
+        safeToast('ERROR', FOTO_PERFIL_TOO_LARGE_MESSAGE, 'danger');
       } else {
         safeToast('ERROR', errorMessage, 'danger');
       }
@@ -655,42 +523,12 @@ export default function UsuariosTab({ openToast }) {
     }
   };
 
-  const resetearPasswordTemporal = useCallback(async () => {
-    if (!editId || drawerMode !== 'edit' || resetPasswordLoading || actionLoading) return;
-    setResetPasswordLoading(true);
-
-    try {
-      const response = await personaService.resetPasswordUsuarioV2(editId);
-      const tempPassword = normalizeText(response?.temp_password);
-      if (!tempPassword) {
-        safeToast('ERROR', 'No se recibio la contrasena temporal', 'danger');
-      } else {
-        const fallbackUsername =
-          normalizeText(
-            usuarios.find((item) => String(item.id_usuario) === String(editId))?.nombre_usuario
-          );
-        setTempPasswordModal({
-          show: true,
-          title: 'Contrasena temporal regenerada',
-          password: tempPassword,
-          username: normalizeText(response?.nombre_usuario) || fallbackUsername,
-          revealed: false,
-        });
-        safeToast('OK', 'Contrasena temporal regenerada');
-      }
-    } catch (error) {
-      safeToast('ERROR', error?.message || 'No se pudo resetear la contrasena temporal', 'danger');
-    } finally {
-      if (mountedRef.current) setResetPasswordLoading(false);
-    }
-  }, [editId, drawerMode, resetPasswordLoading, actionLoading, safeToast, usuarios]);
-
   const iniciarEdicion = (usuario) => {
     setFiltersOpen(false);
     setDetailUsuario(null);
     setEditId(usuario?.id_usuario ?? null);
     setErrors({});
-    setCreateCredentialsResult(null);
+    setEmpleadoSearch('');
     setShowModal(true);
   };
 
@@ -760,7 +598,6 @@ export default function UsuariosTab({ openToast }) {
         getDni(usuario),
         getTelefono(usuario),
         getCorreo(usuario),
-        getRolNombre(usuario),
         usuario?.nombre_usuario,
         usuario?.fecha_creacion,
       ].filter(Boolean).join(' ').toLowerCase();
@@ -775,7 +612,7 @@ export default function UsuariosTab({ openToast }) {
     });
 
     return filtered;
-  }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo, getRolNombre]);
+  }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo]);
 
   const stats = useMemo(() => {
     const totalRows = usuariosFiltrados.length;
@@ -872,110 +709,183 @@ export default function UsuariosTab({ openToast }) {
         onChangeDraft={setFiltersDraft} onClose={() => setFiltersOpen(false)} onApply={applyFiltersDrawer} onClear={clearVisualFilters}
         allLabel="Todos" activeLabel="Activos" inactiveLabel="Inactivos" />
 
-      <UsuarioModal
-        open={showModal}
-        mode={drawerMode}
-        form={form}
-        errors={errors}
-        onFieldChange={(field, value) => {
-          setForm((prev) => ({ ...prev, [field]: value }));
-          setErrors((prev) => ({ ...prev, [field]: undefined }));
-          if (drawerMode === 'create' && (field === 'id_empleado' || field === 'id_rol')) {
-            setCreateCredentialsResult(null);
-            setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false });
-          }
-        }}
-        onSubmit={guardar}
-        onResetPassword={resetearPasswordTemporal}
-        onClose={() => { setShowModal(false); resetFormState(); }}
-        createCredentialsResult={createCredentialsResult}
-        actionLoading={actionLoading}
-        resetPasswordLoading={resetPasswordLoading}
-        deletingId={deletingId}
-        catalogLoading={catalogLoading}
-        rolesLoading={rolesLoading}
-        filteredEmpleadoOptions={filteredEmpleadoOptions}
-        empleadosConUsuario={empleadosConUsuario}
-        generatedUsernamePreview={generatedUsernamePreview}
-        empleadoDisplayName={toDisplayValue(selectedEmpleado?.nombre_completo || getNombreCompleto(selectedUser), 'No registrado')}
-        usernameDisplay={toDisplayValue(selectedUser?.nombre_usuario, 'Sin usuario')}
-        sortedRoles={sortedRoles}
-        formImage={formImage}
-        formImageUrl={formImageUrl}
-        imageInputRef={imageInputRef}
-        onFormImageChange={onFormImageChange}
-        onFormImageUrlChange={onFormImageUrlChange}
-        onRemoveImage={removeFormImage}
-      />
+      <aside className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? 'show' : ''} ${drawerMode === 'create' ? 'is-create' : 'is-edit'}`} id="usr-form-drawer" role="dialog" aria-modal="true" aria-hidden={!showModal}>
+        <div className="inv-prod-drawer-head"><i className="bi bi-people inv-cat-v2__drawer-mark" aria-hidden="true" /><div><div className="inv-prod-drawer-title">{drawerMode === 'create' ? 'Nuevo usuario' : 'Editar usuario'}</div><div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div></div><button type="button" className="inv-prod-drawer-close" onClick={() => { setShowModal(false); resetFormState(); }} title="Cerrar"><i className="bi bi-x-lg" /></button></div>
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
+          <div className="row g-3">
+            {drawerMode === 'create' ? (
+              <>
+                <div className="col-12">
+                  <label className="form-label text-light text-opacity-75">Buscar empleado</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Nombre, DNI, telefono o correo"
+                    value={empleadoSearch}
+                    onChange={(e) => setEmpleadoSearch(e.target.value)}
+                    disabled={catalogLoading}
+                  />
+                </div>
+                <div className="col-12">
+                  <label className="form-label text-light text-opacity-75">Empleado</label>
+                  <select
+                    className={`form-select ${errors.id_empleado ? 'is-invalid' : ''}`}
+                    value={form.id_empleado}
+                    onChange={(e) => {
+                      setForm((s) => ({ ...s, id_empleado: e.target.value }));
+                      setErrors((s) => ({ ...s, id_empleado: undefined }));
+                    }}
+                    disabled={catalogLoading}
+                  >
+                    <option value="">Seleccione</option>
+                    {filteredEmpleadoOptions.map((item) => {
+                      const linked = empleadosConUsuario.has(String(item.id));
+                      return (
+                        <option key={item.id} value={item.id} disabled={linked}>
+                          {item.nombre_completo} {item.dni ? `| DNI: ${item.dni}` : ''} | {item.correo || 'Sin correo'}
+                          {linked ? ' (ya tiene usuario)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {errors.id_empleado ? <div className="invalid-feedback d-block">{errors.id_empleado}</div> : null}
+                </div>
+                <div className="col-12">
+                  <label className="form-label text-light text-opacity-75">Nombre de usuario (autogenerado)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={generatedUsernamePreview || 'Se generara al seleccionar un empleado'}
+                    readOnly
+                  />
+                </div>
+                <div className="col-12">
+                  <div className="form-check">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="usuario_estado_create"
+                      checked={Boolean(form.estado)}
+                      onChange={(e) => setForm((s) => ({ ...s, estado: e.target.checked }))}
+                    />
+                    <label className="form-check-label text-light text-opacity-75" htmlFor="usuario_estado_create">
+                      Registro activo
+                    </label>
+                  </div>
+                </div>
+                <div className="col-12">
+                  <div className="alert alert-info mb-0">
+                    Se enviara un correo con usuario y contrasena temporal. En el primer ingreso se solicitara cambiar la contrasena.
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="col-12">
+                  <label className="form-label text-light text-opacity-75">Empleado</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={toDisplayValue(selectedEmpleado?.nombre_completo || getNombreCompleto(selectedUser), 'No registrado')}
+                    readOnly
+                  />
+                </div>
+                <div className="col-12">
+                  <label className="form-label text-light text-opacity-75">Nombre de usuario</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={toDisplayValue(selectedUser?.nombre_usuario, 'Sin usuario')}
+                    readOnly
+                  />
+                </div>
+                <div className="col-12">
+                  <label className="form-label text-light text-opacity-75">Imagen de perfil</label>
+                  <div className={`inv-prod-image-field personas-emp-form-image ${formImage.loading ? 'is-loading' : ''}`}>
+                    <div className={`inv-prod-image-preview ${formImage.previewUrl ? 'has-image' : ''}`} aria-live="polite">
+                      {formImage.loading ? (
+                        <div className="inv-prod-image-loading" role="status">
+                          <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                          <span>Procesando imagen...</span>
+                        </div>
+                      ) : formImage.previewUrl ? (
+                        <img src={formImage.previewUrl} alt="Vista previa del usuario" />
+                      ) : (
+                        <div className="inv-prod-image-placeholder">
+                          <i className="bi bi-image" />
+                          <span>Sin imagen seleccionada</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="inv-prod-image-actions">
+                      <label className="btn inv-prod-btn-subtle inv-prod-image-picker">
+                        <input
+                          ref={imageInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={onFormImageChange}
+                          disabled={actionLoading}
+                        />
+                        <i className="bi bi-upload" />
+                        <span>{formImage.previewUrl ? 'Cambiar imagen' : 'Seleccionar imagen'}</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="btn inv-prod-btn-outline"
+                        onClick={removeFormImage}
+                        disabled={!formImage.previewUrl && !formImage.error && !formImage.loading}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+
+                    <div className="mt-2">
+                      <label className="form-label text-light text-opacity-75 mb-1">URL de imagen (opcional)</label>
+                      <input
+                        type="url"
+                        className="form-control"
+                        placeholder="https://... o /uploads/..."
+                        value={formImageUrl}
+                        onChange={onFormImageUrlChange}
+                        disabled={formImage.loading || actionLoading}
+                      />
+                    </div>
+
+                    {formImage.error ? (
+                      <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
+                    ) : (
+                      <div className="inv-prod-image-feedback">
+                        JPG, PNG o WEBP hasta 200 KB. El valor final debe ser menor o igual a 500 caracteres.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="col-12">
+                  <div className="form-check">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="usuario_estado_edit"
+                      checked={Boolean(form.estado)}
+                      onChange={(e) => setForm((s) => ({ ...s, estado: e.target.checked }))}
+                    />
+                    <label className="form-check-label text-light text-opacity-75" htmlFor="usuario_estado_edit">
+                      Registro activo
+                    </label>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="d-flex gap-2 mt-4"><button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={() => { setShowModal(false); resetFormState(); }} disabled={actionLoading || !!deletingId}>Cancelar</button><button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={actionLoading || !!deletingId || catalogLoading}>{actionLoading ? 'Guardando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}</button></div>
+        </form>
+      </aside>
 
       <UsuarioDetailModal open={Boolean(detailUsuario)} usuario={detailUsuario} onClose={() => setDetailUsuario(null)} />
 
       {confirmModal.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}><div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}><div className="inv-pro-confirm-head"><div className="inv-pro-confirm-head-icon"><i className="bi bi-exclamation-triangle-fill" /></div><div><div className="inv-pro-confirm-title">CONFIRMAR ELIMINACION</div><div className="inv-pro-confirm-sub">Esta accion es permanente</div></div><button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar"><i className="bi bi-x-lg" /></button></div><div className="inv-pro-confirm-body"><div className="inv-pro-confirm-question">Deseas eliminar este usuario?</div><div className="inv-pro-confirm-name"><i className="bi bi-person-badge" /><span>{confirmModal.nombre || 'Usuario seleccionado'}</span></div></div><div className="inv-pro-confirm-footer"><button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>Cancelar</button><button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}><i className="bi bi-trash3" /><span>Eliminar</span></button></div></div></div>
-      )}
-
-      {tempPasswordModal.show && (
-        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeTempPasswordModal}>
-          <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="inv-pro-confirm-head">
-              <div className="inv-pro-confirm-head-icon">
-                <i className="bi bi-key-fill" />
-              </div>
-              <div>
-                <div className="inv-pro-confirm-title">{tempPasswordModal.title || 'Contrasena temporal'}</div>
-                <div className="inv-pro-confirm-sub">Solo se mostrara una vez. Guardela antes de cerrar.</div>
-              </div>
-              <button type="button" className="inv-pro-confirm-close" onClick={closeTempPasswordModal} aria-label="Cerrar">
-                <i className="bi bi-x-lg" />
-              </button>
-            </div>
-            <div className="inv-pro-confirm-body">
-              <div className="mb-3">
-                <label className="form-label mb-1">
-                  <strong>Usuario</strong>
-                </label>
-                <div className="input-group">
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={tempPasswordModal.username || 'No disponible'}
-                    readOnly
-                  />
-                  <button type="button" className="btn btn-outline-secondary" onClick={copiarUsernameTemporal}>
-                    <i className="bi bi-person-badge me-1" />
-                    Copiar usuario
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="form-label mb-1">
-                  <strong>Contrasena temporal</strong>
-                </label>
-                <div className="input-group">
-                  <input
-                    type={tempPasswordModal.revealed ? 'text' : 'password'}
-                    className="form-control"
-                    value={tempPasswordModal.password || ''}
-                    readOnly
-                  />
-                  <button type="button" className="btn btn-outline-secondary" onClick={toggleTempPasswordReveal}>
-                    <i className={`bi ${tempPasswordModal.revealed ? 'bi-eye-slash' : 'bi-eye'}`} />
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="inv-pro-confirm-footer">
-              <button type="button" className="btn inv-pro-btn-cancel" onClick={closeTempPasswordModal}>
-                Entendido
-              </button>
-              <button type="button" className="btn inv-pro-btn-danger" onClick={copiarTempPassword}>
-                <i className="bi bi-clipboard" />
-                <span>Copiar</span>
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {photoErrorModal.show && (

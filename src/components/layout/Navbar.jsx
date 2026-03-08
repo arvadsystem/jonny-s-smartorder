@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import userAvatar from '../../assets/images/logo-jonnys.png';
+import { API_URL } from '../../utils/constants';
 
 const INVENTORY_TABS = [
   { key: 'categorias', label: 'Categorias', icon: 'bi bi-tag' },
@@ -32,11 +32,52 @@ const VENTAS_TABS = [
 ];
 
 const MAX_VISIBLE_TABS = 3;
+const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
 
 const getTabFromSearch = (search, tabs, fallbackKey) => {
   const sp = new URLSearchParams(search || '');
   const current = String(sp.get('tab') || fallbackKey).toLowerCase();
   return tabs.some((tab) => tab.key === current) ? current : fallbackKey;
+};
+
+// --- INICIO DE CONFLICTO 1 RESUELTO (Mantenemos funciones de personas + función de dev) ---
+const normalizeText = (value) => String(value ?? '').trim();
+
+const getUserInitials = (value) => {
+  const clean = normalizeText(value);
+  if (!clean) return 'IN';
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+  const first = parts[0]?.charAt(0) || '';
+  const last = parts[parts.length - 1]?.charAt(0) || '';
+  return `${first}${last}`.toUpperCase() || 'IN';
+};
+
+const getApiOrigin = () => {
+  const clean = normalizeText(API_URL);
+  if (!clean) return '';
+
+  try {
+    return new URL(clean).origin;
+  } catch {
+    return clean.replace(/\/+$/, '');
+  }
+};
+
+const resolveProfilePhotoSrc = (value) => {
+  const photo = normalizeText(value);
+  if (!photo || !PHOTO_URL_RE.test(photo)) return '';
+
+  if (/^https?:\/\//i.test(photo)) return photo;
+
+  if (/^\/uploads\//i.test(photo)) {
+    const origin = getApiOrigin();
+    return origin ? `${origin}${photo}` : photo;
+  }
+
+  return '';
 };
 
 const getInventoryTabFromSearch = (search) => {
@@ -45,6 +86,7 @@ const getInventoryTabFromSearch = (search) => {
   const normalized = current === 'movimientos' ? 'almacenes' : current;
   return INVENTORY_TABS.some((tab) => tab.key === normalized) ? normalized : 'categorias';
 };
+// --- FIN DE CONFLICTO 1 RESUELTO ---
 
 const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
   const rowRef = useRef(null);
@@ -220,22 +262,30 @@ const NavbarTabs = ({ config }) =>
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [failedPhotoSrc, setFailedPhotoSrc] = useState('');
   const profileMenuRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
 
   const userName = user?.nombre_usuario || 'Invitado';
-  const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
+  const isSuperAdmin = Number(user?.rol) === 1;
+  const userRole = isSuperAdmin ? 'Super Admin' : 'Usuario';
+  const userPhotoSrc = useMemo(() => resolveProfilePhotoSrc(user?.foto_perfil), [user?.foto_perfil]);
+  const userInitials = useMemo(() => getUserInitials(userName), [userName]);
+  const showUserPhoto = Boolean(userPhotoSrc) && failedPhotoSrc !== userPhotoSrc;
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
 
   const securityTabs = useMemo(() => {
     const tabs = [...SECURITY_TABS_BASE];
-    if (Number(user?.rol) === 1) {
+    // --- INICIO DE CONFLICTO 2 RESUELTO (Usamos validación limpia de la rama personas) ---
+    if (isSuperAdmin) {
+      // Lo metemos después de Sesiones activas
       tabs.splice(1, 0, { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people' });
     }
+    // --- FIN DE CONFLICTO 2 RESUELTO ---
     return tabs;
-  }, [user?.rol]);
+  }, [isSuperAdmin]);
 
   const isInventario = location.pathname?.startsWith('/dashboard/inventario');
   const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
@@ -415,7 +465,15 @@ const Navbar = () => {
               <p>{userRole}</p>
             </div>
             <span className="user-avatar-frame">
-              <img src={userAvatar} alt="Perfil" />
+              {showUserPhoto ? (
+                <img
+                  src={userPhotoSrc}
+                  alt={`Perfil de ${userName}`}
+                  onError={() => setFailedPhotoSrc(userPhotoSrc)}
+                />
+              ) : (
+                <span className="user-avatar-fallback">{userInitials}</span>
+              )}
             </span>
             <i
               className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'} user-profile-caret`}
