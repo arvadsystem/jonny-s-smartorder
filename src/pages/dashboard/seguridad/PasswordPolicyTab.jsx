@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { securityService } from "../../../services/securityService";
 import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
+import "./sesiones-ui.css";
 
 const PasswordPolicyTab = () => {
   const [policies, setPolicies] = useState([]);
@@ -44,7 +45,7 @@ const PasswordPolicyTab = () => {
   const onChange = (k, v) => setForm((s) => ({ ...s, [k]: v }));
 
   const onGuardar = async () => {
-    // Validación mínima
+    // Validacion minima
     const min = Number(form.password_min_length);
     if (!Number.isFinite(min) || min < 6 || min > 64) {
       alert("La longitud mínima debe estar entre 6 y 64.");
@@ -66,110 +67,118 @@ const PasswordPolicyTab = () => {
   if (noPermiso) return <SinPermiso permiso="SEGURIDAD_VER" />;
 
   return (
-    <div className="card shadow-sm" style={{ backgroundColor: "#fff" }}>
-      <div className="card-body">
-        <div className="d-flex align-items-start justify-content-between gap-2">
-          <div>
-            <h5 className="mb-0">Políticas de contraseña</h5>
-            <small className="text-muted">
-              Estas reglas se aplican al cambio de contraseña. (HU81)
-            </small>
+    <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
+      <div className="card-body p-0">
+        <div className="sec-panel-header">
+          <div className="sec-panel-title-wrap">
+            <div className="sec-panel-title-row">
+              <i className="bi bi-key sec-panel-title-icon" />
+              <span className="sec-panel-title">POLÍTICAS DE CONTRASEÑA</span>
+            </div>
+            <div className="sec-panel-subtitle">
+              Estas reglas se aplican al cambio de contraseña (HU81).
+            </div>
           </div>
-          <button className="btn btn-primary" onClick={onGuardar} disabled={saving || loading}>
-            {saving ? (
-              <>
-                <span className="spinner-border spinner-border-sm me-2"></span>
-                Guardando...
-              </>
-            ) : (
-              "Guardar"
-            )}
-          </button>
+
+          <div className="sec-panel-header-actions">
+            <button className="btn btn-primary" onClick={onGuardar} disabled={saving || loading}>
+              {saving ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2"></span>
+                  Guardando...
+                </>
+              ) : (
+                "Guardar"
+              )}
+            </button>
+          </div>
         </div>
 
-        <hr />
+        <div className="sec-panel-body p-3 sec-sesiones-body">
+          {loading && <InlineLoader />}
+          {error && <div className="alert alert-danger">{error}</div>}
 
-        {loading && <InlineLoader />}
-        {error && <div className="alert alert-danger">{error}</div>}
+          {!loading && !error && (
+            <>
+              <div className="row g-3">
+                <div className="col-md-4">
+                  <label className="form-label">Longitud mínima</label>
+                  <input
+                    className="form-control"
+                    type="number"
+                    min="6"
+                    max="64"
+                    value={form.password_min_length}
+                    onChange={(e) => onChange("password_min_length", e.target.value)}
+                  />
+                  <div className="form-text">Recomendado: 8 a 12.</div>
+                </div>
 
-        {!loading && !error && (
-          <>
-            <div className="row g-3">
-              <div className="col-md-4">
-                <label className="form-label">Longitud mínima</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  min="6"
-                  max="64"
-                  value={form.password_min_length}
-                  onChange={(e) => onChange("password_min_length", e.target.value)}
-                />
-                <div className="form-text">Recomendado: 8 a 12.</div>
+                <div className="col-md-4">
+                  <label className="form-label">Requiere mayúscula</label>
+                  <select
+                    className="form-select"
+                    value={String(form.password_require_upper)}
+                    onChange={(e) => onChange("password_require_upper", e.target.value)}
+                  >
+                    <option value="false">No</option>
+                    <option value="true">Sí</option>
+                  </select>
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Requiere número</label>
+                  <select
+                    className="form-select"
+                    value={String(form.password_require_number)}
+                    onChange={(e) => onChange("password_require_number", e.target.value)}
+                  >
+                    <option value="false">No</option>
+                    <option value="true">Sí</option>
+                  </select>
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">Requiere símbolo</label>
+                  <select
+                    className="form-select"
+                    value={String(form.password_require_symbol)}
+                    onChange={(e) => onChange("password_require_symbol", e.target.value)}
+                  >
+                    <option value="false">No</option>
+                    <option value="true">Sí</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="col-md-4">
-                <label className="form-label">Requiere mayúscula</label>
-                <select
-                  className="form-select"
-                  value={String(form.password_require_upper)}
-                  onChange={(e) => onChange("password_require_upper", e.target.value)}
-                >
-                  <option value="false">No</option>
-                  <option value="true">Sí</option>
-                </select>
+              <div className="mt-4">
+                <h6 className="text-muted mb-2">Valores actuales (BD)</h6>
+                <div className="sec-sesiones-table-card">
+                  <div className="table-responsive sec-sesiones-table-responsive">
+                    <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                      <thead>
+                        <tr>
+                          <th>Clave</th>
+                          <th>Valor</th>
+                          <th>Descripción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {policies.map((p) => (
+                          <tr key={p.clave}>
+                            <td>{p.clave}</td>
+                            <td>{String(p.valor)}</td>
+                            <td>{p.descripcion || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
-
-              <div className="col-md-4">
-                <label className="form-label">Requiere número</label>
-                <select
-                  className="form-select"
-                  value={String(form.password_require_number)}
-                  onChange={(e) => onChange("password_require_number", e.target.value)}
-                >
-                  <option value="false">No</option>
-                  <option value="true">Sí</option>
-                </select>
-              </div>
-
-              <div className="col-md-4">
-                <label className="form-label">Requiere símbolo</label>
-                <select
-                  className="form-select"
-                  value={String(form.password_require_symbol)}
-                  onChange={(e) => onChange("password_require_symbol", e.target.value)}
-                >
-                  <option value="false">No</option>
-                  <option value="true">Sí</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <h6 className="text-muted mb-2">Valores actuales (BD)</h6>
-              <div className="table-responsive">
-                <table className="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Clave</th>
-                      <th>Valor</th>
-                      <th>Descripción</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {policies.map((p) => (
-                      <tr key={p.clave}>
-                        <td>{p.clave}</td>
-                        <td>{String(p.valor)}</td>
-                        <td>{p.descripcion || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
