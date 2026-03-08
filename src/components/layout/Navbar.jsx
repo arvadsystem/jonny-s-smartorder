@@ -17,7 +17,7 @@ const INVENTORY_TABS = [
 // ==================================
 const SECURITY_TABS_BASE = [
   { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop' },
-  { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key' },
+  { key: 'password', label: 'Políticas de contraseña', icon: 'bi bi-key' },
   { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text' }
 ];
 
@@ -176,7 +176,7 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
             >
               <span className="active-dot" />
               <i className="bi bi-three-dots" />
-              <span>Mas</span>
+              <span>Más</span>
               <i
                 className={`bi ${
                   moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'
@@ -218,7 +218,9 @@ const NavbarTabs = ({ config }) =>
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isGearMenuOpen, setIsGearMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
+  const gearMenuRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -257,12 +259,28 @@ const Navbar = () => {
     [location.search]
   );
 
-  const closeDropdown = useCallback(() => {
+  const closeProfileDropdown = useCallback(() => {
     setIsOpen(false);
   }, []);
 
+  const closeGearDropdown = useCallback(() => {
+    setIsGearMenuOpen(false);
+  }, []);
+
   const toggleDropdown = () => {
-    setIsOpen((state) => !state);
+    setIsOpen((state) => {
+      const nextState = !state;
+      if (nextState) closeGearDropdown();
+      return nextState;
+    });
+  };
+
+  const toggleGearDropdown = () => {
+    setIsGearMenuOpen((state) => {
+      const nextState = !state;
+      if (nextState) closeProfileDropdown();
+      return nextState;
+    });
   };
 
   const handleLogout = async () => {
@@ -271,8 +289,15 @@ const Navbar = () => {
   };
 
   const handleGoProfile = () => {
-    closeDropdown();
+    closeProfileDropdown();
+    closeGearDropdown();
     navigate('/dashboard/perfil');
+  };
+
+  const handleGoChangePassword = () => {
+    closeGearDropdown();
+    closeProfileDropdown();
+    navigate('/dashboard/perfil/cambiar-contrasena');
   };
 
   const goInventarioTab = useCallback((key) => {
@@ -327,20 +352,28 @@ const Navbar = () => {
   ]);
 
   useEffect(() => {
-    closeDropdown();
-  }, [closeDropdown, location.pathname, location.search]);
+    closeProfileDropdown();
+    closeGearDropdown();
+  }, [closeGearDropdown, closeProfileDropdown, location.pathname, location.search]);
 
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!isOpen && !isGearMenuOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
-        closeDropdown();
+      if (isOpen && profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        closeProfileDropdown();
+      }
+
+      if (isGearMenuOpen && gearMenuRef.current && !gearMenuRef.current.contains(event.target)) {
+        closeGearDropdown();
       }
     };
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') closeDropdown();
+      if (event.key === 'Escape') {
+        closeProfileDropdown();
+        closeGearDropdown();
+      }
     };
 
     document.addEventListener('mousedown', handlePointerDown);
@@ -352,7 +385,7 @@ const Navbar = () => {
       document.removeEventListener('touchstart', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [closeDropdown, isOpen]);
+  }, [closeGearDropdown, closeProfileDropdown, isGearMenuOpen, isOpen]);
 
   return (
     <div className="top-navbar">
@@ -376,9 +409,37 @@ const Navbar = () => {
           <button type="button" className="navbar-icon-btn" aria-label="Notificaciones">
             <i className="bi bi-bell" />
           </button>
-          <button type="button" className="navbar-icon-btn" aria-label="Configuracion">
-            <i className="bi bi-gear" />
-          </button>
+
+          <div className="position-relative gear-dropdown-wrap" ref={gearMenuRef}>
+            <button
+              type="button"
+              className="navbar-icon-btn"
+              aria-label="Configuración"
+              aria-haspopup="menu"
+              aria-expanded={isGearMenuOpen}
+              onClick={toggleGearDropdown}
+            >
+              <i className="bi bi-gear" />
+            </button>
+
+            {isGearMenuOpen && (
+              <div
+                className="dropdown-menu-custom gear-dropdown-menu"
+                role="menu"
+                aria-label="Menú de configuración"
+              >
+                <button
+                  type="button"
+                  className="dropdown-menu-item gear-dropdown-item"
+                  role="menuitem"
+                  onClick={handleGoChangePassword}
+                >
+                  <i className="bi bi-shield-lock" />
+                  Cambiar contraseña
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className={`user-profile-container ${isOpen ? 'is-open' : ''}`} ref={profileMenuRef}>
@@ -411,7 +472,7 @@ const Navbar = () => {
               </button>
               <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleLogout}>
                 <i className="bi bi-box-arrow-right" />
-                Cerrar sesion
+                Cerrar sesión
               </button>
             </div>
           )}
