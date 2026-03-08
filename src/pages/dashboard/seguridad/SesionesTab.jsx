@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { securityService } from "../../../services/securityService";
 import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
 import ConfirmButton from "../../../components/common/ConfirmButton";
 import { fmtHN } from "../../../utils/dateTime";
-import { useAuth } from "../../../hooks/useAuth";
+import { usePermisos } from "../../../context/PermisosContext";
+import { PERMISSIONS } from "../../../utils/permissions";
 import "./sesiones-ui.css";
 
 const PAGE_SIZE = 10;
@@ -31,6 +32,8 @@ const isSesionFallida = (sesion) => {
 // PERSONAL (usuario normal) - HU79
 // ======================================================
 const SesionesTabPersonal = () => {
+  const { canAny } = usePermisos();
+  const canClosePersonal = canAny([PERMISSIONS.SEGURIDAD_SESIONES_CERRAR]);
   const [sesiones, setSesiones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [noPermiso, setNoPermiso] = useState(false);
@@ -53,7 +56,7 @@ const SesionesTabPersonal = () => {
     }
 
     try {
-      // ✅ cache-bust para que el navegador no “guarde” el GET
+      // âœ… cache-bust para que el navegador no â€œguardeâ€ el GET
       const qs = new URLSearchParams({ _ts: String(Date.now()) }).toString();
       const data = await securityService.getSesiones(qs);
       setSesiones(data?.sesiones || []);
@@ -190,24 +193,26 @@ const SesionesTabPersonal = () => {
               />
             </label>
 
-            <ConfirmButton
-              className="btn btn-outline-danger"
-              confirmText="¿Cerrar todas las sesiones excepto la actual?"
-              onConfirm={onCerrarOtras}
-              disabled={sesionesActivas.length <= 1 || closingOtras}
-            >
-              {closingOtras ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-2"></span>
-                  Cerrando...
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-x-circle me-2"></i>
-                  Cerrar sesiones (menos la actual)
-                </>
-              )}
-            </ConfirmButton>
+            {canClosePersonal ? (
+              <ConfirmButton
+                className="btn btn-outline-danger"
+                confirmText="Â¿Cerrar todas las sesiones excepto la actual?"
+                onConfirm={onCerrarOtras}
+                disabled={sesionesActivas.length <= 1 || closingOtras}
+              >
+                {closingOtras ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2"></span>
+                    Cerrando...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-x-circle me-2"></i>
+                    Cerrar sesiones (menos la actual)
+                  </>
+                )}
+              </ConfirmButton>
+            ) : null}
           </div>
         </div>
 
@@ -264,7 +269,7 @@ const SesionesTabPersonal = () => {
                 <span>{sesionesFiltradas.length} resultados</span>
                 <span>Total general: {sesiones.length}</span>
                 <span className="text-muted">
-                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15s)
+                  Ãšltima actualizaciÃ³n: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "â€”"} (auto 15s)
                 </span>
                 {segmento !== "todas" ? (
                   <span className="inv-prod-active-filter-pill">Filtro activo</span>
@@ -314,25 +319,27 @@ const SesionesTabPersonal = () => {
                                 <span className="badge bg-secondary">Cerrada</span>
                               )}
                             </td>
-                            <td>{s.dispositivo || "—"}</td>
-                            <td>{s.navegador || "—"}</td>
-                            <td>{s.sistema_operativo || "—"}</td>
-                            <td>{s.ip_origen || "—"}</td>
+                            <td>{s.dispositivo || "â€”"}</td>
+                            <td>{s.navegador || "â€”"}</td>
+                            <td>{s.sistema_operativo || "â€”"}</td>
+                            <td>{s.ip_origen || "â€”"}</td>
                             <td>{fmtDate(s.fecha_inicio)}</td>
                             <td>{fmtDate(s.ultima_actividad)}</td>
                             <td className="text-end">
-                              <ConfirmButton
-                                className="btn btn-sm btn-outline-danger"
-                                confirmText="¿Cerrar esta sesion?"
-                                onConfirm={() => onCerrar(s.id_sesion)}
-                                disabled={!s.activa || closingId === s.id_sesion || esActual}
-                              >
-                                {closingId === s.id_sesion ? (
-                                  <span className="spinner-border spinner-border-sm" />
-                                ) : (
-                                  "Cerrar"
-                                )}
-                              </ConfirmButton>
+                              {canClosePersonal ? (
+                                <ConfirmButton
+                                  className="btn btn-sm btn-outline-danger"
+                                  confirmText="Â¿Cerrar esta sesion?"
+                                  onConfirm={() => onCerrar(s.id_sesion)}
+                                  disabled={!s.activa || closingId === s.id_sesion || esActual}
+                                >
+                                  {closingId === s.id_sesion ? (
+                                    <span className="spinner-border spinner-border-sm" />
+                                  ) : (
+                                    "Cerrar"
+                                  )}
+                                </ConfirmButton>
+                              ) : null}
                             </td>
                           </tr>
                         );
@@ -376,6 +383,8 @@ const SesionesTabPersonal = () => {
 // GLOBAL (Super Admin) - Sprint 3
 // ======================================================
 const SesionesTabGlobal = () => {
+  const { canAny } = usePermisos();
+  const canCloseGlobal = canAny([PERMISSIONS.SEGURIDAD_SESIONES_CERRAR_GLOBAL]);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
 
@@ -403,7 +412,7 @@ const SesionesTabGlobal = () => {
       if (buscar) qs.set("buscar", buscar);
       qs.set("limit", String(PAGE_SIZE));
       qs.set("offset", String(offset));
-      qs.set("_ts", String(Date.now())); // ✅ cache-bust
+      qs.set("_ts", String(Date.now())); // âœ… cache-bust
 
       const data = await securityService.getSesionesGlobal(qs.toString());
       setRows(data?.rows || []);
@@ -468,7 +477,7 @@ const SesionesTabGlobal = () => {
       await securityService.cerrarSesionGlobal(id_sesion);
       await load({ silent: true });
     } catch (e) {
-      alert(e?.message || "No se pudo cerrar la sesión");
+      alert(e?.message || "No se pudo cerrar la sesiÃ³n");
     } finally {
       setClosingId(null);
     }
@@ -499,15 +508,17 @@ const SesionesTabGlobal = () => {
               />
             </label>
 
-            <ConfirmButton
-              className="btn btn-outline-danger"
-              confirmText="¿Cerrar TODAS las sesiones activas del sistema excepto la tuya actual?"
-              onConfirm={onCerrarGlobalMenosActual}
-              disabled={total <= 1}
-            >
-              <i className="bi bi-x-circle me-2"></i>
-              Cerrar sesiones globales (menos la actual)
-            </ConfirmButton>
+            {canCloseGlobal ? (
+              <ConfirmButton
+                className="btn btn-outline-danger"
+                confirmText="Â¿Cerrar TODAS las sesiones activas del sistema excepto la tuya actual?"
+                onConfirm={onCerrarGlobalMenosActual}
+                disabled={total <= 1}
+              >
+                <i className="bi bi-x-circle me-2"></i>
+                Cerrar sesiones globales (menos la actual)
+              </ConfirmButton>
+            ) : null}
           </div>
         </div>
 
@@ -520,7 +531,7 @@ const SesionesTabGlobal = () => {
               <div className="inv-prod-results-meta sec-sesiones-results-meta">
                 <span>Mostrando {shown} de {total}</span>
                 <span className="text-muted">
-                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15s)
+                  Ãšltima actualizaciÃ³n: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "â€”"} (auto 15s)
                 </span>
               </div>
 
@@ -535,8 +546,8 @@ const SesionesTabGlobal = () => {
                         <th>Navegador</th>
                         <th>SO</th>
                         <th>IP</th>
-                        <th>Inicio de sesión</th>
-                        <th>Última actividad</th>
+                        <th>Inicio de sesiÃ³n</th>
+                        <th>Ãšltima actividad</th>
                         <th className="text-end">Acciones</th>
                       </tr>
                     </thead>
@@ -560,32 +571,34 @@ const SesionesTabGlobal = () => {
                               </span>
                             </td>
                             <td>
-                              <div className="fw-semibold">{s.nombre_usuario || "—"}</div>
+                              <div className="fw-semibold">{s.nombre_usuario || "â€”"}</div>
                               <div className="small text-muted">
-                                {[s.nombre, s.apellido].filter(Boolean).join(" ") || "—"}
+                                {[s.nombre, s.apellido].filter(Boolean).join(" ") || "â€”"}
                               </div>
                             </td>
-                            <td>{s.dispositivo || "—"}</td>
-                            <td>{s.navegador || "—"}</td>
-                            <td>{s.sistema_operativo || "—"}</td>
-                            <td>{s.ip_origen || "—"}</td>
+                            <td>{s.dispositivo || "â€”"}</td>
+                            <td>{s.navegador || "â€”"}</td>
+                            <td>{s.sistema_operativo || "â€”"}</td>
+                            <td>{s.ip_origen || "â€”"}</td>
                             <td>{fmtDate(s.fecha_inicio)}</td>
                             <td>{fmtDate(s.ultima_actividad)}</td>
                             <td className="text-end">
-                              <ConfirmButton
-                                className="btn btn-sm btn-outline-danger"
-                                confirmText="¿Esta seguro de cerrar esta sesión para este usuario?"
-                                onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
-                                disabled={esActual || closingId === s.id_sesion}
-                              >
-                                {closingId === s.id_sesion ? (
-                                  <span className="spinner-border spinner-border-sm" />
-                                ) : esActual ? (
-                                  "Actual"
-                                ) : (
-                                  "Cerrar"
-                                )}
-                              </ConfirmButton>
+                              {canCloseGlobal ? (
+                                <ConfirmButton
+                                  className="btn btn-sm btn-outline-danger"
+                                  confirmText="Â¿Esta seguro de cerrar esta sesiÃ³n para este usuario?"
+                                  onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
+                                  disabled={esActual || closingId === s.id_sesion}
+                                >
+                                  {closingId === s.id_sesion ? (
+                                    <span className="spinner-border spinner-border-sm" />
+                                  ) : esActual ? (
+                                    "Actual"
+                                  ) : (
+                                    "Cerrar"
+                                  )}
+                                </ConfirmButton>
+                              ) : null}
                             </td>
                           </tr>
                         );
@@ -624,10 +637,14 @@ const SesionesTabGlobal = () => {
 };
 
 const SesionesTab = () => {
-  const { user } = useAuth();
-  const isSuperAdmin = Number(user?.rol) === 1;
+  const { canAny, loading } = usePermisos();
+  const canViewGlobal = canAny([PERMISSIONS.SEGURIDAD_SESIONES_VER_GLOBAL]);
 
-  return isSuperAdmin ? <SesionesTabGlobal /> : <SesionesTabPersonal />;
+  if (loading) return null;
+  return canViewGlobal ? <SesionesTabGlobal /> : <SesionesTabPersonal />;
 };
 
 export default SesionesTab;
+
+
+

@@ -1,12 +1,27 @@
-import React, { useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import Can from '../common/Can';
+import { usePermisos } from '../../context/PermisosContext';
+import {
+  INVENTARIO_TAB_PERMISSIONS,
+  NAV_ITEM_PERMISSIONS,
+  PERMISSIONS
+} from '../../utils/permissions';
+
+const INVENTARIO_OPTIONS = [
+  { key: 'categorias', label: 'Categorias', icon: 'bi-tags', required: INVENTARIO_TAB_PERMISSIONS.categorias },
+  { key: 'insumos', label: 'Insumos', icon: 'bi-box', required: INVENTARIO_TAB_PERMISSIONS.insumos },
+  { key: 'productos', label: 'Productos', icon: 'bi-basket2', required: INVENTARIO_TAB_PERMISSIONS.productos },
+  { key: 'almacenes', label: 'Almacenes', icon: 'bi-building', required: INVENTARIO_TAB_PERMISSIONS.almacenes },
+  { key: 'movimientos', label: 'Movimientos', icon: 'bi-arrow-left-right', required: [PERMISSIONS.MOVIMIENTOS_VER] },
+  { key: 'alertas', label: 'Alertas', icon: 'bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS.alertas }
+];
 
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuth();
+  const { canAny, loading } = usePermisos();
   const [showInventarioSheet, setShowInventarioSheet] = useState(false);
 
   const isInInventario = location.pathname.startsWith('/dashboard/inventario');
@@ -23,6 +38,21 @@ const BottomNav = () => {
     { name: 'Configuracion', path: '/dashboard/configuracion', icon: 'bi-gear' }
   ];
 
+  const visibleMenuItems = useMemo(
+    () =>
+      menuItems.filter((item) => {
+        const required = NAV_ITEM_PERMISSIONS[item.path];
+        if (!required || required.length === 0) return true;
+        return canAny(required);
+      }),
+    [canAny]
+  );
+
+  const visibleInventarioOptions = useMemo(
+    () => INVENTARIO_OPTIONS.filter((option) => canAny(option.required)),
+    [canAny]
+  );
+
   const handleLogout = async () => {
     await logout();
     navigate('/', { replace: true });
@@ -37,51 +67,36 @@ const BottomNav = () => {
     <>
       <div className="bottom-nav">
         <div className="bottom-nav-scroll">
-          {menuItems.map((item) => {
-            if (item.name === 'Inventario') {
-              return (
-                <button
-                  key={item.path}
-                  type="button"
-                  className={`bottom-nav-item ${isInInventario ? 'active' : ''}`}
-                  onClick={() => setShowInventarioSheet(true)}
-                  title="Inventario"
-                >
-                  <i className={`bi ${item.icon}`} />
-                  <span>{item.name}</span>
-                </button>
-              );
-            }
-
-            if (item.name === 'Seguridad') {
-              return (
-                <Can perm="SEGURIDAD_VER" key={item.path}>
-                  <NavLink
-                    to={item.path}
-                    end={item.path === '/dashboard'}
-                    className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
-                    title={item.name}
+          {!loading &&
+            visibleMenuItems.map((item) => {
+              if (item.name === 'Inventario') {
+                return (
+                  <button
+                    key={item.path}
+                    type="button"
+                    className={`bottom-nav-item ${isInInventario ? 'active' : ''}`}
+                    onClick={() => setShowInventarioSheet(true)}
+                    title="Inventario"
                   >
                     <i className={`bi ${item.icon}`} />
                     <span>{item.name}</span>
-                  </NavLink>
-                </Can>
-              );
-            }
+                  </button>
+                );
+              }
 
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                end={item.path === '/dashboard'}
-                className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
-                title={item.name}
-              >
-                <i className={`bi ${item.icon}`} />
-                <span>{item.name}</span>
-              </NavLink>
-            );
-          })}
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.path === '/dashboard'}
+                  className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
+                  title={item.name}
+                >
+                  <i className={`bi ${item.icon}`} />
+                  <span>{item.name}</span>
+                </NavLink>
+              );
+            })}
 
           <button type="button" className="bottom-nav-item" onClick={handleLogout} title="Salir">
             <i className="bi bi-box-arrow-right" />
@@ -115,59 +130,17 @@ const BottomNav = () => {
               </div>
 
               <div className="modal-body d-grid gap-2 inv-submodule-body">
-                <button
-                  type="button"
-                  className="btn btn-outline-primary inv-submodule-option"
-                  onClick={() => goInventario('categorias')}
-                >
-                  <i className="bi bi-tags me-2" />
-                  Categorias
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-outline-primary inv-submodule-option"
-                  onClick={() => goInventario('insumos')}
-                >
-                  <i className="bi bi-box me-2" />
-                  Insumos
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-outline-primary inv-submodule-option"
-                  onClick={() => goInventario('productos')}
-                >
-                  <i className="bi bi-basket2 me-2" />
-                  Productos
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-outline-primary inv-submodule-option"
-                  onClick={() => goInventario('almacenes')}
-                >
-                  <i className="bi bi-building me-2" />
-                  Almacenes
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-outline-primary inv-submodule-option"
-                  onClick={() => goInventario('movimientos')}
-                >
-                  <i className="bi bi-arrow-left-right me-2" />
-                  Movimientos
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-outline-primary inv-submodule-option"
-                  onClick={() => goInventario('alertas')}
-                >
-                  <i className="bi bi-exclamation-triangle me-2" />
-                  Alertas
-                </button>
+                {visibleInventarioOptions.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className="btn btn-outline-primary inv-submodule-option"
+                    onClick={() => goInventario(option.key)}
+                  >
+                    <i className={`bi ${option.icon} me-2`} />
+                    {option.label}
+                  </button>
+                ))}
               </div>
 
               <div className="modal-footer inv-submodule-footer">

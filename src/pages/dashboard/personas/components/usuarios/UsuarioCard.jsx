@@ -44,6 +44,9 @@ export default function UsuarioCard({
   onOpenEdit,
   onOpenDelete,
   onOpenDetail,
+  canEdit = true,
+  canDelete = true,
+  canViewDetail = true,
   actionLoading = false,
   deletingId = null,
 }) {
@@ -121,39 +124,45 @@ export default function UsuarioCard({
           </div>
 
           <div className="personas-emp-card__actions usuarios-card__actions">
-            <button
-              type="button"
-              className="inv-catpro-action inv-catpro-action-compact"
-              onClick={() => onOpenDetail?.(usuario)}
-              disabled={actionLoading || deleting}
-              title="Detalle"
-            >
-              <i className="bi bi-eye" />
-              <span className="inv-catpro-action-label">Detalle</span>
-            </button>
+            {canViewDetail ? (
+              <button
+                type="button"
+                className="inv-catpro-action inv-catpro-action-compact"
+                onClick={() => onOpenDetail?.(usuario)}
+                disabled={actionLoading || deleting}
+                title="Detalle"
+              >
+                <i className="bi bi-eye" />
+                <span className="inv-catpro-action-label">Detalle</span>
+              </button>
+            ) : null}
 
-            <button
-              type="button"
-              className="inv-catpro-action edit inv-catpro-action-compact"
-              onClick={() => onOpenEdit?.(usuario)}
-              disabled={actionLoading || deleting}
-              title="Editar"
-            >
-              <i className="bi bi-pencil-square" />
-              <span className="inv-catpro-action-label">Editar</span>
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                className="inv-catpro-action edit inv-catpro-action-compact"
+                onClick={() => onOpenEdit?.(usuario)}
+                disabled={actionLoading || deleting}
+                title="Editar"
+              >
+                <i className="bi bi-pencil-square" />
+                <span className="inv-catpro-action-label">Editar</span>
+              </button>
+            ) : null}
 
-            <button
-              type="button"
-              className="inv-catpro-action danger inv-catpro-action-compact usuarios-card__action--danger"
-              onClick={() => onOpenDelete?.(usuario)}
-              disabled={actionLoading || deleting}
-              title="Eliminar"
-              aria-label={deleting ? 'Eliminando...' : 'Eliminar'}
-            >
-              <i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} />
-              <span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span>
-            </button>
+            {canDelete ? (
+              <button
+                type="button"
+                className="inv-catpro-action danger inv-catpro-action-compact usuarios-card__action--danger"
+                onClick={() => onOpenDelete?.(usuario)}
+                disabled={actionLoading || deleting}
+                title="Eliminar"
+                aria-label={deleting ? 'Eliminando...' : 'Eliminar'}
+              >
+                <i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} />
+                <span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span>
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

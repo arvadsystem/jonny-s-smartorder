@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import InlineLoader from "../../../../components/common/InlineLoader";
+import { usePermisos } from "../../../../context/PermisosContext";
 import { rolesPermisosService } from "../../../../services/rolesPermisosService";
+import { PERMISSIONS } from "../../../../utils/permissions";
 import "./roles-permisos-ui.css";
 
 const DEFAULT_LIMIT = 10;
@@ -141,6 +143,8 @@ const normalizePagination = ({
 };
 
 const RolesPermisosTab = () => {
+  const { canAny } = usePermisos();
+  const canEditRolesPermisos = canAny([PERMISSIONS.ROLES_PERMISOS_EDITAR]);
   const [roles, setRoles] = useState([]);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
   const [selectedRole, setSelectedRole] = useState(null);
@@ -369,6 +373,7 @@ const RolesPermisosTab = () => {
   };
 
   const handleTogglePermiso = (idPermiso) => {
+    if (!canEditRolesPermisos) return;
     setCheckedPermisos((current) => {
       const next = new Set(current);
       if (next.has(idPermiso)) {
@@ -381,6 +386,7 @@ const RolesPermisosTab = () => {
   };
 
   const handleSelectAllVisible = () => {
+    if (!canEditRolesPermisos) return;
     setCheckedPermisos((current) => {
       const next = new Set(current);
       permisos.forEach((permiso) => next.add(Number(permiso.id_permiso)));
@@ -389,6 +395,7 @@ const RolesPermisosTab = () => {
   };
 
   const handleClearAllVisible = () => {
+    if (!canEditRolesPermisos) return;
     setCheckedPermisos((current) => {
       const next = new Set(current);
       permisos.forEach((permiso) => next.delete(Number(permiso.id_permiso)));
@@ -447,6 +454,7 @@ const RolesPermisosTab = () => {
   };
 
   const handleSave = async () => {
+    if (!canEditRolesPermisos) return;
     if (!selectedRoleId) return;
 
     setSaving(true);
@@ -563,7 +571,12 @@ const RolesPermisosTab = () => {
                         type="button"
                         className="btn btn-outline-secondary btn-sm"
                         onClick={handleSelectAllVisible}
-                        disabled={permisos.length === 0 || allVisibleChecked || hydratingSelection}
+                        disabled={
+                          permisos.length === 0 ||
+                          allVisibleChecked ||
+                          hydratingSelection ||
+                          !canEditRolesPermisos
+                        }
                       >
                         Seleccionar todos
                       </button>
@@ -571,7 +584,11 @@ const RolesPermisosTab = () => {
                         type="button"
                         className="btn btn-outline-secondary btn-sm"
                         onClick={handleClearAllVisible}
-                        disabled={permisos.length === 0 || hydratingSelection}
+                        disabled={
+                          permisos.length === 0 ||
+                          hydratingSelection ||
+                          !canEditRolesPermisos
+                        }
                       >
                         Quitar todos
                       </button>
@@ -626,6 +643,7 @@ const RolesPermisosTab = () => {
                                 type="checkbox"
                                 role="switch"
                                 checked={checked}
+                                disabled={!canEditRolesPermisos}
                                 onChange={() => handleTogglePermiso(idPermiso)}
                               />
                             </div>
@@ -696,7 +714,13 @@ const RolesPermisosTab = () => {
                       type="button"
                       className="btn btn-primary roles-permisos-save-btn"
                       onClick={handleSave}
-                      disabled={saving || loadingPermisos || hydratingSelection || !selectedRoleId}
+                      disabled={
+                        saving ||
+                        loadingPermisos ||
+                        hydratingSelection ||
+                        !selectedRoleId ||
+                        !canEditRolesPermisos
+                      }
                     >
                       {saving ? (
                         <>

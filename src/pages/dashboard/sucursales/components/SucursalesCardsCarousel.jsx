@@ -15,11 +15,15 @@ export default function SucursalesCardsCarousel({
   onScrollNext,
   onClearFilters,
   onOpenCreate,
+  canCreate = true,
   canTapCardToEdit,
   togglingEstadoId,
   onOpenEdit,
   onOpenDelete,
-  onToggleEstado
+  onToggleEstado,
+  canEdit = true,
+  canDelete = true,
+  canToggleEstado = true
 }) {
   return (
     <>
@@ -51,9 +55,11 @@ export default function SucursalesCardsCarousel({
                   Limpiar filtros
                 </button>
               ) : null}
-              <button type="button" className="btn btn-primary" onClick={onOpenCreate}>
-                Nueva sucursal
-              </button>
+              {canCreate ? (
+                <button type="button" className="btn btn-primary" onClick={onOpenCreate}>
+                  Nueva sucursal
+                </button>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -85,6 +91,9 @@ export default function SucursalesCardsCarousel({
                             sucursal={sucursal}
                             index={globalIdx}
                             canTapToEdit={canTapCardToEdit}
+                            canEdit={canEdit}
+                            canDelete={canDelete}
+                            canToggleEstado={canToggleEstado}
                             isToggling={isToggling}
                             onOpenEdit={onOpenEdit}
                             onOpenDelete={onOpenDelete}

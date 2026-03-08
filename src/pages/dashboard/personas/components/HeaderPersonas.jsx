@@ -9,6 +9,7 @@ function HeaderPersonas({
   onOpenFilters,
   drawerOpen,
   onOpenCreate,
+  canCreate = true,
   viewMode,
   onViewModeChange,
 }) {
@@ -26,19 +27,21 @@ function HeaderPersonas({
           <i className="bi bi-funnel" /> <span>Filtros</span>
         </button>
 
-        <button
-          type="button"
-          className={`inv-prod-toolbar-btn ${drawerOpen ? "is-on" : ""}`}
-          onClick={onOpenCreate}
-          title="Nueva persona"
-          aria-expanded={drawerOpen}
-          aria-controls="per-form-drawer"
-        >
-          <i className="bi bi-plus-circle" /> <span>Nuevo</span>
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            className={`inv-prod-toolbar-btn ${drawerOpen ? "is-on" : ""}`}
+            onClick={onOpenCreate}
+            title="Nueva persona"
+            aria-expanded={drawerOpen}
+            aria-controls="per-form-drawer"
+          >
+            <i className="bi bi-plus-circle" /> <span>Nuevo</span>
+          </button>
+        ) : null}
       </>
     ),
-    [drawerOpen, filtersOpen, onOpenCreate, onOpenFilters]
+    [canCreate, drawerOpen, filtersOpen, onOpenCreate, onOpenFilters]
   );
 
   return (

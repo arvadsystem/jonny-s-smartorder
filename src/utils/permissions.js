@@ -1,0 +1,179 @@
+export const PERMISSIONS = Object.freeze({
+  DASHBOARD_VER: 'DASHBOARD_VER',
+  PERFIL_VER: 'PERFIL_VER',
+  PERSONAS_VER: 'PERSONAS_VER',
+  EMPRESAS_VER: 'EMPRESAS_VER',
+  CLIENTES_VER: 'CLIENTES_VER',
+  EMPLEADOS_VER: 'EMPLEADOS_VER',
+  USUARIOS_VER: 'USUARIOS_VER',
+  ROLES_PERMISOS_VER: 'ROLES_PERMISOS_VER',
+  SUCURSALES_VER: 'SUCURSALES_VER',
+  INVENTARIO_VER: 'INVENTARIO_VER',
+  CATEGORIAS_VER: 'CATEGORIAS_VER',
+  INSUMOS_VER: 'INSUMOS_VER',
+  PRODUCTOS_VER: 'PRODUCTOS_VER',
+  ALMACENES_VER: 'ALMACENES_VER',
+  MOVIMIENTOS_VER: 'MOVIMIENTOS_VER',
+  ALERTAS_VER: 'ALERTAS_VER',
+  VENTAS_VER: 'VENTAS_VER',
+  VENTAS_CREAR: 'VENTAS_CREAR',
+  VENTAS_EXPORTAR: 'VENTAS_EXPORTAR',
+  VENTAS_IMPRIMIR: 'VENTAS_IMPRIMIR',
+  COCINA_VER: 'COCINA_VER',
+  MENU_VER: 'MENU_VER',
+  MENU_DETALLE_VER: 'MENU_DETALLE_VER',
+  SEGURIDAD_VER: 'SEGURIDAD_VER',
+  SEGURIDAD_USUARIOS_VER: 'SEGURIDAD_USUARIOS_VER',
+  SEGURIDAD_SESIONES_VER: 'SEGURIDAD_SESIONES_VER',
+  SEGURIDAD_CONFIG_VER: 'SEGURIDAD_CONFIG_VER',
+  SEGURIDAD_LOGS_VER: 'SEGURIDAD_LOGS_VER',
+  PARAMETROS_VER: 'PARAMETROS_VER',
+  PARAMETROS_CATALOGO_VER: 'PARAMETROS_CATALOGO_VER',
+  PERSONAS_CREAR: 'PERSONAS_CREAR',
+  PERSONAS_EDITAR: 'PERSONAS_EDITAR',
+  PERSONAS_ELIMINAR: 'PERSONAS_ELIMINAR',
+  EMPRESAS_CREAR: 'EMPRESAS_CREAR',
+  EMPRESAS_EDITAR: 'EMPRESAS_EDITAR',
+  EMPRESAS_ELIMINAR: 'EMPRESAS_ELIMINAR',
+  EMPRESAS_ESTADO_CAMBIAR: 'EMPRESAS_ESTADO_CAMBIAR',
+  CLIENTES_CREAR: 'CLIENTES_CREAR',
+  CLIENTES_EDITAR: 'CLIENTES_EDITAR',
+  CLIENTES_ELIMINAR: 'CLIENTES_ELIMINAR',
+  EMPLEADOS_CREAR: 'EMPLEADOS_CREAR',
+  EMPLEADOS_EDITAR: 'EMPLEADOS_EDITAR',
+  EMPLEADOS_ELIMINAR: 'EMPLEADOS_ELIMINAR',
+  EMPLEADOS_DETALLE_VER: 'EMPLEADOS_DETALLE_VER',
+  USUARIOS_CREAR: 'USUARIOS_CREAR',
+  USUARIOS_EDITAR: 'USUARIOS_EDITAR',
+  USUARIOS_ELIMINAR: 'USUARIOS_ELIMINAR',
+  USUARIOS_PASSWORD_RESETEAR: 'USUARIOS_PASSWORD_RESETEAR',
+  ROLES_PERMISOS_EDITAR: 'ROLES_PERMISOS_EDITAR',
+  SUCURSALES_CREAR: 'SUCURSALES_CREAR',
+  SUCURSALES_EDITAR: 'SUCURSALES_EDITAR',
+  SUCURSALES_ELIMINAR: 'SUCURSALES_ELIMINAR',
+  SUCURSALES_ESTADO_CAMBIAR: 'SUCURSALES_ESTADO_CAMBIAR',
+  ALERTAS_STOCK_MINIMO_EDITAR: 'ALERTAS_STOCK_MINIMO_EDITAR',
+  COCINA_ESTADO_CAMBIAR: 'COCINA_ESTADO_CAMBIAR',
+  COCINA_REFRESCAR: 'COCINA_REFRESCAR',
+  MENU_PRODUCTO_AGREGAR: 'MENU_PRODUCTO_AGREGAR',
+  MENU_PEDIDO_EDITAR: 'MENU_PEDIDO_EDITAR',
+  MENU_PEDIDO_CONFIRMAR: 'MENU_PEDIDO_CONFIRMAR',
+  SEGURIDAD_CONFIG_EDITAR: 'SEGURIDAD_CONFIG_EDITAR',
+  SEGURIDAD_SESIONES_CERRAR: 'SEGURIDAD_SESIONES_CERRAR',
+  SEGURIDAD_SESIONES_VER_GLOBAL: 'SEGURIDAD_SESIONES_VER_GLOBAL',
+  SEGURIDAD_SESIONES_CERRAR_GLOBAL: 'SEGURIDAD_SESIONES_CERRAR_GLOBAL',
+  PARAMETROS_CATALOGO_CREAR: 'PARAMETROS_CATALOGO_CREAR',
+  PARAMETROS_CATALOGO_EDITAR: 'PARAMETROS_CATALOGO_EDITAR',
+  PARAMETROS_CATALOGO_ELIMINAR: 'PARAMETROS_CATALOGO_ELIMINAR',
+  PARAMETROS_CATALOGO_RECARGAR: 'PARAMETROS_CATALOGO_RECARGAR'
+});
+
+export const ROUTE_PERMISSIONS = Object.freeze({
+  dashboard: [PERMISSIONS.DASHBOARD_VER],
+  personas: [
+    PERMISSIONS.PERSONAS_VER,
+    PERMISSIONS.EMPRESAS_VER,
+    PERMISSIONS.CLIENTES_VER,
+    PERMISSIONS.EMPLEADOS_VER,
+    PERMISSIONS.USUARIOS_VER,
+    PERMISSIONS.ROLES_PERMISOS_VER
+  ],
+  sucursales: [PERMISSIONS.SUCURSALES_VER],
+  inventario: [
+    PERMISSIONS.INVENTARIO_VER,
+    PERMISSIONS.CATEGORIAS_VER,
+    PERMISSIONS.INSUMOS_VER,
+    PERMISSIONS.PRODUCTOS_VER,
+    PERMISSIONS.ALMACENES_VER,
+    PERMISSIONS.MOVIMIENTOS_VER,
+    PERMISSIONS.ALERTAS_VER
+  ],
+  ventas: [PERMISSIONS.VENTAS_VER],
+  cocina: [PERMISSIONS.COCINA_VER],
+  menu: [PERMISSIONS.MENU_VER],
+  seguridad: [PERMISSIONS.SEGURIDAD_VER],
+  parametros: [PERMISSIONS.PARAMETROS_VER, PERMISSIONS.PARAMETROS_CATALOGO_VER],
+  perfil: [PERMISSIONS.PERFIL_VER]
+});
+
+export const NAV_ITEM_PERMISSIONS = Object.freeze({
+  '/dashboard': ROUTE_PERMISSIONS.dashboard,
+  '/dashboard/personas': ROUTE_PERMISSIONS.personas,
+  '/dashboard/sucursales': ROUTE_PERMISSIONS.sucursales,
+  '/dashboard/inventario': ROUTE_PERMISSIONS.inventario,
+  '/dashboard/ventas': ROUTE_PERMISSIONS.ventas,
+  '/dashboard/cocina': ROUTE_PERMISSIONS.cocina,
+  '/dashboard/menu': ROUTE_PERMISSIONS.menu,
+  '/dashboard/seguridad': ROUTE_PERMISSIONS.seguridad,
+  '/dashboard/parametros': ROUTE_PERMISSIONS.parametros,
+  '/dashboard/perfil': ROUTE_PERMISSIONS.perfil
+});
+
+export const PERSONAS_TAB_PERMISSIONS = Object.freeze({
+  personas: [PERMISSIONS.PERSONAS_VER],
+  empresas: [PERMISSIONS.EMPRESAS_VER],
+  clientes: [PERMISSIONS.CLIENTES_VER],
+  empleados: [PERMISSIONS.EMPLEADOS_VER],
+  usuarios: [PERMISSIONS.USUARIOS_VER],
+  roles: [PERMISSIONS.ROLES_PERMISOS_VER, PERMISSIONS.SEGURIDAD_VER]
+});
+
+export const INVENTARIO_TAB_PERMISSIONS = Object.freeze({
+  categorias: [PERMISSIONS.CATEGORIAS_VER],
+  insumos: [PERMISSIONS.INSUMOS_VER],
+  productos: [PERMISSIONS.PRODUCTOS_VER],
+  almacenes: [PERMISSIONS.ALMACENES_VER, PERMISSIONS.MOVIMIENTOS_VER],
+  alertas: [PERMISSIONS.ALERTAS_VER]
+});
+
+export const SEGURIDAD_TAB_PERMISSIONS = Object.freeze({
+  sesiones: [PERMISSIONS.SEGURIDAD_SESIONES_VER, PERMISSIONS.SEGURIDAD_VER],
+  usuarios: [PERMISSIONS.SEGURIDAD_USUARIOS_VER],
+  password: [PERMISSIONS.SEGURIDAD_CONFIG_VER, PERMISSIONS.SEGURIDAD_VER],
+  logins: [PERMISSIONS.SEGURIDAD_LOGS_VER, PERMISSIONS.SEGURIDAD_VER]
+});
+
+export const VENTAS_TAB_PERMISSIONS = Object.freeze({
+  ventas: [PERMISSIONS.VENTAS_VER],
+  caja: [PERMISSIONS.VENTAS_CREAR],
+  pedidos: [PERMISSIONS.VENTAS_VER]
+});
+
+const normalizePermission = (permiso) => String(permiso ?? '').trim().toUpperCase();
+
+export const normalizePermissions = (permisos) =>
+  (Array.isArray(permisos) ? permisos : [])
+    .map(normalizePermission)
+    .filter(Boolean);
+
+export const buildPermissionSet = (permisos) => new Set(normalizePermissions(permisos));
+
+export const hasPermission = (permissionSet, permiso) => {
+  const normalized = normalizePermission(permiso);
+  if (!normalized) return false;
+  if (!(permissionSet instanceof Set)) return false;
+  return permissionSet.has(normalized);
+};
+
+export const hasAnyPermission = (permissionSet, permisosRequeridos) => {
+  const required = normalizePermissions(permisosRequeridos);
+  if (required.length === 0) return true;
+  return required.some((permiso) => hasPermission(permissionSet, permiso));
+};
+
+export const hasAllPermissions = (permissionSet, permisosRequeridos) => {
+  const required = normalizePermissions(permisosRequeridos);
+  if (required.length === 0) return true;
+  return required.every((permiso) => hasPermission(permissionSet, permiso));
+};
+
+export const isTabAllowed = (permissionSet, tabKey, map) => {
+  const required = map?.[tabKey] || [];
+  return hasAnyPermission(permissionSet, required);
+};
+
+export const resolveFirstAllowedTab = (tabKeys, permissionSet, map, fallbackKey) => {
+  const keys = Array.isArray(tabKeys) ? tabKeys : [];
+  const firstAllowed = keys.find((key) => isTabAllowed(permissionSet, key, map));
+  return firstAllowed || fallbackKey || keys[0] || null;
+};

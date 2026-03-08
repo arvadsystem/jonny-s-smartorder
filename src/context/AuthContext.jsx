@@ -9,6 +9,31 @@ const normalizePhoto = (value) => {
   return String(value).trim();
 };
 
+const normalizeAuthCollection = (rows) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row) => String(row ?? '').trim())
+    .filter(Boolean);
+
+const normalizeAuthPayloadUser = (payload) => {
+  const sourceUser =
+    payload && typeof payload === 'object' && payload.usuario && typeof payload.usuario === 'object'
+      ? payload.usuario
+      : payload && typeof payload === 'object'
+      ? payload
+      : null;
+
+  if (!sourceUser || typeof sourceUser !== 'object') return null;
+
+  const roles = normalizeAuthCollection(payload?.roles ?? sourceUser.roles);
+  const permisos = normalizeAuthCollection(payload?.permisos ?? sourceUser.permisos);
+
+  return {
+    ...sourceUser,
+    roles,
+    permisos
+  };
+};
+
 const enrichUserWithPerfil = async (usuario) => {
   if (!usuario || typeof usuario !== 'object') return usuario ?? null;
 
@@ -32,7 +57,7 @@ export const AuthProvider = ({ children }) => {
     (async () => {
       try {
         const data = await authService.me();
-        const baseUser = data?.usuario ?? null;
+        const baseUser = normalizeAuthPayloadUser(data);
         const nextUser = await enrichUserWithPerfil(baseUser);
         if (!cancelled) setUser(nextUser);
       } catch {
@@ -53,8 +78,8 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('auth:logout', handler);
   }, []);
 
-  const login = (usuario) => {
-    const baseUser = usuario ?? null;
+  const login = (authPayload) => {
+    const baseUser = normalizeAuthPayloadUser(authPayload);
     setUser(baseUser);
 
     if (!baseUser || typeof baseUser !== 'object') return;

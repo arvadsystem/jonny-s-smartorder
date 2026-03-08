@@ -3,6 +3,8 @@ import InlineLoader from '../../../components/common/InlineLoader';
 import SinPermiso from '../../../components/common/SinPermiso';
 import ConfirmButton from '../../../components/common/ConfirmButton';
 import { fmtHN } from '../../../utils/dateTime';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import { securityAuditApi } from './services/securityAuditApi';
 import './sesiones-ui.css';
 import './seguridad-auditoria-ui.css';
@@ -38,6 +40,8 @@ const initialLoginsDraft = {
 };
 
 const UsuarioAuditDetail = ({ userId, onBack }) => {
+  const { canAny } = usePermisos();
+  const canCloseUserSessions = canAny([PERMISSIONS.SEGURIDAD_SESIONES_CERRAR_GLOBAL]);
   const [activeTab, setActiveTab] = useState('perfil');
 
   const [noPermiso, setNoPermiso] = useState(false);
@@ -238,7 +242,7 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
   };
 
   if (noPermiso) {
-    return <SinPermiso permiso="SEGURIDAD_VER" detalle="Solo Super Admin puede auditar usuarios." />;
+    return <SinPermiso permiso="SEGURIDAD_USUARIOS_VER" detalle="No tienes permiso para auditar usuarios." />;
   }
 
   return (
@@ -380,24 +384,26 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
                   </select>
                 </div>
                 <div className="col-md-8 d-flex justify-content-md-end">
-                  <ConfirmButton
-                    className="btn btn-outline-danger mt-2 mt-md-0"
-                    confirmText="¿CONFIRMAS CERRAR TODAS LAS SESIONES ACTIVAS DE ESTE USUARIO?"
-                    onConfirm={onCerrarSesiones}
-                    disabled={closingSessions}
-                  >
-                    {closingSessions ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2"></span>
-                        PROCESANDO...
-                      </>
-                    ) : (
-                      <>
-                        <i className="bi bi-x-octagon me-2"></i>
-                        CERRAR SESIONES
-                      </>
-                    )}
-                  </ConfirmButton>
+                  {canCloseUserSessions ? (
+                    <ConfirmButton
+                      className="btn btn-outline-danger mt-2 mt-md-0"
+                      confirmText="¿CONFIRMAS CERRAR TODAS LAS SESIONES ACTIVAS DE ESTE USUARIO?"
+                      onConfirm={onCerrarSesiones}
+                      disabled={closingSessions}
+                    >
+                      {closingSessions ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2"></span>
+                          PROCESANDO...
+                        </>
+                      ) : (
+                        <>
+                          <i className="bi bi-x-octagon me-2"></i>
+                          CERRAR SESIONES
+                        </>
+                      )}
+                    </ConfirmButton>
+                  ) : null}
                 </div>
               </div>
 

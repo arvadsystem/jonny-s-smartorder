@@ -1,6 +1,7 @@
-import { NavLink } from 'react-router-dom';
+﻿import { NavLink } from 'react-router-dom';
 import logo from '../../assets/images/sinFondo.jpeg';
-import Can from '../common/Can';
+import { usePermisos } from '../../context/PermisosContext';
+import { NAV_ITEM_PERMISSIONS } from '../../utils/permissions';
 
 const MENU_ITEMS = [
   { name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
@@ -12,36 +13,32 @@ const MENU_ITEMS = [
   { name: 'Menu', path: '/dashboard/menu', icon: 'bi-journal-text' },
   { name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
   { name: 'Parametros', path: '/dashboard/parametros', icon: 'bi-sliders' },
-  { name: 'Configuracion', path: '/dashboard/configuracion', icon: 'bi-gear' },
+  { name: 'Configuracion', path: '/dashboard/configuracion', icon: 'bi-gear' }
 ];
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
-  const renderLink = (item) => {
-    const link = (
-      <NavLink
-        key={item.path}
-        to={item.path}
-        end={item.path === '/dashboard'}
-        className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
-        title={isCollapsed ? item.name : undefined}
-      >
-        <span className="menu-item-icon" aria-hidden="true">
-          <i className={`bi ${item.icon}`} />
-        </span>
-        <span className="menu-item-label">{item.name}</span>
-      </NavLink>
-    );
+  const { canAny, loading } = usePermisos();
 
-    if (item.name === 'Seguridad') {
-      return (
-        <Can perm="SEGURIDAD_VER" key={item.path}>
-          {link}
-        </Can>
-      );
-    }
+  const visibleItems = MENU_ITEMS.filter((item) => {
+    const required = NAV_ITEM_PERMISSIONS[item.path];
+    if (!required || required.length === 0) return true;
+    return canAny(required);
+  });
 
-    return link;
-  };
+  const renderLink = (item) => (
+    <NavLink
+      key={item.path}
+      to={item.path}
+      end={item.path === '/dashboard'}
+      className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
+      title={isCollapsed ? item.name : undefined}
+    >
+      <span className="menu-item-icon" aria-hidden="true">
+        <i className={`bi ${item.icon}`} />
+      </span>
+      <span className="menu-item-label">{item.name}</span>
+    </NavLink>
+  );
 
   return (
     <aside className={`sidebar-wrapper ${isCollapsed ? 'collapsed' : ''}`} aria-label="Navegacion principal">
@@ -66,7 +63,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
         </div>
 
         <nav className="sidebar-menu" aria-label="Modulos del sistema">
-          {MENU_ITEMS.map((item) => renderLink(item))}
+          {loading ? null : visibleItems.map((item) => renderLink(item))}
         </nav>
       </div>
     </aside>

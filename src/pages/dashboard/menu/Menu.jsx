@@ -18,6 +18,8 @@ import {
 import { GiTacos } from 'react-icons/gi';
 import '../../../assets/styles/_menu.scss';
 import { apiFetch } from '../../../services/api';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import CurrentOrderPanel from './CurrentOrderPanel';
 import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
@@ -208,6 +210,11 @@ const CategorySelector = ({ categorias, selected, onSelect }) => (
 );
 
 const Menu = () => {
+  const { canAny } = usePermisos();
+  const canAddMenuProduct = canAny([PERMISSIONS.MENU_PRODUCTO_AGREGAR]);
+  const canViewMenuDetail = canAny([PERMISSIONS.MENU_DETALLE_VER, PERMISSIONS.MENU_PRODUCTO_AGREGAR]);
+  const canEditMenuOrder = canAny([PERMISSIONS.MENU_PEDIDO_EDITAR]);
+  const canConfirmMenuOrder = canAny([PERMISSIONS.MENU_PEDIDO_CONFIRMAR]);
   const [categorias, setCategorias] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -268,6 +275,7 @@ const Menu = () => {
   }, [cargarProductos, selected]);
 
   const onAgregarProducto = useCallback((producto, salsaSelection = null) => {
+    if (!canAddMenuProduct) return;
     setOrderItems((current) => {
       const normalizedSauces = normalizeSauceSelection(salsaSelection);
       const nextSelection = {
@@ -300,17 +308,19 @@ const Menu = () => {
           : item
       );
     });
-  }, []);
+  }, [canAddMenuProduct]);
 
   const onIncreaseItem = useCallback((itemKey) => {
+    if (!canEditMenuOrder) return;
     setOrderItems((current) =>
       current.map((item) =>
         item.itemKey === itemKey ? { ...item, cantidad: item.cantidad + 1 } : item
       )
     );
-  }, []);
+  }, [canEditMenuOrder]);
 
   const onDecreaseItem = useCallback((itemKey) => {
+    if (!canEditMenuOrder) return;
     setOrderItems((current) =>
       current.map((item) =>
         item.itemKey === itemKey
@@ -318,16 +328,18 @@ const Menu = () => {
           : item
       )
     );
-  }, []);
+  }, [canEditMenuOrder]);
 
   const onRemoveItem = useCallback((itemKey) => {
+    if (!canEditMenuOrder) return;
     setOrderItems((current) => current.filter((item) => item.itemKey !== itemKey));
-  }, []);
+  }, [canEditMenuOrder]);
 
   const onOpenDetail = useCallback((producto) => {
+    if (!canViewMenuDetail) return;
     setSelectedProduct(producto);
     setIsDetailOpen(true);
-  }, []);
+  }, [canViewMenuDetail]);
 
   const onCloseDetail = useCallback(() => {
     setIsDetailOpen(false);
@@ -388,6 +400,8 @@ const Menu = () => {
               loading={loadingProductos}
               onAgregar={onAgregarProducto}
               onOpenDetail={onOpenDetail}
+              canAdd={canAddMenuProduct}
+              canViewDetail={canViewMenuDetail}
             />
           </section>
 
@@ -398,6 +412,8 @@ const Menu = () => {
             onDecrease={onDecreaseItem}
             onIncrease={onIncreaseItem}
             onRemove={onRemoveItem}
+            canEdit={canEditMenuOrder}
+            canConfirm={canConfirmMenuOrder}
           />
         </div>
       )}
@@ -406,6 +422,7 @@ const Menu = () => {
         isOpen={isDetailOpen}
         product={selectedProduct}
         onAdd={onAgregarProducto}
+        canAdd={canAddMenuProduct}
         onClose={onCloseDetail}
         onExited={onDetailExited}
       />

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import SinPermiso from "../../components/common/SinPermiso";
+import { usePermisos } from "../../context/PermisosContext";
+import { PERSONAS_TAB_PERMISSIONS } from "../../utils/permissions";
 
 import PersonasTab from "./personas/PersonasTab";
 import EmpresasTab from "./personas/EmpresasTab";
@@ -18,7 +21,8 @@ const PERSONAS_TAB_KEYS = [
 ];
 
 export default function Personas() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { canAny, loading: permisosLoading } = usePermisos();
 
   const [toast, setToast] = useState({
     show: false,
@@ -27,10 +31,31 @@ export default function Personas() {
     variant: "success",
   });
 
+  const allowedTabs = useMemo(
+    () =>
+      PERSONAS_TAB_KEYS.filter((tabKey) =>
+        canAny(PERSONAS_TAB_PERMISSIONS[tabKey] || [])
+      ),
+    [canAny]
+  );
+
+  const fallbackTab = allowedTabs[0] || null;
+
   const activeTab = useMemo(() => {
-    const t = (searchParams.get("tab") || "personas").toLowerCase();
-    return PERSONAS_TAB_KEYS.includes(t) ? t : "personas";
-  }, [searchParams]);
+    if (!fallbackTab) return null;
+    const t = (searchParams.get("tab") || fallbackTab).toLowerCase();
+    return allowedTabs.includes(t) ? t : fallbackTab;
+  }, [allowedTabs, fallbackTab, searchParams]);
+
+  useEffect(() => {
+    if (permisosLoading || !activeTab) return;
+    const rawTab = (searchParams.get("tab") || "").toLowerCase();
+    if (rawTab === activeTab) return;
+
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", activeTab);
+    setSearchParams(next, { replace: true });
+  }, [activeTab, permisosLoading, searchParams, setSearchParams]);
 
   // =============================
   // TOAST GLOBAL
@@ -62,6 +87,7 @@ export default function Personas() {
   const toastVariant = toast.variant || "success";
 
   const tabContent = useMemo(() => {
+    if (!activeTab) return null;
     switch (activeTab) {
       case "empresas":
         return <EmpresasTab openToast={openToast} />;
@@ -77,6 +103,14 @@ export default function Personas() {
         return <PersonasTab openToast={openToast} />;
     }
   }, [activeTab, openToast]);
+
+  if (permisosLoading) {
+    return null;
+  }
+
+  if (!activeTab) {
+    return <SinPermiso permiso="PERSONAS_VER" detalle="No tienes acceso a ningun submodulo de Personas." />;
+  }
 
   return (
     <div className="container-fluid p-3">

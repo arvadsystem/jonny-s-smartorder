@@ -5,7 +5,8 @@ export default function SucursalesToolbar({
   onOpenFilters,
   drawerOpen,
   drawerMode,
-  onOpenCreate
+  onOpenCreate,
+  canCreate = true
 }) {
   return (
     <div className="inv-prod-header inv-cat-v2__header">
@@ -39,16 +40,18 @@ export default function SucursalesToolbar({
           <i className="bi bi-funnel" /> <span>Filtros</span>
         </button>
 
-        <button
-          type="button"
-          className={`inv-prod-toolbar-btn ${drawerOpen && drawerMode === 'create' ? 'is-on' : ''}`}
-          onClick={onOpenCreate}
-          title="Nueva"
-          aria-expanded={drawerOpen && drawerMode === 'create'}
-          aria-controls="suc-form-drawer"
-        >
-          <i className="bi bi-plus-circle" /> <span>Nuevo</span>
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            className={`inv-prod-toolbar-btn ${drawerOpen && drawerMode === 'create' ? 'is-on' : ''}`}
+            onClick={onOpenCreate}
+            title="Nueva"
+            aria-expanded={drawerOpen && drawerMode === 'create'}
+            aria-controls="suc-form-drawer"
+          >
+            <i className="bi bi-plus-circle" /> <span>Nuevo</span>
+          </button>
+        ) : null}
       </div>
     </div>
   );

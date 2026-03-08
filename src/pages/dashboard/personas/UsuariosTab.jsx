@@ -1,4 +1,4 @@
-
+﻿
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { personaService } from '../../../services/personasService';
 import EntityTable from '../../../components/ui/EntityTable';
@@ -8,6 +8,8 @@ import ModuleKPICards from './components/common/ModuleKPICards';
 import UsuarioCard from './components/usuarios/UsuarioCard';
 import UsuarioDetailModal from './components/usuarios/UsuarioDetailModal';
 import UsuarioModal from './components/usuarios/UsuarioModal';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import {
   isUsuarioDataImageUrl,
   isUsuarioRenderableImageValue,
@@ -135,6 +137,14 @@ const readFileAsDataUrl = (file) =>
 const isValidUrlPhoto = (value) => isUsuarioUploadsImageUrl(value);
 
 export default function UsuariosTab({ openToast }) {
+  const { canAny } = usePermisos();
+  const canCreateUsuario = canAny([PERMISSIONS.USUARIOS_CREAR]);
+  const canEditUsuario = canAny([PERMISSIONS.USUARIOS_EDITAR]);
+  const canDeleteUsuario = canAny([PERMISSIONS.USUARIOS_ELIMINAR]);
+  const canResetPassword = canAny([PERMISSIONS.USUARIOS_PASSWORD_RESETEAR]);
+  const canEditFotoUsuario = canAny([PERMISSIONS.USUARIOS_FOTO_EDITAR]);
+  const canVerDetalleUsuario = canAny([PERMISSIONS.USUARIOS_VER]);
+
   const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
   }, [openToast]);
@@ -415,6 +425,7 @@ export default function UsuariosTab({ openToast }) {
   }, [form.id_empleado, form.id_rol, selectedEmpleado, empleadosConUsuario]);
 
   const onFormImageChange = useCallback(async (event) => {
+    if (!canEditFotoUsuario) return;
     const input = event.target;
     const file = input?.files?.[0];
     if (!file) return;
@@ -450,9 +461,10 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (input) input.value = '';
     }
-  }, []);
+  }, [canEditFotoUsuario]);
 
   const onFormImageUrlChange = useCallback((event) => {
+    if (!canEditFotoUsuario) return;
     const value = toImageValue(event.target.value);
     const previousUrl = formImageUrl;
     setFormImageUrl(value);
@@ -471,16 +483,21 @@ export default function UsuariosTab({ openToast }) {
       return { ...prev, error: '' };
     });
     setImageDirty(true);
-  }, [formImageUrl]);
+  }, [canEditFotoUsuario, formImageUrl]);
 
   const removeFormImage = useCallback(() => {
+    if (!canEditFotoUsuario) return;
     clearImagePicker();
     setFormImage(createImageDraftState(''));
     setFormImageUrl('');
     setImageDirty(true);
-  }, [clearImagePicker]);
+  }, [canEditFotoUsuario, clearImagePicker]);
 
   const buildPhotoChangePlan = useCallback((originalPhoto = '') => {
+    if (!canEditFotoUsuario) {
+      return { ok: true, shouldSend: false, value: null };
+    }
+
     const urlValidation = validatePhotoUrlValue(formImageUrl);
     if (!urlValidation.ok) {
       return { ok: false, message: urlValidation.message };
@@ -511,7 +528,7 @@ export default function UsuariosTab({ openToast }) {
     }
 
     return { ok: true, shouldSend: true, value: nextValue || null };
-  }, [formImageUrl, formImage.loading, formImage.error, formImage.previewUrl, imageDirty]);
+  }, [canEditFotoUsuario, formImageUrl, formImage.loading, formImage.error, formImage.previewUrl, imageDirty]);
 
   const copiarTempPassword = useCallback(async () => {
     const text = normalizeText(tempPasswordModal.password);
@@ -568,6 +585,8 @@ export default function UsuariosTab({ openToast }) {
   const guardar = async (event) => {
     event.preventDefault();
     if (actionLoading) return;
+    if (drawerMode === 'create' && !canCreateUsuario) return;
+    if (drawerMode === 'edit' && !canEditUsuario) return;
     setActionLoading(true);
 
     try {
@@ -678,6 +697,7 @@ export default function UsuariosTab({ openToast }) {
   };
 
   const resetearPasswordTemporal = useCallback(async () => {
+    if (!canResetPassword) return;
     if (!editId || drawerMode !== 'edit' || resetPasswordLoading || actionLoading) return;
     setResetPasswordLoading(true);
 
@@ -705,9 +725,10 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current) setResetPasswordLoading(false);
     }
-  }, [editId, drawerMode, resetPasswordLoading, actionLoading, safeToast, usuarios]);
+  }, [canResetPassword, editId, drawerMode, resetPasswordLoading, actionLoading, safeToast, usuarios]);
 
   const iniciarEdicion = (usuario) => {
+    if (!canEditUsuario) return;
     setFiltersOpen(false);
     setDetailUsuario(null);
     setEditId(usuario?.id_usuario ?? null);
@@ -716,7 +737,13 @@ export default function UsuariosTab({ openToast }) {
     setShowModal(true);
   };
 
+  const openDetalle = (usuario) => {
+    if (!canVerDetalleUsuario) return;
+    setDetailUsuario(usuario);
+  };
+
   const openCreate = () => {
+    if (!canCreateUsuario) return;
     if (actionLoading || deletingId) return;
     setFiltersOpen(false);
     setDetailUsuario(null);
@@ -725,6 +752,7 @@ export default function UsuariosTab({ openToast }) {
   };
 
   const openConfirmDelete = (usuario) => {
+    if (!canDeleteUsuario) return;
     setDetailUsuario(null);
     setConfirmModal({
       show: true,
@@ -736,6 +764,7 @@ export default function UsuariosTab({ openToast }) {
   const closeConfirmDelete = () => setConfirmModal({ show: false, idToDelete: null, nombre: '' });
 
   const eliminarConfirmado = async () => {
+    if (!canDeleteUsuario) return;
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
 
@@ -843,7 +872,7 @@ export default function UsuariosTab({ openToast }) {
           onSearchChange={setSearch}
           searchPlaceholder="Buscar por nombre, usuario, sucursal, DNI, telefono o correo..."
           searchAriaLabel="Buscar usuarios" filtersOpen={filtersOpen} onOpenFilters={openFiltersDrawer}
-          createOpen={showModal} onOpenCreate={openCreate} createLabel="Nuevo"
+          createOpen={showModal} onOpenCreate={openCreate} createLabel="Nuevo" canCreate={canCreateUsuario}
           filtersControlsId="usr-filtros-drawer" formControlsId="usr-form-drawer"
           viewMode={viewMode} onViewModeChange={setViewMode} />
 
@@ -860,19 +889,19 @@ export default function UsuariosTab({ openToast }) {
             {loading ? (
               <div className="inv-catpro-loading" role="status" aria-live="polite"><span className="spinner-border spinner-border-sm" aria-hidden="true" /><span>Cargando usuarios...</span></div>
             ) : usuariosFiltrados.length === 0 ? (
-              <div className="inv-catpro-empty"><div className="inv-catpro-empty-icon"><i className="bi bi-people" /></div><div className="inv-catpro-empty-title">No hay usuarios para mostrar</div><div className="inv-catpro-empty-sub">{hasActiveFilters ? 'Prueba limpiar filtros o crea un nuevo usuario.' : 'Crea tu primer usuario.'}</div><div className="d-flex gap-2 justify-content-center flex-wrap">{hasActiveFilters ? <button type="button" className="btn btn-outline-secondary" onClick={() => { setSearch(''); clearVisualFilters(); }}>Limpiar filtros</button> : null}<button type="button" className="btn btn-primary" onClick={openCreate}>Nuevo usuario</button></div></div>
+              <div className="inv-catpro-empty"><div className="inv-catpro-empty-icon"><i className="bi bi-people" /></div><div className="inv-catpro-empty-title">No hay usuarios para mostrar</div><div className="inv-catpro-empty-sub">{hasActiveFilters ? 'Prueba limpiar filtros o crea un nuevo usuario.' : 'Crea tu primer usuario.'}</div><div className="d-flex gap-2 justify-content-center flex-wrap">{hasActiveFilters ? <button type="button" className="btn btn-outline-secondary" onClick={() => { setSearch(''); clearVisualFilters(); }}>Limpiar filtros</button> : null}{canCreateUsuario ? <button type="button" className="btn btn-primary" onClick={openCreate}>Nuevo usuario</button> : null}</div></div>
             ) : viewMode === 'table' ? (
               <EntityTable>
                 <table className="table personas-page__table">
                   <thead><tr><th scope="col">Usuario</th><th scope="col">Sucursal</th><th scope="col">DNI</th><th scope="col">Telefono</th><th scope="col">Nombre usuario</th><th scope="col">Fecha creacion</th><th scope="col">Estado</th><th scope="col">Codigo</th><th scope="col" className="text-end">Acciones</th></tr></thead>
-                  <tbody>{usuariosFiltrados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => setDetailUsuario(usuario)} title="Ver detalle" disabled={actionLoading || deleting}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title="Eliminar" disabled={actionLoading || deleting}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} /><span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span></button></div></td></tr>); })}</tbody>
+                  <tbody>{usuariosFiltrados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => openDetalle(usuario)} title="Ver detalle" disabled={actionLoading || deleting || !canVerDetalleUsuario}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting || !canEditUsuario}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title="Eliminar" disabled={actionLoading || deleting || !canDeleteUsuario}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} /><span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span></button></div></td></tr>); })}</tbody>
                 </table>
               </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
                 {usuariosFiltrados.map((usuario, idx) => (
                   <UsuarioCard key={usuario?.id_usuario ?? idx} usuario={usuario} index={(page - 1) * limit + idx}
-                    onOpenEdit={iniciarEdicion} onOpenDelete={openConfirmDelete} onOpenDetail={setDetailUsuario}
+                    onOpenEdit={iniciarEdicion} onOpenDelete={openConfirmDelete} onOpenDetail={openDetalle} canEdit={canEditUsuario} canDelete={canDeleteUsuario} canViewDetail={canVerDetalleUsuario}
                     actionLoading={actionLoading} deletingId={deletingId} />
                 ))}
               </div>
@@ -887,7 +916,7 @@ export default function UsuariosTab({ openToast }) {
         </div>
       </div>
 
-      <button type="button" className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`} onClick={openCreate} title="Nuevo" disabled={actionLoading || !!deletingId}><i className="bi bi-plus" /></button>
+      <button type="button" className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`} onClick={openCreate} title="Nuevo" disabled={actionLoading || !!deletingId || !canCreateUsuario}><i className="bi bi-plus" /></button>
       <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? 'show' : ''}`} onClick={closeAnyDrawer} aria-hidden={!isAnyDrawerOpen} />
 
       <ModuleFiltros open={filtersOpen} drawerId="usr-filtros-drawer" iconClass="bi bi-people-fill" title="Filtros de usuarios" subtitle="Estado y orden visual del listado" draft={filtersDraft}
@@ -928,6 +957,10 @@ export default function UsuariosTab({ openToast }) {
         onFormImageChange={onFormImageChange}
         onFormImageUrlChange={onFormImageUrlChange}
         onRemoveImage={removeFormImage}
+        canCreate={canCreateUsuario}
+        canEdit={canEditUsuario}
+        canResetPassword={canResetPassword}
+        canEditPhoto={canEditFotoUsuario}
       />
 
       <UsuarioDetailModal open={Boolean(detailUsuario)} usuario={detailUsuario} onClose={() => setDetailUsuario(null)} />
@@ -1029,3 +1062,5 @@ export default function UsuariosTab({ openToast }) {
     </div>
   );
 }
+
+
