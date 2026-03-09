@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import './usuarios-card.css';
+import { resolveUserImageSrc } from './imageSourcePolicy';
 
 const toDisplayValue = (value, fallback = 'No registrado') => {
   if (value === null || value === undefined) return fallback;
@@ -21,10 +23,6 @@ const getNombreCompleto = (usuario) =>
 const getSucursal = (usuario) => usuario?.empleado?.sucursal_nombre || usuario?.sucursal_nombre;
 const getRolNombre = (usuario) => usuario?.rol?.nombre || usuario?.rol_nombre || usuario?.nombre_rol;
 
-const FOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
-
-const isValidPhotoUrl = (value) => FOTO_URL_RE.test(String(value ?? '').trim());
-
 const getInitials = (fullName) => {
   const clean = String(fullName ?? '').trim();
   if (!clean) return 'U';
@@ -46,6 +44,9 @@ export default function UsuarioCard({
   onOpenEdit,
   onOpenDelete,
   onOpenDetail,
+  canEdit = true,
+  canDelete = true,
+  canViewDetail = true,
   actionLoading = false,
   deletingId = null,
 }) {
@@ -56,10 +57,12 @@ export default function UsuarioCard({
   const sucursal = toDisplayValue(getSucursal(usuario));
   const username = toDisplayValue(usuario?.nombre_usuario, 'Sin usuario');
   const foto = String(usuario?.foto_perfil || '').trim();
-  const showPhoto = isValidPhotoUrl(foto);
   const initials = getInitials(nombre);
   const rolNombre = toDisplayValue(getRolNombre(usuario), '-');
   const rolIcon = /admin/i.test(rolNombre) ? 'bi-shield-lock' : 'bi-person-badge';
+  const resolvedPhotoSrc = resolveUserImageSrc(foto);
+  const [failedImageSrc, setFailedImageSrc] = useState('');
+  const showPhoto = Boolean(resolvedPhotoSrc) && failedImageSrc !== resolvedPhotoSrc;
 
   return (
     <article
@@ -78,7 +81,13 @@ export default function UsuarioCard({
           <div className="usuarios-card__avatar-wrap">
             <div className={`usuarios-card__avatar ${showPhoto ? 'has-image' : ''}`}>
               {showPhoto ? (
-                <img src={foto} alt={nombre} loading="eager" />
+                <img
+                  src={resolvedPhotoSrc}
+                  alt={nombre}
+                  loading="eager"
+                  referrerPolicy="no-referrer"
+                  onError={() => setFailedImageSrc(resolvedPhotoSrc)}
+                />
               ) : (
                 <span>{initials}</span>
               )}
@@ -115,39 +124,45 @@ export default function UsuarioCard({
           </div>
 
           <div className="personas-emp-card__actions usuarios-card__actions">
-            <button
-              type="button"
-              className="inv-catpro-action inv-catpro-action-compact"
-              onClick={() => onOpenDetail?.(usuario)}
-              disabled={actionLoading || deleting}
-              title="Detalle"
-            >
-              <i className="bi bi-eye" />
-              <span className="inv-catpro-action-label">Detalle</span>
-            </button>
+            {canViewDetail ? (
+              <button
+                type="button"
+                className="inv-catpro-action inv-catpro-action-compact"
+                onClick={() => onOpenDetail?.(usuario)}
+                disabled={actionLoading || deleting}
+                title="Detalle"
+              >
+                <i className="bi bi-eye" />
+                <span className="inv-catpro-action-label">Detalle</span>
+              </button>
+            ) : null}
 
-            <button
-              type="button"
-              className="inv-catpro-action edit inv-catpro-action-compact"
-              onClick={() => onOpenEdit?.(usuario)}
-              disabled={actionLoading || deleting}
-              title="Editar"
-            >
-              <i className="bi bi-pencil-square" />
-              <span className="inv-catpro-action-label">Editar</span>
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                className="inv-catpro-action edit inv-catpro-action-compact"
+                onClick={() => onOpenEdit?.(usuario)}
+                disabled={actionLoading || deleting}
+                title="Editar"
+              >
+                <i className="bi bi-pencil-square" />
+                <span className="inv-catpro-action-label">Editar</span>
+              </button>
+            ) : null}
 
-            <button
-              type="button"
-              className="inv-catpro-action danger inv-catpro-action-compact usuarios-card__action--danger"
-              onClick={() => onOpenDelete?.(usuario)}
-              disabled={actionLoading || deleting}
-              title="Eliminar"
-              aria-label={deleting ? 'Eliminando...' : 'Eliminar'}
-            >
-              <i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} />
-              <span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span>
-            </button>
+            {canDelete ? (
+              <button
+                type="button"
+                className="inv-catpro-action danger inv-catpro-action-compact usuarios-card__action--danger"
+                onClick={() => onOpenDelete?.(usuario)}
+                disabled={actionLoading || deleting}
+                title="Eliminar"
+                aria-label={deleting ? 'Eliminando...' : 'Eliminar'}
+              >
+                <i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} />
+                <span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span>
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

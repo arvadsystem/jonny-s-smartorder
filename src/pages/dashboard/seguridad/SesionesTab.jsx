@@ -4,7 +4,8 @@ import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
 import SecurityConfirmAction from "./components/SecurityConfirmAction";
 import { fmtHN } from "../../../utils/dateTime";
-import { useAuth } from "../../../hooks/useAuth";
+import { usePermisos } from "../../../context/PermisosContext";
+import { PERMISSIONS } from "../../../utils/permissions";
 import "./sesiones-ui.css";
 
 const PAGE_SIZE = 10;
@@ -31,6 +32,8 @@ const isSesionFallida = (sesion) => {
 // PERSONAL (usuario normal) - HU79
 // ======================================================
 const SesionesTabPersonal = () => {
+  const { canAny } = usePermisos();
+  const canClosePersonal = canAny([PERMISSIONS.SEGURIDAD_SESIONES_CERRAR]);
   const [sesiones, setSesiones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [noPermiso, setNoPermiso] = useState(false);
@@ -76,7 +79,6 @@ const SesionesTabPersonal = () => {
 
   useEffect(() => {
     cargar();
-    // Auto-refresh cada 15s
     const t = setInterval(() => {
       cargarRef.current?.({ silent: true });
     }, AUTO_REFRESH_MS);
@@ -128,7 +130,6 @@ const SesionesTabPersonal = () => {
     [sesiones.length, sesionesActivas.length, sesionesCerradas.length, sesionesFallidas.length]
   );
 
-  // PAGINACION
   const totalPages = Math.max(1, Math.ceil(sesionesFiltradas.length / PAGE_SIZE));
   const start = (page - 1) * PAGE_SIZE;
   const paginated = sesionesFiltradas.slice(start, start + PAGE_SIZE);
@@ -190,26 +191,28 @@ const SesionesTabPersonal = () => {
               />
             </label>
 
-            <SecurityConfirmAction
-              className="btn btn-outline-danger"
-              title="CONFIRMAR CIERRE GLOBAL"
-              subtitle="Se cerrarán todas las sesiones excepto la sesión actual."
-              question="¿Deseas cerrar las demás sesiones activas?"
-              onConfirm={onCerrarOtras}
-              disabled={sesionesActivas.length <= 1 || closingOtras}
-            >
-              {closingOtras ? (
-                <>
-                  <span className="spinner-border spinner-border-sm me-2"></span>
-                  Cerrando...
-                </>
-              ) : (
-                <>
-                  <i className="bi bi-x-circle me-2"></i>
-                  Cerrar sesiones (menos la actual)
-                </>
-              )}
-            </SecurityConfirmAction>
+            {canClosePersonal ? (
+              <SecurityConfirmAction
+                className="btn btn-outline-danger"
+                title="CONFIRMAR CIERRE GLOBAL"
+                subtitle="Se cerrarán todas las sesiones excepto la sesión actual."
+                question="¿Deseas cerrar las demás sesiones activas?"
+                onConfirm={onCerrarOtras}
+                disabled={sesionesActivas.length <= 1 || closingOtras}
+              >
+                {closingOtras ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2"></span>
+                    Cerrando...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-x-circle me-2"></i>
+                    Cerrar sesiones (menos la actual)
+                  </>
+                )}
+              </SecurityConfirmAction>
+            ) : null}
           </div>
         </div>
 
@@ -323,20 +326,22 @@ const SesionesTabPersonal = () => {
                             <td>{fmtDate(s.fecha_inicio)}</td>
                             <td>{fmtDate(s.ultima_actividad)}</td>
                             <td className="text-end">
-                              <SecurityConfirmAction
-                                className="btn btn-sm btn-outline-danger"
-                                title="CONFIRMAR CIERRE DE SESIÓN"
-                                subtitle="La sesión seleccionada se finalizará de inmediato."
-                                question="¿Deseas cerrar esta sesión?"
-                                onConfirm={() => onCerrar(s.id_sesion)}
-                                disabled={!s.activa || closingId === s.id_sesion || esActual}
-                              >
-                                {closingId === s.id_sesion ? (
-                                  <span className="spinner-border spinner-border-sm" />
-                                ) : (
-                                  "Cerrar"
-                                )}
-                              </SecurityConfirmAction>
+                              {canClosePersonal ? (
+                                <SecurityConfirmAction
+                                  className="btn btn-sm btn-outline-danger"
+                                  title="CONFIRMAR CIERRE DE SESIÓN"
+                                  subtitle="La sesión seleccionada se finalizará de inmediato."
+                                  question="¿Deseas cerrar esta sesión?"
+                                  onConfirm={() => onCerrar(s.id_sesion)}
+                                  disabled={!s.activa || closingId === s.id_sesion || esActual}
+                                >
+                                  {closingId === s.id_sesion ? (
+                                    <span className="spinner-border spinner-border-sm" />
+                                  ) : (
+                                    "Cerrar"
+                                  )}
+                                </SecurityConfirmAction>
+                              ) : null}
                             </td>
                           </tr>
                         );
@@ -380,6 +385,8 @@ const SesionesTabPersonal = () => {
 // GLOBAL (Super Admin) - Sprint 3
 // ======================================================
 const SesionesTabGlobal = () => {
+  const { canAny } = usePermisos();
+  const canCloseGlobal = canAny([PERMISSIONS.SEGURIDAD_SESIONES_CERRAR_GLOBAL]);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
 
@@ -501,17 +508,19 @@ const SesionesTabGlobal = () => {
               />
             </label>
 
-            <SecurityConfirmAction
-              className="btn btn-outline-danger sec-sesiones-global-btn"
-              title="CONFIRMAR CIERRE GLOBAL"
-              subtitle="Esta acción impactará sesiones activas del sistema."
-              question="¿Deseas cerrar todas las sesiones excepto la actual?"
-              onConfirm={onCerrarGlobalMenosActual}
-              disabled={total <= 1}
-            >
-              <i className="bi bi-x-circle me-2"></i>
-              Cerrar sesiones
-            </SecurityConfirmAction>
+            {canCloseGlobal ? (
+              <SecurityConfirmAction
+                className="btn btn-outline-danger sec-sesiones-global-btn"
+                title="CONFIRMAR CIERRE GLOBAL"
+                subtitle="Esta acción impactará sesiones activas del sistema."
+                question="¿Deseas cerrar todas las sesiones excepto la actual?"
+                onConfirm={onCerrarGlobalMenosActual}
+                disabled={total <= 1}
+              >
+                <i className="bi bi-x-circle me-2"></i>
+                Cerrar sesiones
+              </SecurityConfirmAction>
+            ) : null}
           </div>
         </div>
 
@@ -578,23 +587,25 @@ const SesionesTabGlobal = () => {
                             <td>{fmtDate(s.fecha_inicio)}</td>
                             <td>{fmtDate(s.ultima_actividad)}</td>
                             <td className="text-end">
-                              <SecurityConfirmAction
-                                className="btn btn-sm btn-outline-danger"
-                                title="CONFIRMAR CIERRE DE SESIÓN"
-                                subtitle="El usuario deberá iniciar sesión nuevamente."
-                                question="¿Deseas cerrar esta sesión?"
-                                centered
-                                onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
-                                disabled={esActual || closingId === s.id_sesion}
-                              >
-                                {closingId === s.id_sesion ? (
-                                  <span className="spinner-border spinner-border-sm" />
-                                ) : esActual ? (
-                                  "Actual"
-                                ) : (
-                                  "Cerrar"
-                                )}
-                              </SecurityConfirmAction>
+                              {canCloseGlobal ? (
+                                <SecurityConfirmAction
+                                  className="btn btn-sm btn-outline-danger"
+                                  title="CONFIRMAR CIERRE DE SESIÓN"
+                                  subtitle="El usuario deberá iniciar sesión nuevamente."
+                                  question="¿Deseas cerrar esta sesión?"
+                                  centered
+                                  onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
+                                  disabled={esActual || closingId === s.id_sesion}
+                                >
+                                  {closingId === s.id_sesion ? (
+                                    <span className="spinner-border spinner-border-sm" />
+                                  ) : esActual ? (
+                                    "Actual"
+                                  ) : (
+                                    "Cerrar"
+                                  )}
+                                </SecurityConfirmAction>
+                              ) : null}
                             </td>
                           </tr>
                         );
@@ -633,10 +644,11 @@ const SesionesTabGlobal = () => {
 };
 
 const SesionesTab = () => {
-  const { user } = useAuth();
-  const isSuperAdmin = Number(user?.rol) === 1;
+  const { canAny, loading } = usePermisos();
+  const canViewGlobal = canAny([PERMISSIONS.SEGURIDAD_SESIONES_VER_GLOBAL]);
 
-  return isSuperAdmin ? <SesionesTabGlobal /> : <SesionesTabPersonal />;
+  if (loading) return null;
+  return canViewGlobal ? <SesionesTabGlobal /> : <SesionesTabPersonal />;
 };
 
 export default SesionesTab;

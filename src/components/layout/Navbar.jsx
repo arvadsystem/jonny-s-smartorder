@@ -1,34 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { usePermisos } from '../../context/PermisosContext';
 import { API_URL } from '../../utils/constants';
+import {
+  INVENTARIO_TAB_PERMISSIONS,
+  PERSONAS_TAB_PERMISSIONS,
+  PERMISSIONS,
+  SEGURIDAD_TAB_PERMISSIONS,
+  VENTAS_TAB_PERMISSIONS
+} from '../../utils/permissions';
 
 const INVENTORY_TABS = [
-  { key: 'categorias', label: 'Categorias', icon: 'bi bi-tag' },
-  { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam' },
-  { key: 'productos', label: 'Productos', icon: 'bi bi-basket' },
-  { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building' },
-  { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
-];
-
-const SECURITY_TABS_BASE = [
-  { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop' },
-  { key: 'password', label: 'Políticas de contraseña', icon: 'bi bi-key' },
-  { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text' }
+  { key: 'categorias', label: 'Categorias', icon: 'bi bi-tag', required: INVENTARIO_TAB_PERMISSIONS.categorias },
+  { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam', required: INVENTARIO_TAB_PERMISSIONS.insumos },
+  { key: 'productos', label: 'Productos', icon: 'bi bi-basket', required: INVENTARIO_TAB_PERMISSIONS.productos },
+  { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building', required: INVENTARIO_TAB_PERMISSIONS.almacenes },
+  { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS.alertas }
 ];
 
 const PERSONAS_TABS = [
-  { key: 'personas', label: 'Personas', icon: 'bi bi-person' },
-  { key: 'empresas', label: 'Empresas', icon: 'bi bi-building' },
-  { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase' },
-  { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear' },
-  { key: 'clientes', label: 'Clientes', icon: 'bi bi-people' }
+  { key: 'personas', label: 'Personas', icon: 'bi bi-person', required: PERSONAS_TAB_PERMISSIONS.personas },
+  { key: 'empresas', label: 'Empresas', icon: 'bi bi-building', required: PERSONAS_TAB_PERMISSIONS.empresas },
+  { key: 'clientes', label: 'Clientes', icon: 'bi bi-people', required: PERSONAS_TAB_PERMISSIONS.clientes },
+  { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase', required: PERSONAS_TAB_PERMISSIONS.empleados },
+  { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear', required: PERSONAS_TAB_PERMISSIONS.usuarios },
+  { key: 'roles', label: 'Roles y permisos', icon: 'bi bi-person-lock', required: PERSONAS_TAB_PERMISSIONS.roles }
+];
+
+const SECURITY_TABS = [
+  { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop', required: SEGURIDAD_TAB_PERMISSIONS.sesiones },
+  { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people', required: SEGURIDAD_TAB_PERMISSIONS.usuarios },
+  { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key', required: SEGURIDAD_TAB_PERMISSIONS.password },
+  { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text', required: SEGURIDAD_TAB_PERMISSIONS.logins }
 ];
 
 const VENTAS_TABS = [
-  { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff' },
-  { key: 'caja', label: 'Caja', icon: 'bi bi-cart3' },
-  { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext' }
+  { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS.ventas },
+  { key: 'caja', label: 'Caja', icon: 'bi bi-cart3', required: VENTAS_TAB_PERMISSIONS.caja },
+  { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS.pedidos }
 ];
 
 const MAX_VISIBLE_TABS = 3;
@@ -79,11 +89,12 @@ const resolveProfilePhotoSrc = (value) => {
   return '';
 };
 
-const getInventoryTabFromSearch = (search) => {
+const getInventoryTabFromSearch = (search, tabs, fallbackKey = 'categorias') => {
+  const allowedTabs = Array.isArray(tabs) && tabs.length > 0 ? tabs : INVENTORY_TABS;
   const sp = new URLSearchParams(search || '');
-  const current = String(sp.get('tab') || 'categorias').toLowerCase();
+  const current = String(sp.get('tab') || fallbackKey).toLowerCase();
   const normalized = current === 'movimientos' ? 'almacenes' : current;
-  return INVENTORY_TABS.some((tab) => tab.key === normalized) ? normalized : 'categorias';
+  return allowedTabs.some((tab) => tab.key === normalized) ? normalized : fallbackKey;
 };
 
 const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
@@ -271,48 +282,63 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { canAny, loading: permisosLoading } = usePermisos();
 
   const userName = user?.nombre_usuario || 'Invitado';
-  const isSuperAdmin = Number(user?.rol) === 1;
-  const userRole = isSuperAdmin ? 'Super Admin' : 'Usuario';
+  const userRole = useMemo(() => {
+    const roleRows = Array.isArray(user?.roles) ? user.roles : [];
+    if (roleRows.length === 0) return 'Usuario';
+    return roleRows.join(', ');
+  }, [user?.roles]);
   const userPhotoSrc = useMemo(() => resolveProfilePhotoSrc(user?.foto_perfil), [user?.foto_perfil]);
   const userInitials = useMemo(() => getUserInitials(userName), [userName]);
   const showUserPhoto = Boolean(userPhotoSrc) && failedPhotoSrc !== userPhotoSrc;
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
+  const canViewProfile = canAny([PERMISSIONS.PERFIL_VER]);
 
-  const securityTabs = useMemo(() => {
-    const tabs = [...SECURITY_TABS_BASE];
+  const visibleInventoryTabs = useMemo(
+    () => INVENTORY_TABS.filter((tab) => canAny(tab.required || [])),
+    [canAny]
+  );
 
-    if (isSuperAdmin) {
-      tabs.splice(1, 0, { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people' });
-    }
+  const visibleSecurityTabs = useMemo(
+    () => SECURITY_TABS.filter((tab) => canAny(tab.required || [])),
+    [canAny]
+  );
 
-    return tabs;
-  }, [isSuperAdmin]);
+  const visiblePersonasTabs = useMemo(
+    () => PERSONAS_TABS.filter((tab) => canAny(tab.required || [])),
+    [canAny]
+  );
+
+  const visibleVentasTabs = useMemo(
+    () => VENTAS_TABS.filter((tab) => canAny(tab.required || [])),
+    [canAny]
+  );
 
   const isInventario = location.pathname?.startsWith('/dashboard/inventario');
   const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
   const isPersonas = location.pathname?.startsWith('/dashboard/personas');
   const isVentas = location.pathname?.startsWith('/dashboard/ventas');
 
-  const activeInventoryKey = useMemo(
-    () => getInventoryTabFromSearch(location.search),
-    [location.search]
-  );
+  const activeInventoryKey = useMemo(() => {
+    const fallback = visibleInventoryTabs[0]?.key || 'categorias';
+    return getInventoryTabFromSearch(location.search, visibleInventoryTabs, fallback);
+  }, [location.search, visibleInventoryTabs]);
 
   const activeSecurityKey = useMemo(
-    () => getTabFromSearch(location.search, securityTabs, 'sesiones'),
-    [location.search, securityTabs]
+    () => getTabFromSearch(location.search, visibleSecurityTabs, visibleSecurityTabs[0]?.key || 'sesiones'),
+    [location.search, visibleSecurityTabs]
   );
 
   const activePersonasKey = useMemo(
-    () => getTabFromSearch(location.search, PERSONAS_TABS, 'personas'),
-    [location.search]
+    () => getTabFromSearch(location.search, visiblePersonasTabs, visiblePersonasTabs[0]?.key || 'personas'),
+    [location.search, visiblePersonasTabs]
   );
 
   const activeVentasKey = useMemo(
-    () => getTabFromSearch(location.search, VENTAS_TABS, 'ventas'),
-    [location.search]
+    () => getTabFromSearch(location.search, visibleVentasTabs, visibleVentasTabs[0]?.key || 'ventas'),
+    [location.search, visibleVentasTabs]
   );
 
   const closeProfileDropdown = useCallback(() => {
@@ -373,33 +399,39 @@ const Navbar = () => {
   }, [navigate]);
 
   const moduleTabsConfig = useMemo(() => {
+    if (permisosLoading) return null;
+
     if (isInventario) {
+      if (visibleInventoryTabs.length === 0) return null;
       return {
-        tabs: INVENTORY_TABS,
+        tabs: visibleInventoryTabs,
         activeKey: activeInventoryKey,
         onGoTab: goInventarioTab
       };
     }
 
     if (isSeguridad) {
+      if (visibleSecurityTabs.length === 0) return null;
       return {
-        tabs: securityTabs,
+        tabs: visibleSecurityTabs,
         activeKey: activeSecurityKey,
         onGoTab: goSeguridadTab
       };
     }
 
     if (isPersonas) {
+      if (visiblePersonasTabs.length === 0) return null;
       return {
-        tabs: PERSONAS_TABS,
+        tabs: visiblePersonasTabs,
         activeKey: activePersonasKey,
         onGoTab: goPersonasTab
       };
     }
 
     if (isVentas) {
+      if (visibleVentasTabs.length === 0) return null;
       return {
-        tabs: VENTAS_TABS,
+        tabs: visibleVentasTabs,
         activeKey: activeVentasKey,
         onGoTab: goVentasTab
       };
@@ -419,7 +451,11 @@ const Navbar = () => {
     isPersonas,
     isSeguridad,
     isVentas,
-    securityTabs
+    permisosLoading,
+    visibleInventoryTabs,
+    visiblePersonasTabs,
+    visibleSecurityTabs,
+    visibleVentasTabs
   ]);
 
   useEffect(() => {
@@ -547,15 +583,17 @@ const Navbar = () => {
 
           {isOpen && (
             <div className="dropdown-menu-custom" role="menu" aria-label="Menu de usuario">
-              <button
-                type="button"
-                className="dropdown-menu-item"
-                role="menuitem"
-                onClick={handleGoProfile}
-              >
-                <i className="bi bi-person-circle" />
-                Mi perfil
-              </button>
+              {canViewProfile ? (
+                <button
+                  type="button"
+                  className="dropdown-menu-item"
+                  role="menuitem"
+                  onClick={handleGoProfile}
+                >
+                  <i className="bi bi-person-circle" />
+                  Mi perfil
+                </button>
+              ) : null}
 
               <button
                 type="button"

@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useAuth } from "../../hooks/useAuth";
+import SinPermiso from "../../components/common/SinPermiso";
+import { usePermisos } from "../../context/PermisosContext";
+import { SEGURIDAD_TAB_PERMISSIONS } from "../../utils/permissions";
 
 import SesionesTab from "./seguridad/SesionesTab";
 import UsuariosTab from "./seguridad/UsuariosTab";
@@ -10,20 +12,19 @@ import UsuarioAuditDetail from "./seguridad/UsuarioAuditDetail";
 
 const Seguridad = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuth();
-
-  const isSuperAdmin = Number(user?.rol) === 1;
+  const { canAny, loading: permisosLoading } = usePermisos();
 
   const allowedTabs = useMemo(() => {
-    const base = ["sesiones", "password", "logins"];
-    return isSuperAdmin ? ["sesiones", "usuarios", ...base.slice(1)] : base;
-  }, [isSuperAdmin]);
+    const tabKeys = ["sesiones", "usuarios", "password", "logins"];
+    return tabKeys.filter((tabKey) => canAny(SEGURIDAD_TAB_PERMISSIONS[tabKey] || []));
+  }, [canAny]);
 
-  const rawTab = (searchParams.get("tab") || "sesiones").toLowerCase();
-  const activeTab = allowedTabs.includes(rawTab) ? rawTab : "sesiones";
+  const fallbackTab = allowedTabs[0] || null;
+  const rawTab = (searchParams.get("tab") || fallbackTab || "").toLowerCase();
+  const activeTab = fallbackTab && allowedTabs.includes(rawTab) ? rawTab : fallbackTab;
 
   useEffect(() => {
-    // Normaliza URL si viene algo inválido (o usuarios sin ser SuperAdmin)
+    if (!activeTab) return;
     if (rawTab !== activeTab) {
       const next = new URLSearchParams(searchParams);
       next.set("tab", activeTab);
@@ -55,12 +56,18 @@ const Seguridad = () => {
     setSearchParams(next);
   };
 
+  if (permisosLoading) return null;
+
+  if (!activeTab) {
+    return <SinPermiso permiso="SEGURIDAD_VER" detalle="No tienes acceso a ningun submodulo de Seguridad." />;
+  }
+
   return (
     <div className="p-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div>
           <h3 className="mb-0">Seguridad</h3>
-          <small className="text-muted">Sesiones y auditoría</small>
+          <small className="text-muted">Sesiones y auditoria</small>
         </div>
       </div>
 

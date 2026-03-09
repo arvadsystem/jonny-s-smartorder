@@ -3,23 +3,24 @@ import InlineLoader from "../../../components/common/InlineLoader";
 import SinPermiso from "../../../components/common/SinPermiso";
 import { securityService } from "../../../services/securityService";
 import { fmtHN } from "../../../utils/dateTime";
-import { useAuth } from "../../../hooks/useAuth";
+import { usePermisos } from "../../../context/PermisosContext";
+import { PERMISSIONS } from "../../../utils/permissions";
 import "./sesiones-ui.css";
 import "./seguridad-auditoria-ui.css";
 
 const PAGE_SIZE = 10;
 
-const fmtDate = (value) => (value ? fmtHN(value) : "—");
+const fmtDate = (value) => (value ? fmtHN(value) : "-");
 
 const estadoBadge = (estado) => {
   if (estado === true) return <span className="sec-badge sec-badge-active">ACTIVO</span>;
   if (estado === false) return <span className="sec-badge sec-badge-fail">BLOQUEADO</span>;
-  return <span className="sec-badge sec-badge-closed">—</span>;
+  return <span className="sec-badge sec-badge-closed">-</span>;
 };
 
 const UsuariosTab = ({ onOpenAudit }) => {
-  const { user } = useAuth();
-  const isSuperAdmin = Number(user?.rol) === 1;
+  const { canAny } = usePermisos();
+  const canViewAudit = canAny([PERMISSIONS.SEGURIDAD_USUARIOS_VER]);
 
   const [loading, setLoading] = useState(true);
   const [noPermiso, setNoPermiso] = useState(false);
@@ -32,7 +33,7 @@ const UsuariosTab = ({ onOpenAudit }) => {
     buscar: "",
     estado: "",
     limit: PAGE_SIZE,
-    offset: 0,
+    offset: 0
   });
 
   const load = async ({ silent = false } = {}) => {
@@ -65,15 +66,9 @@ const UsuariosTab = ({ onOpenAudit }) => {
   };
 
   useEffect(() => {
-    if (!isSuperAdmin) {
-      setNoPermiso(true);
-      setLoading(false);
-      return;
-    }
-
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.offset, filters.limit, isSuperAdmin]);
+  }, [filters.offset, filters.limit]);
 
   const onApplyFilters = () => {
     setFilters((s) => ({ ...s, offset: 0 }));
@@ -92,8 +87,8 @@ const UsuariosTab = ({ onOpenAudit }) => {
   if (noPermiso) {
     return (
       <SinPermiso
-        permiso="SEGURIDAD_VER"
-        detalle="Solo Super Admin puede ver el listado global de usuarios (HU1085)."
+        permiso="SEGURIDAD_USUARIOS_VER"
+        detalle="No tienes permiso para ver el listado global de usuarios."
       />
     );
   }
@@ -160,7 +155,7 @@ const UsuariosTab = ({ onOpenAudit }) => {
             <>
               <div className="sec-results-meta sec-sesiones-results-meta">
                 <span>Mostrando {shownCount} de {total}</span>
-                <span className="text-muted">Paginación de 10 en 10</span>
+                <span className="text-muted">Paginacion de 10 en 10</span>
               </div>
 
               <div className="sec-sesiones-table-card">
@@ -173,34 +168,34 @@ const UsuariosTab = ({ onOpenAudit }) => {
                         <th>Nombre</th>
                         <th>Rol</th>
                         <th style={{ width: 120 }}>Estado</th>
-                        <th>Último acceso</th>
+                        <th>Ultimo acceso</th>
                         <th style={{ width: 140 }}>Sesiones activas</th>
-                        {isSuperAdmin ? <th className="text-end">Auditoría</th> : null}
+                        {canViewAudit ? <th className="text-end">Auditoria</th> : null}
                       </tr>
                     </thead>
                     <tbody>
                       {rows.length === 0 && (
                         <tr>
-                          <td colSpan={isSuperAdmin ? "8" : "7"} className="text-center text-muted py-4">
+                          <td colSpan={canViewAudit ? "8" : "7"} className="text-center text-muted py-4">
                             No hay registros.
                           </td>
                         </tr>
                       )}
 
                       {rows.map((r) => {
-                        const nombre = `${r?.nombre || ""} ${r?.apellido || ""}`.trim() || "—";
+                        const nombre = `${r?.nombre || ""} ${r?.apellido || ""}`.trim() || "-";
                         return (
                           <tr key={r.id_usuario}>
                             <td className="text-muted">{r.id_usuario}</td>
-                            <td>{r.nombre_usuario || "—"}</td>
+                            <td>{r.nombre_usuario || "-"}</td>
                             <td>{nombre}</td>
-                            <td>{r.rol || "—"}</td>
+                            <td>{r.rol || "-"}</td>
                             <td>{estadoBadge(r.estado)}</td>
                             <td>{fmtDate(r.ultimo_acceso)}</td>
                             <td>
                               <span className="badge bg-primary">{Number(r.sesiones_activas || 0)}</span>
                             </td>
-                            {isSuperAdmin ? (
+                            {canViewAudit ? (
                               <td className="text-end">
                                 <button
                                   type="button"
@@ -232,7 +227,7 @@ const UsuariosTab = ({ onOpenAudit }) => {
                     onClick={() =>
                       setFilters((s) => ({
                         ...s,
-                        offset: Math.max(0, s.offset - s.limit),
+                        offset: Math.max(0, s.offset - s.limit)
                       }))
                     }
                   >
@@ -244,7 +239,7 @@ const UsuariosTab = ({ onOpenAudit }) => {
                     onClick={() =>
                       setFilters((s) => ({
                         ...s,
-                        offset: s.offset + s.limit,
+                        offset: s.offset + s.limit
                       }))
                     }
                   >
@@ -261,4 +256,3 @@ const UsuariosTab = ({ onOpenAudit }) => {
 };
 
 export default UsuariosTab;
-

@@ -14,7 +14,7 @@ const getSauceSummary = (item) => (
     .join(', ')
 );
 
-const OrderLineItem = memo(({ item, onDecrease, onIncrease, onRemove }) => (
+const OrderLineItem = memo(({ item, onDecrease, onIncrease, onRemove, canEdit }) => (
   <article className="menu-order-item">
     <div className="menu-order-item-copy">
       <div className="menu-order-item-name">{toDisplayTitle(item.nombre)}</div>
@@ -30,7 +30,7 @@ const OrderLineItem = memo(({ item, onDecrease, onIncrease, onRemove }) => (
           type="button"
           className="btn menu-order-stepper-btn"
           onClick={() => onDecrease(item.itemKey)}
-          disabled={item.cantidad <= 1}
+          disabled={!canEdit || item.cantidad <= 1}
           aria-label={`Disminuir ${item.nombre}`}
         >
           <FaMinus />
@@ -40,6 +40,7 @@ const OrderLineItem = memo(({ item, onDecrease, onIncrease, onRemove }) => (
           type="button"
           className="btn menu-order-stepper-btn"
           onClick={() => onIncrease(item.itemKey)}
+          disabled={!canEdit}
           aria-label={`Aumentar ${item.nombre}`}
         >
           <FaPlus />
@@ -50,6 +51,7 @@ const OrderLineItem = memo(({ item, onDecrease, onIncrease, onRemove }) => (
         type="button"
         className="btn menu-order-remove-btn"
         onClick={() => onRemove(item.itemKey)}
+        disabled={!canEdit}
         aria-label={`Quitar ${item.nombre}`}
       >
         <FaTimes />
@@ -65,6 +67,8 @@ const CurrentOrderPanel = ({
   onDecrease,
   onIncrease,
   onRemove,
+  canEdit = true,
+  canConfirm = true
 }) => {
   const itemLabel = totalItems === 1 ? 'item' : 'items';
 
@@ -92,6 +96,7 @@ const CurrentOrderPanel = ({
                 onDecrease={onDecrease}
                 onIncrease={onIncrease}
                 onRemove={onRemove}
+                canEdit={canEdit}
               />
             ))}
           </div>
@@ -104,9 +109,11 @@ const CurrentOrderPanel = ({
           <strong className="menu-order-total-value">{formatMoney(totalAmount)}</strong>
         </div>
 
-        <button type="button" className="btn btn-primary btn-lg menu-order-confirm-btn">
-          Confirmar Pedido
-        </button>
+        {canConfirm ? (
+          <button type="button" className="btn btn-primary btn-lg menu-order-confirm-btn">
+            Confirmar Pedido
+          </button>
+        ) : null}
       </div>
     </aside>
   );

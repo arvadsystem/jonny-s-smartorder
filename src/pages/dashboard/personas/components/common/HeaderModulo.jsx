@@ -14,6 +14,7 @@ export default function HeaderModulo({
   createOpen,
   onOpenCreate,
   createLabel = "Nuevo",
+  canCreate = true,
   filtersControlsId,
   formControlsId,
   viewMode,
@@ -32,16 +33,18 @@ export default function HeaderModulo({
         <i className="bi bi-funnel" /> <span>Filtros</span>
       </button>
 
-      <button
-        type="button"
-        className={`inv-prod-toolbar-btn ${createOpen ? "is-on" : ""}`}
-        onClick={onOpenCreate}
-        title={createLabel}
-        aria-expanded={createOpen}
-        aria-controls={formControlsId}
-      >
-        <i className="bi bi-plus-circle" /> <span>{createLabel}</span>
-      </button>
+      {canCreate ? (
+        <button
+          type="button"
+          className={`inv-prod-toolbar-btn ${createOpen ? "is-on" : ""}`}
+          onClick={onOpenCreate}
+          title={createLabel}
+          aria-expanded={createOpen}
+          aria-controls={formControlsId}
+        >
+          <i className="bi bi-plus-circle" /> <span>{createLabel}</span>
+        </button>
+      ) : null}
     </>
   );
 

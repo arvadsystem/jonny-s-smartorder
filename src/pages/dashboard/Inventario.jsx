@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { inventarioService } from '../../services/inventarioService';
+import SinPermiso from '../../components/common/SinPermiso';
+import { usePermisos } from '../../context/PermisosContext';
+import { INVENTARIO_TAB_PERMISSIONS } from '../../utils/permissions';
 
 import CategoriasTab from './inventario/CategoriasTab.jsx';
 import InsumosTab from './inventario/InsumosTab.jsx';
@@ -14,12 +17,25 @@ const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 
 const Inventario = () => {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('categorias');
+  const { canAny, loading: permisosLoading } = usePermisos();
+
+  const allowedTabs = INVENTARIO_TAB_KEYS.filter((tabKey) =>
+    canAny(INVENTARIO_TAB_PERMISSIONS[tabKey] || [])
+  );
+  const fallbackTab = allowedTabs[0] || null;
 
   useEffect(() => {
-    const t = (searchParams.get('tab') || 'categorias').toLowerCase();
+    if (permisosLoading) return;
+
+    if (!fallbackTab) {
+      setActiveTab('categorias');
+      return;
+    }
+
+    const t = (searchParams.get('tab') || fallbackTab).toLowerCase();
     const normalizedTab = t === 'movimientos' ? 'almacenes' : t;
-    setActiveTab(INVENTARIO_TAB_KEYS.includes(normalizedTab) ? normalizedTab : 'categorias');
-  }, [searchParams]);
+    setActiveTab(allowedTabs.includes(normalizedTab) ? normalizedTab : fallbackTab);
+  }, [allowedTabs, fallbackTab, permisosLoading, searchParams]);
 
   const [categorias, setCategorias] = useState([]);
   const [loadingCategorias, setLoadingCategorias] = useState(true);
@@ -156,6 +172,14 @@ const Inventario = () => {
   }, []);
 
   const toastVariant = toast.variant || 'success';
+
+  if (permisosLoading) {
+    return null;
+  }
+
+  if (!fallbackTab) {
+    return <SinPermiso permiso="INVENTARIO_VER" detalle="No tienes acceso a ningun submodulo de Inventario." />;
+  }
 
   return (
     <div className="container-fluid p-3">

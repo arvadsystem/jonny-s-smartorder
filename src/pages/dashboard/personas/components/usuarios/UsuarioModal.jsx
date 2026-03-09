@@ -34,6 +34,10 @@ export default function UsuarioModal({
   onFormImageChange,
   onFormImageUrlChange,
   onRemoveImage,
+  canCreate = true,
+  canEdit = true,
+  canResetPassword = true,
+  canEditPhoto = true,
 }) {
   const isCreate = mode === 'create';
   const isOpen = Boolean(open);
@@ -54,7 +58,8 @@ export default function UsuarioModal({
     || catalogLoading
     || rolesLoading
     || !form?.id_empleado
-    || !form?.id_rol;
+    || !form?.id_rol
+    || !canCreate;
 
   const handleClose = () => {
     if (typeof document !== 'undefined') {
@@ -126,7 +131,7 @@ export default function UsuarioModal({
                   className={`form-select usuarios-modal__input ${errors?.id_rol ? 'is-invalid' : ''}`}
                   value={form?.id_rol || ''}
                   onChange={(e) => onFieldChange?.('id_rol', e.target.value)}
-                  disabled={rolesLoading}
+                  disabled={rolesLoading || !canCreate}
                 >
                   <option value="">Seleccione rol</option>
                   {roleOptions.map((rol) => (
@@ -164,7 +169,7 @@ export default function UsuarioModal({
                   className={`form-select usuarios-modal__input ${errors?.id_rol ? 'is-invalid' : ''}`}
                   value={form?.id_rol || ''}
                   onChange={(e) => onFieldChange?.('id_rol', e.target.value)}
-                  disabled={rolesLoading}
+                  disabled={rolesLoading || !canEdit}
                 >
                   <option value="">Seleccione rol</option>
                   {roleOptions.map((rol) => (
@@ -191,6 +196,7 @@ export default function UsuarioModal({
                     id="usuario_estado_modal"
                     checked={Boolean(form?.estado)}
                     onChange={(e) => onFieldChange?.('estado', e.target.checked)}
+                    disabled={!canEdit}
                   />
                   <span className="usuarios-modal__switch-track">
                     <span className="usuarios-modal__switch-thumb">
@@ -212,7 +218,7 @@ export default function UsuarioModal({
                     <span>Procesando imagen...</span>
                   </div>
                 ) : formImage?.previewUrl ? (
-                  <img src={formImage.previewUrl} alt="Vista previa del usuario" />
+                  <img src={formImage.previewUrl} alt="Vista previa del usuario" referrerPolicy="no-referrer" />
                 ) : (
                   <div className="inv-prod-image-placeholder usuarios-modal__image-placeholder">
                     <i className="bi bi-image" />
@@ -226,18 +232,18 @@ export default function UsuarioModal({
                   <input
                     ref={imageInputRef}
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept="image/*"
                     onChange={onFormImageChange}
-                    disabled={actionLoading || resetPasswordLoading}
+                    disabled={actionLoading || resetPasswordLoading || !canEditPhoto}
                   />
                   <i className="bi bi-upload" />
-                  <span>Seleccionar imagen</span>
+                  <span>{formImage?.previewUrl ? 'Cambiar imagen' : 'Seleccionar imagen'}</span>
                 </label>
                 <button
                   type="button"
                   className="btn inv-prod-btn-outline usuarios-modal__btn-remove"
                   onClick={onRemoveImage}
-                  disabled={!formImage?.previewUrl && !formImage?.error && !formImage?.loading}
+                  disabled={!formImage?.previewUrl && !formImage?.error && !formImage?.loading || !canEditPhoto}
                 >
                   Quitar
                 </button>
@@ -248,10 +254,10 @@ export default function UsuarioModal({
                 <input
                   type="url"
                   className="form-control usuarios-modal__input"
-                  placeholder="https://... o /uploads/..."
+                  placeholder="/uploads/... o https://tu-backend/uploads/..."
                   value={formImageUrl}
                   onChange={onFormImageUrlChange}
-                  disabled={formImage?.loading || actionLoading || resetPasswordLoading}
+                  disabled={formImage?.loading || actionLoading || resetPasswordLoading || !canEditPhoto}
                 />
               </div>
 
@@ -259,7 +265,7 @@ export default function UsuarioModal({
                 <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
               ) : (
                 <div className="inv-prod-image-feedback usuarios-modal__hint">
-                  JPG, PNG o WEBP hasta 5 MB. Para guardar en base de datos use una URL (máximo 500 caracteres).
+                  JPG, PNG o WEBP hasta 20 MB.
                 </div>
               )}
             </div>
@@ -287,7 +293,7 @@ export default function UsuarioModal({
             Cancelar
           </button>
 
-          {!isCreate ? (
+          {!isCreate && canResetPassword ? (
             <button
               type="button"
               className="btn inv-prod-btn-outline flex-fill usuarios-modal__btn-reset"
@@ -301,7 +307,11 @@ export default function UsuarioModal({
           <button
             type="submit"
             className="btn inv-prod-btn-primary flex-fill usuarios-modal__btn-submit"
-            disabled={isCreate ? createDisabled : (actionLoading || resetPasswordLoading || !!deletingId || catalogLoading || rolesLoading)}
+            disabled={
+              isCreate
+                ? createDisabled
+                : (actionLoading || resetPasswordLoading || !!deletingId || catalogLoading || rolesLoading || !canEdit)
+            }
           >
             {actionLoading
               ? (isCreate ? 'Generando...' : 'Guardando...')

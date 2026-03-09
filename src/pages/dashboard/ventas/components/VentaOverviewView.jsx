@@ -9,7 +9,8 @@ export default function VentaOverviewView({
   loading,
   error,
   onOpenDetail,
-  onGoToCaja
+  onGoToCaja,
+  canCreate = true
 }) {
   const [search, setSearch] = useState('');
   const [view, setView] = useState('grid');
@@ -65,7 +66,7 @@ export default function VentaOverviewView({
       </div>
 
       <div className="inv-catpro-card inv-prod-card mb-3">
-        <VentasToolbar search={search} onSearchChange={setSearch} onOpenCreate={onGoToCaja} />
+        <VentasToolbar search={search} onSearchChange={setSearch} onOpenCreate={onGoToCaja} canCreate={canCreate} />
 
         <VentasStats stats={stats} />
 
@@ -91,6 +92,7 @@ export default function VentaOverviewView({
             }}
             onOpenCreate={onGoToCaja}
             onOpenDetail={onOpenDetail}
+            canCreate={canCreate}
           />
         </div>
       </div>

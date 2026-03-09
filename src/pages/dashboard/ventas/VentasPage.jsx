@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
 import CajaView from './components/CajaView';
 import PedidosView from './components/PedidosView';
 import VentaDetalleModal from './components/VentaDetalleModal';
 import VentaOverviewView from './components/VentaOverviewView';
 import VentasToast from './components/VentasToast';
 import { useVentas } from './hooks/useVentas';
+import { PERMISSIONS, VENTAS_TAB_PERMISSIONS } from '../../../utils/permissions';
 import './styles/ventas.css';
 
 const VENTAS_TAB_KEYS = ['ventas', 'caja', 'pedidos'];
 
 export default function VentasPage() {
+  const { canAny, loading: permisosLoading } = usePermisos();
   const {
     ventas,
     categorias,
@@ -33,19 +37,33 @@ export default function VentasPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedVenta, setSelectedVenta] = useState(null);
 
+  const allowedTabs = useMemo(
+    () =>
+      VENTAS_TAB_KEYS.filter((tabKey) =>
+        canAny(VENTAS_TAB_PERMISSIONS[tabKey] || [])
+      ),
+    [canAny]
+  );
+  const fallbackTab = allowedTabs[0] || null;
+  const canCreateVenta = canAny([PERMISSIONS.VENTAS_CREAR]);
+  const canExportVenta = canAny([PERMISSIONS.VENTAS_EXPORTAR]);
+  const canPrintVenta = canAny([PERMISSIONS.VENTAS_IMPRIMIR]);
+
   const activeTab = useMemo(() => {
-    const tab = String(searchParams.get('tab') || 'ventas').toLowerCase();
-    return VENTAS_TAB_KEYS.includes(tab) ? tab : 'ventas';
-  }, [searchParams]);
+    if (!fallbackTab) return null;
+    const tab = String(searchParams.get('tab') || fallbackTab).toLowerCase();
+    return allowedTabs.includes(tab) ? tab : fallbackTab;
+  }, [allowedTabs, fallbackTab, searchParams]);
 
   useEffect(() => {
+    if (permisosLoading || !fallbackTab) return;
     const rawTab = String(searchParams.get('tab') || '').toLowerCase();
-    if (rawTab && VENTAS_TAB_KEYS.includes(rawTab)) return;
+    if (rawTab && allowedTabs.includes(rawTab)) return;
 
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('tab', 'ventas');
+    nextParams.set('tab', fallbackTab);
     setSearchParams(nextParams, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [allowedTabs, fallbackTab, permisosLoading, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!detailOpen) return undefined;
@@ -96,6 +114,11 @@ export default function VentasPage() {
     return response;
   };
 
+  if (permisosLoading) return null;
+  if (!activeTab) {
+    return <SinPermiso permiso="VENTAS_VER" detalle="No tienes acceso a ningun submodulo de Ventas." />;
+  }
+
   return (
     <>
       {activeTab === 'ventas' ? (
@@ -105,6 +128,7 @@ export default function VentasPage() {
           error={error}
           onOpenDetail={openDetail}
           onGoToCaja={() => goToTab('caja')}
+          canCreate={canCreateVenta}
         />
       ) : null}
 
@@ -127,6 +151,8 @@ export default function VentasPage() {
         open={detailOpen}
         venta={selectedVenta}
         loading={detailLoading}
+        canExport={canExportVenta}
+        canPrint={canPrintVenta}
         onClose={() => setDetailOpen(false)}
       />
 

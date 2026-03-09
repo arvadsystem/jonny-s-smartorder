@@ -1,7 +1,6 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './usuarios-detail-modal.css';
-
-const FOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
+import { resolveUserImageSrc } from './imageSourcePolicy';
 
 const toDisplayValue = (value, fallback = '—') => {
   if (value === null || value === undefined) return fallback;
@@ -38,8 +37,6 @@ const getTelefono = (usuario) => usuario?.empleado?.telefono || usuario?.telefon
 const getCorreo = (usuario) => usuario?.empleado?.correo || usuario?.correo;
 const getRolNombre = (usuario) => usuario?.rol?.nombre || usuario?.rol_nombre || usuario?.nombre_rol;
 
-const isValidProfileUrl = (value) => FOTO_URL_RE.test(String(value ?? '').trim());
-
 const getInitials = (fullName) => {
   const clean = String(fullName ?? '').trim();
   if (!clean) return 'U';
@@ -72,10 +69,13 @@ export default function UsuarioDetailModal({
 
   const nombreCompleto = toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre');
   const fotoPerfil = String(usuario?.foto_perfil || '').trim();
-  const showPhoto = isValidProfileUrl(fotoPerfil);
+  const resolvedPhotoSrc = resolveUserImageSrc(fotoPerfil);
+  const [failedImageSrc, setFailedImageSrc] = useState('');
   const initials = getInitials(nombreCompleto);
   const estado = detectEstado(usuario);
   const rolNombre = toDisplayValue(getRolNombre(usuario), '—');
+
+  const showPhoto = Boolean(resolvedPhotoSrc) && failedImageSrc !== resolvedPhotoSrc;
 
   const tiles = useMemo(
     () => [
@@ -170,7 +170,12 @@ export default function UsuarioDetailModal({
               <h4 className="usuarios-detail-modal__name">{nombreCompleto}</h4>
               <div className={`usuarios-detail-modal__avatar ${showPhoto ? 'has-image' : ''}`}>
                 {showPhoto ? (
-                  <img src={fotoPerfil} alt={nombreCompleto} />
+                  <img
+                    src={resolvedPhotoSrc}
+                    alt={nombreCompleto}
+                    referrerPolicy="no-referrer"
+                    onError={() => setFailedImageSrc(resolvedPhotoSrc)}
+                  />
                 ) : (
                   <span>{initials}</span>
                 )}

@@ -1,4 +1,4 @@
-
+﻿
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { personaService } from '../../../services/personasService';
 import EntityTable from '../../../components/ui/EntityTable';
@@ -8,6 +8,13 @@ import ModuleKPICards from './components/common/ModuleKPICards';
 import UsuarioCard from './components/usuarios/UsuarioCard';
 import UsuarioDetailModal from './components/usuarios/UsuarioDetailModal';
 import UsuarioModal from './components/usuarios/UsuarioModal';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
+import {
+  isUsuarioDataImageUrl,
+  isUsuarioRenderableImageValue,
+  isUsuarioUploadsImageUrl,
+} from './components/usuarios/imageSourcePolicy';
 
 const emptyForm = {
   id_empleado: '',
@@ -21,12 +28,14 @@ const createInitialFiltersDraft = () => ({
 });
 
 const IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const FOTO_PERFIL_MAX_LENGTH = 500;
-const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'Imagen demasiado grande. Use una URL o una imagen mas ligera.';
-const FOTO_PERFIL_INVALID_MESSAGE = 'URL de imagen no valida. Use una URL http/https o /uploads/...';
-const FOTO_PERFIL_FILE_ONLY_ERROR = 'No se puede guardar archivo directo; use URL de imagen o habilite almacenamiento en servidor.';
-const IMAGE_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
+const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'La imagen supera el limite de 20 MB.';
+const FOTO_PERFIL_URL_TOO_LARGE_MESSAGE = 'URL de imagen demasiado larga. Maximo 500 caracteres.';
+const FOTO_PERFIL_INVALID_MESSAGE = 'Solo se permiten imagenes JPG, PNG o WEBP.';
+const FOTO_PERFIL_INVALID_URL_MESSAGE = 'URL de imagen no valida. Use una ruta /uploads/...';
+const FOTO_PERFIL_PROCESSING_MESSAGE = 'Procesando imagen... espere un momento.';
+const FOTO_PERFIL_PROCESS_ERROR = 'No se pudo procesar la imagen seleccionada.';
 
 const createImageDraftState = (previewUrl = '') => ({
   previewUrl: String(previewUrl || ''),
@@ -38,12 +47,12 @@ const validatePhotoUrlValue = (value) => {
   const normalized = String(value ?? '').trim();
   if (!normalized) return { ok: true, value: '' };
   if (normalized.length > FOTO_PERFIL_MAX_LENGTH) {
-    return { ok: false, message: FOTO_PERFIL_TOO_LARGE_MESSAGE };
+    return { ok: false, message: FOTO_PERFIL_URL_TOO_LARGE_MESSAGE };
   }
-  if (IMAGE_URL_RE.test(normalized)) {
+  if (isUsuarioUploadsImageUrl(normalized)) {
     return { ok: true, value: normalized };
   }
-  return { ok: false, message: FOTO_PERFIL_INVALID_MESSAGE };
+  return { ok: false, message: FOTO_PERFIL_INVALID_URL_MESSAGE };
 };
 
 const normalizeListResponse = (resp) => {
@@ -117,9 +126,25 @@ const formatDateLabel = (value) => {
   return date.toLocaleDateString('es-HN', { year: 'numeric', month: 'short', day: '2-digit' });
 };
 
-const isValidUrlPhoto = (value) => IMAGE_URL_RE.test(String(value ?? '').trim());
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.readAsDataURL(file);
+  });
+
+const isValidUrlPhoto = (value) => isUsuarioUploadsImageUrl(value);
 
 export default function UsuariosTab({ openToast }) {
+  const { canAny } = usePermisos();
+  const canCreateUsuario = canAny([PERMISSIONS.USUARIOS_CREAR]);
+  const canEditUsuario = canAny([PERMISSIONS.USUARIOS_EDITAR]);
+  const canDeleteUsuario = canAny([PERMISSIONS.USUARIOS_ELIMINAR]);
+  const canResetPassword = canAny([PERMISSIONS.USUARIOS_PASSWORD_RESETEAR]);
+  const canEditFotoUsuario = canAny([PERMISSIONS.USUARIOS_FOTO_EDITAR]);
+  const canVerDetalleUsuario = canAny([PERMISSIONS.USUARIOS_VER]);
+
   const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
   }, [openToast]);
@@ -149,7 +174,6 @@ export default function UsuariosTab({ openToast }) {
   const [errors, setErrors] = useState({});
   const [formImage, setFormImage] = useState(() => createImageDraftState());
   const [formImageUrl, setFormImageUrl] = useState('');
-  const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [imageDirty, setImageDirty] = useState(false);
 
   const [detailUsuario, setDetailUsuario] = useState(null);
@@ -187,7 +211,6 @@ export default function UsuariosTab({ openToast }) {
   const requestIdRef = useRef(0);
   const catalogLoadedRef = useRef(false);
   const imageInputRef = useRef(null);
-  const objectUrlRef = useRef('');
 
   const getNombreCompleto = useCallback((u) =>
     normalizeText(u?.empleado?.nombre_completo || u?.nombre_completo || `${u?.nombre || ''} ${u?.apellido || ''}`) || 'No registrado',
@@ -238,11 +261,8 @@ export default function UsuariosTab({ openToast }) {
     [rolesCatalogo]
   );
 
-  const cleanupObjectUrl = useCallback(() => {
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = '';
-    }
+  const clearImagePicker = useCallback(() => {
+    if (imageInputRef.current) imageInputRef.current.value = '';
   }, []);
 
   const cargarCatalogos = useCallback(async () => {
@@ -331,9 +351,9 @@ export default function UsuariosTab({ openToast }) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      cleanupObjectUrl();
+      clearImagePicker();
     };
-  }, [cleanupObjectUrl]);
+  }, [clearImagePicker]);
 
   useEffect(() => {
     cargarCatalogos();
@@ -366,33 +386,31 @@ export default function UsuariosTab({ openToast }) {
     const current = usuarios.find((item) => String(item.id_usuario) === String(editId));
     if (!current) return;
 
-    cleanupObjectUrl();
     setForm({
       id_empleado: String(current?.id_empleado || current?.empleado?.id_empleado || ''),
       id_rol: String(current?.rol?.id_rol || ''),
       estado: parseBooleanField(current),
     });
     const photoValue = toImageValue(current?.foto_perfil);
-    setFormImage(createImageDraftState(photoValue));
+    const safePhotoValue = isUsuarioRenderableImageValue(photoValue) ? photoValue : '';
+    setFormImage(createImageDraftState(safePhotoValue));
     setFormImageUrl(isValidUrlPhoto(photoValue) ? photoValue : '');
-    setSelectedImageFile(null);
     setImageDirty(false);
-  }, [showModal, editId, usuarios, cleanupObjectUrl]);
+    clearImagePicker();
+  }, [showModal, editId, usuarios, clearImagePicker]);
 
   const resetFormState = useCallback(() => {
-    cleanupObjectUrl();
     setEditId(null);
     setForm(emptyForm);
     setErrors({});
     setFormImage(createImageDraftState(''));
     setFormImageUrl('');
-    setSelectedImageFile(null);
     setImageDirty(false);
     setPhotoErrorModal({ show: false, message: '' });
     setCreateCredentialsResult(null);
     setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false });
-    if (imageInputRef.current) imageInputRef.current.value = '';
-  }, [cleanupObjectUrl]);
+    clearImagePicker();
+  }, [clearImagePicker]);
 
   const validateCreate = useCallback(() => {
     const currentErrors = {};
@@ -406,15 +424,14 @@ export default function UsuariosTab({ openToast }) {
     return Object.keys(currentErrors).length === 0;
   }, [form.id_empleado, form.id_rol, selectedEmpleado, empleadosConUsuario]);
 
-  const onFormImageChange = useCallback((event) => {
+  const onFormImageChange = useCallback(async (event) => {
+    if (!canEditFotoUsuario) return;
     const input = event.target;
     const file = input?.files?.[0];
     if (!file) return;
 
     if (!IMAGE_ALLOWED_TYPES.has(file.type)) {
-      cleanupObjectUrl();
-      setSelectedImageFile(null);
-      setFormImage({ previewUrl: '', loading: false, error: 'Solo JPG, PNG o WEBP.' });
+      setFormImage({ previewUrl: '', loading: false, error: FOTO_PERFIL_INVALID_MESSAGE });
       setFormImageUrl('');
       setImageDirty(true);
       if (input) input.value = '';
@@ -422,64 +439,76 @@ export default function UsuariosTab({ openToast }) {
     }
 
     if (file.size > IMAGE_MAX_BYTES) {
-      cleanupObjectUrl();
-      setFormImage({ previewUrl: '', loading: false, error: 'La imagen supera 5 MB.' });
-      setSelectedImageFile(null);
+      setFormImage({ previewUrl: '', loading: false, error: FOTO_PERFIL_TOO_LARGE_MESSAGE });
+      setFormImageUrl('');
       setImageDirty(true);
       if (input) input.value = '';
       return;
     }
 
-    cleanupObjectUrl();
-    const objectUrl = URL.createObjectURL(file);
-    objectUrlRef.current = objectUrl;
+    setFormImage((prev) => ({ ...prev, loading: true, error: '' }));
 
-    setSelectedImageFile(file);
-    setFormImage({ previewUrl: objectUrl, loading: false, error: '' });
-    setImageDirty(true);
-    if (input) input.value = '';
-  }, [cleanupObjectUrl]);
+    try {
+      const previewUrl = await readFileAsDataUrl(file);
+      if (!previewUrl) throw new Error('EMPTY_IMAGE_PREVIEW');
+      setFormImage(createImageDraftState(previewUrl));
+      setFormImageUrl('');
+      setImageDirty(true);
+    } catch {
+      setFormImage({ previewUrl: '', loading: false, error: FOTO_PERFIL_PROCESS_ERROR });
+      setFormImageUrl('');
+      setImageDirty(true);
+    } finally {
+      if (input) input.value = '';
+    }
+  }, [canEditFotoUsuario]);
 
   const onFormImageUrlChange = useCallback((event) => {
+    if (!canEditFotoUsuario) return;
     const value = toImageValue(event.target.value);
+    const previousUrl = formImageUrl;
     setFormImageUrl(value);
     const validation = validatePhotoUrlValue(value);
 
     if (!validation.ok) {
-      setFormImage({
-        previewUrl: selectedImageFile ? objectUrlRef.current : '',
-        loading: false,
-        error: validation.message,
-      });
+      setFormImage((prev) => ({ ...prev, loading: false, error: validation.message }));
       setImageDirty(true);
       return;
     }
 
-    if (validation.value) {
-      setFormImage(createImageDraftState(validation.value));
-    } else {
-      setFormImage(createImageDraftState(selectedImageFile ? objectUrlRef.current : ''));
-    }
+    setFormImage((prev) => {
+      if (validation.value) return createImageDraftState(validation.value);
+      const currentPreview = toImageValue(prev.previewUrl);
+      if (previousUrl && currentPreview === previousUrl) return createImageDraftState('');
+      return { ...prev, error: '' };
+    });
     setImageDirty(true);
-  }, [selectedImageFile]);
+  }, [canEditFotoUsuario, formImageUrl]);
 
   const removeFormImage = useCallback(() => {
-    cleanupObjectUrl();
-    setSelectedImageFile(null);
+    if (!canEditFotoUsuario) return;
+    clearImagePicker();
     setFormImage(createImageDraftState(''));
     setFormImageUrl('');
     setImageDirty(true);
-    if (imageInputRef.current) imageInputRef.current.value = '';
-  }, [cleanupObjectUrl]);
+  }, [canEditFotoUsuario, clearImagePicker]);
 
   const buildPhotoChangePlan = useCallback((originalPhoto = '') => {
+    if (!canEditFotoUsuario) {
+      return { ok: true, shouldSend: false, value: null };
+    }
+
     const urlValidation = validatePhotoUrlValue(formImageUrl);
     if (!urlValidation.ok) {
       return { ok: false, message: urlValidation.message };
     }
 
-    if (selectedImageFile && !urlValidation.value) {
-      return { ok: false, message: FOTO_PERFIL_FILE_ONLY_ERROR };
+    if (formImage.loading) {
+      return { ok: false, message: FOTO_PERFIL_PROCESSING_MESSAGE };
+    }
+
+    if (formImage.error) {
+      return { ok: false, message: formImage.error };
     }
 
     if (!imageDirty) {
@@ -487,14 +516,19 @@ export default function UsuariosTab({ openToast }) {
     }
 
     const currentValue = toImageValue(originalPhoto);
-    const nextValue = urlValidation.value;
+    const previewValue = toImageValue(formImage.previewUrl);
+    const nextValue = urlValidation.value || previewValue;
+
+    if (nextValue && !(isUsuarioUploadsImageUrl(nextValue) || isUsuarioDataImageUrl(nextValue))) {
+      return { ok: false, message: FOTO_PERFIL_INVALID_URL_MESSAGE };
+    }
 
     if (nextValue === currentValue) {
       return { ok: true, shouldSend: false, value: null };
     }
 
     return { ok: true, shouldSend: true, value: nextValue || null };
-  }, [formImageUrl, imageDirty, selectedImageFile]);
+  }, [canEditFotoUsuario, formImageUrl, formImage.loading, formImage.error, formImage.previewUrl, imageDirty]);
 
   const copiarTempPassword = useCallback(async () => {
     const text = normalizeText(tempPasswordModal.password);
@@ -551,6 +585,8 @@ export default function UsuariosTab({ openToast }) {
   const guardar = async (event) => {
     event.preventDefault();
     if (actionLoading) return;
+    if (drawerMode === 'create' && !canCreateUsuario) return;
+    if (drawerMode === 'edit' && !canEditUsuario) return;
     setActionLoading(true);
 
     try {
@@ -638,17 +674,22 @@ export default function UsuariosTab({ openToast }) {
         await cargarUsuarios();
       }
     } catch (error) {
-      const errorMessage = error?.message || 'No se pudo guardar';
-      const isTooLargeError = Number(error?.status) === 413 || /demasiado grande/i.test(errorMessage);
-      const isFileNoUrlError = /archivo directo/i.test(errorMessage) || /URL de imagen/i.test(errorMessage);
+      const errorMessage = String(error?.message || 'No se pudo guardar');
+      const statusCode = Number(error?.status);
+      const backendMessage = errorMessage.trim();
+      const isSizeLimitError =
+        /supera el limite de\s*20\s*MB/i.test(backendMessage) ||
+        /request entity too large/i.test(backendMessage);
 
-      if (isTooLargeError || isFileNoUrlError) {
-        const targetMessage = isTooLargeError ? FOTO_PERFIL_TOO_LARGE_MESSAGE : FOTO_PERFIL_FILE_ONLY_ERROR;
+      if (statusCode === 413) {
+        const targetMessage = isSizeLimitError
+          ? FOTO_PERFIL_TOO_LARGE_MESSAGE
+          : (backendMessage || 'No se pudo guardar la foto de perfil.');
         setFormImage((prev) => ({ ...prev, error: targetMessage, loading: false }));
         openPhotoErrorModal(targetMessage);
         safeToast('ERROR', targetMessage, 'danger');
       } else {
-        safeToast('ERROR', errorMessage, 'danger');
+        safeToast('ERROR', backendMessage || 'No se pudo guardar', 'danger');
       }
     } finally {
       if (mountedRef.current) setActionLoading(false);
@@ -656,6 +697,7 @@ export default function UsuariosTab({ openToast }) {
   };
 
   const resetearPasswordTemporal = useCallback(async () => {
+    if (!canResetPassword) return;
     if (!editId || drawerMode !== 'edit' || resetPasswordLoading || actionLoading) return;
     setResetPasswordLoading(true);
 
@@ -683,9 +725,10 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current) setResetPasswordLoading(false);
     }
-  }, [editId, drawerMode, resetPasswordLoading, actionLoading, safeToast, usuarios]);
+  }, [canResetPassword, editId, drawerMode, resetPasswordLoading, actionLoading, safeToast, usuarios]);
 
   const iniciarEdicion = (usuario) => {
+    if (!canEditUsuario) return;
     setFiltersOpen(false);
     setDetailUsuario(null);
     setEditId(usuario?.id_usuario ?? null);
@@ -694,7 +737,13 @@ export default function UsuariosTab({ openToast }) {
     setShowModal(true);
   };
 
+  const openDetalle = (usuario) => {
+    if (!canVerDetalleUsuario) return;
+    setDetailUsuario(usuario);
+  };
+
   const openCreate = () => {
+    if (!canCreateUsuario) return;
     if (actionLoading || deletingId) return;
     setFiltersOpen(false);
     setDetailUsuario(null);
@@ -703,6 +752,7 @@ export default function UsuariosTab({ openToast }) {
   };
 
   const openConfirmDelete = (usuario) => {
+    if (!canDeleteUsuario) return;
     setDetailUsuario(null);
     setConfirmModal({
       show: true,
@@ -714,6 +764,7 @@ export default function UsuariosTab({ openToast }) {
   const closeConfirmDelete = () => setConfirmModal({ show: false, idToDelete: null, nombre: '' });
 
   const eliminarConfirmado = async () => {
+    if (!canDeleteUsuario) return;
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
 
@@ -821,7 +872,7 @@ export default function UsuariosTab({ openToast }) {
           onSearchChange={setSearch}
           searchPlaceholder="Buscar por nombre, usuario, sucursal, DNI, telefono o correo..."
           searchAriaLabel="Buscar usuarios" filtersOpen={filtersOpen} onOpenFilters={openFiltersDrawer}
-          createOpen={showModal} onOpenCreate={openCreate} createLabel="Nuevo"
+          createOpen={showModal} onOpenCreate={openCreate} createLabel="Nuevo" canCreate={canCreateUsuario}
           filtersControlsId="usr-filtros-drawer" formControlsId="usr-form-drawer"
           viewMode={viewMode} onViewModeChange={setViewMode} />
 
@@ -838,19 +889,19 @@ export default function UsuariosTab({ openToast }) {
             {loading ? (
               <div className="inv-catpro-loading" role="status" aria-live="polite"><span className="spinner-border spinner-border-sm" aria-hidden="true" /><span>Cargando usuarios...</span></div>
             ) : usuariosFiltrados.length === 0 ? (
-              <div className="inv-catpro-empty"><div className="inv-catpro-empty-icon"><i className="bi bi-people" /></div><div className="inv-catpro-empty-title">No hay usuarios para mostrar</div><div className="inv-catpro-empty-sub">{hasActiveFilters ? 'Prueba limpiar filtros o crea un nuevo usuario.' : 'Crea tu primer usuario.'}</div><div className="d-flex gap-2 justify-content-center flex-wrap">{hasActiveFilters ? <button type="button" className="btn btn-outline-secondary" onClick={() => { setSearch(''); clearVisualFilters(); }}>Limpiar filtros</button> : null}<button type="button" className="btn btn-primary" onClick={openCreate}>Nuevo usuario</button></div></div>
+              <div className="inv-catpro-empty"><div className="inv-catpro-empty-icon"><i className="bi bi-people" /></div><div className="inv-catpro-empty-title">No hay usuarios para mostrar</div><div className="inv-catpro-empty-sub">{hasActiveFilters ? 'Prueba limpiar filtros o crea un nuevo usuario.' : 'Crea tu primer usuario.'}</div><div className="d-flex gap-2 justify-content-center flex-wrap">{hasActiveFilters ? <button type="button" className="btn btn-outline-secondary" onClick={() => { setSearch(''); clearVisualFilters(); }}>Limpiar filtros</button> : null}{canCreateUsuario ? <button type="button" className="btn btn-primary" onClick={openCreate}>Nuevo usuario</button> : null}</div></div>
             ) : viewMode === 'table' ? (
               <EntityTable>
                 <table className="table personas-page__table">
                   <thead><tr><th scope="col">Usuario</th><th scope="col">Sucursal</th><th scope="col">DNI</th><th scope="col">Telefono</th><th scope="col">Nombre usuario</th><th scope="col">Fecha creacion</th><th scope="col">Estado</th><th scope="col">Codigo</th><th scope="col" className="text-end">Acciones</th></tr></thead>
-                  <tbody>{usuariosFiltrados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => setDetailUsuario(usuario)} title="Ver detalle" disabled={actionLoading || deleting}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title="Eliminar" disabled={actionLoading || deleting}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} /><span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span></button></div></td></tr>); })}</tbody>
+                  <tbody>{usuariosFiltrados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => openDetalle(usuario)} title="Ver detalle" disabled={actionLoading || deleting || !canVerDetalleUsuario}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting || !canEditUsuario}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title="Eliminar" disabled={actionLoading || deleting || !canDeleteUsuario}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} /><span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span></button></div></td></tr>); })}</tbody>
                 </table>
               </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
                 {usuariosFiltrados.map((usuario, idx) => (
                   <UsuarioCard key={usuario?.id_usuario ?? idx} usuario={usuario} index={(page - 1) * limit + idx}
-                    onOpenEdit={iniciarEdicion} onOpenDelete={openConfirmDelete} onOpenDetail={setDetailUsuario}
+                    onOpenEdit={iniciarEdicion} onOpenDelete={openConfirmDelete} onOpenDetail={openDetalle} canEdit={canEditUsuario} canDelete={canDeleteUsuario} canViewDetail={canVerDetalleUsuario}
                     actionLoading={actionLoading} deletingId={deletingId} />
                 ))}
               </div>
@@ -865,7 +916,7 @@ export default function UsuariosTab({ openToast }) {
         </div>
       </div>
 
-      <button type="button" className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`} onClick={openCreate} title="Nuevo" disabled={actionLoading || !!deletingId}><i className="bi bi-plus" /></button>
+      <button type="button" className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`} onClick={openCreate} title="Nuevo" disabled={actionLoading || !!deletingId || !canCreateUsuario}><i className="bi bi-plus" /></button>
       <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? 'show' : ''}`} onClick={closeAnyDrawer} aria-hidden={!isAnyDrawerOpen} />
 
       <ModuleFiltros open={filtersOpen} drawerId="usr-filtros-drawer" iconClass="bi bi-people-fill" title="Filtros de usuarios" subtitle="Estado y orden visual del listado" draft={filtersDraft}
@@ -906,6 +957,10 @@ export default function UsuariosTab({ openToast }) {
         onFormImageChange={onFormImageChange}
         onFormImageUrlChange={onFormImageUrlChange}
         onRemoveImage={removeFormImage}
+        canCreate={canCreateUsuario}
+        canEdit={canEditUsuario}
+        canResetPassword={canResetPassword}
+        canEditPhoto={canEditFotoUsuario}
       />
 
       <UsuarioDetailModal open={Boolean(detailUsuario)} usuario={detailUsuario} onClose={() => setDetailUsuario(null)} />
@@ -1007,3 +1062,5 @@ export default function UsuariosTab({ openToast }) {
     </div>
   );
 }
+
+

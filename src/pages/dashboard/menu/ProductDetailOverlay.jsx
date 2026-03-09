@@ -59,7 +59,7 @@ const shouldHideDescription = (value) => {
   return /^[A-Z]{4,}$/.test(normalized);
 };
 
-const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => {
+const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product, canAdd = true }) => {
   const [shouldRender, setShouldRender] = useState(isOpen);
   const [sauceCounts, setSauceCounts] = useState({});
   const [validationError, setValidationError] = useState('');
@@ -141,7 +141,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
   };
 
   const handleAdd = () => {
-    if (typeof onAdd !== 'function') return;
+    if (!canAdd || typeof onAdd !== 'function') return;
 
     if (hasSauceConfigError) {
       setValidationError('Este item requiere salsas, pero no tiene salsas configuradas.');
@@ -308,7 +308,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
                 Cerrar
               </button>
 
-              {typeof onAdd === 'function' ? (
+              {canAdd && typeof onAdd === 'function' ? (
                 <button
                   type="button"
                   className="btn btn-primary btn-lg menu-pos-detail-action"

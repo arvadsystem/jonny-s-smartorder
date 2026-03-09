@@ -18,6 +18,9 @@ import {
 import { GiTacos } from 'react-icons/gi';
 import '../../../assets/styles/_menu.scss';
 import { apiFetch } from '../../../services/api';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
+import CurrentOrderPanel from './CurrentOrderPanel';
 import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
 import RecetasAdmin from './RecetasAdmin';
@@ -39,6 +42,41 @@ const getCategoriaDisplayName = (nombre) => {
 
   return toDisplayTitle(nombre || 'Categoria');
 };
+
+const normalizeSauceSelection = (selection) =>
+  (Array.isArray(selection?.salsasPorUnidad) ? selection.salsasPorUnidad : [])
+    .map((item) => ({
+      id_salsa: Number(item?.id_salsa || 0),
+      nombre: String(item?.nombre || 'Salsa'),
+      cantidad: Number(item?.cantidad || 0),
+    }))
+    .filter((item) => item.id_salsa > 0 && item.cantidad > 0)
+    .sort((a, b) => Number(a.id_salsa) - Number(b.id_salsa));
+
+const serializeSauceSelection = (selection) =>
+  (Array.isArray(selection?.salsasPorUnidad) ? selection.salsasPorUnidad : [])
+    .filter((item) => Number(item?.cantidad || 0) > 0)
+    .sort((a, b) => Number(a?.id_salsa || 0) - Number(b?.id_salsa || 0))
+    .map((item) => `${Number(item?.id_salsa || 0)}:${Number(item?.cantidad || 0)}`)
+    .join('|');
+
+const getMenuItemKey = (producto, selection = null) => {
+  let baseKey = 'item-desconocido';
+
+  if (producto?.id_combo) {
+    baseKey = `combo-${producto.id_combo}`;
+  } else if (producto?.id_receta) {
+    baseKey = `receta-${producto.id_receta}`;
+  } else if (producto?.id_producto) {
+    baseKey = `producto-${producto.id_producto}`;
+  }
+
+  const saucesKey = serializeSauceSelection(selection);
+  return saucesKey ? `${baseKey}|salsas:${saucesKey}` : baseKey;
+};
+
+const getMenuItemName = (producto) =>
+  toDisplayTitle(producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre');
 
 const getCatalogItemPriority = (item) => {
   if (item?.id_combo) return 3;
@@ -178,7 +216,6 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
     if (typeof onChange === 'function') onChange(nextView);
   };
 
-  // Mantiene el mismo patron de accesibilidad por teclado usado en los switches del sistema.
   const onOptionKeyDown = (event, targetView) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -228,6 +265,12 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
 };
 
 const Menu = () => {
+  const { canAny } = usePermisos();
+  const canAddMenuProduct = canAny([PERMISSIONS.MENU_PRODUCTO_AGREGAR]);
+  const canViewMenuDetail = canAny([PERMISSIONS.MENU_DETALLE_VER, PERMISSIONS.MENU_PRODUCTO_AGREGAR]);
+  const canEditMenuOrder = canAny([PERMISSIONS.MENU_PEDIDO_EDITAR]);
+  const canConfirmMenuOrder = canAny([PERMISSIONS.MENU_PEDIDO_CONFIRMAR]);
+
   const [categorias, setCategorias] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -237,7 +280,7 @@ const Menu = () => {
   const [errorProductos, setErrorProductos] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  // Permite alternar entre POS y CRUD de recetas en la misma ruta /dashboard/menu.
+  const [orderItems, setOrderItems] = useState([]);
   const [vistaActiva, setVistaActiva] = useState('recetas');
 
   useEffect(() => {
@@ -291,15 +334,75 @@ const Menu = () => {
     cargarProductos(selected?.id_tipo_departamento ?? null);
   }, [cargarProductos, selected, vistaActiva]);
 
-  const onAgregarProducto = useCallback(() => {
-    // FASE 2: se mantiene callback solo por compatibilidad temporal del boton "+"
-    // y del overlay, mientras no exista aun el flujo real de pedido/venta.
-  }, []);
+  const onAgregarProducto = useCallback((producto, salsaSelection = null) => {
+    if (!canAddMenuProduct) return;
+
+    setOrderItems((current) => {
+      const normalizedSauces = normalizeSauceSelection(salsaSelection);
+      const nextSelection = {
+        salsasPorUnidad: normalizedSauces,
+        salsasRequeridasPorUnidad: Number(salsaSelection?.salsasRequeridasPorUnidad || 0),
+      };
+      const itemKey = getMenuItemKey(producto, nextSelection);
+      const existingIndex = current.findIndex((item) => item.itemKey === itemKey);
+
+      if (existingIndex === -1) {
+        return [
+          ...current,
+          {
+            itemKey,
+            id_producto: producto?.id_producto ?? null,
+            id_combo: producto?.id_combo ?? null,
+            id_receta: producto?.id_receta ?? null,
+            nombre: getMenuItemName(producto),
+            precio: Number(producto?.precio || 0),
+            cantidad: 1,
+            salsasPorUnidad: normalizedSauces,
+            salsasRequeridasPorUnidad: Number(salsaSelection?.salsasRequeridasPorUnidad || 0),
+          },
+        ];
+      }
+
+      return current.map((item, index) =>
+        index === existingIndex
+          ? { ...item, cantidad: item.cantidad + 1 }
+          : item
+      );
+    });
+  }, [canAddMenuProduct]);
+
+  const onIncreaseItem = useCallback((itemKey) => {
+    if (!canEditMenuOrder) return;
+
+    setOrderItems((current) =>
+      current.map((item) =>
+        item.itemKey === itemKey ? { ...item, cantidad: item.cantidad + 1 } : item
+      )
+    );
+  }, [canEditMenuOrder]);
+
+  const onDecreaseItem = useCallback((itemKey) => {
+    if (!canEditMenuOrder) return;
+
+    setOrderItems((current) =>
+      current.map((item) =>
+        item.itemKey === itemKey
+          ? { ...item, cantidad: Math.max(1, item.cantidad - 1) }
+          : item
+      )
+    );
+  }, [canEditMenuOrder]);
+
+  const onRemoveItem = useCallback((itemKey) => {
+    if (!canEditMenuOrder) return;
+    setOrderItems((current) => current.filter((item) => item.itemKey !== itemKey));
+  }, [canEditMenuOrder]);
 
   const onOpenDetail = useCallback((producto) => {
+    if (!canViewMenuDetail) return;
     setSelectedProduct(producto);
     setIsDetailOpen(true);
-  }, []);
+  }, [canViewMenuDetail]);
 
   const onCloseDetail = useCallback(() => {
     setIsDetailOpen(false);
@@ -308,6 +411,12 @@ const Menu = () => {
   const onDetailExited = useCallback(() => {
     setSelectedProduct(null);
   }, []);
+
+  const totalItems = orderItems.reduce((acc, item) => acc + Number(item?.cantidad || 0), 0);
+  const totalAmount = orderItems.reduce(
+    (acc, item) => acc + Number(item?.precio || 0) * Number(item?.cantidad || 0),
+    0
+  );
 
   return (
     <div className="container-fluid p-3">
@@ -325,6 +434,7 @@ const Menu = () => {
           </div>
         </div>
       </div>
+
       {vistaActiva === 'recetas' ? (
         <RecetasAdmin />
       ) : (
@@ -358,7 +468,6 @@ const Menu = () => {
                   onSelect={setSelected}
                 />
               )}
-
             </div>
           </div>
 
@@ -372,8 +481,21 @@ const Menu = () => {
                   loading={loadingProductos}
                   onAgregar={onAgregarProducto}
                   onOpenDetail={onOpenDetail}
+                  canAdd={canAddMenuProduct}
+                  canViewDetail={canViewMenuDetail}
                 />
               </section>
+
+              <CurrentOrderPanel
+                items={orderItems}
+                totalAmount={totalAmount}
+                totalItems={totalItems}
+                onDecrease={onDecreaseItem}
+                onIncrease={onIncreaseItem}
+                onRemove={onRemoveItem}
+                canEdit={canEditMenuOrder}
+                canConfirm={canConfirmMenuOrder}
+              />
             </div>
           )}
 
@@ -381,6 +503,7 @@ const Menu = () => {
             isOpen={isDetailOpen}
             product={selectedProduct}
             onAdd={onAgregarProducto}
+            canAdd={canAddMenuProduct}
             onClose={onCloseDetail}
             onExited={onDetailExited}
           />

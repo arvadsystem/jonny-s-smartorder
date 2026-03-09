@@ -36,7 +36,7 @@ const Login = () => {
 
       
       if (response?.usuario) {
-        login(response.usuario);
+        login(response);
       }
 
       const mustChangePassword = Boolean(response?.usuario?.must_change_password);
