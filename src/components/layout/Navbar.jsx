@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import userAvatar from '../../assets/images/logo-jonnys.png';
+import { API_URL } from '../../utils/constants';
 
 const INVENTORY_TABS = [
   { key: 'categorias', label: 'Categorias', icon: 'bi bi-tag' },
@@ -11,10 +11,6 @@ const INVENTORY_TABS = [
   { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
 ];
 
-// ==================================
-// SEGURIDAD - SUBMODULOS (BASE)
-// (Usuarios se inyecta dinámicamente solo para Super Admin)
-// ==================================
 const SECURITY_TABS_BASE = [
   { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop' },
   { key: 'password', label: 'Políticas de contraseña', icon: 'bi bi-key' },
@@ -29,12 +25,58 @@ const PERSONAS_TABS = [
   { key: 'clientes', label: 'Clientes', icon: 'bi bi-people' }
 ];
 
+const VENTAS_TABS = [
+  { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff' },
+  { key: 'caja', label: 'Caja', icon: 'bi bi-cart3' },
+  { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext' }
+];
+
 const MAX_VISIBLE_TABS = 3;
+const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
 
 const getTabFromSearch = (search, tabs, fallbackKey) => {
   const sp = new URLSearchParams(search || '');
   const current = String(sp.get('tab') || fallbackKey).toLowerCase();
   return tabs.some((tab) => tab.key === current) ? current : fallbackKey;
+};
+
+const normalizeText = (value) => String(value ?? '').trim();
+
+const getUserInitials = (value) => {
+  const clean = normalizeText(value);
+  if (!clean) return 'IN';
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+  const first = parts[0]?.charAt(0) || '';
+  const last = parts[parts.length - 1]?.charAt(0) || '';
+  return `${first}${last}`.toUpperCase() || 'IN';
+};
+
+const getApiOrigin = () => {
+  const clean = normalizeText(API_URL);
+  if (!clean) return '';
+
+  try {
+    return new URL(clean).origin;
+  } catch {
+    return clean.replace(/\/+$/, '');
+  }
+};
+
+const resolveProfilePhotoSrc = (value) => {
+  const photo = normalizeText(value);
+  if (!photo || !PHOTO_URL_RE.test(photo)) return '';
+
+  if (/^https?:\/\//i.test(photo)) return photo;
+
+  if (/^\/uploads\//i.test(photo)) {
+    const origin = getApiOrigin();
+    return origin ? `${origin}${photo}` : photo;
+  }
+
+  return '';
 };
 
 const getInventoryTabFromSearch = (search) => {
@@ -213,12 +255,17 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
 
 const NavbarTabs = ({ config }) =>
   config ? (
-    <InventoryTabsOverflow tabs={config.tabs} activeKey={config.activeKey} onGoTab={config.onGoTab} />
+    <InventoryTabsOverflow
+      tabs={config.tabs}
+      activeKey={config.activeKey}
+      onGoTab={config.onGoTab}
+    />
   ) : null;
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isGearMenuOpen, setIsGearMenuOpen] = useState(false);
+  const [failedPhotoSrc, setFailedPhotoSrc] = useState('');
   const profileMenuRef = useRef(null);
   const gearMenuRef = useRef(null);
   const navigate = useNavigate();
@@ -226,23 +273,27 @@ const Navbar = () => {
   const { user, logout } = useAuth();
 
   const userName = user?.nombre_usuario || 'Invitado';
-  const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
+  const isSuperAdmin = Number(user?.rol) === 1;
+  const userRole = isSuperAdmin ? 'Super Admin' : 'Usuario';
+  const userPhotoSrc = useMemo(() => resolveProfilePhotoSrc(user?.foto_perfil), [user?.foto_perfil]);
+  const userInitials = useMemo(() => getUserInitials(userName), [userName]);
+  const showUserPhoto = Boolean(userPhotoSrc) && failedPhotoSrc !== userPhotoSrc;
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
 
-  // ✅ SECURITY TABS dinámicos (Usuarios SOLO Super Admin)
   const securityTabs = useMemo(() => {
     const tabs = [...SECURITY_TABS_BASE];
-    if (Number(user?.rol) === 1) {
-      // Lo metemos después de Sesiones activas
+
+    if (isSuperAdmin) {
       tabs.splice(1, 0, { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people' });
     }
-    return tabs;
-  }, [user?.rol]);
 
-  // FUNCIONALIDAD: SOLO EN INVENTARIO/SEGURIDAD/PERSONAS SE MUESTRAN SUBMODULOS
+    return tabs;
+  }, [isSuperAdmin]);
+
   const isInventario = location.pathname?.startsWith('/dashboard/inventario');
   const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
   const isPersonas = location.pathname?.startsWith('/dashboard/personas');
+  const isVentas = location.pathname?.startsWith('/dashboard/ventas');
 
   const activeInventoryKey = useMemo(
     () => getInventoryTabFromSearch(location.search),
@@ -256,6 +307,11 @@ const Navbar = () => {
 
   const activePersonasKey = useMemo(
     () => getTabFromSearch(location.search, PERSONAS_TABS, 'personas'),
+    [location.search]
+  );
+
+  const activeVentasKey = useMemo(
+    () => getTabFromSearch(location.search, VENTAS_TABS, 'ventas'),
     [location.search]
   );
 
@@ -312,6 +368,10 @@ const Navbar = () => {
     navigate(`/dashboard/personas?tab=${key}`);
   }, [navigate]);
 
+  const goVentasTab = useCallback((key) => {
+    navigate(`/dashboard/ventas?tab=${key}`);
+  }, [navigate]);
+
   const moduleTabsConfig = useMemo(() => {
     if (isInventario) {
       return {
@@ -323,7 +383,7 @@ const Navbar = () => {
 
     if (isSeguridad) {
       return {
-        tabs: securityTabs, // <-- IMPORTANTE: Ahora utiliza los tabs dinámicos calculados arriba
+        tabs: securityTabs,
         activeKey: activeSecurityKey,
         onGoTab: goSeguridadTab
       };
@@ -337,18 +397,29 @@ const Navbar = () => {
       };
     }
 
+    if (isVentas) {
+      return {
+        tabs: VENTAS_TABS,
+        activeKey: activeVentasKey,
+        onGoTab: goVentasTab
+      };
+    }
+
     return null;
   }, [
     activeInventoryKey,
     activePersonasKey,
     activeSecurityKey,
+    activeVentasKey,
     goInventarioTab,
     goPersonasTab,
     goSeguridadTab,
+    goVentasTab,
     isInventario,
     isPersonas,
     isSeguridad,
-    securityTabs // <-- Añadido a las dependencias del useMemo
+    isVentas,
+    securityTabs
   ]);
 
   useEffect(() => {
@@ -455,9 +526,19 @@ const Navbar = () => {
               <h6>{userName}</h6>
               <p>{userRole}</p>
             </div>
+
             <span className="user-avatar-frame">
-              <img src={userAvatar} alt="Perfil" />
+              {showUserPhoto ? (
+                <img
+                  src={userPhotoSrc}
+                  alt={`Perfil de ${userName}`}
+                  onError={() => setFailedPhotoSrc(userPhotoSrc)}
+                />
+              ) : (
+                <span className="user-avatar-fallback">{userInitials}</span>
+              )}
             </span>
+
             <i
               className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'} user-profile-caret`}
               aria-hidden="true"
@@ -466,11 +547,22 @@ const Navbar = () => {
 
           {isOpen && (
             <div className="dropdown-menu-custom" role="menu" aria-label="Menu de usuario">
-              <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleGoProfile}>
+              <button
+                type="button"
+                className="dropdown-menu-item"
+                role="menuitem"
+                onClick={handleGoProfile}
+              >
                 <i className="bi bi-person-circle" />
                 Mi perfil
               </button>
-              <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleLogout}>
+
+              <button
+                type="button"
+                className="dropdown-menu-item"
+                role="menuitem"
+                onClick={handleLogout}
+              >
                 <i className="bi bi-box-arrow-right" />
                 Cerrar sesión
               </button>

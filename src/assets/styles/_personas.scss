@@ -260,3 +260,98 @@
     width: 100%;
   }
 }
+
+.personas-page .personas-emp-card {
+  min-height: 316px;
+}
+
+.personas-page .personas-emp-card__thumb {
+  height: 146px;
+}
+
+.personas-page .personas-emp-card__body {
+  gap: 0.25rem;
+}
+
+.personas-page .personas-emp-card__meta {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.personas-page .personas-emp-card__footer {
+  margin-top: 0.72rem;
+}
+
+.personas-page .personas-emp-card__stock-meta {
+  align-items: center;
+}
+
+.personas-page .personas-emp-card__stock-copy small {
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.personas-page .personas-emp-card__actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.42rem;
+}
+
+.personas-page .personas-emp-card__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  padding: 0.3rem 0.56rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+}
+
+.personas-page .personas-emp-card__action--danger {
+  padding: 0 !important;
+}
+
+.personas-page .personas-emp-form-image {
+  background: rgba(247, 247, 247, 0.94);
+}
+
+.personas-page .personas-emp-form-image .inv-prod-image-feedback {
+  margin-top: 0.3rem;
+}
+
+.personas-page .personas-emp-form-image .inv-prod-image-placeholder {
+  color: rgba(82, 44, 34, 0.76);
+}
+
+.personas-page .personas-emp-detail__lead {
+  text-align: left;
+}
+
+.personas-page .personas-emp-detail__lead-price {
+  font-size: clamp(1.3rem, 1.8vw, 1.8rem);
+}
+
+.personas-page .personas-emp-detail__image {
+  margin-top: 0.72rem;
+  min-height: 150px;
+}
+
+.personas-page .personas-emp-detail__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 575.98px) {
+  .personas-page .personas-emp-card__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .personas-page .personas-emp-card__action span {
+    display: none;
+  }
+}

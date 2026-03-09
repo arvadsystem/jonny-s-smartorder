@@ -1021,6 +1021,207 @@
   gap: 10px;
 }
 
+.ventas-caja-card {
+  overflow: visible;
+}
+
+.ventas-caja__header {
+  align-items: center;
+}
+
+.ventas-caja__header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(184, 104, 33, 0.12);
+  color: #9a5319;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.ventas-caja__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(360px, 0.92fr);
+  min-height: min(78vh, 880px);
+  background: linear-gradient(180deg, #fff, #faf7f2);
+}
+
+.ventas-caja-card .ventas-create-modal__catalog {
+  padding: 20px;
+}
+
+.ventas-caja-card .ventas-create-modal__products {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.ventas-caja-card .ventas-create-modal__summary {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  min-height: 100%;
+  max-height: min(78vh, 880px);
+  border-left: 1px solid rgba(157, 150, 112, 0.16);
+}
+
+.ventas-pedidos__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: rgba(82, 44, 34, 0.76);
+  font-weight: 700;
+}
+
+.ventas-pedidos__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+  gap: 18px;
+}
+
+.ventas-pedidos__lane,
+.ventas-pedidos__future-card {
+  border: 1px solid rgba(237, 235, 179, 0.78);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff, #fcfbf4);
+  box-shadow: 0 8px 18px rgba(var(--c-shadow-rgb), 0.1);
+}
+
+.ventas-pedidos__lane {
+  padding: 18px;
+  min-height: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ventas-pedidos__lane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #5d3722;
+}
+
+.ventas-pedidos__lane-head > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.02rem;
+}
+
+.ventas-pedidos__lane-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #9a5319;
+  box-shadow: 0 0 0 4px rgba(184, 104, 33, 0.12);
+}
+
+.ventas-pedidos__lane-count {
+  min-width: 38px;
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(184, 104, 33, 0.1);
+  color: #9a5319;
+  font-weight: 800;
+}
+
+.ventas-pedidos__empty {
+  flex: 1 1 auto;
+  border: 1px dashed rgba(157, 150, 112, 0.24);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px;
+  text-align: center;
+  color: rgba(82, 44, 34, 0.8);
+  background: rgba(251, 247, 241, 0.72);
+}
+
+.ventas-pedidos__empty-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.85rem;
+  color: #9a5319;
+  background: rgba(184, 104, 33, 0.1);
+}
+
+.ventas-pedidos__empty strong {
+  color: #2f1a10;
+  font-size: 1.08rem;
+}
+
+.ventas-pedidos__empty p {
+  max-width: 440px;
+  margin: 0;
+}
+
+.ventas-pedidos__future-card {
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.ventas-pedidos__future-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(77, 132, 183, 0.14);
+  color: #326993;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ventas-pedidos__future-card h3 {
+  margin: 0;
+  color: #2f1a10;
+  font-size: 1.28rem;
+  font-weight: 800;
+}
+
+.ventas-pedidos__future-card p {
+  margin: 0;
+  color: rgba(82, 44, 34, 0.76);
+}
+
+.ventas-pedidos__future-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ventas-pedidos__future-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 9px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  color: rgba(82, 44, 34, 0.88);
+  font-weight: 700;
+}
+
 @media (max-width: 1199.98px) {
   .ventas-create-modal__body {
     grid-template-columns: 1fr;
@@ -1035,6 +1236,16 @@
 
   .ventas-create-modal__summary {
     max-height: none;
+  }
+}
+
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .ventas-caja__body {
+    grid-template-columns: minmax(0, 1.28fr) minmax(320px, 0.92fr);
+  }
+
+  .ventas-caja-card .ventas-create-modal__summary {
+    max-height: min(72vh, 760px);
   }
 }
 
@@ -1058,6 +1269,26 @@
 
   .ventas-detail-modal__info-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ventas-caja__header {
+    align-items: flex-start;
+  }
+
+  .ventas-caja__body,
+  .ventas-pedidos__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ventas-caja-card .ventas-create-modal__summary {
+    position: static;
+    max-height: none;
+    border-left: 0;
+    border-top: 1px solid rgba(157, 150, 112, 0.16);
+  }
+
+  .ventas-pedidos__lane {
+    min-height: 320px;
   }
 }
 
@@ -1149,5 +1380,29 @@
 
   .ventas-detail-modal__footer-actions .btn {
     flex: 1 1 0;
+  }
+
+  .ventas-pedidos__meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ventas-caja-card .ventas-create-modal__catalog,
+  .ventas-caja-card .ventas-create-modal__summary {
+    padding: 14px;
+  }
+
+  .ventas-caja__header-badge {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .ventas-caja__body {
+    min-height: 0;
+  }
+
+  .ventas-pedidos__future-card,
+  .ventas-pedidos__lane {
+    padding: 16px;
   }
 }

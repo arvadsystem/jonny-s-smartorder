@@ -18,9 +18,9 @@ import {
 import { GiTacos } from 'react-icons/gi';
 import '../../../assets/styles/_menu.scss';
 import { apiFetch } from '../../../services/api';
-import CurrentOrderPanel from './CurrentOrderPanel';
 import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
+import RecetasAdmin from './RecetasAdmin';
 import { toDisplayTitle } from './textFormat';
 
 const normalizeCategoriaNombre = (value) =>
@@ -39,43 +39,6 @@ const getCategoriaDisplayName = (nombre) => {
 
   return toDisplayTitle(nombre || 'Categoria');
 };
-
-const getSalsaSelectionKey = (salsaSelection) => (
-  (Array.isArray(salsaSelection?.salsasPorUnidad) ? salsaSelection.salsasPorUnidad : [])
-    .filter((item) => Number(item?.cantidad || 0) > 0)
-    .sort((a, b) => Number(a?.id_salsa || 0) - Number(b?.id_salsa || 0))
-    .map((item) => `${Number(item?.id_salsa || 0)}:${Number(item?.cantidad || 0)}`)
-    .join('|')
-);
-
-const getMenuItemKey = (producto, salsaSelection = null) => {
-  let baseKey = 'item-desconocido';
-
-  if (producto?.id_combo) {
-    baseKey = `combo-${producto.id_combo}`;
-  } else if (producto?.id_receta) {
-    baseKey = `receta-${producto.id_receta}`;
-  } else if (producto?.id_producto) {
-    baseKey = `producto-${producto.id_producto}`;
-  }
-
-  const salsaKey = getSalsaSelectionKey(salsaSelection);
-  return salsaKey ? `${baseKey}|salsas:${salsaKey}` : baseKey;
-};
-
-const getMenuItemName = (producto) =>
-  toDisplayTitle(producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre');
-
-const normalizeSauceSelection = (salsaSelection) => (
-  (Array.isArray(salsaSelection?.salsasPorUnidad) ? salsaSelection.salsasPorUnidad : [])
-    .map((item) => ({
-      id_salsa: Number(item?.id_salsa || 0),
-      nombre: String(item?.nombre || 'Salsa'),
-      cantidad: Number(item?.cantidad || 0),
-    }))
-    .filter((item) => item.id_salsa > 0 && item.cantidad > 0)
-    .sort((a, b) => Number(a.id_salsa) - Number(b.id_salsa))
-);
 
 const getCatalogItemPriority = (item) => {
   if (item?.id_combo) return 3;
@@ -207,6 +170,63 @@ const CategorySelector = ({ categorias, selected, onSelect }) => (
   </div>
 );
 
+const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
+  const safeValue = value === 'pos' ? 'pos' : 'recetas';
+
+  const setView = (nextView) => {
+    if (nextView === safeValue) return;
+    if (typeof onChange === 'function') onChange(nextView);
+  };
+
+  // Mantiene el mismo patron de accesibilidad por teclado usado en los switches del sistema.
+  const onOptionKeyDown = (event, targetView) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      setView(targetView);
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setView('recetas');
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setView('pos');
+    }
+  };
+
+  return (
+    <div
+      className={`inv-cat-compact-switch menu-module-switch ${safeValue === 'pos' ? 'is-productos' : 'is-insumos'}`}
+      role="tablist"
+      aria-label="Cambiar vista de menu"
+    >
+      <span className="inv-cat-compact-switch__thumb" aria-hidden="true" />
+      <button
+        type="button"
+        role="tab"
+        aria-selected={safeValue === 'recetas'}
+        className={`inv-cat-compact-switch__option ${safeValue === 'recetas' ? 'is-active' : ''}`}
+        onClick={() => setView('recetas')}
+        onKeyDown={(event) => onOptionKeyDown(event, 'recetas')}
+      >
+        RECETAS
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={safeValue === 'pos'}
+        className={`inv-cat-compact-switch__option ${safeValue === 'pos' ? 'is-active' : ''}`}
+        onClick={() => setView('pos')}
+        onKeyDown={(event) => onOptionKeyDown(event, 'pos')}
+      >
+        MENU POS
+      </button>
+    </div>
+  );
+};
+
 const Menu = () => {
   const [categorias, setCategorias] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -217,9 +237,12 @@ const Menu = () => {
   const [errorProductos, setErrorProductos] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [orderItems, setOrderItems] = useState([]);
+  // Permite alternar entre POS y CRUD de recetas en la misma ruta /dashboard/menu.
+  const [vistaActiva, setVistaActiva] = useState('recetas');
 
   useEffect(() => {
+    if (vistaActiva !== 'pos') return undefined;
+
     const cargarCategorias = async () => {
       try {
         setLoading(true);
@@ -238,7 +261,7 @@ const Menu = () => {
     };
 
     cargarCategorias();
-  }, []);
+  }, [vistaActiva]);
 
   const cargarProductos = useCallback(async (idTipoDepartamento = null) => {
     try {
@@ -264,64 +287,13 @@ const Menu = () => {
   }, []);
 
   useEffect(() => {
+    if (vistaActiva !== 'pos') return;
     cargarProductos(selected?.id_tipo_departamento ?? null);
-  }, [cargarProductos, selected]);
+  }, [cargarProductos, selected, vistaActiva]);
 
-  const onAgregarProducto = useCallback((producto, salsaSelection = null) => {
-    setOrderItems((current) => {
-      const normalizedSauces = normalizeSauceSelection(salsaSelection);
-      const nextSelection = {
-        salsasPorUnidad: normalizedSauces,
-        salsasRequeridasPorUnidad: Number(salsaSelection?.salsasRequeridasPorUnidad || 0),
-      };
-      const itemKey = getMenuItemKey(producto, nextSelection);
-      const existingIndex = current.findIndex((item) => item.itemKey === itemKey);
-
-      if (existingIndex === -1) {
-        return [
-          ...current,
-          {
-            itemKey,
-            id_producto: producto?.id_producto ?? null,
-            id_combo: producto?.id_combo ?? null,
-            id_receta: producto?.id_receta ?? null,
-            nombre: getMenuItemName(producto),
-            precio: Number(producto?.precio || 0),
-            cantidad: 1,
-            salsasPorUnidad: normalizedSauces,
-            salsasRequeridasPorUnidad: Number(salsaSelection?.salsasRequeridasPorUnidad || 0),
-          },
-        ];
-      }
-
-      return current.map((item, index) =>
-        index === existingIndex
-          ? { ...item, cantidad: item.cantidad + 1 }
-          : item
-      );
-    });
-  }, []);
-
-  const onIncreaseItem = useCallback((itemKey) => {
-    setOrderItems((current) =>
-      current.map((item) =>
-        item.itemKey === itemKey ? { ...item, cantidad: item.cantidad + 1 } : item
-      )
-    );
-  }, []);
-
-  const onDecreaseItem = useCallback((itemKey) => {
-    setOrderItems((current) =>
-      current.map((item) =>
-        item.itemKey === itemKey
-          ? { ...item, cantidad: Math.max(1, item.cantidad - 1) }
-          : item
-      )
-    );
-  }, []);
-
-  const onRemoveItem = useCallback((itemKey) => {
-    setOrderItems((current) => current.filter((item) => item.itemKey !== itemKey));
+  const onAgregarProducto = useCallback(() => {
+    // FASE 2: se mantiene callback solo por compatibilidad temporal del boton "+"
+    // y del overlay, mientras no exista aun el flujo real de pedido/venta.
   }, []);
 
   const onOpenDetail = useCallback((producto) => {
@@ -337,78 +309,83 @@ const Menu = () => {
     setSelectedProduct(null);
   }, []);
 
-  const selectedLabel = selected
-    ? getCategoriaDisplayName(selected?.nombre_departamento)
-    : 'Todas';
-  const totalItems = orderItems.reduce((acc, item) => acc + item.cantidad, 0);
-  const totalAmount = orderItems.reduce((acc, item) => acc + (item.precio * item.cantidad), 0);
-
   return (
     <div className="container-fluid p-3">
-      <div className="card shadow-sm mb-3 inv-prod-card menu-pos-shell">
+      <div className="card shadow-sm mb-3 inv-prod-card menu-module-head">
         <div className="card-header inv-prod-header">
           <div className="inv-prod-title-wrap">
             <div className="inv-prod-title-row">
-              <i className="bi bi-shop inv-prod-title-icon" />
-              <span className="inv-prod-title">Menu POS</span>
+              <i className="bi bi-grid-1x2-fill inv-prod-title-icon" />
+              <span className="inv-prod-title">Menu</span>
             </div>
-            <div className="inv-prod-subtitle">
-              Seleccion de categorias y productos para venta rapida
-            </div>
+            <div className="inv-prod-subtitle">Administracion de recetas y vista POS en la misma pantalla</div>
           </div>
-
           <div className="inv-prod-header-actions">
-            {!loading ? (
-              <span className="inv-prod-active-filter-pill">{categorias.length} categorias</span>
-            ) : null}
+            <MenuViewSwitch value={vistaActiva} onChange={setVistaActiva} />
           </div>
-        </div>
-
-        <div className="card-body">
-          {error && <div className="alert alert-danger mb-3">{error}</div>}
-
-          {!loading && !error && (
-            <CategorySelector
-              categorias={categorias}
-              selected={selected}
-              onSelect={setSelected}
-            />
-          )}
-
         </div>
       </div>
+      {vistaActiva === 'recetas' ? (
+        <RecetasAdmin />
+      ) : (
+        <>
+          <div className="card shadow-sm mb-3 inv-prod-card menu-pos-shell">
+            <div className="card-header inv-prod-header">
+              <div className="inv-prod-title-wrap">
+                <div className="inv-prod-title-row">
+                  <i className="bi bi-shop inv-prod-title-icon" />
+                  <span className="inv-prod-title">Menu POS</span>
+                </div>
+                <div className="inv-prod-subtitle">
+                  Seleccion de categorias y productos para venta rapida
+                </div>
+              </div>
 
-      {!loading && !error && (
-        <div className="menu-pos-main-layout mt-3">
-          <section className="menu-pos-catalog-column">
-            {errorProductos && <div className="alert alert-danger">{errorProductos}</div>}
+              <div className="inv-prod-header-actions">
+                {!loading ? (
+                  <span className="inv-prod-active-filter-pill">{categorias.length} categorias</span>
+                ) : null}
+              </div>
+            </div>
 
-            <ProductoGrid
-              productos={productos}
-              loading={loadingProductos}
-              onAgregar={onAgregarProducto}
-              onOpenDetail={onOpenDetail}
-            />
-          </section>
+            <div className="card-body">
+              {error && <div className="alert alert-danger mb-3">{error}</div>}
 
-          <CurrentOrderPanel
-            items={orderItems}
-            totalAmount={totalAmount}
-            totalItems={totalItems}
-            onDecrease={onDecreaseItem}
-            onIncrease={onIncreaseItem}
-            onRemove={onRemoveItem}
+              {!loading && !error && (
+                <CategorySelector
+                  categorias={categorias}
+                  selected={selected}
+                  onSelect={setSelected}
+                />
+              )}
+
+            </div>
+          </div>
+
+          {!loading && !error && (
+            <div className="menu-pos-main-layout mt-3">
+              <section className="menu-pos-catalog-column">
+                {errorProductos && <div className="alert alert-danger">{errorProductos}</div>}
+
+                <ProductoGrid
+                  productos={productos}
+                  loading={loadingProductos}
+                  onAgregar={onAgregarProducto}
+                  onOpenDetail={onOpenDetail}
+                />
+              </section>
+            </div>
+          )}
+
+          <ProductDetailOverlay
+            isOpen={isDetailOpen}
+            product={selectedProduct}
+            onAdd={onAgregarProducto}
+            onClose={onCloseDetail}
+            onExited={onDetailExited}
           />
-        </div>
+        </>
       )}
-
-      <ProductDetailOverlay
-        isOpen={isDetailOpen}
-        product={selectedProduct}
-        onAdd={onAgregarProducto}
-        onClose={onCloseDetail}
-        onExited={onDetailExited}
-      />
     </div>
   );
 };
