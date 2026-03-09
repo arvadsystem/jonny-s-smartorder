@@ -20,6 +20,7 @@ import '../../../assets/styles/_menu.scss';
 import { apiFetch } from '../../../services/api';
 import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
+import CombosAdmin from './CombosAdmin';
 import RecetasAdmin from './RecetasAdmin';
 import { toDisplayTitle } from './textFormat';
 
@@ -170,8 +171,10 @@ const CategorySelector = ({ categorias, selected, onSelect }) => (
   </div>
 );
 
+const MENU_VIEWS = ['recetas', 'combos', 'pos'];
+
 const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
-  const safeValue = value === 'pos' ? 'pos' : 'recetas';
+  const safeValue = MENU_VIEWS.includes(value) ? value : 'recetas';
 
   const setView = (nextView) => {
     if (nextView === safeValue) return;
@@ -185,20 +188,22 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
       setView(targetView);
       return;
     }
+    const currentIndex = MENU_VIEWS.indexOf(safeValue);
+
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      setView('recetas');
+      setView(MENU_VIEWS[(currentIndex + MENU_VIEWS.length - 1) % MENU_VIEWS.length]);
       return;
     }
     if (event.key === 'ArrowRight') {
       event.preventDefault();
-      setView('pos');
+      setView(MENU_VIEWS[(currentIndex + 1) % MENU_VIEWS.length]);
     }
   };
 
   return (
     <div
-      className={`inv-cat-compact-switch menu-module-switch ${safeValue === 'pos' ? 'is-productos' : 'is-insumos'}`}
+      className={`inv-cat-compact-switch menu-module-switch menu-module-switch--triple is-${safeValue}`}
       role="tablist"
       aria-label="Cambiar vista de menu"
     >
@@ -212,6 +217,16 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
         onKeyDown={(event) => onOptionKeyDown(event, 'recetas')}
       >
         RECETAS
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={safeValue === 'combos'}
+        className={`inv-cat-compact-switch__option ${safeValue === 'combos' ? 'is-active' : ''}`}
+        onClick={() => setView('combos')}
+        onKeyDown={(event) => onOptionKeyDown(event, 'combos')}
+      >
+        COMBOS
       </button>
       <button
         type="button"
@@ -318,7 +333,7 @@ const Menu = () => {
               <i className="bi bi-grid-1x2-fill inv-prod-title-icon" />
               <span className="inv-prod-title">Menu</span>
             </div>
-            <div className="inv-prod-subtitle">Administracion de recetas y vista POS en la misma pantalla</div>
+            <div className="inv-prod-subtitle">Administracion de recetas, combos y vista POS en la misma pantalla</div>
           </div>
           <div className="inv-prod-header-actions">
             <MenuViewSwitch value={vistaActiva} onChange={setVistaActiva} />
@@ -327,6 +342,8 @@ const Menu = () => {
       </div>
       {vistaActiva === 'recetas' ? (
         <RecetasAdmin />
+      ) : vistaActiva === 'combos' ? (
+        <CombosAdmin />
       ) : (
         <>
           <div className="card shadow-sm mb-3 inv-prod-card menu-pos-shell">

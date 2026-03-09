@@ -3,13 +3,13 @@ import recetasAdminService from '../../../../services/recetasAdminService';
 import {
   defaultFilters,
   emptyForm,
+  getDriveFileIdFromUrl,
   isPublicHttpUrl,
   normalizeRecetaForForm,
   normalizeRows,
   parseBoolean,
   resolveRecetaActiva,
   sortRecetas,
-  toComparableImageKey,
   toDrivePreviewUrl,
   toNumberOrNull
 } from '../utils/recetasAdminUtils';
@@ -20,6 +20,9 @@ const validarFormulario = (form) => {
   }
   if (toNumberOrNull(form.id_menu) === null) {
     return 'id_menu es obligatorio.';
+  }
+  if (toNumberOrNull(form.id_nivel_picante) === null) {
+    return 'id_nivel_picante es obligatorio.';
   }
   if (toNumberOrNull(form.id_tipo_departamento) === null) {
     return 'id_tipo_departamento es obligatorio.';
@@ -35,6 +38,13 @@ const validarFormulario = (form) => {
   if (imageUrl && !isPublicHttpUrl(imageUrl)) {
     return 'url_imagen_publica debe iniciar con http:// o https://.';
   }
+  if (imageUrl) {
+    const isDriveUrl = /drive\.google\.com|drive\.usercontent\.google\.com|lh3\.googleusercontent\.com/i
+      .test(imageUrl);
+    if (isDriveUrl && !getDriveFileIdFromUrl(imageUrl)) {
+      return 'El enlace de Google Drive no es valido o esta incompleto.';
+    }
+  }
   return '';
 };
 
@@ -43,14 +53,13 @@ const buildPayloadBase = (form) => ({
   descripcion: String(form.descripcion || '').trim(),
   precio: Number(form.precio),
   id_menu: Number(form.id_menu),
-  id_nivel_picante:
-    String(form.id_nivel_picante || '').trim() === '' ? null : Number(form.id_nivel_picante),
+  id_nivel_picante: Number(form.id_nivel_picante),
   id_usuario: Number(form.id_usuario),
   estado: parseBoolean(form.estado),
   id_tipo_departamento: Number(form.id_tipo_departamento)
 });
 
-const toSafeFileBaseName = (value) => {
+const toSafeRecetaBaseName = (value) => {
   const sanitized = String(value || '')
     .trim()
     .toLowerCase()
@@ -68,24 +77,19 @@ const extractArchivoId = (response) => {
 };
 
 const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
-  const idUsuario = toNumberOrNull(form.id_usuario);
-  const nombreBase = toSafeFileBaseName(form.nombre_receta);
-
   const payloadArchivo = {
-    nombre_original: `${nombreBase}-url`,
-    url_publica: imageUrl,
+    nombre_original: `${toSafeRecetaBaseName(form.nombre_receta)}-url`,
+    url_publica: toDrivePreviewUrl(imageUrl),
     tipo_archivo: 'image/url',
     tamano_bytes: null,
-    id_usuario: idUsuario
+    id_usuario: toNumberOrNull(form.id_usuario)
   };
 
   const archivoResponse = await recetasAdminService.registrarArchivoReceta(payloadArchivo);
   const idArchivo = extractArchivoId(archivoResponse);
-
   if (idArchivo === null) {
-    throw new Error('No se pudo obtener id_archivo al registrar la imagen.');
+    throw new Error('No se pudo obtener id_archivo al registrar la imagen de la receta.');
   }
-
   return idArchivo;
 };
 
@@ -93,18 +97,17 @@ const buildPayload = async ({ form, editingId }) => {
   const imageUrl = String(form.url_imagen_publica || '').trim();
   const originalImageUrl = String(form.url_imagen_original || '').trim();
   const currentArchivoId = toNumberOrNull(form.id_archivo);
-  const normalizedImageUrl = toDrivePreviewUrl(imageUrl);
-  const currentImageKey = toComparableImageKey(imageUrl);
-  const originalImageKey = toComparableImageKey(originalImageUrl);
+  const didUserChangeUrl = imageUrl !== originalImageUrl;
 
   const payload = buildPayloadBase(form);
 
   // Regla: si la URL no cambia y ya hay archivo asociado, se conserva id_archivo.
+  // Si cambia, primero se registra en /archivos y se envia solo id_archivo a recetas.
   if (imageUrl) {
-    if (currentArchivoId !== null && currentImageKey && currentImageKey === originalImageKey) {
+    if (currentArchivoId !== null && !didUserChangeUrl) {
       payload.id_archivo = currentArchivoId;
     } else {
-      payload.id_archivo = await registrarArchivoDesdeUrl({ form, imageUrl: normalizedImageUrl });
+      payload.id_archivo = await registrarArchivoDesdeUrl({ form, imageUrl });
     }
   } else if (editingId && currentArchivoId !== null && originalImageUrl) {
     // Si en edicion se borra la URL, se limpia la referencia.
@@ -248,6 +251,7 @@ const useRecetasAdmin = () => {
       setEditingId(null);
       setDrawerMode('create');
       setDrawerOpen(false);
+      setCardImageErrors({});
       await cargarRecetas();
     } catch (e) {
       setError(e?.message || 'No se pudo guardar la receta.');
@@ -323,6 +327,7 @@ const useRecetasAdmin = () => {
     setFormPreviewError(false);
   }, []);
 
+  // Preview usa URL normalizada para render estable.
   const formPreviewUrl = toDrivePreviewUrl(form.url_imagen_publica);
 
   const setCardImageError = useCallback((idReceta) => {
