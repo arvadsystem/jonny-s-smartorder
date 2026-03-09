@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
 
@@ -120,6 +120,7 @@ const MovimientosTab = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [listPage, setListPage] = useState(1);
   const [tipoFiltro, setTipoFiltro] = useState('todos');
   const [sucursalFiltro, setSucursalFiltro] = useState('');
@@ -149,6 +150,7 @@ const MovimientosTab = ({
   const [createErrors, setCreateErrors] = useState({});
 
   const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
+  const kardexRequestIdRef = useRef(0);
 
   const safeToast = (title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
@@ -306,9 +308,9 @@ const MovimientosTab = ({
       id_item: itemFiltroId || undefined,
       desde: desde || undefined,
       hasta: hasta || undefined,
-      q: search.trim() || undefined
+      q: debouncedSearch || undefined
     }),
-    [almacenFiltro, desde, hasta, itemFiltroId, itemTipoFiltro, search, sucursalFiltro, tipoFiltro]
+    [almacenFiltro, debouncedSearch, desde, hasta, itemFiltroId, itemTipoFiltro, sucursalFiltro, tipoFiltro]
   );
 
   const hasActiveListadoFilters = useMemo(
@@ -372,20 +374,40 @@ const MovimientosTab = ({
   };
 
   const cargarKardex = async (request = kardexRequest) => {
+    const requestId = ++kardexRequestIdRef.current;
     setLoading(true);
     setError('');
 
     try {
       const data = await inventarioService.getKardex(request);
+      if (requestId !== kardexRequestIdRef.current) return;
       setMovimientos(Array.isArray(data) ? data : []);
     } catch (requestError) {
+      if (requestId !== kardexRequestIdRef.current) return;
       const message = requestError?.message || 'ERROR CARGANDO KARDEX';
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
+      if (requestId !== kardexRequestIdRef.current) return;
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // FIX IMPORTANTE: debounce de busqueda para no disparar requests por cada tecla en kardex.
+    if (typeof window === 'undefined') {
+      setDebouncedSearch(search.trim());
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [search]);
 
   useEffect(() => {
     if (typeof document === 'undefined' || !auxModalOpen) return undefined;
@@ -730,8 +752,8 @@ const MovimientosTab = ({
 
                         <div className="row g-3">
                           <div className="col-12">
-                            <label className="form-label mb-1">Almacen</label>
-                            <select className="form-select" value={filterDraft.id_almacen} disabled>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-almacen">Almacen</label>
+                            <select id="inv-moves-filter-almacen" className="form-select" value={filterDraft.id_almacen} disabled>
                               <option value={filterDraft.id_almacen || ''}>
                                 {lockedFilterWarehouse
                                   ? formatAlmacenOptionLabel(lockedFilterWarehouse, sucursalesMap)
@@ -741,8 +763,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Tipo</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-tipo">Tipo</label>
                             <select
+                              id="inv-moves-filter-tipo"
                               className="form-select"
                               value={filterDraft.tipo}
                               onChange={(event) =>
@@ -757,8 +780,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Item</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-item-tipo">Item</label>
                             <select
+                              id="inv-moves-filter-item-tipo"
                               className="form-select"
                               value={filterDraft.item_tipo}
                               onChange={(event) =>
@@ -776,8 +800,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Detalle de item</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-item-detalle">Detalle de item</label>
                             <select
+                              id="inv-moves-filter-item-detalle"
                               className="form-select"
                               value={filterDraft.id_item}
                               onChange={(event) =>
@@ -807,8 +832,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label mb-1">Desde</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-desde">Desde</label>
                             <input
+                              id="inv-moves-filter-desde"
                               className="form-control"
                               type="date"
                               value={filterDraft.desde}
@@ -819,8 +845,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label mb-1">Hasta</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-hasta">Hasta</label>
                             <input
+                              id="inv-moves-filter-hasta"
                               className="form-control"
                               type="date"
                               value={filterDraft.hasta}
@@ -874,6 +901,7 @@ const MovimientosTab = ({
                         className="inv-prod-drawer-close inv-ins-create-hero__close"
                         onClick={() => setShowCreateModal(false)}
                         aria-label="Cerrar nuevo movimiento"
+                        disabled={saving}
                       >
                         <i className="bi bi-x-lg" aria-hidden="true" />
                       </button>
@@ -911,8 +939,9 @@ const MovimientosTab = ({
 
                         <div className="row g-3">
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Tipo</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-tipo">Tipo</label>
                             <select
+                              id="inv-moves-create-tipo"
                               className={`form-select ${createErrors.tipo ? 'is-invalid' : ''}`}
                               value={form.tipo}
                               onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value }))}
@@ -926,8 +955,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-8">
-                            <label className="form-label mb-1">Almacen</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-almacen">Almacen</label>
                             <select
+                              id="inv-moves-create-almacen"
                               className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
                               value={form.id_almacen}
                               onChange={(event) =>
@@ -959,8 +989,9 @@ const MovimientosTab = ({
 
                         <div className="row g-3">
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Tipo de item</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-item-tipo">Tipo de item</label>
                             <select
+                              id="inv-moves-create-item-tipo"
                               className={`form-select ${createErrors.item_tipo ? 'is-invalid' : ''}`}
                               value={form.item_tipo}
                               onChange={(event) =>
@@ -979,8 +1010,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-8">
-                            <label className="form-label mb-1">Item</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-item">Item</label>
                             <select
+                              id="inv-moves-create-item"
                               className={`form-select ${createErrors.id_item ? 'is-invalid' : ''}`}
                               value={form.id_item}
                               onChange={(event) => setForm((current) => ({ ...current, id_item: event.target.value }))}
@@ -1005,8 +1037,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Cantidad</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-cantidad">Cantidad</label>
                             <input
+                              id="inv-moves-create-cantidad"
                               className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
                               type="number"
                               min={form.tipo === 'AJUSTE' ? '0' : '1'}
@@ -1025,8 +1058,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-8">
-                            <label className="form-label mb-1">Referencia</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-ref">Referencia</label>
                             <input
+                              id="inv-moves-create-ref"
                               className="form-control"
                               value={form.ref_origen}
                               onChange={(event) => setForm((current) => ({ ...current, ref_origen: event.target.value }))}
@@ -1036,8 +1070,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12">
-                            <label className="form-label mb-1">Observacion</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-observacion">Observacion</label>
                             <textarea
+                              id="inv-moves-create-observacion"
                               className="form-control"
                               rows="3"
                               value={form.descripcion}

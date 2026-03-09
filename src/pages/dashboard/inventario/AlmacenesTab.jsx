@@ -7,11 +7,14 @@ import MovimientosTab from './MovimientosTab.jsx';
 // NEW: normaliza el estado de sucursal para soportar booleans, strings y numericos.
 // WHY: `sucursales` y `almacenes` pueden traer el estado en distintos formatos segun el origen.
 // IMPACT: solo afecta labels/filtros; no modifica payloads ni persistencia.
-const parseSucursalEstado = (value) => {
+const parseBooleanEstado = (value) => {
   if (value === true || value === 'true' || value === 1 || value === '1') return true;
   if (value === false || value === 'false' || value === 0 || value === '0') return false;
   return Boolean(value);
 };
+
+const parseSucursalEstado = (value) => parseBooleanEstado(value);
+const parseAlmacenEstado = (value) => parseBooleanEstado(value);
 
 const formatSucursalOptionLabel = (sucursal, id) => {
   const safeId = String(id ?? sucursal?.id_sucursal ?? '').trim();
@@ -61,8 +64,15 @@ const buildSucursalSelectOptions = ({ activeSucursales, sucursalesMap, selectedI
 // WHY: `almacenes` no tiene columna propia de estado y la UI requiere una senal operativa sin inventar campos.
 // IMPACT: solo presentacion; el dato persistido sigue siendo `sucursal_estado`.
 const getAlmacenStatusMeta = (almacen) => {
-  const hasRealState = almacen?.sucursal_estado !== undefined && almacen?.sucursal_estado !== null;
-  if (!hasRealState) {
+  const hasAlmacenState = almacen?.estado !== undefined && almacen?.estado !== null;
+  if (hasAlmacenState) {
+    return parseAlmacenEstado(almacen?.estado)
+      ? { label: 'ACTIVO', className: 'is-active', hint: 'Estado propio del almacen' }
+      : { label: 'INACTIVO', className: 'is-inactive', hint: 'INACTIVO - no disponible para operaciones' };
+  }
+
+  const hasSucursalState = almacen?.sucursal_estado !== undefined && almacen?.sucursal_estado !== null;
+  if (!hasSucursalState) {
     return { label: 'N/D', className: 'is-unknown', hint: 'Sin estado relacionado en BD' };
   }
 
@@ -77,6 +87,81 @@ const formatMetricValue = (value) => {
   return Number.isFinite(numeric) ? String(numeric) : String(value);
 };
 
+const getAlmacenActionMeta = (almacen) => {
+  const isActivo = parseAlmacenEstado(almacen?.estado);
+  const movimientosCount = Number(almacen?.movimientos_count ?? 0);
+  const productosCount = Number(almacen?.productos_count ?? 0);
+  const insumosCount = Number(almacen?.insumos_count ?? 0);
+  const canDelete =
+    typeof almacen?.can_delete === 'boolean'
+      ? almacen.can_delete
+      : movimientosCount === 0 && productosCount === 0 && insumosCount === 0;
+
+  if (!isActivo) {
+    return {
+      action: 'reactivar',
+      label: 'Reactivar',
+      icon: 'bi bi-arrow-clockwise',
+      buttonClass: 'btn inv-prod-btn-subtle inv-warehouse-card__action',
+      title: 'Reactivar almacen'
+    };
+  }
+
+  if (canDelete) {
+    return {
+      action: 'eliminar',
+      label: 'Eliminar',
+      icon: 'bi bi-trash',
+      buttonClass: 'btn inv-prod-btn-danger-lite inv-warehouse-card__action',
+      title: 'Eliminar'
+    };
+  }
+
+  return {
+    action: 'inactivar',
+    label: 'Inactivar',
+    icon: 'bi bi-slash-circle',
+    buttonClass: 'btn inv-prod-btn-subtle inv-warehouse-card__action',
+    title: 'Inactivar'
+  };
+};
+
+const getConfirmCopyByAction = (action) => {
+  if (action === 'inactivar') {
+    return {
+      title: 'Confirmar inactivacion',
+      subtitle: 'El almacen dejara de estar disponible en listas activas.',
+      note: 'No se puede eliminar porque tiene historial o items asociados.',
+      question: 'Deseas inactivar este almacen?',
+      actionLabel: 'Inactivar',
+      actionBusyLabel: 'Inactivando...',
+      actionIcon: 'bi-slash-circle'
+    };
+  }
+
+  if (action === 'reactivar') {
+    return {
+      title: 'Confirmar reactivacion',
+      subtitle: 'El almacen volvera a estar disponible para operaciones.',
+      note: 'Puedes volver a ocultarlo inactivandolo nuevamente cuando sea necesario.',
+      question: 'Deseas reactivar este almacen?',
+      actionLabel: 'Reactivar',
+      actionBusyLabel: 'Reactivando...',
+      actionIcon: 'bi-arrow-clockwise'
+    };
+  }
+
+  return {
+    title: 'Confirmar eliminacion',
+    subtitle: 'Esta accion NO se puede deshacer.',
+    note: 'Solo se permite eliminar cuando no hay movimientos, productos ni insumos asociados.',
+    question: 'Deseas eliminar este almacen?',
+    actionLabel: 'Eliminar',
+    actionBusyLabel: 'Eliminando...',
+    actionIcon: 'bi-trash3'
+  };
+};
+
 const AlmacenesTab = ({ openToast }) => {
   const [almacenes, setAlmacenes] = useState([]);
   const [sucursales, setSucursales] = useState([]);
@@ -85,23 +170,29 @@ const AlmacenesTab = ({ openToast }) => {
   const [error, setError] = useState('');
 
   const [search, setSearch] = useState('');
+  const [showInactivos, setShowInactivos] = useState(false);
   const [selectedAlmacenId, setSelectedAlmacenId] = useState('');
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [form, setForm] = useState({ nombre: '', id_sucursal: '' });
   const [createErrors, setCreateErrors] = useState({});
+  const [savingCreate, setSavingCreate] = useState(false);
 
   const [detailId, setDetailId] = useState(null);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [editErrors, setEditErrors] = useState({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState({
     show: false,
     idToDelete: null,
-    nombre: ''
+    nombre: '',
+    action: 'eliminar',
+    counts: null
   });
   const [deletingConfirm, setDeletingConfirm] = useState(false);
+  const [resolvingActionId, setResolvingActionId] = useState(null);
   const [confirmDeleteError, setConfirmDeleteError] = useState('');
 
   const movimientosRef = useRef(null);
@@ -193,14 +284,14 @@ const AlmacenesTab = ({ openToast }) => {
     };
   };
 
-  const cargarCatalogos = async () => {
+  const cargarCatalogos = async (includeInactivos = showInactivos) => {
     setLoading(true);
     setLoadingSucursales(true);
     setError('');
 
     try {
       const [almacenesData, sucursalesData] = await Promise.all([
-        inventarioService.getAlmacenes(),
+        inventarioService.getAlmacenes({ include_inactivos: includeInactivos }),
         sucursalesService.getAll()
       ]);
 
@@ -216,12 +307,12 @@ const AlmacenesTab = ({ openToast }) => {
     }
   };
 
-  const cargarAlmacenes = async () => {
+  const cargarAlmacenes = async (includeInactivos = showInactivos) => {
     setLoading(true);
     setError('');
 
     try {
-      const data = await inventarioService.getAlmacenes();
+      const data = await inventarioService.getAlmacenes({ include_inactivos: includeInactivos });
       setAlmacenes(Array.isArray(data) ? data : []);
     } catch (fetchError) {
       const message = fetchError?.message || 'ERROR CARGANDO ALMACENES';
@@ -233,9 +324,9 @@ const AlmacenesTab = ({ openToast }) => {
   };
 
   useEffect(() => {
-    cargarCatalogos();
+    cargarCatalogos(showInactivos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [showInactivos]);
 
   useEffect(() => {
     // NEW: bloquea el scroll del body mientras un modal premium de Almacenes esta abierto.
@@ -264,32 +355,37 @@ const AlmacenesTab = ({ openToast }) => {
     setShowCreateModal(true);
   };
 
-  const closeCreate = () => {
+  const closeCreate = (force = false) => {
+    if (savingCreate && !force) return;
     setShowCreateModal(false);
     resetCreateForm();
   };
 
   const onCrear = async (event) => {
     event.preventDefault();
+    if (savingCreate) return;
     setError('');
 
     const validation = validarAlmacen(form);
     setCreateErrors(validation.errors);
     if (!validation.ok) return;
 
+    setSavingCreate(true);
     try {
       await inventarioService.crearAlmacen({
         nombre: validation.cleaned.nombre,
         id_sucursal: validation.cleaned.id_sucursal
       });
 
-      closeCreate();
+      closeCreate(true);
       await cargarAlmacenes();
       safeToast('CREADO', 'EL ALMACEN SE CREO CORRECTAMENTE.', 'success');
     } catch (requestError) {
       const message = requestError?.message || 'ERROR CREANDO ALMACEN';
       setError(message);
       safeToast('ERROR', message, 'danger');
+    } finally {
+      setSavingCreate(false);
     }
   };
 
@@ -303,7 +399,8 @@ const AlmacenesTab = ({ openToast }) => {
     });
   };
 
-  const cancelarEdicion = () => {
+  const cancelarEdicion = (force = false) => {
+    if (savingEdit && !force) return;
     setEditId(null);
     setEditForm(null);
     setEditErrors({});
@@ -311,7 +408,7 @@ const AlmacenesTab = ({ openToast }) => {
 
   const guardarEdicion = async (event) => {
     event.preventDefault();
-    if (editId === null || !editForm) return;
+    if (savingEdit || editId === null || !editForm) return;
 
     const actual = almacenes.find((item) => Number(item?.id_almacen ?? 0) === Number(editId ?? 0));
     if (!actual) {
@@ -325,44 +422,88 @@ const AlmacenesTab = ({ openToast }) => {
     if (!validation.ok) return;
 
     try {
-      const cambios = [];
+      const payload = {};
       const nombreActual = String(actual?.nombre ?? '').trim();
       const sucursalActual = Number.parseInt(String(actual?.id_sucursal ?? ''), 10);
 
-      if (validation.cleaned.nombre !== nombreActual) cambios.push(['nombre', validation.cleaned.nombre]);
+      if (validation.cleaned.nombre !== nombreActual) payload.nombre = validation.cleaned.nombre;
       if (!Number.isNaN(validation.cleaned.id_sucursal) && validation.cleaned.id_sucursal !== sucursalActual) {
-        cambios.push(['id_sucursal', validation.cleaned.id_sucursal]);
+        payload.id_sucursal = validation.cleaned.id_sucursal;
       }
 
-      if (!cambios.length) {
+      if (!Object.keys(payload).length) {
         safeToast('SIN CAMBIOS', 'NO HAY CAMBIOS PARA GUARDAR.', 'info');
         cancelarEdicion();
         return;
       }
 
-      for (const [campo, valor] of cambios) {
-        await inventarioService.actualizarAlmacenCampo(editId, campo, valor);
-      }
+      // FIX IMPORTANTE: usa actualizacion atomica para evitar estados parciales por multiples PUT.
+      setSavingEdit(true);
+      await inventarioService.actualizarAlmacen(editId, payload);
 
-      cancelarEdicion();
+      cancelarEdicion(true);
       await cargarAlmacenes();
       safeToast('ACTUALIZADO', 'EL ALMACEN SE ACTUALIZO CORRECTAMENTE.', 'success');
     } catch (requestError) {
       const message = requestError?.message || 'ERROR ACTUALIZANDO ALMACEN';
       setError(message);
       safeToast('ERROR', message, 'danger');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
-  const openConfirmDelete = (id, nombre) => {
+  const openConfirmDelete = async (almacen, preferredAction = 'auto') => {
+    const id = Number(almacen?.id_almacen ?? 0);
+    if (!id || deletingConfirm) return;
+
     setConfirmDeleteError('');
-    setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
+
+    if (preferredAction === 'reactivar') {
+      setConfirmModal({
+        show: true,
+        idToDelete: id,
+        nombre: almacen?.nombre || '',
+        action: 'reactivar',
+        counts: null
+      });
+      return;
+    }
+
+    setResolvingActionId(id);
+    try {
+      const deps = await inventarioService.getAlmacenDependencias(id);
+      const canDelete = Boolean(deps?.canDelete);
+      const counts = deps?.counts || { movimientos: 0, productos: 0, insumos: 0 };
+
+      let action = preferredAction;
+      if (action === 'auto') action = canDelete ? 'eliminar' : 'inactivar';
+
+      if (action === 'eliminar' && !canDelete) {
+        safeToast('AVISO', 'Este almacen tiene movimientos o items. Debes inactivarlo.', 'warning');
+        action = 'inactivar';
+      }
+
+      setConfirmModal({
+        show: true,
+        idToDelete: id,
+        nombre: almacen?.nombre || '',
+        action,
+        counts
+      });
+    } catch (requestError) {
+      const message = requestError?.message || 'ERROR VALIDANDO DEPENDENCIAS DEL ALMACEN';
+      setError(message);
+      safeToast('ERROR', message, 'danger');
+    } finally {
+      setResolvingActionId(null);
+    }
   };
 
   const closeConfirmDelete = () => {
     if (deletingConfirm) return;
     setConfirmDeleteError('');
-    setConfirmModal({ show: false, idToDelete: null, nombre: '' });
+    setConfirmModal({ show: false, idToDelete: null, nombre: '', action: 'eliminar', counts: null });
   };
 
   const eliminarConfirmado = async () => {
@@ -373,15 +514,35 @@ const AlmacenesTab = ({ openToast }) => {
     setConfirmDeleteError('');
 
     try {
-      await inventarioService.eliminarAlmacen(id);
+      if (confirmModal.action === 'inactivar') {
+        await inventarioService.inactivarAlmacen(id);
+      } else if (confirmModal.action === 'reactivar') {
+        await inventarioService.reactivarAlmacen(id);
+      } else {
+        await inventarioService.eliminarAlmacen(id);
+      }
+
       if (Number(detailId ?? 0) === Number(id)) setDetailId(null);
       if (Number(editId ?? 0) === Number(id)) cancelarEdicion();
       await cargarAlmacenes();
       setDeletingConfirm(false);
-      setConfirmModal({ show: false, idToDelete: null, nombre: '' });
-      safeToast('ELIMINADO', 'EL ALMACEN SE ELIMINO CORRECTAMENTE.', 'success');
+      setConfirmModal({ show: false, idToDelete: null, nombre: '', action: 'eliminar', counts: null });
+
+      if (confirmModal.action === 'inactivar') {
+        safeToast('INACTIVADO', 'EL ALMACEN SE INACTIVO CORRECTAMENTE.', 'success');
+      } else if (confirmModal.action === 'reactivar') {
+        safeToast('REACTIVADO', 'EL ALMACEN SE REACTIVO CORRECTAMENTE.', 'success');
+      } else {
+        safeToast('ELIMINADO', 'EL ALMACEN SE ELIMINO CORRECTAMENTE.', 'success');
+      }
     } catch (requestError) {
-      const message = requestError?.message || 'ERROR ELIMINANDO ALMACEN';
+      const fallbackMessage =
+        confirmModal.action === 'inactivar'
+          ? 'ERROR INACTIVANDO ALMACEN'
+          : confirmModal.action === 'reactivar'
+          ? 'ERROR REACTIVANDO ALMACEN'
+          : 'ERROR ELIMINANDO ALMACEN';
+      const message = requestError?.message || fallbackMessage;
       setDeletingConfirm(false);
       setConfirmDeleteError(message);
       setError(message);
@@ -449,8 +610,16 @@ const AlmacenesTab = ({ openToast }) => {
     if (!safeId) return null;
     return almacenes.find((almacen) => Number(almacen?.id_almacen ?? 0) === safeId) || null;
   }, [almacenes, confirmModal.idToDelete]);
+  const confirmCopy = useMemo(
+    () => getConfirmCopyByAction(confirmModal.action),
+    [confirmModal.action]
+  );
 
   const detailStatusMeta = useMemo(() => getAlmacenStatusMeta(detailAlmacen), [detailAlmacen]);
+  const detailActionMeta = useMemo(
+    () => (detailAlmacen ? getAlmacenActionMeta(detailAlmacen) : null),
+    [detailAlmacen]
+  );
 
   const detailMetrics = useMemo(() => {
     if (!detailAlmacen) return [];
@@ -503,6 +672,9 @@ const AlmacenesTab = ({ openToast }) => {
     <div className={`inv-warehouse-grid ${centeredGridClass}`.trim()}>
       {almacenesFiltrados.map((almacen, index) => {
         const statusMeta = getAlmacenStatusMeta(almacen);
+        const actionMeta = getAlmacenActionMeta(almacen);
+        const isInactivo = !parseAlmacenEstado(almacen?.estado);
+        const isResolvingAction = Number(resolvingActionId ?? 0) === Number(almacen?.id_almacen ?? 0);
         const isSelected = String(selectedAlmacenId ?? '') === String(almacen?.id_almacen ?? '');
         const highlights = [
           {
@@ -533,7 +705,7 @@ const AlmacenesTab = ({ openToast }) => {
             key={almacen.id_almacen}
             className={`inv-warehouse-card inv-anim-in ${isSelected ? 'is-selected' : ''} ${
               Number(almacen?.alertas_stock ?? 0) > 0 ? 'has-alerts' : ''
-            }`.trim()}
+            } ${isInactivo ? 'opacity-75 border border-secondary-subtle' : ''}`.trim()}
             role="button"
             tabIndex={0}
             style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
@@ -574,6 +746,11 @@ const AlmacenesTab = ({ openToast }) => {
             </div>
 
             <div className="inv-warehouse-card__body">
+              {isInactivo ? (
+                <div className="alert alert-warning py-2 mb-3" role="status">
+                  INACTIVO - no disponible para operaciones
+                </div>
+              ) : null}
               {highlights.map((item) => (
                 <div key={item.key} className={`inv-warehouse-card__fact ${item.tone}`.trim()}>
                   <span className="inv-warehouse-card__fact-icon" aria-hidden="true">
@@ -623,16 +800,16 @@ const AlmacenesTab = ({ openToast }) => {
 
                 <button
                   type="button"
-                  className="btn inv-prod-btn-danger-lite inv-warehouse-card__action"
+                  className={actionMeta.buttonClass}
                   onClick={(event) => {
                     event.stopPropagation();
-                    openConfirmDelete(almacen.id_almacen, almacen.nombre);
+                    openConfirmDelete(almacen, actionMeta.action);
                   }}
-                  title="Eliminar"
-                  disabled={deletingConfirm}
+                  title={actionMeta.title}
+                  disabled={deletingConfirm || isResolvingAction}
                 >
-                  <i className="bi bi-trash" />
-                  <span>Eliminar</span>
+                  <i className={`bi ${isResolvingAction ? 'bi-hourglass-split' : actionMeta.icon}`} />
+                  <span>{isResolvingAction ? 'Validando...' : actionMeta.label}</span>
                 </button>
               </div>
             </div>
@@ -663,6 +840,7 @@ const AlmacenesTab = ({ openToast }) => {
                         className="inv-prod-drawer-close inv-ins-create-hero__close"
                         onClick={closeCreate}
                         aria-label="Cerrar alta de almacen"
+                        disabled={savingCreate}
                       >
                         <i className="bi bi-x-lg" aria-hidden="true" />
                       </button>
@@ -702,25 +880,32 @@ const AlmacenesTab = ({ openToast }) => {
 
                         <div className="row g-3">
                           <div className="col-12">
-                            <label className="form-label mb-1">Nombre del almacen</label>
+                            <label className="form-label mb-1" htmlFor="inv-warehouse-create-nombre">
+                              Nombre del almacen
+                            </label>
                             <input
+                              id="inv-warehouse-create-nombre"
                               className={`form-control ${createErrors.nombre ? 'is-invalid' : ''}`}
                               value={form.nombre}
                               onChange={(event) => setForm((current) => ({ ...current, nombre: event.target.value }))}
                               placeholder="Ej: Bodega Norte"
+                              disabled={savingCreate}
                             />
                             {createErrors.nombre ? <div className="invalid-feedback">{createErrors.nombre}</div> : null}
                           </div>
 
                           <div className="col-12">
-                            <label className="form-label mb-1">Sucursal</label>
+                            <label className="form-label mb-1" htmlFor="inv-warehouse-create-sucursal">
+                              Sucursal
+                            </label>
                             <select
+                              id="inv-warehouse-create-sucursal"
                               className={`form-select ${createErrors.id_sucursal ? 'is-invalid' : ''}`}
                               value={form.id_sucursal}
                               onChange={(event) =>
                                 setForm((current) => ({ ...current, id_sucursal: event.target.value }))
                               }
-                              disabled={!canCreateWithCatalog}
+                              disabled={!canCreateWithCatalog || savingCreate}
                             >
                               <option value="">{loadingSucursales ? 'Cargando sucursales...' : 'Seleccione una sucursal'}</option>
                               {createSucursalOptions.map((option) => (
@@ -739,14 +924,14 @@ const AlmacenesTab = ({ openToast }) => {
                   </div>
 
                   <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
-                    <button type="button" className="btn inv-prod-btn-subtle" onClick={resetCreateForm}>
+                    <button type="button" className="btn inv-prod-btn-subtle" onClick={resetCreateForm} disabled={savingCreate}>
                       Limpiar
                     </button>
-                    <button type="button" className="btn inv-prod-btn-outline" onClick={closeCreate}>
+                    <button type="button" className="btn inv-prod-btn-outline" onClick={closeCreate} disabled={savingCreate}>
                       Cancelar
                     </button>
-                    <button type="submit" className="btn inv-prod-btn-primary" disabled={!canCreateWithCatalog}>
-                      Guardar
+                    <button type="submit" className="btn inv-prod-btn-primary" disabled={!canCreateWithCatalog || savingCreate}>
+                      {savingCreate ? 'Guardando...' : 'Guardar'}
                     </button>
                   </div>
                 </form>
@@ -810,13 +995,24 @@ const AlmacenesTab = ({ openToast }) => {
             <button type="button" className="btn btn-light" onClick={() => iniciarEdicion(detailAlmacen)}>
               Editar
             </button>
-            <button
-              type="button"
-              className="btn btn-outline-danger"
-              onClick={() => openConfirmDelete(detailAlmacen.id_almacen, detailAlmacen.nombre)}
-            >
-              Eliminar
-            </button>
+            {detailActionMeta ? (
+              <button
+                type="button"
+                className={`btn ${
+                  detailActionMeta.action === 'eliminar'
+                    ? 'btn-outline-danger'
+                    : detailActionMeta.action === 'inactivar'
+                    ? 'btn-outline-secondary'
+                    : 'btn-outline-success'
+                }`}
+                onClick={() => openConfirmDelete(detailAlmacen, detailActionMeta.action)}
+                disabled={Number(resolvingActionId ?? 0) === Number(detailAlmacen?.id_almacen ?? 0)}
+              >
+                {Number(resolvingActionId ?? 0) === Number(detailAlmacen?.id_almacen ?? 0)
+                  ? 'Validando...'
+                  : detailActionMeta.label}
+              </button>
+            ) : null}
             <button type="button" className="btn btn-primary" onClick={() => setDetailId(null)}>
               Cerrar
             </button>
@@ -847,6 +1043,7 @@ const AlmacenesTab = ({ openToast }) => {
                         className="inv-prod-drawer-close inv-ins-create-hero__close"
                         onClick={cancelarEdicion}
                         aria-label="Cerrar edicion de almacen"
+                        disabled={savingEdit}
                       >
                         <i className="bi bi-x-lg" aria-hidden="true" />
                       </button>
@@ -883,25 +1080,32 @@ const AlmacenesTab = ({ openToast }) => {
 
                         <div className="row g-3">
                           <div className="col-12">
-                            <label className="form-label mb-1">Nombre del almacen</label>
+                            <label className="form-label mb-1" htmlFor="inv-warehouse-edit-nombre">
+                              Nombre del almacen
+                            </label>
                             <input
+                              id="inv-warehouse-edit-nombre"
                               className={`form-control ${editErrors.nombre ? 'is-invalid' : ''}`}
                               value={editForm.nombre}
                               onChange={(event) => setEditForm((current) => ({ ...current, nombre: event.target.value }))}
                               placeholder="Ej: Bodega Norte"
+                              disabled={savingEdit}
                             />
                             {editErrors.nombre ? <div className="invalid-feedback">{editErrors.nombre}</div> : null}
                           </div>
 
                           <div className="col-12">
-                            <label className="form-label mb-1">Sucursal</label>
+                            <label className="form-label mb-1" htmlFor="inv-warehouse-edit-sucursal">
+                              Sucursal
+                            </label>
                             <select
+                              id="inv-warehouse-edit-sucursal"
                               className={`form-select ${editErrors.id_sucursal ? 'is-invalid' : ''}`}
                               value={editForm.id_sucursal}
                               onChange={(event) =>
                                 setEditForm((current) => ({ ...current, id_sucursal: event.target.value }))
                               }
-                              disabled={!canEditWithCatalog}
+                              disabled={!canEditWithCatalog || savingEdit}
                             >
                               <option value="">
                                 {loadingSucursales ? 'Cargando sucursales...' : 'Seleccione una sucursal'}
@@ -925,11 +1129,11 @@ const AlmacenesTab = ({ openToast }) => {
                   </div>
 
                   <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
-                    <button type="button" className="btn inv-prod-btn-outline" onClick={cancelarEdicion}>
+                    <button type="button" className="btn inv-prod-btn-outline" onClick={cancelarEdicion} disabled={savingEdit}>
                       Cancelar
                     </button>
-                    <button type="submit" className="btn inv-prod-btn-primary">
-                      Guardar cambios
+                    <button type="submit" className="btn inv-prod-btn-primary" disabled={savingEdit}>
+                      {savingEdit ? 'Guardando...' : 'Guardar cambios'}
                     </button>
                   </div>
                 </form>
@@ -942,18 +1146,21 @@ const AlmacenesTab = ({ openToast }) => {
 
   const confirmDeleteModal = confirmModal.show ? (
     <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
-      <div className="inv-pro-confirm-panel inv-pro-confirm-panel--danger" onClick={(event) => event.stopPropagation()}>
+      <div
+        className={`inv-pro-confirm-panel ${confirmModal.action === 'eliminar' ? 'inv-pro-confirm-panel--danger' : ''}`.trim()}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="inv-pro-confirm-glow" aria-hidden="true" />
 
         <div className="inv-pro-confirm-head">
           <div className="inv-pro-confirm-head-main">
             <div className="inv-pro-confirm-head-icon">
-              <i className="bi bi-trash3" aria-hidden="true" />
+              <i className={`bi ${confirmCopy.actionIcon}`} aria-hidden="true" />
             </div>
             <div className="inv-pro-confirm-head-copy">
               <div className="inv-pro-confirm-kicker">Almacenes</div>
-              <div className="inv-pro-confirm-title">Confirmar eliminacion</div>
-              <div className="inv-pro-confirm-sub">Esta accion es permanente y afecta el tablero actual.</div>
+              <div className="inv-pro-confirm-title">{confirmCopy.title}</div>
+              <div className="inv-pro-confirm-sub">{confirmCopy.subtitle}</div>
             </div>
           </div>
           <button
@@ -970,10 +1177,16 @@ const AlmacenesTab = ({ openToast }) => {
         <div className="inv-pro-confirm-body">
           <div className="inv-pro-confirm-note">
             <i className="bi bi-shield-exclamation" aria-hidden="true" />
-            <span>El almacen dejara de estar disponible para consulta y para registrar nuevos movimientos.</span>
+            <span>{confirmCopy.note}</span>
           </div>
 
-          <div className="inv-pro-confirm-question">Deseas eliminar este almacen?</div>
+          {confirmModal.counts ? (
+            <div className="small text-muted mb-2">
+              {`Dependencias: movimientos ${confirmModal.counts.movimientos}, productos ${confirmModal.counts.productos}, insumos ${confirmModal.counts.insumos}`}
+            </div>
+          ) : null}
+
+          <div className="inv-pro-confirm-question">{confirmCopy.question}</div>
 
           <div className="inv-pro-confirm-name">
             <div className="inv-pro-confirm-name-label">Registro seleccionado</div>
@@ -994,9 +1207,20 @@ const AlmacenesTab = ({ openToast }) => {
           <button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete} disabled={deletingConfirm}>
             Cancelar
           </button>
-          <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado} disabled={deletingConfirm}>
-            <i className={`bi ${deletingConfirm ? 'bi-hourglass-split' : 'bi-trash3'}`} aria-hidden="true" />
-            <span>{deletingConfirm ? 'Eliminando...' : 'Eliminar'}</span>
+          <button
+            type="button"
+            className={`btn ${
+              confirmModal.action === 'eliminar'
+                ? 'inv-pro-btn-danger'
+                : confirmModal.action === 'reactivar'
+                ? 'btn-success'
+                : 'btn-warning'
+            }`}
+            onClick={eliminarConfirmado}
+            disabled={deletingConfirm}
+          >
+            <i className={`bi ${deletingConfirm ? 'bi-hourglass-split' : confirmCopy.actionIcon}`} aria-hidden="true" />
+            <span>{deletingConfirm ? confirmCopy.actionBusyLabel : confirmCopy.actionLabel}</span>
           </button>
         </div>
       </div>
@@ -1025,6 +1249,20 @@ const AlmacenesTab = ({ openToast }) => {
                 placeholder="Buscar almacen..."
               />
             </label>
+            <div className="form-check form-switch m-0">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                role="switch"
+                id="inv-warehouse-show-inactive"
+                checked={showInactivos}
+                onChange={(event) => setShowInactivos(event.target.checked)}
+                disabled={loading}
+              />
+              <label className="form-check-label small" htmlFor="inv-warehouse-show-inactive">
+                Mostrar inactivos
+              </label>
+            </div>
             <button type="button" className="inv-prod-toolbar-btn" onClick={openCreate} disabled={!canCreateWithCatalog}>
               <i className="bi bi-plus-circle" aria-hidden="true" />
               <span>Nuevo almacen</span>

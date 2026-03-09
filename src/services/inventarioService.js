@@ -8,6 +8,18 @@ const withInactivosParam = (path, options) => {
   return `${path}${path.includes('?') ? '&' : '?'}incluir_inactivos=1`;
 };
 
+const withAlmacenesFilters = (path, options) => {
+  if (!options || typeof options !== 'object') return path;
+
+  const includeInactivos =
+    options.include_inactivos === true ||
+    options.includeInactivos === true ||
+    options.incluirInactivos === true;
+
+  if (!includeInactivos) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}include_inactivos=1`;
+};
+
 // NEW: CONSTRUYE QUERY PARAMS OPCIONALES PARA EL KARDEX FILTRADO.
 // WHY: ALMACENES NECESITA PEDIR MOVIMIENTOS POR ALMACEN O SUCURSAL SIN ROMPER LAS LLAMADAS EXISTENTES.
 // IMPACT: `GETMOVIMIENTOSINVENTARIO()` SIGUE FUNCIONANDO SIN ARGUMENTOS Y SOLO AGREGA QUERYSTRING CUANDO VIENE `OPTIONS`.
@@ -120,7 +132,7 @@ export const inventarioService = {
 
   // ===== INSUMOS =====
   getInsumos: (options) => apiFetch(withInactivosParam('/insumos', options), 'GET'),
-  getAlmacenes: () => apiFetch('/almacenes', 'GET'),
+  getAlmacenes: (options) => apiFetch(withAlmacenesFilters('/almacenes', options), 'GET'),
   crearInsumo: (data) => apiFetch('/insumos', 'POST', data),
   actualizarInsumoCampo: (id, campo, valor) =>
     apiFetch('/insumos', 'PUT', {
@@ -166,6 +178,11 @@ export const inventarioService = {
 
   // ===== ALMACENES =====
   crearAlmacen: (data) => apiFetch('/almacenes', 'POST', data),
+  actualizarAlmacen: (id, data) => apiFetch(`/almacenes/${id}`, 'PUT', data),
+  getAlmacenDependencias: (id) => apiFetch(`/almacenes/${id}/dependencias`, 'GET'),
+  inactivarAlmacen: (id, motivo) =>
+    apiFetch(`/almacenes/${id}/inactivar`, 'PATCH', motivo ? { motivo } : {}),
+  reactivarAlmacen: (id) => apiFetch(`/almacenes/${id}/reactivar`, 'PATCH', {}),
   actualizarAlmacenCampo: (id, campo, valor) =>
     apiFetch('/almacenes', 'PUT', {
       campo,
@@ -183,6 +200,8 @@ export const inventarioService = {
   getKardex: (options) => apiFetch(withKardexFilters('/kardex', options), 'GET'),
   getMovimientosInventario: (options) => apiFetch(withMovimientosFilters('/movimientos_inventario', options), 'GET'),
   crearMovimientoInventario: (data) => apiFetch('/movimientos_inventario', 'POST', data),
+  // DEPRECATED / BACKEND 405 APPEND-ONLY:
+  // Se conserva por compatibilidad; la UI no debe usar update/delete de movimientos.
   actualizarMovimientoInventarioCampo: (id, campo, valor) =>
     apiFetch('/movimientos_inventario', 'PUT', {
       campo,
