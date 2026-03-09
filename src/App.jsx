@@ -7,6 +7,7 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import Inventario from './pages/dashboard/Inventario';
 import Seguridad from "./pages/dashboard/Seguridad";
 import Perfil from "./pages/dashboard/Perfil";
+import CambioContrasena from "./pages/dashboard/CambioContrasena";
 import Personas from './pages/dashboard/Personas';
 import Sucursales from './pages/dashboard/Sucursales';
 import Ventas from './pages/dashboard/Ventas';
@@ -59,6 +60,7 @@ function App() {
           />
 
           <Route path="perfil" element={<Perfil />} />
+          <Route path="perfil/cambiar-contrasena" element={<CambioContrasena />} />
           <Route path="configuracion" element={<PaginaEnConstruccion titulo="Configuración" />} />
         </Route> {/* Cierra DashboardLayout */}
       </Route> {/* Cierra ProtectedRoute */}

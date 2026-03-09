@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { securityService } from "../../../services/securityService";
 import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
-import ConfirmButton from "../../../components/common/ConfirmButton";
+import SecurityConfirmAction from "./components/SecurityConfirmAction";
 import { fmtHN } from "../../../utils/dateTime";
 import { useAuth } from "../../../hooks/useAuth";
 import "./sesiones-ui.css";
@@ -53,7 +53,7 @@ const SesionesTabPersonal = () => {
     }
 
     try {
-      // ✅ cache-bust para que el navegador no “guarde” el GET
+      // cache-bust para evitar respuestas cacheadas del GET
       const qs = new URLSearchParams({ _ts: String(Date.now()) }).toString();
       const data = await securityService.getSesiones(qs);
       setSesiones(data?.sesiones || []);
@@ -147,7 +147,7 @@ const SesionesTabPersonal = () => {
       await securityService.cerrarSesion(id_sesion);
       await cargar({ silent: true });
     } catch (e) {
-      alert(e?.message || "No se pudo cerrar la sesion");
+      alert(e?.message || "No se pudo cerrar la sesión");
     } finally {
       setClosingId(null);
     }
@@ -170,17 +170,17 @@ const SesionesTabPersonal = () => {
   return (
     <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
       <div className="card-body p-0">
-        <div className="inv-prod-header sec-sesiones-header">
-          <div className="inv-prod-title-wrap">
-            <div className="inv-prod-title-row">
-              <i className="bi bi-shield-lock inv-prod-title-icon" />
-              <span className="inv-prod-title">Sesiones</span>
+        <div className="sec-panel-header sec-sesiones-header">
+          <div className="sec-panel-title-wrap">
+            <div className="sec-panel-title-row">
+              <i className="bi bi-shield-lock sec-panel-title-icon" />
+              <span className="sec-panel-title">Sesiones</span>
             </div>
-            <div className="inv-prod-subtitle">Monitoreo y auditoria de accesos</div>
+            <div className="sec-panel-subtitle">Monitoreo y auditoría de accesos</div>
           </div>
 
-          <div className="inv-prod-header-actions sec-sesiones-header-actions">
-            <label className="inv-ins-search sec-sesiones-search" aria-label="Buscar sesiones">
+          <div className="sec-panel-header-actions sec-sesiones-header-actions">
+            <label className="sec-toolbar-search sec-sesiones-search" aria-label="Buscar sesiones">
               <i className="bi bi-search" />
               <input
                 type="search"
@@ -190,9 +190,11 @@ const SesionesTabPersonal = () => {
               />
             </label>
 
-            <ConfirmButton
+            <SecurityConfirmAction
               className="btn btn-outline-danger"
-              confirmText="¿Cerrar todas las sesiones excepto la actual?"
+              title="CONFIRMAR CIERRE GLOBAL"
+              subtitle="Se cerrarán todas las sesiones excepto la sesión actual."
+              question="¿Deseas cerrar las demás sesiones activas?"
               onConfirm={onCerrarOtras}
               disabled={sesionesActivas.length <= 1 || closingOtras}
             >
@@ -207,31 +209,31 @@ const SesionesTabPersonal = () => {
                   Cerrar sesiones (menos la actual)
                 </>
               )}
-            </ConfirmButton>
+            </SecurityConfirmAction>
           </div>
         </div>
 
-        <div className="inv-prod-kpis sec-sesiones-kpis" aria-label="Resumen de sesiones">
-          <div className="inv-prod-kpi sec-sesiones-kpi">
-            <div className="inv-prod-kpi-content">
+        <div className="sec-kpis sec-sesiones-kpis" aria-label="Resumen de sesiones">
+          <div className="sec-kpi sec-sesiones-kpi">
+            <div className="sec-kpi-content">
               <span>Total</span>
               <strong>{sesiones.length}</strong>
             </div>
           </div>
-          <div className="inv-prod-kpi sec-sesiones-kpi is-ok">
-            <div className="inv-prod-kpi-content">
+          <div className="sec-kpi sec-sesiones-kpi is-ok">
+            <div className="sec-kpi-content">
               <span>Activas</span>
               <strong>{sesionesActivas.length}</strong>
             </div>
           </div>
-          <div className="inv-prod-kpi sec-sesiones-kpi">
-            <div className="inv-prod-kpi-content">
+          <div className="sec-kpi sec-sesiones-kpi">
+            <div className="sec-kpi-content">
               <span>Cerradas</span>
               <strong>{sesionesCerradas.length}</strong>
             </div>
           </div>
-          <div className="inv-prod-kpi sec-sesiones-kpi is-empty">
-            <div className="inv-prod-kpi-content">
+          <div className="sec-kpi sec-sesiones-kpi is-empty">
+            <div className="sec-kpi-content">
               <span>Fallidos</span>
               <strong>{sesionesFallidas.length}</strong>
             </div>
@@ -254,20 +256,20 @@ const SesionesTabPersonal = () => {
           </div>
         </div>
 
-        <div className="inv-prod-body p-3 sec-sesiones-body">
+        <div className="sec-panel-body p-3 sec-sesiones-body">
           {loading && <InlineLoader />}
           {error && <div className="alert alert-danger">{error}</div>}
 
           {!loading && !error && (
             <>
-              <div className="inv-prod-results-meta sec-sesiones-results-meta">
+              <div className="sec-results-meta sec-sesiones-results-meta">
                 <span>{sesionesFiltradas.length} resultados</span>
                 <span>Total general: {sesiones.length}</span>
                 <span className="text-muted">
-                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15s)
+                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15 s)
                 </span>
                 {segmento !== "todas" ? (
-                  <span className="inv-prod-active-filter-pill">Filtro activo</span>
+                  <span className="sec-results-pill">Filtro activo</span>
                 ) : null}
               </div>
 
@@ -282,7 +284,7 @@ const SesionesTabPersonal = () => {
                         <th>SO</th>
                         <th>IP</th>
                         <th>Inicio</th>
-                        <th>Ultima actividad</th>
+                        <th>Última actividad</th>
                         <th className="text-end">Acciones</th>
                       </tr>
                     </thead>
@@ -321,9 +323,11 @@ const SesionesTabPersonal = () => {
                             <td>{fmtDate(s.fecha_inicio)}</td>
                             <td>{fmtDate(s.ultima_actividad)}</td>
                             <td className="text-end">
-                              <ConfirmButton
+                              <SecurityConfirmAction
                                 className="btn btn-sm btn-outline-danger"
-                                confirmText="¿Cerrar esta sesion?"
+                                title="CONFIRMAR CIERRE DE SESIÓN"
+                                subtitle="La sesión seleccionada se finalizará de inmediato."
+                                question="¿Deseas cerrar esta sesión?"
                                 onConfirm={() => onCerrar(s.id_sesion)}
                                 disabled={!s.activa || closingId === s.id_sesion || esActual}
                               >
@@ -332,7 +336,7 @@ const SesionesTabPersonal = () => {
                                 ) : (
                                   "Cerrar"
                                 )}
-                              </ConfirmButton>
+                              </SecurityConfirmAction>
                             </td>
                           </tr>
                         );
@@ -403,7 +407,7 @@ const SesionesTabGlobal = () => {
       if (buscar) qs.set("buscar", buscar);
       qs.set("limit", String(PAGE_SIZE));
       qs.set("offset", String(offset));
-      qs.set("_ts", String(Date.now())); // ✅ cache-bust
+      qs.set("_ts", String(Date.now())); // cache-bust
 
       const data = await securityService.getSesionesGlobal(qs.toString());
       setRows(data?.rows || []);
@@ -425,15 +429,6 @@ const SesionesTabGlobal = () => {
     loadRef.current = load;
   });
 
-  // debounce buscar
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setOffset(0);
-      setBuscar(buscarInput.trim());
-    }, 300);
-    return () => clearTimeout(t);
-  }, [buscarInput]);
-
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -449,6 +444,12 @@ const SesionesTabGlobal = () => {
   const canPrev = offset > 0;
   const canNext = offset + rows.length < total;
   const shown = Math.min(offset + rows.length, total);
+
+  const handleBuscarInput = (value) => {
+    setBuscarInput(value);
+    setOffset(0);
+    setBuscar(value.trim());
+  };
 
   const onCerrarGlobalMenosActual = async () => {
     try {
@@ -479,48 +480,51 @@ const SesionesTabGlobal = () => {
   return (
     <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
       <div className="card-body p-0">
-        <div className="inv-prod-header sec-sesiones-header">
-          <div className="inv-prod-title-wrap">
-            <div className="inv-prod-title-row">
-              <i className="bi bi-shield-lock inv-prod-title-icon" />
-              <span className="inv-prod-title">SESIONES</span>
+        <div className="sec-panel-header sec-sesiones-header">
+          <div className="sec-panel-title-wrap">
+            <div className="sec-panel-title-row">
+              <i className="bi bi-shield-lock sec-panel-title-icon" />
+              <span className="sec-panel-title">SESIONES</span>
             </div>
-            <div className="inv-prod-subtitle">Vista Super Admin</div>
+            <div className="sec-panel-subtitle">Vista Super Admin</div>
           </div>
 
-          <div className="inv-prod-header-actions sec-sesiones-header-actions">
-            <label className="inv-ins-search sec-sesiones-search" aria-label="Buscar sesiones globales">
+          <div className="sec-panel-header-actions sec-sesiones-header-actions">
+            <label className="sec-toolbar-search sec-sesiones-search" aria-label="Buscar sesiones globales">
               <i className="bi bi-search" />
               <input
                 type="search"
                 placeholder="Buscar por usuario / nombre / IP..."
                 value={buscarInput}
-                onChange={(e) => setBuscarInput(e.target.value)}
+                onChange={(e) => handleBuscarInput(e.target.value)}
+                onInput={(e) => handleBuscarInput(e.currentTarget.value)}
               />
             </label>
 
-            <ConfirmButton
-              className="btn btn-outline-danger"
-              confirmText="¿Cerrar TODAS las sesiones activas del sistema excepto la tuya actual?"
+            <SecurityConfirmAction
+              className="btn btn-outline-danger sec-sesiones-global-btn"
+              title="CONFIRMAR CIERRE GLOBAL"
+              subtitle="Esta acción impactará sesiones activas del sistema."
+              question="¿Deseas cerrar todas las sesiones excepto la actual?"
               onConfirm={onCerrarGlobalMenosActual}
               disabled={total <= 1}
             >
               <i className="bi bi-x-circle me-2"></i>
-              Cerrar sesiones globales (menos la actual)
-            </ConfirmButton>
+              Cerrar sesiones
+            </SecurityConfirmAction>
           </div>
         </div>
 
-        <div className="inv-prod-body p-3 sec-sesiones-body">
+        <div className="sec-panel-body p-3 sec-sesiones-body">
           {loading && <InlineLoader />}
           {error && <div className="alert alert-danger">{error}</div>}
 
           {!loading && !error && (
             <>
-              <div className="inv-prod-results-meta sec-sesiones-results-meta">
+              <div className="sec-results-meta sec-sesiones-results-meta">
                 <span>Mostrando {shown} de {total}</span>
                 <span className="text-muted">
-                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15s)
+                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15 s)
                 </span>
               </div>
 
@@ -544,7 +548,9 @@ const SesionesTabGlobal = () => {
                       {rows.length === 0 && (
                         <tr>
                           <td colSpan="9" className="text-center text-muted py-4">
-                            No hay sesiones activas para el filtro.
+                            {buscar
+                              ? "No existe sesión activa para el dato ingresado."
+                              : "No hay sesiones activas para el filtro."}
                           </td>
                         </tr>
                       )}
@@ -572,9 +578,12 @@ const SesionesTabGlobal = () => {
                             <td>{fmtDate(s.fecha_inicio)}</td>
                             <td>{fmtDate(s.ultima_actividad)}</td>
                             <td className="text-end">
-                              <ConfirmButton
+                              <SecurityConfirmAction
                                 className="btn btn-sm btn-outline-danger"
-                                confirmText="¿Esta seguro de cerrar esta sesión para este usuario?"
+                                title="CONFIRMAR CIERRE DE SESIÓN"
+                                subtitle="El usuario deberá iniciar sesión nuevamente."
+                                question="¿Deseas cerrar esta sesión?"
+                                centered
                                 onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
                                 disabled={esActual || closingId === s.id_sesion}
                               >
@@ -585,7 +594,7 @@ const SesionesTabGlobal = () => {
                                 ) : (
                                   "Cerrar"
                                 )}
-                              </ConfirmButton>
+                              </SecurityConfirmAction>
                             </td>
                           </tr>
                         );
