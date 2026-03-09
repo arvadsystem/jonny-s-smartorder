@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import InlineLoader from "../../../components/common/InlineLoader";
 import SinPermiso from "../../../components/common/SinPermiso";
 import { securityService } from "../../../services/securityService";
@@ -96,16 +96,16 @@ const UsuariosTab = ({ onOpenAudit }) => {
   return (
     <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
       <div className="card-body p-0">
-        <div className="inv-prod-header sec-sesiones-header">
-          <div className="inv-prod-title-wrap">
-            <div className="inv-prod-title-row">
-              <i className="bi bi-people inv-prod-title-icon" />
-              <span className="inv-prod-title">USUARIOS</span>
+        <div className="sec-panel-header sec-sesiones-header">
+          <div className="sec-panel-title-wrap">
+            <div className="sec-panel-title-row">
+              <i className="bi bi-people sec-panel-title-icon" />
+              <span className="sec-panel-title">USUARIOS</span>
             </div>
-            <div className="inv-prod-subtitle">Listado global para auditoria y control</div>
+            <div className="sec-panel-subtitle">Listado global para auditoría y control</div>
           </div>
 
-          <div className="inv-prod-header-actions sec-audit-header-actions">
+          <div className="sec-panel-header-actions sec-audit-header-actions">
             <span className="sec-audit-chip">
               <i className="bi bi-person-lines-fill" />
               TOTAL: {total}
@@ -113,7 +113,7 @@ const UsuariosTab = ({ onOpenAudit }) => {
           </div>
         </div>
 
-        <div className="inv-prod-body p-3 sec-sesiones-body">
+        <div className="sec-panel-body p-3 sec-sesiones-body">
           <div className="row g-2 align-items-end mb-3">
             <div className="col-md-6">
               <label className="form-label">Buscar</label>
@@ -153,7 +153,7 @@ const UsuariosTab = ({ onOpenAudit }) => {
 
           {!loading && !error && (
             <>
-              <div className="inv-prod-results-meta sec-sesiones-results-meta">
+              <div className="sec-results-meta sec-sesiones-results-meta">
                 <span>Mostrando {shownCount} de {total}</span>
                 <span className="text-muted">Paginacion de 10 en 10</span>
               </div>

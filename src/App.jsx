@@ -1,4 +1,4 @@
-﻿import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
 import ForcePasswordChange from './pages/auth/ForcePasswordChange';
 import DashboardLayout from './components/layout/DashboardLayout';
@@ -7,11 +7,12 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import Inventario from './pages/dashboard/Inventario';
 import Seguridad from './pages/dashboard/Seguridad';
 import Perfil from './pages/dashboard/Perfil';
+import CambioContrasena from './pages/dashboard/CambioContrasena';
 import Personas from './pages/dashboard/Personas';
 import Sucursales from './pages/dashboard/Sucursales';
 import Ventas from './pages/dashboard/Ventas';
 import Cocina from './pages/dashboard/Cocina';
-import Parametros from './pages/dashboard/Parametros'; // Importa la pagina de Parametros/Catalogos.
+import Parametros from './pages/dashboard/Parametros';
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from './routes/RequirePerm';
 import { ROUTE_PERMISSIONS } from './utils/permissions';
@@ -24,7 +25,7 @@ const PaginaEnConstruccion = ({ titulo }) => {
   return (
     <div className="p-5 text-center">
       <h2>{titulo}</h2>
-      <p>Proximamente...</p>
+      <p>Próximamente...</p>
     </div>
   );
 };
@@ -32,12 +33,11 @@ const PaginaEnConstruccion = ({ titulo }) => {
 function App() {
   return (
     <Routes>
-      {/* 1. Ruta Publica */}
       <Route path="/" element={<Login />} />
 
-      {/* 2. RUTAS PROTEGIDAS */}
       <Route element={<ProtectedRoute />}>
         <Route path="/cambiar-password" element={<ForcePasswordChange />} />
+
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route
             index
@@ -129,11 +129,11 @@ function App() {
             }
           />
 
-          <Route path="configuracion" element={<PaginaEnConstruccion titulo="Configuracion" />} />
+          <Route path="perfil/cambiar-contrasena" element={<CambioContrasena />} />
+          <Route path="configuracion" element={<PaginaEnConstruccion titulo="Configuración" />} />
         </Route>
       </Route>
 
-      {/* 3. Comodin */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );

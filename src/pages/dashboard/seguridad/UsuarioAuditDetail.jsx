@@ -1,7 +1,7 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import InlineLoader from '../../../components/common/InlineLoader';
 import SinPermiso from '../../../components/common/SinPermiso';
-import ConfirmButton from '../../../components/common/ConfirmButton';
+import SecurityConfirmAction from "./components/SecurityConfirmAction";
 import { fmtHN } from '../../../utils/dateTime';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
@@ -248,21 +248,20 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
   return (
     <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: '#fff' }}>
       <div className="card-body p-0">
-        <div className="inv-prod-header sec-sesiones-header">
-          <div className="inv-prod-title-wrap">
-            <div className="inv-prod-title-row">
-              <i className="bi bi-person-vcard inv-prod-title-icon" />
-              <span className="inv-prod-title">AUDITORÍA DE USUARIO</span>
+        <div className="sec-panel-header sec-sesiones-header">
+          <div className="sec-panel-title-wrap">
+            <div className="sec-panel-title-row">
+              <i className="bi bi-person-vcard sec-panel-title-icon" />
+              <span className="sec-panel-title">AUDITORÍA DE USUARIO</span>
             </div>
-            <div className="inv-prod-subtitle">{fullName}</div>
+            <div className="sec-panel-subtitle">{fullName}</div>
           </div>
 
-          <div className="inv-prod-header-actions sec-audit-header-actions gap-2">
+          <div className="sec-panel-header-actions sec-audit-header-actions gap-2">
             <button type="button" className="btn btn-outline-secondary" onClick={onBack}>
               <i className="bi bi-arrow-left me-2" />
               REGRESAR A USUARIOS
             </button>
-
           </div>
         </div>
 
@@ -296,7 +295,7 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
           </button>
         </div>
 
-        <div className="inv-prod-body p-3 sec-sesiones-body">
+        <div className="sec-panel-body p-3 sec-sesiones-body">
           {error ? <div className="alert alert-danger">{error}</div> : null}
 
           {activeTab === 'perfil' && (
@@ -344,15 +343,15 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
                         <div className="value">{perfil?.correo || '—'}</div>
                       </div>
                       <div className="sec-audit-profile-item">
-                        <div className="label">Telefono</div>
+                        <div className="label">Teléfono</div>
                         <div className="value">{perfil?.telefono || '—'}</div>
                       </div>
                       <div className="sec-audit-profile-item">
-                        <div className="label">Direccion</div>
+                        <div className="label">Dirección</div>
                         <div className="value">{perfil?.direccion || '—'}</div>
                       </div>
                       <div className="sec-audit-profile-item">
-                        <div className="label">Ultimo acceso</div>
+                        <div className="label">Último acceso</div>
                         <div className="value">{fmtDate(ultimoAcceso?.fecha_hora)}</div>
                       </div>
                     </div>
@@ -385,9 +384,11 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
                 </div>
                 <div className="col-md-8 d-flex justify-content-md-end">
                   {canCloseUserSessions ? (
-                    <ConfirmButton
+                    <SecurityConfirmAction
                       className="btn btn-outline-danger mt-2 mt-md-0"
-                      confirmText="¿CONFIRMAS CERRAR TODAS LAS SESIONES ACTIVAS DE ESTE USUARIO?"
+                      title="CONFIRMAR CIERRE DE SESIONES"
+                      subtitle="Se forzará nuevo inicio de sesión para este usuario."
+                      question="¿Deseas cerrar todas las sesiones activas de este usuario?"
                       onConfirm={onCerrarSesiones}
                       disabled={closingSessions}
                     >
@@ -402,7 +403,7 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
                           CERRAR SESIONES
                         </>
                       )}
-                    </ConfirmButton>
+                    </SecurityConfirmAction>
                   ) : null}
                 </div>
               </div>
@@ -411,9 +412,9 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
 
               {!sesionesLoading && (
                 <>
-                  <div className="inv-prod-results-meta sec-sesiones-results-meta">
+                  <div className="sec-results-meta sec-sesiones-results-meta">
                     <span>Mostrando {sesionesShown} de {sesionesTotal}</span>
-                    <span className="text-muted">Actualización automática cada 15s</span>
+                    <span className="text-muted">Actualización automática cada 15 s</span>
                   </div>
 
                   <div className="sec-sesiones-table-card">
@@ -541,7 +542,7 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
 
               {!loginsLoading && (
                 <>
-                  <div className="inv-prod-results-meta sec-sesiones-results-meta">
+                  <div className="sec-results-meta sec-sesiones-results-meta">
                     <span>Mostrando {loginsShown} de {loginsTotal}</span>
                     <span className="text-muted">Orden: más reciente primero</span>
                   </div>

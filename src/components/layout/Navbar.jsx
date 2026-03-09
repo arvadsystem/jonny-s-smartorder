@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { usePermisos } from '../../context/PermisosContext';
@@ -50,7 +50,6 @@ const getTabFromSearch = (search, tabs, fallbackKey) => {
   return tabs.some((tab) => tab.key === current) ? current : fallbackKey;
 };
 
-// --- INICIO DE CONFLICTO 1 RESUELTO (Mantenemos funciones de personas + funciÃ³n de dev) ---
 const normalizeText = (value) => String(value ?? '').trim();
 
 const getUserInitials = (value) => {
@@ -97,7 +96,6 @@ const getInventoryTabFromSearch = (search, tabs, fallbackKey = 'categorias') => 
   const normalized = current === 'movimientos' ? 'almacenes' : current;
   return allowedTabs.some((tab) => tab.key === normalized) ? normalized : fallbackKey;
 };
-// --- FIN DE CONFLICTO 1 RESUELTO ---
 
 const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
   const rowRef = useRef(null);
@@ -231,7 +229,7 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
             >
               <span className="active-dot" />
               <i className="bi bi-three-dots" />
-              <span>Mas</span>
+              <span>Más</span>
               <i
                 className={`bi ${
                   moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'
@@ -268,13 +266,19 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
 
 const NavbarTabs = ({ config }) =>
   config ? (
-    <InventoryTabsOverflow tabs={config.tabs} activeKey={config.activeKey} onGoTab={config.onGoTab} />
+    <InventoryTabsOverflow
+      tabs={config.tabs}
+      activeKey={config.activeKey}
+      onGoTab={config.onGoTab}
+    />
   ) : null;
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isGearMenuOpen, setIsGearMenuOpen] = useState(false);
   const [failedPhotoSrc, setFailedPhotoSrc] = useState('');
   const profileMenuRef = useRef(null);
+  const gearMenuRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -296,14 +300,17 @@ const Navbar = () => {
     () => INVENTORY_TABS.filter((tab) => canAny(tab.required || [])),
     [canAny]
   );
+
   const visibleSecurityTabs = useMemo(
     () => SECURITY_TABS.filter((tab) => canAny(tab.required || [])),
     [canAny]
   );
+
   const visiblePersonasTabs = useMemo(
     () => PERSONAS_TABS.filter((tab) => canAny(tab.required || [])),
     [canAny]
   );
+
   const visibleVentasTabs = useMemo(
     () => VENTAS_TABS.filter((tab) => canAny(tab.required || [])),
     [canAny]
@@ -334,12 +341,28 @@ const Navbar = () => {
     [location.search, visibleVentasTabs]
   );
 
-  const closeDropdown = useCallback(() => {
+  const closeProfileDropdown = useCallback(() => {
     setIsOpen(false);
   }, []);
 
+  const closeGearDropdown = useCallback(() => {
+    setIsGearMenuOpen(false);
+  }, []);
+
   const toggleDropdown = () => {
-    setIsOpen((state) => !state);
+    setIsOpen((state) => {
+      const nextState = !state;
+      if (nextState) closeGearDropdown();
+      return nextState;
+    });
+  };
+
+  const toggleGearDropdown = () => {
+    setIsGearMenuOpen((state) => {
+      const nextState = !state;
+      if (nextState) closeProfileDropdown();
+      return nextState;
+    });
   };
 
   const handleLogout = async () => {
@@ -348,8 +371,15 @@ const Navbar = () => {
   };
 
   const handleGoProfile = () => {
-    closeDropdown();
+    closeProfileDropdown();
+    closeGearDropdown();
     navigate('/dashboard/perfil');
+  };
+
+  const handleGoChangePassword = () => {
+    closeGearDropdown();
+    closeProfileDropdown();
+    navigate('/dashboard/perfil/cambiar-contrasena');
   };
 
   const goInventarioTab = useCallback((key) => {
@@ -429,20 +459,28 @@ const Navbar = () => {
   ]);
 
   useEffect(() => {
-    closeDropdown();
-  }, [closeDropdown, location.pathname, location.search]);
+    closeProfileDropdown();
+    closeGearDropdown();
+  }, [closeGearDropdown, closeProfileDropdown, location.pathname, location.search]);
 
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!isOpen && !isGearMenuOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
-        closeDropdown();
+      if (isOpen && profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        closeProfileDropdown();
+      }
+
+      if (isGearMenuOpen && gearMenuRef.current && !gearMenuRef.current.contains(event.target)) {
+        closeGearDropdown();
       }
     };
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') closeDropdown();
+      if (event.key === 'Escape') {
+        closeProfileDropdown();
+        closeGearDropdown();
+      }
     };
 
     document.addEventListener('mousedown', handlePointerDown);
@@ -454,7 +492,7 @@ const Navbar = () => {
       document.removeEventListener('touchstart', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [closeDropdown, isOpen]);
+  }, [closeGearDropdown, closeProfileDropdown, isGearMenuOpen, isOpen]);
 
   return (
     <div className="top-navbar">
@@ -478,9 +516,37 @@ const Navbar = () => {
           <button type="button" className="navbar-icon-btn" aria-label="Notificaciones">
             <i className="bi bi-bell" />
           </button>
-          <button type="button" className="navbar-icon-btn" aria-label="Configuracion">
-            <i className="bi bi-gear" />
-          </button>
+
+          <div className="position-relative gear-dropdown-wrap" ref={gearMenuRef}>
+            <button
+              type="button"
+              className="navbar-icon-btn"
+              aria-label="Configuración"
+              aria-haspopup="menu"
+              aria-expanded={isGearMenuOpen}
+              onClick={toggleGearDropdown}
+            >
+              <i className="bi bi-gear" />
+            </button>
+
+            {isGearMenuOpen && (
+              <div
+                className="dropdown-menu-custom gear-dropdown-menu"
+                role="menu"
+                aria-label="Menú de configuración"
+              >
+                <button
+                  type="button"
+                  className="dropdown-menu-item gear-dropdown-item"
+                  role="menuitem"
+                  onClick={handleGoChangePassword}
+                >
+                  <i className="bi bi-shield-lock" />
+                  Cambiar contraseña
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className={`user-profile-container ${isOpen ? 'is-open' : ''}`} ref={profileMenuRef}>
@@ -496,6 +562,7 @@ const Navbar = () => {
               <h6>{userName}</h6>
               <p>{userRole}</p>
             </div>
+
             <span className="user-avatar-frame">
               {showUserPhoto ? (
                 <img
@@ -507,6 +574,7 @@ const Navbar = () => {
                 <span className="user-avatar-fallback">{userInitials}</span>
               )}
             </span>
+
             <i
               className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'} user-profile-caret`}
               aria-hidden="true"
@@ -516,14 +584,25 @@ const Navbar = () => {
           {isOpen && (
             <div className="dropdown-menu-custom" role="menu" aria-label="Menu de usuario">
               {canViewProfile ? (
-                <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleGoProfile}>
+                <button
+                  type="button"
+                  className="dropdown-menu-item"
+                  role="menuitem"
+                  onClick={handleGoProfile}
+                >
                   <i className="bi bi-person-circle" />
                   Mi perfil
                 </button>
               ) : null}
-              <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleLogout}>
+
+              <button
+                type="button"
+                className="dropdown-menu-item"
+                role="menuitem"
+                onClick={handleLogout}
+              >
                 <i className="bi bi-box-arrow-right" />
-                Cerrar sesion
+                Cerrar sesión
               </button>
             </div>
           )}
