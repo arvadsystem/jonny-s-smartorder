@@ -1,62 +1,6 @@
 import { memo } from 'react';
-import { FaMinus, FaPlus, FaTimes } from 'react-icons/fa';
-import { toDisplayTitle } from './textFormat';
-
-const formatMoney = (value) => `L. ${Number(value || 0).toFixed(2)}`;
-
-const getSauceSummary = (item) => (
-  (Array.isArray(item?.salsasPorUnidad) ? item.salsasPorUnidad : [])
-    .filter((sauce) => Number(sauce?.cantidad || 0) > 0)
-    .map((sauce) => {
-      const totalCount = Number(sauce.cantidad || 0) * Math.max(1, Number(item?.cantidad || 1));
-      return `${toDisplayTitle(sauce.nombre)} x${totalCount}`;
-    })
-    .join(', ')
-);
-
-const OrderLineItem = memo(({ item, onDecrease, onIncrease, onRemove }) => (
-  <article className="menu-order-item">
-    <div className="menu-order-item-copy">
-      <div className="menu-order-item-name">{toDisplayTitle(item.nombre)}</div>
-      <div className="menu-order-item-price">{formatMoney(item.precio)} c/u</div>
-      {getSauceSummary(item) ? (
-        <div className="small text-muted mt-1">Salsas: {getSauceSummary(item)}</div>
-      ) : null}
-    </div>
-
-    <div className="menu-order-item-actions">
-      <div className="menu-order-stepper" aria-label={`Cantidad de ${item.nombre}`}>
-        <button
-          type="button"
-          className="btn menu-order-stepper-btn"
-          onClick={() => onDecrease(item.itemKey)}
-          disabled={item.cantidad <= 1}
-          aria-label={`Disminuir ${item.nombre}`}
-        >
-          <FaMinus />
-        </button>
-        <span className="menu-order-stepper-value">{item.cantidad}</span>
-        <button
-          type="button"
-          className="btn menu-order-stepper-btn"
-          onClick={() => onIncrease(item.itemKey)}
-          aria-label={`Aumentar ${item.nombre}`}
-        >
-          <FaPlus />
-        </button>
-      </div>
-
-      <button
-        type="button"
-        className="btn menu-order-remove-btn"
-        onClick={() => onRemove(item.itemKey)}
-        aria-label={`Quitar ${item.nombre}`}
-      >
-        <FaTimes />
-      </button>
-    </div>
-  </article>
-));
+import CurrentOrderLineItem from './components/pos/CurrentOrderLineItem';
+import { formatMoney } from './utils/menuPosOrderUtils';
 
 const CurrentOrderPanel = ({
   items,
@@ -65,8 +9,13 @@ const CurrentOrderPanel = ({
   onDecrease,
   onIncrease,
   onRemove,
+  onConfirmOrder,
+  isSubmitting = false,
+  submitError = '',
+  submitSuccess = ''
 }) => {
   const itemLabel = totalItems === 1 ? 'item' : 'items';
+  const canConfirm = items.length > 0 && !isSubmitting;
 
   return (
     <aside className="menu-order-panel card shadow-sm inv-prod-card">
@@ -86,8 +35,8 @@ const CurrentOrderPanel = ({
         ) : (
           <div className="menu-order-list">
             {items.map((item) => (
-              <OrderLineItem
-                key={item.itemKey}
+              <CurrentOrderLineItem
+                key={item.lineKey}
                 item={item}
                 onDecrease={onDecrease}
                 onIncrease={onIncrease}
@@ -104,8 +53,23 @@ const CurrentOrderPanel = ({
           <strong className="menu-order-total-value">{formatMoney(totalAmount)}</strong>
         </div>
 
-        <button type="button" className="btn btn-primary btn-lg menu-order-confirm-btn">
-          Confirmar Pedido
+        {submitError ? <div className="alert alert-danger py-2 px-3 mb-0">{submitError}</div> : null}
+        {submitSuccess ? <div className="alert alert-success py-2 px-3 mb-0">{submitSuccess}</div> : null}
+
+        <button
+          type="button"
+          className="btn btn-primary btn-lg menu-order-confirm-btn"
+          onClick={onConfirmOrder}
+          disabled={!canConfirm}
+        >
+          {isSubmitting ? (
+            <>
+              <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+              <span>Enviando...</span>
+            </>
+          ) : (
+            'Confirmar pedido'
+          )}
         </button>
       </div>
     </aside>

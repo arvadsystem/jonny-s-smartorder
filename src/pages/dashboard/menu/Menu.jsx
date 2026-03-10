@@ -18,10 +18,12 @@ import {
 import { GiTacos } from 'react-icons/gi';
 import '../../../assets/styles/_menu.scss';
 import { apiFetch } from '../../../services/api';
+import CurrentOrderPanel from './CurrentOrderPanel';
 import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
 import CombosAdmin from './CombosAdmin';
 import RecetasAdmin from './RecetasAdmin';
+import useMenuPosOrder from './hooks/useMenuPosOrder';
 import { toDisplayTitle } from './textFormat';
 
 const normalizeCategoriaNombre = (value) =>
@@ -252,8 +254,22 @@ const Menu = () => {
   const [errorProductos, setErrorProductos] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [detailVersion, setDetailVersion] = useState(0);
   // Permite alternar entre POS y CRUD de recetas en la misma ruta /dashboard/menu.
   const [vistaActiva, setVistaActiva] = useState('recetas');
+  const {
+    items: orderItems,
+    totalItems,
+    totalAmount,
+    addConfiguredProduct,
+    increaseLineQuantity,
+    decreaseLineQuantity,
+    removeLine,
+    confirmOrder,
+    isSubmitting,
+    submitError,
+    submitSuccess
+  } = useMenuPosOrder();
 
   useEffect(() => {
     if (vistaActiva !== 'pos') return undefined;
@@ -306,21 +322,19 @@ const Menu = () => {
     cargarProductos(selected?.id_tipo_departamento ?? null);
   }, [cargarProductos, selected, vistaActiva]);
 
-  const onAgregarProducto = useCallback(() => {
-    // FASE 2: se mantiene callback solo por compatibilidad temporal del boton "+"
-    // y del overlay, mientras no exista aun el flujo real de pedido/venta.
-  }, []);
+  // Recibe producto + configuración (extras, salsas, cantidad) y lo delega al hook de orden actual.
+  const onAgregarProducto = useCallback((producto, configuracion = null) => {
+    addConfiguredProduct(producto, configuracion);
+  }, [addConfiguredProduct]);
 
   const onOpenDetail = useCallback((producto) => {
     setSelectedProduct(producto);
+    setDetailVersion((current) => current + 1);
     setIsDetailOpen(true);
   }, []);
 
   const onCloseDetail = useCallback(() => {
     setIsDetailOpen(false);
-  }, []);
-
-  const onDetailExited = useCallback(() => {
     setSelectedProduct(null);
   }, []);
 
@@ -391,15 +405,28 @@ const Menu = () => {
                   onOpenDetail={onOpenDetail}
                 />
               </section>
+
+              <CurrentOrderPanel
+                items={orderItems}
+                totalAmount={totalAmount}
+                totalItems={totalItems}
+                onDecrease={decreaseLineQuantity}
+                onIncrease={increaseLineQuantity}
+                onRemove={removeLine}
+                onConfirmOrder={confirmOrder}
+                isSubmitting={isSubmitting}
+                submitError={submitError}
+                submitSuccess={submitSuccess}
+              />
             </div>
           )}
 
           <ProductDetailOverlay
+            key={`menu-detail-${detailVersion}`}
             isOpen={isDetailOpen}
             product={selectedProduct}
             onAdd={onAgregarProducto}
             onClose={onCloseDetail}
-            onExited={onDetailExited}
           />
         </>
       )}

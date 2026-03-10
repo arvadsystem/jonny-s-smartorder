@@ -1,9 +1,15 @@
 import { memo, useEffect, useState } from 'react';
 import { FaImage, FaPlus, FaTimes } from 'react-icons/fa';
+import ProductExtrasSelector from './components/pos/ProductExtrasSelector';
+import ProductQuantityControl from './components/pos/ProductQuantityControl';
 import { resolveMenuItemImageSrc } from './menuImage';
 import { toDisplayTitle } from './textFormat';
-
-const ANIMATION_MS = 260;
+import { getProductExtraOptions } from './utils/menuPosProductConfig';
+import {
+  calculateConfiguredUnitPrice,
+  calculateLineSubtotal,
+  formatMoney
+} from './utils/menuPosOrderUtils';
 
 const getSalsaComponents = (product) => (
   Array.isArray(product?.salsas_componentes) ? product.salsas_componentes : []
@@ -59,35 +65,17 @@ const shouldHideDescription = (value) => {
   return /^[A-Z]{4,}$/.test(normalized);
 };
 
-const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => {
-  const [shouldRender, setShouldRender] = useState(isOpen);
+const ProductDetailOverlay = ({ isOpen, onAdd, onClose, product }) => {
   const [sauceCounts, setSauceCounts] = useState({});
+  const [selectedExtraIds, setSelectedExtraIds] = useState([]);
+  const [quantity, setQuantity] = useState(1);
   const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
-    if (isOpen) {
-      setShouldRender(true);
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!shouldRender || isOpen) return undefined;
-
-    const timeoutId = window.setTimeout(() => {
-      setShouldRender(false);
-      onExited?.();
-    }, ANIMATION_MS);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [isOpen, onExited, shouldRender]);
-
-  useEffect(() => {
-    if (!shouldRender) return undefined;
+    if (!isOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    }
+    document.body.style.overflow = 'hidden';
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
@@ -101,26 +89,33 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose, shouldRender]);
+  }, [isOpen, onClose]);
 
-  useEffect(() => {
-    setSauceCounts({});
-    setValidationError('');
-  }, [product?.id_combo, product?.id_producto, product?.id_receta, isOpen]);
-
-  if (!shouldRender || !product) return null;
+  if (!isOpen || !product) return null;
 
   const nombre = getDisplayName(product?.nombre_producto || product?.descripcion || 'Producto sin nombre');
-  const precio = Number(product?.precio || 0);
+  const precioBase = Number(product?.precio || 0);
   const imageSrc = resolveMenuItemImageSrc(product);
   const descripcion = product?.descripcion_producto || product?.descripcion || '';
   const descripcionVisible = shouldHideDescription(descripcion) ? '' : descripcion;
-  const shellClassName = `menu-pos-detail-overlay ${isOpen ? 'is-open' : 'is-closing'}`;
+  const shellClassName = 'menu-pos-detail-overlay is-open';
+  const extraOptions = getProductExtraOptions(product);
+  const selectedIdSet = new Set(selectedExtraIds);
+  const selectedExtras = extraOptions.filter((extra) => selectedIdSet.has(extra.id_extra));
+  const extraUnitAmount = selectedExtras.reduce(
+    (total, extra) => total + Number(extra?.precio_adicional || 0),
+    0
+  );
+  const precioUnitario = calculateConfiguredUnitPrice(precioBase, selectedExtras);
+  const subtotalConfigurado = calculateLineSubtotal(precioUnitario, quantity);
   const allowedSauces = getAllowedSauces(product);
-  const requiredSauces = calculateRequiredSauces(product, 1);
+  const requiredSaucesPerUnit = calculateRequiredSauces(product, 1);
   const requiresSauceSelection = product?.salsas_requiere_seleccion === true;
   const totalSelectedSauces = countSelectedSauces(sauceCounts);
-  const hasSauceConfigError = requiresSauceSelection && requiredSauces > 0 && allowedSauces.length === 0;
+  const hasSauceConfigError =
+    requiresSauceSelection &&
+    requiredSaucesPerUnit > 0 &&
+    allowedSauces.length === 0;
 
   const changeSauceCount = (sauceId, delta) => {
     setValidationError('');
@@ -129,7 +124,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
       const nextValue = Math.max(0, currentValue + delta);
       const currentSelectedTotal = countSelectedSauces(current);
 
-      if (delta > 0 && requiredSauces > 0 && currentSelectedTotal >= requiredSauces) {
+      if (delta > 0 && requiredSaucesPerUnit > 0 && currentSelectedTotal >= requiredSaucesPerUnit) {
         return current;
       }
 
@@ -140,6 +135,26 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
     });
   };
 
+  const toggleExtra = (extraId) => {
+    setValidationError('');
+    setSelectedExtraIds((current) => {
+      if (current.includes(extraId)) {
+        return current.filter((value) => value !== extraId);
+      }
+      return [...current, extraId];
+    });
+  };
+
+  const increaseQuantity = () => {
+    setValidationError('');
+    setQuantity((current) => Math.max(1, Number(current || 1) + 1));
+  };
+
+  const decreaseQuantity = () => {
+    setValidationError('');
+    setQuantity((current) => Math.max(1, Number(current || 1) - 1));
+  };
+
   const handleAdd = () => {
     if (typeof onAdd !== 'function') return;
 
@@ -148,8 +163,12 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
       return;
     }
 
-    if (requiresSauceSelection && requiredSauces > 0 && totalSelectedSauces !== requiredSauces) {
-      setValidationError(`Debes seleccionar ${requiredSauces} salsa(s).`);
+    if (
+      requiresSauceSelection &&
+      requiredSaucesPerUnit > 0 &&
+      totalSelectedSauces !== requiredSaucesPerUnit
+    ) {
+      setValidationError(`Debes seleccionar ${requiredSaucesPerUnit} salsa(s).`);
       return;
     }
 
@@ -162,8 +181,10 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
       .filter((sauce) => sauce.id_salsa > 0 && sauce.cantidad > 0);
 
     onAdd(product, {
+      cantidad: quantity,
+      extras: selectedExtras,
       salsasPorUnidad,
-      salsasRequeridasPorUnidad: requiredSauces
+      salsasRequeridasPorUnidad: requiredSaucesPerUnit
     });
     onClose();
   };
@@ -220,24 +241,55 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
               <h2 id="menu-pos-detail-title" className="menu-pos-detail-title">
                 {nombre}
               </h2>
-              <div className="menu-pos-detail-price">L. {precio.toFixed(2)}</div>
+              <div className="menu-pos-detail-price">{formatMoney(precioBase)}</div>
               {descripcionVisible ? (
                 <p className="menu-pos-detail-description mb-0">{descripcionVisible}</p>
               ) : null}
             </div>
 
+            <div className="menu-pos-detail-pricing">
+              <div className="menu-pos-detail-pricing-row">
+                <span>Precio base</span>
+                <strong>{formatMoney(precioBase)}</strong>
+              </div>
+              <div className="menu-pos-detail-pricing-row">
+                <span>Extras por unidad</span>
+                <strong>{formatMoney(extraUnitAmount)}</strong>
+              </div>
+              <div className="menu-pos-detail-pricing-row">
+                <span>Precio unitario</span>
+                <strong>{formatMoney(precioUnitario)}</strong>
+              </div>
+              <div className="menu-pos-detail-pricing-row is-total">
+                <span>Subtotal ({quantity})</span>
+                <strong>{formatMoney(subtotalConfigurado)}</strong>
+              </div>
+            </div>
+
+            <ProductExtrasSelector
+              extraOptions={extraOptions}
+              selectedExtraIds={selectedExtraIds}
+              onToggleExtra={toggleExtra}
+            />
+
+            <ProductQuantityControl
+              quantity={quantity}
+              onDecrease={decreaseQuantity}
+              onIncrease={increaseQuantity}
+            />
+
             {requiresSauceSelection ? (
-              <div className="border rounded-3 p-3 bg-light-subtle">
-                <div className="d-flex justify-content-between align-items-center gap-3 mb-2">
+              <section className="menu-pos-detail-section menu-pos-detail-sauces">
+                <div className="menu-pos-detail-section-head mb-2">
                   <strong>Salsas</strong>
                   <span className="small text-muted">
-                    Seleccionadas: {totalSelectedSauces}/{requiredSauces}
+                    Seleccionadas: {totalSelectedSauces}/{requiredSaucesPerUnit}
                   </span>
                 </div>
 
-                {requiredSauces > 0 ? (
+                {requiredSaucesPerUnit > 0 ? (
                   <div className="small text-muted mb-3">
-                    Debes elegir exactamente {requiredSauces} salsa(s). Puedes repetir una misma salsa.
+                    Debes elegir exactamente {requiredSaucesPerUnit} salsa(s). Puedes repetir una misma salsa.
                   </div>
                 ) : (
                   <div className="small text-muted mb-3">
@@ -250,7 +302,9 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
                     {allowedSauces.map((sauce) => {
                       const sauceId = Number(sauce?.id_salsa || 0);
                       const currentCount = Number(sauceCounts?.[sauceId] || 0);
-                      const cannotIncrease = requiredSauces > 0 && totalSelectedSauces >= requiredSauces;
+                      const cannotIncrease =
+                        requiredSaucesPerUnit > 0 &&
+                        totalSelectedSauces >= requiredSaucesPerUnit;
 
                       return (
                         <div
@@ -278,7 +332,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
                               type="button"
                               className="btn btn-outline-secondary"
                               onClick={() => changeSauceCount(sauceId, 1)}
-                              disabled={requiredSauces > 0 ? cannotIncrease : false}
+                              disabled={requiredSaucesPerUnit > 0 ? cannotIncrease : false}
                             >
                               +
                             </button>
@@ -296,7 +350,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product }) => 
                 {validationError ? (
                   <div className="alert alert-danger mt-3 mb-0">{validationError}</div>
                 ) : null}
-              </div>
+              </section>
             ) : null}
 
             <div className="menu-pos-detail-actions">

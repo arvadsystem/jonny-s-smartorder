@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { FaImage, FaPlus } from 'react-icons/fa';
 import { resolveMenuItemImageSrc } from './menuImage';
 import { toDisplayTitle } from './textFormat';
+import { requiresProductConfiguration } from './utils/menuPosProductConfig';
 
 const getDisplayName = (value) =>
   toDisplayTitle(
@@ -10,19 +11,13 @@ const getDisplayName = (value) =>
       .trim()
   );
 
-const shouldHideDescription = (value) => {
-  const normalized = String(value || '').trim();
-  if (!normalized) return true;
-  return /^[A-Z]{4,}$/.test(normalized);
-};
-
 const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
   const nombre = getDisplayName(producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre');
   const precio = Number(producto?.precio || 0);
   const imageSrc = resolveMenuItemImageSrc(producto);
   const feedbackTimeoutRef = useRef(null);
   const [isAddFeedbackOn, setIsAddFeedbackOn] = useState(false);
-  const requiresSauceSelection = producto?.salsas_requiere_seleccion === true;
+  const needsConfiguration = requiresProductConfiguration(producto);
 
   useEffect(() => {
     return () => {
@@ -47,11 +42,11 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
   const handleAgregar = (event) => {
     event.stopPropagation();
     triggerAddFeedback();
-    if (requiresSauceSelection) {
+    if (needsConfiguration) {
       onOpenDetail(producto);
       return;
     }
-    onAgregar(producto);
+    onAgregar(producto, { cantidad: 1 });
   };
 
   const handleKeyDown = (event) => {
