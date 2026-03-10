@@ -8,13 +8,11 @@ import VentaDetalleModal from './components/VentaDetalleModal';
 import VentaOverviewView from './components/VentaOverviewView';
 import VentasToast from './components/VentasToast';
 import { useVentas } from './hooks/useVentas';
-import { PERMISSIONS, VENTAS_TAB_PERMISSIONS } from '../../../utils/permissions';
+import { getAllowedTabs, MODULE_PRIMARY_PERMISSION, PERMISSIONS } from '../../../utils/permissions';
 import './styles/ventas.css';
 
-const VENTAS_TAB_KEYS = ['ventas', 'caja', 'pedidos'];
-
 export default function VentasPage() {
-  const { canAny, loading: permisosLoading } = usePermisos();
+  const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
   const {
     ventas,
     categorias,
@@ -38,11 +36,8 @@ export default function VentasPage() {
   const [selectedVenta, setSelectedVenta] = useState(null);
 
   const allowedTabs = useMemo(
-    () =>
-      VENTAS_TAB_KEYS.filter((tabKey) =>
-        canAny(VENTAS_TAB_PERMISSIONS[tabKey] || [])
-      ),
-    [canAny]
+    () => getAllowedTabs('ventas', permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
   );
   const fallbackTab = allowedTabs[0] || null;
   const canCreateVenta = canAny([PERMISSIONS.VENTAS_CREAR]);
@@ -116,7 +111,12 @@ export default function VentasPage() {
 
   if (permisosLoading) return null;
   if (!activeTab) {
-    return <SinPermiso permiso="VENTAS_VER" detalle="No tienes acceso a ningun submodulo de Ventas." />;
+    return (
+      <SinPermiso
+        permiso={MODULE_PRIMARY_PERMISSION.ventas}
+        detalle="No tienes acceso a ningun submodulo de Ventas."
+      />
+    );
   }
 
   return (

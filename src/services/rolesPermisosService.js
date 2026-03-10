@@ -41,5 +41,21 @@ export const rolesPermisosService = {
 
   getRolUsuarios: async (idRol) => {
     return apiFetch(`${BASE_PATH}/rol/${idRol}/usuarios`, 'GET');
+  },
+
+  createRole: async (payload) => {
+    return apiFetch(`${BASE_PATH}/roles`, 'POST', payload);
+  },
+
+  updateRoleMeta: async (idRol, payload) => {
+    return apiFetch(`${BASE_PATH}/rol/${idRol}/meta`, 'PUT', payload);
+  },
+
+  getRoleImpact: async (idRol) => {
+    return apiFetch(`${BASE_PATH}/rol/${idRol}/impacto`, 'GET');
+  },
+
+  deleteRole: async (idRol) => {
+    return apiFetch(`${BASE_PATH}/rol/${idRol}`, 'DELETE');
   }
 };

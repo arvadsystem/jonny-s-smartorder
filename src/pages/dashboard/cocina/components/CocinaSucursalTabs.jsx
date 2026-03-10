@@ -1,6 +1,7 @@
 export default function CocinaSucursalTabs({
   sucursales,
   selectedSucursalId,
+  disabled,
   onSelectSucursal
 }) {
   return (
@@ -8,6 +9,7 @@ export default function CocinaSucursalTabs({
       <button
         type="button"
         className={`cocina-tab ${selectedSucursalId === null ? 'is-active' : ''}`}
+        disabled={disabled}
         onClick={() => onSelectSucursal(null)}
       >
         Todas
@@ -20,6 +22,7 @@ export default function CocinaSucursalTabs({
           className={`cocina-tab ${
             Number(selectedSucursalId ?? 0) === Number(sucursal.id_sucursal) ? 'is-active' : ''
           }`}
+          disabled={disabled}
           onClick={() => onSelectSucursal(Number(sucursal.id_sucursal))}
         >
           {sucursal.nombre_sucursal}

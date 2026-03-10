@@ -35,7 +35,15 @@ const getSucursal = (usuario) => usuario?.empleado?.sucursal_nombre || usuario?.
 const getDni = (usuario) => usuario?.empleado?.dni || usuario?.dni;
 const getTelefono = (usuario) => usuario?.empleado?.telefono || usuario?.telefono;
 const getCorreo = (usuario) => usuario?.empleado?.correo || usuario?.correo;
-const getRolNombre = (usuario) => usuario?.rol?.nombre || usuario?.rol_nombre || usuario?.nombre_rol;
+const getRolNombre = (usuario) => {
+  if (Array.isArray(usuario?.roles) && usuario.roles.length > 0) {
+    return usuario.roles
+      .map((role) => String(role?.nombre || '').trim())
+      .filter(Boolean)
+      .join(', ');
+  }
+  return usuario?.rol?.nombre || usuario?.rol_nombre || usuario?.nombre_rol;
+};
 
 const getInitials = (fullName) => {
   const clean = String(fullName ?? '').trim();

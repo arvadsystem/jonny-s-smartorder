@@ -15,9 +15,7 @@ import Cocina from './pages/dashboard/Cocina';
 import Parametros from './pages/dashboard/Parametros';
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from './routes/RequirePerm';
-import { ROUTE_PERMISSIONS } from './utils/permissions';
 
-// Estilos
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 
@@ -25,7 +23,7 @@ const PaginaEnConstruccion = ({ titulo }) => {
   return (
     <div className="p-5 text-center">
       <h2>{titulo}</h2>
-      <p>Próximamente...</p>
+      <p>Proximamente...</p>
     </div>
   );
 };
@@ -39,19 +37,12 @@ function App() {
         <Route path="/cambiar-password" element={<ForcePasswordChange />} />
 
         <Route path="/dashboard" element={<DashboardLayout />}>
-          <Route
-            index
-            element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.dashboard}>
-                <Inicio />
-              </RequirePerm>
-            }
-          />
+          <Route index element={<Inicio />} />
 
           <Route
             path="personas"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.personas}>
+              <RequirePerm moduleKey="personas">
                 <Personas />
               </RequirePerm>
             }
@@ -60,7 +51,7 @@ function App() {
           <Route
             path="sucursales"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.sucursales}>
+              <RequirePerm moduleKey="sucursales">
                 <Sucursales />
               </RequirePerm>
             }
@@ -69,7 +60,7 @@ function App() {
           <Route
             path="inventario"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.inventario}>
+              <RequirePerm moduleKey="inventario">
                 <Inventario />
               </RequirePerm>
             }
@@ -78,7 +69,7 @@ function App() {
           <Route
             path="ventas"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.ventas}>
+              <RequirePerm moduleKey="ventas">
                 <Ventas />
               </RequirePerm>
             }
@@ -87,7 +78,7 @@ function App() {
           <Route
             path="cocina"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.cocina}>
+              <RequirePerm moduleKey="cocina">
                 <Cocina />
               </RequirePerm>
             }
@@ -96,7 +87,7 @@ function App() {
           <Route
             path="parametros"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.parametros}>
+              <RequirePerm moduleKey="parametros">
                 <Parametros />
               </RequirePerm>
             }
@@ -105,7 +96,7 @@ function App() {
           <Route
             path="menu"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.menu}>
+              <RequirePerm moduleKey="menu">
                 <Menu />
               </RequirePerm>
             }
@@ -114,7 +105,7 @@ function App() {
           <Route
             path="seguridad"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.seguridad}>
+              <RequirePerm moduleKey="seguridad">
                 <Seguridad />
               </RequirePerm>
             }
@@ -123,14 +114,21 @@ function App() {
           <Route
             path="perfil"
             element={
-              <RequirePerm anyOf={ROUTE_PERMISSIONS.perfil}>
+              <RequirePerm moduleKey="perfil">
                 <Perfil />
               </RequirePerm>
             }
           />
 
           <Route path="perfil/cambiar-contrasena" element={<CambioContrasena />} />
-          <Route path="configuracion" element={<PaginaEnConstruccion titulo="Configuración" />} />
+          <Route
+            path="configuracion"
+            element={
+              <RequirePerm moduleKey="configuracion">
+                <PaginaEnConstruccion titulo="Configuracion" />
+              </RequirePerm>
+            }
+          />
         </Route>
       </Route>
 

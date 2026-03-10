@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import SinPermiso from "../../components/common/SinPermiso";
 import { usePermisos } from "../../context/PermisosContext";
-import { PERSONAS_TAB_PERMISSIONS } from "../../utils/permissions";
+import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from "../../utils/permissions";
 
 import PersonasTab from "./personas/PersonasTab";
 import EmpresasTab from "./personas/EmpresasTab";
@@ -22,7 +22,7 @@ const PERSONAS_TAB_KEYS = [
 
 export default function Personas() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { canAny, loading: permisosLoading } = usePermisos();
+  const { isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
   const [toast, setToast] = useState({
     show: false,
@@ -32,11 +32,8 @@ export default function Personas() {
   });
 
   const allowedTabs = useMemo(
-    () =>
-      PERSONAS_TAB_KEYS.filter((tabKey) =>
-        canAny(PERSONAS_TAB_PERMISSIONS[tabKey] || [])
-      ),
-    [canAny]
+    () => getAllowedTabs("personas", permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
   );
 
   const fallbackTab = allowedTabs[0] || null;
@@ -109,7 +106,12 @@ export default function Personas() {
   }
 
   if (!activeTab) {
-    return <SinPermiso permiso="PERSONAS_VER" detalle="No tienes acceso a ningun submodulo de Personas." />;
+    return (
+      <SinPermiso
+        permiso={MODULE_PRIMARY_PERMISSION.personas}
+        detalle="No tienes acceso a ningun submodulo de Personas."
+      />
+    );
   }
 
   return (

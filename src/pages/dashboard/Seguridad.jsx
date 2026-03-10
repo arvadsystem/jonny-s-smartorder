@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import SinPermiso from "../../components/common/SinPermiso";
 import { usePermisos } from "../../context/PermisosContext";
-import { SEGURIDAD_TAB_PERMISSIONS } from "../../utils/permissions";
+import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from "../../utils/permissions";
 
 import SesionesTab from "./seguridad/SesionesTab";
 import UsuariosTab from "./seguridad/UsuariosTab";
@@ -12,12 +12,12 @@ import UsuarioAuditDetail from "./seguridad/UsuarioAuditDetail";
 
 const Seguridad = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { canAny, loading: permisosLoading } = usePermisos();
+  const { isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
-  const allowedTabs = useMemo(() => {
-    const tabKeys = ["sesiones", "usuarios", "password", "logins"];
-    return tabKeys.filter((tabKey) => canAny(SEGURIDAD_TAB_PERMISSIONS[tabKey] || []));
-  }, [canAny]);
+  const allowedTabs = useMemo(
+    () => getAllowedTabs("seguridad", permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
+  );
 
   const fallbackTab = allowedTabs[0] || null;
   const rawTab = (searchParams.get("tab") || fallbackTab || "").toLowerCase();
@@ -59,7 +59,12 @@ const Seguridad = () => {
   if (permisosLoading) return null;
 
   if (!activeTab) {
-    return <SinPermiso permiso="SEGURIDAD_VER" detalle="No tienes acceso a ningun submodulo de Seguridad." />;
+    return (
+      <SinPermiso
+        permiso={MODULE_PRIMARY_PERMISSION.seguridad}
+        detalle="No tienes acceso a ningun submodulo de Seguridad."
+      />
+    );
   }
 
   return (

@@ -1,4 +1,11 @@
-export default function CocinaToolbar({ search, onSearchChange, onRefresh, refreshing }) {
+export default function CocinaToolbar({
+  search,
+  onSearchChange,
+  onRefresh,
+  refreshing,
+  canRefresh,
+  canSearch
+}) {
   return (
     <div className="inv-prod-header inv-cat-v2__header">
       <div className="inv-prod-title-wrap">
@@ -16,6 +23,7 @@ export default function CocinaToolbar({ search, onSearchChange, onRefresh, refre
             type="search"
             placeholder="Buscar por ticket, cliente o item..."
             value={search}
+            disabled={!canSearch}
             onChange={(event) => onSearchChange(event.target.value)}
           />
         </label>
@@ -23,6 +31,7 @@ export default function CocinaToolbar({ search, onSearchChange, onRefresh, refre
         <button
           type="button"
           className={`inv-prod-toolbar-btn ${refreshing ? 'is-on' : ''}`}
+          disabled={!canRefresh}
           onClick={onRefresh}
         >
           <i className={`bi ${refreshing ? 'bi-arrow-repeat' : 'bi-arrow-clockwise'}`} />
