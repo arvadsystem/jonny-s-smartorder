@@ -19,6 +19,7 @@ import {
 const emptyForm = {
   id_empleado: '',
   id_rol: '',
+  id_roles: [],
   estado: true,
 };
 
@@ -66,6 +67,33 @@ const normalizeListResponse = (resp) => {
 const normalizeText = (value) => String(value ?? '').trim();
 const toDisplayValue = (value, fallback = 'No registrado') => normalizeText(value) || fallback;
 const toImageValue = (value) => normalizeText(value);
+const normalizeRoleIds = (value) => {
+  const source = Array.isArray(value) ? value : value ? [value] : [];
+  return [...new Set(source.map((item) => String(item ?? '').trim()).filter(Boolean))]
+    .sort((left, right) => Number(left) - Number(right));
+};
+const getUsuarioRoles = (usuario) => {
+  if (Array.isArray(usuario?.roles) && usuario.roles.length > 0) {
+    return usuario.roles
+      .map((role) => ({
+        id_rol: String(role?.id_rol ?? '').trim(),
+        nombre: normalizeText(role?.nombre),
+      }))
+      .filter((role) => role.id_rol && role.nombre);
+  }
+
+  const fallbackId = String(usuario?.rol?.id_rol ?? '').trim();
+  const fallbackNombre = normalizeText(usuario?.rol?.nombre || usuario?.rol_nombre || usuario?.nombre_rol);
+  if (!fallbackId || !fallbackNombre) return [];
+
+  return [{ id_rol: fallbackId, nombre: fallbackNombre }];
+};
+const sameRoleSelection = (left, right) => {
+  const leftIds = normalizeRoleIds(left);
+  const rightIds = normalizeRoleIds(right);
+  if (leftIds.length !== rightIds.length) return false;
+  return leftIds.every((value, index) => value === rightIds[index]);
+};
 
 const toUpperNoAccents = (value) =>
   normalizeText(value)
@@ -142,7 +170,10 @@ export default function UsuariosTab({ openToast }) {
   const canEditUsuario = canAny([PERMISSIONS.USUARIOS_EDITAR]);
   const canDeleteUsuario = canAny([PERMISSIONS.USUARIOS_ELIMINAR]);
   const canResetPassword = canAny([PERMISSIONS.USUARIOS_PASSWORD_RESETEAR]);
-  const canEditFotoUsuario = canAny([PERMISSIONS.USUARIOS_FOTO_EDITAR]);
+  const canEditFotoUsuario = canAny([
+    PERMISSIONS.USUARIOS_IMAGEN_SUBIR,
+    PERMISSIONS.USUARIOS_IMAGEN_ELIMINAR
+  ]);
   const canVerDetalleUsuario = canAny([PERMISSIONS.USUARIOS_VER]);
 
   const safeToast = useCallback((title, message, variant = 'success') => {
@@ -219,7 +250,13 @@ export default function UsuariosTab({ openToast }) {
   const getDni = useCallback((u) => normalizeText(u?.empleado?.dni || u?.dni), []);
   const getTelefono = useCallback((u) => normalizeText(u?.empleado?.telefono || u?.telefono), []);
   const getCorreo = useCallback((u) => normalizeText(u?.empleado?.correo || u?.correo), []);
-  const getRolNombre = useCallback((u) => normalizeText(u?.rol?.nombre || u?.rol_nombre || u?.nombre_rol), []);
+  const getRolNombre = useCallback((u) => {
+    const roles = getUsuarioRoles(u);
+    if (roles.length > 0) {
+      return roles.map((role) => role.nombre).join(', ');
+    }
+    return normalizeText(u?.rol?.nombre || u?.rol_nombre || u?.nombre_rol);
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const drawerMode = editId ? 'edit' : 'create';
@@ -385,10 +422,12 @@ export default function UsuariosTab({ openToast }) {
     if (!showModal || !editId) return;
     const current = usuarios.find((item) => String(item.id_usuario) === String(editId));
     if (!current) return;
+    const currentRoles = getUsuarioRoles(current).map((role) => role.id_rol);
 
     setForm({
       id_empleado: String(current?.id_empleado || current?.empleado?.id_empleado || ''),
-      id_rol: String(current?.rol?.id_rol || ''),
+      id_rol: currentRoles[0] || '',
+      id_roles: currentRoles,
       estado: parseBooleanField(current),
     });
     const photoValue = toImageValue(current?.foto_perfil);
@@ -415,14 +454,14 @@ export default function UsuariosTab({ openToast }) {
   const validateCreate = useCallback(() => {
     const currentErrors = {};
     if (!form.id_empleado) currentErrors.id_empleado = 'Seleccione un empleado';
-    if (!form.id_rol) currentErrors.id_rol = 'Seleccione un rol';
+    if (normalizeRoleIds(form.id_roles).length === 0) currentErrors.id_roles = 'Seleccione al menos un rol';
     if (selectedEmpleado && empleadosConUsuario.has(selectedEmpleado.id)) {
       currentErrors.id_empleado = 'Empleado ya tiene usuario';
     }
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
-  }, [form.id_empleado, form.id_rol, selectedEmpleado, empleadosConUsuario]);
+  }, [form.id_empleado, form.id_roles, selectedEmpleado, empleadosConUsuario]);
 
   const onFormImageChange = useCallback(async (event) => {
     if (!canEditFotoUsuario) return;
@@ -602,7 +641,7 @@ export default function UsuariosTab({ openToast }) {
 
         const response = await personaService.generateUsuarioCredencialesV2({
           id_empleado: Number.parseInt(String(form.id_empleado), 10),
-          id_rol: Number.parseInt(String(form.id_rol), 10),
+          id_roles: normalizeRoleIds(form.id_roles).map((value) => Number.parseInt(value, 10)),
         });
 
         if (photoPlan.shouldSend && response?.usuario?.id_usuario) {
@@ -644,14 +683,15 @@ export default function UsuariosTab({ openToast }) {
 
         const tasks = [];
         const updatePayload = {};
-        const currentRoleId = String(original?.rol?.id_rol || '');
+        const currentRoleIds = getUsuarioRoles(original).map((role) => role.id_rol);
+        const nextRoleIds = normalizeRoleIds(form.id_roles);
 
         if (Boolean(form.estado) !== Boolean(parseBooleanField(original))) {
           updatePayload.estado = Boolean(form.estado);
         }
 
-        if (String(form.id_rol || '') && String(form.id_rol || '') !== currentRoleId) {
-          updatePayload.id_rol = Number.parseInt(String(form.id_rol), 10);
+        if (!sameRoleSelection(nextRoleIds, currentRoleIds)) {
+          updatePayload.id_roles = nextRoleIds.map((value) => Number.parseInt(value, 10));
         }
 
         if (Object.keys(updatePayload).length) {
@@ -929,9 +969,25 @@ export default function UsuariosTab({ openToast }) {
         form={form}
         errors={errors}
         onFieldChange={(field, value) => {
-          setForm((prev) => ({ ...prev, [field]: value }));
-          setErrors((prev) => ({ ...prev, [field]: undefined }));
-          if (drawerMode === 'create' && (field === 'id_empleado' || field === 'id_rol')) {
+          setForm((prev) => {
+            if (field === 'id_roles') {
+              const nextRoleIds = normalizeRoleIds(value);
+              return { ...prev, id_roles: nextRoleIds, id_rol: nextRoleIds[0] || '' };
+            }
+
+            if (field === 'id_rol') {
+              const nextRoleIds = normalizeRoleIds(value);
+              return { ...prev, id_rol: nextRoleIds[0] || '', id_roles: nextRoleIds };
+            }
+
+            return { ...prev, [field]: value };
+          });
+          setErrors((prev) => ({
+            ...prev,
+            [field]: undefined,
+            id_roles: field === 'id_roles' || field === 'id_rol' ? undefined : prev.id_roles
+          }));
+          if (drawerMode === 'create' && (field === 'id_empleado' || field === 'id_rol' || field === 'id_roles')) {
             setCreateCredentialsResult(null);
             setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false });
           }

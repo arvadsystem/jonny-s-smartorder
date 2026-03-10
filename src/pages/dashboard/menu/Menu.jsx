@@ -266,9 +266,15 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
 
 const Menu = () => {
   const { canAny } = usePermisos();
-  const canAddMenuProduct = canAny([PERMISSIONS.MENU_PRODUCTO_AGREGAR]);
-  const canViewMenuDetail = canAny([PERMISSIONS.MENU_DETALLE_VER, PERMISSIONS.MENU_PRODUCTO_AGREGAR]);
-  const canEditMenuOrder = canAny([PERMISSIONS.MENU_PEDIDO_EDITAR]);
+  const canAddMenuProduct = canAny([PERMISSIONS.MENU_PEDIDO_AGREGAR_ITEM]);
+  const canViewMenuDetail = canAny([
+    PERMISSIONS.MENU_PRODUCTO_DETALLE_VER,
+    PERMISSIONS.MENU_PEDIDO_AGREGAR_ITEM
+  ]);
+  const canEditMenuOrder = canAny([
+    PERMISSIONS.MENU_PEDIDO_EDITAR_CANTIDAD,
+    PERMISSIONS.MENU_PEDIDO_ELIMINAR_ITEM
+  ]);
   const canConfirmMenuOrder = canAny([PERMISSIONS.MENU_PEDIDO_CONFIRMAR]);
 
   const [categorias, setCategorias] = useState([]);

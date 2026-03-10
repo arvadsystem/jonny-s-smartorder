@@ -6,6 +6,7 @@ import {
   hasAllPermissions,
   hasAnyPermission,
   hasPermission,
+  isSuperAdminRoleList,
   normalizePermissions
 } from '../utils/permissions';
 
@@ -15,6 +16,7 @@ export const PermisosProvider = ({ children }) => {
   const { user } = useAuth();
   const [permisos, setPermisos] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const isSuperAdmin = useMemo(() => isSuperAdminRoleList(user?.roles), [user?.roles]);
 
   const hydrateFromRemote = useCallback(async () => {
     setLoading(true);
@@ -47,18 +49,21 @@ export const PermisosProvider = ({ children }) => {
   }, [hydrateFromRemote, user?.id_usuario, user?.permisos]);
 
   const value = useMemo(() => {
-    const can = (permiso) => hasPermission(permisos, permiso);
-    const canAny = (required) => hasAnyPermission(permisos, required);
-    const canAll = (required) => hasAllPermissions(permisos, required);
+    const permissionOptions = { isSuperAdmin };
+    const can = (permiso) => hasPermission(permisos, permiso, permissionOptions);
+    const canAny = (required) => hasAnyPermission(permisos, required, permissionOptions);
+    const canAll = (required) => hasAllPermissions(permisos, required, permissionOptions);
+
     return {
       can,
       canAny,
       canAll,
+      isSuperAdmin,
       permisos,
       loading,
       reload: hydrateFromRemote
     };
-  }, [hydrateFromRemote, loading, permisos]);
+  }, [hydrateFromRemote, isSuperAdmin, loading, permisos]);
 
   return <PermisosContext.Provider value={value}>{children}</PermisosContext.Provider>;
 };

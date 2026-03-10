@@ -6,6 +6,8 @@ import {
 } from '../utils/cocinaHelpers';
 
 export default function CocinaOrderCard({
+  canAdvance,
+  canOpenDetail,
   pedido,
   now,
   disabled,
@@ -22,10 +24,14 @@ export default function CocinaOrderCard({
       exit={{ opacity: 0, y: -12, scale: 0.98 }}
       transition={{ duration: 0.18 }}
       className="cocina-order-card"
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpenDetail(pedido)}
+      role={canOpenDetail ? 'button' : undefined}
+      tabIndex={canOpenDetail ? 0 : -1}
+      onClick={() => {
+        if (!canOpenDetail) return;
+        onOpenDetail(pedido);
+      }}
       onKeyDown={(event) => {
+        if (!canOpenDetail) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           onOpenDetail(pedido);
@@ -83,10 +89,11 @@ export default function CocinaOrderCard({
         type="button"
         className={`cocina-order-card__action ${action.buttonClass}`}
         onClick={(event) => {
+          if (!canAdvance) return;
           event.stopPropagation();
           onOpenConfirm(pedido, action);
         }}
-        disabled={disabled}
+        disabled={disabled || !canAdvance}
       >
         <i className={action.icon} />
         <span>{action.label}</span>

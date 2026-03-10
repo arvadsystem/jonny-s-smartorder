@@ -3,51 +3,16 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { usePermisos } from '../../context/PermisosContext';
 import { API_URL } from '../../utils/constants';
-import {
-  INVENTARIO_TAB_PERMISSIONS,
-  PERSONAS_TAB_PERMISSIONS,
-  PERMISSIONS,
-  SEGURIDAD_TAB_PERMISSIONS,
-  VENTAS_TAB_PERMISSIONS
-} from '../../utils/permissions';
-
-const INVENTORY_TABS = [
-  { key: 'categorias', label: 'Categorias', icon: 'bi bi-tag', required: INVENTARIO_TAB_PERMISSIONS.categorias },
-  { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam', required: INVENTARIO_TAB_PERMISSIONS.insumos },
-  { key: 'productos', label: 'Productos', icon: 'bi bi-basket', required: INVENTARIO_TAB_PERMISSIONS.productos },
-  { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building', required: INVENTARIO_TAB_PERMISSIONS.almacenes },
-  { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS.alertas }
-];
-
-const PERSONAS_TABS = [
-  { key: 'personas', label: 'Personas', icon: 'bi bi-person', required: PERSONAS_TAB_PERMISSIONS.personas },
-  { key: 'empresas', label: 'Empresas', icon: 'bi bi-building', required: PERSONAS_TAB_PERMISSIONS.empresas },
-  { key: 'clientes', label: 'Clientes', icon: 'bi bi-people', required: PERSONAS_TAB_PERMISSIONS.clientes },
-  { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase', required: PERSONAS_TAB_PERMISSIONS.empleados },
-  { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear', required: PERSONAS_TAB_PERMISSIONS.usuarios },
-  { key: 'roles', label: 'Roles y permisos', icon: 'bi bi-person-lock', required: PERSONAS_TAB_PERMISSIONS.roles }
-];
-
-const SECURITY_TABS = [
-  { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop', required: SEGURIDAD_TAB_PERMISSIONS.sesiones },
-  { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people', required: SEGURIDAD_TAB_PERMISSIONS.usuarios },
-  { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key', required: SEGURIDAD_TAB_PERMISSIONS.password },
-  { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text', required: SEGURIDAD_TAB_PERMISSIONS.logins }
-];
-
-const VENTAS_TABS = [
-  { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS.ventas },
-  { key: 'caja', label: 'Caja', icon: 'bi bi-cart3', required: VENTAS_TAB_PERMISSIONS.caja },
-  { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS.pedidos }
-];
+import { getAllowedTabs, PERMISSIONS } from '../../utils/permissions';
 
 const MAX_VISIBLE_TABS = 3;
 const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
 
-const getTabFromSearch = (search, tabs, fallbackKey) => {
+const getTabFromSearch = (search, tabs, fallbackKey, options = {}) => {
   const sp = new URLSearchParams(search || '');
   const current = String(sp.get('tab') || fallbackKey).toLowerCase();
-  return tabs.some((tab) => tab.key === current) ? current : fallbackKey;
+  const normalized = options.normalizeMovimientos && current === 'movimientos' ? 'almacenes' : current;
+  return tabs.some((tab) => tab.key === normalized) ? normalized : fallbackKey;
 };
 
 const normalizeText = (value) => String(value ?? '').trim();
@@ -87,14 +52,6 @@ const resolveProfilePhotoSrc = (value) => {
   }
 
   return '';
-};
-
-const getInventoryTabFromSearch = (search, tabs, fallbackKey = 'categorias') => {
-  const allowedTabs = Array.isArray(tabs) && tabs.length > 0 ? tabs : INVENTORY_TABS;
-  const sp = new URLSearchParams(search || '');
-  const current = String(sp.get('tab') || fallbackKey).toLowerCase();
-  const normalized = current === 'movimientos' ? 'almacenes' : current;
-  return allowedTabs.some((tab) => tab.key === normalized) ? normalized : fallbackKey;
 };
 
 const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
@@ -137,8 +94,7 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
     const sliderEl = sliderRef.current;
     if (!rowEl || !sliderEl) return;
 
-    const activeEl =
-      tabRefs.current?.[activeKey] || (isActiveInOverflow ? moreBtnRef.current : null);
+    const activeEl = tabRefs.current?.[activeKey] || (isActiveInOverflow ? moreBtnRef.current : null);
 
     if (!activeEl) {
       sliderEl.style.opacity = '0';
@@ -229,12 +185,8 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
             >
               <span className="active-dot" />
               <i className="bi bi-three-dots" />
-              <span>Más</span>
-              <i
-                className={`bi ${
-                  moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'
-                } inventory-more-caret`}
-              />
+              <span>Mas</span>
+              <i className={`bi ${moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'} inventory-more-caret`} />
             </button>
 
             {moreOpen && (
@@ -265,13 +217,7 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
 };
 
 const NavbarTabs = ({ config }) =>
-  config ? (
-    <InventoryTabsOverflow
-      tabs={config.tabs}
-      activeKey={config.activeKey}
-      onGoTab={config.onGoTab}
-    />
-  ) : null;
+  config ? <InventoryTabsOverflow tabs={config.tabs} activeKey={config.activeKey} onGoTab={config.onGoTab} /> : null;
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -282,7 +228,7 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { canAny, loading: permisosLoading } = usePermisos();
+  const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
   const userName = user?.nombre_usuario || 'Invitado';
   const userRole = useMemo(() => {
@@ -296,50 +242,25 @@ const Navbar = () => {
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
   const canViewProfile = canAny([PERMISSIONS.PERFIL_VER]);
 
-  const visibleInventoryTabs = useMemo(
-    () => INVENTORY_TABS.filter((tab) => canAny(tab.required || [])),
-    [canAny]
-  );
+  const moduleKey = useMemo(() => {
+    if (location.pathname.startsWith('/dashboard/inventario')) return 'inventario';
+    if (location.pathname.startsWith('/dashboard/seguridad')) return 'seguridad';
+    if (location.pathname.startsWith('/dashboard/personas')) return 'personas';
+    if (location.pathname.startsWith('/dashboard/ventas')) return 'ventas';
+    return null;
+  }, [location.pathname]);
 
-  const visibleSecurityTabs = useMemo(
-    () => SECURITY_TABS.filter((tab) => canAny(tab.required || [])),
-    [canAny]
-  );
+  const moduleTabs = useMemo(() => {
+    if (!moduleKey) return [];
+    return getAllowedTabs(moduleKey, permisos, { isSuperAdmin });
+  }, [isSuperAdmin, moduleKey, permisos]);
 
-  const visiblePersonasTabs = useMemo(
-    () => PERSONAS_TABS.filter((tab) => canAny(tab.required || [])),
-    [canAny]
-  );
-
-  const visibleVentasTabs = useMemo(
-    () => VENTAS_TABS.filter((tab) => canAny(tab.required || [])),
-    [canAny]
-  );
-
-  const isInventario = location.pathname?.startsWith('/dashboard/inventario');
-  const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
-  const isPersonas = location.pathname?.startsWith('/dashboard/personas');
-  const isVentas = location.pathname?.startsWith('/dashboard/ventas');
-
-  const activeInventoryKey = useMemo(() => {
-    const fallback = visibleInventoryTabs[0]?.key || 'categorias';
-    return getInventoryTabFromSearch(location.search, visibleInventoryTabs, fallback);
-  }, [location.search, visibleInventoryTabs]);
-
-  const activeSecurityKey = useMemo(
-    () => getTabFromSearch(location.search, visibleSecurityTabs, visibleSecurityTabs[0]?.key || 'sesiones'),
-    [location.search, visibleSecurityTabs]
-  );
-
-  const activePersonasKey = useMemo(
-    () => getTabFromSearch(location.search, visiblePersonasTabs, visiblePersonasTabs[0]?.key || 'personas'),
-    [location.search, visiblePersonasTabs]
-  );
-
-  const activeVentasKey = useMemo(
-    () => getTabFromSearch(location.search, visibleVentasTabs, visibleVentasTabs[0]?.key || 'ventas'),
-    [location.search, visibleVentasTabs]
-  );
+  const activeModuleTab = useMemo(() => {
+    if (!moduleKey || moduleTabs.length === 0) return null;
+    return getTabFromSearch(location.search, moduleTabs, moduleTabs[0].key, {
+      normalizeMovimientos: moduleKey === 'inventario'
+    });
+  }, [location.search, moduleKey, moduleTabs]);
 
   const closeProfileDropdown = useCallback(() => {
     setIsOpen(false);
@@ -382,81 +303,14 @@ const Navbar = () => {
     navigate('/dashboard/perfil/cambiar-contrasena');
   };
 
-  const goInventarioTab = useCallback((key) => {
-    navigate(`/dashboard/inventario?tab=${key}`);
-  }, [navigate]);
-
-  const goSeguridadTab = useCallback((key) => {
-    navigate(`/dashboard/seguridad?tab=${key}`);
-  }, [navigate]);
-
-  const goPersonasTab = useCallback((key) => {
-    navigate(`/dashboard/personas?tab=${key}`);
-  }, [navigate]);
-
-  const goVentasTab = useCallback((key) => {
-    navigate(`/dashboard/ventas?tab=${key}`);
-  }, [navigate]);
-
   const moduleTabsConfig = useMemo(() => {
-    if (permisosLoading) return null;
-
-    if (isInventario) {
-      if (visibleInventoryTabs.length === 0) return null;
-      return {
-        tabs: visibleInventoryTabs,
-        activeKey: activeInventoryKey,
-        onGoTab: goInventarioTab
-      };
-    }
-
-    if (isSeguridad) {
-      if (visibleSecurityTabs.length === 0) return null;
-      return {
-        tabs: visibleSecurityTabs,
-        activeKey: activeSecurityKey,
-        onGoTab: goSeguridadTab
-      };
-    }
-
-    if (isPersonas) {
-      if (visiblePersonasTabs.length === 0) return null;
-      return {
-        tabs: visiblePersonasTabs,
-        activeKey: activePersonasKey,
-        onGoTab: goPersonasTab
-      };
-    }
-
-    if (isVentas) {
-      if (visibleVentasTabs.length === 0) return null;
-      return {
-        tabs: visibleVentasTabs,
-        activeKey: activeVentasKey,
-        onGoTab: goVentasTab
-      };
-    }
-
-    return null;
-  }, [
-    activeInventoryKey,
-    activePersonasKey,
-    activeSecurityKey,
-    activeVentasKey,
-    goInventarioTab,
-    goPersonasTab,
-    goSeguridadTab,
-    goVentasTab,
-    isInventario,
-    isPersonas,
-    isSeguridad,
-    isVentas,
-    permisosLoading,
-    visibleInventoryTabs,
-    visiblePersonasTabs,
-    visibleSecurityTabs,
-    visibleVentasTabs
-  ]);
+    if (permisosLoading || !moduleKey || moduleTabs.length === 0 || !activeModuleTab) return null;
+    return {
+      tabs: moduleTabs,
+      activeKey: activeModuleTab,
+      onGoTab: (key) => navigate(`/dashboard/${moduleKey}?tab=${key}`)
+    };
+  }, [activeModuleTab, moduleKey, moduleTabs, navigate, permisosLoading]);
 
   useEffect(() => {
     closeProfileDropdown();
@@ -521,7 +375,7 @@ const Navbar = () => {
             <button
               type="button"
               className="navbar-icon-btn"
-              aria-label="Configuración"
+              aria-label="Configuracion"
               aria-haspopup="menu"
               aria-expanded={isGearMenuOpen}
               onClick={toggleGearDropdown}
@@ -530,11 +384,7 @@ const Navbar = () => {
             </button>
 
             {isGearMenuOpen && (
-              <div
-                className="dropdown-menu-custom gear-dropdown-menu"
-                role="menu"
-                aria-label="Menú de configuración"
-              >
+              <div className="dropdown-menu-custom gear-dropdown-menu" role="menu" aria-label="Menu de configuracion">
                 <button
                   type="button"
                   className="dropdown-menu-item gear-dropdown-item"
@@ -542,7 +392,7 @@ const Navbar = () => {
                   onClick={handleGoChangePassword}
                 >
                   <i className="bi bi-shield-lock" />
-                  Cambiar contraseña
+                  Cambiar contrasena
                 </button>
               </div>
             )}
@@ -575,34 +425,21 @@ const Navbar = () => {
               )}
             </span>
 
-            <i
-              className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'} user-profile-caret`}
-              aria-hidden="true"
-            />
+            <i className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'} user-profile-caret`} aria-hidden="true" />
           </button>
 
           {isOpen && (
             <div className="dropdown-menu-custom" role="menu" aria-label="Menu de usuario">
               {canViewProfile ? (
-                <button
-                  type="button"
-                  className="dropdown-menu-item"
-                  role="menuitem"
-                  onClick={handleGoProfile}
-                >
+                <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleGoProfile}>
                   <i className="bi bi-person-circle" />
                   Mi perfil
                 </button>
               ) : null}
 
-              <button
-                type="button"
-                className="dropdown-menu-item"
-                role="menuitem"
-                onClick={handleLogout}
-              >
+              <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleLogout}>
                 <i className="bi bi-box-arrow-right" />
-                Cerrar sesión
+                Cerrar sesion
               </button>
             </div>
           )}

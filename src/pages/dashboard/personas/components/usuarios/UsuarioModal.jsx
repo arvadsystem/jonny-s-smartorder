@@ -52,14 +52,35 @@ export default function UsuarioModal({
     [sortedRoles]
   );
 
+  const selectedRoleIds = useMemo(() => {
+    if (Array.isArray(form?.id_roles)) {
+      return form.id_roles.map((value) => String(value)).filter(Boolean);
+    }
+    if (form?.id_rol) {
+      return [String(form.id_rol)];
+    }
+    return [];
+  }, [form?.id_roles, form?.id_rol]);
+
   const createDisabled =
     actionLoading
     || !!deletingId
     || catalogLoading
     || rolesLoading
     || !form?.id_empleado
-    || !form?.id_rol
+    || selectedRoleIds.length === 0
     || !canCreate;
+
+  const handleToggleRole = (roleId) => {
+    const normalizedRoleId = String(roleId || '').trim();
+    if (!normalizedRoleId) return;
+
+    const nextRoleIds = selectedRoleIds.includes(normalizedRoleId)
+      ? selectedRoleIds.filter((value) => value !== normalizedRoleId)
+      : [...selectedRoleIds, normalizedRoleId];
+
+    onFieldChange?.('id_roles', nextRoleIds);
+  };
 
   const handleClose = () => {
     if (typeof document !== 'undefined') {
@@ -126,21 +147,29 @@ export default function UsuarioModal({
               </div>
 
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Rol</label>
-                <select
-                  className={`form-select usuarios-modal__input ${errors?.id_rol ? 'is-invalid' : ''}`}
-                  value={form?.id_rol || ''}
-                  onChange={(e) => onFieldChange?.('id_rol', e.target.value)}
-                  disabled={rolesLoading || !canCreate}
-                >
-                  <option value="">Seleccione rol</option>
-                  {roleOptions.map((rol) => (
-                    <option key={rol.id_rol} value={rol.id_rol}>
-                      {rol.nombre}
-                    </option>
-                  ))}
-                </select>
-                {errors?.id_rol ? <div className="invalid-feedback d-block">{errors.id_rol}</div> : null}
+                <label className="form-label fw-semibold usuarios-modal__label">Roles</label>
+                <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
+                  {roleOptions.map((rol) => {
+                    const roleId = String(rol.id_rol);
+                    const checked = selectedRoleIds.includes(roleId);
+                    return (
+                      <label
+                        key={rol.id_rol}
+                        className={`usuarios-modal__role-chip ${checked ? 'is-active' : ''} ${rolesLoading || !canCreate ? 'is-disabled' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleToggleRole(roleId)}
+                          disabled={rolesLoading || !canCreate}
+                        />
+                        <span>{rol.nombre}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="usuarios-modal__roles-hint">Puedes asignar uno o varios roles al mismo usuario.</div>
+                {errors?.id_roles ? <div className="invalid-feedback d-block">{errors.id_roles}</div> : null}
               </div>
             </>
           ) : (
@@ -164,21 +193,29 @@ export default function UsuarioModal({
                 />
               </div>
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Rol</label>
-                <select
-                  className={`form-select usuarios-modal__input ${errors?.id_rol ? 'is-invalid' : ''}`}
-                  value={form?.id_rol || ''}
-                  onChange={(e) => onFieldChange?.('id_rol', e.target.value)}
-                  disabled={rolesLoading || !canEdit}
-                >
-                  <option value="">Seleccione rol</option>
-                  {roleOptions.map((rol) => (
-                    <option key={rol.id_rol} value={rol.id_rol}>
-                      {rol.nombre}
-                    </option>
-                  ))}
-                </select>
-                {errors?.id_rol ? <div className="invalid-feedback d-block">{errors.id_rol}</div> : null}
+                <label className="form-label fw-semibold usuarios-modal__label">Roles</label>
+                <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
+                  {roleOptions.map((rol) => {
+                    const roleId = String(rol.id_rol);
+                    const checked = selectedRoleIds.includes(roleId);
+                    return (
+                      <label
+                        key={rol.id_rol}
+                        className={`usuarios-modal__role-chip ${checked ? 'is-active' : ''} ${rolesLoading || !canEdit ? 'is-disabled' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleToggleRole(roleId)}
+                          disabled={rolesLoading || !canEdit}
+                        />
+                        <span>{rol.nombre}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="usuarios-modal__roles-hint">Puedes combinar varios roles; los permisos efectivos se unifican por usuario.</div>
+                {errors?.id_roles ? <div className="invalid-feedback d-block">{errors.id_roles}</div> : null}
               </div>
             </>
           )}
