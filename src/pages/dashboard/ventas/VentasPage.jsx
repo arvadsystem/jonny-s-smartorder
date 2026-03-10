@@ -1,15 +1,18 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import NuevaVentaModal from './components/NuevaVentaModal';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import CajaView from './components/CajaView';
+import PedidosView from './components/PedidosView';
 import VentaDetalleModal from './components/VentaDetalleModal';
-import VentasList from './components/VentasList';
-import VentasStats from './components/VentasStats';
+import VentaOverviewView from './components/VentaOverviewView';
 import VentasToast from './components/VentasToast';
-import VentasToolbar from './components/VentasToolbar';
 import { useVentas } from './hooks/useVentas';
-import { buildVentaStats, matchesVenta } from './utils/ventasHelpers';
+import { getAllowedTabs, MODULE_PRIMARY_PERMISSION, PERMISSIONS } from '../../../utils/permissions';
 import './styles/ventas.css';
 
 export default function VentasPage() {
+  const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
   const {
     ventas,
     categorias,
@@ -28,40 +31,37 @@ export default function VentasPage() {
     getVentaDetail
   } = useVentas();
 
-  const [search, setSearch] = useState('');
-  const [view, setView] = useState('grid');
-  const [currentPage, setCurrentPage] = useState(0);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedVenta, setSelectedVenta] = useState(null);
 
-  const deferredSearch = useDeferredValue(search);
-  const stats = useMemo(() => buildVentaStats(ventas), [ventas]);
+  const allowedTabs = useMemo(
+    () => getAllowedTabs('ventas', permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
+  );
+  const fallbackTab = allowedTabs[0] || null;
+  const canCreateVenta = canAny([PERMISSIONS.VENTAS_CREAR]);
+  const canExportVenta = canAny([PERMISSIONS.VENTAS_EXPORTAR]);
+  const canPrintVenta = canAny([PERMISSIONS.VENTAS_IMPRIMIR]);
 
-  const filteredVentas = useMemo(() => {
-    const rows = [...(Array.isArray(ventas) ? ventas : [])];
-    rows.sort((a, b) => Number(b?.id_factura ?? 0) - Number(a?.id_factura ?? 0));
-
-    return rows.filter((venta) => matchesVenta(venta, deferredSearch));
-  }, [deferredSearch, ventas]);
-
-  const pageSize = view === 'list' ? 5 : 6;
-  const totalPages = Math.max(1, Math.ceil(filteredVentas.length / pageSize));
-  const pagedVentas = filteredVentas.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
-  const hasActiveFilters = search.trim() !== '';
-
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [deferredSearch, view]);
+  const activeTab = useMemo(() => {
+    if (!fallbackTab) return null;
+    const tab = String(searchParams.get('tab') || fallbackTab).toLowerCase();
+    return allowedTabs.includes(tab) ? tab : fallbackTab;
+  }, [allowedTabs, fallbackTab, searchParams]);
 
   useEffect(() => {
-    if (currentPage <= totalPages - 1) return;
-    setCurrentPage(Math.max(totalPages - 1, 0));
-  }, [currentPage, totalPages]);
+    if (permisosLoading || !fallbackTab) return;
+    const rawTab = String(searchParams.get('tab') || '').toLowerCase();
+    if (rawTab && allowedTabs.includes(rawTab)) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', fallbackTab);
+    setSearchParams(nextParams, { replace: true });
+  }, [allowedTabs, fallbackTab, permisosLoading, searchParams, setSearchParams]);
 
   useEffect(() => {
-    const hasModalOpen = createOpen || detailOpen;
-    if (!hasModalOpen) return undefined;
+    if (!detailOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -69,7 +69,13 @@ export default function VentasPage() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [createOpen, detailOpen]);
+  }, [detailOpen]);
+
+  const goToTab = (tabKey) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', tabKey);
+    setSearchParams(nextParams);
+  };
 
   const openDetail = async (venta) => {
     if (!venta?.id_factura) return;
@@ -81,109 +87,76 @@ export default function VentasPage() {
       const detail = await getVentaDetail(venta.id_factura);
       setSelectedVenta(detail);
     } catch {
-      // El hook ya gestiona el feedback visual.
+      // El hook ya expone el feedback visual.
     }
   };
 
   const handleCreateVenta = async (payload) => {
     const response = await createVenta(payload);
-    setCreateOpen(false);
 
     if (response?.id_factura) {
+      goToTab('ventas');
+
       try {
         const detail = await getVentaDetail(response.id_factura);
         setSelectedVenta(detail);
         setDetailOpen(true);
       } catch {
-        // La venta ya fue creada; el listado se refresco aunque falle el detalle.
+        // El listado ya se refresco aunque falle el detalle.
       }
     }
+
+    return response;
   };
 
-  return (
-    <div className="ventas-page">
-      <div className="ventas-page__top-controls">
-        <div className="ventas-page__view-toggle" role="tablist" aria-label="Cambiar vista">
-          <button
-            type="button"
-            className={`ventas-page__view-btn ${view === 'grid' ? 'is-active' : ''}`}
-            onClick={() => setView('grid')}
-            aria-pressed={view === 'grid'}
-            title="Vista en tarjetas"
-          >
-            <i className="bi bi-grid-3x3-gap-fill" />
-          </button>
-          <button
-            type="button"
-            className={`ventas-page__view-btn ${view === 'list' ? 'is-active' : ''}`}
-            onClick={() => setView('list')}
-            aria-pressed={view === 'list'}
-            title="Vista en lista"
-          >
-            <i className="bi bi-list-ul" />
-          </button>
-        </div>
-      </div>
-
-      <div className="inv-catpro-card inv-prod-card mb-3">
-        <VentasToolbar
-          search={search}
-          onSearchChange={setSearch}
-          createOpen={createOpen}
-          onOpenCreate={() => setCreateOpen(true)}
-        />
-
-        <VentasStats stats={stats} />
-
-        <div className="inv-catpro-body inv-prod-body p-3">
-          {error ? (
-            <div className="alert alert-danger mb-3" role="alert">
-              {error}
-            </div>
-          ) : null}
-
-          <VentasList
-            loading={loading}
-            ventas={pagedVentas}
-            totalVentas={filteredVentas.length}
-            hasActiveFilters={hasActiveFilters}
-            view={view}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPrevPage={() => setCurrentPage((page) => Math.max(page - 1, 0))}
-            onNextPage={() => setCurrentPage((page) => Math.min(page + 1, totalPages - 1))}
-            onClearFilters={() => {
-              setSearch('');
-            }}
-            onOpenCreate={() => setCreateOpen(true)}
-            onOpenDetail={openDetail}
-          />
-        </div>
-      </div>
-
-      <NuevaVentaModal
-        open={createOpen}
-        saving={saving}
-        catalogLoading={catalogLoading}
-        productos={productos}
-        combos={combos}
-        recetas={recetas}
-        categorias={categorias}
-        clientes={clientes}
-        onClose={() => {
-          if (!saving) setCreateOpen(false);
-        }}
-        onSubmit={handleCreateVenta}
+  if (permisosLoading) return null;
+  if (!activeTab) {
+    return (
+      <SinPermiso
+        permiso={MODULE_PRIMARY_PERMISSION.ventas}
+        detalle="No tienes acceso a ningun submodulo de Ventas."
       />
+    );
+  }
+
+  return (
+    <>
+      {activeTab === 'ventas' ? (
+        <VentaOverviewView
+          ventas={ventas}
+          loading={loading}
+          error={error}
+          onOpenDetail={openDetail}
+          onGoToCaja={() => goToTab('caja')}
+          canCreate={canCreateVenta}
+        />
+      ) : null}
+
+      {activeTab === 'caja' ? (
+        <CajaView
+          productos={productos}
+          categorias={categorias}
+          clientes={clientes}
+          combos={combos}
+          recetas={recetas}
+          catalogLoading={catalogLoading}
+          saving={saving}
+          onSubmit={handleCreateVenta}
+        />
+      ) : null}
+
+      {activeTab === 'pedidos' ? <PedidosView /> : null}
 
       <VentaDetalleModal
         open={detailOpen}
         venta={selectedVenta}
         loading={detailLoading}
+        canExport={canExportVenta}
+        canPrint={canPrintVenta}
         onClose={() => setDetailOpen(false)}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />
-    </div>
+    </>
   );
 }

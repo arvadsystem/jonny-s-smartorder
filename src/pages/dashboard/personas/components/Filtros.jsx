@@ -1,4 +1,6 @@
-export default function Filtros({
+import { memo, useCallback } from "react";
+
+function Filtros({
   open,
   draft,
   onChangeDraft,
@@ -11,20 +13,29 @@ export default function Filtros({
     if (target && typeof target.blur === "function") target.blur();
   };
 
-  const handleClose = (event) => {
-    blurCurrentTarget(event);
-    if (typeof onClose === "function") onClose();
-  };
+  const handleClose = useCallback(
+    (event) => {
+      blurCurrentTarget(event);
+      if (typeof onClose === "function") onClose();
+    },
+    [onClose]
+  );
 
-  const handleApply = (event) => {
-    blurCurrentTarget(event);
-    if (typeof onApply === "function") onApply();
-  };
+  const handleApply = useCallback(
+    (event) => {
+      blurCurrentTarget(event);
+      if (typeof onApply === "function") onApply();
+    },
+    [onApply]
+  );
 
-  const handleClear = (event) => {
-    blurCurrentTarget(event);
-    if (typeof onClear === "function") onClear();
-  };
+  const handleClear = useCallback(
+    (event) => {
+      blurCurrentTarget(event);
+      if (typeof onClear === "function") onClear();
+    },
+    [onClear]
+  );
 
   return (
     <aside
@@ -107,3 +118,5 @@ export default function Filtros({
     </aside>
   );
 }
+
+export default memo(Filtros);

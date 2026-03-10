@@ -4,6 +4,9 @@ export default function SucursalCard({
   sucursal,
   index,
   canTapToEdit,
+  canEdit = true,
+  canDelete = true,
+  canToggleEstado = true,
   isToggling = false,
   onOpenEdit,
   onOpenDelete,
@@ -13,7 +16,7 @@ export default function SucursalCard({
   const dotClass = isActive ? 'ok' : 'off';
 
   const handleCardKeyDown = (e) => {
-    if (!canTapToEdit) return;
+    if (!canTapToEdit || !canEdit) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onOpenEdit(sucursal);
@@ -23,9 +26,9 @@ export default function SucursalCard({
   return (
     <div
       className={`inv-catpro-item inv-cat-card inv-anim-in ${isActive ? '' : 'is-inactive-state'}`}
-      role={canTapToEdit ? 'button' : undefined}
-      tabIndex={canTapToEdit ? 0 : undefined}
-      onClick={canTapToEdit ? () => onOpenEdit(sucursal) : undefined}
+      role={canTapToEdit && canEdit ? 'button' : undefined}
+      tabIndex={canTapToEdit && canEdit ? 0 : undefined}
+      onClick={canTapToEdit && canEdit ? () => onOpenEdit(sucursal) : undefined}
       onKeyDown={handleCardKeyDown}
       style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
     >
@@ -77,52 +80,58 @@ export default function SucursalCard({
         </div>
 
         <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions">
-          <button
-            type="button"
-            className="inv-catpro-action edit inv-catpro-action-compact"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenEdit(sucursal);
-            }}
-            onKeyDown={(e) => e.stopPropagation()}
-            title="Editar"
-            disabled={isToggling}
-          >
-            <i className="bi bi-pencil-square" />
-            <span className="inv-catpro-action-label">Editar</span>
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              className="inv-catpro-action edit inv-catpro-action-compact"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenEdit(sucursal);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+              title="Editar"
+              disabled={isToggling}
+            >
+              <i className="bi bi-pencil-square" />
+              <span className="inv-catpro-action-label">Editar</span>
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            className={`inv-catpro-action ${isActive ? 'state-off' : 'state-on'} inv-catpro-action-compact`}
-            onClick={async (e) => {
-              e.stopPropagation();
-              await onToggleEstado(sucursal, !isActive);
-            }}
-            onKeyDown={(e) => e.stopPropagation()}
-            title={isActive ? 'Inactivar' : 'Activar'}
-            disabled={isToggling}
-          >
-            <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
-            <span className="inv-catpro-action-label">
-              {isToggling ? 'Procesando' : isActive ? 'Inactivar' : 'Activar'}
-            </span>
-          </button>
+          {canToggleEstado ? (
+            <button
+              type="button"
+              className={`inv-catpro-action ${isActive ? 'state-off' : 'state-on'} inv-catpro-action-compact`}
+              onClick={async (e) => {
+                e.stopPropagation();
+                await onToggleEstado(sucursal, !isActive);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+              title={isActive ? 'Inactivar' : 'Activar'}
+              disabled={isToggling}
+            >
+              <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
+              <span className="inv-catpro-action-label">
+                {isToggling ? 'Procesando' : isActive ? 'Inactivar' : 'Activar'}
+              </span>
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            className="inv-catpro-action danger inv-catpro-action-compact"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenDelete(sucursal);
-            }}
-            onKeyDown={(e) => e.stopPropagation()}
-            title="Eliminar"
-            disabled={isToggling}
-          >
-            <i className="bi bi-trash" />
-            <span className="inv-catpro-action-label">Eliminar</span>
-          </button>
+          {canDelete ? (
+            <button
+              type="button"
+              className="inv-catpro-action danger inv-catpro-action-compact"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenDelete(sucursal);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+              title="Eliminar"
+              disabled={isToggling}
+            >
+              <i className="bi bi-trash" />
+              <span className="inv-catpro-action-label">Eliminar</span>
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

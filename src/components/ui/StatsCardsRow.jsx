@@ -1,4 +1,6 @@
-function StatCard({ iconClass, label, value, accent = "default" }) {
+import { memo } from "react";
+
+const StatCard = memo(function StatCard({ iconClass, label, value, accent = "default" }) {
   return (
     <div className={`inv-prod-kpi personas-page__stat-card is-${accent}`}>
       <div className="personas-page__stat-icon" aria-hidden="true">
@@ -10,9 +12,9 @@ function StatCard({ iconClass, label, value, accent = "default" }) {
       </div>
     </div>
   );
-}
+});
 
-export default function StatsCardsRow({ cards = [], className = "", ariaLabel }) {
+const StatsCardsRow = memo(function StatsCardsRow({ cards = [], className = "", ariaLabel }) {
   return (
     <div className={`inv-prod-kpis personas-page__stats ${className}`.trim()} aria-label={ariaLabel}>
       {cards.map((card) => (
@@ -26,4 +28,6 @@ export default function StatsCardsRow({ cards = [], className = "", ariaLabel })
       ))}
     </div>
   );
-}
+});
+
+export default StatsCardsRow;

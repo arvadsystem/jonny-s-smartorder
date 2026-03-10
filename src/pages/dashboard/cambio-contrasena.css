@@ -1,0 +1,110 @@
+.password-page {
+  padding-top: 14px;
+}
+
+.password-page__shell {
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+.password-page__header {
+  margin-bottom: 10px;
+}
+
+.password-page__header h3 {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.password-page__card {
+  border: 1px solid rgba(116, 74, 43, 0.12);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.password-page__card-body {
+  padding: 18px 18px 16px;
+}
+
+.password-page__notice {
+  border-radius: 12px;
+}
+
+.password-page__field {
+  margin-bottom: 12px;
+}
+
+.password-page__field .form-label {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.password-page__field .input-group .btn {
+  min-width: 44px;
+}
+
+.password-page__rules {
+  border-color: rgba(116, 74, 43, 0.18) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.password-page__rules li + li {
+  margin-top: 4px;
+}
+
+.password-page__submit {
+  min-height: 44px;
+  font-weight: 600;
+  border-radius: 10px;
+  margin-top: 2px;
+}
+
+.password-page__side-card {
+  border: 1px solid rgba(116, 74, 43, 0.12);
+  border-radius: 16px;
+}
+
+.password-page__side-card .card-body {
+  padding: 16px 16px 14px;
+}
+
+.password-page__side-card h6 {
+  color: #3c2617;
+  font-weight: 700;
+}
+
+.password-page__tips li {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  color: #5a4131;
+}
+
+.password-page__tips li:last-child {
+  margin-bottom: 0;
+}
+
+.password-page__tips i {
+  color: #7d593f;
+}
+
+@media (max-width: 1199px) {
+  .password-page__shell {
+    max-width: 100%;
+  }
+
+  .password-page__side-card {
+    margin-top: 2px;
+  }
+}
+
+@media (max-width: 767px) {
+  .password-page__card-body {
+    padding: 14px 12px 12px;
+  }
+
+  .password-page__field {
+    margin-bottom: 10px;
+  }
+}

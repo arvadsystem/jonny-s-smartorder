@@ -1,5 +1,3 @@
-import EntityCard from "../../../../../components/ui/EntityCard";
-
 const parseEstado = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return Boolean(record.estado);
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return Boolean(record.activo);
@@ -43,8 +41,10 @@ const getDni = (empleado) => empleado?.persona_dni ?? empleado?.dni;
 export default function EmpleadoCard({
   empleado,
   index,
+  imageSrc = "",
   onOpenEdit,
   onOpenDelete,
+  onOpenDetail,
   actionLoading = false,
   deletingId = null,
   getPersonaNombre,
@@ -55,65 +55,101 @@ export default function EmpleadoCard({
   const deleting = deletingId === idEmpleado;
   const personaNombre = typeof getPersonaNombre === "function" ? getPersonaNombre(empleado) : "No registrado";
   const sucursalNombre = typeof getSucursalNombre === "function" ? getSucursalNombre(empleado) : "No registrado";
+  const cargo = getCargo(empleado);
 
   return (
-    <EntityCard
-      index={index}
-      iconClass="bi bi-person-badge"
-      titleIconClass="bi bi-person-vcard"
-      title={`${index + 1}. ${toDisplayValue(personaNombre, "Empleado sin nombre")}`}
-      subtitle={`Sucursal: ${toDisplayValue(sucursalNombre)}`}
-      badge={isActive ? "ACTIVO" : "INACTIVO"}
-      badgeClass={isActive ? "is-ok" : "is-inactive"}
-      inactive={!isActive}
-      footerLeft={
-        <>
-          <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
-          <span className="inv-catpro-code">EMP-{String(idEmpleado ?? "-")}</span>
-        </>
-      }
-      footerActions={
-        <>
-          <button
-            type="button"
-            className="inv-catpro-action edit inv-catpro-action-compact"
-            onClick={() => onOpenEdit(empleado)}
-            title="Editar"
-            disabled={actionLoading || deleting}
-          >
-            <i className="bi bi-pencil-square" />
-            <span className="inv-catpro-action-label">Editar</span>
-          </button>
-
-          <button
-            type="button"
-            className="inv-catpro-action danger inv-catpro-action-compact"
-            onClick={() => onOpenDelete(empleado)}
-            title="Eliminar"
-            disabled={actionLoading || deleting}
-          >
-            <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
-            <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
-          </button>
-        </>
-      }
+    <article
+      className={`inv-prod-catalog-card personas-emp-card inv-anim-in ${isActive ? "is-ok" : "is-inactive"} ${
+        isActive ? "" : "is-inactive-state"
+      }`.trim()}
+      style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
     >
-      <div className="personas-page__card-row">
-        <i className="bi bi-person-vcard" />
-        <span>DNI: {toDisplayValue(getDni(empleado), "N/D")}</span>
+      <div className="inv-prod-thumb-wrap personas-emp-card__thumb">
+        {imageSrc ? (
+          <img src={imageSrc} alt={toDisplayValue(personaNombre, "Empleado")} className="inv-prod-thumb" loading="lazy" />
+        ) : (
+          <div className="inv-prod-thumb placeholder">
+            <i className="bi bi-image" />
+            <span>Sin imagen</span>
+          </div>
+        )}
+        <span className={`inv-prod-card-state ${isActive ? "is-ok" : "is-inactive"}`}>
+          {isActive ? "Activo" : "Inactivo"}
+        </span>
       </div>
-      <div className="personas-page__card-row">
-        <i className="bi bi-telephone" />
-        <span>{toDisplayValue(getTelefono(empleado), "Sin telefono")}</span>
+
+      <div className="inv-prod-card-body personas-emp-card__body">
+        <div className="inv-prod-card-bg-icon" aria-hidden="true">
+          <i className="bi bi-person-badge" />
+        </div>
+
+        <div className="inv-prod-card-name">{`${index + 1}. ${toDisplayValue(personaNombre, "Empleado sin nombre")}`}</div>
+        <div className="inv-prod-card-category">{`Sucursal: ${toDisplayValue(sucursalNombre)}`}</div>
+
+        <div className="personas-emp-card__meta">
+          <div className="personas-page__card-row">
+            <i className="bi bi-person-vcard" />
+            <span>DNI: {toDisplayValue(getDni(empleado), "N/D")}</span>
+          </div>
+          <div className="personas-page__card-row">
+            <i className="bi bi-telephone" />
+            <span>{toDisplayValue(getTelefono(empleado), "Sin telefono")}</span>
+          </div>
+          <div className="personas-page__card-row">
+            <i className="bi bi-briefcase" />
+            <span>{toDisplayValue(cargo, "Sin cargo")}</span>
+          </div>
+          <div className="personas-page__card-row">
+            <i className="bi bi-calendar-event" />
+            <span>{formatDateLabel(empleado?.fecha_ingreso)}</span>
+          </div>
+        </div>
+
+        <div className="inv-prod-stock-line personas-emp-card__footer">
+          <div className="inv-prod-stock-meta personas-emp-card__stock-meta">
+            <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
+            <div className="inv-prod-stock-copy personas-emp-card__stock-copy">
+              <span>{toDisplayValue(cargo, isActive ? "Empleado activo" : "Empleado inactivo")}</span>
+              <small className="personas-emp-card__code">{`EMP-${String(idEmpleado ?? "-")}`}</small>
+            </div>
+          </div>
+
+          <div className="personas-emp-card__actions">
+            <button
+              type="button"
+              className="btn inv-prod-btn-subtle personas-emp-card__action"
+              onClick={() => onOpenDetail?.(empleado)}
+              disabled={actionLoading || deleting}
+              title="Ver detalle"
+            >
+              <i className="bi bi-eye" />
+              <span>Ver detalle</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn inv-prod-btn-outline personas-emp-card__action"
+              onClick={() => onOpenEdit(empleado)}
+              disabled={actionLoading || deleting}
+              title="Editar"
+            >
+              <i className="bi bi-pencil-square" />
+              <span>Editar</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn inv-prod-card-action danger inv-prod-card-action-compact personas-emp-card__action personas-emp-card__action--danger"
+              onClick={() => onOpenDelete(empleado)}
+              disabled={actionLoading || deleting}
+              title="Eliminar"
+            >
+              <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
+              <span className="inv-prod-card-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+            </button>
+          </div>
+        </div>
       </div>
-      <div className="personas-page__card-row">
-        <i className="bi bi-briefcase" />
-        <span>{toDisplayValue(getCargo(empleado), "Sin cargo")}</span>
-      </div>
-      <div className="personas-page__card-row">
-        <i className="bi bi-calendar-event" />
-        <span>{formatDateLabel(empleado?.fecha_ingreso)}</span>
-      </div>
-    </EntityCard>
+    </article>
   );
 }

@@ -1,47 +1,26 @@
 import { NavLink } from 'react-router-dom';
 import logo from '../../assets/images/sinFondo.jpeg';
-import Can from '../common/Can';
-
-const MENU_ITEMS = [
-  { name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
-  { name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
-  { name: 'Personas/Empresas', path: '/dashboard/personas', icon: 'bi-people' },
-  { name: 'Inventario', path: '/dashboard/inventario', icon: 'bi-box-seam' },
-  { name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
-  { name: 'Cocina', path: '/dashboard/cocina', icon: 'bi-display' },
-  { name: 'Menu', path: '/dashboard/menu', icon: 'bi-journal-text' },
-  { name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
-  { name: 'Parametros', path: '/dashboard/parametros', icon: 'bi-sliders' },
-  { name: 'Configuracion', path: '/dashboard/configuracion', icon: 'bi-gear' },
-];
+import { usePermisos } from '../../context/PermisosContext';
+import { getVisibleModuleItems } from '../../utils/permissions';
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
-  const renderLink = (item) => {
-    const link = (
-      <NavLink
-        key={item.path}
-        to={item.path}
-        end={item.path === '/dashboard'}
-        className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
-        title={isCollapsed ? item.name : undefined}
-      >
-        <span className="menu-item-icon" aria-hidden="true">
-          <i className={`bi ${item.icon}`} />
-        </span>
-        <span className="menu-item-label">{item.name}</span>
-      </NavLink>
-    );
+  const { isSuperAdmin, loading, permisos } = usePermisos();
+  const visibleItems = getVisibleModuleItems(permisos, { isSuperAdmin });
 
-    if (item.name === 'Seguridad') {
-      return (
-        <Can perm="SEGURIDAD_VER" key={item.path}>
-          {link}
-        </Can>
-      );
-    }
-
-    return link;
-  };
+  const renderLink = (item) => (
+    <NavLink
+      key={item.path}
+      to={item.path}
+      end={item.path === '/dashboard'}
+      className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
+      title={isCollapsed ? item.name : undefined}
+    >
+      <span className="menu-item-icon" aria-hidden="true">
+        <i className={`bi ${item.icon}`} />
+      </span>
+      <span className="menu-item-label">{item.name}</span>
+    </NavLink>
+  );
 
   return (
     <aside className={`sidebar-wrapper ${isCollapsed ? 'collapsed' : ''}`} aria-label="Navegacion principal">
@@ -66,7 +45,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
         </div>
 
         <nav className="sidebar-menu" aria-label="Modulos del sistema">
-          {MENU_ITEMS.map((item) => renderLink(item))}
+          {loading ? null : visibleItems.map((item) => renderLink(item))}
         </nav>
       </div>
     </aside>

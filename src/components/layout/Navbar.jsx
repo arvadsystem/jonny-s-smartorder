@@ -1,47 +1,57 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import userAvatar from '../../assets/images/logo-jonnys.png';
-
-const INVENTORY_TABS = [
-  { key: 'categorias', label: 'Categorias', icon: 'bi bi-tag' },
-  { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam' },
-  { key: 'productos', label: 'Productos', icon: 'bi bi-basket' },
-  { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building' },
-  { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle' }
-];
-
-// ==================================
-// SEGURIDAD - SUBMODULOS (BASE)
-// (Usuarios se inyecta dinámicamente solo para Super Admin)
-// ==================================
-const SECURITY_TABS_BASE = [
-  { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop' },
-  { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key' },
-  { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text' }
-];
-
-const PERSONAS_TABS = [
-  { key: 'personas', label: 'Personas', icon: 'bi bi-person' },
-  { key: 'empresas', label: 'Empresas', icon: 'bi bi-building' },
-  { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase' },
-  { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear' },
-  { key: 'clientes', label: 'Clientes', icon: 'bi bi-people' }
-];
+import { usePermisos } from '../../context/PermisosContext';
+import { API_URL } from '../../utils/constants';
+import { getAllowedTabs, PERMISSIONS } from '../../utils/permissions';
 
 const MAX_VISIBLE_TABS = 3;
+const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
 
-const getTabFromSearch = (search, tabs, fallbackKey) => {
+const getTabFromSearch = (search, tabs, fallbackKey, options = {}) => {
   const sp = new URLSearchParams(search || '');
   const current = String(sp.get('tab') || fallbackKey).toLowerCase();
-  return tabs.some((tab) => tab.key === current) ? current : fallbackKey;
+  const normalized = options.normalizeMovimientos && current === 'movimientos' ? 'almacenes' : current;
+  return tabs.some((tab) => tab.key === normalized) ? normalized : fallbackKey;
 };
 
-const getInventoryTabFromSearch = (search) => {
-  const sp = new URLSearchParams(search || '');
-  const current = String(sp.get('tab') || 'categorias').toLowerCase();
-  const normalized = current === 'movimientos' ? 'almacenes' : current;
-  return INVENTORY_TABS.some((tab) => tab.key === normalized) ? normalized : 'categorias';
+const normalizeText = (value) => String(value ?? '').trim();
+
+const getUserInitials = (value) => {
+  const clean = normalizeText(value);
+  if (!clean) return 'IN';
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+  const first = parts[0]?.charAt(0) || '';
+  const last = parts[parts.length - 1]?.charAt(0) || '';
+  return `${first}${last}`.toUpperCase() || 'IN';
+};
+
+const getApiOrigin = () => {
+  const clean = normalizeText(API_URL);
+  if (!clean) return '';
+
+  try {
+    return new URL(clean).origin;
+  } catch {
+    return clean.replace(/\/+$/, '');
+  }
+};
+
+const resolveProfilePhotoSrc = (value) => {
+  const photo = normalizeText(value);
+  if (!photo || !PHOTO_URL_RE.test(photo)) return '';
+
+  if (/^https?:\/\//i.test(photo)) return photo;
+
+  if (/^\/uploads\//i.test(photo)) {
+    const origin = getApiOrigin();
+    return origin ? `${origin}${photo}` : photo;
+  }
+
+  return '';
 };
 
 const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
@@ -84,8 +94,7 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
     const sliderEl = sliderRef.current;
     if (!rowEl || !sliderEl) return;
 
-    const activeEl =
-      tabRefs.current?.[activeKey] || (isActiveInOverflow ? moreBtnRef.current : null);
+    const activeEl = tabRefs.current?.[activeKey] || (isActiveInOverflow ? moreBtnRef.current : null);
 
     if (!activeEl) {
       sliderEl.style.opacity = '0';
@@ -177,11 +186,7 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
               <span className="active-dot" />
               <i className="bi bi-three-dots" />
               <span>Mas</span>
-              <i
-                className={`bi ${
-                  moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'
-                } inventory-more-caret`}
-              />
+              <i className={`bi ${moreOpen ? 'bi-chevron-up' : 'bi-chevron-down'} inventory-more-caret`} />
             </button>
 
             {moreOpen && (
@@ -212,57 +217,73 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
 };
 
 const NavbarTabs = ({ config }) =>
-  config ? (
-    <InventoryTabsOverflow tabs={config.tabs} activeKey={config.activeKey} onGoTab={config.onGoTab} />
-  ) : null;
+  config ? <InventoryTabsOverflow tabs={config.tabs} activeKey={config.activeKey} onGoTab={config.onGoTab} /> : null;
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isGearMenuOpen, setIsGearMenuOpen] = useState(false);
+  const [failedPhotoSrc, setFailedPhotoSrc] = useState('');
   const profileMenuRef = useRef(null);
+  const gearMenuRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
   const userName = user?.nombre_usuario || 'Invitado';
-  const userRole = user?.rol === 1 ? 'Super Admin' : 'Usuario';
+  const userRole = useMemo(() => {
+    const roleRows = Array.isArray(user?.roles) ? user.roles : [];
+    if (roleRows.length === 0) return 'Usuario';
+    return roleRows.join(', ');
+  }, [user?.roles]);
+  const userPhotoSrc = useMemo(() => resolveProfilePhotoSrc(user?.foto_perfil), [user?.foto_perfil]);
+  const userInitials = useMemo(() => getUserInitials(userName), [userName]);
+  const showUserPhoto = Boolean(userPhotoSrc) && failedPhotoSrc !== userPhotoSrc;
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
+  const canViewProfile = canAny([PERMISSIONS.PERFIL_VER]);
 
-  // ✅ SECURITY TABS dinámicos (Usuarios SOLO Super Admin)
-  const securityTabs = useMemo(() => {
-    const tabs = [...SECURITY_TABS_BASE];
-    if (Number(user?.rol) === 1) {
-      // Lo metemos después de Sesiones activas
-      tabs.splice(1, 0, { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people' });
-    }
-    return tabs;
-  }, [user?.rol]);
+  const moduleKey = useMemo(() => {
+    if (location.pathname.startsWith('/dashboard/inventario')) return 'inventario';
+    if (location.pathname.startsWith('/dashboard/seguridad')) return 'seguridad';
+    if (location.pathname.startsWith('/dashboard/personas')) return 'personas';
+    if (location.pathname.startsWith('/dashboard/ventas')) return 'ventas';
+    return null;
+  }, [location.pathname]);
 
-  // FUNCIONALIDAD: SOLO EN INVENTARIO/SEGURIDAD/PERSONAS SE MUESTRAN SUBMODULOS
-  const isInventario = location.pathname?.startsWith('/dashboard/inventario');
-  const isSeguridad = location.pathname?.startsWith('/dashboard/seguridad');
-  const isPersonas = location.pathname?.startsWith('/dashboard/personas');
+  const moduleTabs = useMemo(() => {
+    if (!moduleKey) return [];
+    return getAllowedTabs(moduleKey, permisos, { isSuperAdmin });
+  }, [isSuperAdmin, moduleKey, permisos]);
 
-  const activeInventoryKey = useMemo(
-    () => getInventoryTabFromSearch(location.search),
-    [location.search]
-  );
+  const activeModuleTab = useMemo(() => {
+    if (!moduleKey || moduleTabs.length === 0) return null;
+    return getTabFromSearch(location.search, moduleTabs, moduleTabs[0].key, {
+      normalizeMovimientos: moduleKey === 'inventario'
+    });
+  }, [location.search, moduleKey, moduleTabs]);
 
-  const activeSecurityKey = useMemo(
-    () => getTabFromSearch(location.search, securityTabs, 'sesiones'),
-    [location.search, securityTabs]
-  );
-
-  const activePersonasKey = useMemo(
-    () => getTabFromSearch(location.search, PERSONAS_TABS, 'personas'),
-    [location.search]
-  );
-
-  const closeDropdown = useCallback(() => {
+  const closeProfileDropdown = useCallback(() => {
     setIsOpen(false);
   }, []);
 
+  const closeGearDropdown = useCallback(() => {
+    setIsGearMenuOpen(false);
+  }, []);
+
   const toggleDropdown = () => {
-    setIsOpen((state) => !state);
+    setIsOpen((state) => {
+      const nextState = !state;
+      if (nextState) closeGearDropdown();
+      return nextState;
+    });
+  };
+
+  const toggleGearDropdown = () => {
+    setIsGearMenuOpen((state) => {
+      const nextState = !state;
+      if (nextState) closeProfileDropdown();
+      return nextState;
+    });
   };
 
   const handleLogout = async () => {
@@ -271,76 +292,49 @@ const Navbar = () => {
   };
 
   const handleGoProfile = () => {
-    closeDropdown();
+    closeProfileDropdown();
+    closeGearDropdown();
     navigate('/dashboard/perfil');
   };
 
-  const goInventarioTab = useCallback((key) => {
-    navigate(`/dashboard/inventario?tab=${key}`);
-  }, [navigate]);
-
-  const goSeguridadTab = useCallback((key) => {
-    navigate(`/dashboard/seguridad?tab=${key}`);
-  }, [navigate]);
-
-  const goPersonasTab = useCallback((key) => {
-    navigate(`/dashboard/personas?tab=${key}`);
-  }, [navigate]);
+  const handleGoChangePassword = () => {
+    closeGearDropdown();
+    closeProfileDropdown();
+    navigate('/dashboard/perfil/cambiar-contrasena');
+  };
 
   const moduleTabsConfig = useMemo(() => {
-    if (isInventario) {
-      return {
-        tabs: INVENTORY_TABS,
-        activeKey: activeInventoryKey,
-        onGoTab: goInventarioTab
-      };
-    }
-
-    if (isSeguridad) {
-      return {
-        tabs: securityTabs, // <-- IMPORTANTE: Ahora utiliza los tabs dinámicos calculados arriba
-        activeKey: activeSecurityKey,
-        onGoTab: goSeguridadTab
-      };
-    }
-
-    if (isPersonas) {
-      return {
-        tabs: PERSONAS_TABS,
-        activeKey: activePersonasKey,
-        onGoTab: goPersonasTab
-      };
-    }
-
-    return null;
-  }, [
-    activeInventoryKey,
-    activePersonasKey,
-    activeSecurityKey,
-    goInventarioTab,
-    goPersonasTab,
-    goSeguridadTab,
-    isInventario,
-    isPersonas,
-    isSeguridad,
-    securityTabs // <-- Añadido a las dependencias del useMemo
-  ]);
+    if (permisosLoading || !moduleKey || moduleTabs.length === 0 || !activeModuleTab) return null;
+    return {
+      tabs: moduleTabs,
+      activeKey: activeModuleTab,
+      onGoTab: (key) => navigate(`/dashboard/${moduleKey}?tab=${key}`)
+    };
+  }, [activeModuleTab, moduleKey, moduleTabs, navigate, permisosLoading]);
 
   useEffect(() => {
-    closeDropdown();
-  }, [closeDropdown, location.pathname, location.search]);
+    closeProfileDropdown();
+    closeGearDropdown();
+  }, [closeGearDropdown, closeProfileDropdown, location.pathname, location.search]);
 
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (!isOpen && !isGearMenuOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
-        closeDropdown();
+      if (isOpen && profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        closeProfileDropdown();
+      }
+
+      if (isGearMenuOpen && gearMenuRef.current && !gearMenuRef.current.contains(event.target)) {
+        closeGearDropdown();
       }
     };
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') closeDropdown();
+      if (event.key === 'Escape') {
+        closeProfileDropdown();
+        closeGearDropdown();
+      }
     };
 
     document.addEventListener('mousedown', handlePointerDown);
@@ -352,7 +346,7 @@ const Navbar = () => {
       document.removeEventListener('touchstart', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [closeDropdown, isOpen]);
+  }, [closeGearDropdown, closeProfileDropdown, isGearMenuOpen, isOpen]);
 
   return (
     <div className="top-navbar">
@@ -376,9 +370,33 @@ const Navbar = () => {
           <button type="button" className="navbar-icon-btn" aria-label="Notificaciones">
             <i className="bi bi-bell" />
           </button>
-          <button type="button" className="navbar-icon-btn" aria-label="Configuracion">
-            <i className="bi bi-gear" />
-          </button>
+
+          <div className="position-relative gear-dropdown-wrap" ref={gearMenuRef}>
+            <button
+              type="button"
+              className="navbar-icon-btn"
+              aria-label="Configuracion"
+              aria-haspopup="menu"
+              aria-expanded={isGearMenuOpen}
+              onClick={toggleGearDropdown}
+            >
+              <i className="bi bi-gear" />
+            </button>
+
+            {isGearMenuOpen && (
+              <div className="dropdown-menu-custom gear-dropdown-menu" role="menu" aria-label="Menu de configuracion">
+                <button
+                  type="button"
+                  className="dropdown-menu-item gear-dropdown-item"
+                  role="menuitem"
+                  onClick={handleGoChangePassword}
+                >
+                  <i className="bi bi-shield-lock" />
+                  Cambiar contrasena
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className={`user-profile-container ${isOpen ? 'is-open' : ''}`} ref={profileMenuRef}>
@@ -394,21 +412,31 @@ const Navbar = () => {
               <h6>{userName}</h6>
               <p>{userRole}</p>
             </div>
+
             <span className="user-avatar-frame">
-              <img src={userAvatar} alt="Perfil" />
+              {showUserPhoto ? (
+                <img
+                  src={userPhotoSrc}
+                  alt={`Perfil de ${userName}`}
+                  onError={() => setFailedPhotoSrc(userPhotoSrc)}
+                />
+              ) : (
+                <span className="user-avatar-fallback">{userInitials}</span>
+              )}
             </span>
-            <i
-              className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'} user-profile-caret`}
-              aria-hidden="true"
-            />
+
+            <i className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'} user-profile-caret`} aria-hidden="true" />
           </button>
 
           {isOpen && (
             <div className="dropdown-menu-custom" role="menu" aria-label="Menu de usuario">
-              <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleGoProfile}>
-                <i className="bi bi-person-circle" />
-                Mi perfil
-              </button>
+              {canViewProfile ? (
+                <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleGoProfile}>
+                  <i className="bi bi-person-circle" />
+                  Mi perfil
+                </button>
+              ) : null}
+
               <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleLogout}>
                 <i className="bi bi-box-arrow-right" />
                 Cerrar sesion

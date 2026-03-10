@@ -1,20 +1,21 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
+import ForcePasswordChange from './pages/auth/ForcePasswordChange';
 import DashboardLayout from './components/layout/DashboardLayout';
 import Inicio from './pages/dashboard/Inicio';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Inventario from './pages/dashboard/Inventario';
-import Seguridad from "./pages/dashboard/Seguridad";
-import Perfil from "./pages/dashboard/Perfil";
+import Seguridad from './pages/dashboard/Seguridad';
+import Perfil from './pages/dashboard/Perfil';
+import CambioContrasena from './pages/dashboard/CambioContrasena';
 import Personas from './pages/dashboard/Personas';
 import Sucursales from './pages/dashboard/Sucursales';
 import Ventas from './pages/dashboard/Ventas';
 import Cocina from './pages/dashboard/Cocina';
-import Parametros from './pages/dashboard/Parametros'; // Importa la pagina de Parametros/Catalogos.
+import Parametros from './pages/dashboard/Parametros';
 import Menu from './pages/dashboard/menu/Menu';
-import RequirePerm from "./routes/RequirePerm";
+import RequirePerm from './routes/RequirePerm';
 
-// Estilos
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 
@@ -22,7 +23,7 @@ const PaginaEnConstruccion = ({ titulo }) => {
   return (
     <div className="p-5 text-center">
       <h2>{titulo}</h2>
-      <p>Próximamente...</p>
+      <p>Proximamente...</p>
     </div>
   );
 };
@@ -30,38 +31,107 @@ const PaginaEnConstruccion = ({ titulo }) => {
 function App() {
   return (
     <Routes>
-      {/* 1. Ruta Pública */}
       <Route path="/" element={<Login />} />
 
-      {/* 2. RUTAS PROTEGIDAS */}
       <Route element={<ProtectedRoute />}>
+        <Route path="/cambiar-password" element={<ForcePasswordChange />} />
+
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<Inicio />} />
-          <Route path="personas" element={<Personas />} />
-          <Route path="sucursales" element={<Sucursales />} />
-          <Route path="inventario" element={<Inventario />} />
-          <Route path="ventas" element={<Ventas />} />
-          <Route path="cocina" element={<Cocina />} />
-          <Route path="parametros" element={<Parametros />} />
-          
-          <Route path="menu" element={<Menu />} />
-          
-          {/* HU82: proteger la ruta Seguridad por permiso */}
+
+          <Route
+            path="personas"
+            element={
+              <RequirePerm moduleKey="personas">
+                <Personas />
+              </RequirePerm>
+            }
+          />
+
+          <Route
+            path="sucursales"
+            element={
+              <RequirePerm moduleKey="sucursales">
+                <Sucursales />
+              </RequirePerm>
+            }
+          />
+
+          <Route
+            path="inventario"
+            element={
+              <RequirePerm moduleKey="inventario">
+                <Inventario />
+              </RequirePerm>
+            }
+          />
+
+          <Route
+            path="ventas"
+            element={
+              <RequirePerm moduleKey="ventas">
+                <Ventas />
+              </RequirePerm>
+            }
+          />
+
+          <Route
+            path="cocina"
+            element={
+              <RequirePerm moduleKey="cocina">
+                <Cocina />
+              </RequirePerm>
+            }
+          />
+
+          <Route
+            path="parametros"
+            element={
+              <RequirePerm moduleKey="parametros">
+                <Parametros />
+              </RequirePerm>
+            }
+          />
+
+          <Route
+            path="menu"
+            element={
+              <RequirePerm moduleKey="menu">
+                <Menu />
+              </RequirePerm>
+            }
+          />
+
           <Route
             path="seguridad"
             element={
-              <RequirePerm perm="SEGURIDAD_VER">
+              <RequirePerm moduleKey="seguridad">
                 <Seguridad />
               </RequirePerm>
             }
           />
 
-          <Route path="perfil" element={<Perfil />} />
-          <Route path="configuracion" element={<PaginaEnConstruccion titulo="Configuración" />} />
-        </Route> {/* Cierra DashboardLayout */}
-      </Route> {/* Cierra ProtectedRoute */}
+          <Route
+            path="perfil"
+            element={
+              <RequirePerm moduleKey="perfil">
+                <Perfil />
+              </RequirePerm>
+            }
+          />
 
-      {/* 3. Comodín */}
+          <Route path="perfil/cambiar-contrasena" element={<CambioContrasena />} />
+          <Route
+            path="configuracion"
+            element={
+              <RequirePerm moduleKey="configuracion">
+                <PaginaEnConstruccion titulo="Configuracion" />
+              </RequirePerm>
+            }
+          />
+        </Route>
+      </Route>
+
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );

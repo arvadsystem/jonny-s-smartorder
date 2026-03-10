@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import CocinaBoard from './components/CocinaBoard';
 import CocinaConfirmModal from './components/CocinaConfirmModal';
 import CocinaDetailModal from './components/CocinaDetailModal';
@@ -15,6 +17,7 @@ import {
 import './styles/cocina.css';
 
 export default function CocinaPage() {
+  const { canAny } = usePermisos();
   const [search, setSearch] = useState('');
   const [selectedSucursalId, setSelectedSucursalId] = useState(null);
   const [selectedPedido, setSelectedPedido] = useState(null);
@@ -40,6 +43,14 @@ export default function CocinaPage() {
     selectedSucursalId
   });
 
+  const canSearch = canAny([PERMISSIONS.COCINA_BUSCAR]);
+  const canRefresh = canAny([PERMISSIONS.COCINA_ACTUALIZAR_TABLERO]);
+  const canViewDetail = canAny([PERMISSIONS.COCINA_DETALLE_VER]);
+  const canFilterSucursal = canAny([PERMISSIONS.COCINA_FILTRAR_SUCURSAL]);
+  const canStartPedido = canAny([PERMISSIONS.COCINA_PEDIDO_INICIAR]);
+  const canMarkReady = canAny([PERMISSIONS.COCINA_PEDIDO_MARCAR_LISTO]);
+  const canDeliverPedido = canAny([PERMISSIONS.COCINA_PEDIDO_ENTREGAR]);
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       setNow(Date.now());
@@ -48,15 +59,35 @@ export default function CocinaPage() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!canFilterSucursal && selectedSucursalId !== null) {
+      setSelectedSucursalId(null);
+    }
+  }, [canFilterSucursal, selectedSucursalId]);
+
+  useEffect(() => {
+    if (!canSearch && search) {
+      setSearch('');
+    }
+  }, [canSearch, search]);
+
   const filteredPedidos = useMemo(
-    () => pedidos.filter((pedido) => matchesKitchenOrder(pedido, search)),
-    [pedidos, search]
+    () => pedidos.filter((pedido) => matchesKitchenOrder(pedido, canSearch ? search : '')),
+    [canSearch, pedidos, search]
   );
   const groupedPedidos = useMemo(() => groupOrdersByColumn(filteredPedidos), [filteredPedidos]);
   const stats = useMemo(() => buildCocinaStats(filteredPedidos), [filteredPedidos]);
+  const canAdvancePedido = (pedido) => {
+    const columnKey = String(pedido?.columna_kds || '');
+    if (columnKey === 'PENDIENTES') return canStartPedido;
+    if (columnKey === 'EN_PREPARACION') return canMarkReady;
+    if (columnKey === 'LISTOS_PARA_ENTREGA') return canDeliverPedido;
+    return false;
+  };
 
   const handleConfirmAction = async () => {
     if (!confirmState.pedido || !confirmState.action) return;
+    if (!canAdvancePedido(confirmState.pedido)) return;
 
     try {
       await advancePedido(confirmState.pedido, confirmState.action.nextStatus);
@@ -86,7 +117,12 @@ export default function CocinaPage() {
         <CocinaToolbar
           search={search}
           onSearchChange={setSearch}
-          onRefresh={() => refreshBoard({ silent: true }).catch(() => {})}
+          canRefresh={canRefresh}
+          canSearch={canSearch}
+          onRefresh={() => {
+            if (!canRefresh) return;
+            refreshBoard({ silent: true }).catch(() => {});
+          }}
           refreshing={refreshing}
         />
 
@@ -102,7 +138,11 @@ export default function CocinaPage() {
           <CocinaSucursalTabs
             sucursales={sucursales}
             selectedSucursalId={selectedSucursalId}
-            onSelectSucursal={setSelectedSucursalId}
+            disabled={!canFilterSucursal}
+            onSelectSucursal={(value) => {
+              if (!canFilterSucursal) return;
+              setSelectedSucursalId(value);
+            }}
           />
 
           {loading ? (
@@ -112,18 +152,26 @@ export default function CocinaPage() {
             </div>
           ) : (
             <CocinaBoard
+              canAdvancePedido={canAdvancePedido}
+              canOpenDetail={canViewDetail}
               groupedPedidos={groupedPedidos}
               now={now}
               mutatingIds={mutatingIds}
-              onOpenDetail={setSelectedPedido}
-              onOpenConfirm={(pedido, action) => setConfirmState({ pedido, action })}
+              onOpenDetail={(pedido) => {
+                if (!canViewDetail) return;
+                setSelectedPedido(pedido);
+              }}
+              onOpenConfirm={(pedido, action) => {
+                if (!canAdvancePedido(pedido)) return;
+                setConfirmState({ pedido, action });
+              }}
             />
           )}
         </div>
       </div>
 
       <CocinaDetailModal
-        open={Boolean(selectedPedido)}
+        open={Boolean(selectedPedido) && canViewDetail}
         pedido={selectedPedido}
         now={now}
         onClose={() => setSelectedPedido(null)}
