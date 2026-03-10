@@ -6,6 +6,7 @@ import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpleadoCard from "./components/empleados/EmpleadoCard";
+import EmployeeDetailModal from "./components/empleados/EmployeeDetailModal";
 
 const emptyForm = {
   id_persona: "",
@@ -42,6 +43,27 @@ const normalizeArrayPayload = (resp) => {
   if (Array.isArray(resp?.resultados)) return resp.resultados;
   if (Array.isArray(resp?.resultado)) return resp.resultado;
   return [];
+};
+
+const extractEmpleadoIdFromCreateResponse = (response) => {
+  const candidates = [
+    response?.id_empleado,
+    response?.id,
+    response?.insertId,
+    response?.data?.id_empleado,
+    response?.data?.id,
+    response?.empleado?.id_empleado,
+    response?.empleado?.id,
+    response?.data?.empleado?.id_empleado,
+    response?.data?.empleado?.id,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = Number.parseInt(String(candidate ?? ""), 10);
+    if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  }
+
+  return null;
 };
 
 const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
@@ -104,6 +126,91 @@ const getCargo = (empleado) =>
   empleado?.puesto ??
   empleado?.rol;
 
+const EMPLOYEE_IMAGES_STORAGE_KEY = "empleado_images";
+const IMAGE_ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+
+const createImageDraftState = (previewUrl = "") => ({
+  previewUrl: String(previewUrl || ""),
+  loading: false,
+  error: "",
+});
+
+const toImageValue = (value) => {
+  if (value === null || value === undefined) return "";
+  const text = String(value).trim();
+  return text || "";
+};
+
+const toEmpleadoId = (value) => {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const loadEmployeeImages = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(EMPLOYEE_IMAGES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed;
+  } catch {
+    return {};
+  }
+};
+
+const saveEmployeeImage = (id, dataUrl) => {
+  const empleadoId = toEmpleadoId(id);
+  const safeDataUrl = toImageValue(dataUrl);
+  if (!empleadoId || !safeDataUrl || typeof window === "undefined") return loadEmployeeImages();
+
+  const images = loadEmployeeImages();
+  const next = { ...images, [String(empleadoId)]: safeDataUrl };
+
+  try {
+    window.localStorage.setItem(EMPLOYEE_IMAGES_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Keep app stable even if storage is unavailable.
+  }
+
+  return next;
+};
+
+const removeEmployeeImage = (id) => {
+  const empleadoId = toEmpleadoId(id);
+  if (!empleadoId || typeof window === "undefined") return loadEmployeeImages();
+
+  const images = loadEmployeeImages();
+  if (!Object.prototype.hasOwnProperty.call(images, String(empleadoId))) return images;
+
+  const next = { ...images };
+  delete next[String(empleadoId)];
+
+  try {
+    window.localStorage.setItem(EMPLOYEE_IMAGES_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Keep app stable even if storage is unavailable.
+  }
+
+  return next;
+};
+
+const getEmployeeImage = (id, images = null) => {
+  const empleadoId = toEmpleadoId(id);
+  if (!empleadoId) return "";
+  const source = images && typeof images === "object" ? images : loadEmployeeImages();
+  return toImageValue(source[String(empleadoId)]);
+};
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    reader.readAsDataURL(file);
+  });
+
 const detectEstadoField = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return "estado";
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return "activo";
@@ -146,6 +253,9 @@ export default function Empleados({ openToast }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
+  const [detailEmpleado, setDetailEmpleado] = useState(null);
+  const [formImage, setFormImage] = useState(() => createImageDraftState());
+  const [employeeImages, setEmployeeImages] = useState(() => loadEmployeeImages());
 
   const [actionLoading, setActionLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -161,6 +271,7 @@ export default function Empleados({ openToast }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const imageInputRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -191,6 +302,45 @@ export default function Empleados({ openToast }) {
       }),
     [sucursales]
   );
+
+  const resolveEmpleadoImage = useCallback(
+    (empleado) => getEmployeeImage(empleado?.id_empleado, employeeImages),
+    [employeeImages]
+  );
+
+  const persistEmployeeImage = useCallback((id, dataUrl) => {
+    const next = saveEmployeeImage(id, dataUrl);
+    setEmployeeImages(next);
+  }, []);
+
+  const clearPersistedEmployeeImage = useCallback((id) => {
+    const next = removeEmployeeImage(id);
+    setEmployeeImages(next);
+  }, []);
+
+  const clearImagePicker = useCallback(() => {
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  }, []);
+
+  const clearFormImageDraft = useCallback(() => {
+    clearImagePicker();
+    setFormImage(createImageDraftState());
+  }, [clearImagePicker]);
+
+  const removeFormImage = useCallback(() => {
+    clearFormImageDraft();
+    if (editId) {
+      clearPersistedEmployeeImage(editId);
+    }
+  }, [clearFormImageDraft, clearPersistedEmployeeImage, editId]);
+
+  const openDetailModal = useCallback((empleado) => {
+    setDetailEmpleado(empleado || null);
+  }, []);
+
+  const closeDetailModal = useCallback(() => {
+    setDetailEmpleado(null);
+  }, []);
 
   const getPersonaNombre = useCallback(
     (empleado) => {
@@ -318,6 +468,26 @@ export default function Empleados({ openToast }) {
     }
   }, [page, limit, search, safeToast]);
 
+  const fetchNewestEmpleadoId = useCallback(async () => {
+    try {
+      const firstPageResp = await personaService.getEmpleados({
+        page: 1,
+        limit: 1,
+      });
+      const { total: totalGlobal } = normalizeListResponse(firstPageResp);
+      const lastPage = Math.max(1, Number(totalGlobal) || 1);
+
+      const lastPageResp = await personaService.getEmpleados({
+        page: lastPage,
+        limit: 1,
+      });
+      const { items } = normalizeListResponse(lastPageResp);
+      return toEmpleadoId(items?.[0]?.id_empleado);
+    } catch {
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -365,7 +535,29 @@ export default function Empleados({ openToast }) {
 
       return next;
     });
-  }, [showModal, editId, empleados, buildFormFromEmpleado]);
+    setFormImage((prev) => {
+      if (prev.previewUrl || prev.loading) return prev;
+      const previewUrl = resolveEmpleadoImage(empleadoActual);
+      return previewUrl ? createImageDraftState(previewUrl) : prev;
+    });
+  }, [showModal, editId, empleados, buildFormFromEmpleado, resolveEmpleadoImage]);
+
+  useEffect(() => {
+    if (!detailEmpleado) return;
+
+    const detailId = detailEmpleado?.id_empleado;
+    if (!detailId) return;
+
+    const refreshed = empleados.find((item) => String(item.id_empleado) === String(detailId));
+    if (!refreshed) {
+      setDetailEmpleado(null);
+      return;
+    }
+
+    if (refreshed !== detailEmpleado) {
+      setDetailEmpleado(refreshed);
+    }
+  }, [empleados, detailEmpleado]);
 
   const sanitizeForm = () => ({
     id_persona: Number.parseInt(String(form.id_persona), 10),
@@ -392,11 +584,67 @@ export default function Empleados({ openToast }) {
     return Object.keys(currentErrors).length === 0;
   };
 
+  const onFormImageChange = useCallback(async (event) => {
+    const input = event.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+    const editingEmpleadoId = toEmpleadoId(editId);
+
+    if (!IMAGE_ALLOWED_TYPES.has(file.type)) {
+      setFormImage({
+        previewUrl: "",
+        loading: false,
+        error: "Solo se permiten imagenes JPG, PNG o WEBP.",
+      });
+      if (input) input.value = "";
+      return;
+    }
+
+    if (file.size > IMAGE_MAX_BYTES) {
+      setFormImage({
+        previewUrl: "",
+        loading: false,
+        error: "La imagen supera el limite de 6 MB.",
+      });
+      if (input) input.value = "";
+      return;
+    }
+
+    setFormImage((prev) => ({ ...prev, loading: true, error: "" }));
+
+    try {
+      const previewUrl = await readFileAsDataUrl(file);
+      if (!previewUrl) throw new Error("EMPTY_IMAGE_PREVIEW");
+      setFormImage(createImageDraftState(previewUrl));
+      if (editingEmpleadoId) {
+        persistEmployeeImage(editingEmpleadoId, previewUrl);
+      }
+    } catch {
+      setFormImage({
+        previewUrl: "",
+        loading: false,
+        error: "No se pudo procesar la imagen seleccionada.",
+      });
+    } finally {
+      if (input) input.value = "";
+    }
+  }, [editId, persistEmployeeImage]);
+
+  const resolveCreatedEmpleadoId = useCallback(
+    async (createResponse) => {
+      const fromResponse = extractEmpleadoIdFromCreateResponse(createResponse);
+      if (fromResponse) return fromResponse;
+      return fetchNewestEmpleadoId();
+    },
+    [fetchNewestEmpleadoId]
+  );
+
   const guardar = async (event) => {
     event.preventDefault();
     if (!validar() || actionLoading) return;
 
     const payloadLimpio = sanitizeForm();
+    const createImagePreview = !editId ? toImageValue(formImage.previewUrl) : "";
     setActionLoading(true);
 
     try {
@@ -432,13 +680,22 @@ export default function Empleados({ openToast }) {
           safeToast("OK", "Empleado actualizado");
         }
       } else {
-        await personaService.createEmpleado(payloadLimpio);
+        const createResp = await personaService.createEmpleado(payloadLimpio);
+        if (createImagePreview) {
+          const createdEmpleadoId = await resolveCreatedEmpleadoId(createResp);
+          if (createdEmpleadoId) {
+            persistEmployeeImage(createdEmpleadoId, createImagePreview);
+          } else {
+            safeToast("INFO", "Empleado creado. No se pudo asociar la imagen local automaticamente.", "info");
+          }
+        }
         safeToast("OK", "Empleado creado");
       }
 
       setShowModal(false);
       setEditId(null);
       setForm(emptyForm);
+      clearFormImageDraft();
       await cargarEmpleados();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo guardar", "danger");
@@ -449,27 +706,34 @@ export default function Empleados({ openToast }) {
 
   const iniciarEdicion = (empleado) => {
     setFiltersOpen(false);
+    setDetailEmpleado(null);
     setEditId(empleado.id_empleado);
     setErrors({});
     setForm(buildFormFromEmpleado(empleado));
+    setFormImage(createImageDraftState(resolveEmpleadoImage(empleado)));
+    clearImagePicker();
     setShowModal(true);
   };
 
   const openCreate = () => {
     if (actionLoading || deletingId) return;
     setFiltersOpen(false);
+    setDetailEmpleado(null);
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
+    clearFormImageDraft();
     setShowModal(true);
   };
 
-  const openConfirmDelete = (empleado) =>
+  const openConfirmDelete = (empleado) => {
+    setDetailEmpleado(null);
     setConfirmModal({
       show: true,
       idToDelete: empleado?.id_empleado ?? null,
       nombre: getPersonaNombre(empleado) || "",
     });
+  };
 
   const closeConfirmDelete = () =>
     setConfirmModal({ show: false, idToDelete: null, nombre: "" });
@@ -481,11 +745,17 @@ export default function Empleados({ openToast }) {
     setDeletingId(id);
     try {
       await personaService.deleteEmpleado(id);
+      clearPersistedEmployeeImage(id);
 
       if (String(editId) === String(id)) {
         setShowModal(false);
         setEditId(null);
         setForm(emptyForm);
+        clearFormImageDraft();
+      }
+
+      if (String(detailEmpleado?.id_empleado) === String(id)) {
+        setDetailEmpleado(null);
       }
 
       const quedaVaciaPagina = empleados.length === 1 && page > 1;
@@ -571,6 +841,7 @@ export default function Empleados({ openToast }) {
   const openFiltersDrawer = () => {
     if (actionLoading) return;
     setShowModal(false);
+    setDetailEmpleado(null);
     setFiltersDraft({ estadoFiltro, sortBy });
     setFiltersOpen(true);
   };
@@ -707,6 +978,17 @@ export default function Empleados({ openToast }) {
                             <div className="personas-page__table-actions">
                               <button
                                 type="button"
+                                className="inv-catpro-action inv-catpro-action-compact"
+                                onClick={() => openDetailModal(empleado)}
+                                title="Ver detalle"
+                                disabled={actionLoading || deleting}
+                              >
+                                <i className="bi bi-eye" />
+                                <span className="inv-catpro-action-label">Detalle</span>
+                              </button>
+
+                              <button
+                                type="button"
                                 className="inv-catpro-action edit inv-catpro-action-compact"
                                 onClick={() => iniciarEdicion(empleado)}
                                 title="Editar"
@@ -741,8 +1023,10 @@ export default function Empleados({ openToast }) {
                     key={empleado?.id_empleado ?? idx}
                     empleado={empleado}
                     index={(page - 1) * limit + idx}
+                    imageSrc={resolveEmpleadoImage(empleado)}
                     onOpenEdit={iniciarEdicion}
                     onOpenDelete={openConfirmDelete}
+                    onOpenDetail={openDetailModal}
                     actionLoading={actionLoading}
                     deletingId={deletingId}
                     getPersonaNombre={getPersonaNombre}
@@ -897,6 +1181,56 @@ export default function Empleados({ openToast }) {
             </div>
 
             <div className="col-12">
+              <label className="form-label text-light text-opacity-75">Imagen (opcional)</label>
+              <div className={`inv-prod-image-field personas-emp-form-image ${formImage.loading ? "is-loading" : ""}`}>
+                <div className={`inv-prod-image-preview ${formImage.previewUrl ? "has-image" : ""}`} aria-live="polite">
+                  {formImage.loading ? (
+                    <div className="inv-prod-image-loading" role="status">
+                      <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                      <span>Procesando imagen...</span>
+                    </div>
+                  ) : formImage.previewUrl ? (
+                    <img src={formImage.previewUrl} alt="Vista previa del empleado" />
+                  ) : (
+                    <div className="inv-prod-image-placeholder">
+                      <i className="bi bi-image" />
+                      <span>Sin imagen seleccionada</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="inv-prod-image-actions">
+                  <label className="btn inv-prod-btn-subtle inv-prod-image-picker">
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={onFormImageChange}
+                      disabled={actionLoading}
+                    />
+                    <i className="bi bi-upload" />
+                    <span>{formImage.previewUrl ? "Cambiar imagen" : "Seleccionar imagen"}</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-outline"
+                    onClick={removeFormImage}
+                    disabled={!formImage.previewUrl && !formImage.error && !formImage.loading}
+                  >
+                    Quitar
+                  </button>
+                </div>
+
+                {formImage.error ? (
+                  <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
+                ) : (
+                  <div className="inv-prod-image-feedback">JPG, PNG o WEBP hasta 6 MB.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="col-12">
               <div className="form-check">
                 <input
                   className="form-check-input"
@@ -931,6 +1265,15 @@ export default function Empleados({ openToast }) {
           </div>
         </form>
       </aside>
+
+      <EmployeeDetailModal
+        open={Boolean(detailEmpleado)}
+        empleado={detailEmpleado}
+        onClose={closeDetailModal}
+        getPersonaNombre={getPersonaNombre}
+        getSucursalNombre={getSucursalNombre}
+        getImageSrc={resolveEmpleadoImage}
+      />
 
       {confirmModal.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>

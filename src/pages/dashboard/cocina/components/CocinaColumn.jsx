@@ -3,6 +3,8 @@ import { getColumnMeta } from '../utils/cocinaHelpers';
 import CocinaOrderCard from './CocinaOrderCard';
 
 export default function CocinaColumn({
+  canAdvancePedido,
+  canOpenDetail,
   columnKey,
   pedidos,
   now,
@@ -29,6 +31,8 @@ export default function CocinaColumn({
               key={pedido.id_pedido}
               pedido={pedido}
               now={now}
+              canAdvance={canAdvancePedido(pedido)}
+              canOpenDetail={canOpenDetail}
               disabled={mutatingIds.includes(pedido.id_pedido)}
               onOpenDetail={onOpenDetail}
               onOpenConfirm={onOpenConfirm}

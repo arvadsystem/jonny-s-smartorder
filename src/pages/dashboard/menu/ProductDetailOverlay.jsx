@@ -11,6 +11,8 @@ import {
   formatMoney
 } from './utils/menuPosOrderUtils';
 
+const ANIMATION_MS = 260;
+
 const getSalsaComponents = (product) => (
   Array.isArray(product?.salsas_componentes) ? product.salsas_componentes : []
 );
@@ -65,17 +67,37 @@ const shouldHideDescription = (value) => {
   return /^[A-Z]{4,}$/.test(normalized);
 };
 
-const ProductDetailOverlay = ({ isOpen, onAdd, onClose, product }) => {
+const ProductDetailOverlay = ({ isOpen, onAdd, onClose, onExited, product, canAdd = true }) => {
+  const [shouldRender, setShouldRender] = useState(isOpen);
   const [sauceCounts, setSauceCounts] = useState({});
   const [selectedExtraIds, setSelectedExtraIds] = useState([]);
   const [quantity, setQuantity] = useState(1);
   const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
-    if (!isOpen) return undefined;
+    if (isOpen) {
+      setShouldRender(true);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!shouldRender || isOpen) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setShouldRender(false);
+      onExited?.();
+    }, ANIMATION_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen, onExited, shouldRender]);
+
+  useEffect(() => {
+    if (!shouldRender) return undefined;
 
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    }
 
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
@@ -89,16 +111,23 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, product }) => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, shouldRender]);
 
-  if (!isOpen || !product) return null;
+  useEffect(() => {
+    setSauceCounts({});
+    setSelectedExtraIds([]);
+    setQuantity(1);
+    setValidationError('');
+  }, [product?.id_combo, product?.id_producto, product?.id_receta, isOpen]);
+
+  if (!shouldRender || !product) return null;
 
   const nombre = getDisplayName(product?.nombre_producto || product?.descripcion || 'Producto sin nombre');
   const precioBase = Number(product?.precio || 0);
   const imageSrc = resolveMenuItemImageSrc(product);
   const descripcion = product?.descripcion_producto || product?.descripcion || '';
   const descripcionVisible = shouldHideDescription(descripcion) ? '' : descripcion;
-  const shellClassName = 'menu-pos-detail-overlay is-open';
+  const shellClassName = `menu-pos-detail-overlay ${isOpen ? 'is-open' : 'is-closing'}`;
   const extraOptions = getProductExtraOptions(product);
   const selectedIdSet = new Set(selectedExtraIds);
   const selectedExtras = extraOptions.filter((extra) => selectedIdSet.has(extra.id_extra));
@@ -156,7 +185,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, product }) => {
   };
 
   const handleAdd = () => {
-    if (typeof onAdd !== 'function') return;
+    if (!canAdd || typeof onAdd !== 'function') return;
 
     if (hasSauceConfigError) {
       setValidationError('Este item requiere salsas, pero no tiene salsas configuradas.');
@@ -362,7 +391,7 @@ const ProductDetailOverlay = ({ isOpen, onAdd, onClose, product }) => {
                 Cerrar
               </button>
 
-              {typeof onAdd === 'function' ? (
+              {canAdd && typeof onAdd === 'function' ? (
                 <button
                   type="button"
                   className="btn btn-primary btn-lg menu-pos-detail-action"

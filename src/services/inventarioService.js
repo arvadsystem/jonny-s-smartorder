@@ -8,6 +8,74 @@ const withInactivosParam = (path, options) => {
   return `${path}${path.includes('?') ? '&' : '?'}incluir_inactivos=1`;
 };
 
+// NEW: CONSTRUYE QUERY PARAMS OPCIONALES PARA EL KARDEX FILTRADO.
+// WHY: ALMACENES NECESITA PEDIR MOVIMIENTOS POR ALMACEN O SUCURSAL SIN ROMPER LAS LLAMADAS EXISTENTES.
+// IMPACT: `GETMOVIMIENTOSINVENTARIO()` SIGUE FUNCIONANDO SIN ARGUMENTOS Y SOLO AGREGA QUERYSTRING CUANDO VIENE `OPTIONS`.
+const withMovimientosFilters = (path, options) => {
+  if (!options || typeof options !== 'object') return path;
+
+  const params = new URLSearchParams();
+
+  if (options.id_almacen !== undefined && options.id_almacen !== null && options.id_almacen !== '') {
+    params.set('id_almacen', String(options.id_almacen));
+  }
+
+  if (options.id_sucursal !== undefined && options.id_sucursal !== null && options.id_sucursal !== '') {
+    params.set('id_sucursal', String(options.id_sucursal));
+  }
+
+  const query = params.toString();
+  if (!query) return path;
+
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+};
+
+// NEW: CONSTRUYE QUERY PARAMS DEL KARDEX DESDE FILTROS OPCIONALES.
+// WHY: LA VISTA `V_KARDEX_DETALLE` SOPORTA FILTROS RICOS Y LA UI DEBE CONSUMIRLOS SIN REPLICAR URLs.
+// IMPACT: SOLO AGREGA QUERYSTRING CUANDO HAY FILTROS; EL AUTH/CSRF SIGUE CENTRALIZADO EN `APIFETCH`.
+const withKardexFilters = (path, options) => {
+  if (!options || typeof options !== 'object') return path;
+
+  const params = new URLSearchParams();
+
+  if (options.id_almacen !== undefined && options.id_almacen !== null && options.id_almacen !== '') {
+    params.set('id_almacen', String(options.id_almacen));
+  }
+
+  if (options.id_sucursal !== undefined && options.id_sucursal !== null && options.id_sucursal !== '') {
+    params.set('id_sucursal', String(options.id_sucursal));
+  }
+
+  if (options.tipo !== undefined && options.tipo !== null && options.tipo !== '') {
+    params.set('tipo', String(options.tipo));
+  }
+
+  if (options.item_tipo !== undefined && options.item_tipo !== null && options.item_tipo !== '') {
+    params.set('item_tipo', String(options.item_tipo));
+  }
+
+  if (options.id_item !== undefined && options.id_item !== null && options.id_item !== '') {
+    params.set('id_item', String(options.id_item));
+  }
+
+  if (options.desde !== undefined && options.desde !== null && options.desde !== '') {
+    params.set('desde', String(options.desde));
+  }
+
+  if (options.hasta !== undefined && options.hasta !== null && options.hasta !== '') {
+    params.set('hasta', String(options.hasta));
+  }
+
+  if (options.q !== undefined && options.q !== null && options.q !== '') {
+    params.set('q', String(options.q));
+  }
+
+  const query = params.toString();
+  if (!query) return path;
+
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+};
+
 const normalizeCatalogRows = (responsePayload) => {
   if (Array.isArray(responsePayload)) return responsePayload;
   if (Array.isArray(responsePayload?.data)) return responsePayload.data;
@@ -112,7 +180,8 @@ export const inventarioService = {
     }),
 
   // ===== MOVIMIENTOS INVENTARIO (KARDEX) =====
-  getMovimientosInventario: () => apiFetch('/movimientos_inventario', 'GET'),
+  getKardex: (options) => apiFetch(withKardexFilters('/kardex', options), 'GET'),
+  getMovimientosInventario: (options) => apiFetch(withMovimientosFilters('/movimientos_inventario', options), 'GET'),
   crearMovimientoInventario: (data) => apiFetch('/movimientos_inventario', 'POST', data),
   actualizarMovimientoInventarioCampo: (id, campo, valor) =>
     apiFetch('/movimientos_inventario', 'PUT', {

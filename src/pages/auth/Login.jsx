@@ -36,11 +36,11 @@ const Login = () => {
 
       
       if (response?.usuario) {
-        login(response.usuario);
+        login(response);
       }
 
-      // Redirigimos al Dashboard
-      navigate('/dashboard');
+      const mustChangePassword = Boolean(response?.usuario?.must_change_password);
+      navigate(mustChangePassword ? '/cambiar-password' : '/dashboard');
     } catch (err) {
       console.error(err);
 

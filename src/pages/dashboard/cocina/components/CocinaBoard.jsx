@@ -2,6 +2,8 @@ import { BOARD_COLUMNS } from '../utils/cocinaHelpers';
 import CocinaColumn from './CocinaColumn';
 
 export default function CocinaBoard({
+  canAdvancePedido,
+  canOpenDetail,
   groupedPedidos,
   now,
   mutatingIds,
@@ -17,6 +19,8 @@ export default function CocinaBoard({
           pedidos={groupedPedidos[column.key] || []}
           now={now}
           mutatingIds={mutatingIds}
+          canAdvancePedido={canAdvancePedido}
+          canOpenDetail={canOpenDetail}
           onOpenDetail={onOpenDetail}
           onOpenConfirm={onOpenConfirm}
         />

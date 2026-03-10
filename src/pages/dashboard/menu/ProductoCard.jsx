@@ -11,7 +11,7 @@ const getDisplayName = (value) =>
       .trim()
   );
 
-const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
+const ProductoCard = ({ producto, onAgregar, onOpenDetail, canAdd = true, canViewDetail = true }) => {
   const nombre = getDisplayName(producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre');
   const precio = Number(producto?.precio || 0);
   const imageSrc = resolveMenuItemImageSrc(producto);
@@ -41,15 +41,20 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
 
   const handleAgregar = (event) => {
     event.stopPropagation();
+    if (!canAdd) return;
+
     triggerAddFeedback();
+
     if (needsConfiguration) {
-      onOpenDetail(producto);
+      if (canViewDetail) onOpenDetail(producto);
       return;
     }
+
     onAgregar(producto, { cantidad: 1 });
   };
 
   const handleKeyDown = (event) => {
+    if (!canViewDetail) return;
     if (event.target !== event.currentTarget) return;
 
     if (event.key === 'Enter' || event.key === ' ') {
@@ -61,9 +66,9 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
   return (
     <div
       className="card h-100 shadow-sm menu-pos-product-card"
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpenDetail(producto)}
+      role={canViewDetail ? 'button' : undefined}
+      tabIndex={canViewDetail ? 0 : undefined}
+      onClick={canViewDetail ? () => onOpenDetail(producto) : undefined}
       onKeyDown={handleKeyDown}
     >
       <div className="menu-pos-product-media">
@@ -74,9 +79,9 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
             className="menu-pos-product-image"
             loading="lazy"
             referrerPolicy="no-referrer"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-              const next = e.currentTarget.nextElementSibling;
+            onError={(event) => {
+              event.currentTarget.style.display = 'none';
+              const next = event.currentTarget.nextElementSibling;
               if (next) next.classList.remove('d-none');
             }}
           />
@@ -102,6 +107,7 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail }) => {
             onClick={handleAgregar}
             onKeyDown={(event) => event.stopPropagation()}
             aria-label={`Agregar ${nombre}`}
+            disabled={!canAdd}
           >
             <FaPlus />
           </button>

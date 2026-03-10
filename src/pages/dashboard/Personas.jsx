@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import SinPermiso from "../../components/common/SinPermiso";
+import { usePermisos } from "../../context/PermisosContext";
+import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from "../../utils/permissions";
 
 import PersonasTab from "./personas/PersonasTab";
 import EmpresasTab from "./personas/EmpresasTab";
 import EmpleadosTab from "./personas/EmpleadosTab";
 import UsuariosTab from "./personas/UsuariosTab";
 import ClientesTab from "./personas/ClientesTab";
+import RolesPermisosTab from "./personas/components/RolesPermisosTab";
 
 const PERSONAS_TAB_KEYS = [
   "personas",
@@ -13,11 +17,12 @@ const PERSONAS_TAB_KEYS = [
   "empleados",
   "usuarios",
   "clientes",
+  "roles",
 ];
 
 export default function Personas() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState("personas");
+  const { isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
   const [toast, setToast] = useState({
     show: false,
@@ -26,23 +31,28 @@ export default function Personas() {
     variant: "success",
   });
 
-  // =============================
-  // CONTROL DE TAB POR URL
-  // =============================
+  const allowedTabs = useMemo(
+    () => getAllowedTabs("personas", permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
+  );
+
+  const fallbackTab = allowedTabs[0] || null;
+
+  const activeTab = useMemo(() => {
+    if (!fallbackTab) return null;
+    const t = (searchParams.get("tab") || fallbackTab).toLowerCase();
+    return allowedTabs.includes(t) ? t : fallbackTab;
+  }, [allowedTabs, fallbackTab, searchParams]);
+
   useEffect(() => {
-    const t = (searchParams.get("tab") || "personas").toLowerCase();
-    setActiveTab(PERSONAS_TAB_KEYS.includes(t) ? t : "personas");
-  }, [searchParams]);
+    if (permisosLoading || !activeTab) return;
+    const rawTab = (searchParams.get("tab") || "").toLowerCase();
+    if (rawTab === activeTab) return;
 
-  const changeTab = (newTab) => {
-    if (!PERSONAS_TAB_KEYS.includes(newTab)) return;
-
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      p.set("tab", newTab);
-      return p;
-    });
-  };
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", activeTab);
+    setSearchParams(next, { replace: true });
+  }, [activeTab, permisosLoading, searchParams, setSearchParams]);
 
   // =============================
   // TOAST GLOBAL
@@ -73,7 +83,8 @@ export default function Personas() {
 
   const toastVariant = toast.variant || "success";
 
-  const renderTab = () => {
+  const tabContent = useMemo(() => {
+    if (!activeTab) return null;
     switch (activeTab) {
       case "empresas":
         return <EmpresasTab openToast={openToast} />;
@@ -81,18 +92,33 @@ export default function Personas() {
         return <EmpleadosTab openToast={openToast} />;
       case "usuarios":
         return <UsuariosTab openToast={openToast} />;
+      case "roles":
+        return <RolesPermisosTab openToast={openToast} />;
       case "clientes":
         return <ClientesTab openToast={openToast} />;
       default:
         return <PersonasTab openToast={openToast} />;
     }
-  };
+  }, [activeTab, openToast]);
+
+  if (permisosLoading) {
+    return null;
+  }
+
+  if (!activeTab) {
+    return (
+      <SinPermiso
+        permiso={MODULE_PRIMARY_PERMISSION.personas}
+        detalle="No tienes acceso a ningun submodulo de Personas."
+      />
+    );
+  }
 
   return (
     <div className="container-fluid p-3">
 
       {/* ================= CONTENIDO ================= */}
-      {renderTab()}
+      {tabContent}
 
       {/* ================= TOAST ================= */}
       {toast.show && (

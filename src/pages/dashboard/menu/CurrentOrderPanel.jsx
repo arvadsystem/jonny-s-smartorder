@@ -12,10 +12,12 @@ const CurrentOrderPanel = ({
   onConfirmOrder,
   isSubmitting = false,
   submitError = '',
-  submitSuccess = ''
+  submitSuccess = '',
+  canEdit = true,
+  canConfirm = true
 }) => {
   const itemLabel = totalItems === 1 ? 'item' : 'items';
-  const canConfirm = items.length > 0 && !isSubmitting;
+  const canSubmitOrder = canConfirm && items.length > 0 && !isSubmitting;
 
   return (
     <aside className="menu-order-panel card shadow-sm inv-prod-card">
@@ -41,6 +43,7 @@ const CurrentOrderPanel = ({
                 onDecrease={onDecrease}
                 onIncrease={onIncrease}
                 onRemove={onRemove}
+                canEdit={canEdit}
               />
             ))}
           </div>
@@ -56,21 +59,23 @@ const CurrentOrderPanel = ({
         {submitError ? <div className="alert alert-danger py-2 px-3 mb-0">{submitError}</div> : null}
         {submitSuccess ? <div className="alert alert-success py-2 px-3 mb-0">{submitSuccess}</div> : null}
 
-        <button
-          type="button"
-          className="btn btn-primary btn-lg menu-order-confirm-btn"
-          onClick={onConfirmOrder}
-          disabled={!canConfirm}
-        >
-          {isSubmitting ? (
-            <>
-              <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-              <span>Enviando...</span>
-            </>
-          ) : (
-            'Confirmar pedido'
-          )}
-        </button>
+        {canConfirm ? (
+          <button
+            type="button"
+            className="btn btn-primary btn-lg menu-order-confirm-btn"
+            onClick={onConfirmOrder}
+            disabled={!canSubmitOrder}
+          >
+            {isSubmitting ? (
+              <>
+                <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                <span>Enviando...</span>
+              </>
+            ) : (
+              'Confirmar pedido'
+            )}
+          </button>
+        ) : null}
       </div>
     </aside>
   );

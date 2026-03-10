@@ -13,7 +13,8 @@ export default function VentasList({
   onNextPage,
   onClearFilters,
   onOpenCreate,
-  onOpenDetail
+  onOpenDetail,
+  canCreate = true
 }) {
   return (
     <>
@@ -47,9 +48,11 @@ export default function VentasList({
                   Limpiar filtros
                 </button>
               ) : null}
-              <button type="button" className="btn btn-primary" onClick={onOpenCreate}>
-                Nueva venta
-              </button>
+              {canCreate ? (
+                <button type="button" className="btn btn-primary" onClick={onOpenCreate}>
+                  Nueva venta
+                </button>
+              ) : null}
             </div>
           </div>
         ) : (

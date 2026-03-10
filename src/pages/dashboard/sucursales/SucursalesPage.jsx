@@ -7,6 +7,8 @@ import SucursalesStats from './components/SucursalesStats';
 import SucursalesToast from './components/SucursalesToast';
 import SucursalesToolbar from './components/SucursalesToolbar';
 import { useSucursales } from './hooks/useSucursales';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import './styles/sucursales.css';
 import {
   extractApiMessage,
@@ -24,6 +26,12 @@ const createInitialFiltersDraft = () => ({
 });
 
 export default function SucursalesPage() {
+  const { canAny } = usePermisos();
+  const canCreateSucursal = canAny([PERMISSIONS.SUCURSALES_CREAR]);
+  const canEditSucursal = canAny([PERMISSIONS.SUCURSALES_EDITAR]);
+  const canDeleteSucursal = canAny([PERMISSIONS.SUCURSALES_ELIMINAR]);
+  const canToggleSucursal = canAny([PERMISSIONS.SUCURSALES_ESTADO_CAMBIAR]);
+
   const {
     sucursales,
     loading,
@@ -161,6 +169,7 @@ export default function SucursalesPage() {
   };
 
   const openCreate = () => {
+    if (!canCreateSucursal) return;
     setFiltersOpen(false);
     setDrawerMode('create');
     resetFormState();
@@ -168,6 +177,7 @@ export default function SucursalesPage() {
   };
 
   const openEdit = (sucursal) => {
+    if (!canEditSucursal) return;
     setFiltersOpen(false);
     setDrawerMode('edit');
     setEditId(Number(sucursal?.id_sucursal ?? 0) || null);
@@ -261,6 +271,7 @@ export default function SucursalesPage() {
   };
 
   const onQuickToggleEstado = async (sucursal, nextEstado) => {
+    if (!canToggleSucursal) return;
     try {
       await toggleSucursalEstado(sucursal, nextEstado);
     } catch {
@@ -268,7 +279,10 @@ export default function SucursalesPage() {
     }
   };
 
-  const openConfirmDelete = (sucursal) => setConfirmDelete({ show: true, sucursal });
+  const openConfirmDelete = (sucursal) => {
+    if (!canDeleteSucursal) return;
+    setConfirmDelete({ show: true, sucursal });
+  };
 
   const closeConfirmDelete = () => {
     if (deletingId) return;
@@ -311,6 +325,7 @@ export default function SucursalesPage() {
           drawerOpen={drawerOpen}
           drawerMode={drawerMode}
           onOpenCreate={openCreate}
+          canCreate={canCreateSucursal}
         />
 
         <SucursalesStats stats={stats} />
@@ -337,11 +352,15 @@ export default function SucursalesPage() {
             onScrollNext={() => scrollCarousel('next')}
             onClearFilters={clearAllFilters}
             onOpenCreate={openCreate}
+            canCreate={canCreateSucursal}
             canTapCardToEdit={canTapCardToEdit}
             togglingEstadoId={togglingEstadoId}
             onOpenEdit={openEdit}
             onOpenDelete={openConfirmDelete}
             onToggleEstado={onQuickToggleEstado}
+            canEdit={canEditSucursal}
+            canDelete={canDeleteSucursal}
+            canToggleEstado={canToggleSucursal}
           />
         </div>
       </div>
@@ -351,6 +370,7 @@ export default function SucursalesPage() {
         className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`}
         onClick={openCreate}
         title="Nueva"
+        disabled={!canCreateSucursal}
       >
         <i className="bi bi-plus" />
       </button>

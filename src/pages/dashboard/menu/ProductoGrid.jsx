@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import ProductoCard from './ProductoCard';
 
-const ProductoGrid = ({ productos, loading, onAgregar, onOpenDetail }) => {
+const ProductoGrid = ({ productos, loading, onAgregar, onOpenDetail, canAdd = true, canViewDetail = true }) => {
   if (loading) {
     return (
       <div className="inv-catpro-loading" role="status" aria-live="polite">
@@ -42,6 +42,8 @@ const ProductoGrid = ({ productos, loading, onAgregar, onOpenDetail }) => {
             producto={producto}
             onAgregar={onAgregar}
             onOpenDetail={onOpenDetail}
+            canAdd={canAdd}
+            canViewDetail={canViewDetail}
           />
         </div>
       ))}

@@ -18,6 +18,8 @@ import {
 import { GiTacos } from 'react-icons/gi';
 import '../../../assets/styles/_menu.scss';
 import { apiFetch } from '../../../services/api';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import CurrentOrderPanel from './CurrentOrderPanel';
 import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
@@ -183,7 +185,6 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
     if (typeof onChange === 'function') onChange(nextView);
   };
 
-  // Mantiene el mismo patron de accesibilidad por teclado usado en los switches del sistema.
   const onOptionKeyDown = (event, targetView) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -245,6 +246,18 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
 };
 
 const Menu = () => {
+  const { canAny } = usePermisos();
+  const canAddMenuProduct = canAny([PERMISSIONS.MENU_PEDIDO_AGREGAR_ITEM]);
+  const canViewMenuDetail = canAny([
+    PERMISSIONS.MENU_PRODUCTO_DETALLE_VER,
+    PERMISSIONS.MENU_PEDIDO_AGREGAR_ITEM
+  ]);
+  const canEditMenuOrder = canAny([
+    PERMISSIONS.MENU_PEDIDO_EDITAR_CANTIDAD,
+    PERMISSIONS.MENU_PEDIDO_ELIMINAR_ITEM
+  ]);
+  const canConfirmMenuOrder = canAny([PERMISSIONS.MENU_PEDIDO_CONFIRMAR]);
+
   const [categorias, setCategorias] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -255,7 +268,6 @@ const Menu = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [detailVersion, setDetailVersion] = useState(0);
-  // Permite alternar entre POS y CRUD de recetas en la misma ruta /dashboard/menu.
   const [vistaActiva, setVistaActiva] = useState('recetas');
   const {
     items: orderItems,
@@ -322,16 +334,17 @@ const Menu = () => {
     cargarProductos(selected?.id_tipo_departamento ?? null);
   }, [cargarProductos, selected, vistaActiva]);
 
-  // Recibe producto + configuración (extras, salsas, cantidad) y lo delega al hook de orden actual.
   const onAgregarProducto = useCallback((producto, configuracion = null) => {
+    if (!canAddMenuProduct) return;
     addConfiguredProduct(producto, configuracion);
-  }, [addConfiguredProduct]);
+  }, [addConfiguredProduct, canAddMenuProduct]);
 
   const onOpenDetail = useCallback((producto) => {
+    if (!canViewMenuDetail) return;
     setSelectedProduct(producto);
     setDetailVersion((current) => current + 1);
     setIsDetailOpen(true);
-  }, []);
+  }, [canViewMenuDetail]);
 
   const onCloseDetail = useCallback(() => {
     setIsDetailOpen(false);
@@ -354,6 +367,7 @@ const Menu = () => {
           </div>
         </div>
       </div>
+
       {vistaActiva === 'recetas' ? (
         <RecetasAdmin />
       ) : vistaActiva === 'combos' ? (
@@ -389,7 +403,6 @@ const Menu = () => {
                   onSelect={setSelected}
                 />
               )}
-
             </div>
           </div>
 
@@ -403,6 +416,8 @@ const Menu = () => {
                   loading={loadingProductos}
                   onAgregar={onAgregarProducto}
                   onOpenDetail={onOpenDetail}
+                  canAdd={canAddMenuProduct}
+                  canViewDetail={canViewMenuDetail}
                 />
               </section>
 
@@ -417,6 +432,8 @@ const Menu = () => {
                 isSubmitting={isSubmitting}
                 submitError={submitError}
                 submitSuccess={submitSuccess}
+                canEdit={canEditMenuOrder}
+                canConfirm={canConfirmMenuOrder}
               />
             </div>
           )}
@@ -426,6 +443,7 @@ const Menu = () => {
             isOpen={isDetailOpen}
             product={selectedProduct}
             onAdd={onAgregarProducto}
+            canAdd={canAddMenuProduct}
             onClose={onCloseDetail}
           />
         </>

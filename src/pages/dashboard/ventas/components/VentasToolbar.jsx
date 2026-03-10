@@ -1,8 +1,8 @@
 export default function VentasToolbar({
   search,
   onSearchChange,
-  createOpen,
-  onOpenCreate
+  onOpenCreate,
+  canCreate = true
 }) {
   return (
     <div className="inv-prod-header ventas-page__toolbar">
@@ -25,14 +25,16 @@ export default function VentasToolbar({
           />
         </label>
 
-        <button
-          type="button"
-          className={`inv-prod-toolbar-btn ${createOpen ? 'is-on' : ''}`}
-          onClick={onOpenCreate}
-        >
-          <i className="bi bi-plus-circle" />
-          <span>Nueva venta</span>
-        </button>
+        {canCreate ? (
+          <button
+            type="button"
+            className="inv-prod-toolbar-btn"
+            onClick={onOpenCreate}
+          >
+            <i className="bi bi-plus-circle" />
+            <span>Nueva venta</span>
+          </button>
+        ) : null}
       </div>
     </div>
   );

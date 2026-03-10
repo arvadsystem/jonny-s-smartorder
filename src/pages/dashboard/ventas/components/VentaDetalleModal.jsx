@@ -15,7 +15,14 @@ const InfoCard = ({ icon, label, value }) => (
   </div>
 );
 
-export default function VentaDetalleModal({ open, venta, loading, onClose }) {
+export default function VentaDetalleModal({
+  open,
+  venta,
+  loading,
+  onClose,
+  canExport = true,
+  canPrint = true
+}) {
   useEffect(() => {
     if (!open) return undefined;
 
@@ -149,17 +156,21 @@ export default function VentaDetalleModal({ open, venta, loading, onClose }) {
                 </div>
 
                 <div className="ventas-detail-modal__footer-actions">
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary"
-                    onClick={() => downloadVentaDetail(venta)}
-                    disabled={!venta}
-                  >
-                    <i className="bi bi-download" /> Exportar
-                  </button>
-                  <button type="button" className="btn btn-primary" onClick={() => window.print()}>
-                    <i className="bi bi-printer" /> Imprimir
-                  </button>
+                  {canExport ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary"
+                      onClick={() => downloadVentaDetail(venta)}
+                      disabled={!venta}
+                    >
+                      <i className="bi bi-download" /> Exportar
+                    </button>
+                  ) : null}
+                  {canPrint ? (
+                    <button type="button" className="btn btn-primary" onClick={() => window.print()}>
+                      <i className="bi bi-printer" /> Imprimir
+                    </button>
+                  ) : null}
                 </div>
               </footer>
             </>

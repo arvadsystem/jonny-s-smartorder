@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
 import { perfilService } from "../../services/perfilService";
-import usePasswordPolicies from "../../hooks/usePasswordPolicies";
-import { validatePassword } from "../../utils/passwordValidator";
 import { fmtHN } from "../../utils/dateTime";
+import "./perfil-toast.css";
 
 const Perfil = () => {
-  const [data, setData] = useState(null);
   const [roles, setRoles] = useState([]);
   const [ultimo, setUltimo] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   // Form editar perfil
   const [form, setForm] = useState({
@@ -21,39 +20,12 @@ const Perfil = () => {
     direccion: "",
   });
 
-  // Cambio de contraseña
-  const [pw, setPw] = useState({
-    actual: "",
-    nueva: "",
-    confirmacion: "",
-  });
-
-  // ✅ Toggle mostrar/ocultar password
-  const [showPw, setShowPw] = useState({
-    actual: false,
-    nueva: false,
-    confirmacion: false,
-  });
-
-  const { policies, loading: loadingPolicies, error: policiesError } = usePasswordPolicies();
-
-  const passwordCheck = validatePassword(pw.nueva || "", policies || {});
-  const confirmOk = pw.nueva.length > 0 && pw.nueva === pw.confirmacion;
-
-  const canChangePassword =
-    !loadingPolicies &&
-    !policiesError &&
-    pw.actual.length > 0 &&
-    passwordCheck.allOk &&
-    confirmOk;
-
   const cargar = async () => {
     setLoading(true);
     setError("");
 
     try {
       const res = await perfilService.getPerfil();
-      setData(res?.perfil || null);
       setRoles(res?.roles || []);
       setUltimo(res?.ultimo_acceso || null);
 
@@ -76,33 +48,19 @@ const Perfil = () => {
     cargar();
   }, []);
 
+  useEffect(() => {
+    if (!showSaveConfirm) return undefined;
+    const timer = setTimeout(() => setShowSaveConfirm(false), 3200);
+    return () => clearTimeout(timer);
+  }, [showSaveConfirm]);
+
   const onSavePerfil = async () => {
     try {
       await perfilService.updatePerfil(form);
-      alert("Perfil actualizado.");
+      setShowSaveConfirm(true);
       await cargar();
     } catch (e) {
       alert(e?.message || "No se pudo actualizar el perfil");
-    }
-  };
-
-  const onChangePassword = async () => {
-    if (pw.nueva !== pw.confirmacion) {
-      alert("La nueva contraseña y la confirmación no coinciden.");
-      return;
-    }
-
-    try {
-      await perfilService.changePassword({
-        password_actual: pw.actual,
-        password_nueva: pw.nueva,
-      });
-
-      alert("Contraseña actualizada.");
-      setPw({ actual: "", nueva: "", confirmacion: "" });
-      setShowPw({ actual: false, nueva: false, confirmacion: false });
-    } catch (e) {
-      alert(e?.message || "No se pudo cambiar la contraseña");
     }
   };
 
@@ -111,16 +69,38 @@ const Perfil = () => {
 
   return (
     <div className="p-4">
+      {showSaveConfirm && (
+        <div className="perfil-save-toast" role="status" aria-live="polite">
+          <div className="perfil-save-toast__body">
+            <div className="perfil-save-toast__icon" aria-hidden="true">
+              <i className="bi bi-check-circle-fill" />
+            </div>
+            <div className="perfil-save-toast__copy">
+              <div className="perfil-save-toast__title">ACTUALIZADO</div>
+              <div className="perfil-save-toast__subtitle">Perfil actualizado correctamente</div>
+            </div>
+            <button
+              type="button"
+              className="perfil-save-toast__close"
+              onClick={() => setShowSaveConfirm(false)}
+              aria-label="Cerrar"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div>
           <h3 className="mb-0">Mi perfil</h3>
-          <small className="text-muted">Administra tu información y seguridad</small>
+          <small className="text-muted">Administra tu información</small>
         </div>
       </div>
 
       <div className="row g-3">
         {/* Datos */}
-        <div className="col-lg-7">
+        <div className="col-lg-8">
           <div className="card shadow-sm">
             <div className="card-body">
               <h5 className="mb-3">Información personal</h5>
@@ -191,150 +171,27 @@ const Perfil = () => {
           </div>
         </div>
 
-        {/* Seguridad */}
-        <div className="col-lg-5">
-          <div className="card shadow-sm mb-3">
-            <div className="card-body">
-              <h5 className="mb-3">Cambiar contraseña</h5>
-
-              {loadingPolicies && (
-                <div className="text-muted mb-2">
-                  <span className="spinner-border spinner-border-sm me-2"></span>
-                  Cargando políticas...
-                </div>
-              )}
-
-              {policiesError && (
-                <div className="alert alert-warning">
-                  No se pudieron cargar las políticas de contraseña. Aún puedes intentar cambiarla,
-                  pero no habrá validación en vivo.
-                </div>
-              )}
-
-              {/* Contraseña actual */}
-              <label className="form-label">Contraseña actual</label>
-              <div className="input-group mb-2">
-                <input
-                  type={showPw.actual ? "text" : "password"}
-                  className="form-control"
-                  value={pw.actual}
-                  onChange={(e) =>
-                    setPw((s) => ({ ...s, actual: e.target.value }))
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() => setShowPw((s) => ({ ...s, actual: !s.actual }))}
-                  title={showPw.actual ? "Ocultar" : "Mostrar"}
-                >
-                  <i className={`bi ${showPw.actual ? "bi-eye-slash" : "bi-eye"}`}></i>
-                </button>
-              </div>
-
-              {/* Nueva contraseña */}
-              <label className="form-label">Nueva contraseña</label>
-              <div className="input-group mb-2">
-                <input
-                  type={showPw.nueva ? "text" : "password"}
-                  className="form-control"
-                  value={pw.nueva}
-                  onChange={(e) =>
-                    setPw((s) => ({ ...s, nueva: e.target.value }))
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() => setShowPw((s) => ({ ...s, nueva: !s.nueva }))}
-                  title={showPw.nueva ? "Ocultar" : "Mostrar"}
-                >
-                  <i className={`bi ${showPw.nueva ? "bi-eye-slash" : "bi-eye"}`}></i>
-                </button>
-              </div>
-
-              {/* Checklist */}
-              <div className="border rounded p-2 mb-2">
-                <div className="small fw-semibold mb-1">Debe cumplir:</div>
-                <ul className="list-unstyled mb-0 small">
-                  {passwordCheck.rules.map((r) => (
-                    <li key={r.key} className={r.ok ? "text-success" : "text-danger"}>
-                      <i className={`bi ${r.ok ? "bi-check-circle" : "bi-x-circle"} me-2`}></i>
-                      {r.label}
-                    </li>
-                  ))}
-                  <li className={confirmOk ? "text-success" : "text-danger"}>
-                    <i className={`bi ${confirmOk ? "bi-check-circle" : "bi-x-circle"} me-2`}></i>
-                    Confirmación coincide
-                  </li>
-                </ul>
-              </div>
-
-              {/* Confirmación */}
-              <label className="form-label">Confirmación</label>
-              <div className="input-group mb-3">
-                <input
-                  type={showPw.confirmacion ? "text" : "password"}
-                  className="form-control"
-                  value={pw.confirmacion}
-                  onChange={(e) =>
-                    setPw((s) => ({ ...s, confirmacion: e.target.value }))
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() =>
-                    setShowPw((s) => ({ ...s, confirmacion: !s.confirmacion }))
-                  }
-                  title={showPw.confirmacion ? "Ocultar" : "Mostrar"}
-                >
-                  <i className={`bi ${showPw.confirmacion ? "bi-eye-slash" : "bi-eye"}`}></i>
-                </button>
-              </div>
-
-              <button
-                className="btn btn-outline-dark w-100"
-                onClick={onChangePassword}
-                disabled={!canChangePassword}
-                title={
-                  !canChangePassword
-                    ? "Completa y cumple las políticas para habilitar"
-                    : "Cambiar contraseña"
-                }
-              >
-                Actualizar contraseña
-              </button>
-
-              {!confirmOk && pw.confirmacion.length > 0 && (
-                <div className="small text-danger mt-2">
-                  La confirmación no coincide.
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Roles + último acceso */}
-          <div className="card shadow-sm">
+        <div className="col-lg-4">
+          <div className="card shadow-sm h-100">
             <div className="card-body">
               <h6 className="text-muted mb-2">Roles</h6>
-              <div className="d-flex flex-wrap gap-2 mb-3">
+              <div className="d-flex flex-wrap gap-2">
                 {roles.map((r) => (
                   <span className="badge bg-secondary" key={r.id_rol}>
                     {r.nombre}
                   </span>
                 ))}
-                {roles.length === 0 && <span className="text-muted">—</span>}
+                {roles.length === 0 && <span className="text-muted">Sin roles asignados.</span>}
               </div>
 
-              <h6 className="text-muted mb-2">Último acceso</h6>
+              <h6 className="text-muted mt-4 mb-2">Último acceso</h6>
               {ultimo ? (
                 <ul className="list-unstyled mb-0 small">
                   <li><b>Fecha:</b> {fmtHN(ultimo.fecha_hora)}</li>
-                  <li><b>IP:</b> {ultimo.ip_origen || "—"}</li>
-                  <li><b>Navegador:</b> {ultimo.navegador || "—"}</li>
-                  <li><b>SO:</b> {ultimo.sistema_operativo || "—"}</li>
-                  <li><b>Dispositivo:</b> {ultimo.dispositivo || "—"}</li>
+                  <li><b>IP:</b> {ultimo.ip_origen || "-"}</li>
+                  <li><b>Navegador:</b> {ultimo.navegador || "-"}</li>
+                  <li><b>SO:</b> {ultimo.sistema_operativo || "-"}</li>
+                  <li><b>Dispositivo:</b> {ultimo.dispositivo || "-"}</li>
                 </ul>
               ) : (
                 <div className="text-muted small">No hay registros de acceso aún.</div>

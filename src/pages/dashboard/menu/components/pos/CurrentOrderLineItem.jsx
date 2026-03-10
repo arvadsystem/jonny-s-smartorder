@@ -24,7 +24,7 @@ const getSauceSummary = (item) => (
     .join(', ')
 );
 
-const CurrentOrderLineItem = ({ item, onDecrease, onIncrease, onRemove }) => {
+const CurrentOrderLineItem = ({ item, onDecrease, onIncrease, onRemove, canEdit = true }) => {
   const extrasSummary = getExtrasSummary(item);
   const sauceSummary = getSauceSummary(item);
 
@@ -51,7 +51,7 @@ const CurrentOrderLineItem = ({ item, onDecrease, onIncrease, onRemove }) => {
             type="button"
             className="btn menu-order-stepper-btn"
             onClick={() => onDecrease(item.lineKey)}
-            disabled={item.cantidad <= 1}
+            disabled={!canEdit || item.cantidad <= 1}
             aria-label={`Disminuir ${item.nombre}`}
           >
             <FaMinus />
@@ -61,6 +61,7 @@ const CurrentOrderLineItem = ({ item, onDecrease, onIncrease, onRemove }) => {
             type="button"
             className="btn menu-order-stepper-btn"
             onClick={() => onIncrease(item.lineKey)}
+            disabled={!canEdit}
             aria-label={`Aumentar ${item.nombre}`}
           >
             <FaPlus />
@@ -71,6 +72,7 @@ const CurrentOrderLineItem = ({ item, onDecrease, onIncrease, onRemove }) => {
           type="button"
           className="btn menu-order-remove-btn"
           onClick={() => onRemove(item.lineKey)}
+          disabled={!canEdit}
           aria-label={`Quitar ${item.nombre}`}
         >
           <FaTimes />

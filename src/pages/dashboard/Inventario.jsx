@@ -1,25 +1,40 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { inventarioService } from '../../services/inventarioService';
+import SinPermiso from '../../components/common/SinPermiso';
+import { usePermisos } from '../../context/PermisosContext';
+import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from '../../utils/permissions';
 
 import CategoriasTab from './inventario/CategoriasTab.jsx';
 import InsumosTab from './inventario/InsumosTab.jsx';
 import ProductosTab from './inventario/ProductosTab.jsx';
 import AlmacenesTab from './inventario/AlmacenesTab.jsx';
-import MovimientosTab from './inventario/MovimientosTab.jsx';
 import AlertasTab from './inventario/AlertasTab.jsx';
 
 // AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
-const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'movimientos', 'alertas'];
+const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'alertas'];
 
 const Inventario = () => {
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState('categorias');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
+
+  const allowedTabs = useMemo(
+    () => getAllowedTabs('inventario', permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
+  );
+  const fallbackTab = allowedTabs[0] || null;
+  const rawTab = (searchParams.get('tab') || fallbackTab || '').toLowerCase();
+  const normalizedTab = rawTab === 'movimientos' ? 'almacenes' : rawTab;
+  const activeTab = fallbackTab && allowedTabs.includes(normalizedTab) ? normalizedTab : fallbackTab;
 
   useEffect(() => {
-    const t = (searchParams.get('tab') || 'categorias').toLowerCase();
-    setActiveTab(INVENTARIO_TAB_KEYS.includes(t) ? t : 'categorias');
-  }, [searchParams]);
+    if (permisosLoading || !activeTab) return;
+    if (normalizedTab === activeTab) return;
+
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', activeTab);
+    setSearchParams(next, { replace: true });
+  }, [activeTab, normalizedTab, permisosLoading, searchParams, setSearchParams]);
 
   const [categorias, setCategorias] = useState([]);
   const [loadingCategorias, setLoadingCategorias] = useState(true);
@@ -157,6 +172,19 @@ const Inventario = () => {
 
   const toastVariant = toast.variant || 'success';
 
+  if (permisosLoading) {
+    return null;
+  }
+
+  if (!fallbackTab) {
+    return (
+      <SinPermiso
+        permiso={MODULE_PRIMARY_PERMISSION.inventario}
+        detalle="No tienes acceso a ningun submodulo de Inventario."
+      />
+    );
+  }
+
   return (
     <div className="container-fluid p-3">
       {activeTab === 'categorias' && (
@@ -184,7 +212,6 @@ const Inventario = () => {
       {activeTab === 'insumos' && <InsumosTab categorias={categorias} categoriasInsumos={categoriasInsumos} openToast={openToast} />}
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
-      {activeTab === 'movimientos' && <MovimientosTab openToast={openToast} />}
       {activeTab === 'alertas' && <AlertasTab openToast={openToast} />}
 
       {toast.show && (
