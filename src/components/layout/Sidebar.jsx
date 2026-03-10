@@ -6,6 +6,7 @@ import { getVisibleModuleItems } from '../../utils/permissions';
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   const { isSuperAdmin, loading, permisos } = usePermisos();
   const visibleItems = getVisibleModuleItems(permisos, { isSuperAdmin });
+  const sidebarItems = visibleItems.filter((item) => item.path !== '/dashboard/configuracion');
 
   const renderLink = (item) => (
     <NavLink
@@ -45,7 +46,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
         </div>
 
         <nav className="sidebar-menu" aria-label="Modulos del sistema">
-          {loading ? null : visibleItems.map((item) => renderLink(item))}
+          {loading ? null : sidebarItems.map((item) => renderLink(item))}
         </nav>
       </div>
     </aside>
