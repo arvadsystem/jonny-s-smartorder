@@ -4,6 +4,7 @@ import EntityTable from "../../../components/ui/EntityTable";
 import StatsCardsRow from "../../../components/ui/StatsCardsRow";
 import Filtros from "./components/Filtros";
 import HeaderPersonas from "./components/HeaderPersonas";
+import "./components/common/crud-modal-theme.css";
 
 const emptyForm = {
   nombre: "",
@@ -1064,6 +1065,7 @@ export default function Personas({ openToast }) {
         return trimmedValue ? "" : "Requerido";
       case "dni": {
         const dniRaw = digitsOnly(currentValue);
+        if (!dniRaw) return "";
         if (dniRaw.length !== 13) return "Formato invalido";
         return "";
       }
@@ -1884,21 +1886,22 @@ export default function Personas({ openToast }) {
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? "show" : ""}`}
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal personas-modal ${showModal ? "show" : ""} ${
+          editId ? "is-edit" : "is-create"
+        }`}
         id="per-form-drawer"
         role="dialog"
         aria-modal="true"
         aria-hidden={!showModal}
       >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-people-fill inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{editId ? "Editar persona" : "Nueva persona"}</div>
-            <div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div>
+        <div className="inv-prod-drawer-head crud-modal__header">
+          <div className="crud-modal__header-copy">
+            <div className="inv-prod-drawer-title crud-modal__title">{editId ? "Editar persona" : "Nueva persona"}</div>
+            <div className="inv-prod-drawer-sub crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
           </div>
           <button
             type="button"
-            className="inv-prod-drawer-close"
+            className="inv-prod-drawer-close crud-modal__close"
             onClick={closeFormDrawer}
             title="Cerrar"
             aria-label="Cerrar formulario"
@@ -1908,8 +1911,8 @@ export default function Personas({ openToast }) {
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
-          <div className="row g-3">
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
+          <div className="row g-3 crud-modal__grid">
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>Nombre</label>
               <input
@@ -2056,11 +2059,11 @@ export default function Personas({ openToast }) {
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
-            <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={closeFormDrawer} disabled={actionLoading}>
+          <div className="d-flex gap-2 mt-4 crud-modal__footer">
+            <button type="button" className="btn inv-prod-btn-subtle flex-fill crud-modal__btn" onClick={closeFormDrawer} disabled={actionLoading}>
               Cancelar
             </button>
-            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={actionLoading || !!deletingId}>
+            <button type="submit" className="btn inv-prod-btn-primary flex-fill crud-modal__btn" disabled={actionLoading || !!deletingId}>
               {actionLoading ? "Guardando..." : editId ? "Guardar" : "Crear"}
             </button>
           </div>

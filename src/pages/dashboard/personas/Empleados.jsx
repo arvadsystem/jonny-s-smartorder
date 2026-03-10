@@ -7,6 +7,7 @@ import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpleadoCard from "./components/empleados/EmpleadoCard";
 import EmployeeDetailModal from "./components/empleados/EmployeeDetailModal";
+import "./components/common/crud-modal-theme.css";
 
 const emptyForm = {
   id_persona: "",
@@ -275,6 +276,21 @@ export default function Empleados({ openToast }) {
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
+
+  const blurFocusedElementInside = useCallback((containerId) => {
+    if (typeof document === "undefined") return;
+    const container = document.getElementById(containerId);
+    const active = document.activeElement;
+    if (!container || !active) return;
+    if (container.contains(active) && typeof active.blur === "function") {
+      active.blur();
+    }
+  }, []);
+
+  const closeFormDrawer = useCallback(() => {
+    blurFocusedElementInside("empd-form-drawer");
+    setShowModal(false);
+  }, [blurFocusedElementInside]);
 
   const personaOptions = useMemo(
     () =>
@@ -692,7 +708,7 @@ export default function Empleados({ openToast }) {
         safeToast("OK", "Empleado creado");
       }
 
-      setShowModal(false);
+      closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
       clearFormImageDraft();
@@ -748,7 +764,7 @@ export default function Empleados({ openToast }) {
       clearPersistedEmployeeImage(id);
 
       if (String(editId) === String(id)) {
-        setShowModal(false);
+        closeFormDrawer();
         setEditId(null);
         setForm(emptyForm);
         clearFormImageDraft();
@@ -840,7 +856,7 @@ export default function Empleados({ openToast }) {
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setDetailEmpleado(null);
     setFiltersDraft({ estadoFiltro, sortBy });
     setFiltersOpen(true);
@@ -868,7 +884,7 @@ export default function Empleados({ openToast }) {
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersOpen(false);
   };
 
@@ -1096,7 +1112,7 @@ export default function Empleados({ openToast }) {
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? "show" : ""} ${
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal empleados-modal ${showModal ? "show" : ""} ${
           drawerMode === "create" ? "is-create" : "is-edit"
         }`}
         id="empd-form-drawer"
@@ -1104,24 +1120,23 @@ export default function Empleados({ openToast }) {
         aria-modal="true"
         aria-hidden={!showModal}
       >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-person-badge inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{drawerMode === "create" ? "Nuevo empleado" : "Editar empleado"}</div>
-            <div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div>
+        <div className="inv-prod-drawer-head crud-modal__header">
+          <div className="crud-modal__header-copy">
+            <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo empleado" : "Editar empleado"}</div>
+            <div className="inv-prod-drawer-sub crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
           </div>
           <button
             type="button"
-            className="inv-prod-drawer-close"
-            onClick={() => setShowModal(false)}
+            className="inv-prod-drawer-close crud-modal__close"
+            onClick={closeFormDrawer}
             title="Cerrar"
           >
             <i className="bi bi-x-lg" />
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
-          <div className="row g-3">
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
+          <div className="row g-3 crud-modal__grid">
             <div className="col-12">
               <label className="form-label text-light text-opacity-75">Persona</label>
               <select
@@ -1231,7 +1246,7 @@ export default function Empleados({ openToast }) {
             </div>
 
             <div className="col-12">
-              <div className="form-check">
+              <div className="form-check form-switch m-0">
                 <input
                   className="form-check-input"
                   type="checkbox"
@@ -1246,18 +1261,18 @@ export default function Empleados({ openToast }) {
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
+          <div className="d-flex gap-2 mt-4 crud-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill"
-              onClick={() => setShowModal(false)}
+              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+              onClick={closeFormDrawer}
               disabled={actionLoading || !!deletingId}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill"
+              className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
               disabled={actionLoading || !!deletingId}
             >
               {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import './usuarios-modal.css';
+import '../common/crud-modal-theme.css';
 
 const toDisplayValue = (value, fallback = 'No registrado') => {
   if (value === null || value === undefined) return fallback;
@@ -94,24 +95,24 @@ export default function UsuarioModal({
 
   return (
     <aside
-      className={`inv-prod-drawer inv-cat-v2__drawer usuarios-modal ${isOpen ? 'show' : ''} ${isCreate ? 'is-create' : 'is-edit'}`}
+      className={`inv-prod-drawer inv-cat-v2__drawer crud-modal usuarios-modal ${isOpen ? 'show' : ''} ${isCreate ? 'is-create' : 'is-edit'}`}
       id="usr-form-drawer"
       role={isOpen ? 'dialog' : undefined}
       aria-modal={isOpen ? 'true' : undefined}
       inert={!isOpen ? '' : undefined}
     >
-      <div className="inv-prod-drawer-head usuarios-modal__header">
-        <div className="usuarios-modal__title-wrap">
-          <div className="inv-prod-drawer-title usuarios-modal__title">{isCreate ? 'Nuevo Usuario' : 'Editar Usuario'}</div>
-          <div className="inv-prod-drawer-sub usuarios-modal__subtitle">Completa los campos y guarda los cambios.</div>
+      <div className="inv-prod-drawer-head usuarios-modal__header crud-modal__header">
+        <div className="usuarios-modal__title-wrap crud-modal__header-copy">
+          <div className="inv-prod-drawer-title usuarios-modal__title crud-modal__title">{isCreate ? 'Nuevo Usuario' : 'Editar Usuario'}</div>
+          <div className="inv-prod-drawer-sub usuarios-modal__subtitle crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
         </div>
-        <button type="button" className="inv-prod-drawer-close usuarios-modal__close" onClick={handleClose} title="Cerrar">
+        <button type="button" className="inv-prod-drawer-close usuarios-modal__close crud-modal__close" onClick={handleClose} title="Cerrar">
           <i className="bi bi-x-lg" />
         </button>
       </div>
 
-      <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite usuarios-modal__body" onSubmit={onSubmit}>
-        <div className="row g-3 mt-0 usuarios-modal__grid">
+      <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite usuarios-modal__body crud-modal__body" onSubmit={onSubmit}>
+        <div className="row g-3 mt-0 usuarios-modal__grid crud-modal__grid">
           {isCreate ? (
             <>
               <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
@@ -320,10 +321,10 @@ export default function UsuarioModal({
           ) : null}
         </div>
 
-        <div className="d-flex gap-2 mt-4 usuarios-modal__footer">
+        <div className="d-flex gap-2 mt-4 usuarios-modal__footer crud-modal__footer">
           <button
             type="button"
-            className="btn inv-prod-btn-subtle flex-fill usuarios-modal__btn-cancel"
+            className="btn inv-prod-btn-subtle flex-fill usuarios-modal__btn-cancel crud-modal__btn"
             onClick={handleClose}
             disabled={actionLoading || resetPasswordLoading || !!deletingId}
           >
@@ -333,7 +334,7 @@ export default function UsuarioModal({
           {!isCreate && canResetPassword ? (
             <button
               type="button"
-              className="btn inv-prod-btn-outline flex-fill usuarios-modal__btn-reset"
+              className="btn inv-prod-btn-outline flex-fill usuarios-modal__btn-reset crud-modal__btn"
               onClick={onResetPassword}
               disabled={actionLoading || resetPasswordLoading || !!deletingId}
             >
@@ -343,7 +344,7 @@ export default function UsuarioModal({
 
           <button
             type="submit"
-            className="btn inv-prod-btn-primary flex-fill usuarios-modal__btn-submit"
+            className="btn inv-prod-btn-primary flex-fill usuarios-modal__btn-submit crud-modal__btn"
             disabled={
               isCreate
                 ? createDisabled

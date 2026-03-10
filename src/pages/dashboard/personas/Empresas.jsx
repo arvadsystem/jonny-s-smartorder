@@ -5,6 +5,7 @@ import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpresaCard from "./components/empresas/EmpresaCard";
+import "./components/empresas/empresas-modal.css";
 
 const emptyForm = {
   rtn: "",
@@ -19,19 +20,28 @@ const createInitialFiltersDraft = () => ({
   sortBy: "recientes",
 });
 
-const normalizeValue = (v) => String(v ?? "").trim().toLowerCase();
+const EMAIL_WITH_DOMAIN_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-const findFkId = (record, fkKey, textKeys, catalog, idKey, labelKey) => {
-  if (record?.[fkKey]) return String(record[fkKey]);
+const normalizeText = (value) => String(value ?? "").trim();
 
-  const recordTexts = textKeys.map((k) => normalizeValue(record?.[k])).filter(Boolean);
-  if (!recordTexts.length) return "";
+const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
+const limitText = (value, max) => String(value ?? "").slice(0, max);
 
-  const found = (Array.isArray(catalog) ? catalog : []).find((item) =>
-    recordTexts.includes(normalizeValue(item?.[labelKey]))
+const formatPhone = (digits8) => {
+  const clean = String(digits8 ?? "");
+  const part1 = clean.slice(0, 4);
+  const part2 = clean.slice(4, 8);
+  if (clean.length <= 4) return part1;
+  return `${part1}-${part2}`;
+};
+
+const findCatalogLabelById = (catalog, idKey, labelKey, idValue) => {
+  const idAsText = normalizeText(idValue);
+  if (!idAsText) return "";
+  const found = (Array.isArray(catalog) ? catalog : []).find(
+    (item) => normalizeText(item?.[idKey]) === idAsText
   );
-
-  return found?.[idKey] ? String(found[idKey]) : "";
+  return normalizeText(found?.[labelKey]);
 };
 
 const normalizeListResponse = (resp) => {
@@ -131,36 +141,84 @@ export default function Empresas({ openToast }) {
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
 
+  const blurFocusedElementInside = useCallback((containerId) => {
+    if (typeof document === "undefined") return;
+    const container = document.getElementById(containerId);
+    const active = document.activeElement;
+    if (!container || !active) return;
+    if (container.contains(active) && typeof active.blur === "function") {
+      active.blur();
+    }
+  }, []);
+
+  const closeFormDrawer = useCallback(() => {
+    blurFocusedElementInside("emp-form-drawer");
+    setShowModal(false);
+  }, [blurFocusedElementInside]);
+
   const buildFormFromEmpresa = useCallback(
     (empresa) => ({
-      rtn: empresa?.rtn || "",
-      nombre_empresa: empresa?.nombre_empresa || "",
-      id_telefono: findFkId(
-        empresa,
-        "id_telefono",
-        ["telefono", "telefono_numero", "numero_telefono"],
-        telefonos,
-        "id_telefono",
-        "telefono"
+      rtn: normalizeText(empresa?.rtn),
+      nombre_empresa: normalizeText(empresa?.nombre_empresa),
+      id_telefono: formatPhone(
+        limitText(
+          digitsOnly(
+            empresa?.telefono ??
+              empresa?.telefono_numero ??
+              empresa?.numero_telefono ??
+              findCatalogLabelById(
+                telefonos,
+                "id_telefono",
+                "telefono",
+                empresa?.id_telefono
+              )
+          ),
+          8
+        )
       ),
-      id_direccion: findFkId(
-        empresa,
-        "id_direccion",
-        ["direccion", "direccion_detalle"],
-        direcciones,
-        "id_direccion",
-        "direccion"
+      id_direccion: normalizeText(
+        empresa?.direccion ??
+          empresa?.direccion_detalle ??
+          findCatalogLabelById(
+            direcciones,
+            "id_direccion",
+            "direccion",
+            empresa?.id_direccion
+          )
       ),
-      id_correo: findFkId(
-        empresa,
-        "id_correo",
-        ["correo", "direccion_correo", "email"],
-        correos,
-        "id_correo",
-        "direccion_correo"
+      id_correo: normalizeText(
+        empresa?.correo ??
+          empresa?.direccion_correo ??
+          empresa?.email ??
+          findCatalogLabelById(
+            correos,
+            "id_correo",
+            "direccion_correo",
+            empresa?.id_correo
+          )
       ),
     }),
     [telefonos, direcciones, correos]
+  );
+
+  const buildEmpresaPayloadFromForm = useCallback(
+    (sourceForm) => {
+      const telefonoRaw = limitText(digitsOnly(sourceForm?.id_telefono), 8);
+      const direccion = normalizeText(sourceForm?.id_direccion);
+      const correo = normalizeText(sourceForm?.id_correo);
+
+      const payload = {
+        rtn: normalizeText(sourceForm?.rtn),
+        nombre_empresa: normalizeText(sourceForm?.nombre_empresa),
+      };
+
+      if (telefonoRaw) payload.texto_telefono = formatPhone(telefonoRaw);
+      if (direccion) payload.texto_direccion = direccion;
+      if (correo) payload.texto_correo = correo;
+
+      return payload;
+    },
+    []
   );
 
   const cargarCatalogos = useCallback(async () => {
@@ -261,23 +319,50 @@ export default function Empresas({ openToast }) {
     });
   }, [showModal, editId, empresas, buildFormFromEmpresa]);
 
-  const validar = () => {
+  const handleTelefonoChange = useCallback((event) => {
+    const raw = limitText(digitsOnly(event.target.value), 8);
+    setForm((state) => ({ ...state, id_telefono: formatPhone(raw) }));
+    setErrors((state) => ({ ...state, id_telefono: undefined }));
+  }, []);
+
+  const handleTelefonoPaste = useCallback((event) => {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData("text") ?? "";
+    const raw = limitText(digitsOnly(pasted), 8);
+    setForm((state) => ({ ...state, id_telefono: formatPhone(raw) }));
+    setErrors((state) => ({ ...state, id_telefono: undefined }));
+  }, []);
+
+  const handleFieldChange = useCallback((field, value) => {
+    setForm((state) => ({ ...state, [field]: value }));
+    setErrors((state) => ({ ...state, [field]: undefined }));
+  }, []);
+
+  const validar = useCallback(() => {
     const currentErrors = {};
+    const telefonoRaw = digitsOnly(form.id_telefono);
+    const correoValue = normalizeText(form.id_correo);
 
     if (!form.nombre_empresa?.trim()) currentErrors.nombre_empresa = "Requerido";
     if (!form.rtn?.trim()) currentErrors.rtn = "Requerido";
-    if (!form.id_telefono) currentErrors.id_telefono = "Seleccione";
-    if (!form.id_direccion) currentErrors.id_direccion = "Seleccione";
-    if (!form.id_correo) currentErrors.id_correo = "Seleccione";
+
+    if (telefonoRaw && telefonoRaw.length !== 8) {
+      currentErrors.id_telefono = "Formato invalido";
+    }
+
+    if (correoValue && !EMAIL_WITH_DOMAIN_REGEX.test(correoValue)) {
+      currentErrors.id_correo = "Ingrese un correo valido con dominio";
+    }
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
-  };
+  }, [form]);
 
   const guardar = async (event) => {
     event.preventDefault();
     if (!validar() || actionLoading) return;
 
+    const payloadActual = buildEmpresaPayloadFromForm(form);
     setActionLoading(true);
     try {
       if (editId) {
@@ -289,10 +374,14 @@ export default function Empresas({ openToast }) {
         }
 
         const originalForm = buildFormFromEmpresa(empresaOriginal);
+        const originalPayload = buildEmpresaPayloadFromForm(originalForm);
         const changedPayload = Object.fromEntries(
-          Object.keys(emptyForm)
-            .filter((key) => String(form[key] ?? "") !== String(originalForm[key] ?? ""))
-            .map((key) => [key, form[key]])
+          Object.keys(payloadActual)
+            .filter(
+              (key) =>
+                String(payloadActual[key] ?? "") !== String(originalPayload[key] ?? "")
+            )
+            .map((key) => [key, payloadActual[key]])
         );
 
         if (!Object.keys(changedPayload).length) {
@@ -302,11 +391,11 @@ export default function Empresas({ openToast }) {
           safeToast("OK", "Empresa actualizada");
         }
       } else {
-        await personaService.createEmpresa(form);
+        await personaService.createEmpresa(payloadActual);
         safeToast("OK", "Empresa creada");
       }
 
-      setShowModal(false);
+      closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
       await cargarEmpresas();
@@ -383,7 +472,7 @@ export default function Empresas({ openToast }) {
       await personaService.deleteEmpresa(id);
 
       if (String(editId) === String(id)) {
-        setShowModal(false);
+        closeFormDrawer();
         setEditId(null);
         setForm(emptyForm);
       }
@@ -466,10 +555,15 @@ export default function Empresas({ openToast }) {
 
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
   const drawerMode = editId ? "edit" : "create";
+  const empresaEnEdicion = useMemo(
+    () => empresas.find((item) => String(item.id_empresa) === String(editId)) || null,
+    [editId, empresas]
+  );
+  const estadoVisual = empresaEnEdicion ? isEmpresaActiva(empresaEnEdicion) : true;
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersDraft({ estadoFiltro, sortBy });
     setFiltersOpen(true);
   };
@@ -496,7 +590,7 @@ export default function Empresas({ openToast }) {
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersOpen(false);
   };
 
@@ -727,7 +821,7 @@ export default function Empresas({ openToast }) {
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? "show" : ""} ${
+        className={`inv-prod-drawer inv-cat-v2__drawer empresas-modal ${showModal ? "show" : ""} ${
           drawerMode === "create" ? "is-create" : "is-edit"
         }`}
         id="emp-form-drawer"
@@ -735,112 +829,134 @@ export default function Empresas({ openToast }) {
         aria-modal="true"
         aria-hidden={!showModal}
       >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-buildings inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{drawerMode === "create" ? "Nueva empresa" : "Editar empresa"}</div>
-            <div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div>
+        <div className="inv-prod-drawer-head empresas-modal__header">
+          <div className="empresas-modal__header-copy">
+            <div className="inv-prod-drawer-title empresas-modal__title">
+              {drawerMode === "create" ? "Nueva empresa" : "Editar empresa"}
+            </div>
+            <div className="inv-prod-drawer-sub empresas-modal__subtitle">
+              Completa los campos y guarda los cambios.
+            </div>
           </div>
-          <button type="button" className="inv-prod-drawer-close" onClick={() => setShowModal(false)} title="Cerrar">
+          <button
+            type="button"
+            className="inv-prod-drawer-close empresas-modal__close"
+            onClick={closeFormDrawer}
+            title="Cerrar"
+          >
             <i className="bi bi-x-lg" />
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
-          <div className="row g-3">
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">RTN</label>
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite empresas-modal__body" onSubmit={guardar}>
+          <div className="row g-3 empresas-modal__grid">
+            <div className="col-12 col-md-6 empresas-modal__field">
+              <label className="form-label empresas-modal__label">RTN</label>
               <input
-                className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
+                className={`form-control empresas-modal__input ${errors.rtn ? "is-invalid" : ""}`}
+                placeholder="Ej: 0801190012345"
                 value={form.rtn}
-                onChange={(event) => setForm((state) => ({ ...state, rtn: event.target.value }))}
+                onChange={(event) => handleFieldChange("rtn", event.target.value)}
               />
               {errors.rtn && <div className="invalid-feedback d-block">{errors.rtn}</div>}
             </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Nombre empresa</label>
+            <div className="col-12 col-md-6 empresas-modal__field">
+              <label className="form-label empresas-modal__label">Nombre empresa</label>
               <input
-                className={`form-control ${errors.nombre_empresa ? "is-invalid" : ""}`}
+                className={`form-control empresas-modal__input ${errors.nombre_empresa ? "is-invalid" : ""}`}
+                placeholder="Ej: Inversiones La Esperanza"
                 value={form.nombre_empresa}
-                onChange={(event) => setForm((state) => ({ ...state, nombre_empresa: event.target.value }))}
+                onChange={(event) => handleFieldChange("nombre_empresa", event.target.value)}
               />
               {errors.nombre_empresa && <div className="invalid-feedback d-block">{errors.nombre_empresa}</div>}
             </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Telefono</label>
-              <select
-                className={`form-select ${errors.id_telefono ? "is-invalid" : ""}`}
+            <div className="col-12 col-md-6 empresas-modal__field">
+              <label className="form-label empresas-modal__label">Telefono</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={9}
+                list="emp-telefonos-sugeridos"
+                placeholder="0000-0000"
+                className={`form-control empresas-modal__input ${errors.id_telefono ? "is-invalid" : ""}`}
                 value={form.id_telefono}
-                onChange={(event) => setForm((state) => ({ ...state, id_telefono: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
+                onChange={handleTelefonoChange}
+                onPaste={handleTelefonoPaste}
+              />
+              <datalist id="emp-telefonos-sugeridos">
                 {telefonos.map((telefono) => (
-                  <option key={telefono.id_telefono} value={telefono.id_telefono}>
-                    {telefono.telefono}
-                  </option>
+                  <option key={telefono.id_telefono} value={toDisplayValue(telefono.telefono, "")} />
                 ))}
-              </select>
+              </datalist>
               {errors.id_telefono && <div className="invalid-feedback d-block">{errors.id_telefono}</div>}
             </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Direccion</label>
-              <select
-                className={`form-select ${errors.id_direccion ? "is-invalid" : ""}`}
+            <div className="col-12 col-md-6 empresas-modal__field">
+              <label className="form-label empresas-modal__label">Direccion</label>
+              <input
+                type="text"
+                list="emp-direcciones-sugeridas"
+                placeholder="Ej: Col. Palmira, Avenida Republica..."
+                className={`form-control empresas-modal__input ${errors.id_direccion ? "is-invalid" : ""}`}
                 value={form.id_direccion}
-                onChange={(event) => setForm((state) => ({ ...state, id_direccion: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
+                onChange={(event) => handleFieldChange("id_direccion", event.target.value)}
+              />
+              <datalist id="emp-direcciones-sugeridas">
                 {direcciones.map((direccion) => (
-                  <option key={direccion.id_direccion} value={direccion.id_direccion}>
-                    {direccion.direccion}
-                  </option>
+                  <option key={direccion.id_direccion} value={toDisplayValue(direccion.direccion, "")} />
                 ))}
-              </select>
+              </datalist>
               {errors.id_direccion && <div className="invalid-feedback d-block">{errors.id_direccion}</div>}
             </div>
 
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Correo</label>
-              <select
-                className={`form-select ${errors.id_correo ? "is-invalid" : ""}`}
+            <div className="col-12 empresas-modal__field">
+              <label className="form-label empresas-modal__label">Correo</label>
+              <input
+                type="email"
+                list="emp-correos-sugeridos"
+                placeholder="empresa@dominio.com"
+                className={`form-control empresas-modal__input ${errors.id_correo ? "is-invalid" : ""}`}
                 value={form.id_correo}
-                onChange={(event) => setForm((state) => ({ ...state, id_correo: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
+                onChange={(event) => handleFieldChange("id_correo", event.target.value)}
+              />
+              <datalist id="emp-correos-sugeridos">
                 {correos.map((correo) => (
-                  <option key={correo.id_correo} value={correo.id_correo}>
-                    {correo.direccion_correo}
-                  </option>
+                  <option key={correo.id_correo} value={toDisplayValue(correo.direccion_correo, "")} />
                 ))}
-              </select>
+              </datalist>
               {errors.id_correo && <div className="invalid-feedback d-block">{errors.id_correo}</div>}
             </div>
 
-            <div className="col-12">
-              <div className="form-check mt-1">
-                <input className="form-check-input" type="checkbox" checked readOnly id="empresa_estado_visual" />
-                <label className="form-check-label text-light text-opacity-75" htmlFor="empresa_estado_visual">
+            <div className="col-12 empresas-modal__field empresas-modal__switch-wrap">
+              <div className="form-check form-switch m-0">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={estadoVisual}
+                  readOnly
+                  id="empresa_estado_visual"
+                />
+                <label className="form-check-label empresas-modal__label" htmlFor="empresa_estado_visual">
                   Registro habilitado
                 </label>
               </div>
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
+          <div className="d-flex gap-2 mt-4 empresas-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill"
-              onClick={() => setShowModal(false)}
+              className="btn inv-prod-btn-subtle flex-fill empresas-modal__btn"
+              onClick={closeFormDrawer}
               disabled={actionLoading || !!deletingId || !!togglingEstadoId}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill"
+              className="btn inv-prod-btn-primary flex-fill empresas-modal__btn"
               disabled={actionLoading || !!deletingId || !!togglingEstadoId}
             >
               {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}

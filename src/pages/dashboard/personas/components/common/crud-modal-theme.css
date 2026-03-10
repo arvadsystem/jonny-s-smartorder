@@ -1,0 +1,195 @@
+.crud-modal.inv-prod-drawer {
+  top: 0;
+  right: 0;
+  left: auto;
+  bottom: 0;
+  width: min(420px, 92vw) !important;
+  max-width: 92vw !important;
+  height: 100vh;
+  border: 1px solid rgba(161, 146, 136, 0.42);
+  border-right: 0;
+  border-radius: 26px 0 0 26px;
+  background:
+    radial-gradient(360px 120px at 50% 46%, rgba(232, 199, 181, 0.4) 0%, rgba(232, 199, 181, 0) 72%),
+    linear-gradient(180deg, #f3efee 0%, #ece8e8 100%);
+  box-shadow: 0 28px 64px rgba(55, 35, 30, 0.24);
+  overflow: hidden;
+}
+
+.crud-modal .crud-modal__header {
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 1rem 1rem 0.85rem;
+  border-bottom: 1px solid rgba(135, 117, 103, 0.2);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.crud-modal .crud-modal__header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.crud-modal .crud-modal__title {
+  color: #3c2119;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.1px;
+}
+
+.crud-modal .crud-modal__subtitle {
+  color: rgba(76, 54, 46, 0.85);
+  margin-top: 0.25rem;
+  font-size: 0.92rem;
+  line-height: 1.25;
+  opacity: 0.82;
+}
+
+.crud-modal .crud-modal__close.inv-prod-drawer-close {
+  margin-left: auto;
+  width: 2.3rem;
+  height: 2.3rem;
+  min-width: 2.3rem;
+  border-radius: 999px;
+  border: 1px solid var(--bs-border-color-translucent);
+  background: rgba(255, 255, 255, 0.6);
+  color: #6f4336;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crud-modal .crud-modal__close i {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.crud-modal .crud-modal__body {
+  position: relative;
+  padding: 0.35rem 1rem 1rem;
+  display: block;
+  overflow: auto;
+}
+
+.crud-modal .crud-modal__grid {
+  --bs-gutter-x: 0.75rem;
+  --bs-gutter-y: 0.35rem;
+  padding-top: 0.5rem;
+}
+
+.crud-modal .crud-modal__grid > [class*="col-"] {
+  margin-bottom: 0.25rem;
+}
+
+.crud-modal .form-label,
+.crud-modal .form-check-label {
+  margin-bottom: 0.35rem;
+  color: #6f564b !important;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.crud-modal .form-control,
+.crud-modal .form-select {
+  min-height: 2.85rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(192, 180, 174, 0.8);
+  background: rgba(255, 255, 255, 0.74);
+  color: #3f271f;
+  font-size: 0.96rem;
+  padding: 0.55rem 0.85rem;
+  box-shadow: none;
+}
+
+.crud-modal .form-control::placeholder {
+  color: rgba(111, 87, 77, 0.72);
+}
+
+.crud-modal .form-control:focus,
+.crud-modal .form-select:focus {
+  border-color: rgba(188, 146, 126, 0.82);
+  box-shadow: 0 0 0 0.2rem rgba(189, 146, 120, 0.18);
+}
+
+.crud-modal .form-check.form-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding-left: 0;
+}
+
+.crud-modal .form-check.form-switch .form-check-input {
+  width: 58px;
+  height: 32px;
+  margin: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(94, 129, 72, 0.65);
+  background-color: #8ba878;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+
+.crud-modal .form-check.form-switch .form-check-input:not(:checked) {
+  border-color: rgba(134, 122, 116, 0.48);
+  background-color: #b7aaa4;
+}
+
+.crud-modal .form-check.form-switch .form-check-input:checked {
+  background-color: #6c935b;
+  border-color: #5f8450;
+}
+
+.crud-modal .invalid-feedback.d-block {
+  color: #ad3131;
+  font-size: 0.78rem;
+}
+
+.crud-modal .crud-modal__footer {
+  margin-top: 0.9rem !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.crud-modal .crud-modal__btn.btn {
+  min-height: 2.9rem;
+  border-radius: 14px;
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+@media (max-width: 991.98px) {
+  .crud-modal.inv-prod-drawer {
+    width: min(420px, 92vw) !important;
+    max-width: 92vw !important;
+  }
+
+  .crud-modal .crud-modal__header {
+    padding: 0.9rem 0.9rem 0.75rem;
+  }
+
+  .crud-modal .crud-modal__body {
+    padding: 0.3rem 0.9rem 0.9rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .crud-modal .crud-modal__title {
+    font-size: 1.2rem;
+  }
+
+  .crud-modal .crud-modal__subtitle {
+    font-size: 0.86rem;
+  }
+
+  .crud-modal .crud-modal__footer {
+    grid-template-columns: 1fr;
+  }
+
+  .crud-modal .form-label,
+  .crud-modal .form-check-label {
+    font-size: 0.9rem;
+  }
+}

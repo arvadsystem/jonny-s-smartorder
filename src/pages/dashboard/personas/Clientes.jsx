@@ -6,6 +6,7 @@ import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import ClienteCard from "./components/clientes/ClienteCard";
+import "./components/common/crud-modal-theme.css";
 
 const emptyForm = {
   id_persona: "",
@@ -107,6 +108,11 @@ const getCorreo = (cliente) =>
 
 const getFechaRegistro = (cliente) => cliente?.fecha_registro ?? cliente?.fecha_ingreso ?? cliente?.created_at;
 
+const parseIntegerValue = (value) => {
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isInteger(parsed) ? parsed : NaN;
+};
+
 const detectEstadoField = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return "estado";
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return "activo";
@@ -168,6 +174,21 @@ const Clientes = ({ openToast }) => {
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
+
+  const blurFocusedElementInside = useCallback((containerId) => {
+    if (typeof document === "undefined") return;
+    const container = document.getElementById(containerId);
+    const active = document.activeElement;
+    if (!container || !active) return;
+    if (container.contains(active) && typeof active.blur === "function") {
+      active.blur();
+    }
+  }, []);
+
+  const closeFormDrawer = useCallback(() => {
+    blurFocusedElementInside("cli-form-drawer");
+    setShowModal(false);
+  }, [blurFocusedElementInside]);
 
   const personaOptions = useMemo(
     () =>
@@ -264,10 +285,7 @@ const Clientes = ({ openToast }) => {
       id_empresa:
         cliente?.id_empresa
           ? String(cliente.id_empresa)
-          : resolveIdFromLabel(
-              cliente?.nombre_empresa || cliente?.empresa_nombre || cliente?.empresa,
-              empresaOptions
-            ),
+          : resolveIdFromLabel(cliente?.nombre_empresa || cliente?.empresa_nombre || cliente?.empresa, empresaOptions),
       id_tipo_cliente:
         cliente?.id_tipo_cliente
           ? String(cliente.id_tipo_cliente)
@@ -385,11 +403,11 @@ const Clientes = ({ openToast }) => {
   }, [showModal, editId, clientes, buildFormFromCliente]);
 
   const sanitizeForm = () => ({
-    id_persona: Number.parseInt(String(form.id_persona), 10),
-    id_empresa: Number.parseInt(String(form.id_empresa), 10),
-    id_tipo_cliente: Number.parseInt(String(form.id_tipo_cliente), 10),
+    id_persona: parseIntegerValue(form.id_persona),
+    id_empresa: parseIntegerValue(form.id_empresa),
+    id_tipo_cliente: parseIntegerValue(form.id_tipo_cliente),
     fecha_ingreso: form.fecha_ingreso,
-    puntos: Number.parseInt(String(form.puntos), 10),
+    puntos: parseIntegerValue(form.puntos),
     estado: Boolean(form.estado),
   });
 
@@ -453,7 +471,7 @@ const Clientes = ({ openToast }) => {
         safeToast("OK", "Cliente creado");
       }
 
-      setShowModal(false);
+      closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
       await cargarClientes();
@@ -500,7 +518,7 @@ const Clientes = ({ openToast }) => {
       await personaService.deleteCliente(id);
 
       if (String(editId) === String(id)) {
-        setShowModal(false);
+        closeFormDrawer();
         setEditId(null);
         setForm(emptyForm);
       }
@@ -585,7 +603,7 @@ const Clientes = ({ openToast }) => {
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersDraft({ estadoFiltro, sortBy });
     setFiltersOpen(true);
   };
@@ -612,7 +630,7 @@ const Clientes = ({ openToast }) => {
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersOpen(false);
   };
 
@@ -827,7 +845,7 @@ const Clientes = ({ openToast }) => {
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? "show" : ""} ${
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal clientes-modal ${showModal ? "show" : ""} ${
           drawerMode === "create" ? "is-create" : "is-edit"
         }`}
         id="cli-form-drawer"
@@ -835,26 +853,25 @@ const Clientes = ({ openToast }) => {
         aria-modal="true"
         aria-hidden={!showModal}
       >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-person-lines-fill inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{drawerMode === "create" ? "Nuevo cliente" : "Editar cliente"}</div>
-            <div className="inv-prod-drawer-sub">
+        <div className="inv-prod-drawer-head crud-modal__header">
+          <div className="crud-modal__header-copy">
+            <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo cliente" : "Editar cliente"}</div>
+            <div className="inv-prod-drawer-sub crud-modal__subtitle">
               Completa los campos y guarda los cambios.
             </div>
           </div>
           <button
             type="button"
-            className="inv-prod-drawer-close"
-            onClick={() => setShowModal(false)}
+            className="inv-prod-drawer-close crud-modal__close"
+            onClick={closeFormDrawer}
             title="Cerrar"
           >
             <i className="bi bi-x-lg" />
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
-          <div className="row g-3">
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
+          <div className="row g-3 crud-modal__grid">
             <div className="col-12">
               <label className="form-label text-light text-opacity-75">Persona</label>
               <select
@@ -931,7 +948,7 @@ const Clientes = ({ openToast }) => {
             </div>
 
             <div className="col-12">
-              <div className="form-check">
+              <div className="form-check form-switch m-0">
                 <input
                   className="form-check-input"
                   type="checkbox"
@@ -946,18 +963,18 @@ const Clientes = ({ openToast }) => {
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
+          <div className="d-flex gap-2 mt-4 crud-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill"
-              onClick={() => setShowModal(false)}
+              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+              onClick={closeFormDrawer}
               disabled={actionLoading || !!deletingId}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill"
+              className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
               disabled={actionLoading || !!deletingId}
             >
               {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}

@@ -277,6 +277,10 @@
   padding-top: 0.15rem;
 }
 
+.usuarios-modal .usuarios-modal__footer.crud-modal__footer {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
 .usuarios-modal .usuarios-modal__btn-cancel,
 .usuarios-modal .usuarios-modal__btn-submit,
 .usuarios-modal .usuarios-modal__btn-reset {
