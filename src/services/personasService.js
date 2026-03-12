@@ -317,14 +317,12 @@ export const personaService = {
       throw new Error('El payload de actualizacion debe ser un objeto');
     }
 
-    const fields = Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined);
-    if (!fields.length) return { error: false, message: 'Sin cambios para actualizar' };
+    const payload = Object.fromEntries(
+      Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined)
+    );
+    if (!Object.keys(payload).length) return { error: false, message: 'Sin cambios para actualizar' };
 
-    let result = null;
-    for (const [campo, valor] of fields) {
-      result = await apiFetch(`/clientes/${id}`, 'PUT', { campo, valor });
-    }
-    return result;
+    return apiFetch(`/clientes/${id}`, 'PUT', payload);
   },
 
   deleteCliente: (id) =>

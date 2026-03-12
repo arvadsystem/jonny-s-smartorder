@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Select from "react-select";
 import { personaService } from "../../../services/personasService";
 import { parametrosService } from "../../../services/parametrosService";
 import EntityTable from "../../../components/ui/EntityTable";
@@ -7,6 +8,7 @@ import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import ClienteCard from "./components/clientes/ClienteCard";
 import "./components/common/crud-modal-theme.css";
+import "./components/clientes/clientes-persona-select.css";
 
 const emptyForm = {
   id_persona: "",
@@ -20,6 +22,76 @@ const emptyForm = {
 const createInitialFiltersDraft = () => ({
   estadoFiltro: "todos",
   sortBy: "recientes",
+});
+
+const buildClientesSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: hasError
+      ? "var(--bs-danger, #dc3545)"
+      : state.isFocused
+        ? "rgba(158, 105, 61, 0.72)"
+        : "rgba(206, 196, 177, 0.9)",
+    boxShadow: state.isFocused
+      ? "0 0 0 0.2rem rgba(158, 105, 61, 0.18)"
+      : "none",
+    backgroundColor: "#fff",
+    "&:hover": {
+      borderColor: hasError
+        ? "var(--bs-danger, #dc3545)"
+        : "rgba(158, 105, 61, 0.72)",
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: "2px 12px",
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: "rgba(98, 83, 73, 0.75)",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: "#2f1a10",
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 4,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? "rgba(99, 58, 37, 0.9)" : "rgba(99, 58, 37, 0.65)",
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: "rgba(120, 84, 66, 0.72)",
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 3000,
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: "1px solid rgba(206, 196, 177, 0.9)",
+    overflow: "hidden",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? "rgba(243, 238, 226, 0.95)"
+      : state.isSelected
+        ? "rgba(236, 222, 205, 0.95)"
+        : "#fff",
+    color: "#2f1a10",
+  }),
 });
 
 const normalizeListResponse = (resp) => {
@@ -90,23 +162,55 @@ const formatDateLabel = (value) => {
   });
 };
 
-const getDni = (cliente) => cliente?.persona_dni ?? cliente?.dni;
+const firstNonEmptyValue = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
 
-const getTelefono = (cliente) =>
-  cliente?.telefono ??
-  cliente?.telefono_numero ??
-  cliente?.numero_telefono ??
-  cliente?.persona_telefono ??
-  cliente?.telefono_persona;
+const normalizeClienteForView = (cliente) => {
+  const origen = normalizeValue(cliente?.origen_cliente) === "empresa" ? "empresa" : "persona";
+  const nombrePrincipal = firstNonEmptyValue(cliente?.nombre_principal);
+  const documentoTipo = firstNonEmptyValue(cliente?.documento_tipo);
+  const documentoLabel = firstNonEmptyValue(
+    cliente?.documento_label,
+    documentoTipo ? String(documentoTipo).toUpperCase() : null
+  );
+  const documentoValor = firstNonEmptyValue(cliente?.documento_valor);
+  const telefono = firstNonEmptyValue(cliente?.telefono);
+  const correo = firstNonEmptyValue(cliente?.correo);
+  const tipoCliente = firstNonEmptyValue(cliente?.tipo_cliente);
+  const rawPuntos = Number(cliente?.puntos ?? cliente?.puntos_acumulados ?? cliente?.total_puntos);
+  const puntos = Number.isFinite(rawPuntos) && rawPuntos >= 0 ? rawPuntos : 0;
+  const fechaIngreso = firstNonEmptyValue(cliente?.fecha_ingreso);
+  const codigoCliente = firstNonEmptyValue(
+    cliente?.codigo_cliente,
+    cliente?.id_cliente ? `CLI-${cliente.id_cliente}` : null
+  );
 
-const getCorreo = (cliente) =>
-  cliente?.correo ??
-  cliente?.direccion_correo ??
-  cliente?.email ??
-  cliente?.persona_correo ??
-  cliente?.correo_persona;
-
-const getFechaRegistro = (cliente) => cliente?.fecha_registro ?? cliente?.fecha_ingreso ?? cliente?.created_at;
+  return {
+    ...cliente,
+    codigo_cliente: codigoCliente,
+    origen_cliente: origen,
+    origen_label: firstNonEmptyValue(
+      cliente?.origen_label,
+      origen === "empresa" ? "Cliente Empresa" : "Cliente Persona"
+    ),
+    nombre_principal: nombrePrincipal || null,
+    subtitulo_principal: firstNonEmptyValue(cliente?.subtitulo_principal),
+    tipo_cliente: tipoCliente || null,
+    telefono: telefono || null,
+    correo: correo || null,
+    fecha_ingreso: fechaIngreso || null,
+    puntos,
+    documento_tipo: documentoTipo || null,
+    documento_label: documentoLabel || null,
+    documento_valor: documentoValor || null,
+  };
+};
 
 const parseIntegerValue = (value) => {
   const parsed = Number.parseInt(String(value), 10);
@@ -155,6 +259,7 @@ const Clientes = ({ openToast }) => {
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [clienteOriginType, setClienteOriginType] = useState("persona");
   const [errors, setErrors] = useState({});
 
   const [actionLoading, setActionLoading] = useState(false);
@@ -204,6 +309,26 @@ const Clientes = ({ openToast }) => {
     [personasCatalogo]
   );
 
+  const personaSelectOptions = useMemo(
+    () =>
+      personaOptions.map((item) => ({
+        value: item.id,
+        label: item.dni ? `${item.label} | DNI: ${item.dni}` : item.label,
+      })),
+    [personaOptions]
+  );
+
+  const personaSelectValue = useMemo(() => {
+    const selectedId = String(form.id_persona ?? "");
+    if (!selectedId) return null;
+    return personaSelectOptions.find((option) => option.value === selectedId) || null;
+  }, [form.id_persona, personaSelectOptions]);
+
+  const personaSelectStyles = useMemo(
+    () => buildClientesSelectStyles(Boolean(errors.id_persona)),
+    [errors.id_persona]
+  );
+
   const empresaOptions = useMemo(
     () =>
       (Array.isArray(empresasCatalogo) ? empresasCatalogo : []).map((e) => {
@@ -214,6 +339,26 @@ const Clientes = ({ openToast }) => {
         };
       }),
     [empresasCatalogo]
+  );
+
+  const empresaSelectOptions = useMemo(
+    () =>
+      empresaOptions.map((item) => ({
+        value: item.id,
+        label: item.label,
+      })),
+    [empresaOptions]
+  );
+
+  const empresaSelectValue = useMemo(() => {
+    const selectedId = String(form.id_empresa ?? "");
+    if (!selectedId) return null;
+    return empresaSelectOptions.find((option) => option.value === selectedId) || null;
+  }, [form.id_empresa, empresaSelectOptions]);
+
+  const empresaSelectStyles = useMemo(
+    () => buildClientesSelectStyles(Boolean(errors.id_empresa)),
+    [errors.id_empresa]
   );
 
   const tipoClienteOptions = useMemo(
@@ -229,41 +374,29 @@ const Clientes = ({ openToast }) => {
     [tiposCliente]
   );
 
-  const getPersonaNombre = useCallback((cliente) => {
-    const fromBackend = cliente?.persona_nombre_completo?.trim();
-    if (fromBackend) return fromBackend;
+  const tipoClienteSelectOptions = useMemo(
+    () =>
+      tipoClienteOptions.map((item) => ({
+        value: item.id,
+        label: item.label,
+      })),
+    [tipoClienteOptions]
+  );
 
-    const fallback = `${cliente?.persona_nombre || ""} ${cliente?.persona_apellido || ""}`.trim();
-    if (fallback) return fallback;
+  const tipoClienteSelectValue = useMemo(() => {
+    const selectedId = String(form.id_tipo_cliente ?? "");
+    if (!selectedId) return null;
+    return tipoClienteSelectOptions.find((option) => option.value === selectedId) || null;
+  }, [form.id_tipo_cliente, tipoClienteSelectOptions]);
 
-    const personaId = cliente?.id_persona ? String(cliente.id_persona) : "";
-    if (!personaId) return "No registrado";
+  const tipoClienteSelectStyles = useMemo(
+    () => buildClientesSelectStyles(Boolean(errors.id_tipo_cliente)),
+    [errors.id_tipo_cliente]
+  );
 
-    const option = personaOptions.find((item) => item.id === personaId);
-    return option?.label || `Persona #${personaId}`;
-  }, [personaOptions]);
-
-  const getEmpresaNombre = useCallback((cliente) => {
-    const fromBackend = cliente?.nombre_empresa || cliente?.empresa_nombre || cliente?.empresa;
-    if (String(fromBackend ?? "").trim()) return String(fromBackend).trim();
-
-    const empresaId = cliente?.id_empresa ? String(cliente.id_empresa) : "";
-    if (!empresaId) return "No registrado";
-
-    const option = empresaOptions.find((item) => item.id === empresaId);
-    return option?.label || `Empresa #${empresaId}`;
-  }, [empresaOptions]);
-
-  const getTipoClienteNombre = useCallback((cliente) => {
-    const fromBackend = cliente?.tipo_cliente_nombre || cliente?.tipo_cliente || cliente?.nombre_tipo_cliente;
-    if (String(fromBackend ?? "").trim()) return String(fromBackend).trim();
-
-    const tipoId = cliente?.id_tipo_cliente ? String(cliente.id_tipo_cliente) : "";
-    if (!tipoId) return "No registrado";
-
-    const option = tipoClienteOptions.find((item) => item.id === tipoId);
-    return option?.label || `Tipo #${tipoId}`;
-  }, [tipoClienteOptions]);
+  const getClientePrincipalNombre = useCallback((cliente) => {
+    return firstNonEmptyValue(cliente?.nombre_principal);
+  }, []);
 
   const resolveIdFromLabel = (rawValue, options) => {
     const normalized = normalizeValue(rawValue);
@@ -273,33 +406,45 @@ const Clientes = ({ openToast }) => {
   };
 
   const buildFormFromCliente = useCallback(
-    (cliente) => ({
-      id_persona:
+    (cliente) => {
+      const resolvedPersona =
         cliente?.id_persona
           ? String(cliente.id_persona)
           : resolveIdFromLabel(
               cliente?.persona_nombre_completo ||
                 `${cliente?.persona_nombre || ""} ${cliente?.persona_apellido || ""}`.trim(),
               personaOptions
-            ),
-      id_empresa:
+            );
+
+      const resolvedEmpresa =
         cliente?.id_empresa
           ? String(cliente.id_empresa)
-          : resolveIdFromLabel(cliente?.nombre_empresa || cliente?.empresa_nombre || cliente?.empresa, empresaOptions),
-      id_tipo_cliente:
-        cliente?.id_tipo_cliente
-          ? String(cliente.id_tipo_cliente)
           : resolveIdFromLabel(
-              cliente?.tipo_cliente_nombre || cliente?.tipo_cliente || cliente?.nombre_tipo_cliente,
-              tipoClienteOptions
-            ),
-      fecha_ingreso: toDateInputValue(cliente?.fecha_ingreso),
-      puntos:
-        cliente?.puntos === null || cliente?.puntos === undefined
-          ? ""
-          : String(cliente.puntos),
-      estado: isActivo(cliente),
-    }),
+              cliente?.nombre_empresa || cliente?.empresa_nombre || cliente?.empresa,
+              empresaOptions
+            );
+
+      // Regla de prioridad para legados con ambas relaciones: priorizar persona en edición.
+      const keepPersona = Boolean(resolvedPersona);
+
+      return {
+        id_persona: keepPersona ? resolvedPersona : "",
+        id_empresa: keepPersona ? "" : resolvedEmpresa,
+        id_tipo_cliente:
+          cliente?.id_tipo_cliente
+            ? String(cliente.id_tipo_cliente)
+            : resolveIdFromLabel(
+                cliente?.tipo_cliente_nombre || cliente?.tipo_cliente || cliente?.nombre_tipo_cliente,
+                tipoClienteOptions
+              ),
+        fecha_ingreso: toDateInputValue(cliente?.fecha_ingreso),
+        puntos:
+          cliente?.puntos === null || cliente?.puntos === undefined
+            ? ""
+            : String(cliente.puntos),
+        estado: isActivo(cliente),
+      };
+    },
     [personaOptions, empresaOptions, tipoClienteOptions]
   );
 
@@ -338,7 +483,7 @@ const Clientes = ({ openToast }) => {
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
       const { items, total: totalResp } = normalizeListResponse(resp);
-      setClientes(items);
+      setClientes((Array.isArray(items) ? items : []).map(normalizeClienteForView));
       setTotal(totalResp);
     } catch (error) {
       if (!mountedRef.current) return;
@@ -402,22 +547,38 @@ const Clientes = ({ openToast }) => {
     });
   }, [showModal, editId, clientes, buildFormFromCliente]);
 
-  const sanitizeForm = () => ({
-    id_persona: parseIntegerValue(form.id_persona),
-    id_empresa: parseIntegerValue(form.id_empresa),
-    id_tipo_cliente: parseIntegerValue(form.id_tipo_cliente),
-    fecha_ingreso: form.fecha_ingreso,
-    puntos: parseIntegerValue(form.puntos),
-    estado: Boolean(form.estado),
-  });
+  const sanitizeForm = () => {
+    const personaId = String(form.id_persona ?? "").trim();
+    const empresaId = String(form.id_empresa ?? "").trim();
+    const tipoClienteId = String(form.id_tipo_cliente ?? "").trim();
+
+    return {
+      id_persona: personaId ? parseIntegerValue(personaId) : null,
+      id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
+      id_tipo_cliente: tipoClienteId ? parseIntegerValue(tipoClienteId) : null,
+      fecha_ingreso: form.fecha_ingreso,
+      puntos: parseIntegerValue(form.puntos),
+      estado: Boolean(form.estado),
+    };
+  };
 
   const validar = () => {
     const currentErrors = {};
     const today = new Date().toISOString().split("T")[0];
     const payload = sanitizeForm();
+    const hasPersona = Boolean(String(form.id_persona ?? "").trim());
+    const hasEmpresa = Boolean(String(form.id_empresa ?? "").trim());
 
-    if (!form.id_persona) currentErrors.id_persona = "Seleccione";
-    if (!form.id_empresa) currentErrors.id_empresa = "Seleccione";
+    if (hasPersona && hasEmpresa) {
+      currentErrors.id_persona = "Solo puede seleccionar una opcion";
+      currentErrors.id_empresa = "Solo puede seleccionar una opcion";
+    } else if (clienteOriginType === "persona") {
+      if (!hasPersona) currentErrors.id_persona = "Seleccione una persona";
+      if (hasEmpresa) currentErrors.id_empresa = "No aplica para Cliente Persona";
+    } else if (clienteOriginType === "empresa") {
+      if (!hasEmpresa) currentErrors.id_empresa = "Seleccione una empresa";
+      if (hasPersona) currentErrors.id_persona = "No aplica para Cliente Empresa";
+    }
     if (!form.id_tipo_cliente) currentErrors.id_tipo_cliente = "Seleccione";
     if (!form.fecha_ingreso || form.fecha_ingreso > today) currentErrors.fecha_ingreso = "Fecha invalida";
     if (form.puntos === "") currentErrors.puntos = "Requerido";
@@ -486,7 +647,9 @@ const Clientes = ({ openToast }) => {
     setFiltersOpen(false);
     setEditId(cliente.id_cliente);
     setErrors({});
-    setForm(buildFormFromCliente(cliente));
+    const formValues = buildFormFromCliente(cliente);
+    setForm(formValues);
+    setClienteOriginType(formValues.id_empresa ? "empresa" : "persona");
     setShowModal(true);
   };
 
@@ -496,14 +659,26 @@ const Clientes = ({ openToast }) => {
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
+    setClienteOriginType("persona");
     setShowModal(true);
+  };
+
+  const handleOriginTypeChange = (nextType) => {
+    if (nextType !== "persona" && nextType !== "empresa") return;
+    setClienteOriginType(nextType);
+    setForm((state) =>
+      nextType === "persona"
+        ? { ...state, id_empresa: "" }
+        : { ...state, id_persona: "" }
+    );
+    setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
   };
 
   const openConfirmDelete = (cliente) =>
     setConfirmModal({
       show: true,
       idToDelete: cliente?.id_cliente ?? null,
-      nombre: getPersonaNombre(cliente) || "",
+      nombre: firstNonEmptyValue(cliente?.nombre_principal, getClientePrincipalNombre(cliente)),
     });
 
   const closeConfirmDelete = () =>
@@ -553,17 +728,14 @@ const Clientes = ({ openToast }) => {
       if (!needle) return true;
 
       const hay = [
-        getPersonaNombre(cliente),
-        getEmpresaNombre(cliente),
-        getTipoClienteNombre(cliente),
-        cliente?.persona_dni,
+        cliente?.nombre_principal,
+        cliente?.origen_label,
+        cliente?.tipo_cliente,
+        cliente?.documento_valor,
         cliente?.dni,
+        cliente?.rtn,
         cliente?.telefono,
-        cliente?.telefono_numero,
-        cliente?.numero_telefono,
         cliente?.correo,
-        cliente?.direccion_correo,
-        cliente?.email,
         cliente?.puntos,
         cliente?.fecha_ingreso,
       ]
@@ -576,16 +748,16 @@ const Clientes = ({ openToast }) => {
 
     filtered.sort((a, b) => {
       if (sortBy === "nombre_asc") {
-        return getPersonaNombre(a).localeCompare(getPersonaNombre(b), "es", { sensitivity: "base" });
+        return getClientePrincipalNombre(a).localeCompare(getClientePrincipalNombre(b), "es", { sensitivity: "base" });
       }
       if (sortBy === "nombre_desc") {
-        return getPersonaNombre(b).localeCompare(getPersonaNombre(a), "es", { sensitivity: "base" });
+        return getClientePrincipalNombre(b).localeCompare(getClientePrincipalNombre(a), "es", { sensitivity: "base" });
       }
       return Number(b?.id_cliente ?? 0) - Number(a?.id_cliente ?? 0);
     });
 
     return filtered;
-  }, [clientes, search, estadoFiltro, sortBy, getPersonaNombre, getEmpresaNombre, getTipoClienteNombre]);
+  }, [clientes, search, estadoFiltro, sortBy, getClientePrincipalNombre]);
 
   const stats = useMemo(() => {
     const totalFiltradas = clientesFiltrados.length;
@@ -600,6 +772,9 @@ const Clientes = ({ openToast }) => {
 
   const drawerMode = editId ? "edit" : "create";
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
+  const personaDisabled = actionLoading || clienteOriginType === "empresa";
+  const empresaDisabled = actionLoading || clienteOriginType === "persona";
+  const formOriginLabel = clienteOriginType === "empresa" ? "Cliente Empresa" : "Cliente Persona";
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -699,7 +874,7 @@ const Clientes = ({ openToast }) => {
                     <tr>
                       <th scope="col">Cliente</th>
                       <th scope="col">Empresa</th>
-                      <th scope="col">DNI</th>
+                      <th scope="col">Documento</th>
                       <th scope="col">Telefono</th>
                       <th scope="col">Correo</th>
                       <th scope="col">Fecha registro</th>
@@ -718,13 +893,20 @@ const Clientes = ({ openToast }) => {
                       return (
                         <tr key={cliente?.id_cliente ?? idx} className={isActive ? "" : "is-inactive-state"}>
                           <td>
-                            <strong>{tableIndex + 1}. {toDisplayValue(getPersonaNombre(cliente), "Cliente sin nombre")}</strong>
+                            <div className="clientes-origin-cell">
+                              <strong>{tableIndex + 1}. {toDisplayValue(cliente?.nombre_principal, "Cliente sin nombre")}</strong>
+                              <span
+                                className={`clientes-origin-chip ${cliente?.origen_cliente === "empresa" ? "is-empresa" : "is-persona"}`}
+                              >
+                                {toDisplayValue(cliente?.origen_label, "Cliente Persona")}
+                              </span>
+                            </div>
                           </td>
-                          <td>{toDisplayValue(getEmpresaNombre(cliente))}</td>
-                          <td>{toDisplayValue(getDni(cliente), "N/D")}</td>
-                          <td>{toDisplayValue(getTelefono(cliente), "Sin telefono")}</td>
-                          <td>{toDisplayValue(getCorreo(cliente), "Sin correo")}</td>
-                          <td>{formatDateLabel(getFechaRegistro(cliente))}</td>
+                          <td>{toDisplayValue(cliente?.nombre_empresa)}</td>
+                          <td>{toDisplayValue(cliente?.documento_valor, "N/D")}</td>
+                          <td>{toDisplayValue(cliente?.telefono, "Sin telefono")}</td>
+                          <td>{toDisplayValue(cliente?.correo, "Sin correo")}</td>
+                          <td>{formatDateLabel(cliente?.fecha_ingreso)}</td>
                           <td>
                             <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
                               {isActive ? "ACTIVO" : "INACTIVO"}
@@ -733,7 +915,9 @@ const Clientes = ({ openToast }) => {
                           <td>
                             <div className="inv-catpro-code-wrap personas-page__table-code-wrap">
                               <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
-                              <span className="inv-catpro-code">CLI-{String(idCliente ?? "-")}</span>
+                              <span className="inv-catpro-code">
+                                {toDisplayValue(cliente?.codigo_cliente, `CLI-${String(idCliente ?? "-")}`)}
+                              </span>
                             </div>
                           </td>
                           <td className="text-end">
@@ -778,8 +962,6 @@ const Clientes = ({ openToast }) => {
                     onOpenDelete={openConfirmDelete}
                     actionLoading={actionLoading}
                     deletingId={deletingId}
-                    getPersonaNombre={getPersonaNombre}
-                    getEmpresaNombre={getEmpresaNombre}
                   />
                 ))}
               </div>
@@ -871,55 +1053,135 @@ const Clientes = ({ openToast }) => {
         </div>
 
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
-          <div className="row g-3 crud-modal__grid">
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Persona</label>
-              <select
-                className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
-                value={form.id_persona}
-                onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
+          <div className="clientes-modal__origin-helper">
+            <div
+              className="personas-page__view-toggle clientes-modal__origin-toggle"
+              role="tablist"
+              aria-label="Tipo de cliente"
+            >
+              <button
+                type="button"
+                className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "persona" ? "is-active" : ""}`}
+                onClick={() => handleOriginTypeChange("persona")}
+                disabled={actionLoading}
+                aria-pressed={clienteOriginType === "persona"}
+                title="Cliente Persona"
               >
-                <option value="">Seleccione</option>
-                {personaOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
-                  </option>
-                ))}
-              </select>
-              {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
+                Cliente Persona
+              </button>
+              <button
+                type="button"
+                className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "empresa" ? "is-active" : ""}`}
+                onClick={() => handleOriginTypeChange("empresa")}
+                disabled={actionLoading}
+                aria-pressed={clienteOriginType === "empresa"}
+                title="Cliente Empresa"
+              >
+                Cliente Empresa
+              </button>
             </div>
 
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Empresa</label>
-              <select
-                className={`form-select ${errors.id_empresa ? "is-invalid" : ""}`}
-                value={form.id_empresa}
-                onChange={(event) => setForm((state) => ({ ...state, id_empresa: event.target.value }))}
+            <div className="clientes-modal__origin-row">
+              <span
+                className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}
               >
-                <option value="">Seleccione</option>
-                {empresaOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              {errors.id_empresa && <div className="invalid-feedback d-block">{errors.id_empresa}</div>}
+                {formOriginLabel}
+              </span>
+              <span className="clientes-modal__origin-caption">
+                {drawerMode === "edit" ? "Origen actual del cliente" : "Define el origen del cliente"}
+              </span>
             </div>
+            <p className="clientes-modal__origin-text">
+              Seleccione una persona o una empresa. Solo puede elegir una opcion.
+            </p>
+          </div>
+
+          <div className="row g-3 crud-modal__grid">
+            {clienteOriginType === "persona" ? (
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Persona</label>
+                <Select
+                  inputId="cliente-persona-select"
+                  className={`clientes-persona-select ${errors.id_persona ? "is-invalid" : ""}`}
+                  classNamePrefix="clientes-persona-select"
+                  placeholder="Seleccione"
+                  isSearchable
+                  isClearable
+                  options={personaSelectOptions}
+                  value={personaSelectValue}
+                  onChange={(option) => {
+                    setClienteOriginType("persona");
+                    setForm((state) => ({
+                      ...state,
+                      id_persona: option?.value ? String(option.value) : "",
+                      id_empresa: "",
+                    }));
+                    setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
+                  }}
+                  styles={personaSelectStyles}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled={personaDisabled}
+                />
+                {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
+                <small className="clientes-modal__field-hint">
+                  Para cambiar a empresa, selecciona primero el tipo "Cliente Empresa".
+                </small>
+              </div>
+            ) : (
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Empresa</label>
+                <Select
+                  inputId="cliente-empresa-select"
+                  className={`clientes-persona-select ${errors.id_empresa ? "is-invalid" : ""}`}
+                  classNamePrefix="clientes-persona-select"
+                  placeholder="Seleccione"
+                  isSearchable
+                  isClearable
+                  options={empresaSelectOptions}
+                  value={empresaSelectValue}
+                  onChange={(option) => {
+                    setClienteOriginType("empresa");
+                    setForm((state) => ({
+                      ...state,
+                      id_empresa: option?.value ? String(option.value) : "",
+                      id_persona: "",
+                    }));
+                    setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
+                  }}
+                  styles={empresaSelectStyles}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled={empresaDisabled}
+                />
+                {errors.id_empresa && <div className="invalid-feedback d-block">{errors.id_empresa}</div>}
+                <small className="clientes-modal__field-hint">
+                  Para cambiar a persona, selecciona primero el tipo "Cliente Persona".
+                </small>
+              </div>
+            )}
 
             <div className="col-12">
               <label className="form-label text-light text-opacity-75">Tipo cliente</label>
-              <select
-                className={`form-select ${errors.id_tipo_cliente ? "is-invalid" : ""}`}
-                value={form.id_tipo_cliente}
-                onChange={(event) => setForm((state) => ({ ...state, id_tipo_cliente: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {tipoClienteOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
+              <Select
+                inputId="cliente-tipo-select"
+                className={`clientes-persona-select ${errors.id_tipo_cliente ? "is-invalid" : ""}`}
+                classNamePrefix="clientes-persona-select"
+                placeholder="Seleccione"
+                isSearchable
+                isClearable={false}
+                options={tipoClienteSelectOptions}
+                value={tipoClienteSelectValue}
+                onChange={(option) =>
+                  setForm((state) => ({
+                    ...state,
+                    id_tipo_cliente: option?.value ? String(option.value) : "",
+                  }))
+                }
+                styles={tipoClienteSelectStyles}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
+              />
               {errors.id_tipo_cliente && <div className="invalid-feedback d-block">{errors.id_tipo_cliente}</div>}
             </div>
 

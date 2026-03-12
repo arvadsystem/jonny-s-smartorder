@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { personaService } from "../../../services/personasService";
 import EntityTable from "../../../components/ui/EntityTable";
 import StatsCardsRow from "../../../components/ui/StatsCardsRow";
 import Filtros from "./components/Filtros";
 import HeaderPersonas from "./components/HeaderPersonas";
 import "./components/common/crud-modal-theme.css";
+import "./components/personas-search-dropdown.css";
 
 const emptyForm = {
   nombre: "",
@@ -49,6 +50,7 @@ const EMAIL_WITH_DOMAIN_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const isAbortError = (error) => error?.name === "AbortError";
 const MIN_CHARS_FOR_SUGGESTIONS = 2;
 const MAX_RECENT_SEARCHES = 8;
+const SEARCH_DROPDOWN_ANIMATION_MS = 220;
 const PERSONAS_RECENT_SEARCHES_KEY = "personasRecentSearchesV1";
 const SEARCH_INPUT_SELECTOR = '.personas-page .inv-ins-search input[type="search"]';
 
@@ -307,15 +309,35 @@ const capitalizeFirstOnly = (value) => {
 const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
 
 const limit = (value, max) => String(value ?? "").slice(0, max);
+const DNI_DIGITS_LENGTH = 13;
+const DNI_DISPLAY_MAX_LENGTH = 15;
+const PHONE_DIGITS_LENGTH = 8;
+const PHONE_DISPLAY_MAX_LENGTH = 9;
 
 const formatDNI = (digits13) => {
   const d = String(digits13 ?? "");
   const p1 = d.slice(0, 4);
   const p2 = d.slice(4, 8);
-  const p3 = d.slice(8, 13);
+  const p3 = d.slice(8, DNI_DIGITS_LENGTH);
   if (d.length <= 4) return p1;
   if (d.length <= 8) return `${p1}-${p2}`;
   return `${p1}-${p2}-${p3}`;
+};
+
+const resolveCaretFromDigitIndex = (formattedValue, digitIndex) => {
+  if (!formattedValue) return 0;
+  if (digitIndex <= 0) return 0;
+
+  let seenDigits = 0;
+  for (let index = 0; index < formattedValue.length; index += 1) {
+    const char = formattedValue[index];
+    if (char >= "0" && char <= "9") {
+      seenDigits += 1;
+      if (seenDigits >= digitIndex) return index + 1;
+    }
+  }
+
+  return formattedValue.length;
 };
 
 const formatPhone = (digits8) => {
@@ -645,6 +667,20 @@ export default function Personas({ openToast }) {
   const globalKpiAbortRef = useRef(null);
   const suggestionsAbortRef = useRef(null);
   const searchDropdownRef = useRef(null);
+  const panelRef = useRef(null);
+  const dniInputRef = useRef(null);
+  const dniCaretRef = useRef(null);
+  const telefonoInputRef = useRef(null);
+  const telefonoCaretRef = useRef(null);
+  const searchDropdownCloseTimerRef = useRef(null);
+  const searchDropdownOpenFrameRef = useRef(null);
+  const [searchDropdownPosition, setSearchDropdownPosition] = useState({
+    top: 0,
+    left: 0,
+    width: 320,
+  });
+  const [isSearchDropdownMounted, setIsSearchDropdownMounted] = useState(false);
+  const [isSearchDropdownVisible, setIsSearchDropdownVisible] = useState(false);
 
   const backendTotalPages = Math.max(1, Math.ceil(total / pageSize));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -663,6 +699,28 @@ export default function Personas({ openToast }) {
     blurFocusedElementInside("per-form-drawer");
     setShowModal(false);
   }, [blurFocusedElementInside]);
+
+  const syncSearchDropdownPosition = useCallback(() => {
+    const panel = panelRef.current;
+    const input = findSearchInput();
+    if (!panel || !input) return;
+
+    const panelRect = panel.getBoundingClientRect();
+    const inputRect = input.getBoundingClientRect();
+    const nextLeft = Math.max(12, inputRect.left - panelRect.left);
+    const availableWidth = Math.max(220, panelRect.width - nextLeft - 12);
+    const nextWidth = Math.max(220, Math.min(inputRect.width, availableWidth));
+    const nextTop = Math.max(0, inputRect.bottom - panelRect.top + 10);
+
+    setSearchDropdownPosition((prev) => {
+      const unchanged =
+        Math.abs(prev.top - nextTop) < 1 &&
+        Math.abs(prev.left - nextLeft) < 1 &&
+        Math.abs(prev.width - nextWidth) < 1;
+      if (unchanged) return prev;
+      return { top: nextTop, left: nextLeft, width: nextWidth };
+    });
+  }, []);
 
   const cargarPersonas = useCallback(async () => {
     setLoading(true);
@@ -750,6 +808,14 @@ export default function Personas({ openToast }) {
       listAbortRef.current?.abort();
       globalKpiAbortRef.current?.abort();
       suggestionsAbortRef.current?.abort();
+      if (searchDropdownCloseTimerRef.current) {
+        window.clearTimeout(searchDropdownCloseTimerRef.current);
+        searchDropdownCloseTimerRef.current = null;
+      }
+      if (searchDropdownOpenFrameRef.current) {
+        window.cancelAnimationFrame(searchDropdownOpenFrameRef.current);
+        searchDropdownOpenFrameRef.current = null;
+      }
     };
   }, []);
 
@@ -784,6 +850,25 @@ export default function Personas({ openToast }) {
       persistRecentSearches(next);
       return next;
     });
+  }, []);
+
+  const clearRecentSearches = useCallback(() => {
+    setRecentSearches([]);
+    setActiveSuggestionIndex(-1);
+    persistRecentSearches([]);
+  }, []);
+
+  const removeRecentSearch = useCallback((term) => {
+    const normalized = normalizeSearchText(term).toLowerCase();
+    if (!normalized) return;
+    setRecentSearches((prev) => {
+      const next = (Array.isArray(prev) ? prev : []).filter(
+        (item) => normalizeSearchText(item).toLowerCase() !== normalized
+      );
+      persistRecentSearches(next);
+      return next;
+    });
+    setActiveSuggestionIndex(-1);
   }, []);
 
   const applySearchSuggestion = useCallback(
@@ -917,6 +1002,66 @@ export default function Personas({ openToast }) {
   }, [isPredictiveSearch, isSearchFocused, searchSuggestionItems.length, suggestionsLoading]);
 
   useEffect(() => {
+    if (shouldShowSearchSuggestions) {
+      if (searchDropdownCloseTimerRef.current) {
+        window.clearTimeout(searchDropdownCloseTimerRef.current);
+        searchDropdownCloseTimerRef.current = null;
+      }
+      setIsSearchDropdownMounted(true);
+      if (searchDropdownOpenFrameRef.current) {
+        window.cancelAnimationFrame(searchDropdownOpenFrameRef.current);
+      }
+      searchDropdownOpenFrameRef.current = window.requestAnimationFrame(() => {
+        setIsSearchDropdownVisible(true);
+      });
+      return undefined;
+    }
+
+    setIsSearchDropdownVisible(false);
+    return undefined;
+  }, [shouldShowSearchSuggestions]);
+
+  useEffect(() => {
+    if (!isSearchDropdownMounted || isSearchDropdownVisible) return undefined;
+
+    searchDropdownCloseTimerRef.current = window.setTimeout(() => {
+      setIsSearchDropdownMounted(false);
+      searchDropdownCloseTimerRef.current = null;
+    }, SEARCH_DROPDOWN_ANIMATION_MS);
+
+    return () => {
+      if (searchDropdownCloseTimerRef.current) {
+        window.clearTimeout(searchDropdownCloseTimerRef.current);
+        searchDropdownCloseTimerRef.current = null;
+      }
+    };
+  }, [isSearchDropdownMounted, isSearchDropdownVisible]);
+
+  const searchDropdownTitle = isPredictiveSearch ? "Sugerencias" : "Busquedas recientes";
+  const searchDropdownStyle = useMemo(
+    () => ({
+      top: `${searchDropdownPosition.top}px`,
+      left: `${searchDropdownPosition.left}px`,
+      width: `${searchDropdownPosition.width}px`,
+    }),
+    [searchDropdownPosition.left, searchDropdownPosition.top, searchDropdownPosition.width]
+  );
+
+  useEffect(() => {
+    if (!isSearchDropdownMounted) return undefined;
+
+    syncSearchDropdownPosition();
+    const handleLayoutChange = () => syncSearchDropdownPosition();
+
+    window.addEventListener("resize", handleLayoutChange);
+    window.addEventListener("scroll", handleLayoutChange, true);
+    return () => {
+      window.removeEventListener("resize", handleLayoutChange);
+      window.removeEventListener("scroll", handleLayoutChange, true);
+    };
+  }, [isSearchDropdownMounted, syncSearchDropdownPosition, searchSuggestionItems.length, suggestionsLoading]);
+
+  useEffect(() => {
     setActiveSuggestionIndex((prev) =>
       searchSuggestionItems.length === 0 ? -1 : Math.min(prev, searchSuggestionItems.length - 1)
     );
@@ -980,12 +1125,40 @@ export default function Personas({ openToast }) {
     }
   }, [viewMode]);
 
+  useLayoutEffect(() => {
+    if (dniCaretRef.current === null) return;
+    const input = dniInputRef.current;
+    if (!input) return;
+
+    const nextCaret = dniCaretRef.current;
+    dniCaretRef.current = null;
+    try {
+      input.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+      // Some browsers can throw when the input is not focusable.
+    }
+  }, [form.dni]);
+
+  useLayoutEffect(() => {
+    if (telefonoCaretRef.current === null) return;
+    const input = telefonoInputRef.current;
+    if (!input) return;
+
+    const nextCaret = telefonoCaretRef.current;
+    telefonoCaretRef.current = null;
+    try {
+      input.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+      // Some browsers can throw when the input is not focusable.
+    }
+  }, [form.id_telefono]);
+
   const buildFormFromPersona = useCallback(
     (persona) => {
-      const dniRaw = limit(digitsOnly(persona?.dni ?? ""), 13);
+      const dniRaw = limit(digitsOnly(persona?.dni ?? ""), DNI_DIGITS_LENGTH);
       const telefonoRaw = limit(
         digitsOnly(persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono ?? ""),
-        8
+        PHONE_DIGITS_LENGTH
       );
       return {
         nombre: persona?.nombre || "",
@@ -1066,7 +1239,7 @@ export default function Personas({ openToast }) {
       case "dni": {
         const dniRaw = digitsOnly(currentValue);
         if (!dniRaw) return "";
-        if (dniRaw.length !== 13) return "Formato invalido";
+        if (dniRaw.length !== DNI_DIGITS_LENGTH) return "Formato invalido";
         return "";
       }
       case "rtn":
@@ -1080,7 +1253,7 @@ export default function Personas({ openToast }) {
       case "id_telefono": {
         const telefonoRaw = digitsOnly(currentValue);
         if (!telefonoRaw) return "";
-        if (telefonoRaw.length !== 8) return "Formato invalido";
+        if (telefonoRaw.length !== PHONE_DIGITS_LENGTH) return "Formato invalido";
         return "";
       }
       case "id_correo":
@@ -1142,8 +1315,17 @@ export default function Personas({ openToast }) {
   };
 
   const handleDniChange = (event) => {
-    const raw = limit(digitsOnly(event.target.value), 13);
+    const inputValue = event.target.value ?? "";
+    const caretPosition = event.target.selectionStart ?? inputValue.length;
+    const digitsBeforeCaret = digitsOnly(inputValue.slice(0, caretPosition)).length;
+    const raw = limit(digitsOnly(inputValue), DNI_DIGITS_LENGTH);
     const formatted = formatDNI(raw);
+
+    dniCaretRef.current = resolveCaretFromDigitIndex(
+      formatted,
+      Math.min(digitsBeforeCaret, raw.length)
+    );
+
     updateFieldValue("dni", formatted, true);
   };
 
@@ -1153,8 +1335,17 @@ export default function Personas({ openToast }) {
   };
 
   const handleTelefonoChange = (event) => {
-    const raw = limit(digitsOnly(event.target.value), 8);
+    const inputValue = event.target.value ?? "";
+    const caretPosition = event.target.selectionStart ?? inputValue.length;
+    const digitsBeforeCaret = digitsOnly(inputValue.slice(0, caretPosition)).length;
+    const raw = limit(digitsOnly(inputValue), PHONE_DIGITS_LENGTH);
     const formatted = formatPhone(raw);
+
+    telefonoCaretRef.current = resolveCaretFromDigitIndex(
+      formatted,
+      Math.min(digitsBeforeCaret, raw.length)
+    );
+
     updateFieldValue("id_telefono", formatted, true);
   };
 
@@ -1216,14 +1407,16 @@ export default function Personas({ openToast }) {
   const handleDniPaste = useCallback((event) => {
     event.preventDefault();
     const pasted = event.clipboardData?.getData("text") ?? "";
-    const raw = limit(digitsOnly(pasted), 13);
+    const raw = limit(digitsOnly(pasted), DNI_DIGITS_LENGTH);
+    dniCaretRef.current = formatDNI(raw).length;
     updateFieldValue("dni", formatDNI(raw), true);
   }, [updateFieldValue]);
 
   const handleTelefonoPaste = useCallback((event) => {
     event.preventDefault();
     const pasted = event.clipboardData?.getData("text") ?? "";
-    const raw = limit(digitsOnly(pasted), 8);
+    const raw = limit(digitsOnly(pasted), PHONE_DIGITS_LENGTH);
+    telefonoCaretRef.current = formatPhone(raw).length;
     updateFieldValue("id_telefono", formatPhone(raw), true);
   }, [updateFieldValue]);
 
@@ -1440,6 +1633,8 @@ export default function Personas({ openToast }) {
   const useGlobalFilterData = false;
   const personasFuente = useMemo(() => personas, [personas]);
   const isListLoading = loading;
+  const isListInitialLoading = loading && personasFuente.length === 0;
+  const isListRefreshing = loading && personasFuente.length > 0;
 
   const personasFiltradas = useMemo(() => {
     return Array.isArray(personasFuente) ? personasFuente : [];
@@ -1553,7 +1748,7 @@ export default function Personas({ openToast }) {
 
   return (
     <div className="personas-page">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderPersonas
           search={search}
           onSearchChange={handleSearchChange}
@@ -1565,42 +1760,88 @@ export default function Personas({ openToast }) {
           onViewModeChange={setViewMode}
         />
 
-        {shouldShowSearchSuggestions ? (
-          <div className="px-3 pt-2" ref={searchDropdownRef}>
-            <div
-              className="list-group shadow-sm"
-              role="listbox"
-              aria-label="Sugerencias de busqueda"
-              style={{ maxHeight: "240px", overflowY: "auto" }}
-            >
-              <div className="list-group-item text-muted small">
-                {isPredictiveSearch ? "Sugerencias" : "Recientes"}
+        {isSearchDropdownMounted ? (
+          <div
+            className={`personas-search-dropdown ${
+              isSearchDropdownVisible ? "is-open" : "is-closing"
+            }`}
+            ref={searchDropdownRef}
+            role="listbox"
+            aria-label="Sugerencias de busqueda"
+            style={searchDropdownStyle}
+          >
+            <div className="personas-search-dropdown__header">
+              <div className="personas-search-dropdown__title">
+                <span className="personas-search-dropdown__title-icon" aria-hidden="true">
+                  <i className="bi bi-search" />
+                </span>
+                <span>{searchDropdownTitle}</span>
               </div>
+              {!isPredictiveSearch && recentSearches.length ? (
+                <button
+                  type="button"
+                  className="personas-search-dropdown__clear-btn"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={clearRecentSearches}
+                >
+                  Limpiar
+                </button>
+              ) : null}
+            </div>
 
+            <div className="personas-search-dropdown__list" role="presentation">
               {suggestionsLoading && isPredictiveSearch ? (
-                <div className="list-group-item text-muted small">
-                  <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />
-                  Buscando sugerencias...
+                <div className="personas-search-dropdown__empty">
+                  <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                  <span>Buscando sugerencias...</span>
                 </div>
               ) : null}
 
-              {searchSuggestionItems.map((suggestion, idx) => (
-                <button
-                  key={suggestion.id ?? `${suggestion.value}-${idx}`}
-                  type="button"
-                  className={`list-group-item list-group-item-action ${
-                    idx === activeSuggestionIndex ? "active" : ""
-                  }`}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => applySearchSuggestion(suggestion.value)}
-                >
-                  <div className="fw-semibold">{suggestion.label}</div>
-                  {suggestion.detail ? <div className="small text-muted">{suggestion.detail}</div> : null}
-                </button>
-              ))}
+              {searchSuggestionItems.map((suggestion, idx) => {
+                const isActive = idx === activeSuggestionIndex;
+                const detailText = suggestion.detail || (isPredictiveSearch ? "Sugerencia de busqueda" : "Busqueda reciente");
+                return (
+                  <div
+                    key={suggestion.id ?? `${suggestion.value}-${idx}`}
+                    className={`personas-search-dropdown__item ${isActive ? "is-active" : ""}`}
+                    style={{ "--item-delay": `${Math.min(idx * 26, 120)}ms` }}
+                  >
+                    <button
+                      type="button"
+                      className="personas-search-dropdown__item-main"
+                      aria-selected={isActive}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applySearchSuggestion(suggestion.value)}
+                    >
+                      <span className="personas-search-dropdown__item-icon" aria-hidden="true">
+                        <i className="bi bi-search" />
+                      </span>
+                      <span className="personas-search-dropdown__item-copy">
+                        <span className="personas-search-dropdown__item-title">{suggestion.label}</span>
+                        <span className="personas-search-dropdown__item-subtitle">{detailText}</span>
+                      </span>
+                    </button>
+
+                    {!isPredictiveSearch ? (
+                      <button
+                        type="button"
+                        className="personas-search-dropdown__item-remove"
+                        aria-label={`Eliminar busqueda reciente ${suggestion.label}`}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeRecentSearch(suggestion.value);
+                        }}
+                      >
+                        <i className="bi bi-x-lg" />
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
 
               {!suggestionsLoading && isPredictiveSearch && searchSuggestionItems.length === 0 ? (
-                <div className="list-group-item text-muted small">Sin sugerencias para "{search.trim()}"</div>
+                <div className="personas-search-dropdown__empty">Sin sugerencias para "{search.trim()}"</div>
               ) : null}
             </div>
           </div>
@@ -1610,13 +1851,14 @@ export default function Personas({ openToast }) {
 
         <div className="inv-catpro-body inv-prod-body p-3">
           <div className="inv-prod-results-meta personas-page__results-meta">
-            <span>{isListLoading ? "Cargando personas..." : `${personasFiltradas.length} resultados`}</span>
-            <span>{isListLoading ? "" : `Total: ${useGlobalFilterData ? personasFuente.length : total}`}</span>
+            <span>{isListInitialLoading ? "Cargando personas..." : `${personasFiltradas.length} resultados`}</span>
+            <span>{isListInitialLoading ? "" : `Total: ${useGlobalFilterData ? personasFuente.length : total}`}</span>
+            {isListRefreshing ? <span className="text-muted">Actualizando...</span> : null}
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
           </div>
 
           <div className={`inv-catpro-list ${isAnyDrawerOpen ? "drawer-open" : ""}`}>
-            {isListLoading ? (
+            {isListInitialLoading ? (
               <div className="inv-catpro-loading" role="status" aria-live="polite">
                 <span className="spinner-border spinner-border-sm" aria-hidden="true" />
                 <span>Cargando personas...</span>
@@ -1946,17 +2188,18 @@ export default function Personas({ openToast }) {
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>DNI</label>
               <input
+                ref={dniInputRef}
                 type="text"
                 className={`form-control ${touched.dni && errors.dni ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 placeholder="0000-0000-00000"
                 inputMode="numeric"
                 autoComplete="off"
-                maxLength={15}
+                maxLength={DNI_DISPLAY_MAX_LENGTH}
                 value={form.dni}
                 onChange={handleDniChange}
-                onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "dni", 13)}
-                onKeyDown={(event) => blockInvalidNumericKeyDown(event, "dni", 13)}
+                onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "dni", DNI_DIGITS_LENGTH)}
+                onKeyDown={(event) => blockInvalidNumericKeyDown(event, "dni", DNI_DIGITS_LENGTH)}
                 onPaste={handleDniPaste}
                 onBlur={handleFieldBlur("dni")}
               />
@@ -2014,17 +2257,18 @@ export default function Personas({ openToast }) {
             <div className="col-12 col-md-6">
               <label className="form-label" style={{ color: "#000" }}>Telefono</label>
               <input
+                ref={telefonoInputRef}
                 type="text"
                 className={`form-control ${touched.telefono && errors.id_telefono ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
                 placeholder="0000-0000"
                 inputMode="numeric"
                 autoComplete="tel"
-                maxLength={9}
+                maxLength={PHONE_DISPLAY_MAX_LENGTH}
                 value={form.id_telefono}
                 onChange={handleTelefonoChange}
-                onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "id_telefono", 8)}
-                onKeyDown={(event) => blockInvalidNumericKeyDown(event, "id_telefono", 8)}
+                onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "id_telefono", PHONE_DIGITS_LENGTH)}
+                onKeyDown={(event) => blockInvalidNumericKeyDown(event, "id_telefono", PHONE_DIGITS_LENGTH)}
                 onPaste={handleTelefonoPaste}
                 onBlur={handleFieldBlur("id_telefono")}
               />

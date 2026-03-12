@@ -24,23 +24,11 @@ const formatDateLabel = (value) => {
   });
 };
 
-const getDni = (cliente) => cliente?.persona_dni ?? cliente?.dni;
-
-const getTelefono = (cliente) =>
-  cliente?.telefono ??
-  cliente?.telefono_numero ??
-  cliente?.numero_telefono ??
-  cliente?.persona_telefono ??
-  cliente?.telefono_persona;
-
-const getCorreo = (cliente) =>
-  cliente?.correo ??
-  cliente?.direccion_correo ??
-  cliente?.email ??
-  cliente?.persona_correo ??
-  cliente?.correo_persona;
-
-const getFechaRegistro = (cliente) => cliente?.fecha_registro ?? cliente?.fecha_ingreso ?? cliente?.created_at;
+const getPuntos = (cliente) => {
+  const raw = cliente?.puntos ?? cliente?.puntos_acumulados ?? cliente?.total_puntos;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+};
 
 export default function ClienteCard({
   cliente,
@@ -49,29 +37,43 @@ export default function ClienteCard({
   onOpenDelete,
   actionLoading = false,
   deletingId = null,
-  getPersonaNombre,
-  getEmpresaNombre,
 }) {
   const isActive = parseEstado(cliente);
   const idCliente = cliente?.id_cliente;
   const deleting = deletingId === idCliente;
-  const personaNombre = typeof getPersonaNombre === "function" ? getPersonaNombre(cliente) : "No registrado";
-  const empresaNombre = typeof getEmpresaNombre === "function" ? getEmpresaNombre(cliente) : "No registrado";
+  const codigoCliente = toDisplayValue(cliente?.codigo_cliente, `CLI-${String(idCliente ?? "-")}`);
+  const origenTipo = String(cliente?.origen_cliente ?? "").trim().toLowerCase() === "empresa"
+    ? "empresa"
+    : "persona";
+  const origenLabel = toDisplayValue(
+    cliente?.origen_label,
+    origenTipo === "empresa" ? "Cliente Empresa" : "Cliente Persona"
+  );
+  const nombrePrincipal = toDisplayValue(cliente?.nombre_principal, "Cliente sin nombre");
+  const documentoLabel = toDisplayValue(
+    cliente?.documento_label,
+    origenTipo === "empresa" ? "RTN" : "DNI"
+  );
+  const documentoValor = toDisplayValue(cliente?.documento_valor, "N/D");
+  const tipoClienteLabel = toDisplayValue(cliente?.tipo_cliente, "Sin tipo");
+  const telefonoValue = toDisplayValue(cliente?.telefono, "Sin telefono");
+  const correoValue = toDisplayValue(cliente?.correo, "Sin correo");
+  const fechaIngresoLabel = formatDateLabel(cliente?.fecha_ingreso);
 
   return (
     <EntityCard
       index={index}
       iconClass="bi bi-person-lines-fill"
       titleIconClass="bi bi-person-vcard"
-      title={`${index + 1}. ${toDisplayValue(personaNombre, "Cliente sin nombre")}`}
-      subtitle={toDisplayValue(empresaNombre)}
+      title={`${index + 1}. ${nombrePrincipal}`}
+      subtitle={origenLabel}
       badge={isActive ? "ACTIVO" : "INACTIVO"}
       badgeClass={isActive ? "is-ok" : "is-inactive"}
       inactive={!isActive}
       footerLeft={
         <>
           <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
-          <span className="inv-catpro-code">CLI-{String(idCliente ?? "-")}</span>
+          <span className="inv-catpro-code">{codigoCliente}</span>
         </>
       }
       footerActions={
@@ -100,21 +102,35 @@ export default function ClienteCard({
         </>
       }
     >
+      <div className="personas-page__card-row clientes-card__origin-row">
+        <i className={origenTipo === "empresa" ? "bi bi-building-check" : "bi bi-person-check"} />
+        <span className={`clientes-origin-chip ${origenTipo === "empresa" ? "is-empresa" : "is-persona"}`}>
+          {origenLabel}
+        </span>
+      </div>
       <div className="personas-page__card-row">
-        <i className="bi bi-person-vcard" />
-        <span>DNI: {toDisplayValue(getDni(cliente), "N/D")}</span>
+        <i className={origenTipo === "empresa" ? "bi bi-buildings" : "bi bi-person-vcard"} />
+        <span>{`${documentoLabel}: ${documentoValor}`}</span>
       </div>
       <div className="personas-page__card-row">
         <i className="bi bi-telephone" />
-        <span>{toDisplayValue(getTelefono(cliente), "Sin telefono")}</span>
+        <span>Telefono: {telefonoValue}</span>
       </div>
       <div className="personas-page__card-row">
         <i className="bi bi-envelope" />
-        <span>{toDisplayValue(getCorreo(cliente), "Sin correo")}</span>
+        <span>Correo: {correoValue}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-person-badge" />
+        <span>Tipo: {tipoClienteLabel}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-award" />
+        <span>Puntos: {getPuntos(cliente)}</span>
       </div>
       <div className="personas-page__card-row">
         <i className="bi bi-calendar-event" />
-        <span>{formatDateLabel(getFechaRegistro(cliente))}</span>
+        <span>Ingreso: {fechaIngresoLabel}</span>
       </div>
     </EntityCard>
   );

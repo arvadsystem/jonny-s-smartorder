@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
+import AsyncSelect from 'react-select/async';
 import './usuarios-modal.css';
 import '../common/crud-modal-theme.css';
 
@@ -6,6 +7,83 @@ const toDisplayValue = (value, fallback = 'No registrado') => {
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
   return text || fallback;
+};
+
+const buildUsuariosSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: hasError
+      ? 'var(--bs-danger, #dc3545)'
+      : state.isFocused
+        ? 'rgba(158, 105, 61, 0.72)'
+        : 'rgba(206, 196, 177, 0.9)',
+    boxShadow: state.isFocused
+      ? '0 0 0 0.2rem rgba(158, 105, 61, 0.18)'
+      : 'none',
+    backgroundColor: '#fff',
+    '&:hover': {
+      borderColor: hasError
+        ? 'var(--bs-danger, #dc3545)'
+        : 'rgba(158, 105, 61, 0.72)',
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: '2px 12px',
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: 'rgba(98, 83, 73, 0.75)',
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: '#2f1a10',
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 4,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? 'rgba(99, 58, 37, 0.9)' : 'rgba(99, 58, 37, 0.65)',
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: 'rgba(120, 84, 66, 0.72)',
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 3000,
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: '1px solid rgba(206, 196, 177, 0.9)',
+    overflow: 'hidden',
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? 'rgba(243, 238, 226, 0.95)'
+      : state.isSelected
+        ? 'rgba(236, 222, 205, 0.95)'
+        : '#fff',
+    color: state.isDisabled ? 'rgba(120, 97, 84, 0.75)' : '#2f1a10',
+  }),
+});
+
+const buildEmpleadoOptionLabel = (empleado, linked = false) => {
+  const nombreCompleto = toDisplayValue(empleado?.nombre_completo, 'Empleado sin nombre');
+  const dni = toDisplayValue(empleado?.dni, 'N/D');
+  const correo = toDisplayValue(empleado?.correo, 'Sin correo');
+  return `${nombreCompleto} | DNI: ${dni} | ${correo}${linked ? ' (ya tiene usuario)' : ''}`;
 };
 
 export default function UsuarioModal({
@@ -46,6 +124,87 @@ export default function UsuarioModal({
   const employeeOptions = useMemo(
     () => (Array.isArray(filteredEmpleadoOptions) ? filteredEmpleadoOptions : []),
     [filteredEmpleadoOptions]
+  );
+
+  const employeeSelectOptions = useMemo(
+    () =>
+      employeeOptions.map((item) => {
+        const linked = Boolean(empleadosConUsuario?.has?.(String(item.id)));
+        const label = buildEmpleadoOptionLabel(item, linked);
+        const searchText = [
+          item?.nombre_completo,
+          item?.nombre,
+          item?.apellido,
+          item?.dni,
+          item?.correo
+        ]
+          .map((value) => String(value ?? '').trim().toLowerCase())
+          .filter(Boolean)
+          .join(' ');
+
+        return {
+          value: String(item.id ?? ''),
+          label,
+          isDisabled: linked,
+          searchText
+        };
+      }),
+    [employeeOptions, empleadosConUsuario]
+  );
+
+  const employeeSelectValue = useMemo(() => {
+    const selectedId = String(form?.id_empleado ?? '').trim();
+    if (!selectedId) return null;
+
+    const found = employeeSelectOptions.find((option) => option.value === selectedId);
+    if (found) return found;
+
+    return {
+      value: selectedId,
+      label: toDisplayValue(empleadoDisplayName, 'Empleado seleccionado')
+    };
+  }, [employeeSelectOptions, form?.id_empleado, empleadoDisplayName]);
+
+  const empleadoSelectStyles = useMemo(
+    () => buildUsuariosSelectStyles(Boolean(errors?.id_empleado)),
+    [errors?.id_empleado]
+  );
+
+  const filterEmpleadoOption = useCallback((candidate, inputValue) => {
+    const needle = String(inputValue ?? '').trim().toLowerCase();
+    if (!needle) return true;
+    const searchText = String(candidate?.data?.searchText ?? '').toLowerCase();
+    const label = String(candidate?.label ?? '').toLowerCase();
+    return searchText.includes(needle) || label.includes(needle);
+  }, []);
+
+  const filterEmpleadoOptionsList = useCallback((inputValue = '') => {
+    const needle = String(inputValue ?? '').trim().toLowerCase();
+    const filtered = needle
+      ? employeeSelectOptions.filter((option) => {
+        const searchText = String(option?.searchText ?? '').toLowerCase();
+        const label = String(option?.label ?? '').toLowerCase();
+        return searchText.includes(needle) || label.includes(needle);
+      })
+      : employeeSelectOptions;
+
+    // Limita opciones renderizadas para mantener el dropdown fluido en catalogos grandes.
+    return filtered.slice(0, 80);
+  }, [employeeSelectOptions]);
+
+  const loadEmpleadoOptions = useCallback(
+    (inputValue) =>
+      new Promise((resolve) => {
+        window.setTimeout(() => {
+          resolve(filterEmpleadoOptionsList(inputValue));
+        }, 0);
+      }),
+    [filterEmpleadoOptionsList]
+  );
+
+  const defaultEmployeeOptions = useMemo(
+    () => filterEmpleadoOptionsList(''),
+    [filterEmpleadoOptionsList]
   );
 
   const roleOptions = useMemo(
@@ -117,23 +276,26 @@ export default function UsuarioModal({
             <>
               <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
                 <label className="form-label fw-semibold usuarios-modal__label">Empleado</label>
-                <select
-                  className={`form-select usuarios-modal__input ${errors?.id_empleado ? 'is-invalid' : ''}`}
-                  value={form?.id_empleado || ''}
-                  onChange={(e) => onFieldChange?.('id_empleado', e.target.value)}
-                  disabled={catalogLoading}
-                >
-                  <option value="">Seleccione empleado</option>
-                  {employeeOptions.map((item) => {
-                    const linked = empleadosConUsuario?.has?.(String(item.id));
-                    return (
-                      <option key={item.id} value={item.id} disabled={linked}>
-                        {item.nombre_completo} {item.dni ? `| DNI: ${item.dni}` : ''} | {item.correo || 'Sin correo'}
-                        {linked ? ' (ya tiene usuario)' : ''}
-                      </option>
-                    );
-                  })}
-                </select>
+                <AsyncSelect
+                  inputId="usuario-empleado-select-create"
+                  className={`usuarios-empleado-select ${errors?.id_empleado ? 'is-invalid' : ''}`}
+                  classNamePrefix="usuarios-empleado-select"
+                  placeholder="Seleccione empleado"
+                  cacheOptions
+                  defaultOptions={defaultEmployeeOptions}
+                  loadOptions={loadEmpleadoOptions}
+                  isClearable
+                  value={employeeSelectValue}
+                  onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '')}
+                  isOptionDisabled={(option) => Boolean(option?.isDisabled)}
+                  filterOption={filterEmpleadoOption}
+                  styles={empleadoSelectStyles}
+                  menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled={catalogLoading}
+                  noOptionsMessage={() => 'Sin coincidencias'}
+                  loadingMessage={() => 'Buscando empleados...'}
+                />
                 {errors?.id_empleado ? <div className="invalid-feedback d-block">{errors.id_empleado}</div> : null}
               </div>
 
@@ -177,11 +339,25 @@ export default function UsuarioModal({
             <>
               <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
                 <label className="form-label fw-semibold usuarios-modal__label">Empleado</label>
-                <input
-                  type="text"
-                  className="form-control usuarios-modal__input"
-                  value={toDisplayValue(empleadoDisplayName)}
-                  readOnly
+                <AsyncSelect
+                  inputId="usuario-empleado-select-edit"
+                  className="usuarios-empleado-select"
+                  classNamePrefix="usuarios-empleado-select"
+                  placeholder="Seleccione empleado"
+                  cacheOptions
+                  defaultOptions={defaultEmployeeOptions}
+                  loadOptions={loadEmpleadoOptions}
+                  isClearable={false}
+                  value={employeeSelectValue}
+                  onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '')}
+                  isOptionDisabled={(option) => Boolean(option?.isDisabled)}
+                  filterOption={filterEmpleadoOption}
+                  styles={empleadoSelectStyles}
+                  menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled
+                  noOptionsMessage={() => 'Sin coincidencias'}
+                  loadingMessage={() => 'Buscando empleados...'}
                 />
               </div>
               <div className="col-12 usuarios-modal__section">

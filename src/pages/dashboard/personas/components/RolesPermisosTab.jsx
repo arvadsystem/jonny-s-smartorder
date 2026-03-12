@@ -61,6 +61,16 @@ const toTitleCase = (value) =>
     .join(" ");
 
 const humanizeRoleName = (rawName) => toTitleCase(rawName);
+const normalizeSearchText = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+const includesSearch = (value, searchTerm) =>
+  normalizeSearchText(value).includes(searchTerm);
+
 const normalizeRoleCode = (value) =>
   String(value ?? "")
     .normalize("NFD")
@@ -219,6 +229,7 @@ const RolesPermisosTab = () => {
   const [allPermisos, setAllPermisos] = useState([]);
   const [permisos, setPermisos] = useState([]);
   const [checkedPermisos, setCheckedPermisos] = useState(new Set());
+  const [roleSearch, setRoleSearch] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
@@ -557,15 +568,26 @@ const RolesPermisosTab = () => {
   }, [loadRoleDetail, selectedRoleId]);
 
   const filteredPermisos = useMemo(() => {
-    const searchTerm = String(search || "").trim().toLowerCase();
+    const searchTerm = normalizeSearchText(search);
     if (!searchTerm) return allPermisos;
 
     return allPermisos.filter((permiso) => {
-      const technical = String(permiso?.nombre_permiso || "").toLowerCase();
-      const humanized = humanizePermissionName(permiso?.nombre_permiso).toLowerCase();
-      return technical.includes(searchTerm) || humanized.includes(searchTerm);
+      const technical = String(permiso?.nombre_permiso || "");
+      const humanized = humanizePermissionName(permiso?.nombre_permiso);
+      return includesSearch(technical, searchTerm) || includesSearch(humanized, searchTerm);
     });
   }, [allPermisos, search]);
+
+  const filteredRoles = useMemo(() => {
+    const searchTerm = normalizeSearchText(roleSearch);
+    if (!searchTerm) return roles;
+
+    return roles.filter((role) => {
+      const roleCode = String(role?.nombre || "");
+      const roleLabel = humanizeRoleName(role?.nombre || "");
+      return includesSearch(roleCode, searchTerm) || includesSearch(roleLabel, searchTerm);
+    });
+  }, [roleSearch, roles]);
 
   useEffect(() => {
     const total = filteredPermisos.length;
@@ -640,6 +662,11 @@ const RolesPermisosTab = () => {
     const nextSearch = event.target.value;
     setSearch(nextSearch);
     setPage(1);
+  };
+
+  const handleRoleSearchChange = (event) => {
+    const nextSearch = event.target.value;
+    setRoleSearch(nextSearch);
   };
 
   const handleLimitChange = (event) => {
@@ -799,6 +826,20 @@ const RolesPermisosTab = () => {
   const selectedRoleName = humanizeRoleName(currentRole?.nombre || "Rol");
   const visibleStart = pagination.total === 0 ? 0 : (page - 1) * limit + 1;
   const visibleEnd = Math.min(page * limit, pagination.total);
+  const hasPendingChanges = useMemo(() => {
+    const assigned = new Set(
+      allPermisos
+        .filter((permiso) => permiso.asignado)
+        .map((permiso) => Number(permiso.id_permiso))
+    );
+
+    if (assigned.size !== checkedPermisos.size) return true;
+    for (const permisoId of assigned) {
+      if (!checkedPermisos.has(permisoId)) return true;
+    }
+    return false;
+  }, [allPermisos, checkedPermisos]);
+
   const previewGroups = useMemo(() => groupPreviewPermisos(previewPermisos), [previewPermisos]);
   const activePreviewGroup =
     previewGroups.find((group) => group.key === activePreviewGroupKey) || previewGroups[0] || null;
@@ -857,6 +898,18 @@ const RolesPermisosTab = () => {
           <div className="roles-permisos-layout">
             <aside className="roles-permisos-panel roles-permisos-panel--roles">
               <div className="roles-permisos-panel-title">Roles</div>
+              <div className="roles-permisos-role-search-wrap">
+                <label className="roles-permisos-search roles-permisos-search--roles" aria-label="Buscar rol">
+                  <i className="bi bi-search" />
+                  <input
+                    type="search"
+                    placeholder="Buscar rol..."
+                    value={roleSearch}
+                    onChange={handleRoleSearchChange}
+                    disabled={loadingRoles}
+                  />
+                </label>
+              </div>
 
               {loadingRoles ? (
                 <InlineLoader />
@@ -864,14 +917,17 @@ const RolesPermisosTab = () => {
                 <div className="roles-permisos-empty">
                   <p className="mb-0">No hay roles registrados.</p>
                 </div>
+              ) : filteredRoles.length === 0 ? (
+                <div className="roles-permisos-empty">
+                  <p className="mb-0">No se encontraron roles para esa busqueda.</p>
+                </div>
               ) : (
                 <div className="roles-permisos-roles-list">
-                  {roles.map((role, index) => {
+                  {filteredRoles.map((role, index) => {
                     const isActive = Number(role.id_rol) === Number(selectedRoleId);
                     const roleName = humanizeRoleName(role.nombre);
                     const openRoleCard = () => {
                       handleSelectRole(role.id_rol);
-                      void openRolePreview(role);
                     };
                     return (
                       <article
@@ -889,7 +945,7 @@ const RolesPermisosTab = () => {
                             openRoleCard();
                           }
                         }}
-                        aria-label={`Ver detalle del rol ${roleName}`}
+                        aria-label={`Seleccionar rol ${roleName}`}
                         aria-pressed={isActive}
                       >
                         <div className="roles-permisos-role-card__top">
@@ -1122,6 +1178,13 @@ const RolesPermisosTab = () => {
                   </div>
 
                   <div className="roles-permisos-footer">
+                    {hasPendingChanges ? (
+                      <div className="roles-permisos-pending-alert">
+                        <i className="bi bi-exclamation-circle" />
+                        <span>Cambios pendientes</span>
+                      </div>
+                    ) : null}
+
                     <button
                       type="button"
                       className="btn btn-primary roles-permisos-save-btn"
@@ -1131,7 +1194,8 @@ const RolesPermisosTab = () => {
                         loadingPermisos ||
                         hydratingSelection ||
                         !selectedRoleId ||
-                        !canEditRolesPermisos
+                        !canEditRolesPermisos ||
+                        !hasPendingChanges
                       }
                     >
                       {saving ? (

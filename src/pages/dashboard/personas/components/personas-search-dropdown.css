@@ -1,0 +1,286 @@
+.personas-page .personas-page__panel {
+  position: relative;
+}
+
+.personas-page .personas-search-dropdown {
+  position: absolute;
+  z-index: 28;
+  border-radius: 22px;
+  border: 1px solid rgba(187, 164, 144, 0.45);
+  background: linear-gradient(180deg, #fffdfb 0%, #f9f6f3 100%);
+  box-shadow:
+    0 16px 36px rgba(62, 38, 28, 0.16),
+    0 4px 10px rgba(62, 38, 28, 0.08);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.986);
+  transform-origin: top center;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition:
+    opacity 220ms ease-out,
+    transform 220ms cubic-bezier(0.2, 0.85, 0.22, 1),
+    box-shadow 220ms ease;
+}
+
+.personas-page .personas-search-dropdown.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.personas-page .personas-search-dropdown.is-closing {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.992);
+  pointer-events: none;
+}
+
+.personas-page .personas-search-dropdown__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(187, 164, 144, 0.35);
+}
+
+.personas-page .personas-search-dropdown__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #4c2d22;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.personas-page .personas-search-dropdown__title-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(168, 55, 57, 0.28);
+  color: #8f2f36;
+  font-size: 1rem;
+}
+
+.personas-page .personas-search-dropdown__clear-btn {
+  border: 1px solid rgba(187, 164, 144, 0.58);
+  background: rgba(255, 255, 255, 0.9);
+  color: rgba(82, 44, 34, 0.9);
+  border-radius: 999px;
+  min-height: 38px;
+  padding: 0 18px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.personas-page .personas-search-dropdown__clear-btn:hover {
+  background: #fff;
+  border-color: rgba(156, 134, 117, 0.78);
+  box-shadow: 0 6px 16px rgba(62, 38, 28, 0.12);
+  transform: translateY(-1px);
+}
+
+.personas-page .personas-search-dropdown__clear-btn:active {
+  transform: translateY(0);
+}
+
+.personas-page .personas-search-dropdown__list {
+  max-height: 330px;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.personas-page .personas-search-dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 16px;
+  border: 1px solid rgba(187, 164, 144, 0.4);
+  background: rgba(255, 255, 255, 0.82);
+  transition:
+    background-color 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    opacity 180ms ease;
+}
+
+.personas-page .personas-search-dropdown__item:hover,
+.personas-page .personas-search-dropdown__item.is-active {
+  background: #fffdf9;
+  border-color: rgba(160, 133, 115, 0.62);
+  box-shadow: 0 8px 18px rgba(62, 38, 28, 0.12);
+  transform: translateY(-1px) scale(1.002);
+}
+
+.personas-page .personas-search-dropdown.is-open .personas-search-dropdown__item {
+  animation: personasSearchDropdownItemIn 220ms ease-out both;
+  animation-delay: var(--item-delay, 0ms);
+}
+
+.personas-page .personas-search-dropdown__item-main {
+  border: 0;
+  background: transparent;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 12px 12px 12px 10px;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 180ms ease;
+}
+
+.personas-page .personas-search-dropdown__item:hover .personas-search-dropdown__item-main,
+.personas-page .personas-search-dropdown__item.is-active .personas-search-dropdown__item-main {
+  transform: translateX(1px);
+}
+
+.personas-page .personas-search-dropdown__item-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(186, 165, 151, 0.5);
+  color: #8f2f36;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    transform 180ms ease;
+}
+
+.personas-page .personas-search-dropdown__item:hover .personas-search-dropdown__item-icon,
+.personas-page .personas-search-dropdown__item.is-active .personas-search-dropdown__item-icon {
+  background: #fff;
+  border-color: rgba(168, 55, 57, 0.35);
+  transform: translateY(-1px);
+}
+
+.personas-page .personas-search-dropdown__item-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.personas-page .personas-search-dropdown__item-title {
+  color: #43271f;
+  font-size: 1.06rem;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personas-page .personas-search-dropdown__item-subtitle {
+  color: rgba(86, 54, 43, 0.76);
+  font-size: 0.88rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personas-page .personas-search-dropdown__item-remove {
+  border: 1px solid rgba(186, 165, 151, 0.62);
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(82, 44, 34, 0.72);
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  margin-right: 10px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.personas-page .personas-search-dropdown__item-remove:hover {
+  background: #fff;
+  color: rgba(99, 34, 34, 0.86);
+  border-color: rgba(156, 134, 117, 0.78);
+  box-shadow: 0 6px 12px rgba(62, 38, 28, 0.1);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.personas-page .personas-search-dropdown__item-remove:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.personas-page .personas-search-dropdown__empty {
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1px dashed rgba(187, 164, 144, 0.48);
+  background: rgba(255, 255, 255, 0.76);
+  color: rgba(96, 66, 53, 0.8);
+  padding: 12px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@keyframes personasSearchDropdownItemIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .personas-page .personas-search-dropdown {
+    max-width: calc(100% - 24px);
+  }
+
+  .personas-page .personas-search-dropdown__header {
+    padding: 12px 14px;
+  }
+
+  .personas-page .personas-search-dropdown__title {
+    font-size: 0.96rem;
+  }
+
+  .personas-page .personas-search-dropdown__item-main {
+    padding: 10px;
+  }
+
+  .personas-page .personas-search-dropdown__item-icon {
+    width: 42px;
+    height: 42px;
+    font-size: 1rem;
+  }
+
+  .personas-page .personas-search-dropdown__item-title {
+    font-size: 0.96rem;
+  }
+}

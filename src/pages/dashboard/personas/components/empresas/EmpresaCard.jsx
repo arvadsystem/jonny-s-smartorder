@@ -1,10 +1,15 @@
 import EntityCard from "../../../../../components/ui/EntityCard";
 
 const parseEstado = (record) => {
-  if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return Boolean(record.estado);
-  if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return Boolean(record.activo);
-  if (Object.prototype.hasOwnProperty.call(record || {}, "habilitado")) return Boolean(record.habilitado);
-  return true;
+  const raw = record?.estado;
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "number") return raw === 1;
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (["true", "1", "t", "si", "activo"].includes(normalized)) return true;
+    if (["false", "0", "f", "no", "inactivo"].includes(normalized)) return false;
+  }
+  return false;
 };
 
 const toDisplayValue = (value, fallback = "No registrado") => {
@@ -13,20 +18,27 @@ const toDisplayValue = (value, fallback = "No registrado") => {
   return text || fallback;
 };
 
+const formatRtnDisplay = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "N/D";
+
+  const digits = raw.replace(/\D/g, "").slice(0, 14);
+  if (digits.length !== 14) return raw;
+
+  return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8, 14)}`;
+};
+
 export default function EmpresaCard({
   empresa,
   index,
   onOpenEdit,
   onOpenDelete,
-  onToggleEstado,
   actionLoading = false,
   deletingId = null,
-  togglingEstadoId = null,
 }) {
   const isActive = parseEstado(empresa);
   const idEmpresa = empresa?.id_empresa;
   const deleting = deletingId === idEmpresa;
-  const toggling = togglingEstadoId === idEmpresa;
   const telefono = empresa?.telefono ?? empresa?.telefono_numero ?? empresa?.numero_telefono;
   const correo = empresa?.correo ?? empresa?.direccion_correo ?? empresa?.email;
   const direccion = empresa?.direccion ?? empresa?.direccion_detalle;
@@ -37,7 +49,7 @@ export default function EmpresaCard({
       iconClass="bi bi-buildings"
       titleIconClass="bi bi-building"
       title={`${index + 1}. ${toDisplayValue(empresa?.nombre_empresa, "Empresa sin nombre")}`}
-      subtitle={`RTN: ${toDisplayValue(empresa?.rtn, "N/D")}`}
+      subtitle={`RTN: ${formatRtnDisplay(empresa?.rtn)}`}
       badge={isActive ? "ACTIVO" : "INACTIVO"}
       badgeClass={isActive ? "is-ok" : "is-inactive"}
       inactive={!isActive}
@@ -54,7 +66,7 @@ export default function EmpresaCard({
             className="inv-catpro-action edit inv-catpro-action-compact"
             onClick={() => onOpenEdit(empresa)}
             title="Editar"
-            disabled={actionLoading || deleting || toggling}
+            disabled={actionLoading || deleting}
           >
             <i className="bi bi-pencil-square" />
             <span className="inv-catpro-action-label">Editar</span>
@@ -62,23 +74,10 @@ export default function EmpresaCard({
 
           <button
             type="button"
-            className={`inv-catpro-action ${isActive ? "state-off" : "state-on"} inv-catpro-action-compact`}
-            onClick={() => onToggleEstado(empresa, !isActive)}
-            title={isActive ? "Inactivar" : "Activar"}
-            disabled={actionLoading || deleting || toggling}
-          >
-            <i className={`bi ${isActive ? "bi-slash-circle" : "bi-check-circle"}`} />
-            <span className="inv-catpro-action-label">
-              {toggling ? "Procesando" : isActive ? "Inactivar" : "Activar"}
-            </span>
-          </button>
-
-          <button
-            type="button"
             className="inv-catpro-action danger inv-catpro-action-compact"
             onClick={() => onOpenDelete(empresa)}
             title="Eliminar"
-            disabled={actionLoading || deleting || toggling}
+            disabled={actionLoading || deleting}
           >
             <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
             <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
@@ -86,10 +85,6 @@ export default function EmpresaCard({
         </>
       }
     >
-      <div className="personas-page__card-row">
-        <i className="bi bi-file-earmark-text" />
-        <span>RTN: {toDisplayValue(empresa?.rtn, "N/D")}</span>
-      </div>
       <div className="personas-page__card-row">
         <i className="bi bi-telephone" />
         <span>{toDisplayValue(telefono, "Sin telefono")}</span>

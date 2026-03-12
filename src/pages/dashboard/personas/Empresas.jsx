@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { personaService } from "../../../services/personasService";
 import EntityTable from "../../../components/ui/EntityTable";
 import HeaderModulo from "./components/common/HeaderModulo";
@@ -13,6 +13,7 @@ const emptyForm = {
   id_telefono: "",
   id_direccion: "",
   id_correo: "",
+  estado: true,
 };
 
 const createInitialFiltersDraft = () => ({
@@ -21,11 +22,43 @@ const createInitialFiltersDraft = () => ({
 });
 
 const EMAIL_WITH_DOMAIN_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const RTN_DIGITS_LENGTH = 14;
+const RTN_DISPLAY_MAX_LENGTH = 16;
+const PHONE_DIGITS_LENGTH = 8;
+const PHONE_DISPLAY_MAX_LENGTH = 9;
+const RTN_FORMAT_ERROR = "El RTN debe contener 14 digitos numericos.";
 
 const normalizeText = (value) => String(value ?? "").trim();
 
 const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
 const limitText = (value, max) => String(value ?? "").slice(0, max);
+
+const formatRtn = (rawValue) => {
+  const clean = limitText(digitsOnly(rawValue), RTN_DIGITS_LENGTH);
+  const part1 = clean.slice(0, 4);
+  const part2 = clean.slice(4, 8);
+  const part3 = clean.slice(8, 14);
+
+  if (clean.length <= 4) return part1;
+  if (clean.length <= 8) return `${part1}-${part2}`;
+  return `${part1}-${part2}-${part3}`;
+};
+
+const resolveCaretFromDigitIndex = (formattedValue, digitIndex) => {
+  if (!formattedValue) return 0;
+  if (digitIndex <= 0) return 0;
+
+  let seenDigits = 0;
+  for (let index = 0; index < formattedValue.length; index += 1) {
+    const char = formattedValue[index];
+    if (char >= "0" && char <= "9") {
+      seenDigits += 1;
+      if (seenDigits >= digitIndex) return index + 1;
+    }
+  }
+
+  return formattedValue.length;
+};
 
 const formatPhone = (digits8) => {
   const clean = String(digits8 ?? "");
@@ -78,17 +111,16 @@ const readViewMode = (storageKey) => {
   }
 };
 
-const detectEstadoField = (empresa) => {
-  if (Object.prototype.hasOwnProperty.call(empresa || {}, "estado")) return "estado";
-  if (Object.prototype.hasOwnProperty.call(empresa || {}, "activo")) return "activo";
-  if (Object.prototype.hasOwnProperty.call(empresa || {}, "habilitado")) return "habilitado";
-  return null;
-};
-
 const isEmpresaActiva = (empresa) => {
-  const field = detectEstadoField(empresa);
-  if (!field) return true;
-  return Boolean(empresa[field]);
+  const raw = empresa?.estado;
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "number") return raw === 1;
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (["true", "1", "t", "si", "activo"].includes(normalized)) return true;
+    if (["false", "0", "f", "no", "inactivo"].includes(normalized)) return false;
+  }
+  return false;
 };
 
 export default function Empresas({ openToast }) {
@@ -124,7 +156,6 @@ export default function Empresas({ openToast }) {
 
   const [actionLoading, setActionLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-  const [togglingEstadoId, setTogglingEstadoId] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     show: false,
     idToDelete: null,
@@ -134,6 +165,10 @@ export default function Empresas({ openToast }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const rtnInputRef = useRef(null);
+  const rtnCaretRef = useRef(null);
+  const telefonoInputRef = useRef(null);
+  const telefonoCaretRef = useRef(null);
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
   );
@@ -158,7 +193,7 @@ export default function Empresas({ openToast }) {
 
   const buildFormFromEmpresa = useCallback(
     (empresa) => ({
-      rtn: normalizeText(empresa?.rtn),
+      rtn: formatRtn(empresa?.rtn),
       nombre_empresa: normalizeText(empresa?.nombre_empresa),
       id_telefono: formatPhone(
         limitText(
@@ -173,7 +208,7 @@ export default function Empresas({ openToast }) {
                 empresa?.id_telefono
               )
           ),
-          8
+          PHONE_DIGITS_LENGTH
         )
       ),
       id_direccion: normalizeText(
@@ -197,19 +232,22 @@ export default function Empresas({ openToast }) {
             empresa?.id_correo
           )
       ),
+      estado: isEmpresaActiva(empresa),
     }),
     [telefonos, direcciones, correos]
   );
 
   const buildEmpresaPayloadFromForm = useCallback(
     (sourceForm) => {
-      const telefonoRaw = limitText(digitsOnly(sourceForm?.id_telefono), 8);
+      const rtnRaw = limitText(digitsOnly(sourceForm?.rtn), RTN_DIGITS_LENGTH);
+      const telefonoRaw = limitText(digitsOnly(sourceForm?.id_telefono), PHONE_DIGITS_LENGTH);
       const direccion = normalizeText(sourceForm?.id_direccion);
       const correo = normalizeText(sourceForm?.id_correo);
 
       const payload = {
-        rtn: normalizeText(sourceForm?.rtn),
+        rtn: rtnRaw,
         nombre_empresa: normalizeText(sourceForm?.nombre_empresa),
+        estado: Boolean(sourceForm?.estado),
       };
 
       if (telefonoRaw) payload.texto_telefono = formatPhone(telefonoRaw);
@@ -302,6 +340,34 @@ export default function Empresas({ openToast }) {
     }
   }, [viewMode]);
 
+  useLayoutEffect(() => {
+    if (rtnCaretRef.current === null) return;
+    const input = rtnInputRef.current;
+    if (!input) return;
+
+    const nextCaret = rtnCaretRef.current;
+    rtnCaretRef.current = null;
+    try {
+      input.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+      // Some browsers can throw when the element is not focusable.
+    }
+  }, [form.rtn]);
+
+  useLayoutEffect(() => {
+    if (telefonoCaretRef.current === null) return;
+    const input = telefonoInputRef.current;
+    if (!input) return;
+
+    const nextCaret = telefonoCaretRef.current;
+    telefonoCaretRef.current = null;
+    try {
+      input.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+      // Some browsers can throw when the element is not focusable.
+    }
+  }, [form.id_telefono]);
+
   useEffect(() => {
     if (!showModal || !editId) return;
     const empresaActual = empresas.find((item) => String(item.id_empresa) === String(editId));
@@ -319,17 +385,57 @@ export default function Empresas({ openToast }) {
     });
   }, [showModal, editId, empresas, buildFormFromEmpresa]);
 
+  const handleRtnChange = useCallback((event) => {
+    const inputValue = event.target.value ?? "";
+    const caretPosition = event.target.selectionStart ?? inputValue.length;
+    const digitsBeforeCaret = digitsOnly(inputValue.slice(0, caretPosition)).length;
+    const clean = limitText(digitsOnly(inputValue), RTN_DIGITS_LENGTH);
+    const formatted = formatRtn(clean);
+
+    rtnCaretRef.current = resolveCaretFromDigitIndex(
+      formatted,
+      Math.min(digitsBeforeCaret, clean.length)
+    );
+
+    setForm((state) => ({ ...state, rtn: formatted }));
+    setErrors((state) => ({ ...state, rtn: undefined }));
+  }, []);
+
+  const handleRtnPaste = useCallback((event) => {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData("text") ?? "";
+    const clean = limitText(digitsOnly(pasted), RTN_DIGITS_LENGTH);
+    const formatted = formatRtn(clean);
+
+    rtnCaretRef.current = formatted.length;
+    setForm((state) => ({ ...state, rtn: formatted }));
+    setErrors((state) => ({ ...state, rtn: undefined }));
+  }, []);
+
   const handleTelefonoChange = useCallback((event) => {
-    const raw = limitText(digitsOnly(event.target.value), 8);
-    setForm((state) => ({ ...state, id_telefono: formatPhone(raw) }));
+    const inputValue = event.target.value ?? "";
+    const caretPosition = event.target.selectionStart ?? inputValue.length;
+    const digitsBeforeCaret = digitsOnly(inputValue.slice(0, caretPosition)).length;
+    const raw = limitText(digitsOnly(inputValue), PHONE_DIGITS_LENGTH);
+    const formatted = formatPhone(raw);
+
+    telefonoCaretRef.current = resolveCaretFromDigitIndex(
+      formatted,
+      Math.min(digitsBeforeCaret, raw.length)
+    );
+
+    setForm((state) => ({ ...state, id_telefono: formatted }));
     setErrors((state) => ({ ...state, id_telefono: undefined }));
   }, []);
 
   const handleTelefonoPaste = useCallback((event) => {
     event.preventDefault();
     const pasted = event.clipboardData?.getData("text") ?? "";
-    const raw = limitText(digitsOnly(pasted), 8);
-    setForm((state) => ({ ...state, id_telefono: formatPhone(raw) }));
+    const raw = limitText(digitsOnly(pasted), PHONE_DIGITS_LENGTH);
+    const formatted = formatPhone(raw);
+
+    telefonoCaretRef.current = formatted.length;
+    setForm((state) => ({ ...state, id_telefono: formatted }));
     setErrors((state) => ({ ...state, id_telefono: undefined }));
   }, []);
 
@@ -340,13 +446,18 @@ export default function Empresas({ openToast }) {
 
   const validar = useCallback(() => {
     const currentErrors = {};
+    const rtnRaw = limitText(digitsOnly(form.rtn), RTN_DIGITS_LENGTH);
     const telefonoRaw = digitsOnly(form.id_telefono);
     const correoValue = normalizeText(form.id_correo);
 
     if (!form.nombre_empresa?.trim()) currentErrors.nombre_empresa = "Requerido";
-    if (!form.rtn?.trim()) currentErrors.rtn = "Requerido";
+    if (!rtnRaw) {
+      currentErrors.rtn = "Requerido";
+    } else if (rtnRaw.length !== RTN_DIGITS_LENGTH) {
+      currentErrors.rtn = RTN_FORMAT_ERROR;
+    }
 
-    if (telefonoRaw && telefonoRaw.length !== 8) {
+    if (telefonoRaw && telefonoRaw.length !== PHONE_DIGITS_LENGTH) {
       currentErrors.id_telefono = "Formato invalido";
     }
 
@@ -415,41 +526,12 @@ export default function Empresas({ openToast }) {
   };
 
   const openCreate = () => {
-    if (actionLoading || deletingId || togglingEstadoId) return;
+    if (actionLoading || deletingId) return;
     setFiltersOpen(false);
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
     setShowModal(true);
-  };
-
-  const toggleEstadoEmpresa = async (empresa, nextEstado) => {
-    if (actionLoading || deletingId || togglingEstadoId) return;
-    const id = empresa.id_empresa;
-    const estadoField = detectEstadoField(empresa) || "estado";
-
-    if (!window.confirm(`Deseas ${nextEstado ? "habilitar" : "deshabilitar"} esta empresa?`)) {
-      return;
-    }
-
-    setTogglingEstadoId(id);
-    try {
-      await personaService.updateEmpresa(id, { [estadoField]: nextEstado });
-
-      setEmpresas((prev) =>
-        prev.map((item) =>
-          String(item.id_empresa) === String(id)
-            ? { ...item, [estadoField]: nextEstado }
-            : item
-        )
-      );
-
-      safeToast("OK", `Empresa ${nextEstado ? "habilitada" : "deshabilitada"}`);
-    } catch (error) {
-      safeToast("ERROR", error.message || "No se pudo actualizar estado", "danger");
-    } finally {
-      if (mountedRef.current) setTogglingEstadoId(null);
-    }
   };
 
   const openConfirmDelete = (empresa) => {
@@ -465,7 +547,7 @@ export default function Empresas({ openToast }) {
 
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
-    if (!id || actionLoading || deletingId || togglingEstadoId) return;
+    if (!id || actionLoading || deletingId) return;
 
     setDeletingId(id);
     try {
@@ -555,11 +637,6 @@ export default function Empresas({ openToast }) {
 
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
   const drawerMode = editId ? "edit" : "create";
-  const empresaEnEdicion = useMemo(
-    () => empresas.find((item) => String(item.id_empresa) === String(editId)) || null,
-    [editId, empresas]
-  );
-  const estadoVisual = empresaEnEdicion ? isEmpresaActiva(empresaEnEdicion) : true;
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -672,7 +749,6 @@ export default function Empresas({ openToast }) {
                       const isActive = isEmpresaActiva(empresa);
                       const idEmpresa = empresa?.id_empresa;
                       const deleting = deletingId === idEmpresa;
-                      const toggling = togglingEstadoId === idEmpresa;
                       const tableIndex = (page - 1) * limit + idx;
                       const telefono = empresa?.telefono ?? empresa?.telefono_numero ?? empresa?.numero_telefono;
                       const correo = empresa?.correo ?? empresa?.direccion_correo ?? empresa?.email;
@@ -705,7 +781,7 @@ export default function Empresas({ openToast }) {
                                 className="inv-catpro-action edit inv-catpro-action-compact"
                                 onClick={() => iniciarEdicion(empresa)}
                                 title="Editar"
-                                disabled={actionLoading || deleting || toggling}
+                                disabled={actionLoading || deleting}
                               >
                                 <i className="bi bi-pencil-square" />
                                 <span className="inv-catpro-action-label">Editar</span>
@@ -713,23 +789,10 @@ export default function Empresas({ openToast }) {
 
                               <button
                                 type="button"
-                                className={`inv-catpro-action ${isActive ? "state-off" : "state-on"} inv-catpro-action-compact`}
-                                onClick={() => toggleEstadoEmpresa(empresa, !isActive)}
-                                title={isActive ? "Inactivar" : "Activar"}
-                                disabled={actionLoading || deleting || toggling}
-                              >
-                                <i className={`bi ${isActive ? "bi-slash-circle" : "bi-check-circle"}`} />
-                                <span className="inv-catpro-action-label">
-                                  {toggling ? "Procesando" : isActive ? "Inactivar" : "Activar"}
-                                </span>
-                              </button>
-
-                              <button
-                                type="button"
                                 className="inv-catpro-action danger inv-catpro-action-compact"
                                 onClick={() => openConfirmDelete(empresa)}
                                 title="Eliminar"
-                                disabled={actionLoading || deleting || toggling}
+                                disabled={actionLoading || deleting}
                               >
                                 <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
                                 <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
@@ -751,10 +814,8 @@ export default function Empresas({ openToast }) {
                     index={(page - 1) * limit + idx}
                     onOpenEdit={iniciarEdicion}
                     onOpenDelete={openConfirmDelete}
-                    onToggleEstado={toggleEstadoEmpresa}
                     actionLoading={actionLoading}
                     deletingId={deletingId}
-                    togglingEstadoId={togglingEstadoId}
                   />
                 ))}
               </div>
@@ -765,7 +826,7 @@ export default function Empresas({ openToast }) {
             <button
               type="button"
               className="btn btn-outline-secondary"
-              disabled={page === 1 || loading || actionLoading || !!deletingId || !!togglingEstadoId}
+              disabled={page === 1 || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev - 1)}
             >
               <i className="bi bi-chevron-left me-1" />
@@ -778,7 +839,7 @@ export default function Empresas({ openToast }) {
             <button
               type="button"
               className="btn btn-outline-secondary"
-              disabled={page >= totalPages || loading || actionLoading || !!deletingId || !!togglingEstadoId}
+              disabled={page >= totalPages || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev + 1)}
             >
               Siguiente
@@ -793,7 +854,7 @@ export default function Empresas({ openToast }) {
         className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? "is-hidden" : ""}`}
         onClick={openCreate}
         title="Nuevo"
-        disabled={actionLoading || !!deletingId || !!togglingEstadoId}
+        disabled={actionLoading || !!deletingId}
       >
         <i className="bi bi-plus" />
       </button>
@@ -853,10 +914,15 @@ export default function Empresas({ openToast }) {
             <div className="col-12 col-md-6 empresas-modal__field">
               <label className="form-label empresas-modal__label">RTN</label>
               <input
+                ref={rtnInputRef}
+                type="text"
+                inputMode="numeric"
+                maxLength={RTN_DISPLAY_MAX_LENGTH}
                 className={`form-control empresas-modal__input ${errors.rtn ? "is-invalid" : ""}`}
-                placeholder="Ej: 0801190012345"
+                placeholder="0801-9010-000000"
                 value={form.rtn}
-                onChange={(event) => handleFieldChange("rtn", event.target.value)}
+                onChange={handleRtnChange}
+                onPaste={handleRtnPaste}
               />
               {errors.rtn && <div className="invalid-feedback d-block">{errors.rtn}</div>}
             </div>
@@ -875,9 +941,10 @@ export default function Empresas({ openToast }) {
             <div className="col-12 col-md-6 empresas-modal__field">
               <label className="form-label empresas-modal__label">Telefono</label>
               <input
+                ref={telefonoInputRef}
                 type="text"
                 inputMode="numeric"
-                maxLength={9}
+                maxLength={PHONE_DISPLAY_MAX_LENGTH}
                 list="emp-telefonos-sugeridos"
                 placeholder="0000-0000"
                 className={`form-control empresas-modal__input ${errors.id_telefono ? "is-invalid" : ""}`}
@@ -934,9 +1001,10 @@ export default function Empresas({ openToast }) {
                 <input
                   className="form-check-input"
                   type="checkbox"
-                  checked={estadoVisual}
-                  readOnly
+                  checked={Boolean(form.estado)}
+                  onChange={(event) => handleFieldChange("estado", event.target.checked)}
                   id="empresa_estado_visual"
+                  disabled={actionLoading || !!deletingId}
                 />
                 <label className="form-check-label empresas-modal__label" htmlFor="empresa_estado_visual">
                   Registro habilitado
@@ -950,14 +1018,14 @@ export default function Empresas({ openToast }) {
               type="button"
               className="btn inv-prod-btn-subtle flex-fill empresas-modal__btn"
               onClick={closeFormDrawer}
-              disabled={actionLoading || !!deletingId || !!togglingEstadoId}
+              disabled={actionLoading || !!deletingId}
             >
               Cancelar
             </button>
             <button
               type="submit"
               className="btn inv-prod-btn-primary flex-fill empresas-modal__btn"
-              disabled={actionLoading || !!deletingId || !!togglingEstadoId}
+              disabled={actionLoading || !!deletingId}
             >
               {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}
             </button>
