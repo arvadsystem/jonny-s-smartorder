@@ -236,6 +236,10 @@
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
+.dashboard-shell .navbar-icon-btn i {
+  font-size: 1.37rem;
+}
+
 .dashboard-shell .navbar-icon-btn:hover {
   background: var(--shell-pill-bg);
   border-color: rgba(159, 110, 67, 0.1);
