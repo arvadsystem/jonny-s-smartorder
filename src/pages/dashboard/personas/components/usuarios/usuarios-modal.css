@@ -326,6 +326,26 @@
   border-radius: 14px;
 }
 
+@media (max-width: 767.98px) {
+  .usuarios-modal .usuarios-modal__switch-row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .usuarios-modal .usuarios-modal__switch {
+    margin-left: auto;
+  }
+
+  .usuarios-modal .usuarios-modal__roles-box {
+    max-height: 190px;
+  }
+
+  .usuarios-modal .usuarios-modal__result-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+}
+
 @media (max-width: 576px) {
   .usuarios-modal .usuarios-modal__header {
     padding: 0.9rem 0.9rem 0.75rem;
@@ -342,5 +362,36 @@
 
   .usuarios-modal .usuarios-modal__section--first {
     margin-top: 0.2rem;
+  }
+
+  .usuarios-modal .usuarios-modal__switch-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.55rem;
+  }
+
+  .usuarios-modal .usuarios-modal__switch {
+    margin-left: 0;
+  }
+
+  .usuarios-modal .usuarios-modal__role-chip {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .usuarios-modal .usuarios-modal__image-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+
+  .usuarios-modal .usuarios-modal__btn-upload,
+  .usuarios-modal .usuarios-modal__btn-remove {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .usuarios-modal .usuarios-modal__footer.crud-modal__footer {
+    grid-template-columns: 1fr;
   }
 }

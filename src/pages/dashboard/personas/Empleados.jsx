@@ -889,7 +889,7 @@ export default function Empleados({ openToast }) {
   };
 
   return (
-    <div className="personas-page">
+    <div className="personas-page personas-page--empleados">
       <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <HeaderModulo
           iconClass="bi bi-person-badge-fill"

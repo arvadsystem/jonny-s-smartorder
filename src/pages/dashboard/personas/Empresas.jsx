@@ -672,7 +672,7 @@ export default function Empresas({ openToast }) {
   };
 
   return (
-    <div className="personas-page">
+    <div className="personas-page personas-page--empresas">
       <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <HeaderModulo
           iconClass="bi bi-buildings-fill"

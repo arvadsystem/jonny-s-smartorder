@@ -1747,7 +1747,7 @@ export default function Personas({ openToast }) {
   }, [cargarPersonas]);
 
   return (
-    <div className="personas-page">
+    <div className="personas-page personas-page--personas">
       <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderPersonas
           search={search}

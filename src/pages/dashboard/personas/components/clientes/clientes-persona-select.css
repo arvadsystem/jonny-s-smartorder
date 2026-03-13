@@ -131,3 +131,43 @@
   color: rgba(95, 69, 55, 0.74);
   font-size: 0.77rem;
 }
+
+@media (max-width: 767.98px) {
+  .clientes-modal__origin-helper {
+    margin-bottom: 0.72rem;
+  }
+
+  .clientes-modal__origin-row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 0.35rem;
+  }
+
+  .clientes-modal__origin-caption {
+    width: 100%;
+  }
+
+  .clientes-modal__origin-toggle .clientes-modal__origin-option {
+    min-height: 38px;
+    height: 38px;
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .clientes-modal__origin-helper {
+    padding: 0.56rem;
+  }
+
+  .clientes-modal__origin-toggle {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .clientes-modal__origin-toggle .clientes-modal__origin-option {
+    min-height: 40px;
+    height: 40px;
+    width: 100%;
+  }
+}

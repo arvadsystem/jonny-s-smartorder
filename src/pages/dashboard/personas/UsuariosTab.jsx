@@ -906,7 +906,7 @@ export default function UsuariosTab({ openToast }) {
   const selectedUser = usuarios.find((item) => String(item.id_usuario) === String(editId)) || null;
 
   return (
-    <div className="personas-page">
+    <div className="personas-page personas-page--usuarios">
       <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <HeaderModulo iconClass="bi bi-people-fill" title="Usuarios" subtitle="Gestion visual de usuarios" search={search}
           onSearchChange={setSearch}
