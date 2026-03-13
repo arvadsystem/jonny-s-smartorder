@@ -5,6 +5,11 @@ import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpresaCard from "./components/empresas/EmpresaCard";
+import SearchSuggestionsDropdown from "./components/common/SearchSuggestionsDropdown";
+import useSearchSuggestionsDropdown, {
+  MIN_CHARS_FOR_SUGGESTIONS,
+  normalizeSearchText,
+} from "./components/common/useSearchSuggestionsDropdown";
 import "./components/empresas/empresas-modal.css";
 
 const emptyForm = {
@@ -27,8 +32,10 @@ const RTN_DISPLAY_MAX_LENGTH = 16;
 const PHONE_DIGITS_LENGTH = 8;
 const PHONE_DISPLAY_MAX_LENGTH = 9;
 const RTN_FORMAT_ERROR = "El RTN debe contener 14 digitos numericos.";
+const SUGGESTION_LIMIT = 8;
 
 const normalizeText = (value) => String(value ?? "").trim();
+const toSearchableText = (value) => normalizeText(value).toLowerCase();
 
 const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
 const limitText = (value, max) => String(value ?? "").slice(0, max);
@@ -138,6 +145,7 @@ export default function Empresas({ openToast }) {
   const [empresas, setEmpresas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("empresasViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -165,6 +173,7 @@ export default function Empresas({ openToast }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const panelRef = useRef(null);
   const rtnInputRef = useRef(null);
   const rtnCaretRef = useRef(null);
   const telefonoInputRef = useRef(null);
@@ -288,7 +297,7 @@ export default function Empresas({ openToast }) {
       const resp = await personaService.getEmpresas({
         page,
         limit,
-        nombre: search?.trim() || undefined,
+        nombre: debouncedSearch || undefined,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -305,7 +314,7 @@ export default function Empresas({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, search, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -323,7 +332,12 @@ export default function Empresas({ openToast }) {
   }, [cargarEmpresas]);
 
   useEffect(() => {
-    setPage(1);
+    const timerId = window.setTimeout(() => {
+      const nextSearch = normalizeSearchText(search);
+      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
   }, [search]);
 
   useEffect(() => {
@@ -624,6 +638,92 @@ export default function Empresas({ openToast }) {
     return filtered;
   }, [empresas, search, estadoFiltro, sortBy]);
 
+  const predictiveSuggestions = useMemo(() => {
+    const searchTerm = toSearchableText(search);
+    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
+
+    const source = Array.isArray(empresas) ? empresas : [];
+    const suggestions = [];
+    const seen = new Set();
+
+    for (const empresa of source) {
+      const activa = isEmpresaActiva(empresa);
+      const matchEstado =
+        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activa : !activa;
+      if (!matchEstado) continue;
+
+      const nombre = toDisplayValue(empresa?.nombre_empresa, "Empresa sin nombre");
+      const rtn = normalizeText(empresa?.rtn);
+      const telefono = normalizeText(
+        empresa?.telefono ?? empresa?.telefono_numero ?? empresa?.numero_telefono
+      );
+      const correo = normalizeText(
+        empresa?.correo ?? empresa?.direccion_correo ?? empresa?.email
+      );
+      const direccion = normalizeText(empresa?.direccion ?? empresa?.direccion_detalle);
+      const haystack = toSearchableText([nombre, rtn, telefono, correo, direccion].join(" "));
+
+      if (!haystack.includes(searchTerm)) continue;
+
+      const dedupeKey = toSearchableText(nombre);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const detailParts = [];
+      if (rtn) detailParts.push(`RTN: ${rtn}`);
+      if (correo) detailParts.push(correo);
+      else if (telefono) detailParts.push(telefono);
+      if (!detailParts.length && direccion) detailParts.push(direccion);
+
+      suggestions.push({
+        id: `emp-${empresa?.id_empresa ?? dedupeKey}`,
+        value: nombre,
+        label: nombre,
+        detail: detailParts.join(" | ") || "Empresa registrada",
+      });
+
+      if (suggestions.length >= SUGGESTION_LIMIT) break;
+    }
+
+    return suggestions;
+  }, [empresas, estadoFiltro, search]);
+
+  const handleSearchUpdate = useCallback((value, { source } = {}) => {
+    const normalized = normalizeSearchText(value);
+    setPage((prev) => (prev === 1 ? prev : 1));
+    if (!normalized) {
+      setDebouncedSearch("");
+      return;
+    }
+    if (source === "suggestion") {
+      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+    }
+  }, []);
+
+  const {
+    handleSearchInputChange,
+    searchDropdownRef,
+    isSearchDropdownMounted,
+    isSearchDropdownVisible,
+    searchDropdownStyle,
+    searchDropdownTitle,
+    isPredictiveSearch,
+    searchSuggestionItems,
+    activeSuggestionIndex,
+    applySearchSuggestion,
+    removeRecentSearch,
+    clearRecentSearches,
+    recentSearchesCount,
+  } = useSearchSuggestionsDropdown({
+    panelRef,
+    search,
+    setSearch,
+    committedSearch: debouncedSearch,
+    onSearchUpdate: handleSearchUpdate,
+    predictiveSuggestions,
+    recentStorageKey: "empresasRecentSearchesV1",
+  });
+
   const stats = useMemo(() => {
     const totalFiltradas = empresasFiltradas.length;
     const activas = empresasFiltradas.filter((item) => isEmpresaActiva(item)).length;
@@ -660,7 +760,7 @@ export default function Empresas({ openToast }) {
   };
 
   const clearAllFilters = () => {
-    setSearch("");
+    handleSearchInputChange("");
     clearVisualFilters();
     setFiltersOpen(false);
   };
@@ -673,13 +773,13 @@ export default function Empresas({ openToast }) {
 
   return (
     <div className="personas-page personas-page--empresas">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderModulo
           iconClass="bi bi-buildings-fill"
           title="Empresas"
           subtitle="Gestion visual de empresas"
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchInputChange}
           searchPlaceholder="Buscar por nombre, RTN, telefono, correo o direccion..."
           searchAriaLabel="Buscar empresas"
           filtersOpen={filtersOpen}
@@ -691,6 +791,22 @@ export default function Empresas({ openToast }) {
           formControlsId="emp-form-drawer"
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+        />
+
+        <SearchSuggestionsDropdown
+          mounted={isSearchDropdownMounted}
+          visible={isSearchDropdownVisible}
+          dropdownRef={searchDropdownRef}
+          dropdownStyle={searchDropdownStyle}
+          title={searchDropdownTitle}
+          isPredictiveSearch={isPredictiveSearch}
+          recentCount={recentSearchesCount}
+          items={searchSuggestionItems}
+          activeIndex={activeSuggestionIndex}
+          searchValue={search}
+          onApplySuggestion={applySearchSuggestion}
+          onRemoveRecent={removeRecentSearch}
+          onClearRecent={clearRecentSearches}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de empresas" />

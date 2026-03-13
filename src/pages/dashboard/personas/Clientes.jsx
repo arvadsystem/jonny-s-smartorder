@@ -8,6 +8,11 @@ import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import ClienteCard from "./components/clientes/ClienteCard";
+import SearchSuggestionsDropdown from "./components/common/SearchSuggestionsDropdown";
+import useSearchSuggestionsDropdown, {
+  MIN_CHARS_FOR_SUGGESTIONS,
+  normalizeSearchText,
+} from "./components/common/useSearchSuggestionsDropdown";
 import "./components/common/crud-modal-theme.css";
 import "./components/clientes/clientes-persona-select.css";
 
@@ -123,6 +128,7 @@ const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
 const normalizeSearchKey = (value) => String(value ?? "").trim().toLowerCase();
 const ASYNC_SELECT_LIMIT = 80;
 const ASYNC_SELECT_DEBOUNCE_MS = 300;
+const SUGGESTION_LIMIT = 8;
 
 const filterAsyncOptions = (options, needle, limit = ASYNC_SELECT_LIMIT) => {
   const normalizedNeedle = normalizeSearchKey(needle);
@@ -263,6 +269,7 @@ const Clientes = ({ openToast }) => {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("clientesViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -294,6 +301,7 @@ const Clientes = ({ openToast }) => {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const panelRef = useRef(null);
   const empresaSearchCacheRef = useRef(new Map());
   const tipoSearchCacheRef = useRef(new Map());
   const empresaDebounceTimerRef = useRef(null);
@@ -723,7 +731,7 @@ const Clientes = ({ openToast }) => {
       const resp = await personaService.getClientes({
         page,
         limit,
-        nombre: search?.trim() || undefined,
+        nombre: debouncedSearch || undefined,
       });
 
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
@@ -741,7 +749,7 @@ const Clientes = ({ openToast }) => {
         setLoading(false);
       }
     }
-  }, [page, limit, search, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -768,7 +776,12 @@ const Clientes = ({ openToast }) => {
   }, [cargarClientes]);
 
   useEffect(() => {
-    setPage(1);
+    const timerId = window.setTimeout(() => {
+      const nextSearch = normalizeSearchText(search);
+      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
   }, [search]);
 
   useEffect(() => {
@@ -1014,6 +1027,87 @@ const Clientes = ({ openToast }) => {
     return filtered;
   }, [clientes, search, estadoFiltro, sortBy, getClientePrincipalNombre]);
 
+  const predictiveSuggestions = useMemo(() => {
+    const searchTerm = normalizeSearchText(search).toLowerCase();
+    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
+
+    const source = Array.isArray(clientes) ? clientes : [];
+    const suggestions = [];
+    const seen = new Set();
+
+    for (const cliente of source) {
+      const activo = isActivo(cliente);
+      const matchEstado =
+        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activo : !activo;
+      if (!matchEstado) continue;
+
+      const nombre = toDisplayValue(cliente?.nombre_principal, "Cliente sin nombre");
+      const documento = toDisplayValue(cliente?.documento_valor, "");
+      const telefono = toDisplayValue(cliente?.telefono, "");
+      const correo = toDisplayValue(cliente?.correo, "");
+      const tipo = toDisplayValue(cliente?.tipo_cliente, "");
+      const haystack = [nombre, documento, telefono, correo, tipo].join(" ").toLowerCase();
+      if (!haystack.includes(searchTerm)) continue;
+
+      const dedupeKey = normalizeValue(nombre);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const detailParts = [];
+      if (documento && documento !== "No registrado") detailParts.push(documento);
+      if (correo && correo !== "No registrado") detailParts.push(correo);
+      else if (telefono && telefono !== "No registrado") detailParts.push(telefono);
+      if (!detailParts.length && tipo && tipo !== "No registrado") detailParts.push(tipo);
+
+      suggestions.push({
+        id: `cli-${cliente?.id_cliente ?? dedupeKey}`,
+        value: nombre,
+        label: nombre,
+        detail: detailParts.join(" | ") || "Cliente registrado",
+      });
+
+      if (suggestions.length >= SUGGESTION_LIMIT) break;
+    }
+
+    return suggestions;
+  }, [clientes, estadoFiltro, search]);
+
+  const handleSearchUpdate = useCallback((value, { source } = {}) => {
+    const normalized = normalizeSearchText(value);
+    setPage((prev) => (prev === 1 ? prev : 1));
+    if (!normalized) {
+      setDebouncedSearch("");
+      return;
+    }
+    if (source === "suggestion") {
+      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+    }
+  }, []);
+
+  const {
+    handleSearchInputChange,
+    searchDropdownRef,
+    isSearchDropdownMounted,
+    isSearchDropdownVisible,
+    searchDropdownStyle,
+    searchDropdownTitle,
+    isPredictiveSearch,
+    searchSuggestionItems,
+    activeSuggestionIndex,
+    applySearchSuggestion,
+    removeRecentSearch,
+    clearRecentSearches,
+    recentSearchesCount,
+  } = useSearchSuggestionsDropdown({
+    panelRef,
+    search,
+    setSearch,
+    committedSearch: debouncedSearch,
+    onSearchUpdate: handleSearchUpdate,
+    predictiveSuggestions,
+    recentStorageKey: "clientesRecentSearchesV1",
+  });
+
   const stats = useMemo(() => {
     const totalFiltradas = clientesFiltrados.length;
     const activas = clientesFiltrados.filter((item) => isActivo(item)).length;
@@ -1053,7 +1147,7 @@ const Clientes = ({ openToast }) => {
   };
 
   const clearAllFilters = () => {
-    setSearch("");
+    handleSearchInputChange("");
     clearVisualFilters();
     setFiltersOpen(false);
   };
@@ -1066,13 +1160,13 @@ const Clientes = ({ openToast }) => {
 
   return (
     <div className="personas-page personas-page--clientes">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderModulo
           iconClass="bi bi-person-lines-fill"
           title="Clientes"
           subtitle="Gestion visual de clientes"
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchInputChange}
           searchPlaceholder="Buscar por persona, empresa, tipo, DNI, telefono o correo..."
           searchAriaLabel="Buscar clientes"
           filtersOpen={filtersOpen}
@@ -1084,6 +1178,22 @@ const Clientes = ({ openToast }) => {
           formControlsId="cli-form-drawer"
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+        />
+
+        <SearchSuggestionsDropdown
+          mounted={isSearchDropdownMounted}
+          visible={isSearchDropdownVisible}
+          dropdownRef={searchDropdownRef}
+          dropdownStyle={searchDropdownStyle}
+          title={searchDropdownTitle}
+          isPredictiveSearch={isPredictiveSearch}
+          recentCount={recentSearchesCount}
+          items={searchSuggestionItems}
+          activeIndex={activeSuggestionIndex}
+          searchValue={search}
+          onApplySuggestion={applySearchSuggestion}
+          onRemoveRecent={removeRecentSearch}
+          onClearRecent={clearRecentSearches}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de clientes" />

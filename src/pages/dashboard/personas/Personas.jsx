@@ -55,6 +55,17 @@ const PERSONAS_RECENT_SEARCHES_KEY = "personasRecentSearchesV1";
 const SEARCH_INPUT_SELECTOR = '.personas-page .inv-ins-search input[type="search"]';
 
 const normalizeSearchText = (value) => String(value ?? "").trim();
+const toSearchableText = (value) => String(value ?? "").trim().toLowerCase();
+
+const buildPersonaSearchIndex = (persona) => {
+  const nombre = `${persona?.nombre ?? ""} ${persona?.apellido ?? ""}`.trim();
+  const dni = persona?.dni ?? persona?.numero_dni;
+  const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono ?? persona?.id_telefono;
+  const correo = persona?.direccion_correo ?? persona?.correo ?? persona?.email ?? persona?.id_correo;
+  const direccion = persona?.direccion ?? persona?.direccion_detalle ?? persona?.id_direccion;
+
+  return [nombre, dni, telefono, correo, direccion].map(toSearchableText).join(" ");
+};
 
 const readRecentSearches = () => {
   if (typeof window === "undefined") return [];
@@ -820,9 +831,8 @@ export default function Personas({ openToast }) {
   }, []);
 
   useEffect(() => {
-    if (normalizeSearchText(search) !== debouncedSearch) return;
     cargarPersonas();
-  }, [cargarPersonas, debouncedSearch, search]);
+  }, [cargarPersonas]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -888,7 +898,12 @@ export default function Personas({ openToast }) {
   );
 
   const handleSearchChange = useCallback((value) => {
-    setSearch(value);
+    const nextValue = String(value ?? "");
+    const normalized = normalizeSearchText(nextValue);
+    setSearch(nextValue);
+    if (!normalized) {
+      setDebouncedSearch("");
+    }
     setPage((prev) => (prev === 1 ? prev : 1));
     setActiveSuggestionIndex(-1);
   }, []);
@@ -1631,14 +1646,21 @@ export default function Personas({ openToast }) {
   ]);
 
   const useGlobalFilterData = false;
-  const personasFuente = useMemo(() => personas, [personas]);
+  const personasFuente = useMemo(
+    () => (Array.isArray(personas) ? [...personas] : []),
+    [personas]
+  );
   const isListLoading = loading;
   const isListInitialLoading = loading && personasFuente.length === 0;
   const isListRefreshing = loading && personasFuente.length > 0;
 
   const personasFiltradas = useMemo(() => {
-    return Array.isArray(personasFuente) ? personasFuente : [];
-  }, [personasFuente]);
+    const source = Array.isArray(personasFuente) ? personasFuente : [];
+    const searchTerm = toSearchableText(search);
+
+    if (!searchTerm) return source;
+    return source.filter((persona) => buildPersonaSearchIndex(persona).includes(searchTerm));
+  }, [personasFuente, search]);
 
   const totalPages = useMemo(() => {
     if (!useGlobalFilterData) return backendTotalPages;

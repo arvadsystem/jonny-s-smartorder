@@ -7,6 +7,11 @@ import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpleadoCard from "./components/empleados/EmpleadoCard";
 import EmployeeDetailModal from "./components/empleados/EmployeeDetailModal";
+import SearchSuggestionsDropdown from "./components/common/SearchSuggestionsDropdown";
+import useSearchSuggestionsDropdown, {
+  MIN_CHARS_FOR_SUGGESTIONS,
+  normalizeSearchText,
+} from "./components/common/useSearchSuggestionsDropdown";
 import "./components/common/crud-modal-theme.css";
 
 const emptyForm = {
@@ -68,6 +73,12 @@ const extractEmpleadoIdFromCreateResponse = (response) => {
 };
 
 const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
+const normalizeSearchToken = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 const toDateInputValue = (value) => {
   if (!value) return "";
@@ -120,12 +131,20 @@ const getTelefono = (empleado) =>
   empleado?.persona_telefono ??
   empleado?.telefono_persona;
 
+const getCorreo = (empleado) =>
+  empleado?.correo ??
+  empleado?.direccion_correo ??
+  empleado?.email ??
+  empleado?.persona_correo ??
+  empleado?.correo_persona;
+
 const getCargo = (empleado) =>
   empleado?.cargo ??
   empleado?.nombre_cargo ??
   empleado?.cargo_nombre ??
   empleado?.puesto ??
   empleado?.rol;
+const SUGGESTION_LIMIT = 8;
 
 const EMPLOYEE_IMAGES_STORAGE_KEY = "empleado_images";
 const IMAGE_ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -239,6 +258,7 @@ export default function Empleados({ openToast }) {
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("empleadosViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -272,6 +292,7 @@ export default function Empleados({ openToast }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const panelRef = useRef(null);
   const imageInputRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -465,7 +486,6 @@ export default function Empleados({ openToast }) {
       const resp = await personaService.getEmpleados({
         page,
         limit,
-        nombre: search?.trim() || undefined,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -482,7 +502,7 @@ export default function Empleados({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, search, safeToast]);
+  }, [page, limit, safeToast]);
 
   const fetchNewestEmpleadoId = useCallback(async () => {
     try {
@@ -520,7 +540,12 @@ export default function Empleados({ openToast }) {
   }, [cargarEmpleados]);
 
   useEffect(() => {
-    setPage(1);
+    const timerId = window.setTimeout(() => {
+      const nextSearch = normalizeSearchText(search);
+      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
   }, [search]);
 
   useEffect(() => {
@@ -792,7 +817,7 @@ export default function Empleados({ openToast }) {
   };
 
   const empleadosFiltrados = useMemo(() => {
-    const needle = search.toLowerCase().trim();
+    const needle = normalizeSearchToken(search);
     const list = [...(Array.isArray(empleados) ? empleados : [])];
 
     const filtered = list.filter((empleado) => {
@@ -813,6 +838,9 @@ export default function Empleados({ openToast }) {
         empleado?.telefono,
         empleado?.telefono_numero,
         empleado?.numero_telefono,
+        empleado?.correo,
+        empleado?.direccion_correo,
+        empleado?.email,
         empleado?.cargo,
         empleado?.nombre_cargo,
         empleado?.puesto,
@@ -821,10 +849,10 @@ export default function Empleados({ openToast }) {
         empleado?.fecha_ingreso,
       ]
         .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+        .join(" ");
+      const haystack = normalizeSearchToken(hay);
 
-      return hay.includes(needle);
+      return haystack.includes(needle);
     });
 
     filtered.sort((a, b) => {
@@ -839,6 +867,88 @@ export default function Empleados({ openToast }) {
 
     return filtered;
   }, [empleados, search, estadoFiltro, sortBy, getPersonaNombre, getSucursalNombre]);
+
+  const predictiveSuggestions = useMemo(() => {
+    const searchTerm = normalizeSearchToken(search);
+    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
+
+    const source = Array.isArray(empleados) ? empleados : [];
+    const suggestions = [];
+    const seen = new Set();
+
+    for (const empleado of source) {
+      const activo = isActivo(empleado);
+      const matchEstado =
+        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activo : !activo;
+      if (!matchEstado) continue;
+
+      const nombre = toDisplayValue(getPersonaNombre(empleado), "Empleado sin nombre");
+      const dni = toDisplayValue(getDni(empleado), "");
+      const telefono = toDisplayValue(getTelefono(empleado), "");
+      const correo = toDisplayValue(getCorreo(empleado), "");
+      const sucursal = toDisplayValue(getSucursalNombre(empleado), "");
+      const cargo = toDisplayValue(getCargo(empleado), "");
+      const haystack = normalizeSearchToken([nombre, dni, telefono, correo, sucursal, cargo].join(" "));
+      if (!haystack.includes(searchTerm)) continue;
+
+      const dedupeKey = normalizeSearchToken(nombre);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const detailParts = [];
+      if (dni && dni !== "No registrado") detailParts.push(`DNI: ${dni}`);
+      if (telefono && telefono !== "No registrado") detailParts.push(telefono);
+      if (correo && correo !== "No registrado") detailParts.push(correo);
+      if (sucursal && sucursal !== "No registrado") detailParts.push(sucursal);
+
+      suggestions.push({
+        id: `empd-${empleado?.id_empleado ?? dedupeKey}`,
+        value: nombre,
+        label: nombre,
+        detail: detailParts.join(" | ") || cargo || "Empleado registrado",
+      });
+
+      if (suggestions.length >= SUGGESTION_LIMIT) break;
+    }
+
+    return suggestions;
+  }, [empleados, estadoFiltro, search, getPersonaNombre, getSucursalNombre]);
+
+  const handleSearchUpdate = useCallback((value, { source } = {}) => {
+    const normalized = normalizeSearchText(value);
+    setPage((prev) => (prev === 1 ? prev : 1));
+    if (!normalized) {
+      setDebouncedSearch("");
+      return;
+    }
+    if (source === "suggestion") {
+      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+    }
+  }, []);
+
+  const {
+    handleSearchInputChange,
+    searchDropdownRef,
+    isSearchDropdownMounted,
+    isSearchDropdownVisible,
+    searchDropdownStyle,
+    searchDropdownTitle,
+    isPredictiveSearch,
+    searchSuggestionItems,
+    activeSuggestionIndex,
+    applySearchSuggestion,
+    removeRecentSearch,
+    clearRecentSearches,
+    recentSearchesCount,
+  } = useSearchSuggestionsDropdown({
+    panelRef,
+    search,
+    setSearch,
+    committedSearch: debouncedSearch,
+    onSearchUpdate: handleSearchUpdate,
+    predictiveSuggestions,
+    recentStorageKey: "empleadosRecentSearchesV1",
+  });
 
   const stats = useMemo(() => {
     const totalFiltradas = empleadosFiltrados.length;
@@ -877,7 +987,7 @@ export default function Empleados({ openToast }) {
   };
 
   const clearAllFilters = () => {
-    setSearch("");
+    handleSearchInputChange("");
     clearVisualFilters();
     setFiltersOpen(false);
   };
@@ -890,13 +1000,13 @@ export default function Empleados({ openToast }) {
 
   return (
     <div className="personas-page personas-page--empleados">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderModulo
           iconClass="bi bi-person-badge-fill"
           title="Empleados"
           subtitle="Gestion visual de empleados"
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchInputChange}
           searchPlaceholder="Buscar por nombre, sucursal, DNI, cargo o telefono..."
           searchAriaLabel="Buscar empleados"
           filtersOpen={filtersOpen}
@@ -908,6 +1018,22 @@ export default function Empleados({ openToast }) {
           formControlsId="empd-form-drawer"
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+        />
+
+        <SearchSuggestionsDropdown
+          mounted={isSearchDropdownMounted}
+          visible={isSearchDropdownVisible}
+          dropdownRef={searchDropdownRef}
+          dropdownStyle={searchDropdownStyle}
+          title={searchDropdownTitle}
+          isPredictiveSearch={isPredictiveSearch}
+          recentCount={recentSearchesCount}
+          items={searchSuggestionItems}
+          activeIndex={activeSuggestionIndex}
+          searchValue={search}
+          onApplySuggestion={applySearchSuggestion}
+          onRemoveRecent={removeRecentSearch}
+          onClearRecent={clearRecentSearches}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de empleados" />
