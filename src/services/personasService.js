@@ -9,8 +9,15 @@ const toCleanString = (value) => {
   return String(value).trim();
 };
 
-const buildPersonaPayload = (data = {}) => {
+const toNullableCleanString = (value) => {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text || null;
+};
+
+const buildPersonaPayload = (data = {}, options = {}) => {
   if (!isPlainObject(data)) return {};
+  const { nullableOptionals = false } = options;
 
   return {
     nombre: toCleanString(data.nombre),
@@ -19,9 +26,15 @@ const buildPersonaPayload = (data = {}) => {
     genero: toCleanString(data.genero),
     dni: toCleanString(data.dni),
     rtn: toCleanString(data.rtn),
-    texto_direccion: toCleanString(data.texto_direccion ?? data.direccion),
-    texto_telefono: toCleanString(data.texto_telefono ?? data.telefono),
-    texto_correo: toCleanString(data.texto_correo ?? data.direccion_correo ?? data.correo),
+    texto_direccion: nullableOptionals
+      ? toNullableCleanString(data.texto_direccion ?? data.direccion)
+      : toCleanString(data.texto_direccion ?? data.direccion),
+    texto_telefono: nullableOptionals
+      ? toNullableCleanString(data.texto_telefono ?? data.telefono)
+      : toCleanString(data.texto_telefono ?? data.telefono),
+    texto_correo: nullableOptionals
+      ? toNullableCleanString(data.texto_correo ?? data.direccion_correo ?? data.correo)
+      : toCleanString(data.texto_correo ?? data.direccion_correo ?? data.correo),
   };
 };
 
@@ -177,7 +190,7 @@ export const personaService = {
   crearPersona: (data) => apiFetch('/personas', 'POST', buildPersonaPayload(data)),
 
   updatePersona: (id, data) =>
-    apiFetch(`/personas/${id}`, 'PUT', buildPersonaPayload(data)),
+    apiFetch(`/personas/${id}`, 'PUT', buildPersonaPayload(data, { nullableOptionals: true })),
 
   actualizarPersonaCampo: (id, campo, valor) =>
   apiFetch(`/personas/${id}`, 'PUT', {
@@ -240,11 +253,16 @@ export const personaService = {
   // ==============================
   // EMPLEADOS (SUBMODULO PERSONAS)
   // ==============================
-  getEmpleados: async ({ page = 1, limit = 10, nombre, estado } = {}) => {
+  getEmpleados: async ({ page = 1, limit = 10, nombre, search, q, estado } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
-    if (typeof nombre === 'string' && nombre.trim()) params.set('nombre', nombre.trim());
+    const normalizedSearch = typeof search === 'string' && search.trim()
+      ? search.trim()
+      : (typeof q === 'string' && q.trim()
+        ? q.trim()
+        : (typeof nombre === 'string' ? nombre.trim() : ''));
+    if (normalizedSearch) params.set('nombre', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
     const query = params.toString();
 
@@ -289,11 +307,16 @@ export const personaService = {
   // ==============================
   // CLIENTES (SUBMODULO PERSONAS)
   // ==============================
-  getClientes: async ({ page = 1, limit = 10, nombre, estado } = {}) => {
+  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
-    if (typeof nombre === 'string' && nombre.trim()) params.set('nombre', nombre.trim());
+    const normalizedSearch = typeof search === 'string' && search.trim()
+      ? search.trim()
+      : (typeof q === 'string' && q.trim()
+        ? q.trim()
+        : (typeof nombre === 'string' ? nombre.trim() : ''));
+    if (normalizedSearch) params.set('nombre', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
     const query = params.toString();
 
@@ -339,11 +362,16 @@ export const personaService = {
   getRolesUsuariosV2: () =>
     apiFetch('/usuarios/v2/roles', 'GET'),
 
-  getUsuariosV2: ({ page = 1, limit = 10, q = '' } = {}) => {
+  getUsuariosV2: ({ page = 1, limit = 10, q = '', search = '', nombre = '' } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
-    if (typeof q === 'string' && q.trim()) params.set('q', q.trim());
+    const normalizedSearch = typeof q === 'string' && q.trim()
+      ? q.trim()
+      : (typeof search === 'string' && search.trim()
+        ? search.trim()
+        : (typeof nombre === 'string' ? nombre.trim() : ''));
+    if (normalizedSearch) params.set('q', normalizedSearch);
     return apiFetch(`/usuarios/v2/list?${params.toString()}`, 'GET');
   },
 

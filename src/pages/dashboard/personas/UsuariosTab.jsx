@@ -203,7 +203,7 @@ export default function UsuariosTab({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const limit = 10;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
@@ -376,7 +376,11 @@ export default function UsuariosTab({ openToast }) {
     const reqId = ++requestIdRef.current;
 
     try {
-      const response = await personaService.getUsuariosV2({ page, limit });
+      const response = await personaService.getUsuariosV2({
+        page,
+        limit,
+        q: debouncedSearch || '',
+      });
       if (!mountedRef.current || reqId !== requestIdRef.current) return;
 
       const { items, total: totalResp } = normalizeListResponse(response);
@@ -390,7 +394,7 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current && reqId === requestIdRef.current) setLoading(false);
     }
-  }, [page, limit, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -600,9 +604,9 @@ export default function UsuariosTab({ openToast }) {
         document.execCommand('copy');
         document.body.removeChild(el);
       }
-      safeToast('OK', 'Contrasena temporal copiada');
+      safeToast('OK', 'Contraseña temporal copiada');
     } catch {
-      safeToast('ERROR', 'No se pudo copiar la contrasena temporal', 'danger');
+      safeToast('ERROR', 'No se pudo copiar la contraseña temporal', 'danger');
     }
   }, [tempPasswordModal.password, safeToast]);
 
@@ -758,7 +762,7 @@ export default function UsuariosTab({ openToast }) {
       const response = await personaService.resetPasswordUsuarioV2(editId);
       const tempPassword = normalizeText(response?.temp_password);
       if (!tempPassword) {
-        safeToast('ERROR', 'No se recibio la contrasena temporal', 'danger');
+        safeToast('ERROR', 'No se recibio la contraseña temporal', 'danger');
       } else {
         const fallbackUsername =
           normalizeText(
@@ -766,15 +770,15 @@ export default function UsuariosTab({ openToast }) {
           );
         setTempPasswordModal({
           show: true,
-          title: 'Contrasena temporal regenerada',
+          title: 'Contraseña temporal regenerada',
           password: tempPassword,
           username: normalizeText(response?.nombre_usuario) || fallbackUsername,
           revealed: false,
         });
-        safeToast('OK', 'Contrasena temporal regenerada');
+        safeToast('OK', 'Contraseña temporal regenerada');
       }
     } catch (error) {
-      safeToast('ERROR', error?.message || 'No se pudo resetear la contrasena temporal', 'danger');
+      safeToast('ERROR', error?.message || 'No se pudo resetear la contraseña temporal', 'danger');
     } finally {
       if (mountedRef.current) setResetPasswordLoading(false);
     }
@@ -983,11 +987,11 @@ export default function UsuariosTab({ openToast }) {
     setFiltersOpen(false);
   };
 
-  const clearVisualFilters = () => {
+  const clearVisualFilters = useCallback(() => {
     setEstadoFiltro('todos');
     setSortBy('recientes');
     setFiltersDraft(createInitialFiltersDraft());
-  };
+  }, []);
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
@@ -1146,7 +1150,7 @@ export default function UsuariosTab({ openToast }) {
                 <i className="bi bi-key-fill" />
               </div>
               <div>
-                <div className="inv-pro-confirm-title">{tempPasswordModal.title || 'Contrasena temporal'}</div>
+                <div className="inv-pro-confirm-title">{tempPasswordModal.title || 'Contraseña temporal'}</div>
                 <div className="inv-pro-confirm-sub">Solo se mostrara una vez. Guardela antes de cerrar.</div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeTempPasswordModal} aria-label="Cerrar">
@@ -1174,7 +1178,7 @@ export default function UsuariosTab({ openToast }) {
 
               <div>
                 <label className="form-label mb-1">
-                  <strong>Contrasena temporal</strong>
+                  <strong>Contraseña temporal</strong>
                 </label>
                 <div className="input-group">
                   <input

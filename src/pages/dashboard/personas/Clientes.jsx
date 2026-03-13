@@ -195,8 +195,40 @@ const firstNonEmptyValue = (...values) => {
   return "";
 };
 
+const resolveClienteOrigen = (cliente) => {
+  const explicitOrigen = normalizeValue(cliente?.origen_cliente);
+  const hasPersona = Boolean(
+    firstNonEmptyValue(
+      cliente?.id_persona,
+      cliente?.persona_nombre_completo,
+      cliente?.persona_nombre,
+      cliente?.persona_apellido,
+      cliente?.persona_dni,
+      cliente?.dni
+    )
+  );
+  const hasEmpresa = Boolean(
+    firstNonEmptyValue(
+      cliente?.id_empresa,
+      cliente?.nombre_empresa,
+      cliente?.empresa_rtn,
+      cliente?.rtn
+    )
+  );
+
+  if (hasPersona && !hasEmpresa) return "persona";
+  if (hasEmpresa && !hasPersona) return "empresa";
+  if (hasPersona && hasEmpresa) {
+    // Regla legacy segura: si ambas relaciones existen, prioriza persona para visualizacion.
+    return cliente?.id_persona ? "persona" : "empresa";
+  }
+
+  if (explicitOrigen === "empresa") return "empresa";
+  return "persona";
+};
+
 const normalizeClienteForView = (cliente) => {
-  const origen = normalizeValue(cliente?.origen_cliente) === "empresa" ? "empresa" : "persona";
+  const origen = resolveClienteOrigen(cliente);
   const nombrePrincipal = firstNonEmptyValue(cliente?.nombre_principal);
   const documentoTipo = firstNonEmptyValue(cliente?.documento_tipo);
   const documentoLabel = firstNonEmptyValue(
@@ -219,10 +251,7 @@ const normalizeClienteForView = (cliente) => {
     ...cliente,
     codigo_cliente: codigoCliente,
     origen_cliente: origen,
-    origen_label: firstNonEmptyValue(
-      cliente?.origen_label,
-      origen === "empresa" ? "Cliente Empresa" : "Cliente Persona"
-    ),
+    origen_label: origen === "empresa" ? "Cliente Empresa" : "Cliente Persona",
     nombre_principal: nombrePrincipal || null,
     subtitulo_principal: firstNonEmptyValue(cliente?.subtitulo_principal),
     tipo_cliente: tipoCliente || null,
@@ -278,7 +307,7 @@ const Clientes = ({ openToast }) => {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const limit = 10;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);

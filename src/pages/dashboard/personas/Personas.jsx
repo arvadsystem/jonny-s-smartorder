@@ -251,7 +251,12 @@ const normalizeSuggestionItems = (resp) => {
 
   for (const item of source) {
     const id = item?.id_persona ?? null;
-    const nombre = normalizeSearchText(item?.nombre || `${item?.nombre || ""} ${item?.apellido || ""}`);
+    const nombreApellido = normalizeSearchText(`${item?.nombre || ""} ${item?.apellido || ""}`);
+    const nombre = normalizeSearchText(
+      item?.nombre_completo ??
+        item?.nombreCompleto ??
+        (nombreApellido || item?.label)
+    );
     const dni = normalizeSearchText(item?.dni);
     const correo = normalizeSearchText(item?.correo ?? item?.direccion_correo);
     const telefono = normalizeSearchText(item?.telefono);
@@ -640,7 +645,7 @@ export default function Personas({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const pageSize = 10;
   const [total, setTotal] = useState(0);
   const [globalStats, setGlobalStats] = useState({
     total: 0,
@@ -799,12 +804,21 @@ export default function Personas({ openToast }) {
 
       const firstBatch = normalizeListResponse(firstResponse);
       const explicitTotal = getResponseTotal(firstResponse);
-      setGlobalStats(
-        buildStatsFromPersonas(
-          firstBatch.items,
-          explicitTotal !== null ? explicitTotal : firstBatch.items.length
-        )
-      );
+      const resolvedTotal = Math.max(0, explicitTotal ?? firstBatch.items.length);
+
+      if (explicitTotal !== null && explicitTotal > firstBatch.items.length) {
+        // Avoid deriving global KPI counts from a partial sample.
+        setGlobalStats({
+          total: resolvedTotal,
+          activas: 0,
+          inactivas: 0,
+          femenino: 0,
+          masculino: 0,
+        });
+        return;
+      }
+
+      setGlobalStats(buildStatsFromPersonas(firstBatch.items, resolvedTotal));
     } catch (error) {
       if (isAbortError(error)) return;
       if (!mountedRef.current || requestId !== globalKpiRequestIdRef.current) return;
@@ -1191,24 +1205,7 @@ export default function Personas({ openToast }) {
   );
 
   const buildPersonaPayloadFromForm = useCallback(
-    (sourceForm, personaBase = null) => {
-      const textoTelefono =
-        String(sourceForm?.id_telefono ?? "").trim() ||
-        String(
-          personaBase?.telefono ??
-            personaBase?.telefono_numero ??
-            personaBase?.numero_telefono ??
-            ""
-        ).trim();
-
-      const textoDireccion =
-        String(sourceForm?.id_direccion ?? "").trim() ||
-        String(personaBase?.direccion ?? "").trim();
-
-      const textoCorreo =
-        String(sourceForm?.id_correo ?? "").trim() ||
-        String(personaBase?.direccion_correo ?? personaBase?.correo ?? personaBase?.email ?? "").trim();
-
+    (sourceForm) => {
       return {
         nombre: sourceForm?.nombre ?? "",
         apellido: sourceForm?.apellido ?? "",
@@ -1216,9 +1213,9 @@ export default function Personas({ openToast }) {
         genero: sourceForm?.genero ?? "",
         dni: sourceForm?.dni ?? "",
         rtn: sourceForm?.rtn ?? "",
-        texto_direccion: textoDireccion,
-        texto_telefono: textoTelefono,
-        texto_correo: textoCorreo,
+        texto_direccion: String(sourceForm?.id_direccion ?? "").trim(),
+        texto_telefono: String(sourceForm?.id_telefono ?? "").trim(),
+        texto_correo: String(sourceForm?.id_correo ?? "").trim(),
       };
     },
     []
@@ -1540,7 +1537,7 @@ export default function Personas({ openToast }) {
         if (!changedFields.length) {
           safeToast("INFO", "No hay cambios para guardar", "info");
         } else {
-          const payload = buildPersonaPayloadFromForm(form, personaOriginal);
+          const payload = buildPersonaPayloadFromForm(form);
           await personaService.updatePersona(editId, payload);
           safeToast("OK", "Persona actualizada");
         }
@@ -1645,7 +1642,6 @@ export default function Personas({ openToast }) {
     safeToast,
   ]);
 
-  const useGlobalFilterData = false;
   const personasFuente = useMemo(
     () => (Array.isArray(personas) ? [...personas] : []),
     [personas]
@@ -1662,16 +1658,8 @@ export default function Personas({ openToast }) {
     return source.filter((persona) => buildPersonaSearchIndex(persona).includes(searchTerm));
   }, [personasFuente, search]);
 
-  const totalPages = useMemo(() => {
-    if (!useGlobalFilterData) return backendTotalPages;
-    return Math.max(1, Math.ceil(personasFiltradas.length / pageSize));
-  }, [useGlobalFilterData, backendTotalPages, personasFiltradas.length, pageSize]);
-
-  const personasRenderizadas = useMemo(() => {
-    if (!useGlobalFilterData) return personasFiltradas;
-    const start = (page - 1) * pageSize;
-    return personasFiltradas.slice(start, start + pageSize);
-  }, [useGlobalFilterData, personasFiltradas, page, pageSize]);
+  const totalPages = backendTotalPages;
+  const personasRenderizadas = personasFiltradas;
 
   useEffect(() => {
     if (page <= totalPages) return;
@@ -1751,6 +1739,7 @@ export default function Personas({ openToast }) {
 
   const clearAllFilters = useCallback(() => {
     setSearch("");
+    setDebouncedSearch("");
     clearVisualFilters();
     setFiltersOpen(false);
     setSuggestions([]);
@@ -1874,7 +1863,7 @@ export default function Personas({ openToast }) {
         <div className="inv-catpro-body inv-prod-body p-3">
           <div className="inv-prod-results-meta personas-page__results-meta">
             <span>{isListInitialLoading ? "Cargando personas..." : `${personasFiltradas.length} resultados`}</span>
-            <span>{isListInitialLoading ? "" : `Total: ${useGlobalFilterData ? personasFuente.length : total}`}</span>
+            <span>{isListInitialLoading ? "" : `Total: ${total}`}</span>
             {isListRefreshing ? <span className="text-muted">Actualizando...</span> : null}
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
           </div>
@@ -1936,7 +1925,7 @@ export default function Personas({ openToast }) {
                       const dotClass = isActive ? "ok" : "off";
                       const idPersona = persona?.id_persona;
                       const deleting = deletingId === idPersona;
-                      const tableIndex = (useGlobalFilterData ? (page - 1) * pageSize : 0) + idx;
+                      const tableIndex = idx;
                       const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
                       const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
                       const direccion = persona?.direccion ?? persona?.direccion_detalle;
@@ -2000,7 +1989,7 @@ export default function Personas({ openToast }) {
                   const dotClass = isActive ? "ok" : "off";
                   const idPersona = persona?.id_persona;
                   const deleting = deletingId === idPersona;
-                  const cardIndex = (useGlobalFilterData ? (page - 1) * pageSize : 0) + idx;
+                  const cardIndex = idx;
                   const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
                   const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
                   const direccion = persona?.direccion ?? persona?.direccion_detalle;

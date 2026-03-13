@@ -267,7 +267,7 @@ export default function Empleados({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const limit = 10;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
@@ -486,6 +486,7 @@ export default function Empleados({ openToast }) {
       const resp = await personaService.getEmpleados({
         page,
         limit,
+        nombre: debouncedSearch || undefined,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -502,7 +503,7 @@ export default function Empleados({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast]);
 
   const fetchNewestEmpleadoId = useCallback(async () => {
     try {

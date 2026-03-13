@@ -154,7 +154,7 @@ export default function Empresas({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const limit = 10;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
