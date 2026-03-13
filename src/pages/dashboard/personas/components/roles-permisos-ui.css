@@ -42,9 +42,11 @@
 
 .roles-permisos-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) 1fr;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  align-items: stretch;
   gap: 1rem;
   padding: 1rem 1.2rem 1.2rem;
+  min-height: min(76vh, 860px);
 }
 
 .roles-permisos-panel {
@@ -54,12 +56,13 @@
   box-shadow: 0 6px 16px rgba(var(--c-shadow-rgb), 0.08);
   display: flex;
   flex-direction: column;
-  min-height: 420px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .roles-permisos-panel--roles {
-  max-height: 70vh;
-  overflow: hidden;
+  max-height: none;
 }
 
 .roles-permisos-panel-title {
@@ -83,7 +86,8 @@
   padding: 0.72rem 0.82rem 0.9rem;
   flex: 1;
   overflow-y: auto;
-  max-height: 70vh;
+  min-height: 0;
+  max-height: none;
 }
 
 .roles-permisos-role-card {
@@ -218,6 +222,7 @@
 .roles-permisos-panel--permisos {
   padding: 0.95rem;
   position: relative;
+  min-height: 0;
 }
 
 .roles-permisos-panel-top {
@@ -228,9 +233,14 @@
   margin-bottom: 0.78rem;
 }
 
+.roles-permisos-panel-top > div:first-child {
+  min-width: 0;
+}
+
 .roles-permisos-panel-top h5 {
   color: #3f3027;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .roles-permisos-actions {
@@ -274,10 +284,10 @@
   flex: 1;
   flex-direction: column;
   gap: 0.62rem;
-  min-height: 260px;
+  min-height: 0;
   padding: 0.72rem;
   overflow-y: auto;
-  max-height: 52vh;
+  max-height: none;
 }
 
 .roles-permisos-item {
@@ -397,6 +407,18 @@
   min-width: 180px;
   border-radius: 10px !important;
   padding: 0.72rem 1.2rem !important;
+}
+
+.roles-permisos-mobile-nav {
+  display: none;
+}
+
+.roles-permisos-mobile-back {
+  display: none;
+}
+
+.roles-permisos-panel.is-mobile-hidden {
+  display: none !important;
 }
 
 .roles-permisos-empty {
@@ -742,14 +764,106 @@
 @media (max-width: 992px) {
   .roles-permisos-layout {
     grid-template-columns: 1fr;
+    min-height: 0;
   }
 
   .roles-permisos-panel {
     min-height: 0;
+    height: auto;
+  }
+
+  .roles-permisos-panel--roles {
+    max-height: min(52vh, 520px);
+  }
+
+  .roles-permisos-roles-list {
+    overflow-y: auto;
+  }
+
+  .roles-permisos-list {
+    max-height: min(54vh, 560px);
+  }
+
+  .roles-permisos-panel-top {
+    flex-wrap: wrap;
+  }
+
+  .roles-permisos-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }
 
 @media (max-width: 768px) {
+  .roles-permisos-mobile-nav {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.56rem;
+    padding: 0 1.2rem 0.4rem;
+  }
+
+  .roles-permisos-mobile-tab {
+    align-items: center;
+    background: #fff;
+    border: 1px solid rgba(220, 219, 199, 0.95);
+    border-radius: 12px;
+    color: #5a4639;
+    display: flex;
+    gap: 0.4rem;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.45rem 0.65rem;
+    transition: all 0.16s ease;
+  }
+
+  .roles-permisos-mobile-tab i {
+    font-size: 0.9rem;
+  }
+
+  .roles-permisos-mobile-tab span {
+    font-size: 0.82rem;
+    font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .roles-permisos-mobile-tab small {
+    align-items: center;
+    background: rgba(111, 84, 60, 0.12);
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: 0.72rem;
+    font-weight: 800;
+    justify-content: center;
+    min-width: 26px;
+    padding: 0.08rem 0.38rem;
+  }
+
+  .roles-permisos-mobile-tab.is-active {
+    background: linear-gradient(145deg, #9f5c23, #c97c2d);
+    border-color: rgba(159, 92, 35, 0.72);
+    box-shadow: 0 9px 16px rgba(163, 101, 44, 0.18);
+    color: #fff;
+  }
+
+  .roles-permisos-mobile-tab.is-active small {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+  }
+
+  .roles-permisos-mobile-tab:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+
+  .roles-permisos-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
   .roles-permisos-header {
     align-items: stretch;
     flex-direction: column;
@@ -770,41 +884,83 @@
     transform: none;
   }
 
-  .roles-permisos-roles-list {
-    max-height: 44vh;
+  .roles-permisos-panel--roles,
+  .roles-permisos-panel--permisos {
+    height: auto;
+    max-height: none;
+  }
+
+  .roles-permisos-roles-list,
+  .roles-permisos-list {
+    max-height: none;
+    overflow: visible;
   }
 
   .roles-permisos-panel-top {
     align-items: stretch;
     flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .roles-permisos-mobile-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    margin-bottom: 0.4rem;
+    width: fit-content;
   }
 
   .roles-permisos-actions {
+    flex-wrap: wrap;
     width: 100%;
   }
 
   .roles-permisos-actions .btn {
     flex: 1;
+    min-width: 140px;
   }
 
   .roles-permisos-pagination {
     align-items: stretch;
     flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .roles-permisos-pagination-meta {
+    text-align: left;
   }
 
   .roles-permisos-pagination-controls {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.55rem;
+    width: 100%;
+  }
+
+  .roles-permisos-limit {
     justify-content: space-between;
     width: 100%;
   }
 
-  .roles-permisos-list {
-    max-height: 42vh;
+  .roles-permisos-limit .form-select {
+    max-width: 106px;
+  }
+
+  .roles-permisos-pagination-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .roles-permisos-page-indicator {
+    min-width: 0;
   }
 
   .roles-permisos-footer {
     align-items: stretch;
     flex-direction: column;
     gap: 0.5rem;
+    position: static;
+    margin-top: 0.68rem;
   }
 
   .roles-permisos-pending-alert {

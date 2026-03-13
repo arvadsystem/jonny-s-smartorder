@@ -240,6 +240,9 @@ const RolesPermisosTab = () => {
     totalPages: 1
   });
   const roleDetailCacheRef = useRef(new Map());
+  const rolesPanelRef = useRef(null);
+  const permisosPanelRef = useRef(null);
+  const roleDrawerRef = useRef(null);
 
   const [loadingRoles, setLoadingRoles] = useState(true);
   const [loadingPermisos, setLoadingPermisos] = useState(false);
@@ -257,6 +260,10 @@ const RolesPermisosTab = () => {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [activePreviewGroupKey, setActivePreviewGroupKey] = useState("");
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 768px)").matches : false
+  );
+  const [mobileSection, setMobileSection] = useState("roles");
   const [roleDrawerOpen, setRoleDrawerOpen] = useState(false);
   const [roleDrawerMode, setRoleDrawerMode] = useState("create");
   const [roleForm, setRoleForm] = useState(() => buildRoleFormState());
@@ -289,6 +296,17 @@ const RolesPermisosTab = () => {
   }, []);
 
   const closeRoleDrawer = useCallback(() => {
+    if (typeof document !== "undefined") {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        roleDrawerRef.current &&
+        roleDrawerRef.current.contains(activeElement) &&
+        typeof activeElement.blur === "function"
+      ) {
+        activeElement.blur();
+      }
+    }
     setRoleDrawerOpen(false);
     setRoleDrawerMode("create");
     setRoleEditingTarget(null);
@@ -313,6 +331,25 @@ const RolesPermisosTab = () => {
     const timer = setTimeout(() => closeToast(), 3500);
     return () => clearTimeout(timer);
   }, [toast.show, closeToast]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const mediaQuery = window.matchMedia("(max-width: 768px)");
+    const updateLayout = (event) => {
+      const isMobile = Boolean(event.matches);
+      setIsMobileLayout(isMobile);
+      if (!isMobile) setMobileSection("roles");
+    };
+
+    updateLayout(mediaQuery);
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", updateLayout);
+      return () => mediaQuery.removeEventListener("change", updateLayout);
+    }
+
+    mediaQuery.addListener(updateLayout);
+    return () => mediaQuery.removeListener(updateLayout);
+  }, []);
 
   const loadRoles = useCallback(async (preferredRoleId = null) => {
     setLoadingRoles(true);
@@ -625,6 +662,15 @@ const RolesPermisosTab = () => {
     setPermisos([]);
     setCheckedPermisos(new Set());
     setSelectedRoleId(Number(idRol));
+    if (isMobileLayout) {
+      if (typeof document !== "undefined") {
+        const activeElement = document.activeElement;
+        if (activeElement && typeof activeElement.blur === "function") {
+          activeElement.blur();
+        }
+      }
+      setMobileSection("permisos");
+    }
   };
 
   const handleTogglePermiso = (idPermiso) => {
@@ -826,6 +872,8 @@ const RolesPermisosTab = () => {
   const selectedRoleName = humanizeRoleName(currentRole?.nombre || "Rol");
   const visibleStart = pagination.total === 0 ? 0 : (page - 1) * limit + 1;
   const visibleEnd = Math.min(page * limit, pagination.total);
+  const showingRolesPanel = !isMobileLayout || mobileSection === "roles";
+  const showingPermisosPanel = !isMobileLayout || mobileSection === "permisos";
   const hasPendingChanges = useMemo(() => {
     const assigned = new Set(
       allPermisos
@@ -857,6 +905,30 @@ const RolesPermisosTab = () => {
       setActivePreviewGroupKey(previewGroups[0].key);
     }
   }, [activePreviewGroupKey, previewGroups]);
+
+  useEffect(() => {
+    if (!isMobileLayout) return;
+    if (!selectedRoleId && mobileSection !== "roles") {
+      setMobileSection("roles");
+    }
+  }, [isMobileLayout, mobileSection, selectedRoleId]);
+
+  useEffect(() => {
+    if (!isMobileLayout || typeof document === "undefined") return;
+    const activeElement = document.activeElement;
+    if (!activeElement || typeof activeElement.blur !== "function") return;
+
+    if (mobileSection === "roles") {
+      if (permisosPanelRef.current?.contains(activeElement)) {
+        activeElement.blur();
+      }
+      return;
+    }
+
+    if (rolesPanelRef.current?.contains(activeElement)) {
+      activeElement.blur();
+    }
+  }, [isMobileLayout, mobileSection]);
 
   return (
     <>
@@ -895,8 +967,42 @@ const RolesPermisosTab = () => {
             </div>
           ) : null}
 
+          {isMobileLayout ? (
+            <div className="roles-permisos-mobile-nav" role="tablist" aria-label="Secciones de roles y permisos">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileSection === "roles"}
+                className={`roles-permisos-mobile-tab ${mobileSection === "roles" ? "is-active" : ""}`}
+                onClick={() => setMobileSection("roles")}
+              >
+                <i className="bi bi-people" />
+                <span>Roles</span>
+                <small>{filteredRoles.length}</small>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileSection === "permisos"}
+                className={`roles-permisos-mobile-tab ${mobileSection === "permisos" ? "is-active" : ""}`}
+                onClick={() => setMobileSection("permisos")}
+                disabled={!selectedRoleId}
+              >
+                <i className="bi bi-sliders" />
+                <span>Permisos</span>
+                <small>{checkedPermisos.size}</small>
+              </button>
+            </div>
+          ) : null}
+
           <div className="roles-permisos-layout">
-            <aside className="roles-permisos-panel roles-permisos-panel--roles">
+            <aside
+              ref={rolesPanelRef}
+              className={`roles-permisos-panel roles-permisos-panel--roles ${
+                showingRolesPanel ? "" : "is-mobile-hidden"
+              }`.trim()}
+              inert={!showingRolesPanel}
+            >
               <div className="roles-permisos-panel-title">Roles</div>
               <div className="roles-permisos-role-search-wrap">
                 <label className="roles-permisos-search roles-permisos-search--roles" aria-label="Buscar rol">
@@ -1019,7 +1125,13 @@ const RolesPermisosTab = () => {
               )}
             </aside>
 
-            <section className="roles-permisos-panel roles-permisos-panel--permisos">
+            <section
+              ref={permisosPanelRef}
+              className={`roles-permisos-panel roles-permisos-panel--permisos ${
+                showingPermisosPanel ? "" : "is-mobile-hidden"
+              }`.trim()}
+              inert={!showingPermisosPanel}
+            >
               {!selectedRoleId && !loadingRoles ? (
                 <div className="roles-permisos-empty">
                   <p className="mb-0">Selecciona un rol para administrar sus permisos.</p>
@@ -1028,6 +1140,16 @@ const RolesPermisosTab = () => {
                 <>
                   <div className="roles-permisos-panel-top">
                     <div>
+                      {isMobileLayout ? (
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm roles-permisos-mobile-back"
+                          onClick={() => setMobileSection("roles")}
+                        >
+                          <i className="bi bi-chevron-left" />
+                          <span>Ver roles</span>
+                        </button>
+                      ) : null}
                       <h5 className="mb-1">Permisos de: {selectedRoleName}</h5>
                       <small className="text-muted">
                         {checkedPermisos.size} permisos seleccionados
@@ -1315,11 +1437,12 @@ const RolesPermisosTab = () => {
       />
 
       <aside
+        ref={roleDrawerRef}
         id="roles-permisos-drawer"
         className={`inv-prod-drawer inv-cat-v2__drawer roles-permisos-drawer ${roleDrawerOpen ? "show" : ""}`}
         role={roleDrawerOpen ? "dialog" : undefined}
         aria-modal={roleDrawerOpen ? "true" : undefined}
-        aria-hidden={!roleDrawerOpen}
+        inert={!roleDrawerOpen}
       >
         <div className="inv-prod-drawer-head roles-permisos-drawer__head">
           <i className={`bi ${roleDrawerMode === "create" ? "bi-shield-plus" : "bi-pencil-square"} inv-cat-v2__drawer-mark`} aria-hidden="true" />

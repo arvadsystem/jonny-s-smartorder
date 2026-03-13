@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Select from "react-select";
+import AsyncSelect from "react-select/async";
 import { personaService } from "../../../services/personasService";
 import { parametrosService } from "../../../services/parametrosService";
 import EntityTable from "../../../components/ui/EntityTable";
@@ -119,6 +120,23 @@ const normalizeArrayPayload = (resp) => {
 };
 
 const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
+const normalizeSearchKey = (value) => String(value ?? "").trim().toLowerCase();
+const ASYNC_SELECT_LIMIT = 80;
+const ASYNC_SELECT_DEBOUNCE_MS = 300;
+
+const filterAsyncOptions = (options, needle, limit = ASYNC_SELECT_LIMIT) => {
+  const normalizedNeedle = normalizeSearchKey(needle);
+  const source = Array.isArray(options) ? options : [];
+  const filtered = normalizedNeedle
+    ? source.filter((option) =>
+      String(option?.searchText || option?.label || "")
+        .toLowerCase()
+        .includes(normalizedNeedle)
+    )
+    : source;
+
+  return filtered.slice(0, limit);
+};
 
 const toDateInputValue = (value) => {
   if (!value) return "";
@@ -276,6 +294,13 @@ const Clientes = ({ openToast }) => {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const empresaSearchCacheRef = useRef(new Map());
+  const tipoSearchCacheRef = useRef(new Map());
+  const empresaDebounceTimerRef = useRef(null);
+  const tipoDebounceTimerRef = useRef(null);
+  const empresaAbortRef = useRef(null);
+  const empresaAsyncReqSeqRef = useRef(0);
+  const tipoAsyncReqSeqRef = useRef(0);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -333,9 +358,24 @@ const Clientes = ({ openToast }) => {
     () =>
       (Array.isArray(empresasCatalogo) ? empresasCatalogo : []).map((e) => {
         const id = e?.id_empresa;
+        const nombreEmpresa = String(e?.nombre_empresa || `Empresa #${id ?? "N/D"}`).trim();
+        const rtn = firstNonEmptyValue(e?.rtn);
+        const correo = firstNonEmptyValue(e?.direccion_correo, e?.correo);
+        const telefono = firstNonEmptyValue(e?.telefono);
+        const labelParts = [nombreEmpresa];
+        if (rtn) labelParts.push(`RTN: ${rtn}`);
+        if (correo) labelParts.push(correo);
+        const label = labelParts.join(" | ");
+        const searchText = normalizeSearchKey([nombreEmpresa, rtn, correo, telefono].join(" "));
+
         return {
           id: id ? String(id) : "",
-          label: String(e?.nombre_empresa || `Empresa #${id ?? "N/D"}`),
+          label,
+          nombre_empresa: nombreEmpresa,
+          rtn,
+          correo,
+          telefono,
+          searchText,
         };
       }),
     [empresasCatalogo]
@@ -346,19 +386,55 @@ const Clientes = ({ openToast }) => {
       empresaOptions.map((item) => ({
         value: item.id,
         label: item.label,
+        searchText: item.searchText,
       })),
     [empresaOptions]
   );
 
-  const empresaSelectValue = useMemo(() => {
-    const selectedId = String(form.id_empresa ?? "");
+  const empresaSelectOptionsById = useMemo(
+    () => new Map(empresaSelectOptions.map((option) => [option.value, option])),
+    [empresaSelectOptions]
+  );
+
+  const empresaSelectFallbackValue = useMemo(() => {
+    const selectedId = String(form.id_empresa ?? "").trim();
     if (!selectedId) return null;
-    return empresaSelectOptions.find((option) => option.value === selectedId) || null;
-  }, [form.id_empresa, empresaSelectOptions]);
+    const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? ""));
+    const nombre = firstNonEmptyValue(clienteActual?.nombre_empresa, clienteActual?.nombre_principal, `Empresa #${selectedId}`);
+    const rtn = firstNonEmptyValue(clienteActual?.rtn, clienteActual?.documento_tipo === "rtn" ? clienteActual?.documento_valor : "");
+    const correo = firstNonEmptyValue(clienteActual?.correo);
+    const labelParts = [nombre];
+    if (rtn) labelParts.push(`RTN: ${rtn}`);
+    if (correo) labelParts.push(correo);
+    return {
+      value: selectedId,
+      label: labelParts.join(" | "),
+      searchText: normalizeSearchKey(`${nombre} ${rtn} ${correo}`),
+    };
+  }, [clientes, editId, form.id_empresa]);
+
+  const empresaSelectValue = useMemo(() => {
+    const selectedId = String(form.id_empresa ?? "").trim();
+    if (!selectedId) return null;
+    return (
+      empresaSelectOptionsById.get(selectedId)
+      || empresaSelectFallbackValue
+      || {
+        value: selectedId,
+        label: `Empresa #${selectedId}`,
+        searchText: normalizeSearchKey(`empresa ${selectedId}`),
+      }
+    );
+  }, [form.id_empresa, empresaSelectOptionsById, empresaSelectFallbackValue]);
 
   const empresaSelectStyles = useMemo(
     () => buildClientesSelectStyles(Boolean(errors.id_empresa)),
     [errors.id_empresa]
+  );
+
+  const empresaDefaultOptions = useMemo(
+    () => filterAsyncOptions(empresaSelectOptions, ""),
+    [empresaSelectOptions]
   );
 
   const tipoClienteOptions = useMemo(
@@ -369,6 +445,7 @@ const Clientes = ({ openToast }) => {
         return {
           id: id ? String(id) : "",
           label: String(label),
+          searchText: normalizeSearchKey(label),
         };
       }),
     [tiposCliente]
@@ -379,19 +456,50 @@ const Clientes = ({ openToast }) => {
       tipoClienteOptions.map((item) => ({
         value: item.id,
         label: item.label,
+        searchText: item.searchText,
       })),
     [tipoClienteOptions]
   );
 
-  const tipoClienteSelectValue = useMemo(() => {
-    const selectedId = String(form.id_tipo_cliente ?? "");
+  const tipoClienteSelectOptionsById = useMemo(
+    () => new Map(tipoClienteSelectOptions.map((option) => [option.value, option])),
+    [tipoClienteSelectOptions]
+  );
+
+  const tipoClienteSelectFallbackValue = useMemo(() => {
+    const selectedId = String(form.id_tipo_cliente ?? "").trim();
     if (!selectedId) return null;
-    return tipoClienteSelectOptions.find((option) => option.value === selectedId) || null;
-  }, [form.id_tipo_cliente, tipoClienteSelectOptions]);
+    const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? ""));
+    const label = firstNonEmptyValue(clienteActual?.tipo_cliente, `Tipo #${selectedId}`);
+    return {
+      value: selectedId,
+      label,
+      searchText: normalizeSearchKey(label),
+    };
+  }, [clientes, editId, form.id_tipo_cliente]);
+
+  const tipoClienteSelectValue = useMemo(() => {
+    const selectedId = String(form.id_tipo_cliente ?? "").trim();
+    if (!selectedId) return null;
+    return (
+      tipoClienteSelectOptionsById.get(selectedId)
+      || tipoClienteSelectFallbackValue
+      || {
+        value: selectedId,
+        label: `Tipo #${selectedId}`,
+        searchText: normalizeSearchKey(`tipo ${selectedId}`),
+      }
+    );
+  }, [form.id_tipo_cliente, tipoClienteSelectOptionsById, tipoClienteSelectFallbackValue]);
 
   const tipoClienteSelectStyles = useMemo(
     () => buildClientesSelectStyles(Boolean(errors.id_tipo_cliente)),
     [errors.id_tipo_cliente]
+  );
+
+  const tipoClienteDefaultOptions = useMemo(
+    () => filterAsyncOptions(tipoClienteSelectOptions, ""),
+    [tipoClienteSelectOptions]
   );
 
   const getClientePrincipalNombre = useCallback((cliente) => {
@@ -448,6 +556,144 @@ const Clientes = ({ openToast }) => {
     [personaOptions, empresaOptions, tipoClienteOptions]
   );
 
+  useEffect(() => {
+    empresaSearchCacheRef.current.clear();
+  }, [empresaSelectOptions]);
+
+  useEffect(() => {
+    tipoSearchCacheRef.current.clear();
+  }, [tipoClienteSelectOptions]);
+
+  const loadEmpresaOptions = useCallback(
+    (inputValue = "") =>
+      new Promise((resolve) => {
+        const searchTerm = normalizeSearchKey(inputValue);
+        const cacheKey = searchTerm || "__default__";
+
+        if (empresaSearchCacheRef.current.has(cacheKey)) {
+          resolve(empresaSearchCacheRef.current.get(cacheKey));
+          return;
+        }
+
+        if (empresaDebounceTimerRef.current) {
+          clearTimeout(empresaDebounceTimerRef.current);
+        }
+
+        if (empresaAbortRef.current) {
+          empresaAbortRef.current.abort();
+        }
+
+        const requestSeq = ++empresaAsyncReqSeqRef.current;
+
+        empresaDebounceTimerRef.current = setTimeout(async () => {
+          try {
+            if (!mountedRef.current || requestSeq !== empresaAsyncReqSeqRef.current) {
+              resolve([]);
+              return;
+            }
+
+            let options = [];
+
+            if (searchTerm) {
+              const controller = new AbortController();
+              empresaAbortRef.current = controller;
+
+              const response = await personaService.getEmpresas({
+                page: 1,
+                limit: ASYNC_SELECT_LIMIT,
+                nombre: searchTerm,
+                signal: controller.signal,
+              });
+
+              if (!mountedRef.current || requestSeq !== empresaAsyncReqSeqRef.current) {
+                resolve([]);
+                return;
+              }
+
+              const fetchedItems = normalizeListResponse(response).items;
+              if (Array.isArray(fetchedItems) && fetchedItems.length) {
+                setEmpresasCatalogo((prev) => {
+                  const current = Array.isArray(prev) ? prev : [];
+                  const map = new Map(current.map((item) => [String(item?.id_empresa ?? ""), item]));
+                  fetchedItems.forEach((item) => {
+                    const key = String(item?.id_empresa ?? "");
+                    if (key) map.set(key, item);
+                  });
+                  return Array.from(map.values());
+                });
+              }
+
+              const fetchedOptions = (Array.isArray(fetchedItems) ? fetchedItems : []).map((item) => {
+                const id = String(item?.id_empresa ?? "").trim();
+                const nombreEmpresa = firstNonEmptyValue(item?.nombre_empresa, `Empresa #${id || "N/D"}`);
+                const rtn = firstNonEmptyValue(item?.rtn);
+                const correo = firstNonEmptyValue(item?.direccion_correo, item?.correo);
+                const telefono = firstNonEmptyValue(item?.telefono);
+                const labelParts = [nombreEmpresa];
+                if (rtn) labelParts.push(`RTN: ${rtn}`);
+                if (correo) labelParts.push(correo);
+                return {
+                  value: id,
+                  label: labelParts.join(" | "),
+                  searchText: normalizeSearchKey(`${nombreEmpresa} ${rtn} ${correo} ${telefono}`),
+                };
+              });
+
+              options = filterAsyncOptions(fetchedOptions, searchTerm);
+            }
+
+            if (!options.length) {
+              options = filterAsyncOptions(empresaSelectOptions, searchTerm);
+            }
+
+            empresaSearchCacheRef.current.set(cacheKey, options);
+            resolve(options);
+          } catch (error) {
+            if (error?.name === "AbortError") {
+              resolve([]);
+              return;
+            }
+            resolve(filterAsyncOptions(empresaSelectOptions, searchTerm));
+          } finally {
+            if (requestSeq === empresaAsyncReqSeqRef.current) {
+              empresaAbortRef.current = null;
+            }
+          }
+        }, ASYNC_SELECT_DEBOUNCE_MS);
+      }),
+    [empresaSelectOptions]
+  );
+
+  const loadTipoClienteOptions = useCallback(
+    (inputValue = "") =>
+      new Promise((resolve) => {
+        const searchTerm = normalizeSearchKey(inputValue);
+        const cacheKey = searchTerm || "__default__";
+
+        if (tipoSearchCacheRef.current.has(cacheKey)) {
+          resolve(tipoSearchCacheRef.current.get(cacheKey));
+          return;
+        }
+
+        if (tipoDebounceTimerRef.current) {
+          clearTimeout(tipoDebounceTimerRef.current);
+        }
+
+        const requestSeq = ++tipoAsyncReqSeqRef.current;
+        tipoDebounceTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current || requestSeq !== tipoAsyncReqSeqRef.current) {
+            resolve([]);
+            return;
+          }
+
+          const options = filterAsyncOptions(tipoClienteSelectOptions, searchTerm);
+          tipoSearchCacheRef.current.set(cacheKey, options);
+          resolve(options);
+        }, ASYNC_SELECT_DEBOUNCE_MS);
+      }),
+    [tipoClienteSelectOptions]
+  );
+
   const cargarCatalogos = useCallback(async () => {
     if (catalogosCargadosRef.current) return;
 
@@ -501,6 +747,15 @@ const Clientes = ({ openToast }) => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (empresaDebounceTimerRef.current) {
+        clearTimeout(empresaDebounceTimerRef.current);
+      }
+      if (tipoDebounceTimerRef.current) {
+        clearTimeout(tipoDebounceTimerRef.current);
+      }
+      if (empresaAbortRef.current) {
+        empresaAbortRef.current.abort();
+      }
     };
   }, []);
 
@@ -1131,14 +1386,15 @@ const Clientes = ({ openToast }) => {
             ) : (
               <div className="col-12">
                 <label className="form-label text-light text-opacity-75">Empresa</label>
-                <Select
+                <AsyncSelect
                   inputId="cliente-empresa-select"
                   className={`clientes-persona-select ${errors.id_empresa ? "is-invalid" : ""}`}
                   classNamePrefix="clientes-persona-select"
                   placeholder="Seleccione"
-                  isSearchable
+                  cacheOptions
+                  defaultOptions={empresaDefaultOptions}
+                  loadOptions={loadEmpresaOptions}
                   isClearable
-                  options={empresaSelectOptions}
                   value={empresaSelectValue}
                   onChange={(option) => {
                     setClienteOriginType("empresa");
@@ -1153,6 +1409,8 @@ const Clientes = ({ openToast }) => {
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   menuPosition="fixed"
                   isDisabled={empresaDisabled}
+                  noOptionsMessage={() => "No se encontraron resultados"}
+                  loadingMessage={() => "Buscando..."}
                 />
                 {errors.id_empresa && <div className="invalid-feedback d-block">{errors.id_empresa}</div>}
                 <small className="clientes-modal__field-hint">
@@ -1163,14 +1421,15 @@ const Clientes = ({ openToast }) => {
 
             <div className="col-12">
               <label className="form-label text-light text-opacity-75">Tipo cliente</label>
-              <Select
+              <AsyncSelect
                 inputId="cliente-tipo-select"
                 className={`clientes-persona-select ${errors.id_tipo_cliente ? "is-invalid" : ""}`}
                 classNamePrefix="clientes-persona-select"
                 placeholder="Seleccione"
-                isSearchable
+                cacheOptions
+                defaultOptions={tipoClienteDefaultOptions}
+                loadOptions={loadTipoClienteOptions}
                 isClearable={false}
-                options={tipoClienteSelectOptions}
                 value={tipoClienteSelectValue}
                 onChange={(option) =>
                   setForm((state) => ({
@@ -1181,6 +1440,8 @@ const Clientes = ({ openToast }) => {
                 styles={tipoClienteSelectStyles}
                 menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                 menuPosition="fixed"
+                noOptionsMessage={() => "No se encontraron resultados"}
+                loadingMessage={() => "Buscando..."}
               />
               {errors.id_tipo_cliente && <div className="invalid-feedback d-block">{errors.id_tipo_cliente}</div>}
             </div>

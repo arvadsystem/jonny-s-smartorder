@@ -192,13 +192,18 @@ export const personaService = {
   // ==============================
   // EMPRESAS (SUBMODULO PERSONAS)
   // ==============================
-  getEmpresas: ({ page = 1, limit = 10, nombre, estado } = {}) => {
+  getEmpresas: ({ page = 1, limit = 10, nombre, search, estado, signal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
-    if (typeof nombre === 'string' && nombre.trim()) params.set('nombre', nombre.trim());
+    const normalizedSearch = typeof search === 'string' && search.trim()
+      ? search.trim()
+      : (typeof nombre === 'string' ? nombre.trim() : '');
+    if (normalizedSearch) params.set('nombre', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
-    return apiFetch(`/empresas?${params.toString()}`, 'GET');
+    const endpoint = `/empresas?${params.toString()}`;
+    if (signal) return fetchGetWithSignal(endpoint, signal);
+    return apiFetch(endpoint, 'GET');
   },
 
   getEmpresaById: (id) =>
