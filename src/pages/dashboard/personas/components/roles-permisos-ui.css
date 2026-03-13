@@ -665,14 +665,28 @@
   color: #241e18;
 }
 
+.roles-permisos-drawer .crud-modal__title,
+.roles-permisos-drawer .crud-modal__subtitle,
+.roles-permisos-drawer .form-label {
+  color: #000;
+}
+
 .roles-permisos-drawer__body {
-  background: linear-gradient(180deg, #ffffff, #fcfbf4);
+  background: transparent;
 }
 
 .roles-permisos-drawer__code {
   background: #f8f5ee;
   color: #5a4639;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.roles-permisos-drawer__helper {
+  color: rgba(96, 69, 53, 0.82);
+}
+
+.roles-permisos-drawer__footer.crud-modal__footer {
+  margin-top: 1rem !important;
 }
 
 .roles-permisos-impact-grid {

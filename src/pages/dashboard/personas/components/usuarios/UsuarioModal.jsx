@@ -258,7 +258,7 @@ export default function UsuarioModal({
       id="usr-form-drawer"
       role={isOpen ? 'dialog' : undefined}
       aria-modal={isOpen ? 'true' : undefined}
-      inert={!isOpen ? '' : undefined}
+      inert={!isOpen}
     >
       <div className="inv-prod-drawer-head usuarios-modal__header crud-modal__header">
         <div className="usuarios-modal__title-wrap crud-modal__header-copy">
@@ -275,7 +275,7 @@ export default function UsuarioModal({
           {isCreate ? (
             <>
               <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
-                <label className="form-label fw-semibold usuarios-modal__label">Empleado</label>
+                <label className="form-label usuarios-modal__label">Empleado</label>
                 <AsyncSelect
                   inputId="usuario-empleado-select-create"
                   className={`usuarios-empleado-select ${errors?.id_empleado ? 'is-invalid' : ''}`}
@@ -300,7 +300,7 @@ export default function UsuarioModal({
               </div>
 
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Nombre de usuario (Autogenerado)</label>
+                <label className="form-label usuarios-modal__label">Nombre de usuario (Autogenerado)</label>
                 <input
                   type="text"
                   className="form-control usuarios-modal__input"
@@ -310,7 +310,7 @@ export default function UsuarioModal({
               </div>
 
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Roles</label>
+                <label className="form-label usuarios-modal__label">Roles</label>
                 <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
                   {roleOptions.map((rol) => {
                     const roleId = String(rol.id_rol);
@@ -338,7 +338,7 @@ export default function UsuarioModal({
           ) : (
             <>
               <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
-                <label className="form-label fw-semibold usuarios-modal__label">Empleado</label>
+                <label className="form-label usuarios-modal__label">Empleado</label>
                 <AsyncSelect
                   inputId="usuario-empleado-select-edit"
                   className="usuarios-empleado-select"
@@ -361,7 +361,7 @@ export default function UsuarioModal({
                 />
               </div>
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Nombre de usuario</label>
+                <label className="form-label usuarios-modal__label">Nombre de usuario</label>
                 <input
                   type="text"
                   className="form-control usuarios-modal__input"
@@ -370,7 +370,7 @@ export default function UsuarioModal({
                 />
               </div>
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Roles</label>
+                <label className="form-label usuarios-modal__label">Roles</label>
                 <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
                   {roleOptions.map((rol) => {
                     const roleId = String(rol.id_rol);
@@ -400,7 +400,7 @@ export default function UsuarioModal({
           {!isCreate ? (
             <div className="col-12 usuarios-modal__section">
               <div className="usuarios-modal__switch-row">
-                <label className="usuarios-modal__switch-label fw-semibold" htmlFor="usuario_estado_modal">
+                <label className="usuarios-modal__switch-label" htmlFor="usuario_estado_modal">
                   Usuario Activo
                 </label>
                 <label className="usuarios-modal__switch" htmlFor="usuario_estado_modal">
@@ -423,7 +423,7 @@ export default function UsuarioModal({
           ) : null}
 
           <div className="col-12 usuarios-modal__section">
-            <label className="form-label fw-semibold usuarios-modal__label">Imagen de perfil</label>
+            <label className="form-label usuarios-modal__label">Imagen de perfil</label>
             <div className={`inv-prod-image-field personas-emp-form-image usuarios-modal__image-box ${formImage?.loading ? 'is-loading' : ''}`}>
               <div className={`inv-prod-image-preview usuarios-modal__image-preview ${formImage?.previewUrl ? 'has-image' : ''}`} aria-live="polite">
                 {formImage?.loading ? (

@@ -3,6 +3,7 @@ import InlineLoader from "../../../../components/common/InlineLoader";
 import { usePermisos } from "../../../../context/PermisosContext";
 import { rolesPermisosService } from "../../../../services/rolesPermisosService";
 import { PERMISSIONS } from "../../../../utils/permissions";
+import "./common/crud-modal-theme.css";
 import "./roles-permisos-ui.css";
 
 const DEFAULT_LIMIT = 10;
@@ -1439,24 +1440,25 @@ const RolesPermisosTab = () => {
       <aside
         ref={roleDrawerRef}
         id="roles-permisos-drawer"
-        className={`inv-prod-drawer inv-cat-v2__drawer roles-permisos-drawer ${roleDrawerOpen ? "show" : ""}`}
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal roles-permisos-drawer ${roleDrawerOpen ? "show" : ""} ${
+          roleDrawerMode === "create" ? "is-create" : "is-edit"
+        }`}
         role={roleDrawerOpen ? "dialog" : undefined}
         aria-modal={roleDrawerOpen ? "true" : undefined}
         inert={!roleDrawerOpen}
       >
-        <div className="inv-prod-drawer-head roles-permisos-drawer__head">
-          <i className={`bi ${roleDrawerMode === "create" ? "bi-shield-plus" : "bi-pencil-square"} inv-cat-v2__drawer-mark`} aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">
+        <div className="inv-prod-drawer-head roles-permisos-drawer__head crud-modal__header">
+          <div className="crud-modal__header-copy">
+            <div className="inv-prod-drawer-title crud-modal__title">
               {roleDrawerMode === "create" ? "Nuevo rol" : "Editar rol"}
             </div>
-            <div className="inv-prod-drawer-sub">
+            <div className="inv-prod-drawer-sub crud-modal__subtitle">
               Define el nombre del rol. El codigo tecnico se genera automaticamente.
             </div>
           </div>
           <button
             type="button"
-            className="inv-prod-drawer-close"
+            className="inv-prod-drawer-close crud-modal__close"
             onClick={closeRoleDrawer}
             title="Cerrar"
             disabled={roleFormSubmitting}
@@ -1465,43 +1467,45 @@ const RolesPermisosTab = () => {
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite roles-permisos-drawer__body" onSubmit={handleRoleSubmit}>
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite roles-permisos-drawer__body crud-modal__body" onSubmit={handleRoleSubmit}>
           {roleFormErrors.general ? (
             <div className="alert alert-danger mb-3">{roleFormErrors.general}</div>
           ) : null}
 
-          <div className="mb-3">
-            <label className="form-label" htmlFor="roles_nombre_visible">Nombre del rol</label>
-            <input
-              id="roles_nombre_visible"
-              className={`form-control ${roleFormErrors.displayName ? "is-invalid" : ""}`}
-              value={roleForm.displayName}
-              onChange={handleRoleFormChange}
-              placeholder="Ej: Auxiliar Cocina"
-              disabled={roleFormSubmitting}
-            />
-            {roleFormErrors.displayName ? (
-              <div className="invalid-feedback d-block">{roleFormErrors.displayName}</div>
-            ) : null}
-          </div>
+          <div className="row g-3 crud-modal__grid">
+            <div className="col-12">
+              <label className="form-label" htmlFor="roles_nombre_visible">Nombre del rol</label>
+              <input
+                id="roles_nombre_visible"
+                className={`form-control ${roleFormErrors.displayName ? "is-invalid" : ""}`}
+                value={roleForm.displayName}
+                onChange={handleRoleFormChange}
+                placeholder="Ej: Auxiliar Cocina"
+                disabled={roleFormSubmitting}
+              />
+              {roleFormErrors.displayName ? (
+                <div className="invalid-feedback d-block">{roleFormErrors.displayName}</div>
+              ) : null}
+            </div>
 
-          <div className="mb-3">
-            <label className="form-label" htmlFor="roles_codigo_preview">Codigo tecnico</label>
-            <input
-              id="roles_codigo_preview"
-              className="form-control roles-permisos-drawer__code"
-              value={roleForm.code || "Se generara automaticamente"}
-              readOnly
-            />
-            <div className="form-text">
-              Este valor se guarda en la base de datos y se usa como identificador interno del rol.
+            <div className="col-12">
+              <label className="form-label" htmlFor="roles_codigo_preview">Codigo tecnico</label>
+              <input
+                id="roles_codigo_preview"
+                className="form-control roles-permisos-drawer__code"
+                value={roleForm.code || "Se generara automaticamente"}
+                readOnly
+              />
+              <div className="form-text roles-permisos-drawer__helper">
+                Este valor se guarda en la base de datos y se usa como identificador interno del rol.
+              </div>
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
+          <div className="d-flex gap-2 mt-4 roles-permisos-drawer__footer crud-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill"
+              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
               onClick={closeRoleDrawer}
               disabled={roleFormSubmitting}
             >
@@ -1509,7 +1513,7 @@ const RolesPermisosTab = () => {
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill"
+              className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
               disabled={roleFormSubmitting || !roleForm.code}
             >
               {roleFormSubmitting

@@ -34,8 +34,8 @@
 }
 
 .usuarios-modal .usuarios-modal__body {
-  background: linear-gradient(180deg, #ffffff, #fcfbf4);
-  border-radius: 18px 18px 0 0;
+  background: transparent;
+  border-radius: 0;
   padding: 0.35rem 1rem 1rem;
   overflow-y: auto;
 }
@@ -55,7 +55,8 @@
 
 .usuarios-modal .usuarios-modal__label {
   margin-bottom: 0.45rem;
-  color: #1d1d1d;
+  color: #000;
+  font-weight: 600;
 }
 
 .usuarios-modal .usuarios-modal__input {
