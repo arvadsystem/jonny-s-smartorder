@@ -332,6 +332,8 @@ export const inventarioService = {
 
   // AM: workflow transaccional de ordenes de compra.
   getOrdenesCompraWorkflow: (options) => apiFetch(withOrdenesCompraFilters('/orden_compras/workflow', options), 'GET'),
+  // AM: contexto de creacion con sucursal/almacenes permitidos segun usuario autenticado.
+  getOrdenCompraWorkflowContextoCreacion: () => apiFetch('/orden_compras/workflow/contexto_creacion', 'GET'),
   getOrdenCompraWorkflowById: (idOrdenCompra) => apiFetch(`/orden_compras/workflow/${idOrdenCompra}`, 'GET'),
   crearOrdenCompraWorkflow: (data) => apiFetch('/orden_compras/workflow', 'POST', data),
   aprobarOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
@@ -340,6 +342,12 @@ export const inventarioService = {
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/rechazar`, 'POST', data),
   actualizarDetalleOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/detalles`, 'PUT', data),
+  // AM: revision administrativa de solicitudes de item no registrado (aprobar/rechazar).
+  revisarSolicitudItemOrdenCompraWorkflow: (idOrdenCompra, idSolicitudItem, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/solicitudes_item/${idSolicitudItem}/revisar`, 'POST', data),
+  // AM: marca solicitud de item como atendida luego de alta real en catalogo.
+  atenderSolicitudItemOrdenCompraWorkflow: (idOrdenCompra, idSolicitudItem, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/solicitudes_item/${idSolicitudItem}/atender`, 'POST', data),
   convertirOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/convertir`, 'POST', data),
   reportarRecepcionOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
