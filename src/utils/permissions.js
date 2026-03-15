@@ -90,6 +90,14 @@ const PERMISSION_VALUES = Object.freeze({
   INVENTARIO_ALERTAS_VER: 'INVENTARIO_ALERTAS_VER',
   INVENTARIO_ALERTAS_ACTUALIZAR: 'INVENTARIO_ALERTAS_ACTUALIZAR',
   INVENTARIO_ALERTAS_STOCK_MINIMO_EDITAR: 'INVENTARIO_ALERTAS_STOCK_MINIMO_EDITAR',
+  // AM: permisos del submodulo de ordenes de compra.
+  INVENTARIO_ORDENES_COMPRA_VER: 'INVENTARIO_ORDENES_COMPRA_VER',
+  INVENTARIO_ORDENES_COMPRA_CREAR: 'INVENTARIO_ORDENES_COMPRA_CREAR',
+  INVENTARIO_ORDENES_COMPRA_VER_TODAS: 'INVENTARIO_ORDENES_COMPRA_VER_TODAS',
+  INVENTARIO_ORDENES_COMPRA_GESTIONAR: 'INVENTARIO_ORDENES_COMPRA_GESTIONAR',
+  INVENTARIO_ORDENES_COMPRA_CONVERTIR: 'INVENTARIO_ORDENES_COMPRA_CONVERTIR',
+  INVENTARIO_ORDENES_COMPRA_ABASTECER: 'INVENTARIO_ORDENES_COMPRA_ABASTECER',
+  INVENTARIO_ORDENES_COMPRA_RECEPCIONAR: 'INVENTARIO_ORDENES_COMPRA_RECEPCIONAR',
 
   VENTAS_VER: 'VENTAS_VER',
   VENTAS_CREAR: 'VENTAS_CREAR',
@@ -291,6 +299,16 @@ const INVENTARIO_TAB_PERMISSIONS_MAP = Object.freeze({
     PERMISSIONS.INVENTARIO_ALERTAS_VER,
     PERMISSIONS.INVENTARIO_ALERTAS_ACTUALIZAR,
     PERMISSIONS.INVENTARIO_ALERTAS_STOCK_MINIMO_EDITAR
+  ]),
+  // AM: tab de ordenes de compra dentro de Inventario.
+  ordenes_compra: uniquePermissions([
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR
   ])
 });
 
@@ -509,7 +527,9 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam', required: INVENTARIO_TAB_PERMISSIONS_MAP.insumos },
     { key: 'productos', label: 'Productos', icon: 'bi bi-basket', required: INVENTARIO_TAB_PERMISSIONS_MAP.productos },
     { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building', required: INVENTARIO_TAB_PERMISSIONS_MAP.almacenes },
-    { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS_MAP.alertas }
+    { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS_MAP.alertas },
+    // AM: acceso visual al submodulo de ordenes de compra.
+    { key: 'ordenes_compra', label: 'Ordenes compra', icon: 'bi bi-bag-check', required: INVENTARIO_TAB_PERMISSIONS_MAP.ordenes_compra }
   ],
   personas: [
     { key: 'personas', label: 'Personas', icon: 'bi bi-person', required: PERSONAS_TAB_PERMISSIONS_MAP.personas },

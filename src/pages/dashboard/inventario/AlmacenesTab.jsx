@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
 import sucursalesService from '../../../services/sucursalesService';
 import MovimientosTab from './MovimientosTab.jsx';
+import CompactHeaderSwitch from './CompactHeaderSwitch.jsx';
+import ProveedoresTab from './ProveedoresTab.jsx';
 
 // NEW: normaliza el estado de sucursal para soportar booleans, strings y numericos.
 // WHY: `sucursales` y `almacenes` pueden traer el estado en distintos formatos segun el origen.
@@ -163,6 +165,8 @@ const getConfirmCopyByAction = (action) => {
 };
 
 const AlmacenesTab = ({ openToast }) => {
+  // AM: switch principal del submodulo para alternar entre Almacenes y Proveedores.
+  const [catalogScope, setCatalogScope] = useState('almacenes');
   const [almacenes, setAlmacenes] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -819,6 +823,10 @@ const AlmacenesTab = ({ openToast }) => {
     </div>
   );
 
+  if (catalogScope === 'proveedores') {
+    return <ProveedoresTab openToast={openToast} onScopeChange={setCatalogScope} />;
+  }
+
   const createModal =
     modalPortalTarget && showCreateModal
       ? createPortal(
@@ -1230,17 +1238,31 @@ const AlmacenesTab = ({ openToast }) => {
   return (
     <>
       <div className="card shadow-sm mb-3 inv-prod-card inv-ins-module inv-has-sticky-header inv-warehouse-module">
-        <div className="card-header inv-prod-header">
-          <div className="inv-prod-title-wrap">
-            <div className="inv-prod-title-row">
-              <i className="bi bi-building inv-prod-title-icon" aria-hidden="true" />
-              <span className="inv-prod-title">Almacenes</span>
+        <div className="card-header inv-prod-header inv-cat-v3__header">
+          <div className="inv-cat-v3__layout">
+            <div className="inv-cat-v3__title">
+              <div className="inv-prod-title-wrap">
+                <div className="inv-prod-title-row">
+                  <i className="bi bi-building inv-prod-title-icon" aria-hidden="true" />
+                  <span className="inv-prod-title">Almacenes</span>
+                </div>
+                <div className="inv-prod-subtitle">Gestion visual de almacenes y kardex por sucursal</div>
+              </div>
             </div>
-            <div className="inv-prod-subtitle">Gestion visual de almacenes y kardex por sucursal</div>
-          </div>
 
-          <div className="inv-prod-header-actions">
-            <label className="inv-ins-search inv-prod-header-search" aria-label="Buscar almacenes">
+            <div className="inv-cat-v3__switch-slot">
+              <CompactHeaderSwitch
+                value={catalogScope}
+                onChange={setCatalogScope}
+                leftValue="almacenes"
+                rightValue="proveedores"
+                leftLabel="ALMACENES"
+                rightLabel="PROVEEDORES"
+                ariaLabel="Cambiar vista de almacenes y proveedores"
+              />
+            </div>
+
+            <label className="inv-ins-search inv-prod-header-search inv-cat-v3__search" aria-label="Buscar almacenes">
               <i className="bi bi-search" aria-hidden="true" />
               <input
                 type="search"
@@ -1249,24 +1271,27 @@ const AlmacenesTab = ({ openToast }) => {
                 placeholder="Buscar almacen..."
               />
             </label>
-            <div className="form-check form-switch m-0">
-              <input
-                className="form-check-input"
-                type="checkbox"
-                role="switch"
-                id="inv-warehouse-show-inactive"
-                checked={showInactivos}
-                onChange={(event) => setShowInactivos(event.target.checked)}
-                disabled={loading}
-              />
-              <label className="form-check-label small" htmlFor="inv-warehouse-show-inactive">
-                Mostrar inactivos
-              </label>
+
+            <div className="inv-prod-header-actions inv-ins-header-actions inv-cat-v3__actions-stack">
+              <div className="form-check form-switch m-0 d-flex align-items-center justify-content-center gap-2">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  id="inv-warehouse-show-inactive"
+                  checked={showInactivos}
+                  onChange={(event) => setShowInactivos(event.target.checked)}
+                  disabled={loading}
+                />
+                <label className="form-check-label small mb-0" htmlFor="inv-warehouse-show-inactive">
+                  Mostrar inactivos
+                </label>
+              </div>
+              <button type="button" className="inv-prod-toolbar-btn inv-cat-v3__new-btn" onClick={openCreate} disabled={!canCreateWithCatalog}>
+                <i className="bi bi-plus-circle" aria-hidden="true" />
+                <span>Nuevo almacen</span>
+              </button>
             </div>
-            <button type="button" className="inv-prod-toolbar-btn" onClick={openCreate} disabled={!canCreateWithCatalog}>
-              <i className="bi bi-plus-circle" aria-hidden="true" />
-              <span>Nuevo almacen</span>
-            </button>
           </div>
         </div>
 

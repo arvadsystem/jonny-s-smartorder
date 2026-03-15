@@ -20,6 +20,19 @@ const withAlmacenesFilters = (path, options) => {
   return `${path}${path.includes('?') ? '&' : '?'}include_inactivos=1`;
 };
 
+// AM: helper de filtros para proveedores manteniendo compatibilidad del endpoint base.
+const withProveedoresFilters = (path, options) => {
+  if (!options || typeof options !== 'object') return path;
+
+  const includeInactivos =
+    options.include_inactivos === true ||
+    options.includeInactivos === true ||
+    options.incluirInactivos === true;
+
+  if (!includeInactivos) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}include_inactivos=1`;
+};
+
 // NEW: CONSTRUYE QUERY PARAMS OPCIONALES PARA EL KARDEX FILTRADO.
 // WHY: ALMACENES NECESITA PEDIR MOVIMIENTOS POR ALMACEN O SUCURSAL SIN ROMPER LAS LLAMADAS EXISTENTES.
 // IMPACT: `GETMOVIMIENTOSINVENTARIO()` SIGUE FUNCIONANDO SIN ARGUMENTOS Y SOLO AGREGA QUERYSTRING CUANDO VIENE `OPTIONS`.
@@ -88,12 +101,61 @@ const withKardexFilters = (path, options) => {
   return `${path}${path.includes('?') ? '&' : '?'}${query}`;
 };
 
+// AM: construye query params para listado de ordenes de compra workflow.
+// AM: permite scope/estado/busqueda/paginacion sin romper contratos existentes.
+const withOrdenesCompraFilters = (path, options) => {
+  if (!options || typeof options !== 'object') return path;
+
+  const params = new URLSearchParams();
+
+  if (options.scope !== undefined && options.scope !== null && options.scope !== '') {
+    params.set('scope', String(options.scope));
+  }
+
+  if (options.estado !== undefined && options.estado !== null && options.estado !== '') {
+    params.set('estado', String(options.estado));
+  }
+
+  if (options.q !== undefined && options.q !== null && options.q !== '') {
+    params.set('q', String(options.q));
+  }
+
+  if (options.page !== undefined && options.page !== null && options.page !== '') {
+    params.set('page', String(options.page));
+  }
+
+  if (options.limit !== undefined && options.limit !== null && options.limit !== '') {
+    params.set('limit', String(options.limit));
+  }
+
+  if (options.id_sucursal !== undefined && options.id_sucursal !== null && options.id_sucursal !== '') {
+    params.set('id_sucursal', String(options.id_sucursal));
+  }
+
+  if (options.id_almacen !== undefined && options.id_almacen !== null && options.id_almacen !== '') {
+    params.set('id_almacen', String(options.id_almacen));
+  }
+
+  const query = params.toString();
+  if (!query) return path;
+
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+};
+
 const normalizeCatalogRows = (responsePayload) => {
   if (Array.isArray(responsePayload)) return responsePayload;
   if (Array.isArray(responsePayload?.data)) return responsePayload.data;
   if (Array.isArray(responsePayload?.resultado)) return responsePayload.resultado;
   return [];
 };
+
+// AM: normaliza el catalogo de almacenes y filtra filas invalidas para evitar selects vacios por payloads mixtos.
+const normalizeAlmacenesRows = (responsePayload) => (
+  normalizeCatalogRows(responsePayload).filter((row) => {
+    const idAlmacen = Number.parseInt(String(row?.id_almacen ?? ''), 10);
+    return Number.isInteger(idAlmacen) && idAlmacen > 0;
+  })
+);
 
 export const inventarioService = {
   // ===== CATEGORIAS PRODUCTOS =====
@@ -132,7 +194,48 @@ export const inventarioService = {
 
   // ===== INSUMOS =====
   getInsumos: (options) => apiFetch(withInactivosParam('/insumos', options), 'GET'),
-  getAlmacenes: (options) => apiFetch(withAlmacenesFilters('/almacenes', options), 'GET'),
+  // AM: carga almacenes con fallback defensivo al catalogo liviano cuando el endpoint completo falla.
+  // AM: evita dejar vacios los modales create/edit de Productos e Insumos por errores en vistas agregadas.
+  getAlmacenes: async (options) => {
+    const normalizedOptions = options && typeof options === 'object' ? options : {};
+    const includeInactivosRequested =
+      normalizedOptions.include_inactivos === true ||
+      normalizedOptions.includeInactivos === true ||
+      normalizedOptions.incluirInactivos === true;
+
+    const primaryPath = withAlmacenesFilters('/almacenes', normalizedOptions);
+    try {
+      const primaryPayload = await apiFetch(primaryPath, 'GET');
+      const primaryRows = normalizeAlmacenesRows(primaryPayload);
+      if (primaryRows.length > 0) return primaryRows;
+    } catch (primaryError) {
+      // AM: si el endpoint dashboard falla, intenta el catalogo simple para no bloquear el formulario.
+      const fallbackPath = includeInactivosRequested
+        ? '/almacenes/catalogo?include_inactivos=1'
+        : '/almacenes/catalogo';
+      const fallbackPayload = await apiFetch(fallbackPath, 'GET');
+      return normalizeAlmacenesRows(fallbackPayload);
+    }
+
+    // AM: cuando el endpoint principal responde vacio, consulta catalogo con inactivos para no perder opciones legacy.
+    const fallbackPath = includeInactivosRequested
+      ? '/almacenes/catalogo?include_inactivos=1'
+      : '/almacenes/catalogo?include_inactivos=1';
+    const fallbackPayload = await apiFetch(fallbackPath, 'GET');
+    return normalizeAlmacenesRows(fallbackPayload);
+  },
+  // AM: catalogo de proveedores para conversion de OC a compra.
+  getProveedores: (options) => apiFetch(withProveedoresFilters('/proveedores', options), 'GET'),
+  // AM: alta rapida de proveedor para no bloquear conversion de ordenes en operacion diaria.
+  crearProveedor: (data) => apiFetch('/proveedores', 'POST', data),
+  // AM: CRUD operativo para el submodulo Proveedores dentro de Inventario.
+  actualizarProveedor: (id, data) => apiFetch(`/proveedores/${id}`, 'PUT', data),
+  getProveedorById: (id) => apiFetch(`/proveedores/${id}`, 'GET'),
+  getProveedorDependencias: (id) => apiFetch(`/proveedores/${id}/dependencias`, 'GET'),
+  inactivarProveedor: (id, motivo) =>
+    apiFetch(`/proveedores/${id}/inactivar`, 'PATCH', motivo ? { motivo } : {}),
+  reactivarProveedor: (id) => apiFetch(`/proveedores/${id}/reactivar`, 'PATCH', {}),
+  eliminarProveedor: (id) => apiFetch(`/proveedores/${id}`, 'DELETE'),
   crearInsumo: (data) => apiFetch('/insumos', 'POST', data),
   actualizarInsumoCampo: (id, campo, valor) =>
     apiFetch('/insumos', 'PUT', {
@@ -140,6 +243,12 @@ export const inventarioService = {
       valor,
       id_campo: 'id_insumo',
       id_valor: id
+    }),
+  // AM: edicion completa de insumo sincronizando uno o varios almacenes en una sola operacion.
+  actualizarInsumoMultiAlmacen: (id, data = {}) =>
+    apiFetch('/insumos/multi-almacen', 'PUT', {
+      id_insumo: id,
+      ...data
     }),
   eliminarInsumo: (id) =>
     apiFetch('/insumos', 'DELETE', {
@@ -156,6 +265,12 @@ export const inventarioService = {
       valor,
       id_campo: 'id_producto',
       id_valor: id
+    }),
+  // AM: edicion completa de producto sincronizando uno o varios almacenes en una sola operacion.
+  actualizarProductoMultiAlmacen: (id, data = {}) =>
+    apiFetch('/productos/multi-almacen', 'PUT', {
+      id_producto: id,
+      ...data
     }),
   eliminarProducto: (id) =>
     apiFetch('/productos', 'DELETE', {
@@ -213,5 +328,22 @@ export const inventarioService = {
     apiFetch('/movimientos_inventario', 'DELETE', {
       columna_id: 'id_movimiento',
       valor_id: id
-    })
+    }),
+
+  // AM: workflow transaccional de ordenes de compra.
+  getOrdenesCompraWorkflow: (options) => apiFetch(withOrdenesCompraFilters('/orden_compras/workflow', options), 'GET'),
+  getOrdenCompraWorkflowById: (idOrdenCompra) => apiFetch(`/orden_compras/workflow/${idOrdenCompra}`, 'GET'),
+  crearOrdenCompraWorkflow: (data) => apiFetch('/orden_compras/workflow', 'POST', data),
+  aprobarOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/aprobar`, 'POST', data),
+  rechazarOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/rechazar`, 'POST', data),
+  actualizarDetalleOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/detalles`, 'PUT', data),
+  convertirOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/convertir`, 'POST', data),
+  reportarRecepcionOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/recepcion`, 'POST', data),
+  abastecerOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/abastecer`, 'POST', data)
 };
