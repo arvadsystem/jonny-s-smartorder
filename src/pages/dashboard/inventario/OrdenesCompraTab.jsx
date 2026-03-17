@@ -12,7 +12,7 @@ import {
 const ORDER_LIMIT = 20;
 const ESTADOS = ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'EN_COMPRA', 'ABASTECIDA', 'CANCELADA'];
 const POLLING_MS = 2500;
-const CATALOG_CARDS_PER_PAGE = 8;
+const CATALOG_CARDS_PER_PAGE = 6;
 // AM: modos de descuento administrativos para compra real (monto fijo o porcentaje).
 const DISCOUNT_TYPE_MONTO = 'MONTO';
 const DISCOUNT_TYPE_PORCENTAJE = 'PORCENTAJE';
@@ -130,6 +130,12 @@ const formatEstadoLabel = (estado) => {
   if (estado === 'ENVIADO') return 'ENVIADO';
   return String(estado || '').replace('_', ' ');
 };
+
+// AM: usa correlativo visible de OC (negocio) y deja id_orden_compra solo como fallback tecnico.
+const resolveVisibleOrderNumber = (row) =>
+  parsePositiveInt(row?.numero_oc_visible) || parsePositiveInt(row?.id_orden_compra) || null;
+
+const formatVisibleOrderNumber = (row) => String(resolveVisibleOrderNumber(row) || '-');
 
 const getCategoriaLabel = (row, fallback = '') =>
   normalizeText(
@@ -575,6 +581,8 @@ const OrdenesCompraTab = ({ openToast }) => {
     const query = normalizeText(catalogSearch, 120).toLowerCase();
     // AM: el catalogo se gobierna por la sucursal/almacen destino seleccionado en la solicitud.
     const warehouseFilterSet = new Set(selectedBaseAlmacenes);
+    // AM: evita mostrar catalogo fuera de alcance cuando el flujo operativo aun no resolvio su almacen base.
+    if (isOperationalCreateRestricted && warehouseFilterSet.size === 0) return [];
     const shouldFilterByWarehouse = warehouseFilterSet.size > 0;
     return catalog
       .map((row) => ({ ...row, stock_state: getStockState(row) }))
@@ -598,7 +606,7 @@ const OrdenesCompraTab = ({ openToast }) => {
         return a.nombre.localeCompare(b.nombre, 'es');
       })
       .slice(0, 120);
-  }, [catalog, catalogSearch, selectedBaseAlmacenes, soloAlertas]);
+  }, [catalog, catalogSearch, isOperationalCreateRestricted, selectedBaseAlmacenes, soloAlertas]);
 
   const catalogPages = useMemo(() => {
     const pages = [];
@@ -848,10 +856,8 @@ const OrdenesCompraTab = ({ openToast }) => {
     if (!(canCrear || canConvertir || canGestionar)) return;
     if (!options?.silent) setLoadingCatalog(true);
     try {
-      // AM: carga catalogos para crear solicitud y convertir compra.
-      const [p, i, prov, alm, contextoCreacion, catsProd, catsIns, units] = await Promise.all([
-        canCrear || canGestionar ? inventarioService.getProductos() : Promise.resolve([]),
-        canCrear || canGestionar ? inventarioService.getInsumos() : Promise.resolve([]),
+      // AM: primero resuelve contexto de creacion para derivar filtros seguros de catalogo operativo.
+      const [prov, alm, contextoCreacion, catsProd, catsIns, units] = await Promise.all([
         canConvertir ? inventarioService.getProveedores() : Promise.resolve([]),
         canCrear || canGestionar ? inventarioService.getAlmacenes() : Promise.resolve([]),
         canCrear ? inventarioService.getOrdenCompraWorkflowContextoCreacion() : Promise.resolve(null),
@@ -866,6 +872,21 @@ const OrdenesCompraTab = ({ openToast }) => {
         : [];
       const almacenesFinales =
         canCrear && almacenesPermitidosContexto.length > 0 ? almacenesPermitidosContexto : Array.isArray(alm) ? alm : [];
+      const idSucursalContexto = parseOptionalPositiveInt(contextData?.id_sucursal_usuario);
+      const idAlmacenContexto = parsePositiveInt(almacenesPermitidosContexto?.[0]?.id_almacen);
+
+      const catalogOptions =
+        isSucursalOperativeActor && Boolean(contextData?.restringido_a_sucursal_usuario)
+          ? {
+            id_sucursal: idSucursalContexto || undefined,
+            id_almacen: idAlmacenContexto || undefined
+          }
+          : undefined;
+
+      const [p, i] = await Promise.all([
+        canCrear || canGestionar ? inventarioService.getProductos(catalogOptions) : Promise.resolve([]),
+        canCrear || canGestionar ? inventarioService.getInsumos(catalogOptions) : Promise.resolve([])
+      ]);
 
       setProductos(Array.isArray(p) ? p : []);
       setInsumos(Array.isArray(i) ? i : []);
@@ -885,7 +906,7 @@ const OrdenesCompraTab = ({ openToast }) => {
     } finally {
       if (!options?.silent) setLoadingCatalog(false);
     }
-  }, [canConvertir, canCrear, canGestionar, toast]);
+  }, [canConvertir, canCrear, canGestionar, isSucursalOperativeActor, toast]);
 
   useEffect(() => {
     if (permisosLoading) return;
@@ -1180,7 +1201,9 @@ const OrdenesCompraTab = ({ openToast }) => {
       }
       toast(
         'ORDEN ACTUALIZADA',
-        `Orden #${idOrden} ${reviewModal.mode === 'rechazar' ? 'rechazada' : 'aprobada'}.`,
+        `Orden #${formatVisibleOrderNumber(reviewModal?.orden)} ${
+          reviewModal.mode === 'rechazar' ? 'rechazada' : 'aprobada'
+        }.`,
         reviewModal.mode === 'rechazar' ? 'warning' : 'success'
       );
       setReviewModal(emptyReviewModal());
@@ -1293,7 +1316,11 @@ const OrdenesCompraTab = ({ openToast }) => {
     setBusy(idOrden, true);
     try {
       await inventarioService.actualizarDetalleOrdenCompraWorkflow(idOrden, { actualizar, eliminar, agregar });
-      toast('DETALLE ACTUALIZADO', `Orden #${idOrden} actualizada correctamente.`, 'success');
+      toast(
+        'DETALLE ACTUALIZADO',
+        `Orden #${formatVisibleOrderNumber(editDetallesModal?.orden)} actualizada correctamente.`,
+        'success'
+      );
       setEditDetallesModal(emptyEditDetallesModal());
       await loadOrdenes();
       if (detalleActual?.data?.orden?.id_orden_compra === idOrden) {
@@ -1928,8 +1955,8 @@ const OrdenesCompraTab = ({ openToast }) => {
       toast(
         accion === 'guardar_y_abastecer' ? 'GUARDADO Y ABASTECIDO' : 'GUARDADO',
         accion === 'guardar_y_abastecer'
-          ? `Orden #${idOrden} guardada y abastecida correctamente.`
-          : `Datos administrativos guardados para orden #${idOrden}.`,
+          ? `Orden #${formatVisibleOrderNumber(convertPanel?.orden)} guardada y abastecida correctamente.`
+          : `Datos administrativos guardados para orden #${formatVisibleOrderNumber(convertPanel?.orden)}.`,
         'success'
       );
       closeConvertPanel();
@@ -1985,7 +2012,7 @@ const OrdenesCompraTab = ({ openToast }) => {
       await inventarioService.abastecerOrdenCompraWorkflow(idOrden, {
         observacion: normalizeText(supplyModal.observacion, 200)
       });
-      toast('ABASTECIDA', `Orden #${idOrden} abastecida correctamente.`, 'success');
+      toast('ABASTECIDA', `Orden #${formatVisibleOrderNumber(supplyModal?.orden)} abastecida correctamente.`, 'success');
       setSupplyModal(emptySupplyModal());
       await loadOrdenes();
     } catch (error) {
@@ -2041,7 +2068,11 @@ const OrdenesCompraTab = ({ openToast }) => {
       if (idArchivoFactura) payload.id_archivo_factura_recepcion = idArchivoFactura;
 
       await inventarioService.reportarRecepcionOrdenCompraWorkflow(idOrden, payload);
-      toast('RECEPCION REPORTADA', `Recepcion registrada para orden #${idOrden}.`, 'success');
+      toast(
+        'RECEPCION REPORTADA',
+        `Recepcion registrada para orden #${formatVisibleOrderNumber(recepcionModal?.orden)}.`,
+        'success'
+      );
       closeRecepcionModal();
       await loadOrdenes();
       if (detalleActual?.data?.orden?.id_orden_compra === idOrden) {
@@ -2191,35 +2222,6 @@ const OrdenesCompraTab = ({ openToast }) => {
                       placeholder="Buscar producto o insumo..."
                     />
                   </div>
-                  {!isOperationalCreateRestricted ? (
-                    <select
-                      className="form-select form-select-sm"
-                      value={catalogSucursalFilter}
-                      onChange={(e) => {
-                        setCatalogSucursalFilter(e.target.value);
-                        setCatalogPage(0);
-                      }}
-                      title="Filtrar por sucursal destino"
-                    >
-                      <option value="">Todas las sucursales</option>
-                      {sucursalesCatalog.map((row) => (
-                        <option key={`catalog-sucursal-${row.id_sucursal}`} value={row.id_sucursal}>
-                          {row.nombre_sucursal}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className="badge text-bg-light">
-                      {resolveSucursalLabel({
-                        id_sucursal: workflowCreateContext?.id_sucursal_usuario,
-                        nombre_sucursal:
-                          sucursalesCatalog.find(
-                            (row) =>
-                              Number(row.id_sucursal) === Number(workflowCreateContext?.id_sucursal_usuario)
-                          )?.nombre_sucursal || null
-                      })}
-                    </span>
-                  )}
                   <label htmlFor="oc-filtro-alerta" className="inv-oc-toggle inv-oc-toggle--compact mb-0">
                     <input
                       id="oc-filtro-alerta"
@@ -2233,12 +2235,9 @@ const OrdenesCompraTab = ({ openToast }) => {
                 </div>
               </div>
               <div className="card-body d-flex flex-column">
-                {almacenesCatalogFiltradosPorSucursal.length > 0 && (
+                {!isOperationalCreateRestricted && almacenesCatalogFiltradosPorSucursal.length > 0 && (
+                  /* AM: se muestran solo botones de almacenes debajo del buscador/toggle, sin bloque de titulo adicional. */
                   <div className="inv-oc-warehouse-base mb-2">
-                    <div className="inv-oc-warehouse-base__head">
-                      <span className="inv-oc-warehouse-base__title">Almacen destino de la orden</span>
-                      <small className="text-muted">{selectedBaseAlmacenes.length}/1 seleccionado</small>
-                    </div>
                     <div className="inv-oc-warehouse-chips">
                       {almacenesCatalogFiltradosPorSucursal.map((almacen) => {
                         const idAlmacen = Number(almacen.id_almacen);
@@ -2481,8 +2480,8 @@ const OrdenesCompraTab = ({ openToast }) => {
                                   aria-hidden="true"
                                 />
                                 {isItemRequestOnlyCard
-                                  ? `Solicitud item nuevo #${row.id_orden_compra}`
-                                  : `Orden #${row.id_orden_compra}`}
+                                  ? `Solicitud item nuevo #${formatVisibleOrderNumber(row)}`
+                                  : `Orden #${formatVisibleOrderNumber(row)}`}
                               </span>
                               <strong>{usuario}</strong>
                               <small>{rol}</small>
@@ -2820,7 +2819,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                         <div className="inv-oc-detail-modal">
                           <section className="inv-oc-detail-hero-card">
                             <div className="inv-oc-detail-hero-card__copy">
-                              <span className="inv-oc-detail-kicker">Orden #{orden.id_orden_compra || '-'}</span>
+                              <span className="inv-oc-detail-kicker">Orden #{formatVisibleOrderNumber(orden)}</span>
                               <h6>{orden.solicitante_nombre_usuario || '-'}</h6>
                               <p>
                                 <span>
@@ -2997,7 +2996,7 @@ const OrdenesCompraTab = ({ openToast }) => {
               </div>
               <div className="modal-body">
                 <p className="text-muted mb-2">
-                  Orden <strong>#{reviewModal.orden?.id_orden_compra}</strong>
+                  Orden <strong>#{formatVisibleOrderNumber(reviewModal?.orden)}</strong>
                 </p>
                 <label className="form-label">
                   {reviewModal.mode === 'rechazar'
@@ -3160,7 +3159,7 @@ const OrdenesCompraTab = ({ openToast }) => {
               </div>
               <div className="modal-body">
                 <p className="text-muted mb-2">
-                  Orden <strong>#{itemRequestDecisionModal.orden?.id_orden_compra || '-'}</strong> - Solicitud{' '}
+                  Orden <strong>#{formatVisibleOrderNumber(itemRequestDecisionModal?.orden)}</strong> - Solicitud{' '}
                   <strong>#{itemRequestDecisionModal.solicitud?.id_solicitud_item || '-'}</strong>
                 </p>
                 <label className="form-label">
@@ -3229,7 +3228,7 @@ const OrdenesCompraTab = ({ openToast }) => {
               </div>
               <div className="modal-body">
                 <p className="text-muted mb-2">
-                  Orden <strong>#{quickCreateItemModal.orden?.id_orden_compra || '-'}</strong> - Solicitud{' '}
+                  Orden <strong>#{formatVisibleOrderNumber(quickCreateItemModal?.orden)}</strong> - Solicitud{' '}
                   <strong>#{quickCreateItemModal.solicitud?.id_solicitud_item || '-'}</strong>
                 </p>
                 <div className="row g-2">
@@ -3417,7 +3416,7 @@ const OrdenesCompraTab = ({ openToast }) => {
               <div className="modal-header">
                 <h5 className="modal-title d-flex align-items-center gap-2">
                   <i className="bi bi-pencil-square" aria-hidden="true" />
-                  Editar lineas de orden #{editDetallesModal.orden?.id_orden_compra}
+                  Editar lineas de orden #{formatVisibleOrderNumber(editDetallesModal?.orden)}
                 </h5>
                 <button
                   type="button"
@@ -3712,7 +3711,7 @@ const OrdenesCompraTab = ({ openToast }) => {
               <div className="modal-header">
                 <h5 className="modal-title d-flex align-items-center gap-2">
                   <i className="bi bi-receipt" aria-hidden="true" />
-                  Registrar recepcion de orden #{recepcionModal.orden?.id_orden_compra}
+                  Registrar recepcion de orden #{formatVisibleOrderNumber(recepcionModal?.orden)}
                 </h5>
                 <button
                   type="button"
@@ -3816,7 +3815,7 @@ const OrdenesCompraTab = ({ openToast }) => {
               </div>
               <div className="modal-body">
                 <p className="text-muted mb-2">
-                  Orden <strong>#{supplyModal.orden?.id_orden_compra}</strong> lista para ingreso a inventario.
+                  Orden <strong>#{formatVisibleOrderNumber(supplyModal?.orden)}</strong> lista para ingreso a inventario.
                 </p>
                 <label className="form-label">Observacion (opcional)</label>
                 <textarea
@@ -3859,7 +3858,7 @@ const OrdenesCompraTab = ({ openToast }) => {
               <div className="modal-header">
                 <h5 className="modal-title d-flex align-items-center gap-2">
                   <i className="bi bi-arrow-repeat" aria-hidden="true" />
-                  Continuar orden #{convertPanel.orden?.id_orden_compra || '-'}
+                  Continuar orden #{formatVisibleOrderNumber(convertPanel?.orden)}
                 </h5>
                 <button
                   type="button"

@@ -8,6 +8,32 @@ const withInactivosParam = (path, options) => {
   return `${path}${path.includes('?') ? '&' : '?'}incluir_inactivos=1`;
 };
 
+// AM: filtros opcionales de catalogo para OC (estado + alcance por sucursal/almacen).
+// AM: mantiene compatibilidad porque solo agrega query params cuando vienen en `options`.
+const withItemCatalogFilters = (path, options) => {
+  if (!options || typeof options !== 'object') return path;
+
+  const params = new URLSearchParams();
+  const includeInactivos =
+    options.incluirInactivos === true ||
+    options.includeInactivos === true ||
+    options.include_inactivos === true;
+
+  if (includeInactivos) params.set('incluir_inactivos', '1');
+
+  if (options.id_sucursal !== undefined && options.id_sucursal !== null && options.id_sucursal !== '') {
+    params.set('id_sucursal', String(options.id_sucursal));
+  }
+
+  if (options.id_almacen !== undefined && options.id_almacen !== null && options.id_almacen !== '') {
+    params.set('id_almacen', String(options.id_almacen));
+  }
+
+  const query = params.toString();
+  if (!query) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+};
+
 const withAlmacenesFilters = (path, options) => {
   if (!options || typeof options !== 'object') return path;
 
@@ -193,7 +219,7 @@ export const inventarioService = {
     }),
 
   // ===== INSUMOS =====
-  getInsumos: (options) => apiFetch(withInactivosParam('/insumos', options), 'GET'),
+  getInsumos: (options) => apiFetch(withItemCatalogFilters('/insumos', options), 'GET'),
   // AM: carga almacenes con fallback defensivo al catalogo liviano cuando el endpoint completo falla.
   // AM: evita dejar vacios los modales create/edit de Productos e Insumos por errores en vistas agregadas.
   getAlmacenes: async (options) => {
@@ -257,7 +283,7 @@ export const inventarioService = {
     }),
 
   // ===== PRODUCTOS =====
-  getProductos: (options) => apiFetch(withInactivosParam('/productos', options), 'GET'),
+  getProductos: (options) => apiFetch(withItemCatalogFilters('/productos', options), 'GET'),
   crearProducto: (data) => apiFetch('/productos', 'POST', data),
   actualizarProductoCampo: (id, campo, valor) =>
     apiFetch('/productos', 'PUT', {
