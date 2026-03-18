@@ -223,7 +223,12 @@ const normalizePagination = ({
 
 const RolesPermisosTab = () => {
   const { canAny } = usePermisos();
-  const canEditRolesPermisos = canAny([PERMISSIONS.ROLES_PERMISOS_EDITAR]);
+  const canEditRolesPermisos = canAny([
+    PERMISSIONS.ROLES_PERMISOS_ROLES_EDITAR,
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_GUARDAR,
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_TOGGLE,
+    PERMISSIONS.ROLES_PERMISOS_EDITAR
+  ]);
   const [roles, setRoles] = useState([]);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
   const [selectedRole, setSelectedRole] = useState(null);

@@ -172,15 +172,21 @@ const SUGGESTION_LIMIT = 8;
 
 export default function UsuariosTab({ openToast }) {
   const { canAny } = usePermisos();
+  const canListUsuarios = canAny([PERMISSIONS.USUARIOS_LISTADO_VER, PERMISSIONS.USUARIOS_VER]);
   const canCreateUsuario = canAny([PERMISSIONS.USUARIOS_CREAR]);
   const canEditUsuario = canAny([PERMISSIONS.USUARIOS_EDITAR]);
   const canDeleteUsuario = canAny([PERMISSIONS.USUARIOS_ELIMINAR]);
   const canResetPassword = canAny([PERMISSIONS.USUARIOS_PASSWORD_RESETEAR]);
+  const canReadRolesCatalog = canAny([
+    PERMISSIONS.USUARIOS_ROL_ASIGNAR,
+    PERMISSIONS.USUARIOS_CREAR,
+    PERMISSIONS.USUARIOS_EDITAR
+  ]);
   const canEditFotoUsuario = canAny([
     PERMISSIONS.USUARIOS_IMAGEN_SUBIR,
     PERMISSIONS.USUARIOS_IMAGEN_ELIMINAR
   ]);
-  const canVerDetalleUsuario = canAny([PERMISSIONS.USUARIOS_VER]);
+  const canVerDetalleUsuario = canAny([PERMISSIONS.USUARIOS_DETALLE_VER, PERMISSIONS.USUARIOS_VER]);
 
   const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
@@ -316,11 +322,22 @@ export default function UsuariosTab({ openToast }) {
     setCatalogLoading(true);
     setRolesLoading(true);
     try {
-      const [empleadosResp, personasResp, rolesResp] = await Promise.all([
+      const [empleadosResp, personasResp] = await Promise.all([
         personaService.getEmpleados({ page: 1, limit: 100 }),
-        personaService.getPersonasDetalle({ page: 1, limit: 100 }),
-        personaService.getRolesUsuariosV2(),
+        personaService.getPersonasDetalle({ page: 1, limit: 100 })
       ]);
+
+      let rolesItems = [];
+      if (canReadRolesCatalog) {
+        try {
+          const rolesResp = await personaService.getRolesUsuariosV2();
+          rolesItems = Array.isArray(rolesResp)
+            ? rolesResp
+            : normalizeListResponse(rolesResp).items;
+        } catch (error) {
+          safeToast('ERROR', error.message || 'No se pudo cargar el catalogo de roles', 'danger');
+        }
+      }
 
       if (!mountedRef.current) return;
 
@@ -349,10 +366,6 @@ export default function UsuariosTab({ openToast }) {
         };
       }).filter((row) => row.id);
 
-      const rolesItems = Array.isArray(rolesResp)
-        ? rolesResp
-        : normalizeListResponse(rolesResp).items;
-
       const parsedRoles = rolesItems
         .map((role) => ({
           id_rol: String(role?.id_rol ?? ''),
@@ -369,9 +382,18 @@ export default function UsuariosTab({ openToast }) {
       if (mountedRef.current) setCatalogLoading(false);
       if (mountedRef.current) setRolesLoading(false);
     }
-  }, [safeToast]);
+  }, [canReadRolesCatalog, safeToast]);
 
   const cargarUsuarios = useCallback(async () => {
+    if (!canListUsuarios) {
+      if (mountedRef.current) {
+        setUsuarios([]);
+        setTotal(0);
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     const reqId = ++requestIdRef.current;
 
@@ -394,7 +416,7 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current && reqId === requestIdRef.current) setLoading(false);
     }
-  }, [page, limit, debouncedSearch, safeToast]);
+  }, [canListUsuarios, page, limit, debouncedSearch, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;

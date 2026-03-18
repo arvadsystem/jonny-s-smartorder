@@ -15,6 +15,15 @@ const toNullableCleanString = (value) => {
   return text || null;
 };
 
+const applyRbacContextToPayload = (payload, context) => {
+  const normalizedContext = toCleanString(context).toLowerCase();
+  if (!normalizedContext) return payload;
+  return {
+    ...(isPlainObject(payload) ? payload : {}),
+    rbac_context: normalizedContext
+  };
+};
+
 const buildPersonaPayload = (data = {}, options = {}) => {
   if (!isPlainObject(data)) return {};
   const { nullableOptionals = false } = options;
@@ -184,10 +193,20 @@ export const personaService = {
   getDirecciones: () => apiFetch('/direcciones', 'GET'),
   getCorreos: () => apiFetch('/correos', 'GET'),
 
-  createPersona: (data) => apiFetch('/personas', 'POST', buildPersonaPayload(data)),
+  createPersona: (data, options = {}) =>
+    apiFetch(
+      '/personas',
+      'POST',
+      applyRbacContextToPayload(buildPersonaPayload(data), options?.context)
+    ),
 
   // Alias por compatibilidad con modulos existentes
-  crearPersona: (data) => apiFetch('/personas', 'POST', buildPersonaPayload(data)),
+  crearPersona: (data, options = {}) =>
+    apiFetch(
+      '/personas',
+      'POST',
+      applyRbacContextToPayload(buildPersonaPayload(data), options?.context)
+    ),
 
   updatePersona: (id, data) =>
     apiFetch(`/personas/${id}`, 'PUT', buildPersonaPayload(data, { nullableOptionals: true })),
@@ -222,8 +241,8 @@ export const personaService = {
   getEmpresaById: (id) =>
     apiFetch(`/empresas/${id}`, 'GET'),
 
-  createEmpresa: (data) =>
-    apiFetch('/empresas', 'POST', data),
+  createEmpresa: (data, options = {}) =>
+    apiFetch('/empresas', 'POST', applyRbacContextToPayload(data, options?.context)),
 
   updateEmpresa: async (id, updates = {}) => {
     if (isPlainObject(updates) && Object.prototype.hasOwnProperty.call(updates, 'campo')) {
