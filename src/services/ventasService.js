@@ -22,7 +22,7 @@ const ventasService = {
   getCombosCatalog: () => apiFetch('/ventas/catalogos/combos', 'GET'),
   getRecetasCatalog: () => apiFetch('/ventas/catalogos/recetas', 'GET'),
   getProductosCatalog: () => apiFetch('/productos', 'GET'),
-  getCategoriasCatalog: () => apiFetch('/tipo_departamento', 'GET')
+  getCategoriasCatalog: () => apiFetch('/categorias_productos', 'GET')
 };
 
 export default ventasService;

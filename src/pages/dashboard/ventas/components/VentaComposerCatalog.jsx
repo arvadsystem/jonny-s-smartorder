@@ -1,74 +1,89 @@
+import { useRef, useState } from 'react';
 import { CATALOG_TABS } from '../hooks/useVentaComposer';
 
 export default function VentaComposerCatalog({ composer, catalogLoading }) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef(null);
+
+  const handleSearchToggle = () => {
+    setSearchOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+      } else {
+        composer.setSearch('');
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="ventas-create-modal__catalog">
-      <div className="ventas-create-modal__catalog-tabs" role="tablist" aria-label="Tipos de venta">
-        {CATALOG_TABS.map((tab) => (
+      {/* Tabs + buscador colapsable en la misma fila */}
+      <div className="ventas-catalog__topbar">
+        <div className="ventas-create-modal__catalog-tabs" role="tablist" aria-label="Tipos de venta">
+          {CATALOG_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`ventas-create-modal__catalog-tab ${composer.activeCatalog === tab.key ? 'is-active' : ''}`}
+              aria-pressed={composer.activeCatalog === tab.key}
+              onClick={() => composer.setActiveCatalog(tab.key)}
+            >
+              <i className={tab.icon} /> {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Buscador colapsable */}
+        <div className={`ventas-catalog__search-wrap ${searchOpen ? 'is-open' : ''}`}>
+          {searchOpen && (
+            <input
+              ref={searchInputRef}
+              type="search"
+              className="ventas-catalog__search-input"
+              placeholder={
+                composer.activeCatalog === 'PRODUCTOS'
+                  ? 'Buscar producto...'
+                  : composer.activeCatalog === 'COMBOS'
+                    ? 'Buscar combo...'
+                    : 'Buscar receta...'
+              }
+              value={composer.search}
+              onChange={(e) => composer.setSearch(e.target.value)}
+              onKeyDown={composer.handleSearchKeyDown}
+            />
+          )}
           <button
-            key={tab.key}
             type="button"
-            className={`ventas-create-modal__catalog-tab ${
-              composer.activeCatalog === tab.key ? 'is-active' : ''
-            }`}
-            aria-pressed={composer.activeCatalog === tab.key}
-            onClick={() => composer.setActiveCatalog(tab.key)}
+            className="ventas-catalog__search-btn"
+            onClick={handleSearchToggle}
+            aria-label={searchOpen ? 'Cerrar buscador' : 'Abrir buscador'}
+            title={searchOpen ? 'Cerrar' : 'Buscar'}
           >
-            <i className={tab.icon} /> {tab.label}
+            <i className={searchOpen ? 'bi bi-x-lg' : 'bi bi-search'} />
           </button>
-        ))}
+        </div>
       </div>
 
-      <label
-        className="ventas-create-modal__search"
-        aria-label={
-          composer.activeCatalog === 'PRODUCTOS'
-            ? 'Buscar producto'
-            : composer.activeCatalog === 'COMBOS'
-              ? 'Buscar combo'
-              : 'Buscar receta'
-        }
-      >
-        <i className="bi bi-search" />
-        <input
-          type="search"
-          placeholder={
-            composer.activeCatalog === 'PRODUCTOS'
-              ? 'Buscar producto...'
-              : composer.activeCatalog === 'COMBOS'
-                ? 'Buscar combo...'
-                : 'Buscar receta...'
-          }
-          value={composer.search}
-          onChange={(event) => composer.setSearch(event.target.value)}
-          onKeyDown={composer.handleSearchKeyDown}
-        />
-        <span className="ventas-create-modal__search-hint">/</span>
-      </label>
-
+      {/* Chips de categorías o hint */}
       {composer.activeCatalog === 'PRODUCTOS' ? (
         <div className="ventas-create-modal__chips" aria-label="Categorias">
           <button
             type="button"
-            className={`ventas-create-modal__chip ${
-              composer.activeCategory === 'all' ? 'is-active' : ''
-            }`}
+            className={`ventas-create-modal__chip ${composer.activeCategory === 'all' ? 'is-active' : ''}`}
             onClick={() => composer.setActiveCategory('all')}
           >
             Todos
           </button>
           {composer.categorias.map((categoria) => (
             <button
-              key={categoria.id_tipo_departamento}
+              key={categoria.id_categoria_producto}
               type="button"
-              className={`ventas-create-modal__chip ${
-                String(composer.activeCategory) === String(categoria.id_tipo_departamento)
-                  ? 'is-active'
-                  : ''
-              }`}
-              onClick={() => composer.setActiveCategory(String(categoria.id_tipo_departamento))}
+              className={`ventas-create-modal__chip ${String(composer.activeCategory) === String(categoria.id_categoria_producto) ? 'is-active' : ''}`}
+              onClick={() => composer.setActiveCategory(String(categoria.id_categoria_producto))}
             >
-              {categoria.nombre_departamento}
+              {categoria.nombre_categoria}
             </button>
           ))}
         </div>
@@ -106,11 +121,6 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
               : isCombo
                 ? row.descripcion
                 : row.nombre_producto_base || row.nombre_receta;
-            const itemLabel = isProducto
-              ? row.categoria_label
-              : isCombo
-                ? 'Combos'
-                : row.nombre_producto_base || 'Recetas';
 
             return (
               <button
@@ -124,12 +134,24 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
                   )
                 }
               >
-                <span className="ventas-create-modal__product-pill">{itemLabel}</span>
-                <strong>{itemName}</strong>
-                <span className="ventas-create-modal__product-price">
-                  {composer.formatCurrency(row.precio)}
-                </span>
-                <span className="ventas-create-modal__product-desc">{itemDesc}</span>
+                <div className="ventas-create-modal__product-image">
+                  {row.imagen_principal_url ? (
+                    <img src={row.imagen_principal_url} alt={itemName} loading="lazy" />
+                  ) : (
+                    <div className="ventas-create-modal__product-image-placeholder" />
+                  )}
+                </div>
+                <div className="ventas-create-modal__product-info">
+                  <div className="ventas-create-modal__product-title">
+                    <strong>{itemName}</strong> {isProducto && itemDesc && <span>{itemDesc}</span>}
+                  </div>
+                  <div className="ventas-create-modal__product-action-row">
+                    <span className="ventas-create-modal__product-price">
+                      {composer.formatCurrency(row.precio)}
+                    </span>
+                    <span className="ventas-create-modal__product-add-btn">Añadir</span>
+                  </div>
+                </div>
               </button>
             );
           })

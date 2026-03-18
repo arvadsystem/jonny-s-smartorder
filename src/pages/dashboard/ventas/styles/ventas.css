@@ -487,45 +487,109 @@
   border: 1px solid rgba(157, 150, 112, 0.18);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.96);
-  padding: 14px;
-  display: grid;
-  gap: 8px;
-  min-height: 138px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 120px;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  overflow: hidden;
 }
 
 .ventas-create-modal__product-card:hover {
   transform: translateY(-2px);
   border-color: rgba(154, 83, 25, 0.34);
-  box-shadow: 0 12px 20px rgba(18, 7, 3, 0.08);
+  box-shadow: 0 8px 16px rgba(18, 7, 3, 0.06);
 }
 
-.ventas-create-modal__product-pill {
-  width: fit-content;
-  max-width: 100%;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(77, 132, 183, 0.14);
-  color: #326993;
-  font-size: 0.72rem;
-  font-weight: 800;
+.ventas-create-modal__product-image {
+  width: 100%;
+  height: 100px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(230, 215, 195, 0.8), rgba(210, 190, 165, 0.4));
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.ventas-create-modal__product-card strong {
-  font-size: 1.1rem;
+.ventas-create-modal__product-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ventas-create-modal__product-image-placeholder {
+  width: 100%;
+  height: 100%;
+  opacity: 0.5;
+}
+
+.ventas-create-modal__product-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.ventas-create-modal__product-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   line-height: 1.2;
+}
+
+.ventas-create-modal__product-title strong {
+  font-size: 1rem;
   color: #2e1a11;
+  font-weight: 800;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ventas-create-modal__product-title span {
+  font-size: 0.85rem;
+  color: rgba(82, 44, 34, 0.68);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ventas-create-modal__product-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 4px;
 }
 
 .ventas-create-modal__product-price {
   color: #9a5319;
-  font-size: 1.6rem;
+  font-size: 1.3rem;
   font-weight: 800;
 }
 
-.ventas-create-modal__product-desc {
-  color: rgba(82, 44, 34, 0.68);
-  font-size: 0.86rem;
+.ventas-create-modal__product-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(154, 83, 25, 0.3);
+  background: rgba(248, 244, 238, 0.95);
+  color: rgba(117, 85, 61, 0.9);
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.ventas-create-modal__product-card:hover .ventas-create-modal__product-add-btn {
+  background: #9a5319;
+  color: #fff;
+  border-color: #9a5319;
 }
 
 .ventas-create-modal__empty {
@@ -822,7 +886,7 @@
   background: linear-gradient(180deg, rgba(244, 238, 232, 0), #f4eee8 18%, #f4eee8 100%);
 }
 
-.ventas-create-modal__totals > div {
+.ventas-create-modal__totals>div {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -985,7 +1049,7 @@
   background: rgba(250, 247, 243, 0.92);
 }
 
-.ventas-detail-modal__totals-card > div {
+.ventas-detail-modal__totals-card>div {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1105,7 +1169,7 @@
   color: #5d3722;
 }
 
-.ventas-pedidos__lane-head > div {
+.ventas-pedidos__lane-head>div {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -1405,4 +1469,310 @@
   .ventas-pedidos__lane {
     padding: 16px;
   }
+}
+
+/* ── Topbar del catálogo: tabs + buscador colapsable en una fila ── */
+.ventas-catalog__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ventas-catalog__topbar .ventas-create-modal__catalog-tabs {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 0;
+}
+
+/* Buscador colapsable */
+.ventas-catalog__search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ventas-catalog__search-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 12px;
+  background: rgba(249, 245, 240, 0.96);
+  color: rgba(117, 85, 61, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.ventas-catalog__search-btn:hover {
+  background: rgba(184, 104, 33, 0.1);
+  border-color: rgba(154, 83, 25, 0.4);
+  color: #9a5319;
+}
+
+.ventas-catalog__search-input {
+  width: 180px;
+  padding: 7px 12px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color 160ms ease, width 200ms ease;
+}
+
+.ventas-catalog__search-input:focus {
+  border-color: rgba(154, 83, 25, 0.5);
+}
+
+/* Grid del catálogo: siempre muestra ~2 filas (6 ítems) y luego scroll */
+.ventas-create-modal__products {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  padding-right: 4px;
+  max-height: calc(2 * (100px + 12px + 70px));
+}
+
+/* ── Summary compacto ── */
+.ventas-create-modal__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: linear-gradient(180deg, #fbf8f4, #f4eee8);
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* Fila superior: cliente + método de pago */
+.ventas-summary__top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Botón de cliente */
+.ventas-summary__client-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ventas-summary__client-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #2f1a10;
+  font-size: 0.88rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: border-color 160ms ease;
+}
+
+.ventas-summary__client-btn:hover {
+  border-color: rgba(154, 83, 25, 0.38);
+}
+
+.ventas-summary__client-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+/* Botón de método de pago */
+.ventas-summary__payment-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.ventas-summary__payment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #9a5319, #b86821);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: opacity 160ms ease;
+}
+
+.ventas-summary__payment-btn:hover {
+  opacity: 0.88;
+}
+
+.ventas-summary__chevron {
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+/* Dropdown compartido (cliente y pago) */
+.ventas-summary__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  min-width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 32px rgba(18, 7, 3, 0.14);
+}
+
+.ventas-summary__dropdown--right {
+  left: auto;
+  right: 0;
+}
+
+/* Campos descuento + efectivo en una fila */
+.ventas-summary__fields-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* Carrito: ocupa el espacio restante con scroll */
+.ventas-create-modal__cart {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.ventas-create-modal__cart-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Items del carrito: compactos (icono thumb + nombre + controles en una fila) ── */
+.ventas-cart__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(157, 150, 112, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.ventas-cart__item-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(230, 215, 195, 0.8), rgba(210, 190, 165, 0.4));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ventas-cart__item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ventas-cart__item-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+}
+
+.ventas-cart__item-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ventas-cart__item-name {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #2f1a10;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ventas-cart__item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ventas-cart__item-row .ventas-create-modal__qty-control {
+  gap: 4px;
+}
+
+.ventas-cart__item-row .ventas-create-modal__qty-control button {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+
+.ventas-cart__item-row .ventas-create-modal__qty-control span {
+  min-width: 16px;
+  font-size: 0.85rem;
+}
+
+.ventas-cart__item-row .ventas-create-modal__line-total {
+  flex: 1 1 auto;
+  text-align: right;
+  font-size: 1rem;
+  color: #9a5319;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ventas-cart__item-row .ventas-create-modal__remove-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+/* Nota para cocina en items compactos */
+.ventas-cart__item-body .ventas-create-modal__note-input {
+  font-size: 0.8rem;
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+
+/* Totales (footer) siempre visible */
+.ventas-create-modal__totals {
+  padding-top: 10px;
+  border-top: 1px solid rgba(157, 150, 112, 0.18);
+  flex-shrink: 0;
 }

@@ -95,7 +95,7 @@ export const useVentas = () => {
         .map(normalizeCategoriaRecord)
         .filter((categoria) => categoria.estado)
         .sort((a, b) =>
-          a.nombre_departamento.localeCompare(b.nombre_departamento, 'es', {
+          a.nombre_categoria.localeCompare(b.nombre_categoria, 'es', {
             sensitivity: 'base'
           })
         );

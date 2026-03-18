@@ -19,6 +19,7 @@ const buildInitialState = () => ({
   activeCategory: 'all',
   selectedClient: 'cf',
   clientPickerOpen: false,
+  paymentPickerOpen: false,
   paymentMethod: 'efectivo',
   discount: '0',
   cashReceived: '',
@@ -148,7 +149,7 @@ export const useVentaComposer = ({
     const categoryFiltered = (Array.isArray(productos) ? productos : []).filter((producto) =>
       categoryValue === 'all'
         ? true
-        : Number(producto.id_tipo_departamento ?? 0) === Number(categoryValue)
+        : Number(producto.id_categoria_producto ?? 0) === Number(categoryValue)
     );
 
     return filterBySearch(categoryFiltered, deferredSearch, [
@@ -357,6 +358,8 @@ export const useVentaComposer = ({
       }),
     setSearch: (value) => setPartialState({ search: value }),
     setActiveCategory: (value) => setPartialState({ activeCategory: value }),
+    paymentPickerOpen: state.paymentPickerOpen,
+    setPaymentPickerOpen: (value) => setPartialState({ paymentPickerOpen: value }),
     setClientPickerOpen: (value) => setPartialState({ clientPickerOpen: value }),
     setSelectedClient: (value) =>
       setPartialState({
