@@ -1,0 +1,251 @@
+.personas-page .empleados-card.personas-emp-card {
+  min-height: 0;
+  height: auto;
+}
+
+@media (hover: hover) {
+  .empleados-card {
+    transition: transform 250ms ease, box-shadow 250ms ease, filter 250ms ease;
+    will-change: transform, box-shadow;
+  }
+
+  .empleados-card:hover {
+    transform: translateY(-6px) scale(1.015);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
+    cursor: pointer;
+  }
+
+  .empleados-card:active {
+    transform: translateY(-2px) scale(1.005);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.empleados-card .empleados-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.76rem;
+}
+
+.empleados-card .empleados-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.empleados-card .empleados-card__identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.62rem;
+}
+
+.empleados-card .empleados-card__avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  background: rgba(243, 241, 216, 0.76);
+  color: rgba(82, 44, 34, 0.88);
+  font-size: 0.94rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.empleados-card .empleados-card__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.empleados-card .empleados-card__title-wrap {
+  min-width: 0;
+}
+
+.empleados-card .empleados-card__name {
+  -webkit-line-clamp: 2;
+  min-height: 1.2em;
+}
+
+.empleados-card .empleados-card__code {
+  display: inline-block;
+  margin-top: 0.16rem;
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.empleados-card .empleados-card__badge {
+  flex-shrink: 0;
+}
+
+.empleados-card .empleados-card__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem 0.72rem;
+}
+
+.empleados-card .empleados-card__meta-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.06rem;
+}
+
+.empleados-card .empleados-card__meta-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  color: rgba(82, 44, 34, 0.66);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.empleados-card .empleados-card__meta-label i {
+  color: rgba(122, 30, 36, 0.74);
+  font-size: 0.82rem;
+}
+
+.empleados-card .empleados-card__meta-value {
+  color: rgba(23, 8, 10, 0.92);
+  font-size: 0.79rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empleados-card .empleados-card__footer {
+  margin-top: 0.28rem;
+  border-top: 1px solid rgba(157, 150, 112, 0.28);
+  padding-top: 0.56rem;
+  min-height: 0;
+}
+
+.empleados-card .empleados-card__summary {
+  line-height: 1.16;
+}
+
+.empleados-card .empleados-card__summary span {
+  font-size: 0.77rem;
+  font-weight: 800;
+}
+
+.empleados-card .empleados-card__summary small {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.67rem;
+  color: rgba(82, 44, 34, 0.76);
+  font-weight: 700;
+}
+
+.empleados-card .empleados-card__actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.38rem;
+  overflow: visible;
+}
+
+.empleados-card .empleados-card__icon-action {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--c-text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  transition: background 250ms ease, border-color 250ms ease, box-shadow 250ms ease, transform 250ms ease;
+}
+
+.empleados-card .empleados-card__icon-action-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: currentColor;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  transform: translateX(-4px);
+  transition: max-width 250ms ease, opacity 180ms ease, transform 250ms ease;
+}
+
+.empleados-card .empleados-card__icon-action--edit {
+  color: #cdbb63;
+}
+
+.empleados-card .empleados-card__icon-action--delete {
+  color: var(--c-accent);
+}
+
+.empleados-card .empleados-card__icon-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(157, 150, 112, 0.6);
+  box-shadow: 0 2px 6px rgba(var(--c-shadow-rgb), 0.14);
+  transform: translateY(-2px) scale(1.06);
+}
+
+.empleados-card .empleados-card__icon-action:active:not(:disabled) {
+  transform: translateY(-1px) scale(1.02);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .empleados-card .empleados-card__actions .empleados-card__icon-action {
+    transform-origin: right center;
+  }
+
+  .empleados-card .empleados-card__icon-action:hover:not(:disabled),
+  .empleados-card .empleados-card__icon-action:focus-visible:not(:disabled) {
+    width: 128px;
+    min-width: 128px;
+    justify-content: flex-start;
+    padding: 0 0.82rem;
+    gap: 0.42rem;
+  }
+
+  .empleados-card .empleados-card__icon-action:hover:not(:disabled) .empleados-card__icon-action-label,
+  .empleados-card .empleados-card__icon-action:focus-visible:not(:disabled) .empleados-card__icon-action-label {
+    max-width: 84px;
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.empleados-card .empleados-card__icon-action:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+@media (max-width: 767.98px) {
+  .empleados-card .empleados-card__meta {
+    grid-template-columns: 1fr;
+  }
+
+  .empleados-card .empleados-card__footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+  }
+
+  .empleados-card .empleados-card__actions {
+    justify-content: flex-end;
+  }
+}
