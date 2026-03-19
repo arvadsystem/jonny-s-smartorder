@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Select from "react-select";
 import { personaService } from "../../../services/personasService";
 import sucursalesService from "../../../services/sucursalesService";
 import EntityTable from "../../../components/ui/EntityTable";
@@ -13,6 +14,7 @@ import useSearchSuggestionsDropdown, {
   normalizeSearchText,
 } from "./components/common/useSearchSuggestionsDropdown";
 import "./components/common/crud-modal-theme.css";
+import "./components/empleados/empleados-modal.css";
 
 const emptyForm = {
   id_persona: "",
@@ -28,6 +30,76 @@ const emptyForm = {
 const createInitialFiltersDraft = () => ({
   estadoFiltro: "todos",
   sortBy: "recientes",
+});
+
+const buildEmpleadosSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: hasError
+      ? "var(--bs-danger, #dc3545)"
+      : state.isFocused
+        ? "rgba(158, 105, 61, 0.72)"
+        : "rgba(206, 196, 177, 0.9)",
+    boxShadow: state.isFocused
+      ? "0 0 0 0.2rem rgba(158, 105, 61, 0.18)"
+      : "none",
+    backgroundColor: "#fff",
+    "&:hover": {
+      borderColor: hasError
+        ? "var(--bs-danger, #dc3545)"
+        : "rgba(158, 105, 61, 0.72)",
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: "2px 12px",
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: "rgba(98, 83, 73, 0.75)",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: "#2f1a10",
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 4,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? "rgba(99, 58, 37, 0.9)" : "rgba(99, 58, 37, 0.65)",
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: "rgba(120, 84, 66, 0.72)",
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 3000,
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: "1px solid rgba(206, 196, 177, 0.9)",
+    overflow: "hidden",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? "rgba(243, 238, 226, 0.95)"
+      : state.isSelected
+        ? "rgba(236, 222, 205, 0.95)"
+        : "#fff",
+    color: "#2f1a10",
+  }),
 });
 
 const normalizeListResponse = (resp) => {
@@ -92,6 +164,49 @@ const toDateInputValue = (value) => {
   if (Number.isNaN(date.getTime())) return "";
   return date.toISOString().slice(0, 10);
 };
+
+const REFERENCE_PHONE_DIGITS = 8;
+const ALLOWED_EDITING_KEYS = new Set([
+  "Backspace",
+  "Delete",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Tab",
+  "Home",
+  "End",
+  "Enter",
+]);
+const REFERENCE_NAME_CHAR_REGEX = /^[\p{L}\s]$/u;
+
+const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
+
+const resolveCaretFromDigitIndex = (formattedValue, digitIndex) => {
+  if (!formattedValue) return 0;
+  if (digitIndex <= 0) return 0;
+
+  let seenDigits = 0;
+  for (let index = 0; index < formattedValue.length; index += 1) {
+    const char = formattedValue[index];
+    if (char >= "0" && char <= "9") {
+      seenDigits += 1;
+      if (seenDigits >= digitIndex) return index + 1;
+    }
+  }
+
+  return formattedValue.length;
+};
+
+const formatReferencePhone = (value) => {
+  const digits = digitsOnly(value).slice(0, REFERENCE_PHONE_DIGITS);
+  if (!digits) return "";
+  if (digits.length < 4) return digits;
+  if (digits.length === 4) return `${digits}-`;
+  return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+};
+
+const sanitizeReferenceName = (value) => String(value ?? "").replace(/[^\p{L}\s]/gu, "");
 
 const resolveCardsPerPage = (width) => {
   if (width >= 1200) return 6;
@@ -366,6 +481,8 @@ export default function Empleados({ openToast }) {
   const catalogosCargadosRef = useRef(false);
   const panelRef = useRef(null);
   const imageInputRef = useRef(null);
+  const telefonoReferenciaInputRef = useRef(null);
+  const telefonoReferenciaCaretRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -410,6 +527,46 @@ export default function Empleados({ openToast }) {
         };
       }),
     [sucursales]
+  );
+
+  const personaSelectOptions = useMemo(
+    () =>
+      personaOptions.map((item) => ({
+        value: item.id,
+        label: item.dni ? `${item.label} | DNI: ${item.dni}` : item.label,
+      })),
+    [personaOptions]
+  );
+
+  const personaSelectValue = useMemo(() => {
+    const selectedId = String(form.id_persona ?? "");
+    if (!selectedId) return null;
+    return personaSelectOptions.find((option) => option.value === selectedId) || null;
+  }, [form.id_persona, personaSelectOptions]);
+
+  const personaSelectStyles = useMemo(
+    () => buildEmpleadosSelectStyles(Boolean(errors.id_persona)),
+    [errors.id_persona]
+  );
+
+  const sucursalSelectOptions = useMemo(
+    () =>
+      sucursalOptions.map((item) => ({
+        value: item.id,
+        label: item.label,
+      })),
+    [sucursalOptions]
+  );
+
+  const sucursalSelectValue = useMemo(() => {
+    const selectedId = String(form.id_sucursal ?? "");
+    if (!selectedId) return null;
+    return sucursalSelectOptions.find((option) => option.value === selectedId) || null;
+  }, [form.id_sucursal, sucursalSelectOptions]);
+
+  const sucursalSelectStyles = useMemo(
+    () => buildEmpleadosSelectStyles(Boolean(errors.id_sucursal)),
+    [errors.id_sucursal]
   );
 
   const selectedPersona = useMemo(() => {
@@ -556,7 +713,7 @@ export default function Empleados({ openToast }) {
           : String(empleado.salario_base),
       cargo: getCargo(empleado),
       nombre_referencia: getNombreReferencia(empleado),
-      telefono_referencia: getTelefonoReferencia(empleado),
+      telefono_referencia: formatReferencePhone(getTelefonoReferencia(empleado)),
       estado: isActivo(empleado),
     }),
     [resolvePersonaId, resolveSucursalId]
@@ -687,6 +844,20 @@ export default function Empleados({ openToast }) {
     });
   }, [showModal, editId, empleados, buildFormFromEmpleado, resolveEmpleadoImage]);
 
+  useLayoutEffect(() => {
+    if (telefonoReferenciaCaretRef.current === null) return;
+    const input = telefonoReferenciaInputRef.current;
+    if (!input) return;
+
+    const nextCaret = telefonoReferenciaCaretRef.current;
+    telefonoReferenciaCaretRef.current = null;
+    try {
+      input.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+      // Some browsers can throw when the element is not focusable.
+    }
+  }, [form.telefono_referencia]);
+
   useEffect(() => {
     if (!detailEmpleado) return;
 
@@ -703,6 +874,132 @@ export default function Empleados({ openToast }) {
       setDetailEmpleado(refreshed);
     }
   }, [empleados, detailEmpleado]);
+
+  const handleNombreReferenciaChange = useCallback((event) => {
+    const sanitized = sanitizeReferenceName(event.target.value);
+    setForm((state) => ({ ...state, nombre_referencia: sanitized }));
+    setErrors((state) => ({ ...state, nombre_referencia: undefined }));
+  }, []);
+
+  const handleNombreReferenciaBeforeInput = useCallback((event) => {
+    const data = event?.nativeEvent?.data ?? event?.data;
+    if (!data) return;
+    if (!REFERENCE_NAME_CHAR_REGEX.test(data)) {
+      event.preventDefault();
+    }
+  }, []);
+
+  const handleNombreReferenciaKeyDown = useCallback((event) => {
+    if (event.ctrlKey || event.metaKey) return;
+    if (ALLOWED_EDITING_KEYS.has(event.key)) return;
+    if (event.key.length !== 1) return;
+    if (!REFERENCE_NAME_CHAR_REGEX.test(event.key)) {
+      event.preventDefault();
+    }
+  }, []);
+
+  const handleNombreReferenciaPaste = useCallback(
+    (event) => {
+      event.preventDefault();
+      const pasted = String(event.clipboardData?.getData("text") ?? "");
+      const current = String(form.nombre_referencia ?? "");
+      const input = event.currentTarget;
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : current.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const merged = `${current.slice(0, selectionStart)}${pasted}${current.slice(selectionEnd)}`;
+      const sanitized = sanitizeReferenceName(merged).slice(0, 120);
+      setForm((state) => ({ ...state, nombre_referencia: sanitized }));
+      setErrors((state) => ({ ...state, nombre_referencia: undefined }));
+    },
+    [form.nombre_referencia]
+  );
+
+  const handleTelefonoReferenciaChange = useCallback((event) => {
+    const inputValue = event.target.value ?? "";
+    const caretPosition = event.target.selectionStart ?? inputValue.length;
+    const digitsBeforeCaret = digitsOnly(inputValue.slice(0, caretPosition)).length;
+    const raw = digitsOnly(inputValue).slice(0, REFERENCE_PHONE_DIGITS);
+    const formatted = formatReferencePhone(raw);
+
+    telefonoReferenciaCaretRef.current = resolveCaretFromDigitIndex(
+      formatted,
+      Math.min(digitsBeforeCaret, raw.length)
+    );
+
+    setForm((state) => ({ ...state, telefono_referencia: formatted }));
+    setErrors((state) => ({ ...state, telefono_referencia: undefined }));
+  }, []);
+
+  const handleTelefonoReferenciaBeforeInput = useCallback(
+    (event) => {
+      const data = event?.nativeEvent?.data ?? event?.data;
+      if (!data) return;
+      if (/\D/.test(data)) {
+        event.preventDefault();
+        return;
+      }
+
+      const input = event.currentTarget;
+      const currentFormatted = String(form.telefono_referencia ?? "");
+      const currentRaw = digitsOnly(currentFormatted);
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+      const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+      const nextLength = currentRaw.length - (rawEnd - rawStart) + digitsOnly(data).length;
+      if (nextLength > REFERENCE_PHONE_DIGITS) {
+        event.preventDefault();
+      }
+    },
+    [form.telefono_referencia]
+  );
+
+  const handleTelefonoReferenciaKeyDown = useCallback(
+    (event) => {
+      if (event.ctrlKey || event.metaKey) return;
+      if (ALLOWED_EDITING_KEYS.has(event.key)) return;
+      if (event.key.length !== 1) return;
+      if (!/\d/.test(event.key)) {
+        event.preventDefault();
+        return;
+      }
+
+      const input = event.currentTarget;
+      const currentFormatted = String(form.telefono_referencia ?? "");
+      const currentRaw = digitsOnly(currentFormatted);
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+      const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+      const nextLength = currentRaw.length - (rawEnd - rawStart) + 1;
+      if (nextLength > REFERENCE_PHONE_DIGITS) {
+        event.preventDefault();
+      }
+    },
+    [form.telefono_referencia]
+  );
+
+  const handleTelefonoReferenciaPaste = useCallback(
+    (event) => {
+      event.preventDefault();
+      const pastedRaw = digitsOnly(event.clipboardData?.getData("text") ?? "");
+      const currentFormatted = String(form.telefono_referencia ?? "");
+      const currentRaw = digitsOnly(currentFormatted);
+      const input = event.currentTarget;
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+      const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+      const mergedRaw = `${currentRaw.slice(0, rawStart)}${pastedRaw}${currentRaw.slice(rawEnd)}`.slice(
+        0,
+        REFERENCE_PHONE_DIGITS
+      );
+      telefonoReferenciaCaretRef.current = formatReferencePhone(mergedRaw).length;
+      setForm((state) => ({ ...state, telefono_referencia: formatReferencePhone(mergedRaw) }));
+      setErrors((state) => ({ ...state, telefono_referencia: undefined }));
+    },
+    [form.telefono_referencia]
+  );
 
   const sanitizeForm = () => ({
     id_persona: Number.parseInt(String(form.id_persona), 10),
@@ -726,6 +1023,15 @@ export default function Empleados({ openToast }) {
     if (form.salario_base === "") currentErrors.salario_base = "Requerido";
     if (Number.isNaN(payload.salario_base) || payload.salario_base < 0) {
       currentErrors.salario_base = "Debe ser un numero valido";
+    }
+    const referenceName = String(form.nombre_referencia ?? "").trim();
+    if (referenceName && !/^[\p{L}\s]+$/u.test(referenceName)) {
+      currentErrors.nombre_referencia = "Solo letras y espacios";
+    }
+
+    const referencePhoneDigits = digitsOnly(form.telefono_referencia);
+    if (referencePhoneDigits.length > 0 && referencePhoneDigits.length !== REFERENCE_PHONE_DIGITS) {
+      currentErrors.telefono_referencia = "Formato invalido";
     }
 
     setErrors(currentErrors);
@@ -1376,18 +1682,42 @@ export default function Empleados({ openToast }) {
             <div className="row g-3 crud-modal__grid">
               <div className="col-12">
                 <label className="form-label text-light text-opacity-75">Persona</label>
-                <select
-                  className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
-                  value={form.id_persona}
-                  onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
-                >
-                  <option value="">Seleccione</option>
-                  {personaOptions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
-                    </option>
-                  ))}
-                </select>
+                {drawerMode === "create" ? (
+                  <Select
+                    inputId="empleado-persona-select"
+                    className={`empleados-select ${errors.id_persona ? "is-invalid" : ""}`}
+                    classNamePrefix="empleados-select"
+                    placeholder="Seleccione"
+                    isSearchable
+                    isClearable
+                    options={personaSelectOptions}
+                    value={personaSelectValue}
+                    onChange={(option) => {
+                      setForm((state) => ({
+                        ...state,
+                        id_persona: option?.value ? String(option.value) : "",
+                      }));
+                      setErrors((state) => ({ ...state, id_persona: undefined }));
+                    }}
+                    styles={personaSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    menuPosition="fixed"
+                    isDisabled={actionLoading || Boolean(deletingId)}
+                  />
+                ) : (
+                  <select
+                    className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
+                    value={form.id_persona}
+                    onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
+                  >
+                    <option value="">Seleccione</option>
+                    {personaOptions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
               </div>
 
@@ -1406,18 +1736,42 @@ export default function Empleados({ openToast }) {
 
               <div className="col-12">
                 <label className="form-label text-light text-opacity-75">Sucursal</label>
-                <select
-                  className={`form-select ${errors.id_sucursal ? "is-invalid" : ""}`}
-                  value={form.id_sucursal}
-                  onChange={(event) => setForm((state) => ({ ...state, id_sucursal: event.target.value }))}
-                >
-                  <option value="">Seleccione</option>
-                  {sucursalOptions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
+                {drawerMode === "create" ? (
+                  <Select
+                    inputId="empleado-sucursal-select"
+                    className={`empleados-select ${errors.id_sucursal ? "is-invalid" : ""}`}
+                    classNamePrefix="empleados-select"
+                    placeholder="Seleccione"
+                    isSearchable
+                    isClearable
+                    options={sucursalSelectOptions}
+                    value={sucursalSelectValue}
+                    onChange={(option) => {
+                      setForm((state) => ({
+                        ...state,
+                        id_sucursal: option?.value ? String(option.value) : "",
+                      }));
+                      setErrors((state) => ({ ...state, id_sucursal: undefined }));
+                    }}
+                    styles={sucursalSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    menuPosition="fixed"
+                    isDisabled={actionLoading || Boolean(deletingId)}
+                  />
+                ) : (
+                  <select
+                    className={`form-select ${errors.id_sucursal ? "is-invalid" : ""}`}
+                    value={form.id_sucursal}
+                    onChange={(event) => setForm((state) => ({ ...state, id_sucursal: event.target.value }))}
+                  >
+                    <option value="">Seleccione</option>
+                    {sucursalOptions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 {errors.id_sucursal && <div className="invalid-feedback d-block">{errors.id_sucursal}</div>}
               </div>
 
@@ -1437,24 +1791,34 @@ export default function Empleados({ openToast }) {
                 <label className="form-label text-light text-opacity-75">Nombre referencia</label>
                 <input
                   type="text"
-                  className="form-control"
+                  className={`form-control ${errors.nombre_referencia ? "is-invalid" : ""}`}
                   value={form.nombre_referencia}
-                  onChange={(event) => setForm((state) => ({ ...state, nombre_referencia: event.target.value }))}
+                  onChange={handleNombreReferenciaChange}
+                  onBeforeInput={handleNombreReferenciaBeforeInput}
+                  onKeyDown={handleNombreReferenciaKeyDown}
+                  onPaste={handleNombreReferenciaPaste}
                   placeholder="Nombre del contacto de referencia"
                   maxLength={120}
                 />
+                {errors.nombre_referencia && <div className="invalid-feedback d-block">{errors.nombre_referencia}</div>}
               </div>
 
               <div className="col-12 col-md-6">
                 <label className="form-label text-light text-opacity-75">Telefono referencia</label>
                 <input
+                  ref={telefonoReferenciaInputRef}
                   type="text"
-                  className="form-control"
+                  inputMode="numeric"
+                  className={`form-control ${errors.telefono_referencia ? "is-invalid" : ""}`}
                   value={form.telefono_referencia}
-                  onChange={(event) => setForm((state) => ({ ...state, telefono_referencia: event.target.value }))}
+                  onChange={handleTelefonoReferenciaChange}
+                  onBeforeInput={handleTelefonoReferenciaBeforeInput}
+                  onKeyDown={handleTelefonoReferenciaKeyDown}
+                  onPaste={handleTelefonoReferenciaPaste}
                   placeholder="Numero de referencia"
-                  maxLength={40}
+                  maxLength={9}
                 />
+                {errors.telefono_referencia && <div className="invalid-feedback d-block">{errors.telefono_referencia}</div>}
               </div>
 
               <div className="col-12 col-md-6">

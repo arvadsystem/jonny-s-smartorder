@@ -183,6 +183,88 @@ const formatPrintDateTime = () =>
     minute: "2-digit",
   });
 
+const loadImageFromSrc = (src) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("No se pudo cargar el logo"));
+    image.src = src;
+  });
+
+const isLightNeutralPixel = (r, g, b, a) => {
+  if (a <= 10) return true;
+  const maxChannel = Math.max(r, g, b);
+  const minChannel = Math.min(r, g, b);
+  const chroma = maxChannel - minChannel;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance >= 172 && chroma <= 22;
+};
+
+const buildSheetLogoSrc = async (src) => {
+  if (!src || typeof document === "undefined") return src;
+
+  try {
+    const image = await loadImageFromSrc(src);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) return src;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return src;
+
+    ctx.drawImage(image, 0, 0, width, height);
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const { data } = imageData;
+    const visited = new Uint8Array(width * height);
+    const queue = [];
+
+    const pushPixel = (x, y) => {
+      const pixelIndex = y * width + x;
+      if (visited[pixelIndex]) return;
+
+      const offset = pixelIndex * 4;
+      if (!isLightNeutralPixel(data[offset], data[offset + 1], data[offset + 2], data[offset + 3])) return;
+
+      visited[pixelIndex] = 1;
+      queue.push(pixelIndex);
+    };
+
+    for (let x = 0; x < width; x += 1) {
+      pushPixel(x, 0);
+      pushPixel(x, height - 1);
+    }
+
+    for (let y = 1; y < height - 1; y += 1) {
+      pushPixel(0, y);
+      pushPixel(width - 1, y);
+    }
+
+    while (queue.length) {
+      const pixelIndex = queue.pop();
+      const offset = pixelIndex * 4;
+      data[offset + 3] = 0;
+
+      const x = pixelIndex % width;
+      const y = Math.floor(pixelIndex / width);
+
+      if (x > 0) pushPixel(x - 1, y);
+      if (x < width - 1) pushPixel(x + 1, y);
+      if (y > 0) pushPixel(x, y - 1);
+      if (y < height - 1) pushPixel(x, y + 1);
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return src;
+  }
+};
+
 const renderPrintRows = (rows) =>
   rows
     .map(
@@ -198,11 +280,20 @@ const renderPrintRows = (rows) =>
 const buildEmployeePrintTemplate = ({
   logoSrc,
   nombre,
+  employeeCode,
   imageSrc,
   fechaImpresion,
   leftRows,
   rightRows,
-}) => `<!doctype html>
+  intent = "print",
+}) => {
+  const isPdfIntent = intent === "pdf";
+  const sheetIntentTitle = isPdfIntent ? "Exportacion PDF" : "Impresion";
+  const sheetIntentHint = isPdfIntent
+    ? "Use el dialogo del navegador y seleccione Guardar como PDF."
+    : "Documento listo para impresion.";
+
+  return `<!doctype html>
 <html lang="es">
   <head>
     <meta charset="utf-8" />
@@ -243,7 +334,7 @@ const buildEmployeePrintTemplate = ({
         display: flex;
         align-items: center;
         min-height: 102px;
-        padding: 16px 18px 14px 120px;
+        padding: 16px 18px 14px 124px;
         background: #fff;
         break-inside: avoid-page;
         page-break-inside: avoid;
@@ -259,23 +350,21 @@ const buildEmployeePrintTemplate = ({
       }
       .header-logo {
         position: absolute;
-        left: 10px;
-        top: 2px;
-        width: 100px;
-        height: 100px;
-        border-radius: 0;
-        background: transparent;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: visible;
+        left: 16px;
+        top: 23px;
         z-index: 2;
-      }
-      .header-logo img {
-        width: 100%;
-        height: 100%;
+        display: block;
+        width: auto;
+        height: 56px;
+        max-width: 96px;
+        max-height: 56px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
         object-fit: contain;
-        filter: drop-shadow(0 1.5px 1px rgba(24, 9, 6, 0.22));
+        object-position: center;
       }
       .header-copy {
         position: relative;
@@ -320,6 +409,14 @@ const buildEmployeePrintTemplate = ({
         color: #2f1710;
         font-weight: 800;
       }
+      .employee-code {
+        margin: 4px auto 0;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        color: #6f4c3b;
+      }
       .image-wrap {
         margin: 6px auto 10px;
         width: 170px;
@@ -353,6 +450,21 @@ const buildEmployeePrintTemplate = ({
         height: 2px;
         margin: 0 auto 10px;
         background: linear-gradient(90deg, transparent 0%, #9f5d3d 20%, #9f5d3d 80%, transparent 100%);
+      }
+      .intent-badge {
+        margin: -2px auto 8px;
+        max-width: 86%;
+        text-align: center;
+        font-size: 12px;
+        line-height: 1.35;
+        color: #5f4334;
+        background: #f0e5d8;
+        border: 1px solid #dbc9b6;
+        border-radius: 10px;
+        padding: 6px 10px;
+      }
+      .intent-badge strong {
+        font-weight: 800;
       }
       .grid {
         display: grid;
@@ -450,9 +562,7 @@ const buildEmployeePrintTemplate = ({
   <body>
     <main class="sheet">
       <header class="header">
-        <div class="header-logo">
-          ${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="Jonny's SmartOrder" />` : ""}
-        </div>
+        ${logoSrc ? `<img class="header-logo" src="${escapeHtml(logoSrc)}" alt="Jonny's SmartOrder" />` : ""}
         <div class="header-copy">
           <h1>Detalle de Empleado</h1>
           <p>Informacion completa del colaborador</p>
@@ -461,6 +571,7 @@ const buildEmployeePrintTemplate = ({
       <section class="content">
         <div class="eyebrow">Empleado</div>
         <h2 class="employee-name">${escapeHtml(nombre)}</h2>
+        <p class="employee-code">${escapeHtml(employeeCode)}</p>
         <div class="image-wrap">
           ${
             imageSrc
@@ -469,6 +580,7 @@ const buildEmployeePrintTemplate = ({
           }
         </div>
         <div class="separator"></div>
+        <div class="intent-badge"><strong>${escapeHtml(sheetIntentTitle)}:</strong> ${escapeHtml(sheetIntentHint)}</div>
         <section class="grid" aria-label="Datos del empleado">
           <div class="column">${renderPrintRows(leftRows)}</div>
           <div class="column">${renderPrintRows(rightRows)}</div>
@@ -495,10 +607,13 @@ const buildEmployeePrintTemplate = ({
       window.addEventListener('load', function () {
         setTimeout(function () { window.print(); }, 220);
       });
-      window.onafterprint = function () { window.close(); };
+      window.onafterprint = function () {
+        ${isPdfIntent ? "" : "window.close();"}
+      };
     </script>
   </body>
 </html>`;
+};
 
 export default function EmployeeDetailModal({
   open = false,
@@ -535,60 +650,70 @@ export default function EmployeeDetailModal({
   const imageSrc = typeof getImageSrc === "function" ? toDisplayValue(getImageSrc(empleado), "") : "";
   const estadoValue = detectEstado(empleado);
 
-  const handlePrintFicha = () => {
+  const openFichaWindow = async (intent = "print") => {
     if (!empleado) return;
-
     const safeNombre = toDisplayValue(personaNombre, "Empleado sin nombre");
-    const safeSucursal = toDisplayValue(sucursalNombre, "-");
-    const safeDni = toDisplayValue(getDni(empleado), "-");
-    const safeTelefono = toDisplayValue(getTelefono(empleado), "-");
-    const safeCargo = toDisplayValue(getCargo(empleado), "-");
-    const safeSalario = formatSalaryLabel(getSalario(empleado), "-");
-    const safeCorreo = toDisplayValue(getCorreo(empleado), "-");
-    const safeDireccion = toDisplayValue(getDireccion(empleado), "-");
-    const safeNombreRef = toDisplayValue(getNombreReferencia(empleado), "-");
-    const safeTelRef = toDisplayValue(getTelefonoReferencia(empleado), "-");
-    const safeEstado = estadoValue === null ? "-" : estadoValue ? "Activo" : "Inactivo";
+    const safeCode = `EMP-${String(empleado?.id_empleado ?? "-")}`;
+    const safeSucursal = toDisplayValue(sucursalNombre, "Sin sucursal");
+    const safeDni = toDisplayValue(getDni(empleado), "Sin DNI");
+    const safeTelefono = toDisplayValue(getTelefono(empleado), "Sin telefono");
+    const safeCargo = toDisplayValue(getCargo(empleado), "Sin cargo");
+    const safeSalario = formatSalaryLabel(getSalario(empleado), "Sin sueldo");
+    const safeCorreo = toDisplayValue(getCorreo(empleado), "Sin correo");
+    const safeDireccion = toDisplayValue(getDireccion(empleado), "Sin direccion");
+    const safeNombreRef = toDisplayValue(getNombreReferencia(empleado), "Sin referencia");
+    const safeTelRef = toDisplayValue(getTelefonoReferencia(empleado), "Sin referencia");
+    const safeEstado = estadoValue === null ? "No definido" : estadoValue ? "Activo" : "Inactivo";
     const safeFechaIngreso = formatPrintDateLabel(empleado?.fecha_ingreso);
     const safeFechaImpresion = formatPrintDateTime();
 
     const leftRows = [
+      { label: "Codigo de empleado", value: safeCode },
       { label: "Nombre completo", value: safeNombre },
+      { label: "Sucursal", value: safeSucursal },
       { label: "DNI", value: safeDni },
       { label: "Cargo / Puesto", value: safeCargo },
       { label: "Sueldo", value: safeSalario },
       { label: "Fecha de ingreso", value: safeFechaIngreso },
-      { label: "Nombre referencia", value: safeNombreRef },
     ];
 
     const rightRows = [
-      { label: "Sucursal", value: safeSucursal },
       { label: "Telefono", value: safeTelefono },
-      { label: "Telefono referencia", value: safeTelRef },
+      { label: "Correo", value: safeCorreo },
       { label: "Direccion", value: safeDireccion },
       {
         label: "Estado",
         value: safeEstado,
         valueClass: safeEstado === "Activo" ? "state-active" : safeEstado === "Inactivo" ? "state-inactive" : "",
       },
-      { label: "Correo", value: safeCorreo },
+      { label: "Nombre referencia", value: safeNombreRef },
+      { label: "Telefono referencia", value: safeTelRef },
     ];
 
     const printWindow = window.open("", "_blank", "width=1100,height=900");
     if (!printWindow) return;
 
+    const sheetLogoSrc = await buildSheetLogoSrc(brandLogo);
+    if (printWindow.closed) return;
+
     const printDocument = buildEmployeePrintTemplate({
-      logoSrc: brandLogo,
+      logoSrc: sheetLogoSrc || brandLogo,
       nombre: safeNombre,
+      employeeCode: safeCode,
       imageSrc: imageSrc || "",
       fechaImpresion: safeFechaImpresion,
       leftRows,
       rightRows,
+      intent,
     });
 
     printWindow.document.open();
     printWindow.document.write(printDocument);
     printWindow.document.close();
+  };
+
+  const handlePrintFicha = () => {
+    void openFichaWindow("print");
   };
 
   const infoCards = useMemo(

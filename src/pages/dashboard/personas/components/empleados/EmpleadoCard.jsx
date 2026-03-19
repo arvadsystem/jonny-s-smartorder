@@ -178,52 +178,34 @@ export default function EmpleadoCard({
         </header>
 
         <div className="empleados-card__meta" aria-label="Datos del empleado">
-          <div className="empleados-card__meta-item">
-            <span className="empleados-card__meta-label">
-              <i className="bi bi-shop" />
-              Sucursal
-            </span>
-            <span className="empleados-card__meta-value">{toDisplayValue(sucursalNombre, "Sin sucursal")}</span>
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-shop" />
+            <span>{`Sucursal: ${toDisplayValue(sucursalNombre, "Sin sucursal")}`}</span>
           </div>
 
-          <div className="empleados-card__meta-item">
-            <span className="empleados-card__meta-label">
-              <i className="bi bi-person-vcard" />
-              DNI
-            </span>
-            <span className="empleados-card__meta-value">{toDisplayValue(getDni(empleado), "N/D")}</span>
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-person-vcard" />
+            <span>{`DNI: ${toDisplayValue(getDni(empleado), "N/D")}`}</span>
           </div>
 
-          <div className="empleados-card__meta-item">
-            <span className="empleados-card__meta-label">
-              <i className="bi bi-calendar-event" />
-              Ingreso
-            </span>
-            <span className="empleados-card__meta-value">{formatDateLabel(empleado?.fecha_ingreso)}</span>
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-calendar-event" />
+            <span>{`Ingreso: ${formatDateLabel(empleado?.fecha_ingreso)}`}</span>
           </div>
 
-          <div className="empleados-card__meta-item">
-            <span className="empleados-card__meta-label">
-              <i className="bi bi-briefcase" />
-              Cargo
-            </span>
-            <span className="empleados-card__meta-value">{toDisplayValue(cargo, "Sin cargo")}</span>
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-briefcase" />
+            <span>{`Cargo: ${toDisplayValue(cargo, "Sin cargo")}`}</span>
           </div>
 
-          <div className="empleados-card__meta-item">
-            <span className="empleados-card__meta-label">
-              <i className="bi bi-cash-stack" />
-              Sueldo
-            </span>
-            <span className="empleados-card__meta-value">{formatSalaryLabel(salario)}</span>
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-cash-stack" />
+            <span>{`Sueldo: ${formatSalaryLabel(salario)}`}</span>
           </div>
 
-          <div className="empleados-card__meta-item">
-            <span className="empleados-card__meta-label">
-              <i className="bi bi-telephone" />
-              Telefono
-            </span>
-            <span className="empleados-card__meta-value">{toDisplayValue(telefono, "Sin telefono")}</span>
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-telephone" />
+            <span>{`Telefono: ${toDisplayValue(telefono, "Sin telefono")}`}</span>
           </div>
         </div>
 
@@ -232,7 +214,7 @@ export default function EmpleadoCard({
             <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
             <div className="inv-prod-stock-copy personas-emp-card__stock-copy empleados-card__summary">
               <span>{isActive ? "Empleado activo" : "Empleado inactivo"}</span>
-              <small>{toDisplayValue(cargo, "Sin cargo")}</small>
+              <small className="personas-emp-card__code">{toDisplayValue(cargo, "Sin cargo")}</small>
             </div>
           </div>
 
