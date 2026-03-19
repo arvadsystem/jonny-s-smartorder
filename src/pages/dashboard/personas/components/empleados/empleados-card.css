@@ -91,7 +91,7 @@
 .empleados-card .empleados-card__meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.42rem 0.72rem;
+  gap: 0.44rem 0.72rem;
 }
 
 .empleados-card .empleados-card__meta-item {
@@ -119,8 +119,9 @@
 
 .empleados-card .empleados-card__meta-value {
   color: rgba(23, 8, 10, 0.92);
-  font-size: 0.79rem;
+  font-size: 0.8rem;
   font-weight: 700;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -145,7 +146,7 @@
 .empleados-card .empleados-card__summary small {
   display: block;
   margin-top: 0.1rem;
-  font-size: 0.67rem;
+  font-size: 0.68rem;
   color: rgba(82, 44, 34, 0.76);
   font-weight: 700;
 }

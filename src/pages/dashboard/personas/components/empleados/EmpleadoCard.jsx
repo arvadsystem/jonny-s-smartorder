@@ -25,21 +25,82 @@ const formatDateLabel = (value) => {
   });
 };
 
+const getFirstNonEmptyField = (record, keys) => {
+  if (!record || !Array.isArray(keys)) return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getFirstNonEmptyValue = (values) => {
+  if (!Array.isArray(values)) return "";
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
 const getTelefono = (empleado) =>
-  empleado?.telefono ??
-  empleado?.telefono_numero ??
-  empleado?.numero_telefono ??
-  empleado?.persona_telefono ??
-  empleado?.telefono_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+  ]);
 
 const getCargo = (empleado) =>
-  empleado?.cargo ??
-  empleado?.nombre_cargo ??
-  empleado?.cargo_nombre ??
-  empleado?.puesto ??
-  empleado?.rol;
+  getFirstNonEmptyField(empleado, [
+    "cargo",
+    "nombre_cargo",
+    "cargo_nombre",
+    "puesto",
+    "rol",
+    "cargo_puesto",
+    "cargo_descripcion",
+  ]);
 
-const getDni = (empleado) => empleado?.persona_dni ?? empleado?.dni;
+const getDni = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, ["persona_dni", "dni"]),
+    getFirstNonEmptyField(empleado?.persona, ["dni", "persona_dni"]),
+  ]);
+
+const getSalario = (empleado) =>
+  getFirstNonEmptyField(empleado, ["salario_base", "sueldo", "salario", "salarioBase"]);
+
+const formatSalaryLabel = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") return "Sin sueldo";
+  const parsed = Number.parseFloat(String(value).replace(",", "."));
+  if (!Number.isFinite(parsed)) return String(value);
+  return parsed.toLocaleString("es-HN", {
+    style: "currency",
+    currency: "HNL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
 
 const getInitials = (fullName) => {
   const clean = String(fullName ?? "").trim();
@@ -73,7 +134,9 @@ export default function EmpleadoCard({
   const deleting = deletingId === idEmpleado;
   const personaNombre = typeof getPersonaNombre === "function" ? getPersonaNombre(empleado) : "No registrado";
   const sucursalNombre = typeof getSucursalNombre === "function" ? getSucursalNombre(empleado) : "No registrado";
+  const telefono = getTelefono(empleado);
   const cargo = getCargo(empleado);
+  const salario = getSalario(empleado);
   const initials = getInitials(personaNombre);
   const codeLabel = `EMP-${String(idEmpleado ?? "-")}`;
   const [hasImageError, setHasImageError] = useState(false);
@@ -120,7 +183,7 @@ export default function EmpleadoCard({
               <i className="bi bi-shop" />
               Sucursal
             </span>
-            <span className="empleados-card__meta-value">{toDisplayValue(sucursalNombre)}</span>
+            <span className="empleados-card__meta-value">{toDisplayValue(sucursalNombre, "Sin sucursal")}</span>
           </div>
 
           <div className="empleados-card__meta-item">
@@ -133,10 +196,10 @@ export default function EmpleadoCard({
 
           <div className="empleados-card__meta-item">
             <span className="empleados-card__meta-label">
-              <i className="bi bi-telephone" />
-              Telefono
+              <i className="bi bi-calendar-event" />
+              Ingreso
             </span>
-            <span className="empleados-card__meta-value">{toDisplayValue(getTelefono(empleado), "Sin telefono")}</span>
+            <span className="empleados-card__meta-value">{formatDateLabel(empleado?.fecha_ingreso)}</span>
           </div>
 
           <div className="empleados-card__meta-item">
@@ -149,10 +212,18 @@ export default function EmpleadoCard({
 
           <div className="empleados-card__meta-item">
             <span className="empleados-card__meta-label">
-              <i className="bi bi-calendar-event" />
-              Ingreso
+              <i className="bi bi-cash-stack" />
+              Sueldo
             </span>
-            <span className="empleados-card__meta-value">{formatDateLabel(empleado?.fecha_ingreso)}</span>
+            <span className="empleados-card__meta-value">{formatSalaryLabel(salario)}</span>
+          </div>
+
+          <div className="empleados-card__meta-item">
+            <span className="empleados-card__meta-label">
+              <i className="bi bi-telephone" />
+              Telefono
+            </span>
+            <span className="empleados-card__meta-value">{toDisplayValue(telefono, "Sin telefono")}</span>
           </div>
         </div>
 

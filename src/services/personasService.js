@@ -310,14 +310,24 @@ export const personaService = {
       throw new Error('El payload de actualizacion debe ser un objeto');
     }
 
-    const fields = Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined);
-    if (!fields.length) return { error: false, message: 'Sin cambios para actualizar' };
+    const payload = Object.fromEntries(
+      Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined)
+    );
+    if (!Object.keys(payload).length) return { error: false, message: 'Sin cambios para actualizar' };
 
-    let result = null;
-    for (const [campo, valor] of fields) {
-      result = await apiFetch(`/empleados/${id}`, 'PUT', { campo, valor });
+    try {
+      // Prefer JSON payload so backend can forward directly to empleados_actualizar(p_id, p_datos::json).
+      return await apiFetch(`/empleados/${id}`, 'PUT', payload);
+    } catch (error) {
+      // Backward compatibility with handlers that still expect { campo, valor }.
+      if (!error || ![400, 404, 405, 409, 415, 422].includes(error.status)) throw error;
+
+      let result = null;
+      for (const [campo, valor] of Object.entries(payload)) {
+        result = await apiFetch(`/empleados/${id}`, 'PUT', { campo, valor });
+      }
+      return result;
     }
-    return result;
   },
 
   deleteEmpleado: (id) =>

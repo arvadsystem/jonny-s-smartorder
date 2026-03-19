@@ -26,28 +26,134 @@ const detectEstado = (record) => {
   return null;
 };
 
-const getDni = (empleado) => empleado?.persona_dni ?? empleado?.dni;
+const getFirstNonEmptyField = (record, keys) => {
+  if (!record || !Array.isArray(keys)) return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getFirstNonEmptyValue = (values) => {
+  if (!Array.isArray(values)) return "";
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getDni = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, ["persona_dni", "dni"]),
+    getFirstNonEmptyField(empleado?.persona, ["dni", "persona_dni"]),
+  ]);
 
 const getTelefono = (empleado) =>
-  empleado?.telefono ??
-  empleado?.telefono_numero ??
-  empleado?.numero_telefono ??
-  empleado?.persona_telefono ??
-  empleado?.telefono_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+  ]);
 
 const getCargo = (empleado) =>
-  empleado?.cargo ??
-  empleado?.nombre_cargo ??
-  empleado?.cargo_nombre ??
-  empleado?.puesto ??
-  empleado?.rol;
+  getFirstNonEmptyField(empleado, [
+    "cargo",
+    "nombre_cargo",
+    "cargo_nombre",
+    "puesto",
+    "rol",
+    "cargo_puesto",
+    "cargo_descripcion",
+  ]);
 
 const getCorreo = (empleado) =>
-  empleado?.correo ??
-  empleado?.direccion_correo ??
-  empleado?.email ??
-  empleado?.persona_correo ??
-  empleado?.correo_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+  ]);
+
+const getDireccion = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "direccion",
+      "texto_direccion",
+      "direccion_texto",
+      "direccion_persona",
+      "persona_direccion",
+      "direccion_residencia",
+      "direccion_completa",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "direccion",
+      "texto_direccion",
+      "direccion_texto",
+      "direccion_persona",
+      "persona_direccion",
+      "direccion_residencia",
+      "direccion_completa",
+    ]),
+  ]);
+
+const getNombreReferencia = (empleado) =>
+  getFirstNonEmptyField(empleado, ["nombre_referencia", "referencia_nombre", "nombre_contacto_referencia"]);
+
+const getTelefonoReferencia = (empleado) =>
+  getFirstNonEmptyField(empleado, ["telefono_referencia", "referencia_telefono", "telefono_contacto_referencia"]);
+
+const getSalario = (empleado) =>
+  getFirstNonEmptyField(empleado, ["salario_base", "sueldo", "salario", "salarioBase"]);
+
+const formatSalaryLabel = (value, fallback = "Sin sueldo") => {
+  if (value === null || value === undefined || String(value).trim() === "") return fallback;
+  const parsed = Number.parseFloat(String(value).replace(",", "."));
+  if (!Number.isFinite(parsed)) return String(value);
+  return parsed.toLocaleString("es-HN", {
+    style: "currency",
+    currency: "HNL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -437,7 +543,11 @@ export default function EmployeeDetailModal({
     const safeDni = toDisplayValue(getDni(empleado), "-");
     const safeTelefono = toDisplayValue(getTelefono(empleado), "-");
     const safeCargo = toDisplayValue(getCargo(empleado), "-");
+    const safeSalario = formatSalaryLabel(getSalario(empleado), "-");
     const safeCorreo = toDisplayValue(getCorreo(empleado), "-");
+    const safeDireccion = toDisplayValue(getDireccion(empleado), "-");
+    const safeNombreRef = toDisplayValue(getNombreReferencia(empleado), "-");
+    const safeTelRef = toDisplayValue(getTelefonoReferencia(empleado), "-");
     const safeEstado = estadoValue === null ? "-" : estadoValue ? "Activo" : "Inactivo";
     const safeFechaIngreso = formatPrintDateLabel(empleado?.fecha_ingreso);
     const safeFechaImpresion = formatPrintDateTime();
@@ -446,12 +556,16 @@ export default function EmployeeDetailModal({
       { label: "Nombre completo", value: safeNombre },
       { label: "DNI", value: safeDni },
       { label: "Cargo / Puesto", value: safeCargo },
+      { label: "Sueldo", value: safeSalario },
       { label: "Fecha de ingreso", value: safeFechaIngreso },
+      { label: "Nombre referencia", value: safeNombreRef },
     ];
 
     const rightRows = [
       { label: "Sucursal", value: safeSucursal },
       { label: "Telefono", value: safeTelefono },
+      { label: "Telefono referencia", value: safeTelRef },
+      { label: "Direccion", value: safeDireccion },
       {
         label: "Estado",
         value: safeEstado,
@@ -486,37 +600,73 @@ export default function EmployeeDetailModal({
         value: personaNombre,
       },
       {
+        key: "sucursal",
+        icon: "bi-shop",
+        label: "Sucursal",
+        value: toDisplayValue(sucursalNombre, "Sin sucursal"),
+      },
+      {
         key: "dni",
         icon: "bi-card-text",
         label: "DNI",
         value: toDisplayValue(getDni(empleado)),
       },
       {
-        key: "sucursal",
-        icon: "bi-shop",
-        label: "Sucursal",
-        value: sucursalNombre,
+        key: "fecha_ingreso",
+        icon: "bi-calendar-event",
+        label: "Fecha de ingreso",
+        value: formatLongDateLabel(empleado?.fecha_ingreso),
       },
       {
         key: "telefono",
         icon: "bi-telephone",
         label: "Telefono",
-        value: toDisplayValue(getTelefono(empleado)),
+        value: toDisplayValue(getTelefono(empleado), "Sin telefono"),
       },
       {
         key: "cargo",
         icon: "bi-briefcase",
         label: "Cargo / Puesto",
-        value: toDisplayValue(getCargo(empleado)),
+        value: toDisplayValue(getCargo(empleado), "Sin cargo"),
+      },
+      {
+        key: "salario",
+        icon: "bi-cash-stack",
+        label: "Sueldo",
+        value: formatSalaryLabel(getSalario(empleado), "Sin sueldo"),
+      },
+      {
+        key: "estado",
+        icon: "bi-patch-check",
+        label: "Estado",
+        value: estadoValue === null ? "No definido" : estadoValue ? "Activo" : "Inactivo",
       },
       {
         key: "correo",
         icon: "bi-envelope",
         label: "Correo",
-        value: toDisplayValue(getCorreo(empleado)),
+        value: toDisplayValue(getCorreo(empleado), "Sin correo"),
+      },
+      {
+        key: "direccion",
+        icon: "bi-geo-alt",
+        label: "Direccion",
+        value: toDisplayValue(getDireccion(empleado), "Sin direccion"),
+      },
+      {
+        key: "nombre_referencia",
+        icon: "bi-person-lines-fill",
+        label: "Nombre referencia",
+        value: toDisplayValue(getNombreReferencia(empleado), "Sin referencia"),
+      },
+      {
+        key: "telefono_referencia",
+        icon: "bi-telephone-forward",
+        label: "Telefono referencia",
+        value: toDisplayValue(getTelefonoReferencia(empleado), "Sin referencia"),
       },
     ],
-    [empleado, personaNombre, sucursalNombre]
+    [empleado, estadoValue, personaNombre, sucursalNombre]
   );
 
   if (!open || !empleado) return null;
@@ -531,7 +681,6 @@ export default function EmployeeDetailModal({
       .slice(0, 2)
       .map((chunk) => chunk.charAt(0).toUpperCase())
       .join("") || "EM";
-  const fechaIngresoLabel = formatLongDateLabel(empleado?.fecha_ingreso);
 
   return (
     <div
@@ -558,10 +707,6 @@ export default function EmployeeDetailModal({
             </div>
 
             <div className="personas-emp-detail__header-actions">
-              <button type="button" className="personas-emp-detail__print-btn" onClick={handlePrintFicha} aria-label="Imprimir ficha">
-                <i className="bi bi-printer" />
-                <span>Imprimir ficha</span>
-              </button>
               <button type="button" className="personas-emp-detail__close-btn" onClick={onClose} aria-label="Cerrar detalle">
                 <i className="bi bi-x-lg" />
               </button>
@@ -622,36 +767,30 @@ export default function EmployeeDetailModal({
                       </div>
                     </article>
                   ))}
-
-                  <article className="personas-emp-detail__info-card personas-emp-detail__info-card--wide">
-                    <div className="personas-emp-detail__info-segment">
-                      <div className="personas-emp-detail__info-icon" aria-hidden="true">
-                        <i className="bi bi-calendar-event" />
-                      </div>
-                      <div className="personas-emp-detail__info-copy">
-                        <span>Fecha de ingreso</span>
-                        <strong>{fechaIngresoLabel}</strong>
-                      </div>
-                    </div>
-
-                    <span className="personas-emp-detail__info-separator" aria-hidden="true" />
-
-                    <div className="personas-emp-detail__info-segment">
-                      <div className="personas-emp-detail__info-icon personas-emp-detail__info-icon--state" aria-hidden="true">
-                        <i className="bi bi-patch-check" />
-                      </div>
-                      <div className="personas-emp-detail__info-copy">
-                        <span>Estado</span>
-                        <span className={`personas-emp-detail__status-pill ${estadoTone}`}>
-                          <span className="personas-emp-detail__status-dot" />
-                          {estadoLabel}
-                        </span>
-                      </div>
-                    </div>
-                  </article>
                 </div>
               </section>
             </section>
+          </div>
+
+          <div className="modal-footer personas-emp-detail__footer">
+            <div className="personas-emp-detail__footer-code">
+              <i className="bi bi-person-badge" />
+              <span>{empleadoCode}</span>
+            </div>
+            <div className="personas-emp-detail__footer-actions">
+              <button type="button" className="personas-emp-detail__ghost-btn" onClick={onClose}>
+                Cerrar
+              </button>
+              <button
+                type="button"
+                className="personas-emp-detail__print-btn personas-emp-detail__print-btn--footer"
+                onClick={handlePrintFicha}
+                aria-label="Imprimir ficha"
+              >
+                <i className="bi bi-printer" />
+                <span>Imprimir ficha</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

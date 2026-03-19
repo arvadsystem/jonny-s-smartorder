@@ -19,6 +19,9 @@ const emptyForm = {
   id_sucursal: "",
   fecha_ingreso: "",
   salario_base: "",
+  cargo: "",
+  nombre_referencia: "",
+  telefono_referencia: "",
   estado: true,
 };
 
@@ -122,28 +125,97 @@ const formatDateLabel = (value) => {
   });
 };
 
-const getDni = (empleado) => empleado?.persona_dni ?? empleado?.dni;
+const getFirstNonEmptyField = (record, keys) => {
+  if (!record || !Array.isArray(keys)) return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getFirstNonEmptyValue = (values) => {
+  if (!Array.isArray(values)) return "";
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getDni = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, ["persona_dni", "dni"]),
+    getFirstNonEmptyField(empleado?.persona, ["dni", "persona_dni"]),
+  ]);
 
 const getTelefono = (empleado) =>
-  empleado?.telefono ??
-  empleado?.telefono_numero ??
-  empleado?.numero_telefono ??
-  empleado?.persona_telefono ??
-  empleado?.telefono_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+  ]);
 
 const getCorreo = (empleado) =>
-  empleado?.correo ??
-  empleado?.direccion_correo ??
-  empleado?.email ??
-  empleado?.persona_correo ??
-  empleado?.correo_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+  ]);
 
 const getCargo = (empleado) =>
-  empleado?.cargo ??
-  empleado?.nombre_cargo ??
-  empleado?.cargo_nombre ??
-  empleado?.puesto ??
-  empleado?.rol;
+  getFirstNonEmptyField(empleado, [
+    "cargo",
+    "nombre_cargo",
+    "cargo_nombre",
+    "puesto",
+    "rol",
+    "cargo_puesto",
+    "cargo_descripcion",
+  ]);
+
+const getNombreReferencia = (empleado) =>
+  getFirstNonEmptyField(empleado, ["nombre_referencia", "referencia_nombre", "nombre_contacto_referencia"]);
+
+const getTelefonoReferencia = (empleado) =>
+  getFirstNonEmptyField(empleado, ["telefono_referencia", "referencia_telefono", "telefono_contacto_referencia"]);
 const SUGGESTION_LIMIT = 8;
 
 const EMPLOYEE_IMAGES_STORAGE_KEY = "empleado_images";
@@ -340,6 +412,34 @@ export default function Empleados({ openToast }) {
     [sucursales]
   );
 
+  const selectedPersona = useMemo(() => {
+    const selectedPersonaId = String(form.id_persona ?? "").trim();
+    if (!selectedPersonaId) return null;
+    return (
+      (Array.isArray(personasCatalogo) ? personasCatalogo : []).find(
+        (persona) => String(persona?.id_persona ?? "") === selectedPersonaId
+      ) || null
+    );
+  }, [form.id_persona, personasCatalogo]);
+
+  const selectedPersonaDni = useMemo(
+    () => getFirstNonEmptyField(selectedPersona, ["dni", "persona_dni"]),
+    [selectedPersona]
+  );
+
+  const selectedPersonaTelefono = useMemo(
+    () =>
+      getFirstNonEmptyField(selectedPersona, [
+        "telefono",
+        "texto_telefono",
+        "telefono_numero",
+        "numero_telefono",
+        "persona_telefono",
+        "telefono_persona",
+      ]),
+    [selectedPersona]
+  );
+
   const resolveEmpleadoImage = useCallback(
     (empleado) => getEmployeeImage(empleado?.id_empleado, employeeImages),
     [employeeImages]
@@ -454,6 +554,9 @@ export default function Empleados({ openToast }) {
         empleado?.salario_base === null || empleado?.salario_base === undefined
           ? ""
           : String(empleado.salario_base),
+      cargo: getCargo(empleado),
+      nombre_referencia: getNombreReferencia(empleado),
+      telefono_referencia: getTelefonoReferencia(empleado),
       estado: isActivo(empleado),
     }),
     [resolvePersonaId, resolveSucursalId]
@@ -606,6 +709,9 @@ export default function Empleados({ openToast }) {
     id_sucursal: Number.parseInt(String(form.id_sucursal), 10),
     fecha_ingreso: form.fecha_ingreso,
     salario_base: Number.parseFloat(String(form.salario_base).replace(",", ".")),
+    cargo: String(form.cargo ?? "").trim(),
+    nombre_referencia: String(form.nombre_referencia ?? "").trim(),
+    telefono_referencia: String(form.telefono_referencia ?? "").trim(),
     estado: Boolean(form.estado),
   });
 
@@ -834,18 +940,16 @@ export default function Empleados({ openToast }) {
       const hay = [
         persona,
         sucursal,
-        empleado?.persona_dni,
-        empleado?.dni,
-        empleado?.telefono,
-        empleado?.telefono_numero,
-        empleado?.numero_telefono,
-        empleado?.correo,
-        empleado?.direccion_correo,
-        empleado?.email,
-        empleado?.cargo,
-        empleado?.nombre_cargo,
-        empleado?.puesto,
-        empleado?.rol,
+        getDni(empleado),
+        getTelefono(empleado),
+        getCorreo(empleado),
+        getCargo(empleado),
+        getNombreReferencia(empleado),
+        getTelefonoReferencia(empleado),
+        empleado?.cargo_puesto,
+        empleado?.cargo_descripcion,
+        empleado?.direccion,
+        empleado?.texto_direccion,
         empleado?.salario_base,
         empleado?.fecha_ingreso,
       ]
@@ -1263,130 +1367,195 @@ export default function Empleados({ openToast }) {
         </div>
 
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
-          <div className="row g-3 crud-modal__grid">
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Persona</label>
-              <select
-                className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
-                value={form.id_persona}
-                onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {personaOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
-                  </option>
-                ))}
-              </select>
-              {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
-            </div>
+          <section className="crud-modal__section empleados-modal__section">
+            <header className="crud-modal__section-head">
+              <h4>Datos del empleado</h4>
+              <p>Selecciona la persona base y completa la informacion laboral.</p>
+            </header>
 
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Sucursal</label>
-              <select
-                className={`form-select ${errors.id_sucursal ? "is-invalid" : ""}`}
-                value={form.id_sucursal}
-                onChange={(event) => setForm((state) => ({ ...state, id_sucursal: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {sucursalOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              {errors.id_sucursal && <div className="invalid-feedback d-block">{errors.id_sucursal}</div>}
-            </div>
+            <div className="row g-3 crud-modal__grid">
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Persona</label>
+                <select
+                  className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
+                  value={form.id_persona}
+                  onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
+                >
+                  <option value="">Seleccione</option>
+                  {personaOptions.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
+              </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Fecha ingreso</label>
-              <input
-                type="date"
-                className={`form-control ${errors.fecha_ingreso ? "is-invalid" : ""}`}
-                value={form.fecha_ingreso}
-                onChange={(event) => setForm((state) => ({ ...state, fecha_ingreso: event.target.value }))}
-              />
-              {errors.fecha_ingreso && <div className="invalid-feedback d-block">{errors.fecha_ingreso}</div>}
-            </div>
+              <div className="col-12">
+                <div className="empleados-modal__persona-meta" role="status" aria-live="polite">
+                  <div className="empleados-modal__persona-meta-item">
+                    <span>DNI</span>
+                    <strong>{toDisplayValue(selectedPersonaDni, "N/D")}</strong>
+                  </div>
+                  <div className="empleados-modal__persona-meta-item">
+                    <span>Telefono</span>
+                    <strong>{toDisplayValue(selectedPersonaTelefono, "Sin telefono")}</strong>
+                  </div>
+                </div>
+              </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Salario base</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className={`form-control ${errors.salario_base ? "is-invalid" : ""}`}
-                value={form.salario_base}
-                onChange={(event) => setForm((state) => ({ ...state, salario_base: event.target.value }))}
-              />
-              {errors.salario_base && <div className="invalid-feedback d-block">{errors.salario_base}</div>}
-            </div>
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Sucursal</label>
+                <select
+                  className={`form-select ${errors.id_sucursal ? "is-invalid" : ""}`}
+                  value={form.id_sucursal}
+                  onChange={(event) => setForm((state) => ({ ...state, id_sucursal: event.target.value }))}
+                >
+                  <option value="">Seleccione</option>
+                  {sucursalOptions.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                {errors.id_sucursal && <div className="invalid-feedback d-block">{errors.id_sucursal}</div>}
+              </div>
 
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Imagen (opcional)</label>
-              <div className={`inv-prod-image-field personas-emp-form-image ${formImage.loading ? "is-loading" : ""}`}>
-                <div className={`inv-prod-image-preview ${formImage.previewUrl ? "has-image" : ""}`} aria-live="polite">
-                  {formImage.loading ? (
-                    <div className="inv-prod-image-loading" role="status">
-                      <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-                      <span>Procesando imagen...</span>
-                    </div>
-                  ) : formImage.previewUrl ? (
-                    <img src={formImage.previewUrl} alt="Vista previa del empleado" />
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Cargo / Puesto</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={form.cargo}
+                  onChange={(event) => setForm((state) => ({ ...state, cargo: event.target.value }))}
+                  placeholder="Ej. Cajero, Supervisor, Auxiliar"
+                  maxLength={120}
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label text-light text-opacity-75">Nombre referencia</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={form.nombre_referencia}
+                  onChange={(event) => setForm((state) => ({ ...state, nombre_referencia: event.target.value }))}
+                  placeholder="Nombre del contacto de referencia"
+                  maxLength={120}
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label text-light text-opacity-75">Telefono referencia</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={form.telefono_referencia}
+                  onChange={(event) => setForm((state) => ({ ...state, telefono_referencia: event.target.value }))}
+                  placeholder="Numero de referencia"
+                  maxLength={40}
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label text-light text-opacity-75">Fecha ingreso</label>
+                <input
+                  type="date"
+                  className={`form-control ${errors.fecha_ingreso ? "is-invalid" : ""}`}
+                  value={form.fecha_ingreso}
+                  onChange={(event) => setForm((state) => ({ ...state, fecha_ingreso: event.target.value }))}
+                />
+                {errors.fecha_ingreso && <div className="invalid-feedback d-block">{errors.fecha_ingreso}</div>}
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label text-light text-opacity-75">Salario base</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={`form-control ${errors.salario_base ? "is-invalid" : ""}`}
+                  value={form.salario_base}
+                  onChange={(event) => setForm((state) => ({ ...state, salario_base: event.target.value }))}
+                />
+                {errors.salario_base && <div className="invalid-feedback d-block">{errors.salario_base}</div>}
+              </div>
+            </div>
+          </section>
+
+          <section className="crud-modal__section empleados-modal__section empleados-modal__section--secondary">
+            <header className="crud-modal__section-head">
+              <h4>Presentacion y estado</h4>
+              <p>Configura imagen de perfil y disponibilidad del registro.</p>
+            </header>
+
+            <div className="row g-3 crud-modal__grid">
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Imagen (opcional)</label>
+                <div className={`inv-prod-image-field personas-emp-form-image ${formImage.loading ? "is-loading" : ""}`}>
+                  <div className={`inv-prod-image-preview ${formImage.previewUrl ? "has-image" : ""}`} aria-live="polite">
+                    {formImage.loading ? (
+                      <div className="inv-prod-image-loading" role="status">
+                        <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                        <span>Procesando imagen...</span>
+                      </div>
+                    ) : formImage.previewUrl ? (
+                      <img src={formImage.previewUrl} alt="Vista previa del empleado" />
+                    ) : (
+                      <div className="inv-prod-image-placeholder">
+                        <i className="bi bi-image" />
+                        <span>Sin imagen seleccionada</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="inv-prod-image-actions">
+                    <label className="btn inv-prod-btn-subtle inv-prod-image-picker">
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={onFormImageChange}
+                        disabled={actionLoading}
+                      />
+                      <i className="bi bi-upload" />
+                      <span>{formImage.previewUrl ? "Cambiar imagen" : "Seleccionar imagen"}</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      className="btn inv-prod-btn-outline"
+                      onClick={removeFormImage}
+                      disabled={!formImage.previewUrl && !formImage.error && !formImage.loading}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+
+                  {formImage.error ? (
+                    <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
                   ) : (
-                    <div className="inv-prod-image-placeholder">
-                      <i className="bi bi-image" />
-                      <span>Sin imagen seleccionada</span>
-                    </div>
+                    <div className="inv-prod-image-feedback">JPG, PNG o WEBP hasta 6 MB.</div>
                   )}
                 </div>
+              </div>
 
-                <div className="inv-prod-image-actions">
-                  <label className="btn inv-prod-btn-subtle inv-prod-image-picker">
-                    <input
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={onFormImageChange}
-                      disabled={actionLoading}
-                    />
-                    <i className="bi bi-upload" />
-                    <span>{formImage.previewUrl ? "Cambiar imagen" : "Seleccionar imagen"}</span>
+              <div className="col-12">
+                <div className="form-check form-switch m-0">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="empleado_estado"
+                    checked={Boolean(form.estado)}
+                    onChange={(event) => setForm((state) => ({ ...state, estado: event.target.checked }))}
+                  />
+                  <label className="form-check-label text-light text-opacity-75" htmlFor="empleado_estado">
+                    Registro activo
                   </label>
-
-                  <button
-                    type="button"
-                    className="btn inv-prod-btn-outline"
-                    onClick={removeFormImage}
-                    disabled={!formImage.previewUrl && !formImage.error && !formImage.loading}
-                  >
-                    Quitar
-                  </button>
                 </div>
-
-                {formImage.error ? (
-                  <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
-                ) : (
-                  <div className="inv-prod-image-feedback">JPG, PNG o WEBP hasta 6 MB.</div>
-                )}
               </div>
             </div>
-
-            <div className="col-12">
-              <div className="form-check form-switch m-0">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="empleado_estado"
-                  checked={Boolean(form.estado)}
-                  onChange={(event) => setForm((state) => ({ ...state, estado: event.target.checked }))}
-                />
-                <label className="form-check-label text-light text-opacity-75" htmlFor="empleado_estado">
-                  Registro activo
-                </label>
-              </div>
-            </div>
-          </div>
+          </section>
 
           <div className="d-flex gap-2 mt-4 crud-modal__footer">
             <button
