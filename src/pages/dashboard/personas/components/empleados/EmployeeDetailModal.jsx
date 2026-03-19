@@ -1,19 +1,20 @@
 import { useEffect, useMemo } from "react";
 import brandLogo from "../../../../../assets/images/logo-jonnys.png";
+import "./employee-detail-modal.css";
 
-const toDisplayValue = (value, fallback = "—") => {
+const toDisplayValue = (value, fallback = "-") => {
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
   return text || fallback;
 };
 
-const formatDateLabel = (value) => {
-  if (!value) return "—";
+const formatLongDateLabel = (value) => {
+  if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return toDisplayValue(value);
   return date.toLocaleDateString("es-HN", {
     year: "numeric",
-    month: "short",
+    month: "long",
     day: "2-digit",
   });
 };
@@ -348,7 +349,7 @@ const buildEmployeePrintTemplate = ({
         </div>
         <div class="header-copy">
           <h1>Detalle de Empleado</h1>
-          <p>Ficha individual de recurso humano</p>
+          <p>Informacion completa del colaborador</p>
         </div>
       </header>
       <section class="content">
@@ -476,7 +477,7 @@ export default function EmployeeDetailModal({
     printWindow.document.close();
   };
 
-  const detailFields = useMemo(
+  const infoCards = useMemo(
     () => [
       {
         key: "nombre",
@@ -485,16 +486,16 @@ export default function EmployeeDetailModal({
         value: personaNombre,
       },
       {
-        key: "sucursal",
-        icon: "bi-shop",
-        label: "Sucursal",
-        value: sucursalNombre,
-      },
-      {
         key: "dni",
         icon: "bi-card-text",
         label: "DNI",
         value: toDisplayValue(getDni(empleado)),
+      },
+      {
+        key: "sucursal",
+        icon: "bi-shop",
+        label: "Sucursal",
+        value: sucursalNombre,
       },
       {
         key: "telefono",
@@ -509,121 +510,148 @@ export default function EmployeeDetailModal({
         value: toDisplayValue(getCargo(empleado)),
       },
       {
-        key: "estado",
-        icon: "bi-toggle-on",
-        label: "Estado",
-        value:
-          estadoValue === null
-            ? "—"
-            : estadoValue
-              ? "Activo"
-              : "Inactivo",
-      },
-      {
-        key: "fecha_ingreso",
-        icon: "bi-calendar-event",
-        label: "Fecha de ingreso",
-        value: formatDateLabel(empleado?.fecha_ingreso),
-      },
-      {
         key: "correo",
         icon: "bi-envelope",
         label: "Correo",
         value: toDisplayValue(getCorreo(empleado)),
       },
     ],
-    [empleado, estadoValue, personaNombre, sucursalNombre]
+    [empleado, personaNombre, sucursalNombre]
   );
 
   if (!open || !empleado) return null;
 
+  const empleadoCode = `EMP-${String(empleado?.id_empleado ?? "-")}`;
+  const estadoLabel = estadoValue === null ? "No definido" : estadoValue ? "Activo" : "Inactivo";
+  const estadoTone = estadoValue === true ? "is-active" : estadoValue === false ? "is-inactive" : "is-neutral";
+  const avatarInitials =
+    personaNombre
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((chunk) => chunk.charAt(0).toUpperCase())
+      .join("") || "EM";
+  const fechaIngresoLabel = formatLongDateLabel(empleado?.fecha_ingreso);
+
   return (
     <div
       className="modal fade show inv-prod-modal-backdrop personas-emp-detail-backdrop"
-      style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)", zIndex: 2550 }}
+      style={{ display: "block", zIndex: 2550 }}
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="modal-dialog modal-dialog-centered modal-dialog-scrollable inv-prod-modal-dialog inv-ins-detail-modal-dialog personas-emp-detail-dialog"
+        className="modal-dialog modal-dialog-centered modal-dialog-scrollable inv-prod-modal-dialog personas-emp-detail-dialog"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="modal-content shadow inv-prod-modal-content inv-ins-detail-modal inv-ins-detail-modal--editorial personas-emp-detail-modal">
-          <div className="modal-header inv-ins-detail-modal__header">
-            <div className="inv-ins-detail-modal__title-wrap">
-              <div className="inv-ins-detail-modal__icon">
-                <i className="bi bi-person-badge" />
-              </div>
-              <div>
-                <div className="fw-semibold">Detalle de empleado</div>
-                <div className="small text-muted">{personaNombre}</div>
+        <div className="modal-content personas-emp-detail-modal">
+          <div className="modal-header personas-emp-detail__header">
+            <div className="personas-emp-detail__header-left">
+              <span className="personas-emp-detail__header-icon" aria-hidden="true">
+                <i className="bi bi-person-vcard" />
+              </span>
+              <div className="personas-emp-detail__header-copy">
+                <h3>Detalle de empleado</h3>
+                <p>Informacion completa del colaborador</p>
               </div>
             </div>
 
-            <div className="inv-ins-detail-modal__header-actions">
-              <button
-                type="button"
-                className="btn btn-sm inv-prod-btn-subtle"
-                onClick={handlePrintFicha}
-                aria-label="Imprimir ficha"
-              >
-                <i className="bi bi-printer me-1" />
-                Imprimir ficha
+            <div className="personas-emp-detail__header-actions">
+              <button type="button" className="personas-emp-detail__print-btn" onClick={handlePrintFicha} aria-label="Imprimir ficha">
+                <i className="bi bi-printer" />
+                <span>Imprimir ficha</span>
               </button>
-              <button
-                type="button"
-                className="btn btn-sm inv-ins-detail-modal__close"
-                onClick={onClose}
-                aria-label="Cerrar detalle"
-              >
+              <button type="button" className="personas-emp-detail__close-btn" onClick={onClose} aria-label="Cerrar detalle">
                 <i className="bi bi-x-lg" />
               </button>
             </div>
           </div>
 
-          <div className="modal-body inv-prod-modal-body inv-ins-detail-modal__body inv-ins-detail-modal__body--editorial">
-            <div className="inv-ins-detail-modal__ambient" aria-hidden="true">
-              <span className="is-one" />
-              <span className="is-two" />
-              <span className="is-three" />
-            </div>
+          <div className="modal-body personas-emp-detail__body">
+            <section className="personas-emp-detail__summary">
+              <section className="personas-emp-detail__hero">
+                <div className="personas-emp-detail__avatar-wrap">
+                  <div className="personas-emp-detail__avatar">{imageSrc ? <img src={imageSrc} alt={personaNombre} /> : <span>{avatarInitials}</span>}</div>
+                  <span className="personas-emp-detail__avatar-chip" aria-hidden="true">
+                    <i className="bi bi-camera" />
+                  </span>
+                </div>
 
-            <div className="inv-ins-detail-modal__editorial-grid">
-              <section className="inv-ins-detail-modal__lead personas-emp-detail__lead">
-                <span className="inv-ins-detail-modal__eyebrow">Empleado</span>
-                <strong className="inv-ins-detail-modal__lead-price personas-emp-detail__lead-price">{personaNombre}</strong>
+                <span className="personas-emp-detail__hero-divider" aria-hidden="true" />
 
-                <div className={`inv-prod-image-preview personas-emp-detail__image ${imageSrc ? "has-image" : ""}`}>
-                  {imageSrc ? (
-                    <img src={imageSrc} alt={personaNombre} />
-                  ) : (
-                    <div className="inv-prod-image-placeholder">
-                      <i className="bi bi-image" />
-                      <span>Sin imagen</span>
-                    </div>
-                  )}
+                <div className="personas-emp-detail__hero-copy">
+                  <h2>{personaNombre}</h2>
+
+                  <div className="personas-emp-detail__hero-meta">
+                    <span className="personas-emp-detail__code-pill">
+                      <i className="bi bi-person-badge" />
+                      <span>{empleadoCode}</span>
+                    </span>
+
+                    <span className={`personas-emp-detail__status-pill ${estadoTone}`}>
+                      <span className="personas-emp-detail__status-dot" />
+                      {estadoLabel}
+                    </span>
+                  </div>
+
+                  <p className="personas-emp-detail__branch">
+                    <i className="bi bi-shop" />
+                    <span>
+                      Sucursal <strong>{sucursalNombre}</strong>
+                    </span>
+                  </p>
                 </div>
               </section>
 
-              <section className="inv-ins-detail-modal__list" aria-label="Datos del empleado">
-                {detailFields.map((item, index) => (
-                  <article
-                    key={item.key}
-                    className="inv-ins-detail-modal__line"
-                    style={{ animationDelay: `${index * 70}ms` }}
-                  >
-                    <div className="inv-ins-detail-modal__line-icon" aria-hidden="true">
-                      <i className={`bi ${item.icon}`} />
+              <section className="personas-emp-detail__panel">
+                <header className="personas-emp-detail__panel-head">
+                  <h4>Informacion personal y laboral</h4>
+                  <span className="personas-emp-detail__panel-line" aria-hidden="true" />
+                </header>
+
+                <div className="personas-emp-detail__grid" aria-label="Datos del empleado">
+                  {infoCards.map((item) => (
+                    <article key={item.key} className="personas-emp-detail__info-card">
+                      <div className="personas-emp-detail__info-icon" aria-hidden="true">
+                        <i className={`bi ${item.icon}`} />
+                      </div>
+                      <div className="personas-emp-detail__info-copy">
+                        <span>{item.label}</span>
+                        <strong>{item.value}</strong>
+                      </div>
+                    </article>
+                  ))}
+
+                  <article className="personas-emp-detail__info-card personas-emp-detail__info-card--wide">
+                    <div className="personas-emp-detail__info-segment">
+                      <div className="personas-emp-detail__info-icon" aria-hidden="true">
+                        <i className="bi bi-calendar-event" />
+                      </div>
+                      <div className="personas-emp-detail__info-copy">
+                        <span>Fecha de ingreso</span>
+                        <strong>{fechaIngresoLabel}</strong>
+                      </div>
                     </div>
-                    <div className="inv-ins-detail-modal__line-copy">
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
+
+                    <span className="personas-emp-detail__info-separator" aria-hidden="true" />
+
+                    <div className="personas-emp-detail__info-segment">
+                      <div className="personas-emp-detail__info-icon personas-emp-detail__info-icon--state" aria-hidden="true">
+                        <i className="bi bi-patch-check" />
+                      </div>
+                      <div className="personas-emp-detail__info-copy">
+                        <span>Estado</span>
+                        <span className={`personas-emp-detail__status-pill ${estadoTone}`}>
+                          <span className="personas-emp-detail__status-dot" />
+                          {estadoLabel}
+                        </span>
+                      </div>
                     </div>
                   </article>
-                ))}
+                </div>
               </section>
-            </div>
+            </section>
           </div>
         </div>
       </div>
