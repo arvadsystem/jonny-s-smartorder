@@ -8,6 +8,7 @@ export default function CajaView({
   clientes,
   combos,
   recetas,
+  descuentosCatalogo,
   catalogLoading,
   saving,
   onSubmit
@@ -18,6 +19,7 @@ export default function CajaView({
     clientes,
     combos,
     recetas,
+    descuentosCatalogo,
     onSubmit
   });
 

@@ -21,8 +21,18 @@ const ventasService = {
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
   getCombosCatalog: () => apiFetch('/ventas/catalogos/combos', 'GET'),
   getRecetasCatalog: () => apiFetch('/ventas/catalogos/recetas', 'GET'),
+  getDescuentosCatalog: () => apiFetch('/ventas/catalogos/descuentos', 'GET'),
+  getTiposDescuentoCatalog: () => apiFetch('/ventas/catalogos/tipos-descuento', 'GET'),
   getProductosCatalog: () => apiFetch('/productos', 'GET'),
-  getCategoriasCatalog: () => apiFetch('/categorias_productos', 'GET')
+  getCategoriasCatalog: () => apiFetch('/categorias_productos', 'GET'),
+  listDescuentosCatalogosAdmin: (params = {}) =>
+    apiFetch(`/ventas/descuentos-catalogos${buildQuery(params)}`, 'GET'),
+  getDescuentoCatalogoById: (id) => apiFetch(`/ventas/descuentos-catalogos/${id}`, 'GET'),
+  createDescuentoCatalogo: (payload) => apiFetch('/ventas/descuentos-catalogos', 'POST', payload),
+  updateDescuentoCatalogo: (id, payload) =>
+    apiFetch(`/ventas/descuentos-catalogos/${id}`, 'PUT', payload),
+  toggleDescuentoCatalogoEstado: (id, estado) =>
+    apiFetch(`/ventas/descuentos-catalogos/${id}/estado`, 'PATCH', { estado })
 };
 
 export default ventasService;

@@ -20,8 +20,9 @@ const buildInitialState = () => ({
   selectedClient: 'cf',
   clientPickerOpen: false,
   paymentPickerOpen: false,
+  descuentoPickerOpen: false,
   paymentMethod: 'efectivo',
-  discount: '0',
+  selectedDiscountId: '',
   cashReceived: '',
   cart: [],
   submitError: ''
@@ -31,6 +32,13 @@ const buildCartKey = (kind, entityId) => `${kind}:${entityId}`;
 
 const findLineIndex = (cart, cartKey) =>
   cart.findIndex((line) => String(line.cartKey) === String(cartKey));
+
+const normalizeDiscountType = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
 
 const buildCatalogLine = (kind, row) => {
   if (kind === 'PRODUCTO') {
@@ -46,6 +54,7 @@ const buildCatalogLine = (kind, row) => {
       descripcion_item: row.descripcion_producto || row.categoria_label || 'Producto',
       precio_unitario: row.precio,
       cantidad: 1,
+      stock_disponible: Number(row.cantidad ?? 0) || 0,
       observacion: ''
     };
   }
@@ -63,6 +72,7 @@ const buildCatalogLine = (kind, row) => {
       descripcion_item: row.descripcion || 'Combo',
       precio_unitario: row.precio,
       cantidad: 1,
+      stock_disponible: null,
       observacion: ''
     };
   }
@@ -79,6 +89,7 @@ const buildCatalogLine = (kind, row) => {
     descripcion_item: row.nombre_producto_base || row.nombre_receta || 'Receta',
     precio_unitario: row.precio,
     cantidad: 1,
+    stock_disponible: null,
     observacion: ''
   };
 };
@@ -109,12 +120,27 @@ const getResultsLabel = (catalogKey, count) => {
   return `${count} ${count === 1 ? 'producto' : 'productos'}`;
 };
 
+const computeDiscountAmount = (subtotal, selectedDiscount) => {
+  if (!selectedDiscount) return 0;
+
+  const discountValue = roundMoney(Number(selectedDiscount.valor_descuento ?? 0));
+  if (discountValue <= 0 || subtotal <= 0) return 0;
+
+  const discountType = normalizeDiscountType(selectedDiscount.nombre_tipo_descuento);
+  if (discountType.includes('PORCENTAJE')) {
+    return roundMoney(Math.min(subtotal, (subtotal * discountValue) / 100));
+  }
+
+  return roundMoney(Math.min(subtotal, discountValue));
+};
+
 export const useVentaComposer = ({
   productos,
   categorias,
   clientes,
   combos,
   recetas,
+  descuentosCatalogo,
   onSubmit,
   resetKey
 }) => {
@@ -143,6 +169,18 @@ export const useVentaComposer = ({
     );
     return match?.label || 'Consumidor final';
   }, [clientes, state.selectedClient]);
+
+  const normalizedDescuentosCatalogo = useMemo(
+    () => (Array.isArray(descuentosCatalogo) ? descuentosCatalogo : []),
+    [descuentosCatalogo]
+  );
+
+  const selectedDiscount = useMemo(
+    () => normalizedDescuentosCatalogo.find(
+      (discount) => String(discount.id_descuento_catalogo) === String(state.selectedDiscountId)
+    ) || null,
+    [normalizedDescuentosCatalogo, state.selectedDiscountId]
+  );
 
   const filteredProducts = useMemo(() => {
     const categoryValue = state.activeCategory;
@@ -195,11 +233,10 @@ export const useVentaComposer = ({
     [state.cart]
   );
 
-  const discountValue = useMemo(() => {
-    const numeric = Number(state.discount);
-    if (!Number.isFinite(numeric) || numeric <= 0) return 0;
-    return roundMoney(Math.min(numeric, subtotal));
-  }, [state.discount, subtotal]);
+  const discountValue = useMemo(
+    () => computeDiscountAmount(subtotal, selectedDiscount),
+    [selectedDiscount, subtotal]
+  );
 
   const taxableSubtotal = roundMoney(Math.max(subtotal - discountValue, 0));
   const isv = roundMoney(taxableSubtotal * 0.15);
@@ -215,17 +252,53 @@ export const useVentaComposer = ({
   const canSubmit = state.cart.length > 0 && state.paymentMethod === 'efectivo' && cashValue >= total;
   const resultsLabel = getResultsLabel(state.activeCatalog, currentCatalogRows.length);
 
+  const getCurrentProductoQuantityInCart = (idProducto, cart) =>
+    (Array.isArray(cart) ? cart : []).reduce((acc, line) => {
+      if (line.kind !== 'PRODUCTO') return acc;
+      if (Number(line.id_producto) !== Number(idProducto)) return acc;
+      return acc + Number(line.cantidad ?? 0);
+    }, 0);
+
   const addCatalogItem = (kind, row) => {
     const catalogLine = buildCatalogLine(kind, row);
 
     setState((current) => {
       const nextCart = [...current.cart];
+
+      if (kind === 'PRODUCTO') {
+        const stockDisponible = Number(row.cantidad ?? 0);
+        if (stockDisponible <= 0) {
+          return {
+            ...current,
+            submitError: `${row.nombre_producto || 'Producto'} agotado.`
+          };
+        }
+
+        const alreadyInCart = getCurrentProductoQuantityInCart(row.id_producto, nextCart);
+        if (alreadyInCart >= stockDisponible) {
+          return {
+            ...current,
+            submitError: `Stock maximo alcanzado para ${row.nombre_producto || 'producto'}.`
+          };
+        }
+      }
+
       const index = findLineIndex(nextCart, catalogLine.cartKey);
 
       if (index >= 0) {
+        const currentLine = nextCart[index];
+        const nextCantidad = Number(currentLine.cantidad ?? 0) + 1;
+
+        if (kind === 'PRODUCTO' && nextCantidad > Number(currentLine.stock_disponible ?? 0)) {
+          return {
+            ...current,
+            submitError: `No hay stock suficiente para ${currentLine.nombre_item}.`
+          };
+        }
+
         nextCart[index] = {
-          ...nextCart[index],
-          cantidad: Number(nextCart[index].cantidad ?? 0) + 1
+          ...currentLine,
+          cantidad: nextCantidad
         };
       } else {
         nextCart.push(catalogLine);
@@ -240,18 +313,40 @@ export const useVentaComposer = ({
   };
 
   const updateLine = (cartKey, updater) => {
-    setState((current) => ({
-      ...current,
-      cart: current.cart
-        .map((line) => (line.cartKey === cartKey ? updater(line) : line))
-        .filter((line) => Number(line.cantidad ?? 0) > 0)
-    }));
+    setState((current) => {
+      const nextCart = current.cart
+        .map((line) => {
+          if (line.cartKey !== cartKey) return line;
+          const candidate = updater(line);
+
+          if (candidate.kind === 'PRODUCTO') {
+            const requested = Number(candidate.cantidad ?? 0);
+            const maxStock = Number(candidate.stock_disponible ?? 0);
+            if (requested > maxStock) {
+              return {
+                ...candidate,
+                cantidad: maxStock
+              };
+            }
+          }
+
+          return candidate;
+        })
+        .filter((line) => Number(line.cantidad ?? 0) > 0);
+
+      return {
+        ...current,
+        cart: nextCart,
+        submitError: ''
+      };
+    });
   };
 
   const removeLine = (cartKey) => {
     setState((current) => ({
       ...current,
-      cart: current.cart.filter((item) => item.cartKey !== cartKey)
+      cart: current.cart.filter((item) => item.cartKey !== cartKey),
+      submitError: ''
     }));
   };
 
@@ -302,7 +397,8 @@ export const useVentaComposer = ({
       const response = await onSubmit({
         id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
         metodo_pago: 'efectivo',
-        descuento: discountValue,
+        id_descuento_catalogo: state.selectedDiscountId ? Number(state.selectedDiscountId) : null,
+        descuento: state.selectedDiscountId ? 0 : discountValue,
         efectivo_entregado: cashValue,
         descripcion_pedido: null,
         items: state.cart.map((line) => ({
@@ -335,7 +431,10 @@ export const useVentaComposer = ({
     selectedClientLabel,
     clientPickerOpen: state.clientPickerOpen,
     paymentMethod: state.paymentMethod,
-    discount: state.discount,
+    selectedDiscountId: state.selectedDiscountId,
+    selectedDiscount,
+    descuentosCatalogo: normalizedDescuentosCatalogo,
+    descuentoPickerOpen: state.descuentoPickerOpen,
     cashReceived: state.cashReceived,
     cart: state.cart,
     submitError: state.submitError,
@@ -360,6 +459,7 @@ export const useVentaComposer = ({
     setActiveCategory: (value) => setPartialState({ activeCategory: value }),
     paymentPickerOpen: state.paymentPickerOpen,
     setPaymentPickerOpen: (value) => setPartialState({ paymentPickerOpen: value }),
+    setDescuentoPickerOpen: (value) => setPartialState({ descuentoPickerOpen: value }),
     setClientPickerOpen: (value) => setPartialState({ clientPickerOpen: value }),
     setSelectedClient: (value) =>
       setPartialState({
@@ -371,7 +471,12 @@ export const useVentaComposer = ({
         paymentMethod: value,
         submitError: ''
       }),
-    setDiscount: (value) => setPartialState({ discount: value }),
+    setSelectedDiscountId: (value) =>
+      setPartialState({
+        selectedDiscountId: value,
+        descuentoPickerOpen: false,
+        submitError: ''
+      }),
     setCashReceived: (value) => setPartialState({ cashReceived: value }),
     addCatalogItem,
     updateLine,

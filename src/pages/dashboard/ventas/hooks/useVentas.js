@@ -25,6 +25,8 @@ export const useVentas = () => {
   const [productos, setProductos] = useState([]);
   const [combos, setCombos] = useState([]);
   const [recetas, setRecetas] = useState([]);
+  const [descuentosCatalogo, setDescuentosCatalogo] = useState([]);
+  const [tiposDescuento, setTiposDescuento] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -82,13 +84,17 @@ export const useVentas = () => {
         productosResponse,
         clientesResponse,
         combosResponse,
-        recetasResponse
+        recetasResponse,
+        descuentosResponse,
+        tiposDescuentoResponse
       ] = await Promise.all([
         ventasService.getCategoriasCatalog(),
         ventasService.getProductosCatalog(),
         ventasService.getClientesCatalog(),
         ventasService.getCombosCatalog(),
-        ventasService.getRecetasCatalog()
+        ventasService.getRecetasCatalog(),
+        ventasService.getDescuentosCatalog(),
+        ventasService.getTiposDescuentoCatalog()
       ]);
 
       const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
@@ -142,10 +148,32 @@ export const useVentas = () => {
           })
         );
 
+      const normalizedTiposDescuento = (Array.isArray(tiposDescuentoResponse) ? tiposDescuentoResponse : [])
+        .filter((row) => row && (row.estado === true || row.estado === 'true' || row.estado === 1 || row.estado === '1'))
+        .map((row) => ({
+          id_tipo_descuento: Number(row.id_tipo_descuento ?? 0) || null,
+          nombre_tipo_descuento: String(row.nombre_tipo_descuento ?? '')
+        }))
+        .filter((row) => row.id_tipo_descuento && row.nombre_tipo_descuento);
+
+      const normalizedDescuentosCatalogo = (Array.isArray(descuentosResponse) ? descuentosResponse : [])
+        .map((row) => ({
+          id_descuento_catalogo: Number(row.id_descuento_catalogo ?? 0) || null,
+          nombre_descuento: String(row.nombre_descuento ?? 'Descuento'),
+          descripcion: String(row.descripcion ?? ''),
+          valor_descuento: Number(row.valor_descuento ?? 0) || 0,
+          id_tipo_descuento: Number(row.id_tipo_descuento ?? 0) || null,
+          nombre_tipo_descuento: String(row.nombre_tipo_descuento ?? ''),
+          estado: true
+        }))
+        .filter((row) => row.id_descuento_catalogo && row.valor_descuento > 0);
+
       setCategorias(normalizedCategorias);
       setProductos(normalizedProductos);
       setCombos(normalizedCombos);
       setRecetas(normalizedRecetas);
+      setDescuentosCatalogo(normalizedDescuentosCatalogo);
+      setTiposDescuento(normalizedTiposDescuento);
       setClientes(normalizedClientes);
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar los catalogos de ventas.');
@@ -207,6 +235,8 @@ export const useVentas = () => {
     productos,
     combos,
     recetas,
+    descuentosCatalogo,
+    tiposDescuento,
     clientes,
     loading,
     catalogLoading,

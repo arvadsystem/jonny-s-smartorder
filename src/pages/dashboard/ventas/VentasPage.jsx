@@ -2,16 +2,24 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
+import { useAuth } from '../../../hooks/useAuth';
 import CajaView from './components/CajaView';
+import DescuentosView from './components/DescuentosView';
 import PedidosView from './components/PedidosView';
 import VentaDetalleModal from './components/VentaDetalleModal';
 import VentaOverviewView from './components/VentaOverviewView';
 import VentasToast from './components/VentasToast';
 import { useVentas } from './hooks/useVentas';
-import { getAllowedTabs, MODULE_PRIMARY_PERMISSION, PERMISSIONS } from '../../../utils/permissions';
+import {
+  getAllowedTabs,
+  MODULE_PRIMARY_PERMISSION,
+  PERMISSIONS,
+  resolveVentasStatsVisibility
+} from '../../../utils/permissions';
 import './styles/ventas.css';
 
 export default function VentasPage() {
+  const { user } = useAuth();
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
   const {
     ventas,
@@ -19,6 +27,7 @@ export default function VentasPage() {
     productos,
     combos,
     recetas,
+    descuentosCatalogo,
     clientes,
     loading,
     catalogLoading,
@@ -43,6 +52,14 @@ export default function VentasPage() {
   const canCreateVenta = canAny([PERMISSIONS.VENTAS_CREAR]);
   const canExportVenta = canAny([PERMISSIONS.VENTAS_EXPORTAR]);
   const canPrintVenta = canAny([PERMISSIONS.VENTAS_IMPRIMIR]);
+  const canViewDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_VER]);
+  const canCreateDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_CREAR]);
+  const canEditDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_EDITAR]);
+  const canToggleDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR]);
+  const statsVisibility = useMemo(
+    () => resolveVentasStatsVisibility(user?.roles, { isSuperAdmin }),
+    [isSuperAdmin, user?.roles]
+  );
 
   const activeTab = useMemo(() => {
     if (!fallbackTab) return null;
@@ -126,6 +143,7 @@ export default function VentasPage() {
           ventas={ventas}
           loading={loading}
           error={error}
+          statsVisibility={statsVisibility}
           onOpenDetail={openDetail}
           onGoToCaja={() => goToTab('caja')}
           canCreate={canCreateVenta}
@@ -139,6 +157,7 @@ export default function VentasPage() {
           clientes={clientes}
           combos={combos}
           recetas={recetas}
+          descuentosCatalogo={descuentosCatalogo}
           catalogLoading={catalogLoading}
           saving={saving}
           onSubmit={handleCreateVenta}
@@ -146,6 +165,14 @@ export default function VentasPage() {
       ) : null}
 
       {activeTab === 'pedidos' ? <PedidosView /> : null}
+      {activeTab === 'descuentos' ? (
+        <DescuentosView
+          canView={canViewDescuentos}
+          canCreate={canCreateDescuentos}
+          canEdit={canEditDescuentos}
+          canToggle={canToggleDescuentos}
+        />
+      ) : null}
 
       <VentaDetalleModal
         open={detailOpen}

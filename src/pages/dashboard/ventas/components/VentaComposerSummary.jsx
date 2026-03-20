@@ -1,11 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
+
+const buildDiscountLabel = (discount) => {
+  if (!discount) return 'Sin descuento';
+  const type = String(discount.nombre_tipo_descuento || '').toUpperCase();
+  const value = Number(discount.valor_descuento ?? 0);
+  if (type.includes('PORCENTAJE')) {
+    return `${discount.nombre_descuento} (${value.toFixed(2)}%)`;
+  }
+  return `${discount.nombre_descuento} (L ${value.toFixed(2)})`;
+};
 
 export default function VentaComposerSummary({ composer, saving }) {
   const clientPickerRef = useRef(null);
   const paymentPickerRef = useRef(null);
+  const discountPickerRef = useRef(null);
+  const [totalsExpanded, setTotalsExpanded] = useState(false);
 
-  // Cerrar cliente picker al hacer clic fuera
   useEffect(() => {
     if (!composer.clientPickerOpen) return undefined;
 
@@ -24,7 +35,6 @@ export default function VentaComposerSummary({ composer, saving }) {
     };
   }, [composer]);
 
-  // Cerrar payment picker al hacer clic fuera
   useEffect(() => {
     if (!composer.paymentPickerOpen) return undefined;
 
@@ -43,14 +53,30 @@ export default function VentaComposerSummary({ composer, saving }) {
     };
   }, [composer]);
 
+  useEffect(() => {
+    if (!composer.descuentoPickerOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (discountPickerRef.current && !discountPickerRef.current.contains(event.target)) {
+        composer.setDescuentoPickerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [composer]);
+
   const selectedPayment = PAYMENT_OPTIONS.find((o) => o.key === composer.paymentMethod) || PAYMENT_OPTIONS[0];
+  const selectedDiscountLabel = buildDiscountLabel(composer.selectedDiscount);
 
   return (
     <aside className="ventas-create-modal__summary">
-
-      {/* Fila superior: Cliente + Método de pago en una sola línea */}
       <div className="ventas-summary__top-row">
-        {/* Cliente */}
         <div className="ventas-summary__client-wrap" ref={clientPickerRef}>
           <button
             type="button"
@@ -87,7 +113,6 @@ export default function VentaComposerSummary({ composer, saving }) {
           ) : null}
         </div>
 
-        {/* Método de pago como dropdown */}
         <div className="ventas-summary__payment-wrap" ref={paymentPickerRef}>
           <button
             type="button"
@@ -122,23 +147,52 @@ export default function VentaComposerSummary({ composer, saving }) {
         </div>
       </div>
 
-      {/* Descuento + Efectivo en una sola fila */}
       <div className="ventas-create-modal__form-row ventas-summary__fields-row">
-        <label className="ventas-create-modal__field">
-          <span>
-            <i className="bi bi-tag" /> Descuento
-          </span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={composer.discount}
-            onChange={(event) => composer.setDiscount(event.target.value)}
-          />
-        </label>
+        <div className="ventas-summary__discount-wrap" ref={discountPickerRef}>
+          <button
+            type="button"
+            className="ventas-summary__discount-btn"
+            onClick={() => composer.setDescuentoPickerOpen(!composer.descuentoPickerOpen)}
+            title="Seleccionar descuento"
+          >
+            <span className="ventas-summary__discount-label">
+              <i className="bi bi-tag" /> {selectedDiscountLabel}
+            </span>
+            <i className="bi bi-chevron-down ventas-summary__chevron" />
+          </button>
 
-        <label className="ventas-create-modal__field">
-          <span>
+          {composer.descuentoPickerOpen ? (
+            <div className="ventas-summary__dropdown" role="listbox" aria-label="Seleccionar descuento">
+              <button
+                type="button"
+                className={`ventas-create-modal__client-option ${composer.selectedDiscountId ? '' : 'is-selected'}`}
+                onClick={() => composer.setSelectedDiscountId('')}
+              >
+                <span>Sin descuento</span>
+                {!composer.selectedDiscountId ? <i className="bi bi-check2" aria-hidden="true" /> : null}
+              </button>
+
+              {composer.descuentosCatalogo.map((discount) => {
+                const key = String(discount.id_descuento_catalogo);
+                const isSelected = key === String(composer.selectedDiscountId);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`ventas-create-modal__client-option ${isSelected ? 'is-selected' : ''}`}
+                    onClick={() => composer.setSelectedDiscountId(key)}
+                  >
+                    <span>{buildDiscountLabel(discount)}</span>
+                    {isSelected ? <i className="bi bi-check2" aria-hidden="true" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+
+        <label className="ventas-create-modal__field ventas-create-modal__field--inline">
+          <span title="Efectivo">
             <i className="bi bi-cash-coin" /> Efectivo
           </span>
           <input
@@ -152,7 +206,6 @@ export default function VentaComposerSummary({ composer, saving }) {
         </label>
       </div>
 
-      {/* Carrito con scroll */}
       <section className="ventas-create-modal__section ventas-create-modal__cart">
         <div className="ventas-create-modal__cart-head">
           <div className="ventas-create-modal__section-label">
@@ -177,10 +230,11 @@ export default function VentaComposerSummary({ composer, saving }) {
               const lineTotal = composer.formatCurrency(line.precio_unitario * line.cantidad);
               const supportsNotes = line.kind !== 'PRODUCTO';
               const thumb = line.imagen_principal_url || null;
+              const canIncrease =
+                line.kind !== 'PRODUCTO' || Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0);
 
               return (
                 <div key={line.cartKey} className="ventas-cart__item">
-                  {/* Miniatura */}
                   <div className="ventas-cart__item-thumb">
                     {thumb
                       ? <img src={thumb} alt={line.nombre_item} />
@@ -188,9 +242,11 @@ export default function VentaComposerSummary({ composer, saving }) {
                     }
                   </div>
 
-                  {/* Info + controles */}
                   <div className="ventas-cart__item-body">
                     <div className="ventas-cart__item-name">{line.nombre_item}</div>
+                    {line.kind === 'PRODUCTO' ? (
+                      <small className="ventas-cart__stock">Disponible: {Number(line.stock_disponible ?? 0)}</small>
+                    ) : null}
                     <div className="ventas-cart__item-row">
                       <div className="ventas-create-modal__qty-control">
                         <button
@@ -207,6 +263,7 @@ export default function VentaComposerSummary({ composer, saving }) {
                         <span>{line.cantidad}</span>
                         <button
                           type="button"
+                          disabled={!canIncrease}
                           onClick={() =>
                             composer.updateLine(line.cartKey, (current) => ({
                               ...current,
@@ -232,7 +289,7 @@ export default function VentaComposerSummary({ composer, saving }) {
                       <input
                         type="text"
                         className="ventas-create-modal__note-input"
-                        placeholder='Nota para cocina...'
+                        placeholder="Nota para cocina..."
                         value={line.observacion}
                         maxLength={200}
                         onChange={(event) =>
@@ -251,25 +308,39 @@ export default function VentaComposerSummary({ composer, saving }) {
         </div>
       </section>
 
-      {/* Totales fijos al fondo */}
       <footer className="ventas-create-modal__totals">
-        <div>
-          <span>Subtotal</span>
-          <strong>{composer.formatCurrency(composer.subtotal)}</strong>
-        </div>
-        <div>
-          <span>Descuento</span>
-          <strong>{composer.formatCurrency(composer.discountValue)}</strong>
-        </div>
-        <div>
-          <span>ISV (15%)</span>
-          <strong>{composer.formatCurrency(composer.isv)}</strong>
-        </div>
-        <div className="is-total">
+        <button
+          type="button"
+          className="ventas-totals__toggle-btn"
+          onClick={() => setTotalsExpanded(!totalsExpanded)}
+          aria-expanded={totalsExpanded}
+        >
+          <i className={`bi bi-chevron-${totalsExpanded ? 'down' : 'up'}`} />
+          {totalsExpanded ? 'Ocultar detalles' : 'Ver detalles'}
+        </button>
+
+        {totalsExpanded && (
+          <div className="ventas-totals__details">
+            <div className="ventas-totals__row">
+              <span>Subtotal</span>
+              <strong>{composer.formatCurrency(composer.subtotal)}</strong>
+            </div>
+            <div className="ventas-totals__row">
+              <span>Descuento</span>
+              <strong>{composer.formatCurrency(composer.discountValue)}</strong>
+            </div>
+            <div className="ventas-totals__row">
+              <span>ISV (15%)</span>
+              <strong>{composer.formatCurrency(composer.isv)}</strong>
+            </div>
+          </div>
+        )}
+
+        <div className="is-total ventas-totals__row">
           <span>Total</span>
           <strong>{composer.formatCurrency(composer.total)}</strong>
         </div>
-        <div>
+        <div className="ventas-totals__row">
           <span>Cambio</span>
           <strong>{composer.formatCurrency(composer.change)}</strong>
         </div>

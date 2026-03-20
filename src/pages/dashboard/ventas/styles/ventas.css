@@ -43,7 +43,7 @@
 }
 
 .ventas-page .ventas-page__stats {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .ventas-page .inv-catpro-item.inv-cat-card,
@@ -472,77 +472,90 @@
   font-weight: 700;
 }
 
+
 .ventas-create-modal__products {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: max-content;
   gap: 12px;
   padding-right: 4px;
 }
 
-.ventas-create-modal__product-card {
-  text-align: left;
-  border: 1px solid rgba(157, 150, 112, 0.18);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.96);
-  padding: 8px;
+/* VCP Card Styles */
+.vcp-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 120px;
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  box-shadow: 0 4px 12px rgba(18, 7, 3, 0.04);
   overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+  height: 100%;
 }
 
-.ventas-create-modal__product-card:hover {
+.vcp-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(154, 83, 25, 0.34);
-  box-shadow: 0 8px 16px rgba(18, 7, 3, 0.06);
+  box-shadow: 0 8px 24px rgba(18, 7, 3, 0.08);
+  border-color: rgba(154, 83, 25, 0.3);
 }
 
-.ventas-create-modal__product-image {
+.vcp-card__media {
+  position: relative;
   width: 100%;
-  height: 100px;
-  border-radius: 12px;
-  overflow: hidden;
-  background: linear-gradient(135deg, rgba(230, 215, 195, 0.8), rgba(210, 190, 165, 0.4));
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(135deg, #f7f2ea, #efe7da);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
-.ventas-create-modal__product-image img {
+.vcp-card__image {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  z-index: 2;
 }
 
-.ventas-create-modal__product-image-placeholder {
-  width: 100%;
-  height: 100%;
-  opacity: 0.5;
+.vcp-card__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c9bcae;
+  z-index: 1;
 }
 
-.ventas-create-modal__product-info {
+.vcp-card__placeholder-icon {
+  font-size: 2rem;
+  opacity: 0.7;
+}
+
+.vcp-card__body {
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 0 4px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-.ventas-create-modal__product-title {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+.vcp-card__name {
+  margin: 0 0 8px 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2f1a10;
   line-height: 1.2;
-}
-
-.ventas-create-modal__product-title strong {
-  font-size: 1rem;
-  color: #2e1a11;
-  font-weight: 800;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -550,46 +563,37 @@
   overflow: hidden;
 }
 
-.ventas-create-modal__product-title span {
-  font-size: 0.85rem;
-  color: rgba(82, 44, 34, 0.68);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ventas-create-modal__product-action-row {
+.vcp-card__footer {
+  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: auto;
-  padding-top: 4px;
+  gap: 8px;
 }
 
-.ventas-create-modal__product-price {
-  color: #9a5319;
-  font-size: 1.3rem;
+.vcp-card__price {
+  font-size: 1.1rem;
   font-weight: 800;
+  color: #9a5319;
+  white-space: nowrap;
 }
 
-.ventas-create-modal__product-add-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 14px;
+.vcp-card__add-btn {
+  padding: 6px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(154, 83, 25, 0.3);
-  background: rgba(248, 244, 238, 0.95);
-  color: rgba(117, 85, 61, 0.9);
+  border: 1px solid rgba(154, 83, 25, 0.4);
+  background: rgba(255, 255, 255, 0.9);
+  color: #9a5319;
   font-size: 0.82rem;
   font-weight: 700;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
-.ventas-create-modal__product-card:hover .ventas-create-modal__product-add-btn {
+.vcp-card:hover .vcp-card__add-btn,
+.vcp-card__add-btn:hover {
   background: #9a5319;
-  color: #fff;
-  border-color: #9a5319;
+  color: #ffffff;
 }
 
 .ventas-create-modal__empty {
@@ -1108,24 +1112,27 @@
 .ventas-caja__body {
   display: grid;
   grid-template-columns: minmax(0, 1.75fr) minmax(360px, 0.92fr);
-  min-height: min(78vh, 880px);
+  height: calc(100vh - 120px);
+  max-height: 880px;
+  min-height: 500px;
   background: linear-gradient(180deg, #fff, #faf7f2);
+  overflow: hidden;
 }
 
 .ventas-caja-card .ventas-create-modal__catalog {
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
-.ventas-caja-card .ventas-create-modal__products {
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-}
+
 
 .ventas-caja-card .ventas-create-modal__summary {
-  position: sticky;
-  top: 0;
-  align-self: start;
-  min-height: 100%;
-  max-height: min(78vh, 880px);
+  position: relative;
+  height: 100%;
+  overflow: hidden;
   border-left: 1px solid rgba(157, 150, 112, 0.16);
 }
 
@@ -1530,18 +1537,7 @@
   border-color: rgba(154, 83, 25, 0.5);
 }
 
-/* Grid del catálogo: siempre muestra ~2 filas (6 ítems) y luego scroll */
-.ventas-create-modal__products {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 12px;
-  padding-right: 4px;
-  max-height: calc(2 * (100px + 12px + 70px));
-}
+
 
 /* ── Summary compacto ── */
 .ventas-create-modal__summary {
@@ -1775,4 +1771,274 @@
   padding-top: 10px;
   border-top: 1px solid rgba(157, 150, 112, 0.18);
   flex-shrink: 0;
+}
+/* Added classes for the cart improvements */
+
+.ventas-create-modal__field--inline {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px !important;
+}
+
+.ventas-create-modal__field--inline span {
+  flex-shrink: 0;
+}
+
+.ventas-create-modal__field--inline input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ventas-totals__toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+  color: rgba(82, 44, 34, 0.6);
+  font-size: 0.85rem;
+  font-weight: 700;
+  transition: color 150ms ease;
+  cursor: pointer;
+  margin-bottom: -4px;
+}
+
+.ventas-totals__toggle-btn:hover {
+  color: rgba(82, 44, 34, 0.9);
+}
+
+.ventas-totals__details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  animation: slideDown 200ms ease-out forwards;
+  transform-origin: top;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: scaleY(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+/* Buscador colapsable interior */
+.ventas-catalog__search-inner {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+/* Dropdown de categorías en la barra de búsqueda */
+.ventas-catalog__categories-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1000;
+  min-width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(18, 7, 3, 0.12);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ventas-catalog__categories-dropdown .ventas-create-modal__client-option {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #2f1a10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.ventas-catalog__categories-dropdown .ventas-create-modal__client-option:hover {
+  background: rgba(184, 104, 33, 0.08);
+}
+
+.ventas-catalog__categories-dropdown .ventas-create-modal__client-option.is-selected {
+  background: rgba(184, 104, 33, 0.12);
+  color: #9a5319;
+  font-weight: 700;
+}
+
+/* Buscador estilo Dropdown (Popup) */
+.ventas-catalog__search-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  background: #ffffff;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(18, 7, 3, 0.15);
+  padding: 12px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ventas-catalog__search-popup .ventas-catalog__search-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 12px;
+  background: rgba(249, 245, 240, 0.5);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 150ms ease;
+}
+
+.ventas-catalog__search-popup .ventas-catalog__search-input:focus {
+  border-color: rgba(154, 83, 25, 0.5);
+  background: #ffffff;
+}
+
+.ventas-catalog__categories-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 250px;
+  overflow-y: auto;
+  gap: 2px;
+}
+
+.ventas-catalog__categories-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(117, 85, 61, 0.7);
+  padding: 4px 8px 8px;
+}
+
+.ventas-catalog__category-item {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #2f1a10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+  font-size: 0.88rem;
+}
+
+.ventas-catalog__category-item:hover {
+  background: rgba(184, 104, 33, 0.08);
+}
+
+.ventas-catalog__category-item.is-selected {
+  background: rgba(184, 104, 33, 0.12);
+  color: #9a5319;
+  font-weight: 700;
+}
+
+/* Ventas - Caja stock y selector de descuentos */
+.vcp-card.is-out-of-stock {
+  opacity: 0.68;
+  filter: grayscale(0.12);
+}
+
+.vcp-card__stock {
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  color: rgba(82, 44, 34, 0.76);
+  font-weight: 700;
+}
+
+.vcp-card__stock.is-empty {
+  color: #9a1c12;
+}
+
+.vcp-card__add-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+  background: rgba(157, 150, 112, 0.22);
+  border-color: rgba(157, 150, 112, 0.22);
+  color: rgba(82, 44, 34, 0.7);
+}
+
+.ventas-summary__discount-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.ventas-summary__discount-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #2f1a10;
+}
+
+.ventas-summary__discount-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.ventas-cart__stock {
+  color: rgba(117, 85, 61, 0.82);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.ventas-totals__details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ventas-totals__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ventas-totals__row strong {
+  text-align: right;
+  min-width: 120px;
+}
+
+.ventas-page .ventas-page__table-pill.is-soft-muted {
+  background: rgba(157, 150, 112, 0.14);
+  color: rgba(82, 44, 34, 0.76);
 }

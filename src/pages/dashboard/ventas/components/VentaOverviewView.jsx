@@ -8,6 +8,7 @@ export default function VentaOverviewView({
   ventas,
   loading,
   error,
+  statsVisibility,
   onOpenDetail,
   onGoToCaja,
   canCreate = true
@@ -68,7 +69,7 @@ export default function VentaOverviewView({
       <div className="inv-catpro-card inv-prod-card mb-3">
         <VentasToolbar search={search} onSearchChange={setSearch} onOpenCreate={onGoToCaja} canCreate={canCreate} />
 
-        <VentasStats stats={stats} />
+        <VentasStats stats={stats} visibleKeys={statsVisibility} />
 
         <div className="inv-catpro-body inv-prod-body p-3">
           {error ? (
