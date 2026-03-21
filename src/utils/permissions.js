@@ -364,6 +364,10 @@ const SEGURIDAD_TAB_PERMISSIONS_MAP = Object.freeze({
   logins: uniquePermissions([
     PERMISSIONS.SEGURIDAD_VER,
     PERMISSIONS.SEGURIDAD_LOGINS_VER
+  ]),
+  bitacoras: uniquePermissions([
+    PERMISSIONS.SEGURIDAD_SESIONES_VER_GLOBAL,
+    PERMISSIONS.SEGURIDAD_USUARIOS_AUDITORIA_VER
   ])
 });
 
@@ -523,7 +527,8 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop', required: SEGURIDAD_TAB_PERMISSIONS_MAP.sesiones },
     { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people', required: SEGURIDAD_TAB_PERMISSIONS_MAP.usuarios },
     { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key', required: SEGURIDAD_TAB_PERMISSIONS_MAP.password },
-    { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text', required: SEGURIDAD_TAB_PERMISSIONS_MAP.logins }
+    { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text', required: SEGURIDAD_TAB_PERMISSIONS_MAP.logins },
+    { key: 'bitacoras', label: 'Bitacoras', icon: 'bi bi-clipboard-data', required: SEGURIDAD_TAB_PERMISSIONS_MAP.bitacoras }
   ],
   ventas: [
     { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS_MAP.ventas },
