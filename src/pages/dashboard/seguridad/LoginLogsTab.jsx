@@ -9,9 +9,21 @@ import "./sesiones-ui.css";
 const fmtDate = (value) => fmtHN(value);
 
 const estadoBadge = (exito) => {
-  if (exito === true) return <span className="badge bg-success">Éxito</span>;
-  if (exito === false) return <span className="badge bg-danger">Fallido</span>;
-  return <span className="badge bg-secondary">—</span>;
+  const isSuccess =
+    exito === true ||
+    exito === 1 ||
+    String(exito ?? "").trim().toLowerCase() === "true" ||
+    String(exito ?? "").trim() === "1";
+
+  const isFail =
+    exito === false ||
+    exito === 0 ||
+    String(exito ?? "").trim().toLowerCase() === "false" ||
+    String(exito ?? "").trim() === "0";
+
+  if (isSuccess) return <span className="sec-badge sec-badge-active">{"\u00C9XITO"}</span>;
+  if (isFail) return <span className="sec-badge sec-badge-fail">FALLIDO</span>;
+  return <span className="sec-badge sec-badge-closed">-</span>;
 };
 
 const LoginLogsTab = () => {
@@ -250,3 +262,4 @@ const LoginLogsTab = () => {
 };
 
 export default LoginLogsTab;
+
