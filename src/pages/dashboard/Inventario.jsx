@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { inventarioService } from '../../services/inventarioService';
 import SinPermiso from '../../components/common/SinPermiso';
 import { usePermisos } from '../../context/PermisosContext';
@@ -223,7 +224,7 @@ const Inventario = () => {
       {activeTab === 'alertas' && <AlertasTab openToast={openToast} />}
       {activeTab === 'ordenes_compra' && <OrdenesCompraTab openToast={openToast} />}
 
-      {toast.show && (
+      {toast.show && createPortal(
         <div className="inv-toast-wrap" role="status" aria-live="polite">
           <div className={`inv-toast-card ${toastVariant}`}>
             <div className="inv-toast-icon">
@@ -241,7 +242,8 @@ const Inventario = () => {
 
             <div className="inv-toast-progress" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

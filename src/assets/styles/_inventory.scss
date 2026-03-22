@@ -5788,18 +5788,28 @@
   flex-direction: column;
 }
 
-.inv-oc-top-panels {
-  display: grid;
-  gap: 0.9rem;
-}
-
+/* AM: apila verticalmente la parte superior de OC sin mover JSX delicado. */
+.inv-oc-top-panels,
 .inv-oc-top-panels.is-dual {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
   align-items: stretch;
 }
 
+/* AM: evita alturas forzadas del layout viejo en dos columnas. */
 .inv-oc-top-panels.is-dual > .inv-oc-card {
-  min-height: clamp(640px, 68vh, 760px);
+  min-height: auto;
+}
+
+/* AM: orden visual seguro sin cortar ni pegar bloques JSX grandes. */
+.inv-oc-flow-shell {
+  order: 1;
+}
+
+/* AM: Nueva Solicitud va debajo de Flujo. */
+.inv-oc-create-shell {
+  order: 2;
 }
 
 .inv-oc-middle-panels {
@@ -5865,6 +5875,160 @@
   width: min(100%, 520px);
 }
 
+/* AM: cabeceras compactas de OC con linea visual alineada al header de Productos. */
+.inv-oc-card__header--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.inv-oc-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.inv-oc-panel-title-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.inv-oc-panel-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.inv-oc-panel-title-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 29, 29, 0.15);
+  background: rgba(255, 248, 236, 0.94);
+  color: #8f3c2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-oc-panel-title-copy h4 {
+  color: #2f130c;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inv-oc-panel-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-panel-search {
+  min-width: min(100%, 320px);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.58rem 0.72rem;
+  border-radius: 14px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.inv-oc-panel-search i {
+  color: rgba(90, 45, 34, 0.58);
+  flex-shrink: 0;
+}
+
+.inv-oc-panel-search input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: #2f130c;
+  font-size: 0.9rem;
+}
+
+.inv-oc-panel-search input::placeholder {
+  color: rgba(90, 45, 34, 0.52);
+}
+
+.inv-oc-panel-toolbar-btn {
+  min-height: 41px;
+  border: 1px solid rgba(127, 29, 29, 0.18);
+  border-radius: 14px;
+  padding: 0.55rem 0.78rem;
+  background: rgba(255, 249, 239, 0.94);
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.inv-oc-panel-toolbar-btn:hover,
+.inv-oc-panel-toolbar-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(65, 31, 20, 0.08);
+  border-color: rgba(127, 29, 29, 0.24);
+}
+
+.inv-oc-panel-toolbar-btn.is-on {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.92), rgba(185, 124, 44, 0.9));
+  color: #fff;
+  border-color: transparent;
+}
+
+.inv-oc-header-meta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+  padding-top: 0.72rem;
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+}
+
+.inv-oc-header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+}
+
+.inv-oc-header-chipline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 340px;
+}
+
+.inv-oc-flow-filters-panel {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(248, 242, 230, 0.96));
+  padding: 0.82rem;
+  animation: inv-oc-fade-up 0.18s ease;
+}
+
+.inv-oc-flow-footnote {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 0.2rem;
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+}
+
 .inv-oc-input-wrap {
   position: relative;
 }
@@ -5913,7 +6077,8 @@
 
 .inv-oc-catalog-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* AM: desktop a 4 columnas para Nueva Solicitud. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.78rem;
 }
 
@@ -6217,6 +6382,120 @@
   color: rgba(74, 43, 34, 0.82);
 }
 
+/* AM: renovacion visual del detalle de solicitud sin tocar su logica. */
+.inv-oc-draft-summary-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.inv-oc-draft-summary-pill {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  padding: 0.78rem 0.82rem;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.1), transparent 50%),
+    rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  box-shadow: 0 8px 18px rgba(56, 30, 22, 0.06);
+}
+
+.inv-oc-draft-summary-pill i {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(255, 246, 233, 0.96);
+  border: 1px solid rgba(127, 29, 29, 0.16);
+  color: #8f3c2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-oc-draft-summary-pill span {
+  display: block;
+  color: rgba(74, 43, 34, 0.7);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-oc-draft-summary-pill strong {
+  display: block;
+  color: #2f130c;
+  font-size: 1.08rem;
+  line-height: 1.1;
+}
+
+.inv-oc-draft-request-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: rgba(255, 255, 255, 0.94);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: flex-start;
+  box-shadow: 0 8px 18px rgba(56, 30, 22, 0.05);
+}
+
+.inv-oc-draft-request-card__remove {
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.inv-oc-draft-footer-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.9fr);
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.inv-oc-draft-note-panel,
+.inv-oc-draft-submit-panel {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 52%),
+    rgba(255, 255, 255, 0.96);
+  padding: 0.9rem;
+  box-shadow: 0 10px 20px rgba(56, 30, 22, 0.05);
+}
+
+.inv-oc-draft-submit-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inv-oc-draft-submit-panel__copy span {
+  display: block;
+  color: rgba(74, 43, 34, 0.68);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.18rem;
+}
+
+.inv-oc-draft-submit-panel__copy strong {
+  display: block;
+  color: #2f130c;
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.inv-oc-draft-submit-panel__copy small {
+  display: block;
+  margin-top: 0.32rem;
+  color: rgba(74, 43, 34, 0.72);
+}
+
 /* AM: selector de almacenes (1 o 2) para cada linea y base de nuevos items. */
 .inv-oc-warehouse-base {
   border: 1px dashed rgba(157, 150, 112, 0.36);
@@ -6340,30 +6619,51 @@
 
 .inv-oc-flow-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* AM: desktop a 4 columnas para Flujo de OC. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.75rem;
-  max-height: 560px;
-  overflow-y: auto;
-  padding-right: 0.2rem;
+}
+
+/* AM: replica la misma entrada animada del carrusel de Nueva Solicitud en el flujo. */
+.inv-oc-flow-grid--animated {
+  animation: inv-oc-carousel-slide-in 0.28s ease;
 }
 
 .inv-oc-flow-card {
-  border: 1px solid rgba(157, 150, 112, 0.26);
-  border-radius: 15px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 18px;
   background:
-    radial-gradient(circle at top right, rgba(185, 124, 44, 0.11), transparent 48%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 250, 242, 0.94));
-  padding: 0.8rem;
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.12), transparent 52%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(255, 249, 241, 0.96));
+  padding: 0.95rem;
   display: flex;
   flex-direction: column;
-  gap: 0.56rem;
+  gap: 0.82rem;
   border-top-width: 4px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 22px rgba(56, 30, 22, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+/* AM: microinteraccion visual elegante para que la card se vea mas viva sin tocar logica. */
+.inv-oc-flow-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
 }
 
 .inv-oc-flow-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 24px rgba(56, 30, 22, 0.14);
+  transform: translateY(-3px);
+  box-shadow: 0 18px 30px rgba(56, 30, 22, 0.14);
+}
+
+.inv-oc-flow-card:hover::after {
+  opacity: 1;
 }
 
 .inv-oc-flow-card.is-pendiente {
@@ -6389,74 +6689,63 @@
 .inv-oc-flow-card__identity {
   display: flex;
   flex-direction: column;
-  gap: 0.12rem;
+  gap: 0.24rem;
   min-width: 0;
 }
 
 .inv-oc-flow-card__order {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.34rem;
   color: #6b2f21;
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: 0.77rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .inv-oc-flow-card__head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.inv-oc-flow-card__head strong {
-  color: #2f130c;
-  line-height: 1.1;
-}
-
-.inv-oc-flow-card__head small {
-  font-size: 0.73rem;
-  color: rgba(74, 43, 34, 0.72);
-}
-
-.inv-oc-flow-card__date {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.32rem;
-  font-size: 0.73rem;
-  color: rgba(74, 43, 34, 0.72);
-  font-weight: 600;
-}
-
-.inv-oc-flow-card__meta {
-  display: flex;
-  gap: 0.4rem;
+  align-items: flex-start;
+  gap: 0.72rem;
   flex-wrap: wrap;
 }
 
-.inv-oc-flow-card__meta span {
-  border-radius: 999px;
-  border: 1px solid rgba(157, 150, 112, 0.28);
-  background: rgba(255, 247, 232, 0.86);
-  padding: 0.16rem 0.5rem;
-  color: rgba(74, 43, 34, 0.86);
-  font-size: 0.71rem;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
+.inv-oc-flow-card__user {
+  color: #2f130c;
+  line-height: 1.12;
+  font-size: 1rem;
+  font-weight: 800;
 }
 
-.inv-oc-flow-card__note {
-  margin: 0;
-  border: 1px dashed rgba(157, 150, 112, 0.32);
-  background: rgba(255, 249, 239, 0.64);
-  border-radius: 10px;
-  color: rgba(74, 43, 34, 0.84);
+.inv-oc-flow-card__state-badge {
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.inv-oc-flow-card__stamp-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-flow-card__stamp {
+  border-radius: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 249, 239, 0.88);
+  padding: 0.38rem 0.56rem;
+  color: rgba(74, 43, 34, 0.88);
   font-size: 0.76rem;
-  line-height: 1.4;
-  padding: 0.42rem 0.5rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.inv-oc-flow-card__actions-wrap {
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+  padding-top: 0.62rem;
 }
 
 .inv-oc-draft-shell__title {
@@ -6714,6 +7003,97 @@
   line-height: 1.45;
 }
 
+/* AM: hace mucho mas claro y visual lo que se esta solicitando en la orden. */
+.inv-oc-detail-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.46rem;
+  color: #2f130c;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inv-oc-detail-line-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.72rem;
+  margin-top: 0.72rem;
+}
+
+.inv-oc-detail-line-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 54%),
+    rgba(255, 255, 255, 0.96);
+  padding: 0.84rem 0.88rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: 0 10px 20px rgba(56, 30, 22, 0.06);
+}
+
+.inv-oc-detail-line-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.72rem;
+}
+
+.inv-oc-detail-line-card__title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+}
+
+.inv-oc-detail-line-card__title strong {
+  color: #2f130c;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.inv-oc-detail-line-card__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  color: #6b2f21;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-oc-detail-line-card__qty {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 249, 239, 0.9);
+  color: #4a2b22;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.28rem 0.64rem;
+  white-space: nowrap;
+}
+
+.inv-oc-detail-line-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.inv-oc-detail-line-card__meta span {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 247, 232, 0.88);
+  color: rgba(74, 43, 34, 0.86);
+  padding: 0.22rem 0.54rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
 .inv-oc-detail-section h6 {
   color: #2f130c;
   font-weight: 700;
@@ -6931,16 +7311,34 @@
 }
 
 @media (max-width: 991.98px) {
-  .inv-oc-catalog-grid {
+  /* AM: tablet en 2 columnas para Flujo y Nueva Solicitud. */
+  .inv-oc-catalog-grid,
+  .inv-oc-flow-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .inv-oc-draft-summary-band,
   .inv-oc-draft-grid,
-  .inv-oc-flow-grid,
   .inv-oc-detail-items-grid,
   .inv-oc-detail-evidence-grid,
-  .inv-oc-detail-meta-grid {
+  .inv-oc-detail-meta-grid,
+  .inv-oc-draft-footer-shell {
     grid-template-columns: 1fr;
+  }
+
+  .inv-oc-panel-head,
+  .inv-oc-header-meta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-oc-panel-header-actions,
+  .inv-oc-header-chipline {
+    justify-content: stretch;
+  }
+
+  .inv-oc-panel-search {
+    min-width: 100%;
   }
 }
 
@@ -6969,7 +7367,8 @@
     line-height: 1.05;
   }
 
-  .inv-oc-toggle--compact {
+  .inv-oc-toggle--compact,
+  .inv-oc-panel-toolbar-btn {
     width: 100%;
     justify-content: center;
   }
@@ -6978,8 +7377,15 @@
     justify-content: center;
   }
 
-  .inv-oc-catalog-grid {
+  /* AM: mobile en 1 columna para evitar compresion de cards. */
+  .inv-oc-catalog-grid,
+  .inv-oc-flow-grid {
     grid-template-columns: 1fr;
+  }
+
+  .inv-oc-draft-request-card {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .inv-oc-detail-hero-card {

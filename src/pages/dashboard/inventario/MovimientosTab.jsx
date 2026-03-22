@@ -95,6 +95,7 @@ const getItemId = (item, itemTipo) =>
   itemTipo === 'producto' ? String(item?.id_producto ?? '').trim() : String(item?.id_insumo ?? '').trim();
 
 const MOVIMIENTOS_PAGE_SIZE = 10;
+const AJUSTE_STOCK_FINAL_HELP = 'En AJUSTE, la cantidad representa la existencia final del item en el almacen.';
 
 const MovimientosTab = ({
   openToast,
@@ -175,6 +176,11 @@ const MovimientosTab = ({
     }
     return map;
   }, [almacenes]);
+
+  const almacenesOperativos = useMemo(
+    () => (Array.isArray(almacenes) ? almacenes.filter((almacen) => parseEstado(almacen?.estado ?? true)) : []),
+    [almacenes]
+  );
 
   const sucursalesDisponibles = useMemo(() => {
     const ids = new Set();
@@ -358,12 +364,12 @@ const MovimientosTab = ({
 
     try {
       const [productosData, insumosData] = await Promise.all([
-        inventarioService.getProductos({ incluirInactivos: true }),
-        inventarioService.getInsumos({ incluirInactivos: true })
+        inventarioService.getProductos(),
+        inventarioService.getInsumos()
       ]);
 
-      setProductos(Array.isArray(productosData) ? productosData : []);
-      setInsumos(Array.isArray(insumosData) ? insumosData : []);
+      setProductos(Array.isArray(productosData) ? productosData.filter((item) => parseEstado(item?.estado ?? true)) : []);
+      setInsumos(Array.isArray(insumosData) ? insumosData.filter((item) => parseEstado(item?.estado ?? true)) : []);
     } catch (requestError) {
       const message = requestError?.message || 'ERROR CARGANDO REFERENCIAS DEL KARDEX';
       setError(message);
@@ -578,6 +584,9 @@ const MovimientosTab = ({
     if (!['ENTRADA', 'SALIDA', 'AJUSTE'].includes(tipo)) errors.tipo = 'SELECCIONA UN TIPO VALIDO.';
     if (!idAlmacenRaw) errors.id_almacen = 'EL ALMACEN ES OBLIGATORIO.';
     else if (Number.isNaN(idAlmacen) || idAlmacen <= 0) errors.id_almacen = 'SELECCIONA UN ALMACEN VALIDO.';
+    else if (!almacenesOperativos.some((almacen) => Number(almacen?.id_almacen) === Number(idAlmacen))) {
+      errors.id_almacen = 'EL ALMACEN SELECCIONADO ESTA INACTIVO.';
+    }
 
     if (!['producto', 'insumo'].includes(itemTipo)) errors.item_tipo = 'SELECCIONA UN TIPO DE ITEM VALIDO.';
     if (!idItemRaw) errors.id_item = 'SELECCIONA UN ITEM.';
@@ -586,7 +595,7 @@ const MovimientosTab = ({
     if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA.';
     else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO SE ACEPTAN ENTEROS.';
     else if (tipo === 'AJUSTE' ? cantidad < 0 : cantidad <= 0) {
-      errors.cantidad = tipo === 'AJUSTE' ? 'AJUSTE DEBE SER MAYOR O IGUAL A 0.' : 'LA CANTIDAD DEBE SER MAYOR A 0.';
+      errors.cantidad = tipo === 'AJUSTE' ? 'LA EXISTENCIA FINAL DEBE SER MAYOR O IGUAL A 0.' : 'LA CANTIDAD DEBE SER MAYOR A 0.';
     }
 
     const itemSeleccionado =
@@ -916,7 +925,7 @@ const MovimientosTab = ({
                           Alta rapida de movimiento
                         </div>
                         <div className="inv-ins-create-hero__text">
-                          Registra entradas, salidas o ajustes usando el mismo endpoint actual del kardex.
+                          Registra entradas, salidas o ajustes. En AJUSTE defines la existencia final del item.
                         </div>
                       </div>
 
@@ -970,7 +979,7 @@ const MovimientosTab = ({
                               disabled={saving}
                             >
                               <option value="">{loadingRefs ? 'Cargando almacenes...' : 'Seleccione almacen'}</option>
-                              {almacenes.map((almacen) => (
+                              {almacenesOperativos.map((almacen) => (
                                 <option key={almacen.id_almacen} value={almacen.id_almacen}>
                                   {formatAlmacenOptionLabel(almacen, sucursalesMap)}
                                 </option>
@@ -984,7 +993,11 @@ const MovimientosTab = ({
                       <section className="inv-prod-pmodal__section">
                         <div className="inv-prod-pmodal__section-head">
                           <div className="inv-prod-pmodal__section-title">Item y registro</div>
-                          <div className="inv-prod-pmodal__section-sub">Selecciona el item, la cantidad y el contexto opcional del movimiento.</div>
+                          <div className="inv-prod-pmodal__section-sub">
+                            {form.tipo === 'AJUSTE'
+                              ? 'Selecciona el item e indica la existencia final. El sistema ajusta automaticamente la diferencia.'
+                              : 'Selecciona el item, la cantidad y el contexto opcional del movimiento.'}
+                          </div>
                         </div>
 
                         <div className="row g-3">
@@ -1037,7 +1050,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1" htmlFor="inv-moves-create-cantidad">Cantidad</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-cantidad">
+                              {form.tipo === 'AJUSTE' ? 'Existencia final' : 'Cantidad'}
+                            </label>
                             <input
                               id="inv-moves-create-cantidad"
                               className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
@@ -1053,8 +1068,12 @@ const MovimientosTab = ({
                                 }))
                               }
                               disabled={saving}
+                              placeholder={form.tipo === 'AJUSTE' ? 'Ej: 25 (stock final)' : 'Ej: 5'}
                             />
                             {createErrors.cantidad ? <div className="invalid-feedback">{createErrors.cantidad}</div> : null}
+                            {!createErrors.cantidad && form.tipo === 'AJUSTE' ? (
+                              <div className="form-text">{AJUSTE_STOCK_FINAL_HELP}</div>
+                            ) : null}
                           </div>
 
                           <div className="col-12 col-md-8">

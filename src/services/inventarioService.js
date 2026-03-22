@@ -246,7 +246,7 @@ export const inventarioService = {
     // AM: cuando el endpoint principal responde vacio, consulta catalogo con inactivos para no perder opciones legacy.
     const fallbackPath = includeInactivosRequested
       ? '/almacenes/catalogo?include_inactivos=1'
-      : '/almacenes/catalogo?include_inactivos=1';
+      : '/almacenes/catalogo';
     const fallbackPayload = await apiFetch(fallbackPath, 'GET');
     return normalizeAlmacenesRows(fallbackPayload);
   },

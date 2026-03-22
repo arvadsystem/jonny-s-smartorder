@@ -75,6 +75,7 @@ const buildDrawerImageActionState = () => ({
 // WHY: prevenir que un timestamp en ms (Date.now()) se use como `id_producto` en mutaciones.
 // IMPACT: validacion frontend local; no cambia endpoints ni payloads validos.
 const PRODUCTO_DB_INT32_MAX = 2147483647;
+const SINGLE_ALMACEN_TEMP_MESSAGE = 'Temporalmente solo se permite un almacén por producto o insumo.';
 // NEW: se oculta `tipo_departamento` en el modulo de Productos.
 // WHY: el usuario indico que Departamentos ya no se necesitara en Productos.
 // IMPACT: solo frontend de Productos; backend y otros modulos siguen intactos.
@@ -332,7 +333,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       if (!unique.includes(parsed)) unique.push(parsed);
     }
 
-    if (unique.length > 0) return unique;
+    if (unique.length > 0) return [unique[0]];
 
     const parsedFallback = Number.parseInt(String(fallbackSingle ?? '').trim(), 10);
     if (Number.isInteger(parsedFallback) && parsedFallback > 0) return [parsedFallback];
@@ -346,15 +347,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return normalizeSelectedAlmacenes(currentValues);
 
     const current = normalizeSelectedAlmacenes(currentValues);
-    if (checked) {
-      if (current.includes(idAlmacen)) return current;
-      return [...current, idAlmacen];
-    }
+    if (checked) return [idAlmacen];
 
     return current.filter((id) => id !== idAlmacen);
   }, [normalizeSelectedAlmacenes]);
 
-  // AM: renderer compartido para mostrar "Almacenes asignados" como lista de checkboxes visible.
+  // AM: renderer compartido para mostrar "Almacén asignado" con selección única.
   const renderAlmacenesCheckboxGroup = useCallback(({
     scope,
     selectedValues,
@@ -951,7 +949,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   // VALIDACIÓN MÍNIMA (PRODUCTOS)
   // ==============================
-  const validarProducto = (data) => {
+  const validarProducto = (data, options = {}) => {
+    const includeCantidad = options.includeCantidad !== false;
     // === LIMPIEZA ===
     const nombre = String(data?.nombre_producto ?? '').trim();
     const descripcion = String(data?.descripcion_producto ?? '').trim();
@@ -962,6 +961,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const stockMinimoRaw = String(data?.stock_minimo ?? '').trim();
 
     const categoriaRaw = String(data?.id_categoria_producto ?? '').trim();
+    const rawAlmacenesCount = Array.isArray(data?.id_almacenes) ? data.id_almacenes.filter((v) => String(v ?? '').trim() !== '').length : 0;
     const almacenesSelected = normalizeSelectedAlmacenes(data?.id_almacenes, data?.id_almacen);
     const almacenRaw = String(almacenesSelected[0] ?? data?.id_almacen ?? '').trim();
     const deptoRaw = SHOW_PRODUCTO_DEPARTAMENTOS ? String(data?.id_tipo_departamento ?? '').trim() : '';
@@ -981,11 +981,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!precioRaw) errors.precio = 'EL PRECIO ES OBLIGATORIO';
     else if (Number.isNaN(precio) || precio < 0) errors.precio = 'DEBE SER UN NÚMERO >= 0';
 
-    // === CANTIDAD OBLIGATORIA (ENTERO) ===
+    // === CANTIDAD (SOLO EN CREACION) ===
     const cantidad = Number.parseInt(cantidadRaw, 10);
-    if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
-    else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
-    else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
+    if (includeCantidad) {
+      if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
+      else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
+      else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
+    }
 
     // === FK CATEGORÍA OBLIGATORIA ===
     // VALIDACION: stock_minimo debe ser entero no negativo.
@@ -1001,6 +1003,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
     // === FK ALMACÉN OBLIGATORIA ===
     const id_almacen = Number.parseInt(almacenRaw, 10);
+    if (rawAlmacenesCount > 1) {
+      errors.id_almacen = SINGLE_ALMACEN_TEMP_MESSAGE;
+    }
     if (almacenesSelected.length === 0) {
       errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACÉN';
     } else if (Number.isNaN(id_almacen) || id_almacen <= 0) {
@@ -1034,13 +1039,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       cleaned: {
         nombre_producto: nombre,
         precio,
-        cantidad,
+        cantidad: Number.isNaN(cantidad) || cantidad < 0 ? 0 : cantidad,
         stock_minimo,
         descripcion_producto: descripcion,
         fecha_ingreso_producto: fechaIngreso,
         fecha_caducidad: fechaCaducidad,
         id_categoria_producto,
-        id_almacenes: almacenesSelected,
+        id_almacenes: id_almacen > 0 ? [id_almacen] : [],
         id_almacen,
         id_tipo_departamento // PUEDE SER null (PERO NO LO ENVIAREMOS SI ES NULL)
       }
@@ -1050,12 +1055,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   // CONSTRUIR PAYLOAD SIN NULLS
   // ==============================
-  const buildProductoPayload = (cleaned) => {
+  const buildProductoPayload = (cleaned, options = {}) => {
+    const includeCantidad = options.includeCantidad !== false;
     // COMENTARIO EN MAYÚSCULAS: OMITIMOS CAMPOS OPCIONALES VACÍOS PARA NO ENVIAR NULLS
     const payload = {
       nombre_producto: cleaned.nombre_producto,
       precio: cleaned.precio,
-      cantidad: cleaned.cantidad,
       // AJUSTE: se incluye stock_minimo como numero para alinear create con backend.
       stock_minimo: cleaned.stock_minimo,
       id_categoria_producto: cleaned.id_categoria_producto,
@@ -1063,6 +1068,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       // AM: payload multi-almacen (backend acepta 1 o varios ids).
       id_almacenes: cleaned.id_almacenes
     };
+    if (includeCantidad) payload.cantidad = cleaned.cantidad;
 
     if (cleaned.descripcion_producto) payload.descripcion_producto = cleaned.descripcion_producto;
     if (cleaned.fecha_ingreso_producto) payload.fecha_ingreso_producto = cleaned.fecha_ingreso_producto;
@@ -1639,7 +1645,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       ...editForm,
       stock_minimo: String(editForm?.stock_minimo ?? '').trim() === '' ? '0' : editForm.stock_minimo
     };
-    const v = validarProducto(editData);
+    const v = validarProducto(editData, { includeCantidad: false });
     setEditErrors(v.errors);
     if (!v.ok) return;
 
@@ -1693,7 +1699,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           ...v.cleaned,
           id_almacenes: almacenesSolicitados,
           id_almacen: almacenesSolicitados[0]
-        });
+        }, { includeCantidad: false });
 
         await inventarioService.actualizarProductoMultiAlmacen(persistedEditId, payloadMulti);
         await syncProductosSilently();
@@ -1714,7 +1720,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       const nombreActual = String(actual?.nombre_producto ?? '').trim();
       const precioActual = Number.parseFloat(String(actual?.precio ?? ''));
-      const cantidadActual = Number.parseInt(String(actual?.cantidad ?? ''), 10);
       // AJUSTE: normaliza stock_minimo actual para comparar contra edicion con fallback 0.
       const stockMinimoActualRaw = Number.parseInt(String(actual?.stock_minimo ?? '0'), 10);
       const stockMinimoActual = Number.isNaN(stockMinimoActualRaw) ? 0 : stockMinimoActualRaw;
@@ -1731,7 +1736,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       if (v.cleaned.nombre_producto !== nombreActual) cambios.push(['nombre_producto', v.cleaned.nombre_producto]);
       if (!Number.isNaN(v.cleaned.precio) && v.cleaned.precio !== precioActual) cambios.push(['precio', v.cleaned.precio]);
-      if (!Number.isNaN(v.cleaned.cantidad) && v.cleaned.cantidad !== cantidadActual) cambios.push(['cantidad', v.cleaned.cantidad]);
       // AJUSTE: se incluye stock_minimo en persistencia por campo cuando cambia en edicion.
       if (stockMinimoEdit !== stockMinimoActual) cambios.push(['stock_minimo', stockMinimoEdit]);
 
@@ -2658,7 +2662,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             </div>
 
                             <div className="col-12 col-md-6 col-lg-3">
-                              <label className="form-label mb-1">Almacenes asignados</label>
+                              <label className="form-label mb-1">Almacén asignado</label>
                               {renderAlmacenesCheckboxGroup({
                                 scope: 'create-1',
                                 selectedValues: form.id_almacenes,
@@ -2917,7 +2921,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 </div>
 
                 <div className="col-12 col-md-4">
-                  <label className="form-label mb-1">Almacenes asignados</label>
+                  <label className="form-label mb-1">Almacén asignado</label>
                   {renderAlmacenesCheckboxGroup({
                     scope: 'create-2',
                     selectedValues: form.id_almacenes,
@@ -3096,7 +3100,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </div>
 
             <div className="col-12 col-md-3">
-              <label className="form-label mb-1">Almacenes asignados</label>
+              <label className="form-label mb-1">Almacén asignado</label>
               {renderAlmacenesCheckboxGroup({
                 scope: 'create-3',
                 selectedValues: form.id_almacenes,
@@ -3586,16 +3590,16 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           {isEditing ? (
                             <>
                               <input
-                                className={`form-control form-control-sm ${editErrors.cantidad ? 'is-invalid' : ''}`}
+                                className="form-control form-control-sm"
                                 type="number"
                                 step="1"
                                 min="0"
                                 inputMode="numeric"
                                 value={editForm.cantidad}
-                                onKeyDown={blockNonIntegerKeys}
-                                onChange={(e) => setEditForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
+                                readOnly
+                                disabled
+                                title="La cantidad se ajusta desde movimientos de inventario."
                               />
-                              {editErrors.cantidad && <div className="invalid-feedback">{editErrors.cantidad}</div>}
                             </>
                           ) : (
                             <div>{p.cantidad}</div>
@@ -3628,7 +3632,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         </div>
 
                         <div className="col-12">
-                          <div className="small text-muted">Almacenes asignados</div>
+                          <div className="small text-muted">Almacén asignado</div>
                           {isEditing ? (
                             <>
                               {renderAlmacenesCheckboxGroup({
@@ -3881,16 +3885,16 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           {isEditing ? (
                             <>
                               <input
-                                className={`form-control form-control-sm text-end ${editErrors.cantidad ? 'is-invalid' : ''}`}
+                                className="form-control form-control-sm text-end"
                                 type="number"
                                 step="1"
                                 min="0"
                                 inputMode="numeric"
                                 value={editForm.cantidad}
-                                onKeyDown={blockNonIntegerKeys}
-                                onChange={(e) => setEditForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
+                                readOnly
+                                disabled
+                                title="La cantidad se ajusta desde movimientos de inventario."
                               />
-                              {editErrors.cantidad && <div className="invalid-feedback">{editErrors.cantidad}</div>}
                             </>
                           ) : (
                             <span className={`fw-semibold inv-prod-stock-inline ${stockMeta.className}`}>{p.cantidad}</span>
@@ -4071,19 +4075,17 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   <div>
                     <label>Existencias</label>
                     <input
-                      className={editErrors?.cantidad ? 'is-invalid' : ''}
+                      className="form-control"
                       type="number"
                       step="1"
                       min="0"
                       inputMode="numeric"
                       value={String(editForm?.cantidad ?? '')}
-                      onKeyDown={blockNonIntegerKeys}
-                      onChange={(e) => {
-                        setDrawerEditMode(true);
-                        setEditForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }));
-                      }}
+                      readOnly
+                      disabled
+                      title="La cantidad se ajusta desde movimientos de inventario."
                     />
-                    {editErrors?.cantidad ? <div className="invalid-feedback d-block">{editErrors.cantidad}</div> : null}
+                    <div className="form-text">Gestiona la cantidad desde Movimientos de inventario.</div>
                   </div>
                   <div>
                     <label>{'Stock m\u00EDnimo'}</label>
@@ -4122,7 +4124,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     {editErrors?.id_categoria_producto ? <div className="invalid-feedback d-block">{editErrors.id_categoria_producto}</div> : null}
                   </div>
                   <div>
-                    <label>Almacenes asignados</label>
+                    <label>Almacén asignado</label>
                     {renderAlmacenesCheckboxGroup({
                       scope: 'edit-drawer-1',
                       selectedValues: editForm?.id_almacenes,
@@ -4326,7 +4328,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     </div>
 
                     <div className="col-12">
-                      <label className="form-label mb-1">Almacenes asignados</label>
+                      <label className="form-label mb-1">Almacén asignado</label>
                       {renderAlmacenesCheckboxGroup({
                         scope: 'create-4',
                         selectedValues: form.id_almacenes,

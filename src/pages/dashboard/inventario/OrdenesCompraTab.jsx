@@ -12,7 +12,10 @@ import {
 const ORDER_LIMIT = 20;
 const ESTADOS = ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'EN_COMPRA', 'ABASTECIDA', 'CANCELADA'];
 const POLLING_MS = 2500;
-const CATALOG_CARDS_PER_PAGE = 6;
+// AM: ajusta Nueva Solicitud a 8 cards por pagina para mostrar 4x2 en desktop.
+const CATALOG_CARDS_PER_PAGE = 8;
+// AM: Flujo reutiliza el mismo tamano de pagina visual del carrusel de Nueva Solicitud.
+const FLOW_CARDS_PER_PAGE = CATALOG_CARDS_PER_PAGE;
 // AM: modos de descuento administrativos para compra real (monto fijo o porcentaje).
 const DISCOUNT_TYPE_MONTO = 'MONTO';
 const DISCOUNT_TYPE_PORCENTAJE = 'PORCENTAJE';
@@ -131,9 +134,12 @@ const formatEstadoLabel = (estado) => {
   return String(estado || '').replace('_', ' ');
 };
 
-// AM: usa correlativo visible de OC (negocio) y deja id_orden_compra solo como fallback tecnico.
+// AM: prioriza numeracion visible compactada para flujo y deja correlativo almacenado como fallback historico.
 const resolveVisibleOrderNumber = (row) =>
-  parsePositiveInt(row?.numero_oc_visible) || parsePositiveInt(row?.id_orden_compra) || null;
+  parsePositiveInt(row?.numero_oc_visible_flujo) ||
+  parsePositiveInt(row?.numero_oc_visible) ||
+  parsePositiveInt(row?.id_orden_compra) ||
+  null;
 
 const formatVisibleOrderNumber = (row) => String(resolveVisibleOrderNumber(row) || '-');
 
@@ -474,6 +480,9 @@ const OrdenesCompraTab = ({ openToast }) => {
   const [catalogSearch, setCatalogSearch] = useState('');
   const [soloAlertas, setSoloAlertas] = useState(true);
   const [catalogPage, setCatalogPage] = useState(0);
+// AM: pagina visual del carrusel del flujo de OC, sin tocar la paginacion backend existente.
+  const [flowCarouselPage, setFlowCarouselPage] = useState(0);
+  const [flowFiltersOpen, setFlowFiltersOpen] = useState(false);
   const [draft, setDraft] = useState([]);
   const [draftItemRequests, setDraftItemRequests] = useState([]);
   const [observacion, setObservacion] = useState('');
@@ -771,9 +780,24 @@ const OrdenesCompraTab = ({ openToast }) => {
     }
   }, [catalogPage, catalogPages.length]);
 
-  useEffect(() => {
-    setCatalogPage(0);
-  }, [catalogSearch, soloAlertas]);
+useEffect(() => {
+  // AM: evita depender de memos declarados despues; calcula paginas desde el estado base ya disponible.
+  const pagesCount = Math.ceil((ordenes.length || 0) / FLOW_CARDS_PER_PAGE);
+
+  if (pagesCount === 0) {
+    if (flowCarouselPage !== 0) setFlowCarouselPage(0);
+    return;
+  }
+
+  if (flowCarouselPage > pagesCount - 1) {
+    setFlowCarouselPage(0);
+  }
+}, [flowCarouselPage, ordenes.length]);
+
+// AM: al cambiar filtros o pagina backend del flujo, reinicia el carrusel visual local.
+useEffect(() => {
+  setFlowCarouselPage(0);
+}, [page, scope, estadoFiltro, search, flowSucursalFilter]);
 
   const draftValidation = useMemo(() => {
     const errors = {};
@@ -831,23 +855,68 @@ const OrdenesCompraTab = ({ openToast }) => {
     [isAdminFlowActor, isSucursalOperativeActor]
   );
 
-  const workflowStats = useMemo(() => {
-    const stats = {
-      total: ordenesVisibles.length,
-      pendientes: 0,
-      aprobadas: 0,
-      enCompra: 0,
-      abastecidas: 0
-    };
-    for (const row of ordenesVisibles) {
-      const estado = resolveEstadoVisual(row);
-      if (estado === 'PENDIENTE') stats.pendientes += 1;
-      if (estado === 'APROBADA' || estado === 'EN_ESPERA') stats.aprobadas += 1;
-      if (estado === 'EN_COMPRA' || estado === 'ENVIADO') stats.enCompra += 1;
-      if (estado === 'ABASTECIDA') stats.abastecidas += 1;
+  // AM: replica el mismo patron del carrusel de Nueva Solicitud para el flujo visible actual.
+const flowPages = useMemo(() => {
+  const pages = [];
+  for (let i = 0; i < ordenesVisibles.length; i += FLOW_CARDS_PER_PAGE) {
+    pages.push(ordenesVisibles.slice(i, i + FLOW_CARDS_PER_PAGE));
+  }
+  return pages;
+}, [ordenesVisibles]);
+
+const flowDotItems = useMemo(() => {
+  const totalPages = flowPages.length;
+  if (totalPages <= 0) return [];
+
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => ({ type: 'page', index }));
+  }
+
+  const pageSet = new Set([0, totalPages - 1, flowCarouselPage, flowCarouselPage - 1, flowCarouselPage + 1]);
+  if (flowCarouselPage <= 2) {
+    pageSet.add(1);
+    pageSet.add(2);
+  }
+  if (flowCarouselPage >= totalPages - 3) {
+    pageSet.add(totalPages - 2);
+    pageSet.add(totalPages - 3);
+  }
+
+  const sortedPages = Array.from(pageSet)
+    .filter((index) => index >= 0 && index < totalPages)
+    .sort((a, b) => a - b);
+
+  const dots = [];
+  for (let i = 0; i < sortedPages.length; i += 1) {
+    const index = sortedPages[i];
+    dots.push({ type: 'page', index });
+
+    const next = sortedPages[i + 1];
+    if (next !== undefined && next - index > 1) {
+      dots.push({ type: 'ellipsis', key: `flow-ellipsis-${index}-${next}` });
     }
-    return stats;
-  }, [ordenesVisibles, resolveEstadoVisual]);
+  }
+
+  return dots;
+}, [flowCarouselPage, flowPages.length]);
+
+  const workflowStats = useMemo(() => {
+  const stats = {
+    total: ordenesVisibles.length,
+    pendientes: 0,
+    aprobadas: 0,
+    enCompra: 0,
+    abastecidas: 0
+  };
+  for (const row of ordenesVisibles) {
+    const estado = resolveEstadoVisual(row);
+    if (estado === 'PENDIENTE') stats.pendientes += 1;
+    if (estado === 'APROBADA' || estado === 'EN_ESPERA') stats.aprobadas += 1;
+    if (estado === 'EN_COMPRA' || estado === 'ENVIADO') stats.enCompra += 1;
+    if (estado === 'ABASTECIDA') stats.abastecidas += 1;
+  }
+  return stats;
+}, [ordenesVisibles, resolveEstadoVisual]);
 
   // AM: layout operativo: arriba solicitud + flujo (si ambos permisos); abajo detalle de solicitud.
   const showDualTopPanels = canCrear && canVer;
@@ -2204,24 +2273,31 @@ const OrdenesCompraTab = ({ openToast }) => {
       {(canCrear || canVer) && (
         <div className={`inv-oc-top-panels ${showDualTopPanels ? 'is-dual' : ''}`}>
           {canCrear && (
-            <section className="card shadow-sm inv-oc-card">
-              <div className="card-header inv-oc-card__header inv-oc-card__header--single-row">
-                <div className="inv-oc-card__header-title">
-                  <h4 className="mb-0 inv-oc-title-stacked">
-                    <span>Nueva solicitud</span>
-                    <span>de compra</span>
-                  </h4>
+             <section className="card shadow-sm inv-oc-card inv-oc-create-shell">
+              <div className="card-header inv-oc-card__header inv-oc-card__header--stacked">
+              <div className="inv-oc-panel-head">
+                <div className="inv-oc-panel-title-wrap">
+                  <div className="inv-oc-panel-title-row">
+                    <i className="bi bi-bag-plus inv-oc-panel-title-icon" aria-hidden="true" />
+                    <h4 className="mb-0 inv-oc-title-stacked">
+                      <span>Nueva solicitud</span>
+                      <span>de compra</span>
+                    </h4>
+                  </div>
+                  <p className="mb-0 text-muted small">Selecciona productos o insumos y arma la solicitud.</p>
                 </div>
-                <div className="inv-oc-card__header-tools">
-                  <div className="inv-oc-input-wrap inv-oc-input-wrap--compact">
+
+                <div className="inv-oc-panel-header-actions">
+                  <label className="inv-oc-panel-search" aria-label="Buscar producto o insumo">
                     <i className="bi bi-search" aria-hidden="true" />
                     <input
-                      className="form-control form-control-sm inv-oc-input"
+                      type="search"
                       value={catalogSearch}
                       onChange={(e) => setCatalogSearch(e.target.value)}
                       placeholder="Buscar producto o insumo..."
                     />
-                  </div>
+                  </label>
+
                   <label htmlFor="oc-filtro-alerta" className="inv-oc-toggle inv-oc-toggle--compact mb-0">
                     <input
                       id="oc-filtro-alerta"
@@ -2234,7 +2310,40 @@ const OrdenesCompraTab = ({ openToast }) => {
                   </label>
                 </div>
               </div>
-              <div className="card-body d-flex flex-column">
+
+              <div className="inv-oc-header-meta">
+                <div className="inv-oc-header-badges">
+                  <span className="badge rounded-pill text-bg-light">Productos: {catalogTotals.productos}</span>
+                  <span className="badge rounded-pill text-bg-light">Insumos: {catalogTotals.insumos}</span>
+                  <span className="badge rounded-pill text-bg-light">Total: {filteredCatalog.length}</span>
+                </div>
+
+                {!isOperationalCreateRestricted && almacenesCatalogFiltradosPorSucursal.length > 0 && (
+                  <div className="inv-oc-header-chipline">
+                    {/* AM: los chips de sucursal suben al header para compactar el cuerpo visualmente. */}
+                    <div className="inv-oc-warehouse-chips">
+                      {almacenesCatalogFiltradosPorSucursal.map((almacen) => {
+                        const idAlmacen = Number(almacen.id_almacen);
+                        const selected = selectedBaseAlmacenes.includes(idAlmacen);
+                        return (
+                          <button
+                            key={`base-almacen-${idAlmacen}`}
+                            type="button"
+                            className={`inv-oc-warehouse-chip ${selected ? 'is-active' : ''}`}
+                            onClick={() => toggleDraftAlmacenBase(idAlmacen)}
+                            title={formatAlmacenDisplay(almacen)}
+                          >
+                            <i className="bi bi-building" aria-hidden="true" />
+                            <span>{almacen.nombre_sucursal || almacen.nombre}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="card-body d-flex flex-column">
                 {!isOperationalCreateRestricted && almacenesCatalogFiltradosPorSucursal.length > 0 && (
                   /* AM: se muestran solo botones de almacenes debajo del buscador/toggle, sin bloque de titulo adicional. */
                   <div className="inv-oc-warehouse-base mb-2">
@@ -2363,93 +2472,113 @@ const OrdenesCompraTab = ({ openToast }) => {
                     </div>
                   </>
                 )}
-                <div className="inv-oc-catalog-totals mt-2">
-                  <span className="badge rounded-pill text-bg-light">Productos: {catalogTotals.productos}</span>
-                  <span className="badge rounded-pill text-bg-light">Insumos: {catalogTotals.insumos}</span>
-                  <span className="badge rounded-pill text-bg-light">Total: {filteredCatalog.length}</span>
-                </div>
+                {/* AM: totales movidos al header compacto para mantener el cuerpo mas limpio. */}
               </div>
             </section>
           )}
 
+          
           {canVer && (
             <section className="card shadow-sm inv-oc-card inv-oc-flow-shell">
-              <div className="card-header inv-oc-card__header">
-                <div>
-                  <h4 className="mb-1">Flujo de ordenes de compra</h4>
-                  <p className="mb-0 text-muted small">
-                    Visualiza solicitudes, aplica filtros y ejecuta acciones segun estado y permiso.
-                  </p>
-                </div>
-              </div>
-              <div className="card-body d-flex flex-column gap-3">
-                <div className="row g-2">
-                  <div className="col-12 col-md-3">
-                    <label className="form-label mb-1">Vista</label>
-                    <select
-                      className="form-select"
-                      value={scope}
-                      onChange={(e) => {
-                        setPage(1);
-                        setScope(e.target.value);
-                      }}
-                    >
-                      <option value="mine">Mis solicitudes</option>
-                      {canVerTodas && <option value="all">Todas</option>}
-                    </select>
+              <div className="card-header inv-oc-card__header inv-oc-card__header--stacked">
+                <div className="inv-oc-panel-head">
+                  <div className="inv-oc-panel-title-wrap">
+                    <div className="inv-oc-panel-title-row">
+                      <i className="bi bi-kanban inv-oc-panel-title-icon" aria-hidden="true" />
+                      <div className="inv-oc-panel-title-copy">
+                        <h4 className="mb-0">Flujo de ordenes de compra</h4>
+                        <p className="mb-0 text-muted small">
+                          Visualiza solicitudes, busca rapido y abre filtros cuando los necesites.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="col-12 col-md-3">
-                    <label className="form-label mb-1">Sucursal</label>
-                    <select
-                      className="form-select"
-                      value={flowSucursalFilter}
-                      onChange={(e) => {
-                        setPage(1);
-                        setFlowSucursalFilter(e.target.value);
-                      }}
-                    >
-                      <option value="">Todas</option>
-                      {sucursalesCatalog.map((row) => (
-                        <option key={`flow-sucursal-${row.id_sucursal}`} value={row.id_sucursal}>
-                          {row.nombre_sucursal}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-12 col-md-3">
-                    <label className="form-label mb-1">Estado</label>
-                    <select
-                      className="form-select"
-                      value={estadoFiltro}
-                      onChange={(e) => {
-                        setPage(1);
-                        setEstadoFiltro(e.target.value);
-                      }}
-                    >
-                      <option value="">Todos</option>
-                      {ESTADOS.map((estado) => (
-                        <option key={estado} value={estado}>
-                          {estado}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-12 col-md-3">
-                    <label className="form-label mb-1">Buscar</label>
-                    <div className="inv-oc-input-wrap">
+
+                  <div className="inv-oc-panel-header-actions">
+                    {/* AM: buscador visual basado en el header de Productos, sin cambiar la logica de filtrado. */}
+                    <label className="inv-oc-panel-search" aria-label="Buscar ordenes de compra">
                       <i className="bi bi-search" aria-hidden="true" />
                       <input
-                        className="form-control inv-oc-input"
+                        type="search"
                         value={search}
                         onChange={(e) => {
                           setPage(1);
                           setSearch(e.target.value);
                         }}
-                        placeholder="ID, usuario o texto..."
+                        placeholder="Buscar por ID, usuario o texto..."
                       />
-                    </div>
+                    </label>
+
+                    <button
+                      type="button"
+                      className={`inv-oc-panel-toolbar-btn ${flowFiltersOpen ? 'is-on' : ''}`}
+                      onClick={() => setFlowFiltersOpen((prev) => !prev)}
+                      aria-expanded={flowFiltersOpen}
+                      aria-controls="inv-oc-flow-filters"
+                    >
+                      <i className="bi bi-funnel" aria-hidden="true" />
+                      <span>Filtros</span>
+                    </button>
                   </div>
                 </div>
+              </div>
+              <div className="card-body d-flex flex-column gap-3">
+                {flowFiltersOpen && (
+                  <div id="inv-oc-flow-filters" className="inv-oc-flow-filters-panel">
+                    <div className="row g-2">
+                      <div className="col-12 col-md-4">
+                        <label className="form-label mb-1">Vista</label>
+                        <select
+                          className="form-select"
+                          value={scope}
+                          onChange={(e) => {
+                            setPage(1);
+                            setScope(e.target.value);
+                          }}
+                        >
+                          <option value="mine">Mis solicitudes</option>
+                          {canVerTodas && <option value="all">Todas</option>}
+                        </select>
+                      </div>
+                      <div className="col-12 col-md-4">
+                        <label className="form-label mb-1">Sucursal</label>
+                        <select
+                          className="form-select"
+                          value={flowSucursalFilter}
+                          onChange={(e) => {
+                            setPage(1);
+                            setFlowSucursalFilter(e.target.value);
+                          }}
+                        >
+                          <option value="">Todas</option>
+                          {sucursalesCatalog.map((row) => (
+                            <option key={`flow-sucursal-${row.id_sucursal}`} value={row.id_sucursal}>
+                              {row.nombre_sucursal}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-12 col-md-4">
+                        <label className="form-label mb-1">Estado</label>
+                        <select
+                          className="form-select"
+                          value={estadoFiltro}
+                          onChange={(e) => {
+                            setPage(1);
+                            setEstadoFiltro(e.target.value);
+                          }}
+                        >
+                          <option value="">Todos</option>
+                          {ESTADOS.map((estado) => (
+                            <option key={estado} value={estado}>
+                              {estado}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {loadingOrdenes ? (
                   <div className="text-muted small">Cargando...</div>
@@ -2459,8 +2588,9 @@ const OrdenesCompraTab = ({ openToast }) => {
                     <span>Sin ordenes para este filtro.</span>
                   </div>
                 ) : (
-                  <div className="inv-oc-flow-grid">
-                    {ordenesVisibles.map((row) => {
+                  <>
+                  <div key={`flow-grid-${flowCarouselPage}`} className="inv-oc-flow-grid inv-oc-flow-grid--animated">
+                    {(flowPages[flowCarouselPage] || []).map((row) => {
                       const estadoVisual = resolveEstadoVisual(row);
                       const isItemRequestOnlyCard =
                         Number(row?.total_items || 0) <= 0 && Number(row?.total_solicitudes_item || 0) > 0;
@@ -2470,107 +2600,116 @@ const OrdenesCompraTab = ({ openToast }) => {
                         : estadoToneClass(estadoVisual);
                       const usuario = row.solicitante_nombre_usuario || `Usuario #${row.id_usuario}`;
                       const rol = row.solicitante_roles || 'Rol no disponible';
-                      return (
-                        <article key={row.id_orden_compra} className={`inv-oc-flow-card ${toneClass}`}>
-                          <div className="inv-oc-flow-card__head">
-                            <div className="inv-oc-flow-card__identity">
-                              <span className="inv-oc-flow-card__order">
-                                <i
-                                  className={isItemRequestOnlyCard ? 'bi bi-lightbulb' : 'bi bi-journal-check'}
-                                  aria-hidden="true"
-                                />
-                                {isItemRequestOnlyCard
-                                  ? `Solicitud item nuevo #${formatVisibleOrderNumber(row)}`
-                                  : `Orden #${formatVisibleOrderNumber(row)}`}
-                              </span>
-                              <strong>{usuario}</strong>
-                              <small>{rol}</small>
-                            </div>
-                            {isItemRequestOnlyCard ? (
-                              <span className={`badge ${itemRequestOnlyBadgeClass(itemRequestOnlyState)}`}>
-                                <i className="bi bi-tags me-1" aria-hidden="true" />
-                                {itemRequestOnlyLabel(itemRequestOnlyState)}
-                              </span>
-                            ) : (
-                              <span className={`badge ${badgeClass(estadoVisual)}`}>
-                                <i className={`${estadoIconClass(estadoVisual)} me-1`} aria-hidden="true" />
-                                {formatEstadoLabel(estadoVisual)}
-                              </span>
-                            )}
-                          </div>
-                          <div className="inv-oc-flow-card__date">
-                            <i className="bi bi-clock-history" aria-hidden="true" />
-                            <span>
-                              {formatDate(row.fecha_creacion || row.fecha)} {formatTime(row.fecha_creacion)}
-                            </span>
-                          </div>
-                          <div className="inv-oc-flow-card__meta">
-                            {!isItemRequestOnlyCard && (
-                              <>
-                                <span>
-                                  <i className="bi bi-box2 me-1" aria-hidden="true" />
-                                  Items: {row.total_items || 0}
+                      // AM: usa solo el numero compacto del flujo para evitar huecos visuales tras rechazo/cancelacion.
+                      const flowVisibleNumber = parsePositiveInt(row?.numero_oc_visible_flujo);
+                      const flowVisibleLabel = flowVisibleNumber ? ` #${flowVisibleNumber}` : '';
+
+                            return (
+                            <article key={row.id_orden_compra} className={`inv-oc-flow-card ${toneClass}`}>
+                              <div className="inv-oc-flow-card__head">
+                                <div className="inv-oc-flow-card__identity">
+                                  <span className="inv-oc-flow-card__order">
+                                    <i
+                                      className={isItemRequestOnlyCard ? 'bi bi-lightbulb' : 'bi bi-journal-check'}
+                                      aria-hidden="true"
+                                    />
+                                    {isItemRequestOnlyCard ? `Solicitud${flowVisibleLabel}` : `Orden${flowVisibleLabel}`}
+                                  </span>
+                                  {/* AM: deja solo el usuario solicitante para simplificar la card del flujo. */}
+                                  <strong className="inv-oc-flow-card__user">{usuario}</strong>
+                                </div>
+
+                                {isItemRequestOnlyCard ? (
+                                  <span className={`badge ${itemRequestOnlyBadgeClass(itemRequestOnlyState)} inv-oc-flow-card__state-badge`}>
+                                    <i className="bi bi-tags me-1" aria-hidden="true" />
+                                    {itemRequestOnlyLabel(itemRequestOnlyState)}
+                                  </span>
+                                ) : (
+                                  <span className={`badge ${badgeClass(estadoVisual)} inv-oc-flow-card__state-badge`}>
+                                    <i className={`${estadoIconClass(estadoVisual)} me-1`} aria-hidden="true" />
+                                    {formatEstadoLabel(estadoVisual)}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* AM: fecha y hora separadas visualmente para lectura rapida. */}
+                              <div className="inv-oc-flow-card__stamp-row">
+                                <span className="inv-oc-flow-card__stamp">
+                                  <i className="bi bi-calendar-event" aria-hidden="true" />
+                                  {formatDate(row.fecha_creacion || row.fecha)}
                                 </span>
-                                <span>
-                                  <i className="bi bi-123 me-1" aria-hidden="true" />
-                                  Cantidad: {row.total_cantidad || 0}
+                                <span className="inv-oc-flow-card__stamp">
+                                  <i className="bi bi-clock-history" aria-hidden="true" />
+                                  {formatTime(row.fecha_creacion)}
                                 </span>
-                              </>
-                            )}
-                            <span>
-                              <i className="bi bi-shop me-1" aria-hidden="true" />
-                              {resolveSucursalLabel(row)}
-                            </span>
-                            {!isItemRequestOnlyCard && (
-                              <span>
-                                <i className="bi bi-receipt-cutoff me-1" aria-hidden="true" />
-                                Recepcion:{' '}
-                                {hasReceptionRegistered(row)
-                                  ? parsePositiveInt(row?.id_archivo_factura_recepcion)
-                                    ? 'Registrada + factura'
-                                    : 'Registrada'
-                                  : 'Pendiente'}
-                              </span>
-                            )}
-                          </div>
-                          {hasValue(row?.observacion_solicitud) && (
-                            <p className="inv-oc-flow-card__note">
-                              <i className="bi bi-chat-left-text me-1" aria-hidden="true" />
-                              {row.observacion_solicitud}
-                            </p>
-                          )}
-                          {isItemRequestOnlyCard && (
-                            <p className="inv-oc-flow-card__note">
-                              <i className="bi bi-info-circle me-1" aria-hidden="true" />
-                              Flujo de alta rapida de catalogo: revisa las solicitudes y luego continua la OC.
-                            </p>
-                          )}
-                          {renderActions(row, true)}
-                        </article>
-                      );
+                              </div>
+
+                              <div className="inv-oc-flow-card__actions-wrap">{renderActions(row, true)}</div>
+                            </article>
+                          );
                     })}
                   </div>
+
+                  <div className="inv-oc-carousel-footer">
+                    <div className="inv-oc-carousel-dots" role="tablist" aria-label="Paginas del carrusel del flujo">
+                      {flowDotItems.map((dot) => {
+                        if (dot.type === 'ellipsis') {
+                          return (
+                            <span key={dot.key} className="inv-oc-carousel-ellipsis" aria-hidden="true">
+                              ...
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <button
+                            key={`flow-dot-${dot.index}`}
+                            type="button"
+                            role="tab"
+                            aria-selected={flowCarouselPage === dot.index}
+                            className={`inv-oc-carousel-dot ${flowCarouselPage === dot.index ? 'is-active' : ''}`}
+                            onClick={() => setFlowCarouselPage(dot.index)}
+                            title={`Ir a pagina ${dot.index + 1}`}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    <div className="inv-oc-carousel-controls">
+                      <button
+                        type="button"
+                        className="inv-oc-carousel-nav"
+                        onClick={() =>
+                          setFlowCarouselPage((prev) => (prev <= 0 ? Math.max(0, flowPages.length - 1) : prev - 1))
+                        }
+                        disabled={flowPages.length <= 1}
+                        aria-label="Pagina anterior del flujo"
+                      >
+                        <i className="bi bi-chevron-left" aria-hidden="true" />
+                      </button>
+                      <span className="inv-oc-carousel-counter">
+                        Pagina {flowCarouselPage + 1}/{flowPages.length}
+                      </span>
+                      <button
+                        type="button"
+                        className="inv-oc-carousel-nav"
+                        onClick={() =>
+                          setFlowCarouselPage((prev) => (prev >= flowPages.length - 1 ? 0 : prev + 1))
+                        }
+                        disabled={flowPages.length <= 1}
+                        aria-label="Pagina siguiente del flujo"
+                      >
+                        <i className="bi bi-chevron-right" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                </>
                 )}
 
-                <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div className="inv-oc-flow-footnote">
                   <div className="small text-muted">
+                    <i className="bi bi-collection me-1" aria-hidden="true" />
                     Pagina {pagination.page} de {pagination.totalPages} - Total {pagination.total} orden(es)
-                  </div>
-                  <div className="btn-group btn-group-sm">
-                    <button
-                      className="btn btn-outline-secondary"
-                      disabled={page <= 1 || loadingOrdenes}
-                      onClick={() => setPage((n) => Math.max(1, n - 1))}
-                    >
-                      Anterior
-                    </button>
-                    <button
-                      className="btn btn-outline-secondary"
-                      disabled={page >= pagination.totalPages || loadingOrdenes}
-                      onClick={() => setPage((n) => Math.min(pagination.totalPages || 1, n + 1))}
-                    >
-                      Siguiente
-                    </button>
                   </div>
                 </div>
               </div>
@@ -2583,22 +2722,64 @@ const OrdenesCompraTab = ({ openToast }) => {
       {canCrear && (
         <div className="inv-oc-middle-panels">
           <section className="card shadow-sm inv-oc-card inv-oc-draft-card">
-              <div className="card-header inv-oc-card__header">
-                <div>
-                  <h4 className="mb-1">Detalle de solicitud</h4>
-                  <p className="mb-0 text-muted small">Lineas que se enviaran para aprobacion.</p>
+                <div className="card-header inv-oc-card__header inv-oc-card__header--stacked">
+                <div className="inv-oc-panel-head">
+                  <div className="inv-oc-panel-title-wrap">
+                    <div className="inv-oc-panel-title-row">
+                      <i className="bi bi-list-check inv-oc-panel-title-icon" aria-hidden="true" />
+                      <div className="inv-oc-panel-title-copy">
+                        <h4 className="mb-0">Detalle de solicitud</h4>
+                        <p className="mb-0 text-muted small">Revisa las lineas, cantidades, almacenes y observacion antes de enviar.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="inv-oc-panel-header-actions">
+                    <div className="inv-oc-header-badges">
+                      <span className="badge rounded-pill text-bg-light">Lineas: {draft.length}</span>
+                      <span className="badge rounded-pill text-bg-light">Productos: {draftTotals.productos}</span>
+                      <span className="badge rounded-pill text-bg-light">Insumos: {draftTotals.insumos}</span>
+                      <span className="badge rounded-pill text-bg-light">Unidades: {draftTotals.unidades}</span>
+                    </div>
+
+                    {canSolicitarItemNuevo && (
+                      <button
+                        className="inv-oc-panel-toolbar-btn"
+                        onClick={() => setItemRequestModal({ ...emptyItemRequestModal(), open: true })}
+                      >
+                        <i className="bi bi-plus-square" aria-hidden="true" />
+                        <span>Solicitar item nuevo</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-                {canSolicitarItemNuevo && (
-                  <button
-                    className="btn btn-sm btn-outline-primary"
-                    onClick={() => setItemRequestModal({ ...emptyItemRequestModal(), open: true })}
-                  >
-                    <i className="bi bi-plus-square me-1" aria-hidden="true" />
-                    Solicitar item nuevo
-                  </button>
-                )}
               </div>
               <div className="card-body d-flex flex-column gap-3">
+                <div className="inv-oc-draft-summary-band">
+                  <article className="inv-oc-draft-summary-pill">
+                    <i className="bi bi-card-checklist" aria-hidden="true" />
+                    <div>
+                      <span>Lineas listas</span>
+                      <strong>{draft.length}</strong>
+                    </div>
+                  </article>
+
+                  <article className="inv-oc-draft-summary-pill">
+                    <i className="bi bi-box-seam" aria-hidden="true" />
+                    <div>
+                      <span>Productos + insumos</span>
+                      <strong>{draftTotals.productos + draftTotals.insumos}</strong>
+                    </div>
+                  </article>
+
+                  <article className="inv-oc-draft-summary-pill">
+                    <i className="bi bi-lightbulb" aria-hidden="true" />
+                    <div>
+                      <span>Solicitudes nuevas</span>
+                      <strong>{draftItemRequests.length}</strong>
+                    </div>
+                  </article>
+                </div>
                 {draft.length === 0 ? (
                   <div className="inv-oc-empty-state">
                     <i className="bi bi-list-check" aria-hidden="true" />
@@ -2707,9 +2888,9 @@ const OrdenesCompraTab = ({ openToast }) => {
                       <div className="d-flex flex-column gap-2 p-2">
                         {draftItemRequests.map((row) => (
                           <article
-                            key={row.key}
-                            className="border rounded-3 p-2 d-flex justify-content-between gap-2 align-items-start"
-                          >
+                              key={row.key}
+                              className="inv-oc-draft-request-card"
+                            >
                             <div className="d-flex flex-column">
                               <strong className="text-capitalize">{row.nombre_sugerido}</strong>
                               <small className="text-muted text-capitalize">{row.tipo_item}</small>
@@ -2719,7 +2900,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                             </div>
                             <button
                               type="button"
-                              className="btn btn-sm btn-outline-danger"
+                              className="btn btn-sm btn-outline-danger inv-oc-draft-request-card__remove"
                               onClick={() =>
                                 setDraftItemRequests((prev) => prev.filter((item) => item.key !== row.key))
                               }
@@ -2733,40 +2914,46 @@ const OrdenesCompraTab = ({ openToast }) => {
                   </div>
                 )}
 
-                <div>
-                  <label className="form-label">Observacion</label>
-                  <textarea
-                    className="form-control"
-                    rows="2"
-                    value={observacion}
-                    onChange={(e) => setObservacion(e.target.value)}
-                    placeholder="Ejemplo: Compra planificada para la siguiente semana..."
-                  />
-                  <div className="form-text">{normalizeText(observacion, 1000).length}/1000 caracteres</div>
-                </div>
+                <div className="inv-oc-draft-footer-shell">
+                  <section className="inv-oc-draft-note-panel">
+                    <label className="form-label">Observacion</label>
+                    <textarea
+                      className="form-control"
+                      rows="3"
+                      value={observacion}
+                      onChange={(e) => setObservacion(e.target.value)}
+                      placeholder="Ejemplo: Compra planificada para la siguiente semana..."
+                    />
+                    <div className="form-text">{normalizeText(observacion, 1000).length}/1000 caracteres</div>
+                  </section>
 
-                <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                  <small className="text-muted">
-                    Productos: {draftTotals.productos} - Insumos: {draftTotals.insumos} - Unidades: {draftTotals.unidades}
-                    {hasDraftErrors ? ' - corrige campos marcados' : ''}
-                  </small>
-                  <button
-                    className="btn btn-primary inv-oc-primary-btn"
-                    onClick={createSolicitud}
-                    disabled={creating || hasDraftErrors || !hasDraftContent}
-                  >
-                    {creating ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-                        Creando...
-                      </>
-                    ) : (
-                      <>
-                        <i className="bi bi-send-check me-1" aria-hidden="true" />
-                        Crear solicitud
-                      </>
-                    )}
-                  </button>
+                  <section className="inv-oc-draft-submit-panel">
+                    <div className="inv-oc-draft-submit-panel__copy">
+                      <span>Resumen para enviar</span>
+                      <strong>
+                        Productos: {draftTotals.productos} - Insumos: {draftTotals.insumos} - Unidades: {draftTotals.unidades}
+                      </strong>
+                      <small>{hasDraftErrors ? 'Corrige los campos marcados antes de enviar.' : 'Todo listo para aprobacion.'}</small>
+                    </div>
+
+                    <button
+                      className="btn btn-primary inv-oc-primary-btn"
+                      onClick={createSolicitud}
+                      disabled={creating || hasDraftErrors || !hasDraftContent}
+                    >
+                      {creating ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                          Creando...
+                        </>
+                      ) : (
+                        <>
+                          <i className="bi bi-send-check me-1" aria-hidden="true" />
+                          Crear solicitud
+                        </>
+                      )}
+                    </button>
+                  </section>
                 </div>
               </div>
             </section>
@@ -2798,11 +2985,18 @@ const OrdenesCompraTab = ({ openToast }) => {
                     {/* AM: detalle profesional en modal compacto, sin cuadros legacy ni tablas planas como vista principal. */}
                     {(() => {
                       const orden = detalleActual.data?.orden || {};
+                      // AM: detalles reales de la OC para mostrar claramente que se esta solicitando.
+                      const detalles = Array.isArray(detalleActual.data?.detalles) ? detalleActual.data.detalles : [];
                       const solicitudesItem = Array.isArray(detalleActual.data?.solicitudes_item)
                         ? detalleActual.data.solicitudes_item
                         : [];
                       const estadoOrden = resolveEstadoVisual(orden);
                       const estadoOrdenReal = resolveEstado(orden);
+                      // AM: resumen rapido de lineas y cantidades solicitadas para mejorar UX del detalle.
+                      const cantidadTotalSolicitada = detalles.reduce(
+                        (acc, row) => acc + Number(row?.cantidad_orden || 0),
+                        0,
+                      );
                       // AM: resumen de estados movido al detalle para evitar ruido en el card.
                       const solicitudesResumen = solicitudesItem.reduce(
                         (acc, row) => {
@@ -2846,7 +3040,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                             </span>
                           </section>
 
-                          {hasValue(orden?.observacion_solicitud) && (
+                                                    {hasValue(orden?.observacion_solicitud) && (
                             <section className="inv-oc-detail-note-card">
                               <span>Observacion de solicitud</span>
                               <p>{orden.observacion_solicitud}</p>
@@ -2855,7 +3049,109 @@ const OrdenesCompraTab = ({ openToast }) => {
 
                           <section className="inv-oc-detail-section">
                             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                              <h6 className="mb-0">Solicitudes de item no registrado</h6>
+                              <div>
+                                <h6 className="mb-0 inv-oc-detail-section__title">
+                                  <i className="bi bi-box-seam" aria-hidden="true" />
+                                  Lo solicitado en esta orden
+                                </h6>
+                                <small className="text-muted">Aqui se muestran claramente los productos e insumos solicitados.</small>
+                              </div>
+                              <div className="d-flex flex-wrap gap-1">
+                                <span className="badge text-bg-secondary">Lineas: {detalles.length}</span>
+                                <span className="badge text-bg-light border">Cantidad total: {cantidadTotalSolicitada}</span>
+                              </div>
+                            </div>
+
+                            {detalles.length === 0 ? (
+                              <div className="inv-oc-empty-state">
+                                <i className="bi bi-box" aria-hidden="true" />
+                                <span>Esta orden no tiene lineas de productos o insumos registradas.</span>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="inv-oc-detail-meta-grid">
+                                  <article className="inv-oc-detail-meta-card">
+                                    <h6>Resumen de la orden</h6>
+                                    <p>
+                                      <span>Solicitante</span>
+                                      <strong>{orden.solicitante_nombre_usuario || '-'}</strong>
+                                    </p>
+                                    <p>
+                                      <span>Sucursal</span>
+                                      <strong>{resolveSucursalLabel(orden)}</strong>
+                                    </p>
+                                  </article>
+
+                                  <article className="inv-oc-detail-meta-card">
+                                    <h6>Estado y recepcion</h6>
+                                    <p>
+                                      <span>Estado</span>
+                                      <strong>{estadoOrden}</strong>
+                                    </p>
+                                    <p>
+                                      <span>Recepcion</span>
+                                      <strong>{hasReceptionRegistered(orden) ? 'Registrada' : 'Pendiente'}</strong>
+                                    </p>
+                                  </article>
+                                </div>
+
+                                <div className="inv-oc-detail-line-grid">
+                                  {detalles.map((row) => {
+                                    const itemTipo = String(row?.item_tipo || '').toLowerCase() === 'producto' ? 'Producto' : 'Insumo';
+                                    const itemIcon = itemTipo === 'Producto' ? 'bi-bag-check' : 'bi-box2-heart';
+                                    const itemNombre = row?.item_nombre || `Detalle #${row?.id_detalle_orden || '-'}`;
+
+                                    return (
+                                      <article
+                                        key={`detalle-orden-${row.id_detalle_orden}`}
+                                        className="inv-oc-detail-line-card"
+                                      >
+                                        <div className="inv-oc-detail-line-card__head">
+                                          <div className="inv-oc-detail-line-card__title">
+                                            <span className="inv-oc-detail-line-card__type">
+                                              <i className={`bi ${itemIcon}`} aria-hidden="true" />
+                                              {itemTipo}
+                                            </span>
+                                            <strong>{itemNombre}</strong>
+                                          </div>
+
+                                          <span className="inv-oc-detail-line-card__qty">
+                                            x{row?.cantidad_orden || 0}
+                                          </span>
+                                        </div>
+
+                                        <div className="inv-oc-detail-line-card__meta">
+                                          <span>
+                                            <i className="bi bi-shop-window" aria-hidden="true" />
+                                            {row?.almacen_destino_nombre || 'Sin almacen destino'}
+                                          </span>
+
+                                          <span>
+                                            <i className="bi bi-bar-chart-line" aria-hidden="true" />
+                                            Stock actual: {row?.stock_actual ?? 0}
+                                          </span>
+
+                                          {hasValue(row?.proveedor_sugerido_nombre) && (
+                                            <span>
+                                              <i className="bi bi-truck" aria-hidden="true" />
+                                              {row.proveedor_sugerido_nombre}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </article>
+                                    );
+                                  })}
+                                </div>
+                              </>
+                            )}
+                          </section>
+
+                          <section className="inv-oc-detail-section">
+                            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                              <h6 className="mb-0 inv-oc-detail-section__title">
+                                <i className="bi bi-lightbulb" aria-hidden="true" />
+                                Solicitudes de item no registrado
+                              </h6>
                               {solicitudesResumen.total > 0 && (
                                 <div className="d-flex flex-wrap gap-1">
                                   <span className="badge text-bg-secondary">Solicitudes: {solicitudesResumen.total}</span>

@@ -29,6 +29,7 @@ const INSUMO_FILTER_SORT_LABELS = Object.freeze(Object.fromEntries(SORTS));
 const INSUMOS_LIST_PAGE_SIZE = 10;
 const DETAIL_SECTION_DEFAULT = 'summary';
 const INSUMO_DB_INT32_MAX = 2147483647;
+const SINGLE_ALMACEN_TEMP_MESSAGE = 'Temporalmente solo se permite un almacén por producto o insumo.';
 
 const getInsumosCarouselConfig = (viewportWidth) => {
   if (viewportWidth >= 1280) return { perPage: 6, columns: 3 };
@@ -136,7 +137,7 @@ const normalizeSelectedAlmacenes = (rawValues, fallbackSingle = '') => {
     if (!unique.includes(parsed)) unique.push(parsed);
   }
 
-  if (unique.length > 0) return unique;
+  if (unique.length > 0) return [unique[0]];
 
   const parsedFallback = Number.parseInt(String(fallbackSingle ?? '').trim(), 10);
   if (Number.isInteger(parsedFallback) && parsedFallback > 0) return [parsedFallback];
@@ -149,10 +150,7 @@ const toggleAlmacenEnSeleccion = (currentValues, targetId, checked) => {
   const normalizedCurrent = normalizeSelectedAlmacenes(currentValues);
   const normalizedTarget = Number.parseInt(String(targetId ?? '').trim(), 10);
   if (!Number.isInteger(normalizedTarget) || normalizedTarget <= 0) return normalizedCurrent;
-  if (checked) {
-    if (normalizedCurrent.includes(normalizedTarget)) return normalizedCurrent;
-    return [...normalizedCurrent, normalizedTarget];
-  }
+  if (checked) return [normalizedTarget];
   return normalizedCurrent.filter((id) => id !== normalizedTarget);
 };
 
@@ -571,13 +569,15 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   // NEW: validacion centralizada para create/edit con reglas consistentes.
   // WHY: evitar diferencias entre alta y edicion y bloquear submit invalido.
   // IMPACT: no cambia endpoints; solo mejora UX y consistencia del frontend.
-  const validarInsumo = useCallback((data) => {
+  const validarInsumo = useCallback((data, options = {}) => {
+    const includeCantidad = options.includeCantidad !== false;
     const errors = {};
     const nombre = sanitizeSpaces(data?.nombre_insumo);
     const descripcion = sanitizeSpaces(data?.descripcion);
     const precioRaw = String(data?.precio ?? '').trim();
     const cantidadRaw = String(data?.cantidad ?? '').trim();
     const stockRaw = String(data?.stock_minimo ?? '').trim();
+    const rawAlmacenesCount = Array.isArray(data?.id_almacenes) ? data.id_almacenes.filter((v) => String(v ?? '').trim() !== '').length : 0;
     const almacenesSelected = normalizeSelectedAlmacenes(data?.id_almacenes, data?.id_almacen);
     const almacenRaw = String(almacenesSelected[0] ?? data?.id_almacen ?? '').trim();
     const categoriaInsumoRaw = String(data?.id_categoria_insumo ?? '').trim();
@@ -595,12 +595,15 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     else if (nombre.length > 80) errors.nombre_insumo = 'MAXIMO 80 CARACTERES';
     if (!precioRaw) errors.precio = 'EL PRECIO ES OBLIGATORIO';
     else if (Number.isNaN(precio) || precio < 0) errors.precio = 'DEBE SER UN NUMERO >= 0';
-    if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
-    else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
-    else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
+    if (includeCantidad) {
+      if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
+      else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
+      else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
+    }
     if (!stockRaw) errors.stock_minimo = 'EL STOCK MINIMO ES OBLIGATORIO';
     else if (!/^\d+$/.test(stockRaw)) errors.stock_minimo = 'SOLO ENTEROS (SIN DECIMALES)';
     else if (Number.isNaN(stock_minimo) || stock_minimo < 0) errors.stock_minimo = 'DEBE SER UN ENTERO >= 0';
+    if (rawAlmacenesCount > 1) errors.id_almacen = SINGLE_ALMACEN_TEMP_MESSAGE;
     if (almacenesSelected.length === 0) errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACEN';
     else if (Number.isNaN(id_almacen) || id_almacen <= 0) errors.id_almacen = 'DEBE SER UN NUMERO > 0';
     // NEW: categoria de insumo opcional con validacion defensiva cuando se envia.
@@ -635,9 +638,9 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       cleaned: {
         nombre_insumo: nombre,
         precio,
-        cantidad,
+        cantidad: Number.isNaN(cantidad) || cantidad < 0 ? 0 : cantidad,
         stock_minimo,
-        id_almacenes: almacenesSelected,
+        id_almacenes: id_almacen > 0 ? [id_almacen] : [],
         id_almacen,
         id_categoria_insumo: categoriaInsumoRaw && !Number.isNaN(id_categoria_insumo) && id_categoria_insumo > 0 ? id_categoria_insumo : null,
         id_unidad_medida: unidadMedidaRaw && !Number.isNaN(id_unidad_medida) && id_unidad_medida > 0 ? id_unidad_medida : null,
@@ -648,16 +651,17 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     };
   }, []);
 
-  const buildPayload = useCallback((c) => {
+  const buildPayload = useCallback((c, options = {}) => {
+    const includeCantidad = options.includeCantidad !== false;
     const payload = {
       nombre_insumo: c.nombre_insumo,
       precio: c.precio,
-      cantidad: c.cantidad,
       stock_minimo: c.stock_minimo,
       id_almacen: c.id_almacen,
       // AM: payload multi-almacen (backend acepta uno o varios IDs).
       id_almacenes: c.id_almacenes
     };
+    if (includeCantidad) payload.cantidad = c.cantidad;
     // NEW: enviar `id_categoria_insumo` solo si el usuario selecciono una categoria valida.
     // WHY: mantener compatibilidad con payloads legacy evitando mandar strings vacios/null innecesarios.
     // IMPACT: el backend recibe la FK real cuando se usa el nuevo select; resto del payload no cambia.
@@ -678,7 +682,14 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       setFieldErrors((prev) => ({ ...prev, ...mapped }));
     }
     const s = Number(e?.status || 0);
-    safeToast(s === 401 ? 'SESION EXPIRADA' : s === 403 ? 'SIN PERMISOS' : s === 400 ? 'VALIDACION' : 'ERROR', msg, s >= 500 ? 'danger' : (s === 400 || s === 401 || s === 403 ? 'warning' : 'danger'));
+    const title =
+      s === 401 ? 'SESION EXPIRADA'
+      : s === 403 ? 'SIN PERMISOS'
+      : s === 400 ? 'VALIDACION'
+      : s === 409 ? 'CONFLICTO'
+      : 'ERROR';
+    const variant = s >= 500 ? 'danger' : (s === 400 || s === 401 || s === 403 || s === 409 ? 'warning' : 'danger');
+    safeToast(title, msg, variant);
     return msg;
   }, [safeToast]);
 
@@ -1056,7 +1067,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const saveEdit = useCallback(async () => {
     if (!editId || !editForm || savingEdit) return;
-    const v = validarInsumo(editForm);
+    const v = validarInsumo(editForm, { includeCantidad: false });
     setEditErrors(v.errors);
     if (!v.ok) return;
     setSavingEdit(true);
@@ -1074,7 +1085,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           ...c,
           id_almacenes: almacenesSolicitados,
           id_almacen: almacenesSolicitados[0]
-        });
+        }, { includeCantidad: false });
         await inventarioService.actualizarInsumoMultiAlmacen(editId, payloadMulti);
         await syncInsumosSilently();
         closeDrawer();
@@ -1086,7 +1097,6 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       const changes = [];
       if (c.nombre_insumo !== sanitizeSpaces(actual?.nombre_insumo)) changes.push(['nombre_insumo', c.nombre_insumo]);
       if (c.precio !== parseFloatSafe(actual?.precio, 0)) changes.push(['precio', c.precio]);
-      if (c.cantidad !== parseIntSafe(actual?.cantidad, 0)) changes.push(['cantidad', c.cantidad]);
       if (c.stock_minimo !== parseIntSafe(actual?.stock_minimo, 0)) changes.push(['stock_minimo', c.stock_minimo]);
       if (c.id_almacen !== parseIntSafe(actual?.id_almacen, 0)) changes.push(['id_almacen', c.id_almacen]);
       if (c.id_categoria_insumo !== (parseIntSafe(actual?.id_categoria_insumo, 0) || null)) changes.push(['id_categoria_insumo', c.id_categoria_insumo]);
@@ -2334,8 +2344,23 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
               </div>
               <div>
                 <label className="form-label">Cantidad</label>
-                <input ref={cantidadInputRef} className={`form-control ${formErrors.cantidad ? 'is-invalid' : ''}`} type="number" step="1" min="0" inputMode="numeric" value={formValues.cantidad ?? ''} onKeyDown={blockNonIntegerKeys} onChange={(e) => setField('cantidad', intInput(e.target.value))} />
-                {fieldErr('cantidad')}
+                <input
+                  ref={cantidadInputRef}
+                  className={`form-control ${drawerMode === 'edit' ? '' : (formErrors.cantidad ? 'is-invalid' : '')}`}
+                  type="number"
+                  step="1"
+                  min="0"
+                  inputMode="numeric"
+                  value={formValues.cantidad ?? ''}
+                  readOnly={drawerMode === 'edit'}
+                  disabled={drawerMode === 'edit'}
+                  title={drawerMode === 'edit' ? 'La cantidad se ajusta desde movimientos de inventario.' : undefined}
+                  onKeyDown={drawerMode === 'edit' ? undefined : blockNonIntegerKeys}
+                  onChange={drawerMode === 'edit' ? undefined : (e) => setField('cantidad', intInput(e.target.value))}
+                />
+                {drawerMode === 'edit'
+                  ? <div className="form-text">Gestiona la cantidad desde Movimientos de inventario.</div>
+                  : fieldErr('cantidad')}
               </div>
               <div>
                 <label className="form-label">Stock Minimo</label>
@@ -2343,7 +2368,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 {fieldErr('stock_minimo')}
               </div>
               <div className="inv-ins-drawer-field--span-2">
-                <label className="form-label">Almacenes asignados</label>
+                <label className="form-label">Almacén asignado</label>
                 <div className={`inv-almacenes-checkboxes ${formErrors.id_almacen ? 'is-invalid' : ''}`}>
                   {loadingAlmacenes ? (
                     <div className="form-text">Cargando almacenes...</div>
