@@ -8,6 +8,7 @@ export default function VentaOverviewView({
   ventas,
   loading,
   error,
+  statsVisibility,
   onOpenDetail,
   onGoToCaja,
   canCreate = true
@@ -17,7 +18,17 @@ export default function VentaOverviewView({
   const [currentPage, setCurrentPage] = useState(0);
 
   const deferredSearch = useDeferredValue(search);
-  const stats = useMemo(() => buildVentaStats(ventas), [ventas]);
+  const stats = useMemo(() => {
+    const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const rows = Array.isArray(ventas) ? ventas : [];
+    const delDia = rows.filter((v) => {
+      const dateStr = v.fecha_hora_pedido ? v.fecha_hora_pedido.split('T')[0] : '';
+      return dateStr === todayStr || v.fecha_label === new Date().toLocaleDateString('es-HN', {
+        day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+    });
+    return buildVentaStats(delDia);
+  }, [ventas]);
 
   const filteredVentas = useMemo(() => {
     const rows = [...(Array.isArray(ventas) ? ventas : [])];
@@ -68,7 +79,7 @@ export default function VentaOverviewView({
       <div className="inv-catpro-card inv-prod-card mb-3">
         <VentasToolbar search={search} onSearchChange={setSearch} onOpenCreate={onGoToCaja} canCreate={canCreate} />
 
-        <VentasStats stats={stats} />
+        <VentasStats stats={stats} visibleKeys={statsVisibility} />
 
         <div className="inv-catpro-body inv-prod-body p-3">
           {error ? (

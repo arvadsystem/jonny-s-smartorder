@@ -98,6 +98,10 @@ const PERMISSION_VALUES = Object.freeze({
   VENTAS_DETALLE_VER: 'VENTAS_DETALLE_VER',
   VENTAS_CARRITO_EDITAR: 'VENTAS_CARRITO_EDITAR',
   VENTAS_DESCUENTO_APLICAR: 'VENTAS_DESCUENTO_APLICAR',
+  VENTAS_DESCUENTOS_CATALOGO_VER: 'VENTAS_DESCUENTOS_CATALOGO_VER',
+  VENTAS_DESCUENTOS_CATALOGO_CREAR: 'VENTAS_DESCUENTOS_CATALOGO_CREAR',
+  VENTAS_DESCUENTOS_CATALOGO_EDITAR: 'VENTAS_DESCUENTOS_CATALOGO_EDITAR',
+  VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR: 'VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR',
   VENTAS_METODO_PAGO_SELECCIONAR: 'VENTAS_METODO_PAGO_SELECCIONAR',
 
   COCINA_VER: 'COCINA_VER',
@@ -383,6 +387,12 @@ const VENTAS_TAB_PERMISSIONS_MAP = Object.freeze({
   pedidos: uniquePermissions([
     PERMISSIONS.VENTAS_VER,
     PERMISSIONS.VENTAS_DETALLE_VER
+  ]),
+  descuentos: uniquePermissions([
+    PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_VER,
+    PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_CREAR,
+    PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_EDITAR,
+    PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR
   ])
 });
 
@@ -528,9 +538,26 @@ export const MODULE_TAB_CONFIG = Object.freeze({
   ventas: [
     { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS_MAP.ventas },
     { key: 'caja', label: 'Caja', icon: 'bi bi-cart3', required: VENTAS_TAB_PERMISSIONS_MAP.caja },
-    { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS_MAP.pedidos }
+    { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS_MAP.pedidos },
+    { key: 'descuentos', label: 'Descuentos', icon: 'bi bi-tags', required: VENTAS_TAB_PERMISSIONS_MAP.descuentos }
   ]
 });
+
+const VENTAS_STATS_POLICY = Object.freeze({
+  DEFAULT: ['totalVentas', 'totalFacturado', 'ticketPromedio', 'completadas', 'pendientes'],
+  CAJERO: ['totalVentas', 'completadas', 'pendientes']
+});
+
+export const resolveVentasStatsVisibility = (roles, options = {}) => {
+  if (options?.isSuperAdmin) return VENTAS_STATS_POLICY.DEFAULT;
+
+  const roleSet = new Set(normalizeRoles(roles));
+  if (roleSet.has('CAJERO')) {
+    return VENTAS_STATS_POLICY.CAJERO;
+  }
+
+  return VENTAS_STATS_POLICY.DEFAULT;
+};
 
 export const isTabAllowed = (permissionSet, tabKey, map, options = {}) => {
   const required = map?.[tabKey] || [];
