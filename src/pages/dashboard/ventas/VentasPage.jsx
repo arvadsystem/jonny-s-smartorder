@@ -28,6 +28,7 @@ export default function VentasPage() {
     combos,
     recetas,
     descuentosCatalogo,
+    tiposDepartamento,
     clientes,
     loading,
     catalogLoading,
@@ -154,6 +155,7 @@ export default function VentasPage() {
         <CajaView
           productos={productos}
           categorias={categorias}
+          tiposDepartamento={tiposDepartamento}
           clientes={clientes}
           combos={combos}
           recetas={recetas}

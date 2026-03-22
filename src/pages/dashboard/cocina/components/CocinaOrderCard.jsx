@@ -85,19 +85,20 @@ export default function CocinaOrderCard({
         })}
       </div>
 
-      <button
-        type="button"
-        className={`cocina-order-card__action ${action.buttonClass}`}
-        onClick={(event) => {
-          if (!canAdvance) return;
-          event.stopPropagation();
-          onOpenConfirm(pedido, action);
-        }}
-        disabled={disabled || !canAdvance}
-      >
-        <i className={action.icon} />
-        <span>{action.label}</span>
-      </button>
+      {canAdvance && (
+        <button
+          type="button"
+          className={`cocina-order-card__action ${action.buttonClass}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenConfirm(pedido, action);
+          }}
+          disabled={disabled}
+        >
+          <i className={action.icon} />
+          <span>{action.label}</span>
+        </button>
+      )}
     </motion.article>
   );
 }

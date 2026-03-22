@@ -5,6 +5,7 @@ import { useVentaComposer } from '../hooks/useVentaComposer';
 export default function CajaView({
   productos,
   categorias,
+  tiposDepartamento,
   clientes,
   combos,
   recetas,
@@ -16,6 +17,7 @@ export default function CajaView({
   const composer = useVentaComposer({
     productos,
     categorias,
+    tiposDepartamento,
     clientes,
     combos,
     recetas,

@@ -202,6 +202,8 @@ export default function VentaComposerSummary({ composer, saving }) {
             value={composer.cashReceived}
             placeholder={String(composer.total.toFixed(2))}
             onChange={(event) => composer.setCashReceived(event.target.value)}
+            disabled={composer.paymentMethod !== 'efectivo'}
+            readOnly={composer.paymentMethod !== 'efectivo'}
           />
         </label>
       </div>

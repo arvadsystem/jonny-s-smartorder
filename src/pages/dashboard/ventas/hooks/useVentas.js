@@ -27,6 +27,7 @@ export const useVentas = () => {
   const [recetas, setRecetas] = useState([]);
   const [descuentosCatalogo, setDescuentosCatalogo] = useState([]);
   const [tiposDescuento, setTiposDescuento] = useState([]);
+  const [tiposDepartamento, setTiposDepartamento] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -86,7 +87,8 @@ export const useVentas = () => {
         combosResponse,
         recetasResponse,
         descuentosResponse,
-        tiposDescuentoResponse
+        tiposDescuentoResponse,
+        tiposDepartamentoResponse
       ] = await Promise.all([
         ventasService.getCategoriasCatalog(),
         ventasService.getProductosCatalog(),
@@ -94,7 +96,8 @@ export const useVentas = () => {
         ventasService.getCombosCatalog(),
         ventasService.getRecetasCatalog(),
         ventasService.getDescuentosCatalog(),
-        ventasService.getTiposDescuentoCatalog()
+        ventasService.getTiposDescuentoCatalog(),
+        ventasService.getTipoDepartamentos()
       ]);
 
       const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
@@ -168,12 +171,27 @@ export const useVentas = () => {
         }))
         .filter((row) => row.id_descuento_catalogo && row.valor_descuento > 0);
 
+      // El SQL ya filtra estado=true, por lo que todos los registros que
+      // lleguen aqui son departamentos activos – omitimos el filtro de estado
+      // para evitar problemas de tipo (bool/string/number) entre el driver y JS.
+      const normalizedTiposDepartamento = (Array.isArray(tiposDepartamentoResponse) ? tiposDepartamentoResponse : [])
+        .map((row) => ({
+          id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
+          nombre_tipo_departamento: String(row?.nombre_departamento ?? row?.nombre_tipo_departamento ?? '')
+        }))
+        .filter((row) => row.id_tipo_departamento && row.nombre_tipo_departamento);
+
+      // DEBUG TEMPORAL - borrar después
+      // eslint-disable-next-line no-console
+      console.log('[DEBUG tipos_dep] raw:', tiposDepartamentoResponse, '| normalized:', normalizedTiposDepartamento);
+
       setCategorias(normalizedCategorias);
       setProductos(normalizedProductos);
       setCombos(normalizedCombos);
       setRecetas(normalizedRecetas);
       setDescuentosCatalogo(normalizedDescuentosCatalogo);
       setTiposDescuento(normalizedTiposDescuento);
+      setTiposDepartamento(normalizedTiposDepartamento);
       setClientes(normalizedClientes);
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar los catalogos de ventas.');
@@ -232,6 +250,7 @@ export const useVentas = () => {
   return {
     ventas,
     categorias,
+    tiposDepartamento,
     productos,
     combos,
     recetas,

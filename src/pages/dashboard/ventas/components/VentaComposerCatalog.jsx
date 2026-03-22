@@ -1,21 +1,35 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FaImage } from 'react-icons/fa';
 import { CATALOG_TABS } from '../hooks/useVentaComposer';
 
 export default function VentaComposerCatalog({ composer, catalogLoading }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef(null);
+  const searchWrapRef = useRef(null);
+
+  const hasFilters = composer.search.trim() !== '' || composer.activeCategory !== 'all';
+  const showX = searchOpen || hasFilters;
+
+  useEffect(() => {
+    if (!searchOpen) return undefined;
+    const handleOutsideClick = (e) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [searchOpen]);
 
   const handleSearchToggle = () => {
-    setSearchOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        setTimeout(() => searchInputRef.current?.focus(), 50);
-      } else {
-        composer.setSearch('');
-      }
-      return next;
-    });
+    if (showX) {
+      setSearchOpen(false);
+      composer.setSearch('');
+      composer.setActiveCategory('all');
+    } else {
+      setSearchOpen(true);
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
   };
 
   const resolveImageUrl = (row) => {
@@ -39,7 +53,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
           ))}
         </div>
 
-        <div className="ventas-catalog__search-wrap" style={{ position: 'relative' }}>
+        <div className="ventas-catalog__search-wrap" style={{ position: 'relative' }} ref={searchWrapRef}>
           {searchOpen && (
             <input
               ref={searchInputRef}
@@ -62,52 +76,71 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
             type="button"
             className="ventas-catalog__search-btn"
             onClick={handleSearchToggle}
-            aria-label={searchOpen ? 'Limpiar filtros' : 'Abrir buscador'}
-            title={searchOpen ? 'Limpiar filtros y cerrar' : 'Buscar y filtrar'}
+            aria-label={showX ? 'Limpiar filtros' : 'Abrir buscador'}
+            title={showX ? 'Limpiar filtros y cerrar' : 'Buscar y filtrar'}
           >
-            <i className={searchOpen ? 'bi bi-x-lg' : 'bi bi-search'} />
+            <i className={showX ? 'bi bi-x-lg' : 'bi bi-search'} />
           </button>
 
-          {searchOpen && composer.activeCatalog === 'PRODUCTOS' && (
+          {searchOpen && (
             <div className="ventas-catalog__search-popup" style={{ right: 0, left: 'auto' }}>
               <div className="ventas-catalog__categories-list">
-                <div className="ventas-catalog__categories-label">Filtrar por categoría:</div>
+                <div className="ventas-catalog__categories-label">
+                  {composer.activeCatalog === 'PRODUCTOS' ? 'FILTRAR POR CATEGORÍA:' : 'FILTRAR POR DEPARTAMENTO:'}
+                </div>
                 <button
                   type="button"
                   className={`ventas-catalog__category-item ${composer.activeCategory === 'all' ? 'is-selected' : ''}`}
-                  onClick={() => composer.setActiveCategory('all')}
+                  onClick={() => {
+                    composer.setActiveCategory('all');
+                    setSearchOpen(false);
+                  }}
                 >
-                  <span>Todos los productos</span>
+                  <span>{composer.activeCatalog === 'PRODUCTOS' ? 'Todos los productos' : 'Todos los departamentos'}</span>
                   {composer.activeCategory === 'all' && <i className="bi bi-check2" />}
                 </button>
 
-                {composer.categorias.map((categoria) => {
-                  const isSelected = String(composer.activeCategory) === String(categoria.id_categoria_producto);
-                  return (
-                    <button
-                      key={categoria.id_categoria_producto}
-                      type="button"
-                      className={`ventas-catalog__category-item ${isSelected ? 'is-selected' : ''}`}
-                      onClick={() => composer.setActiveCategory(String(categoria.id_categoria_producto))}
-                    >
-                      <span>{categoria.nombre_categoria}</span>
-                      {isSelected && <i className="bi bi-check2" />}
-                    </button>
-                  );
-                })}
+                {composer.activeCatalog === 'PRODUCTOS' 
+                  ? composer.categorias.map((categoria) => {
+                      const isSelected = String(composer.activeCategory) === String(categoria.id_categoria_producto);
+                      return (
+                        <button
+                          key={categoria.id_categoria_producto}
+                          type="button"
+                          className={`ventas-catalog__category-item ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            composer.setActiveCategory(String(categoria.id_categoria_producto));
+                            setSearchOpen(false);
+                          }}
+                        >
+                          <span>{categoria.nombre_categoria}</span>
+                          {isSelected && <i className="bi bi-check2" />}
+                        </button>
+                      );
+                    })
+                  : composer.tiposDepartamento.map((tipo) => {
+                      const isSelected = String(composer.activeCategory) === String(tipo.id_tipo_departamento);
+                      return (
+                        <button
+                          key={tipo.id_tipo_departamento}
+                          type="button"
+                          className={`ventas-catalog__category-item ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            composer.setActiveCategory(String(tipo.id_tipo_departamento));
+                            setSearchOpen(false);
+                          }}
+                        >
+                          <span>{tipo.nombre_tipo_departamento}</span>
+                          {isSelected && <i className="bi bi-check2" />}
+                        </button>
+                      );
+                    })
+                }
               </div>
             </div>
           )}
         </div>
       </div>
-
-      {composer.activeCatalog !== 'PRODUCTOS' && (
-        <div className="ventas-create-modal__catalog-hint" style={{ marginTop: '10px' }}>
-          {composer.activeCatalog === 'COMBOS'
-            ? 'Los combos y recetas generan pedido para cocina.'
-            : 'Las notas por item solo se guardan para cocina.'}
-        </div>
-      )}
 
       <div className="ventas-create-modal__results-meta">
         {catalogLoading ? 'Cargando catalogo...' : composer.resultsLabel}

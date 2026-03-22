@@ -103,6 +103,7 @@ export const normalizeProductoRecord = (row, categoriasMap = new Map()) => {
     ...row,
     id_producto: Number(row?.id_producto ?? 0) || null,
     id_categoria_producto: idCategoria,
+    id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
     nombre_producto: String(row?.nombre_producto ?? 'Producto'),
     descripcion_producto: String(row?.descripcion_producto ?? ''),
     precio: roundMoney(row?.precio),
@@ -115,6 +116,7 @@ export const normalizeProductoRecord = (row, categoriasMap = new Map()) => {
 export const normalizeComboRecord = (row) => ({
   ...row,
   id_combo: Number(row?.id_combo ?? 0) || null,
+  id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
   descripcion: String(row?.descripcion ?? 'Combo'),
   precio: roundMoney(row?.precio),
   estado: parseBoolean(row?.estado)
@@ -124,6 +126,7 @@ export const normalizeRecetaRecord = (row) => ({
   ...row,
   id_receta: Number(row?.id_receta ?? 0) || null,
   id_producto_base: Number(row?.id_producto_base ?? 0) || null,
+  id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
   nombre_receta: String(row?.nombre_receta ?? 'Receta'),
   nombre_producto_base: String(row?.nombre_producto_base ?? ''),
   precio: roundMoney(row?.precio),

@@ -55,7 +55,8 @@ const buildCatalogLine = (kind, row) => {
       precio_unitario: row.precio,
       cantidad: 1,
       stock_disponible: Number(row.cantidad ?? 0) || 0,
-      observacion: ''
+      observacion: '',
+      imagen_principal_url: row.imagen_principal_url || row.url_imagen || null
     };
   }
 
@@ -73,7 +74,8 @@ const buildCatalogLine = (kind, row) => {
       precio_unitario: row.precio,
       cantidad: 1,
       stock_disponible: null,
-      observacion: ''
+      observacion: '',
+      imagen_principal_url: row.imagen_principal_url || row.url_imagen || null
     };
   }
 
@@ -90,7 +92,8 @@ const buildCatalogLine = (kind, row) => {
     precio_unitario: row.precio,
     cantidad: 1,
     stock_disponible: null,
-    observacion: ''
+    observacion: '',
+    imagen_principal_url: row.imagen_principal_url || row.url_imagen || null
   };
 };
 
@@ -137,6 +140,7 @@ const computeDiscountAmount = (subtotal, selectedDiscount) => {
 export const useVentaComposer = ({
   productos,
   categorias,
+  tiposDepartamento,
   clientes,
   combos,
   recetas,
@@ -197,19 +201,30 @@ export const useVentaComposer = ({
     ]);
   }, [deferredSearch, productos, state.activeCategory]);
 
-  const filteredCombos = useMemo(
-    () => filterBySearch(Array.isArray(combos) ? combos : [], deferredSearch, ['descripcion']),
-    [combos, deferredSearch]
-  );
+  const filteredCombos = useMemo(() => {
+    const categoryValue = state.activeCategory;
+    const categoryFiltered = (Array.isArray(combos) ? combos : []).filter((combo) =>
+      categoryValue === 'all'
+        ? true
+        : Number(combo.id_tipo_departamento ?? 0) === Number(categoryValue)
+    );
 
-  const filteredRecetas = useMemo(
-    () =>
-      filterBySearch(Array.isArray(recetas) ? recetas : [], deferredSearch, [
-        'nombre_receta',
-        'nombre_producto_base'
-      ]),
-    [deferredSearch, recetas]
-  );
+    return filterBySearch(categoryFiltered, deferredSearch, ['descripcion']);
+  }, [combos, deferredSearch, state.activeCategory]);
+
+  const filteredRecetas = useMemo(() => {
+    const categoryValue = state.activeCategory;
+    const categoryFiltered = (Array.isArray(recetas) ? recetas : []).filter((receta) =>
+      categoryValue === 'all'
+        ? true
+        : Number(receta.id_tipo_departamento ?? 0) === Number(categoryValue)
+    );
+
+    return filterBySearch(categoryFiltered, deferredSearch, [
+      'nombre_receta',
+      'nombre_producto_base'
+    ]);
+  }, [deferredSearch, recetas, state.activeCategory]);
 
   const currentCatalogRows = useMemo(() => {
     if (state.activeCatalog === 'COMBOS') return filteredCombos;
@@ -249,7 +264,7 @@ export const useVentaComposer = ({
   }, [state.cashReceived, total]);
 
   const change = roundMoney(Math.max(cashValue - total, 0));
-  const canSubmit = state.cart.length > 0 && state.paymentMethod === 'efectivo' && cashValue >= total;
+  const canSubmit = state.cart.length > 0 && (state.paymentMethod !== 'efectivo' || cashValue >= total);
   const resultsLabel = getResultsLabel(state.activeCatalog, currentCatalogRows.length);
 
   const getCurrentProductoQuantityInCart = (idProducto, cart) =>
@@ -286,20 +301,7 @@ export const useVentaComposer = ({
       const index = findLineIndex(nextCart, catalogLine.cartKey);
 
       if (index >= 0) {
-        const currentLine = nextCart[index];
-        const nextCantidad = Number(currentLine.cantidad ?? 0) + 1;
-
-        if (kind === 'PRODUCTO' && nextCantidad > Number(currentLine.stock_disponible ?? 0)) {
-          return {
-            ...current,
-            submitError: `No hay stock suficiente para ${currentLine.nombre_item}.`
-          };
-        }
-
-        nextCart[index] = {
-          ...currentLine,
-          cantidad: nextCantidad
-        };
+        return current; // Ya esta en carrito, forzar uso del boton '+'
       } else {
         nextCart.push(catalogLine);
       }
@@ -386,7 +388,7 @@ export const useVentaComposer = ({
       return null;
     }
 
-    if (cashValue < total) {
+    if (state.paymentMethod === 'efectivo' && cashValue < total) {
       setPartialState({
         submitError: 'El efectivo entregado no puede ser menor al total.'
       });
@@ -484,6 +486,7 @@ export const useVentaComposer = ({
     handleSearchKeyDown,
     handleSubmit,
     categorias: Array.isArray(categorias) ? categorias : [],
+    tiposDepartamento: Array.isArray(tiposDepartamento) ? tiposDepartamento : [],
     clientes: Array.isArray(clientes) ? clientes : [],
     formatCurrency
   };

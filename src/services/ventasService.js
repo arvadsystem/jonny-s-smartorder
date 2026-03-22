@@ -25,6 +25,7 @@ const ventasService = {
   getTiposDescuentoCatalog: () => apiFetch('/ventas/catalogos/tipos-descuento', 'GET'),
   getProductosCatalog: () => apiFetch('/productos', 'GET'),
   getCategoriasCatalog: () => apiFetch('/categorias_productos', 'GET'),
+  getTipoDepartamentos: () => apiFetch('/ventas/catalogos/tipo-departamento', 'GET'),
   listDescuentosCatalogosAdmin: (params = {}) =>
     apiFetch(`/ventas/descuentos-catalogos${buildQuery(params)}`, 'GET'),
   getDescuentoCatalogoById: (id) => apiFetch(`/ventas/descuentos-catalogos/${id}`, 'GET'),
