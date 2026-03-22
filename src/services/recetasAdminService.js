@@ -2,14 +2,13 @@ import { apiFetch } from './api';
 
 // Endpoint base del módulo administrativo de recetas.
 const BASE_ENDPOINT = '/api/admin/recetas';
-const withNoCacheParam = (endpoint) => `${endpoint}${endpoint.includes('?') ? '&' : '?'}_ts=${Date.now()}`;
 
 const recetasAdminService = {
   // Lista todas las recetas administrativas.
-  listarRecetasAdmin: async () => apiFetch(withNoCacheParam(BASE_ENDPOINT), 'GET'),
+  listarRecetasAdmin: async () => apiFetch(BASE_ENDPOINT, 'GET', null, { noCache: true }),
 
   // Obtiene el detalle de una receta por ID.
-  obtenerRecetaAdmin: async (id) => apiFetch(withNoCacheParam(`${BASE_ENDPOINT}/${id}`), 'GET'),
+  obtenerRecetaAdmin: async (id) => apiFetch(`${BASE_ENDPOINT}/${id}`, 'GET', null, { noCache: true }),
 
   // Crea una receta nueva.
   crearRecetaAdmin: async (data) => apiFetch(BASE_ENDPOINT, 'POST', data),
@@ -19,6 +18,18 @@ const recetasAdminService = {
 
   // Registra un archivo para receta y retorna su id_archivo.
   registrarArchivoReceta: async (data) => {
+    const hasPublicUrl = String(data?.url_publica || '').trim().length > 0;
+    const hasBinaryPayload =
+      Boolean(data?.data_url) ||
+      Boolean(data?.dataUrl) ||
+      Boolean(data?.base64) ||
+      Boolean(data?.archivo);
+
+    // Para flujo por URL publica usamos endpoint URL-based de menu_pos.
+    if (hasPublicUrl && !hasBinaryPayload) {
+      return apiFetch('/menu-pos/archivos/upload', 'POST', data);
+    }
+
     try {
       return await apiFetch('/archivos', 'POST', data);
     } catch (error) {

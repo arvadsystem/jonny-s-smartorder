@@ -229,12 +229,15 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  overflow-y: auto;
 }
 
 .menu-pos-detail-panel {
   position: relative;
   width: min(640px, calc(100vw - 32px));
   max-height: min(86vh, 860px);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border-radius: 30px;
   background:
@@ -263,7 +266,9 @@
 
 .menu-pos-detail-media-wrap {
   position: relative;
-  min-height: 300px;
+  height: clamp(220px, 34vh, 320px);
+  min-height: 220px;
+  flex: 0 0 auto;
   overflow: hidden;
   background: linear-gradient(135deg, #fbf1e6, #f0e4d4);
 }
@@ -279,7 +284,7 @@
 }
 
 .menu-pos-detail-placeholder {
-  min-height: 300px;
+  min-height: 220px;
   width: 100%;
   display: grid;
   place-items: center;
@@ -295,6 +300,10 @@
 .menu-pos-detail-body {
   display: grid;
   gap: 22px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 24px;
 }
 
@@ -321,6 +330,161 @@
   color: #5e4f47;
   font-size: 1rem;
   line-height: 1.55;
+}
+
+.menu-pos-detail-pricing {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 242, 233, 0.7));
+}
+
+.menu-pos-detail-pricing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.9rem;
+}
+
+.menu-pos-detail-pricing-row strong {
+  color: #17080a;
+}
+
+.menu-pos-detail-pricing-row.is-total {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(157, 150, 112, 0.45);
+  font-weight: 800;
+}
+
+.menu-pos-detail-section {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.menu-pos-detail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.menu-pos-detail-extras-list {
+  display: grid;
+  gap: 8px;
+}
+
+.menu-pos-detail-extra-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.38);
+  border-radius: 12px;
+  background: #fff;
+  color: #4b2a21;
+  text-align: left;
+  padding: 10px 12px;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.menu-pos-detail-extra-option:hover {
+  border-color: rgba(122, 30, 36, 0.4);
+}
+
+.menu-pos-detail-extra-option.is-selected {
+  border-color: rgba(122, 30, 36, 0.7);
+  box-shadow: 0 8px 16px rgba(122, 30, 36, 0.1);
+}
+
+.menu-pos-detail-extra-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.menu-pos-detail-extra-name {
+  color: #17080a;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.menu-pos-detail-extra-price {
+  color: #7f3a1f;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.menu-pos-detail-extra-check {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(157, 150, 112, 0.45);
+  color: transparent;
+  background: #fff;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+
+.menu-pos-detail-extra-check.is-selected {
+  color: #fff;
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
+.menu-pos-detail-quantity-stepper {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.36);
+  background: #fff;
+}
+
+.menu-pos-detail-quantity-btn {
+  width: 34px;
+  height: 34px;
+  border: 0 !important;
+  border-radius: 9px !important;
+  color: #6f5f57 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+}
+
+.menu-pos-detail-quantity-btn:hover:not(:disabled) {
+  background: rgba(178, 45, 48, 0.08) !important;
+  color: var(--c-accent) !important;
+}
+
+.menu-pos-detail-quantity-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.menu-pos-detail-quantity-value {
+  min-width: 34px;
+  text-align: center;
+  color: #17080a;
+  font-weight: 900;
+}
+
+.menu-pos-detail-sauces {
+  background: rgba(247, 247, 247, 0.72);
 }
 
 .menu-pos-detail-actions {
@@ -437,6 +601,13 @@
   color: rgba(82, 44, 34, 0.56);
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.menu-order-item-subtotal {
+  color: #17080a;
+  font-size: 0.8rem;
+  font-weight: 800;
+  margin-top: 4px;
 }
 
 .menu-order-item-actions {
@@ -560,6 +731,10 @@
   border-radius: 12px !important;
   font-size: 0.95rem !important;
   font-weight: 800 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 @media (max-width: 767.98px) {
@@ -598,7 +773,8 @@
 
   .menu-pos-detail-media-wrap,
   .menu-pos-detail-placeholder {
-    min-height: 240px;
+    height: clamp(200px, 34vh, 240px);
+    min-height: 200px;
   }
 
   .menu-pos-detail-body {
@@ -607,6 +783,14 @@
 
   .menu-pos-detail-actions {
     grid-template-columns: 1fr;
+  }
+
+  .menu-pos-detail-section {
+    padding: 12px;
+  }
+
+  .menu-pos-detail-pricing {
+    padding: 12px;
   }
 }
 
@@ -661,6 +845,27 @@
 
 .menu-module-head .menu-module-switch {
   width: clamp(240px, 26vw, 340px);
+}
+
+.menu-module-head .menu-module-switch.menu-module-switch--triple {
+  width: clamp(320px, 34vw, 460px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.menu-module-switch.menu-module-switch--triple .inv-cat-compact-switch__thumb {
+  width: calc((100% - 6px) / 3);
+}
+
+.menu-module-switch.menu-module-switch--triple.is-recetas .inv-cat-compact-switch__thumb {
+  transform: translateX(0);
+}
+
+.menu-module-switch.menu-module-switch--triple.is-combos .inv-cat-compact-switch__thumb {
+  transform: translateX(100%);
+}
+
+.menu-module-switch.menu-module-switch--triple.is-pos .inv-cat-compact-switch__thumb {
+  transform: translateX(200%);
 }
 
 .menu-recetas-admin__header-actions {
@@ -890,6 +1095,73 @@
   font-size: 1.4rem;
 }
 
+.menu-combos-receta-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.menu-combos-receta-picker__search {
+  border-radius: 10px;
+}
+
+.menu-combos-receta-picker__list {
+  max-height: 220px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(157, 150, 112, 0.32);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.menu-combos-receta-picker__item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(157, 150, 112, 0.35);
+  border-radius: 10px;
+  background: #fff;
+  color: #522c22;
+  padding: 8px 10px;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.menu-combos-receta-picker__item:hover {
+  border-color: rgba(122, 30, 36, 0.38);
+  box-shadow: 0 6px 12px rgba(62, 35, 28, 0.08);
+  transform: translateY(-1px);
+}
+
+.menu-combos-receta-picker__item-id {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: rgba(82, 44, 34, 0.7);
+}
+
+.menu-combos-receta-picker__item-name {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #17080a;
+}
+
+.menu-combos-receta-picker__item-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  border: 1px solid rgba(157, 150, 112, 0.35);
+  background: rgba(243, 241, 216, 0.64);
+  color: #6a3a2a;
+}
+
 @media (max-width: 991.98px) {
   .menu-module-head .inv-prod-header {
     gap: 12px;
@@ -902,6 +1174,10 @@
 
   .menu-module-head .menu-module-switch {
     width: min(100%, 340px);
+  }
+
+  .menu-module-head .menu-module-switch.menu-module-switch--triple {
+    width: min(100%, 460px);
   }
 }
 
@@ -921,5 +1197,14 @@
 
   .menu-recetas-card__meta {
     grid-template-columns: 1fr;
+  }
+
+  .menu-combos-receta-picker__item {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .menu-combos-receta-picker__item-add {
+    justify-self: start;
   }
 }

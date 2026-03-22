@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { FaImage, FaPlus } from 'react-icons/fa';
 import { resolveMenuItemImageSrc } from './menuImage';
 import { toDisplayTitle } from './textFormat';
+import { requiresProductConfiguration } from './utils/menuPosProductConfig';
 
 const getDisplayName = (value) =>
   toDisplayTitle(
@@ -10,19 +11,13 @@ const getDisplayName = (value) =>
       .trim()
   );
 
-const shouldHideDescription = (value) => {
-  const normalized = String(value || '').trim();
-  if (!normalized) return true;
-  return /^[A-Z]{4,}$/.test(normalized);
-};
-
 const ProductoCard = ({ producto, onAgregar, onOpenDetail, canAdd = true, canViewDetail = true }) => {
   const nombre = getDisplayName(producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre');
   const precio = Number(producto?.precio || 0);
   const imageSrc = resolveMenuItemImageSrc(producto);
   const feedbackTimeoutRef = useRef(null);
   const [isAddFeedbackOn, setIsAddFeedbackOn] = useState(false);
-  const requiresSauceSelection = producto?.salsas_requiere_seleccion === true;
+  const needsConfiguration = requiresProductConfiguration(producto);
 
   useEffect(() => {
     return () => {
@@ -47,12 +42,15 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail, canAdd = true, canVie
   const handleAgregar = (event) => {
     event.stopPropagation();
     if (!canAdd) return;
+
     triggerAddFeedback();
-    if (requiresSauceSelection) {
+
+    if (needsConfiguration) {
       if (canViewDetail) onOpenDetail(producto);
       return;
     }
-    onAgregar(producto);
+
+    onAgregar(producto, { cantidad: 1 });
   };
 
   const handleKeyDown = (event) => {
@@ -68,7 +66,7 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail, canAdd = true, canVie
   return (
     <div
       className="card h-100 shadow-sm menu-pos-product-card"
-      role={canViewDetail ? "button" : undefined}
+      role={canViewDetail ? 'button' : undefined}
       tabIndex={canViewDetail ? 0 : undefined}
       onClick={canViewDetail ? () => onOpenDetail(producto) : undefined}
       onKeyDown={handleKeyDown}
@@ -81,9 +79,9 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail, canAdd = true, canVie
             className="menu-pos-product-image"
             loading="lazy"
             referrerPolicy="no-referrer"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-              const next = e.currentTarget.nextElementSibling;
+            onError={(event) => {
+              event.currentTarget.style.display = 'none';
+              const next = event.currentTarget.nextElementSibling;
               if (next) next.classList.remove('d-none');
             }}
           />
