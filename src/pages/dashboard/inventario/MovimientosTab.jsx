@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
 
@@ -95,6 +95,7 @@ const getItemId = (item, itemTipo) =>
   itemTipo === 'producto' ? String(item?.id_producto ?? '').trim() : String(item?.id_insumo ?? '').trim();
 
 const MOVIMIENTOS_PAGE_SIZE = 10;
+const AJUSTE_STOCK_FINAL_HELP = 'En AJUSTE, la cantidad representa la existencia final del item en el almacen.';
 
 const MovimientosTab = ({
   openToast,
@@ -120,6 +121,7 @@ const MovimientosTab = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [listPage, setListPage] = useState(1);
   const [tipoFiltro, setTipoFiltro] = useState('todos');
   const [sucursalFiltro, setSucursalFiltro] = useState('');
@@ -149,6 +151,7 @@ const MovimientosTab = ({
   const [createErrors, setCreateErrors] = useState({});
 
   const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
+  const kardexRequestIdRef = useRef(0);
 
   const safeToast = (title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
@@ -173,6 +176,11 @@ const MovimientosTab = ({
     }
     return map;
   }, [almacenes]);
+
+  const almacenesOperativos = useMemo(
+    () => (Array.isArray(almacenes) ? almacenes.filter((almacen) => parseEstado(almacen?.estado ?? true)) : []),
+    [almacenes]
+  );
 
   const sucursalesDisponibles = useMemo(() => {
     const ids = new Set();
@@ -306,9 +314,9 @@ const MovimientosTab = ({
       id_item: itemFiltroId || undefined,
       desde: desde || undefined,
       hasta: hasta || undefined,
-      q: search.trim() || undefined
+      q: debouncedSearch || undefined
     }),
-    [almacenFiltro, desde, hasta, itemFiltroId, itemTipoFiltro, search, sucursalFiltro, tipoFiltro]
+    [almacenFiltro, debouncedSearch, desde, hasta, itemFiltroId, itemTipoFiltro, sucursalFiltro, tipoFiltro]
   );
 
   const hasActiveListadoFilters = useMemo(
@@ -356,12 +364,12 @@ const MovimientosTab = ({
 
     try {
       const [productosData, insumosData] = await Promise.all([
-        inventarioService.getProductos({ incluirInactivos: true }),
-        inventarioService.getInsumos({ incluirInactivos: true })
+        inventarioService.getProductos(),
+        inventarioService.getInsumos()
       ]);
 
-      setProductos(Array.isArray(productosData) ? productosData : []);
-      setInsumos(Array.isArray(insumosData) ? insumosData : []);
+      setProductos(Array.isArray(productosData) ? productosData.filter((item) => parseEstado(item?.estado ?? true)) : []);
+      setInsumos(Array.isArray(insumosData) ? insumosData.filter((item) => parseEstado(item?.estado ?? true)) : []);
     } catch (requestError) {
       const message = requestError?.message || 'ERROR CARGANDO REFERENCIAS DEL KARDEX';
       setError(message);
@@ -372,20 +380,40 @@ const MovimientosTab = ({
   };
 
   const cargarKardex = async (request = kardexRequest) => {
+    const requestId = ++kardexRequestIdRef.current;
     setLoading(true);
     setError('');
 
     try {
       const data = await inventarioService.getKardex(request);
+      if (requestId !== kardexRequestIdRef.current) return;
       setMovimientos(Array.isArray(data) ? data : []);
     } catch (requestError) {
+      if (requestId !== kardexRequestIdRef.current) return;
       const message = requestError?.message || 'ERROR CARGANDO KARDEX';
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
+      if (requestId !== kardexRequestIdRef.current) return;
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // FIX IMPORTANTE: debounce de busqueda para no disparar requests por cada tecla en kardex.
+    if (typeof window === 'undefined') {
+      setDebouncedSearch(search.trim());
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [search]);
 
   useEffect(() => {
     if (typeof document === 'undefined' || !auxModalOpen) return undefined;
@@ -556,6 +584,9 @@ const MovimientosTab = ({
     if (!['ENTRADA', 'SALIDA', 'AJUSTE'].includes(tipo)) errors.tipo = 'SELECCIONA UN TIPO VALIDO.';
     if (!idAlmacenRaw) errors.id_almacen = 'EL ALMACEN ES OBLIGATORIO.';
     else if (Number.isNaN(idAlmacen) || idAlmacen <= 0) errors.id_almacen = 'SELECCIONA UN ALMACEN VALIDO.';
+    else if (!almacenesOperativos.some((almacen) => Number(almacen?.id_almacen) === Number(idAlmacen))) {
+      errors.id_almacen = 'EL ALMACEN SELECCIONADO ESTA INACTIVO.';
+    }
 
     if (!['producto', 'insumo'].includes(itemTipo)) errors.item_tipo = 'SELECCIONA UN TIPO DE ITEM VALIDO.';
     if (!idItemRaw) errors.id_item = 'SELECCIONA UN ITEM.';
@@ -564,7 +595,7 @@ const MovimientosTab = ({
     if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA.';
     else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO SE ACEPTAN ENTEROS.';
     else if (tipo === 'AJUSTE' ? cantidad < 0 : cantidad <= 0) {
-      errors.cantidad = tipo === 'AJUSTE' ? 'AJUSTE DEBE SER MAYOR O IGUAL A 0.' : 'LA CANTIDAD DEBE SER MAYOR A 0.';
+      errors.cantidad = tipo === 'AJUSTE' ? 'LA EXISTENCIA FINAL DEBE SER MAYOR O IGUAL A 0.' : 'LA CANTIDAD DEBE SER MAYOR A 0.';
     }
 
     const itemSeleccionado =
@@ -683,7 +714,7 @@ const MovimientosTab = ({
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--filters show" aria-hidden={!showFiltersModal}>
             <div className="inv-prod-pmodal__overlay" onClick={() => setShowFiltersModal(false)} />
-            <div className="inv-prod-pmodal__viewport" onClick={() => setShowFiltersModal(false)}>
+            <div className="inv-prod-pmodal__viewport">
               <div
                 className="inv-prod-pmodal__panel inv-prod-pmodal__panel--filters"
                 role="dialog"
@@ -730,8 +761,8 @@ const MovimientosTab = ({
 
                         <div className="row g-3">
                           <div className="col-12">
-                            <label className="form-label mb-1">Almacen</label>
-                            <select className="form-select" value={filterDraft.id_almacen} disabled>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-almacen">Almacen</label>
+                            <select id="inv-moves-filter-almacen" className="form-select" value={filterDraft.id_almacen} disabled>
                               <option value={filterDraft.id_almacen || ''}>
                                 {lockedFilterWarehouse
                                   ? formatAlmacenOptionLabel(lockedFilterWarehouse, sucursalesMap)
@@ -741,8 +772,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Tipo</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-tipo">Tipo</label>
                             <select
+                              id="inv-moves-filter-tipo"
                               className="form-select"
                               value={filterDraft.tipo}
                               onChange={(event) =>
@@ -757,8 +789,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Item</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-item-tipo">Item</label>
                             <select
+                              id="inv-moves-filter-item-tipo"
                               className="form-select"
                               value={filterDraft.item_tipo}
                               onChange={(event) =>
@@ -776,8 +809,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Detalle de item</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-item-detalle">Detalle de item</label>
                             <select
+                              id="inv-moves-filter-item-detalle"
                               className="form-select"
                               value={filterDraft.id_item}
                               onChange={(event) =>
@@ -807,8 +841,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label mb-1">Desde</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-desde">Desde</label>
                             <input
+                              id="inv-moves-filter-desde"
                               className="form-control"
                               type="date"
                               value={filterDraft.desde}
@@ -819,8 +854,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label mb-1">Hasta</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-filter-hasta">Hasta</label>
                             <input
+                              id="inv-moves-filter-hasta"
                               className="form-control"
                               type="date"
                               value={filterDraft.hasta}
@@ -858,7 +894,7 @@ const MovimientosTab = ({
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showCreateModal}>
             <div className="inv-prod-pmodal__overlay" onClick={() => setShowCreateModal(false)} />
-            <div className="inv-prod-pmodal__viewport" onClick={() => setShowCreateModal(false)}>
+            <div className="inv-prod-pmodal__viewport">
               <div
                 className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
                 role="dialog"
@@ -874,6 +910,7 @@ const MovimientosTab = ({
                         className="inv-prod-drawer-close inv-ins-create-hero__close"
                         onClick={() => setShowCreateModal(false)}
                         aria-label="Cerrar nuevo movimiento"
+                        disabled={saving}
                       >
                         <i className="bi bi-x-lg" aria-hidden="true" />
                       </button>
@@ -888,7 +925,7 @@ const MovimientosTab = ({
                           Alta rapida de movimiento
                         </div>
                         <div className="inv-ins-create-hero__text">
-                          Registra entradas, salidas o ajustes usando el mismo endpoint actual del kardex.
+                          Registra entradas, salidas o ajustes. En AJUSTE defines la existencia final del item.
                         </div>
                       </div>
 
@@ -911,8 +948,9 @@ const MovimientosTab = ({
 
                         <div className="row g-3">
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Tipo</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-tipo">Tipo</label>
                             <select
+                              id="inv-moves-create-tipo"
                               className={`form-select ${createErrors.tipo ? 'is-invalid' : ''}`}
                               value={form.tipo}
                               onChange={(event) => setForm((current) => ({ ...current, tipo: event.target.value }))}
@@ -926,8 +964,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-8">
-                            <label className="form-label mb-1">Almacen</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-almacen">Almacen</label>
                             <select
+                              id="inv-moves-create-almacen"
                               className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
                               value={form.id_almacen}
                               onChange={(event) =>
@@ -940,7 +979,7 @@ const MovimientosTab = ({
                               disabled={saving}
                             >
                               <option value="">{loadingRefs ? 'Cargando almacenes...' : 'Seleccione almacen'}</option>
-                              {almacenes.map((almacen) => (
+                              {almacenesOperativos.map((almacen) => (
                                 <option key={almacen.id_almacen} value={almacen.id_almacen}>
                                   {formatAlmacenOptionLabel(almacen, sucursalesMap)}
                                 </option>
@@ -954,13 +993,18 @@ const MovimientosTab = ({
                       <section className="inv-prod-pmodal__section">
                         <div className="inv-prod-pmodal__section-head">
                           <div className="inv-prod-pmodal__section-title">Item y registro</div>
-                          <div className="inv-prod-pmodal__section-sub">Selecciona el item, la cantidad y el contexto opcional del movimiento.</div>
+                          <div className="inv-prod-pmodal__section-sub">
+                            {form.tipo === 'AJUSTE'
+                              ? 'Selecciona el item e indica la existencia final. El sistema ajusta automaticamente la diferencia.'
+                              : 'Selecciona el item, la cantidad y el contexto opcional del movimiento.'}
+                          </div>
                         </div>
 
                         <div className="row g-3">
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Tipo de item</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-item-tipo">Tipo de item</label>
                             <select
+                              id="inv-moves-create-item-tipo"
                               className={`form-select ${createErrors.item_tipo ? 'is-invalid' : ''}`}
                               value={form.item_tipo}
                               onChange={(event) =>
@@ -979,8 +1023,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-8">
-                            <label className="form-label mb-1">Item</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-item">Item</label>
                             <select
+                              id="inv-moves-create-item"
                               className={`form-select ${createErrors.id_item ? 'is-invalid' : ''}`}
                               value={form.id_item}
                               onChange={(event) => setForm((current) => ({ ...current, id_item: event.target.value }))}
@@ -1005,8 +1050,11 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12 col-md-4">
-                            <label className="form-label mb-1">Cantidad</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-cantidad">
+                              {form.tipo === 'AJUSTE' ? 'Existencia final' : 'Cantidad'}
+                            </label>
                             <input
+                              id="inv-moves-create-cantidad"
                               className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
                               type="number"
                               min={form.tipo === 'AJUSTE' ? '0' : '1'}
@@ -1020,13 +1068,18 @@ const MovimientosTab = ({
                                 }))
                               }
                               disabled={saving}
+                              placeholder={form.tipo === 'AJUSTE' ? 'Ej: 25 (stock final)' : 'Ej: 5'}
                             />
                             {createErrors.cantidad ? <div className="invalid-feedback">{createErrors.cantidad}</div> : null}
+                            {!createErrors.cantidad && form.tipo === 'AJUSTE' ? (
+                              <div className="form-text">{AJUSTE_STOCK_FINAL_HELP}</div>
+                            ) : null}
                           </div>
 
                           <div className="col-12 col-md-8">
-                            <label className="form-label mb-1">Referencia</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-ref">Referencia</label>
                             <input
+                              id="inv-moves-create-ref"
                               className="form-control"
                               value={form.ref_origen}
                               onChange={(event) => setForm((current) => ({ ...current, ref_origen: event.target.value }))}
@@ -1036,8 +1089,9 @@ const MovimientosTab = ({
                           </div>
 
                           <div className="col-12">
-                            <label className="form-label mb-1">Observacion</label>
+                            <label className="form-label mb-1" htmlFor="inv-moves-create-observacion">Observacion</label>
                             <textarea
+                              id="inv-moves-create-observacion"
                               className="form-control"
                               rows="3"
                               value={form.descripcion}

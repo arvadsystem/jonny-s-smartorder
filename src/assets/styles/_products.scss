@@ -438,6 +438,8 @@
   align-items: stretch;
   padding: 0;
   overflow: hidden;
+  // NEW: delega el click-away al overlay para evitar cierres por eventos nativos de selects/datepickers.
+  pointer-events: none;
 }
 
 .inv-prod-pmodal--filters .inv-prod-pmodal__viewport {
@@ -452,6 +454,7 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
+  pointer-events: auto;
   border-left: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 0;
   background: rgba(255, 255, 255, 0.62);
@@ -856,6 +859,35 @@
   box-shadow: 0 0 0 0.18rem rgba(178, 45, 48, 0.12);
 }
 
+// AM: unifica ritmo vertical y compactacion en create (panel y modal) para que todos los campos queden alineados.
+.inv-prod-create-form .form-control,
+.inv-prod-create-form .form-select {
+  padding: 0.38rem 0.6rem;
+  font-size: 0.88rem;
+  line-height: 1.25;
+}
+
+.inv-prod-create-form .form-label {
+  margin-bottom: 0.3rem !important;
+  min-height: 1rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.inv-prod-create-form .invalid-feedback {
+  margin-top: 0.18rem;
+  font-size: 0.72rem;
+}
+
+// AM: asegura consistencia del modal legacy de alta con el mismo patron compacto del formulario principal.
+.inv-prod-create-form--modal {
+  align-items: flex-start;
+}
+
+.inv-prod-create-form--modal .btn {
+  min-height: 38px;
+}
+
 // NEW: unificacion visual de dropdowns/selects de Productos con efecto glass/agua.
 // WHY: alinear todos los selects del submodulo (filtros, nuevo, edicion y modales) con el estilo de Inventario.
 // IMPACT: solo estilos en wrappers de Productos (`inv-prod-card`, `inv-prod-modal-content`, `inv-prod-drawer`).
@@ -919,6 +951,68 @@
 .inv-prod-drawer .form-select option:checked {
   background: rgba(178, 45, 48, 0.14);
   color: #17080a;
+}
+
+// AM: contenedor visual para "Almacenes asignados" con checkboxes en create/edit de Productos.
+.inv-prod-card .inv-almacenes-checkboxes,
+.inv-prod-modal-content .inv-almacenes-checkboxes,
+.inv-prod-drawer .inv-almacenes-checkboxes {
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  background: rgba(255, 255, 255, 0.55);
+  max-height: 188px;
+  overflow-y: auto;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes .form-check,
+.inv-prod-modal-content .inv-almacenes-checkboxes .form-check,
+.inv-prod-drawer .inv-almacenes-checkboxes .form-check {
+  margin-bottom: 0.36rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.46rem;
+  padding-left: 0;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes .form-check-input,
+.inv-prod-modal-content .inv-almacenes-checkboxes .form-check-input,
+.inv-prod-drawer .inv-almacenes-checkboxes .form-check-input {
+  // AM: fija la geometria real del checkbox para impedir cajas expandidas por herencia de estilos.
+  margin: 0.16rem 0 0;
+  float: none;
+  position: static;
+  flex: 0 0 auto;
+  width: 1rem;
+  min-width: 1rem;
+  height: 1rem;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes .form-check-label,
+.inv-prod-modal-content .inv-almacenes-checkboxes .form-check-label,
+.inv-prod-drawer .inv-almacenes-checkboxes .form-check-label {
+  line-height: 1.24;
+  font-size: 0.81rem;
+  margin-bottom: 0;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes .form-check:last-child,
+.inv-prod-modal-content .inv-almacenes-checkboxes .form-check:last-child,
+.inv-prod-drawer .inv-almacenes-checkboxes .form-check:last-child {
+  margin-bottom: 0;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes--compact,
+.inv-prod-modal-content .inv-almacenes-checkboxes--compact,
+.inv-prod-drawer .inv-almacenes-checkboxes--compact {
+  max-height: 152px;
+  padding: 0.5rem 0.65rem;
+}
+
+.inv-prod-card .inv-almacenes-checkboxes.is-invalid,
+.inv-prod-modal-content .inv-almacenes-checkboxes.is-invalid,
+.inv-prod-drawer .inv-almacenes-checkboxes.is-invalid {
+  border-color: #dc3545;
 }
 
 // NEW: soporte visual para dropdowns custom dentro de Productos (si existen en futuros ajustes).
@@ -2565,6 +2659,15 @@
   gap: 10px;
 }
 
+// AM: variante compacta del formulario de edicion para dejar columnas parejas y lectura estable en desktop.
+.inv-prod-drawer-form--compact {
+  gap: 0.65rem;
+}
+
+.inv-prod-drawer-form--compact > div {
+  min-width: 0;
+}
+
 .inv-prod-drawer-field--span-2 {
   grid-column: 1 / -1;
 }
@@ -2581,13 +2684,25 @@
   letter-spacing: 0.12px;
 }
 
-.inv-prod-drawer-form input {
+// AM: evita que los checkboxes de "Almacenes asignados" hereden estilo de input textual en el drawer de edicion.
+.inv-prod-drawer-form input:not([type='checkbox']):not([type='radio']) {
   width: 100%;
   border: 1px solid rgba(157, 150, 112, 0.42);
   border-radius: 10px;
   background: #fff;
   color: #17080a;
   padding: 0.42rem 0.58rem;
+  min-height: 38px;
+}
+
+.inv-prod-drawer-form .form-select {
+  width: 100%;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  padding: 0.42rem 0.58rem;
+  min-height: 38px;
 }
 
 .inv-prod-drawer-form textarea {
@@ -2601,7 +2716,7 @@
   min-height: 104px;
 }
 
-.inv-prod-drawer-form input.is-invalid {
+.inv-prod-drawer-form input:not([type='checkbox']):not([type='radio']).is-invalid {
   border-color: rgba(178, 45, 48, 0.58);
   box-shadow: 0 0 0 0.16rem rgba(178, 45, 48, 0.12);
 }
@@ -2614,9 +2729,10 @@
 .inv-prod-drawer-form .invalid-feedback {
   font-size: 0.73rem;
   font-weight: 700;
+  margin-top: 0.18rem;
 }
 
-.inv-prod-drawer-form input:disabled {
+.inv-prod-drawer-form input:not([type='checkbox']):not([type='radio']):disabled {
   background: rgba(243, 241, 216, 0.42);
 }
 
@@ -2842,6 +2958,29 @@
   .inv-prod-drawer-hero {
     grid-template-columns: 78px minmax(0, 1fr);
     padding: 0.82rem;
+  }
+
+  // AM: compactacion responsive de los 2 modales de Productos (crear + editar) para evitar columnas disparejas.
+  .inv-prod-create-form .form-label {
+    margin-bottom: 0.24rem !important;
+  }
+
+  .inv-prod-create-form .form-control,
+  .inv-prod-create-form .form-select,
+  .inv-prod-drawer-form--compact input,
+  .inv-prod-drawer-form--compact .form-select {
+    min-height: 36px;
+  }
+
+  .inv-prod-create-form .inv-almacenes-checkboxes,
+  .inv-prod-drawer-form--compact .inv-almacenes-checkboxes {
+    max-height: 146px;
+    padding: 0.5rem 0.62rem;
+  }
+
+  .inv-prod-drawer-form-grid,
+  .inv-prod-drawer-actions--edit {
+    grid-template-columns: 1fr;
   }
 }
 

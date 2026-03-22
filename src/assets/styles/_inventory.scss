@@ -2527,7 +2527,7 @@
 .inv-ins-drawer-fields--create > .inv-ins-drawer-grid,
 .inv-ins-drawer-fields--edit > div,
 .inv-ins-drawer-fields--edit > .inv-ins-drawer-grid {
-  padding: 0.9rem 0.92rem;
+  padding: 0.78rem 0.84rem;
   border-radius: 16px;
   border: 1px solid rgba(157, 150, 112, 0.18);
   background: rgba(255, 255, 255, 0.72);
@@ -2553,6 +2553,9 @@
   background: #fff;
   color: #17080a;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  min-height: 38px;
+  padding: 0.38rem 0.58rem;
+  font-size: 0.88rem;
 }
 
 .inv-ins-drawer-fields .form-control:focus,
@@ -2569,7 +2572,48 @@
 .inv-ins-drawer-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
+}
+
+// AM: fuerza alineacion de columnas y soporte para campos que deben ocupar todo el ancho (ej. almacenes).
+.inv-ins-drawer-grid > div {
+  min-width: 0;
+}
+
+.inv-ins-drawer-field--span-2 {
+  grid-column: 1 / -1;
+}
+
+// AM: compacta y alinea la lista de checkboxes de almacenes en create/edit de Insumos.
+.inv-ins-drawer-fields .inv-almacenes-checkboxes {
+  max-height: 168px;
+  padding: 0.52rem 0.66rem;
+}
+
+.inv-ins-drawer-fields .inv-almacenes-checkboxes .form-check {
+  margin-bottom: 0.34rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.46rem;
+  padding-left: 0;
+}
+
+.inv-ins-drawer-fields .inv-almacenes-checkboxes .form-check-input {
+  margin: 0.16rem 0 0;
+  float: none;
+  position: static;
+  flex: 0 0 auto;
+}
+
+.inv-ins-drawer-fields .inv-almacenes-checkboxes .form-check-label {
+  margin-bottom: 0;
+  font-size: 0.81rem;
+  line-height: 1.24;
+}
+
+.inv-ins-drawer-fields .invalid-feedback {
+  margin-top: 0.18rem;
+  font-size: 0.72rem;
 }
 
 .inv-ins-stepper {
@@ -3335,6 +3379,24 @@
     grid-template-columns: 1fr;
   }
 
+  // AM: compactacion mobile de create/edit para que Insumos quede alineado con Productos en pantallas chicas.
+  .inv-ins-drawer-fields--create > div,
+  .inv-ins-drawer-fields--create > .inv-ins-drawer-grid,
+  .inv-ins-drawer-fields--edit > div,
+  .inv-ins-drawer-fields--edit > .inv-ins-drawer-grid {
+    padding: 0.68rem 0.72rem;
+    border-radius: 12px;
+  }
+
+  .inv-ins-drawer-fields .form-label {
+    margin-bottom: 0.24rem;
+  }
+
+  .inv-ins-drawer-fields .inv-almacenes-checkboxes {
+    max-height: 146px;
+    padding: 0.48rem 0.6rem;
+  }
+
   .inv-ins-drawer-footer {
     grid-template-columns: 1fr;
   }
@@ -3495,6 +3557,66 @@
 .inv-ins-module .form-select option:checked {
   background: rgba(178, 45, 48, 0.14);
   color: #17080a;
+}
+
+// AM: estabiliza la visualizacion de listados multi-almacen en modales/drawers (mobile + desktop).
+// AM: evita que el browser renderice el `select[multiple]` como combo cerrado sin texto visible.
+.inv-catpro-card .form-select[multiple],
+.inv-cat-v2__drawer-body .form-select[multiple],
+.inv-ins-module .form-select[multiple] {
+  min-height: 108px;
+  padding-right: 0.72rem;
+  background-image: none !important;
+  overflow-y: auto;
+  -webkit-appearance: listbox;
+  appearance: listbox;
+}
+
+.inv-catpro-card .form-select[multiple] option,
+.inv-cat-v2__drawer-body .form-select[multiple] option,
+.inv-ins-module .form-select[multiple] option {
+  display: block;
+  padding: 0.34rem 0.48rem;
+  line-height: 1.25;
+  color: #17080a;
+  white-space: normal;
+}
+
+.inv-catpro-card .form-select[multiple] option:checked,
+.inv-cat-v2__drawer-body .form-select[multiple] option:checked,
+.inv-ins-module .form-select[multiple] option:checked {
+  background: rgba(178, 45, 48, 0.18);
+  color: #17080a;
+}
+
+// AM: contenedor visual para "Almacenes asignados" con checkboxes en formularios de Inventario.
+.inv-catpro-card .inv-almacenes-checkboxes,
+.inv-cat-v2__drawer-body .inv-almacenes-checkboxes,
+.inv-ins-module .inv-almacenes-checkboxes {
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 12px;
+  padding: 0.62rem 0.76rem;
+  background: rgba(255, 255, 255, 0.52);
+  max-height: 186px;
+  overflow-y: auto;
+}
+
+.inv-catpro-card .inv-almacenes-checkboxes .form-check,
+.inv-cat-v2__drawer-body .inv-almacenes-checkboxes .form-check,
+.inv-ins-module .inv-almacenes-checkboxes .form-check {
+  margin-bottom: 0.42rem;
+}
+
+.inv-catpro-card .inv-almacenes-checkboxes .form-check:last-child,
+.inv-cat-v2__drawer-body .inv-almacenes-checkboxes .form-check:last-child,
+.inv-ins-module .inv-almacenes-checkboxes .form-check:last-child {
+  margin-bottom: 0;
+}
+
+.inv-catpro-card .inv-almacenes-checkboxes.is-invalid,
+.inv-cat-v2__drawer-body .inv-almacenes-checkboxes.is-invalid,
+.inv-ins-module .inv-almacenes-checkboxes.is-invalid {
+  border-color: #dc3545;
 }
 
 // NEW: soporte visual para dropdowns custom (ej. Bootstrap) si se usan dentro de Categorias/Insumos.
@@ -5558,5 +5680,1726 @@
 
   .inv-warehouse-moves__title {
     white-space: normal;
+  }
+}
+
+/* AM: capa visual dedicada al submodulo de ordenes de compra dentro de Inventario. */
+.inv-oc-module {
+  --inv-oc-wine: #7f1d1d;
+  --inv-oc-coffee: #5a2d22;
+  --inv-oc-amber: #b97c2c;
+  --inv-oc-cream: #fff9ef;
+  --inv-oc-border: rgba(138, 95, 57, 0.24);
+}
+
+.inv-oc-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--inv-oc-border);
+  border-radius: 22px;
+  padding: 1.1rem 1.2rem;
+  background:
+    radial-gradient(circle at top right, rgba(127, 29, 29, 0.16), transparent 42%),
+    radial-gradient(circle at bottom left, rgba(185, 124, 44, 0.14), transparent 45%),
+    linear-gradient(145deg, #fffdf7 0%, #f8f0e1 100%);
+  box-shadow: 0 14px 32px rgba(65, 31, 20, 0.08);
+  animation: inv-oc-fade-up 0.3s ease-out;
+}
+
+.inv-oc-hero__copy {
+  max-width: 680px;
+}
+
+.inv-oc-hero__eyebrow {
+  color: rgba(90, 45, 34, 0.78);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.inv-oc-hero__title {
+  color: #2f130c;
+  font-size: clamp(1.4rem, 1.8vw, 1.9rem);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.inv-oc-hero__subtitle {
+  color: rgba(58, 33, 27, 0.88);
+  font-size: 0.92rem;
+}
+
+.inv-oc-hero__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 0.65rem;
+  min-width: 320px;
+}
+
+.inv-oc-stat-card {
+  border: 1px solid rgba(127, 29, 29, 0.12);
+  border-radius: 14px;
+  padding: 0.65rem 0.72rem;
+  background: rgba(255, 255, 255, 0.78);
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.inv-oc-stat-card span {
+  color: rgba(54, 31, 24, 0.72);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.inv-oc-stat-card strong {
+  color: #1f0b06;
+  font-size: 1.24rem;
+  line-height: 1;
+}
+
+.inv-oc-stat-card.is-pending {
+  border-color: rgba(185, 124, 44, 0.3);
+}
+
+.inv-oc-stat-card.is-approved {
+  border-color: rgba(35, 93, 185, 0.26);
+}
+
+.inv-oc-stat-card.is-buying {
+  border-color: rgba(56, 128, 151, 0.26);
+}
+
+.inv-oc-stat-card.is-stocked {
+  border-color: rgba(28, 126, 88, 0.28);
+}
+
+.inv-oc-card {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  animation: inv-oc-fade-up 0.3s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+/* AM: apila verticalmente la parte superior de OC sin mover JSX delicado. */
+.inv-oc-top-panels,
+.inv-oc-top-panels.is-dual {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+/* AM: evita alturas forzadas del layout viejo en dos columnas. */
+.inv-oc-top-panels.is-dual > .inv-oc-card {
+  min-height: auto;
+}
+
+/* AM: orden visual seguro sin cortar ni pegar bloques JSX grandes. */
+.inv-oc-flow-shell {
+  order: 1;
+}
+
+/* AM: Nueva Solicitud va debajo de Flujo. */
+.inv-oc-create-shell {
+  order: 2;
+}
+
+.inv-oc-middle-panels {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.inv-oc-middle-panels.is-dual {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.inv-oc-incoming-card .card-body {
+  max-height: none;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.inv-oc-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 245, 0.98) 0%, rgba(248, 242, 230, 0.96) 100%);
+}
+
+.inv-oc-card__header h4 {
+  color: #2f130c;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.inv-oc-card__header--compact,
+.inv-oc-card__header--single-row {
+  align-items: flex-start;
+}
+
+.inv-oc-card__header--single-row {
+  align-items: center;
+}
+
+.inv-oc-title-stacked {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.02;
+  gap: 0.05rem;
+}
+
+.inv-oc-title-stacked span {
+  display: block;
+}
+
+.inv-oc-card__header-title {
+  min-width: 0;
+}
+
+.inv-oc-card__header-tools {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+  width: min(100%, 520px);
+}
+
+/* AM: cabeceras compactas de OC con linea visual alineada al header de Productos. */
+.inv-oc-card__header--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.inv-oc-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.inv-oc-panel-title-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.inv-oc-panel-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.inv-oc-panel-title-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 29, 29, 0.15);
+  background: rgba(255, 248, 236, 0.94);
+  color: #8f3c2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-oc-panel-title-copy h4 {
+  color: #2f130c;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inv-oc-panel-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-panel-search {
+  min-width: min(100%, 320px);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.58rem 0.72rem;
+  border-radius: 14px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.inv-oc-panel-search i {
+  color: rgba(90, 45, 34, 0.58);
+  flex-shrink: 0;
+}
+
+.inv-oc-panel-search input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: #2f130c;
+  font-size: 0.9rem;
+}
+
+.inv-oc-panel-search input::placeholder {
+  color: rgba(90, 45, 34, 0.52);
+}
+
+.inv-oc-panel-toolbar-btn {
+  min-height: 41px;
+  border: 1px solid rgba(127, 29, 29, 0.18);
+  border-radius: 14px;
+  padding: 0.55rem 0.78rem;
+  background: rgba(255, 249, 239, 0.94);
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.inv-oc-panel-toolbar-btn:hover,
+.inv-oc-panel-toolbar-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(65, 31, 20, 0.08);
+  border-color: rgba(127, 29, 29, 0.24);
+}
+
+.inv-oc-panel-toolbar-btn.is-on {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.92), rgba(185, 124, 44, 0.9));
+  color: #fff;
+  border-color: transparent;
+}
+
+.inv-oc-header-meta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+  padding-top: 0.72rem;
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+}
+
+.inv-oc-header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+}
+
+.inv-oc-header-chipline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 340px;
+}
+
+.inv-oc-flow-filters-panel {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(248, 242, 230, 0.96));
+  padding: 0.82rem;
+  animation: inv-oc-fade-up 0.18s ease;
+}
+
+.inv-oc-flow-footnote {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 0.2rem;
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+}
+
+.inv-oc-input-wrap {
+  position: relative;
+}
+
+.inv-oc-input-wrap--compact {
+  width: 100%;
+}
+
+.inv-oc-input-wrap i {
+  position: absolute;
+  top: 50%;
+  left: 0.85rem;
+  transform: translateY(-50%);
+  color: rgba(90, 45, 34, 0.55);
+  pointer-events: none;
+}
+
+.inv-oc-input {
+  padding-left: 2rem;
+}
+
+.inv-oc-input-wrap--compact .inv-oc-input {
+  padding-left: 2.5rem;
+}
+
+.inv-oc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 39px;
+  padding: 0.48rem 0.72rem;
+  border-radius: 12px;
+  border: 1px dashed rgba(127, 29, 29, 0.24);
+  background: rgba(255, 249, 239, 0.84);
+  cursor: pointer;
+  color: #4a2b22;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.inv-oc-toggle--compact {
+  min-height: 32px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.inv-oc-catalog-grid {
+  display: grid;
+  /* AM: desktop a 4 columnas para Nueva Solicitud. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.78rem;
+}
+
+.inv-oc-catalog-grid--animated {
+  animation: inv-oc-carousel-slide-in 0.28s ease;
+}
+
+.inv-oc-catalog-card {
+  border: 1px solid rgba(157, 150, 112, 0.23);
+  border-radius: 14px;
+  padding: 0.72rem;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 48%),
+    rgba(255, 255, 255, 0.92);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.inv-oc-catalog-card:hover,
+.inv-oc-catalog-card:focus-within {
+  transform: translateY(-1px);
+  border-color: rgba(127, 29, 29, 0.26);
+  box-shadow: 0 10px 20px rgba(65, 31, 20, 0.08);
+}
+
+.inv-oc-catalog-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.inv-oc-catalog-card__head h5 {
+  margin: 0;
+  color: #2f130c;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.inv-oc-catalog-card__title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.inv-oc-catalog-card__title-wrap i {
+  color: #8f3c2a;
+  font-size: 1rem;
+}
+
+.inv-oc-catalog-card p {
+  margin: 0;
+  color: rgba(65, 36, 29, 0.82);
+  font-size: 0.82rem;
+}
+
+.inv-oc-catalog-card__meta {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-catalog-card__meta span {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  background: rgba(255, 249, 239, 0.88);
+  padding: 0.14rem 0.44rem;
+  color: rgba(74, 43, 34, 0.84);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.inv-oc-catalog-card__action {
+  border: none;
+  border-radius: 10px;
+  padding: 0.48rem 0.64rem;
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.95), rgba(185, 124, 44, 0.9));
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.34rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.inv-oc-catalog-card__action:hover,
+.inv-oc-catalog-card__action:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(97, 38, 27, 0.26);
+}
+
+.inv-oc-carousel-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.1rem 0.1rem;
+  border-top: 1px dashed rgba(157, 150, 112, 0.32);
+}
+
+.inv-oc-carousel-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.inv-oc-carousel-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(157, 150, 112, 0.45);
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.inv-oc-carousel-dot:hover,
+.inv-oc-carousel-dot:focus-visible {
+  transform: scale(1.12);
+  background: rgba(127, 29, 29, 0.55);
+}
+
+.inv-oc-carousel-dot.is-active {
+  width: 24px;
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.95), rgba(185, 124, 44, 0.9));
+}
+
+.inv-oc-carousel-ellipsis {
+  color: rgba(74, 43, 34, 0.54);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  user-select: none;
+}
+
+.inv-oc-carousel-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.inv-oc-carousel-nav {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 29, 29, 0.24);
+  background: rgba(255, 255, 255, 0.9);
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.inv-oc-carousel-nav:hover:not(:disabled),
+.inv-oc-carousel-nav:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(127, 29, 29, 0.42);
+  box-shadow: 0 6px 12px rgba(65, 31, 20, 0.14);
+}
+
+.inv-oc-carousel-nav:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.inv-oc-carousel-counter {
+  border: 1px solid rgba(157, 150, 112, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 249, 239, 0.9);
+  color: #4a2b22;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.22rem 0.62rem;
+}
+
+.inv-oc-catalog-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.44rem;
+}
+
+.inv-oc-catalog-totals .badge {
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  color: #4a2b22;
+  font-size: 0.76rem;
+}
+
+.inv-oc-stock-badge {
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.inv-oc-stock-badge.is-ok {
+  background: rgba(28, 126, 88, 0.14);
+  color: #0d6a45;
+}
+
+.inv-oc-stock-badge.is-low {
+  background: rgba(185, 124, 44, 0.2);
+  color: #7d5114;
+}
+
+.inv-oc-stock-badge.is-out {
+  background: rgba(159, 39, 39, 0.18);
+  color: #8d1f1f;
+}
+
+.inv-oc-draft-shell {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.inv-oc-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.inv-oc-draft-item-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 44%),
+    rgba(255, 255, 255, 0.95);
+  padding: 0.72rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.inv-oc-draft-item-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(127, 29, 29, 0.28);
+  box-shadow: 0 12px 22px rgba(65, 31, 20, 0.12);
+}
+
+.inv-oc-draft-item-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inv-oc-draft-item-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.52rem;
+  min-width: 0;
+}
+
+.inv-oc-draft-item-card__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 29, 29, 0.2);
+  background: rgba(255, 246, 233, 0.95);
+  color: #8f3c2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-oc-draft-item-card__head strong {
+  color: #2f130c;
+  line-height: 1.12;
+  font-size: 0.98rem;
+}
+
+.inv-oc-draft-item-card__head small {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.73rem;
+}
+
+.inv-oc-draft-remove {
+  border-radius: 999px;
+}
+
+.inv-oc-draft-item-card__body .form-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: rgba(74, 43, 34, 0.82);
+}
+
+/* AM: renovacion visual del detalle de solicitud sin tocar su logica. */
+.inv-oc-draft-summary-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.inv-oc-draft-summary-pill {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  padding: 0.78rem 0.82rem;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.1), transparent 50%),
+    rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  box-shadow: 0 8px 18px rgba(56, 30, 22, 0.06);
+}
+
+.inv-oc-draft-summary-pill i {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(255, 246, 233, 0.96);
+  border: 1px solid rgba(127, 29, 29, 0.16);
+  color: #8f3c2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-oc-draft-summary-pill span {
+  display: block;
+  color: rgba(74, 43, 34, 0.7);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-oc-draft-summary-pill strong {
+  display: block;
+  color: #2f130c;
+  font-size: 1.08rem;
+  line-height: 1.1;
+}
+
+.inv-oc-draft-request-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: rgba(255, 255, 255, 0.94);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: flex-start;
+  box-shadow: 0 8px 18px rgba(56, 30, 22, 0.05);
+}
+
+.inv-oc-draft-request-card__remove {
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.inv-oc-draft-footer-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.9fr);
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.inv-oc-draft-note-panel,
+.inv-oc-draft-submit-panel {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 52%),
+    rgba(255, 255, 255, 0.96);
+  padding: 0.9rem;
+  box-shadow: 0 10px 20px rgba(56, 30, 22, 0.05);
+}
+
+.inv-oc-draft-submit-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inv-oc-draft-submit-panel__copy span {
+  display: block;
+  color: rgba(74, 43, 34, 0.68);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.18rem;
+}
+
+.inv-oc-draft-submit-panel__copy strong {
+  display: block;
+  color: #2f130c;
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.inv-oc-draft-submit-panel__copy small {
+  display: block;
+  margin-top: 0.32rem;
+  color: rgba(74, 43, 34, 0.72);
+}
+
+/* AM: selector de almacenes (1 o 2) para cada linea y base de nuevos items. */
+.inv-oc-warehouse-base {
+  border: 1px dashed rgba(157, 150, 112, 0.36);
+  border-radius: 12px;
+  padding: 0.52rem 0.6rem;
+  background: rgba(255, 252, 246, 0.76);
+}
+
+.inv-oc-warehouse-base__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.42rem;
+}
+
+.inv-oc-warehouse-base__title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #5d2f23;
+}
+
+.inv-oc-warehouse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.34rem;
+}
+
+.inv-oc-warehouse-chips.is-invalid {
+  border-radius: 10px;
+  padding: 0.22rem;
+  border: 1px solid rgba(220, 53, 69, 0.56);
+  background: rgba(248, 215, 218, 0.3);
+}
+
+.inv-oc-warehouse-chip {
+  border: 1px solid rgba(157, 150, 112, 0.45);
+  background: rgba(255, 255, 255, 0.86);
+  color: #4a2b22;
+  border-radius: 999px;
+  padding: 0.2rem 0.54rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  transition: all 0.14s ease;
+}
+
+.inv-oc-warehouse-chip i {
+  font-size: 0.72rem;
+}
+
+.inv-oc-warehouse-chip:hover:not(:disabled),
+.inv-oc-warehouse-chip:focus-visible:not(:disabled) {
+  border-color: rgba(127, 29, 29, 0.45);
+  background: rgba(255, 244, 228, 0.9);
+  color: #35150d;
+}
+
+.inv-oc-warehouse-chip.is-active {
+  border-color: rgba(127, 29, 29, 0.58);
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.9), rgba(185, 124, 44, 0.92));
+  color: #fff9ef;
+  box-shadow: 0 6px 12px rgba(68, 26, 17, 0.2);
+}
+
+.inv-oc-warehouse-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* AM: control de cantidad en cards con botones -/+ y campo editable. */
+.inv-oc-qty-control {
+  border: 1px solid rgba(157, 150, 112, 0.32);
+  border-radius: 11px;
+  background: rgba(255, 249, 239, 0.66);
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  overflow: hidden;
+}
+
+.inv-oc-qty-control.is-invalid {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.18rem rgba(220, 53, 69, 0.12);
+}
+
+.inv-oc-qty-btn {
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.inv-oc-qty-btn:hover,
+.inv-oc-qty-btn:focus-visible {
+  background: rgba(185, 124, 44, 0.16);
+  color: #2f130c;
+}
+
+.inv-oc-qty-input {
+  border: none;
+  border-left: 1px solid rgba(157, 150, 112, 0.26);
+  border-right: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 0;
+  background: transparent;
+  text-align: center;
+  font-weight: 700;
+  color: #2f130c;
+}
+
+.inv-oc-qty-input:focus {
+  box-shadow: none;
+}
+
+.inv-oc-flow-grid {
+  display: grid;
+  /* AM: desktop a 4 columnas para Flujo de OC. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+/* AM: replica la misma entrada animada del carrusel de Nueva Solicitud en el flujo. */
+.inv-oc-flow-grid--animated {
+  animation: inv-oc-carousel-slide-in 0.28s ease;
+}
+
+.inv-oc-flow-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.12), transparent 52%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(255, 249, 241, 0.96));
+  padding: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.82rem;
+  border-top-width: 4px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 22px rgba(56, 30, 22, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+/* AM: microinteraccion visual elegante para que la card se vea mas viva sin tocar logica. */
+.inv-oc-flow-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.inv-oc-flow-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 30px rgba(56, 30, 22, 0.14);
+}
+
+.inv-oc-flow-card:hover::after {
+  opacity: 1;
+}
+
+.inv-oc-flow-card.is-pendiente {
+  border-top-color: rgba(234, 179, 8, 0.9);
+}
+
+.inv-oc-flow-card.is-aprobada {
+  border-top-color: rgba(37, 99, 235, 0.85);
+}
+
+.inv-oc-flow-card.is-rechazada {
+  border-top-color: rgba(220, 38, 38, 0.82);
+}
+
+.inv-oc-flow-card.is-en-compra {
+  border-top-color: rgba(8, 145, 178, 0.84);
+}
+
+.inv-oc-flow-card.is-abastecida {
+  border-top-color: rgba(22, 163, 74, 0.84);
+}
+
+.inv-oc-flow-card__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+  min-width: 0;
+}
+
+.inv-oc-flow-card__order {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  color: #6b2f21;
+  font-size: 0.77rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inv-oc-flow-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.72rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-flow-card__user {
+  color: #2f130c;
+  line-height: 1.12;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inv-oc-flow-card__state-badge {
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.inv-oc-flow-card__stamp-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-flow-card__stamp {
+  border-radius: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 249, 239, 0.88);
+  padding: 0.38rem 0.56rem;
+  color: rgba(74, 43, 34, 0.88);
+  font-size: 0.76rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.inv-oc-flow-card__actions-wrap {
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+  padding-top: 0.62rem;
+}
+
+.inv-oc-draft-shell__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  margin: 0.68rem 0.72rem 0;
+  color: #3a1e16;
+  font-weight: 700;
+  font-size: 0.84rem;
+}
+
+.inv-oc-draft-shell table thead th {
+  background: rgba(255, 249, 239, 0.84);
+}
+
+.inv-oc-primary-btn {
+  min-width: 175px;
+}
+
+.inv-oc-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-action-btn {
+  border: 1px solid rgba(127, 29, 29, 0.2);
+  border-radius: 9px;
+  padding: 0.34rem 0.55rem;
+  background: #fff;
+  color: #4a2b22;
+  font-size: 0.76rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  transition: all 0.18s ease;
+}
+
+.inv-oc-action-btn:hover:not(:disabled),
+.inv-oc-action-btn:focus-visible {
+  transform: translateY(-1px);
+}
+
+.inv-oc-action-btn.is-compact {
+  padding: 0.36rem 0.52rem;
+}
+
+.inv-oc-action-btn.is-neutral {
+  border-color: rgba(82, 44, 34, 0.24);
+}
+
+.inv-oc-action-btn.is-primary {
+  border-color: rgba(24, 93, 192, 0.25);
+  color: #114f9d;
+}
+
+.inv-oc-action-btn.is-danger {
+  border-color: rgba(159, 39, 39, 0.29);
+  color: #8d1f1f;
+}
+
+.inv-oc-action-btn.is-success {
+  border-color: rgba(28, 126, 88, 0.28);
+  color: #0d6a45;
+}
+
+.inv-oc-mobile-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.72rem;
+}
+
+.inv-oc-mobile-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.inv-oc-mobile-card__head strong,
+.inv-oc-mobile-card__head small {
+  display: block;
+}
+
+.inv-oc-mobile-card__head small {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.75rem;
+}
+
+.inv-oc-mobile-card__meta {
+  display: flex;
+  gap: 0.44rem;
+  flex-wrap: wrap;
+  margin: 0.55rem 0;
+  color: rgba(74, 43, 34, 0.78);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.inv-oc-info-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  padding: 0.68rem;
+  background: rgba(255, 249, 239, 0.78);
+}
+
+.inv-oc-info-card span {
+  display: block;
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.74rem;
+  margin-bottom: 0.15rem;
+}
+
+.inv-oc-info-card strong {
+  color: #29140e;
+  font-size: 1rem;
+}
+
+.inv-oc-info-card small {
+  display: block;
+  color: rgba(74, 43, 34, 0.76);
+  margin-top: 0.2rem;
+  font-size: 0.74rem;
+}
+
+/* AM: layout visual del modal de detalle de orden en formato cards y chips. */
+.inv-oc-detail-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.78rem;
+}
+
+.inv-oc-detail-hero-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.1), transparent 50%),
+    rgba(255, 251, 245, 0.96);
+  padding: 1rem 1.05rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.inv-oc-detail-hero-card__copy {
+  min-width: 0;
+}
+
+.inv-oc-detail-kicker {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  background: rgba(255, 249, 239, 0.9);
+  color: #6b2f21;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.2rem 0.58rem;
+  margin-bottom: 0.36rem;
+}
+
+.inv-oc-detail-hero-card__copy h6 {
+  margin: 0;
+  color: #2f130c;
+  font-size: 1.16rem;
+}
+
+.inv-oc-detail-hero-card__copy p {
+  margin: 0.35rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.inv-oc-detail-hero-card__copy p span {
+  font-size: 0.79rem;
+  color: rgba(74, 43, 34, 0.78);
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  background: rgba(255, 249, 239, 0.82);
+  padding: 0.12rem 0.46rem;
+}
+
+.inv-oc-detail-state-badge {
+  font-size: 0.83rem;
+  padding: 0.44rem 0.62rem;
+}
+
+/* AM: tarjetas de contexto para separar claramente recepcion de sucursal y gestion administrativa. */
+.inv-oc-detail-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.inv-oc-detail-meta-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.68rem 0.72rem;
+}
+
+.inv-oc-detail-meta-card h6 {
+  margin: 0 0 0.42rem;
+  color: #2f130c;
+  font-weight: 700;
+  font-size: 0.87rem;
+}
+
+.inv-oc-detail-meta-card p {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.16rem 0;
+}
+
+.inv-oc-detail-meta-card p span {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.75rem;
+}
+
+.inv-oc-detail-meta-card p strong {
+  color: #2f130c;
+  font-size: 0.77rem;
+  text-align: right;
+  max-width: 65%;
+}
+
+.inv-oc-detail-note-card {
+  border: 1px dashed rgba(157, 150, 112, 0.36);
+  border-radius: 12px;
+  background: rgba(255, 249, 239, 0.7);
+  padding: 0.6rem 0.68rem;
+}
+
+.inv-oc-detail-note-card span {
+  display: block;
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.73rem;
+  margin-bottom: 0.2rem;
+  font-weight: 700;
+}
+
+.inv-oc-detail-note-card p {
+  margin: 0;
+  color: rgba(74, 43, 34, 0.9);
+  font-size: 0.79rem;
+  line-height: 1.45;
+}
+
+/* AM: hace mucho mas claro y visual lo que se esta solicitando en la orden. */
+.inv-oc-detail-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.46rem;
+  color: #2f130c;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inv-oc-detail-line-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.72rem;
+  margin-top: 0.72rem;
+}
+
+.inv-oc-detail-line-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 54%),
+    rgba(255, 255, 255, 0.96);
+  padding: 0.84rem 0.88rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: 0 10px 20px rgba(56, 30, 22, 0.06);
+}
+
+.inv-oc-detail-line-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.72rem;
+}
+
+.inv-oc-detail-line-card__title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+}
+
+.inv-oc-detail-line-card__title strong {
+  color: #2f130c;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.inv-oc-detail-line-card__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  color: #6b2f21;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-oc-detail-line-card__qty {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 249, 239, 0.9);
+  color: #4a2b22;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.28rem 0.64rem;
+  white-space: nowrap;
+}
+
+.inv-oc-detail-line-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.inv-oc-detail-line-card__meta span {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 247, 232, 0.88);
+  color: rgba(74, 43, 34, 0.86);
+  padding: 0.22rem 0.54rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.inv-oc-detail-section h6 {
+  color: #2f130c;
+  font-weight: 700;
+}
+
+.inv-oc-detail-evidence-grid,
+.inv-oc-detail-items-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.inv-oc-evidence-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.62rem 0.68rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.inv-oc-evidence-card span {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.inv-oc-evidence-card a {
+  color: #2f130c;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.inv-oc-evidence-card a:hover,
+.inv-oc-evidence-card a:focus-visible {
+  text-decoration: underline;
+}
+
+.inv-oc-evidence-card img {
+  width: 100%;
+  max-height: 190px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+}
+
+.inv-oc-detail-item-simple {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.62rem 0.72rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.52rem;
+}
+
+.inv-oc-detail-item-simple span {
+  color: #2f130c;
+  font-weight: 600;
+  font-size: 0.83rem;
+}
+
+.inv-oc-detail-item-simple strong {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  background: rgba(255, 249, 239, 0.82);
+  color: rgba(74, 43, 34, 0.88);
+  padding: 0.2rem 0.56rem;
+  font-size: 0.79rem;
+}
+
+.inv-oc-empty-state {
+  border: 1px dashed rgba(157, 150, 112, 0.4);
+  border-radius: 12px;
+  background: rgba(255, 249, 239, 0.6);
+  color: rgba(82, 44, 34, 0.74);
+  padding: 0.8rem;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.34rem;
+  text-align: center;
+}
+
+/* AM: modales custom para mantener consistencia con el estilo del modulo inventario. */
+.inv-oc-modal-layer {
+  position: fixed !important;
+  inset: 0;
+  z-index: 2500;
+  overflow-y: auto;
+  background: rgba(24, 10, 8, 0.45);
+  backdrop-filter: blur(1px);
+  animation: inv-oc-backdrop-in 0.16s ease-out;
+}
+
+.inv-oc-modal-layer .modal-dialog {
+  margin: 1.35rem auto;
+  animation: inv-oc-modal-in 0.18s ease-out;
+}
+
+.inv-oc-modal {
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  overflow: hidden;
+}
+
+.inv-oc-modal .modal-header {
+  border-bottom-color: rgba(157, 150, 112, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(248, 242, 230, 0.96));
+}
+
+.inv-oc-modal .modal-title {
+  color: #331812;
+  font-weight: 700;
+}
+
+.inv-oc-convert-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.inv-oc-convert-summary article {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 249, 239, 0.78);
+  padding: 0.6rem 0.66rem;
+}
+
+.inv-oc-convert-summary span {
+  display: block;
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.74rem;
+}
+
+.inv-oc-convert-summary strong {
+  display: block;
+  color: #2a120d;
+  margin-top: 0.12rem;
+}
+
+@keyframes inv-oc-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes inv-oc-backdrop-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes inv-oc-carousel-slide-in {
+  from {
+    opacity: 0.24;
+    transform: translateX(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes inv-oc-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 1199.98px) {
+  .inv-oc-hero {
+    flex-direction: column;
+  }
+
+  .inv-oc-hero__stats {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .inv-oc-top-panels.is-dual {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-middle-panels.is-dual {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-top-panels.is-dual > .inv-oc-card {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 991.98px) {
+  /* AM: tablet en 2 columnas para Flujo y Nueva Solicitud. */
+  .inv-oc-catalog-grid,
+  .inv-oc-flow-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-oc-draft-summary-band,
+  .inv-oc-draft-grid,
+  .inv-oc-detail-items-grid,
+  .inv-oc-detail-evidence-grid,
+  .inv-oc-detail-meta-grid,
+  .inv-oc-draft-footer-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-panel-head,
+  .inv-oc-header-meta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-oc-panel-header-actions,
+  .inv-oc-header-chipline {
+    justify-content: stretch;
+  }
+
+  .inv-oc-panel-search {
+    min-width: 100%;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-oc-hero {
+    padding: 0.9rem;
+    border-radius: 18px;
+  }
+
+  .inv-oc-hero__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-oc-card__header,
+  .inv-oc-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-oc-card__header-tools {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-title-stacked {
+    line-height: 1.05;
+  }
+
+  .inv-oc-toggle--compact,
+  .inv-oc-panel-toolbar-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .inv-oc-action-btn {
+    justify-content: center;
+  }
+
+  /* AM: mobile en 1 columna para evitar compresion de cards. */
+  .inv-oc-catalog-grid,
+  .inv-oc-flow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-draft-request-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-oc-detail-hero-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inv-oc-detail-meta-card p {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inv-oc-detail-meta-card p strong {
+    max-width: 100%;
+    text-align: left;
   }
 }
