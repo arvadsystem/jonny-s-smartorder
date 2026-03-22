@@ -300,7 +300,7 @@ const BitacorasTab = () => {
                   onInput={(e) => onSearchInput(e.currentTarget.value)}
                 />
               </label>
-              <button className="btn btn-outline-secondary" type="button" onClick={clearSearch}>
+              <button className="btn btn-outline-secondary sec-sesiones-global-btn" type="button" onClick={clearSearch}>
                 Limpiar
               </button>
             </div>
