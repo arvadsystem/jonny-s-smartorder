@@ -4,6 +4,14 @@
   --personas-ui-shadow: 0 3px 10px rgba(var(--c-shadow-rgb), 0.14);
 }
 
+.personas-page.personas-page--personas,
+.personas-page.personas-page--empresas,
+.personas-page.personas-page--clientes,
+.personas-page.personas-page--empleados,
+.personas-page.personas-page--usuarios {
+  --personas-responsive-gap: 8px;
+}
+
 .personas-page .personas-page__panel {
   overflow: hidden;
 }
@@ -258,6 +266,167 @@
 
   .personas-page .personas-page__pagination .btn {
     width: 100%;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .personas-page.personas-page--personas .personas-page__toolbar-actions,
+  .personas-page.personas-page--empresas .personas-page__toolbar-actions,
+  .personas-page.personas-page--clientes .personas-page__toolbar-actions,
+  .personas-page.personas-page--empleados .personas-page__toolbar-actions,
+  .personas-page.personas-page--usuarios .personas-page__toolbar-actions {
+    display: flex;
+    flex-wrap: wrap !important;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--personas-responsive-gap);
+  }
+
+  .personas-page.personas-page--personas .personas-page__toolbar-actions .inv-ins-search,
+  .personas-page.personas-page--empresas .personas-page__toolbar-actions .inv-ins-search,
+  .personas-page.personas-page--clientes .personas-page__toolbar-actions .inv-ins-search,
+  .personas-page.personas-page--empleados .personas-page__toolbar-actions .inv-ins-search,
+  .personas-page.personas-page--usuarios .personas-page__toolbar-actions .inv-ins-search {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+    order: 1;
+  }
+
+  .personas-page.personas-page--personas .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--empresas .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--clientes .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--empleados .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--usuarios .personas-page__toolbar-actions .inv-prod-toolbar-btn {
+    flex: 1 1 calc(50% - (var(--personas-responsive-gap) / 2));
+    min-width: min(184px, 100%);
+    justify-content: center;
+    order: 2;
+  }
+
+  .personas-page.personas-page--personas .personas-page__toolbar-actions .personas-page__view-toggle,
+  .personas-page.personas-page--empresas .personas-page__toolbar-actions .personas-page__view-toggle,
+  .personas-page.personas-page--clientes .personas-page__toolbar-actions .personas-page__view-toggle,
+  .personas-page.personas-page--empleados .personas-page__toolbar-actions .personas-page__view-toggle,
+  .personas-page.personas-page--usuarios .personas-page__toolbar-actions .personas-page__view-toggle {
+    order: 3;
+    margin-left: auto;
+  }
+
+  .personas-page.personas-page--personas .personas-page__results-meta,
+  .personas-page.personas-page--empresas .personas-page__results-meta,
+  .personas-page.personas-page--clientes .personas-page__results-meta,
+  .personas-page.personas-page--empleados .personas-page__results-meta,
+  .personas-page.personas-page--usuarios .personas-page__results-meta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+    row-gap: 6px;
+    align-items: center;
+  }
+
+  .personas-page.personas-page--personas .personas-page__results-meta > :nth-child(2),
+  .personas-page.personas-page--empresas .personas-page__results-meta > :nth-child(2),
+  .personas-page.personas-page--clientes .personas-page__results-meta > :nth-child(2),
+  .personas-page.personas-page--empleados .personas-page__results-meta > :nth-child(2),
+  .personas-page.personas-page--usuarios .personas-page__results-meta > :nth-child(2) {
+    justify-self: end;
+    text-align: right;
+  }
+
+  .personas-page.personas-page--personas .personas-page__results-meta > :nth-child(n + 3),
+  .personas-page.personas-page--empresas .personas-page__results-meta > :nth-child(n + 3),
+  .personas-page.personas-page--clientes .personas-page__results-meta > :nth-child(n + 3),
+  .personas-page.personas-page--empleados .personas-page__results-meta > :nth-child(n + 3),
+  .personas-page.personas-page--usuarios .personas-page__results-meta > :nth-child(n + 3) {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .personas-page.personas-page--personas .personas-page__pagination,
+  .personas-page.personas-page--empresas .personas-page__pagination,
+  .personas-page.personas-page--clientes .personas-page__pagination,
+  .personas-page.personas-page--empleados .personas-page__pagination,
+  .personas-page.personas-page--usuarios .personas-page__pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .personas-page.personas-page--personas .personas-page__pagination > span,
+  .personas-page.personas-page--empresas .personas-page__pagination > span,
+  .personas-page.personas-page--clientes .personas-page__pagination > span,
+  .personas-page.personas-page--empleados .personas-page__pagination > span,
+  .personas-page.personas-page--usuarios .personas-page__pagination > span {
+    width: 100%;
+    text-align: center;
+    order: -1;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .personas-page.personas-page--personas .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--empresas .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--clientes .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--empleados .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--usuarios .personas-page__toolbar-actions .inv-prod-toolbar-btn {
+    min-width: 0;
+  }
+
+  .personas-page.personas-page--personas .personas-page__toolbar-actions .personas-page__view-toggle,
+  .personas-page.personas-page--empresas .personas-page__toolbar-actions .personas-page__view-toggle,
+  .personas-page.personas-page--clientes .personas-page__toolbar-actions .personas-page__view-toggle,
+  .personas-page.personas-page--empleados .personas-page__toolbar-actions .personas-page__view-toggle,
+  .personas-page.personas-page--usuarios .personas-page__toolbar-actions .personas-page__view-toggle {
+    width: 100%;
+    margin-left: 0;
+    justify-content: center;
+  }
+
+  .personas-page.personas-page--personas .personas-page__results-meta,
+  .personas-page.personas-page--empresas .personas-page__results-meta,
+  .personas-page.personas-page--clientes .personas-page__results-meta,
+  .personas-page.personas-page--empleados .personas-page__results-meta,
+  .personas-page.personas-page--usuarios .personas-page__results-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .personas-page.personas-page--personas .personas-page__results-meta > :nth-child(2),
+  .personas-page.personas-page--empresas .personas-page__results-meta > :nth-child(2),
+  .personas-page.personas-page--clientes .personas-page__results-meta > :nth-child(2),
+  .personas-page.personas-page--empleados .personas-page__results-meta > :nth-child(2),
+  .personas-page.personas-page--usuarios .personas-page__results-meta > :nth-child(2) {
+    justify-self: start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .personas-page.personas-page--personas .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--empresas .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--clientes .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--empleados .personas-page__toolbar-actions .inv-prod-toolbar-btn,
+  .personas-page.personas-page--usuarios .personas-page__toolbar-actions .inv-prod-toolbar-btn {
+    flex-basis: 100%;
+  }
+
+  .personas-page.personas-page--personas .inv-catpro-meta-actions,
+  .personas-page.personas-page--empresas .inv-catpro-meta-actions,
+  .personas-page.personas-page--clientes .inv-catpro-meta-actions,
+  .personas-page.personas-page--empleados .inv-catpro-meta-actions,
+  .personas-page.personas-page--usuarios .inv-catpro-meta-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .personas-page.personas-page--personas .personas-emp-card__actions,
+  .personas-page.personas-page--empresas .personas-emp-card__actions,
+  .personas-page.personas-page--clientes .personas-emp-card__actions,
+  .personas-page.personas-page--empleados .personas-emp-card__actions,
+  .personas-page.personas-page--usuarios .personas-emp-card__actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 

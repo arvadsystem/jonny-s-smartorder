@@ -88,17 +88,17 @@ const ForcePasswordChange = () => {
     }
 
     if (!passwordChecks.minLength || !passwordChecks.hasUppercase || !passwordChecks.hasNumber) {
-      setError('La nueva contrasena no cumple los requisitos minimos.');
+      setError('La nueva contraseña no cumple los requisitos minimos.');
       return;
     }
 
     if (nueva !== confirmacion) {
-      setError('La nueva contrasena y la confirmacion no coinciden.');
+      setError('La nueva contraseña y la confirmacion no coinciden.');
       return;
     }
 
     if (actual === nueva) {
-      setError('La nueva contrasena debe ser diferente de la actual.');
+      setError('La nueva contraseña debe ser diferente de la actual.');
       return;
     }
 
@@ -116,7 +116,7 @@ const ForcePasswordChange = () => {
 
       navigate('/dashboard', { replace: true });
     } catch (err) {
-      setError(err?.message || 'No se pudo cambiar la contrasena.');
+      setError(err?.message || 'No se pudo cambiar la contraseña.');
     } finally {
       setSaving(false);
     }
@@ -143,9 +143,9 @@ const ForcePasswordChange = () => {
             <div className="force-password-card__hero-icon" aria-hidden="true">
               <i className="bi bi-shield-lock-fill"></i>
             </div>
-            <h1>Cambio de contrasena obligatorio</h1>
+            <h1>Cambio de contraseña obligatorio</h1>
             <p>
-              Por seguridad, debes cambiar tu contrasena temporal antes de continuar.
+              Por seguridad, debes cambiar tu contraseña temporal antes de continuar.
             </p>
           </div>
 
@@ -158,7 +158,7 @@ const ForcePasswordChange = () => {
 
           <form onSubmit={onSubmit} noValidate>
             <div className="force-password-group">
-              <label className="form-label">Contrasena actual</label>
+              <label className="form-label">Contraseña actual</label>
               <div className="force-password-field">
                 <span className="force-password-field__icon" aria-hidden="true">
                   <i className="bi bi-key-fill"></i>
@@ -174,7 +174,7 @@ const ForcePasswordChange = () => {
                   type="button"
                   className="force-password-field__toggle"
                   onClick={() => toggleField('actual')}
-                  aria-label={showPassword.actual ? 'Ocultar contrasena actual' : 'Mostrar contrasena actual'}
+                  aria-label={showPassword.actual ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'}
                 >
                   <i className={`bi ${showPassword.actual ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
                 </button>
@@ -182,7 +182,7 @@ const ForcePasswordChange = () => {
             </div>
 
             <div className="force-password-group">
-              <label className="form-label">Nueva contrasena</label>
+              <label className="form-label">Nueva contraseña</label>
               <div className="force-password-field">
                 <span className="force-password-field__icon" aria-hidden="true">
                   <i className="bi bi-lock-fill"></i>
@@ -198,7 +198,7 @@ const ForcePasswordChange = () => {
                   type="button"
                   className="force-password-field__toggle"
                   onClick={() => toggleField('nueva')}
-                  aria-label={showPassword.nueva ? 'Ocultar nueva contrasena' : 'Mostrar nueva contrasena'}
+                  aria-label={showPassword.nueva ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'}
                 >
                   <i className={`bi ${showPassword.nueva ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
                 </button>
@@ -219,7 +219,7 @@ const ForcePasswordChange = () => {
             </div>
 
             <div className="force-password-group">
-              <label className="form-label">Confirmar nueva contrasena</label>
+              <label className="form-label">Confirmar nueva contraseña</label>
               <div className="force-password-field">
                 <span className="force-password-field__icon" aria-hidden="true">
                   <i className="bi bi-lock"></i>
@@ -243,7 +243,7 @@ const ForcePasswordChange = () => {
 
               {String(form.confirmacion || '').length > 0 && !confirmationMatches ? (
                 <div className="force-password-help force-password-help--error">
-                  La confirmacion no coincide con la nueva contrasena.
+                  La confirmacion no coincide con la nueva contraseña.
                 </div>
               ) : null}
             </div>
@@ -271,7 +271,7 @@ const ForcePasswordChange = () => {
               type="submit"
               disabled={!canSubmit}
             >
-              {saving ? 'Guardando...' : 'Guardar nueva contrasena'}
+              {saving ? 'Guardando...' : 'Guardar nueva contraseña'}
             </button>
           </form>
 

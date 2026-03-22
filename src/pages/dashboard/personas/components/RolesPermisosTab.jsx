@@ -3,6 +3,7 @@ import InlineLoader from "../../../../components/common/InlineLoader";
 import { usePermisos } from "../../../../context/PermisosContext";
 import { rolesPermisosService } from "../../../../services/rolesPermisosService";
 import { PERMISSIONS } from "../../../../utils/permissions";
+import "./common/crud-modal-theme.css";
 import "./roles-permisos-ui.css";
 
 const DEFAULT_LIMIT = 10;
@@ -61,6 +62,16 @@ const toTitleCase = (value) =>
     .join(" ");
 
 const humanizeRoleName = (rawName) => toTitleCase(rawName);
+const normalizeSearchText = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+const includesSearch = (value, searchTerm) =>
+  normalizeSearchText(value).includes(searchTerm);
+
 const normalizeRoleCode = (value) =>
   String(value ?? "")
     .normalize("NFD")
@@ -212,13 +223,19 @@ const normalizePagination = ({
 
 const RolesPermisosTab = () => {
   const { canAny } = usePermisos();
-  const canEditRolesPermisos = canAny([PERMISSIONS.ROLES_PERMISOS_EDITAR]);
+  const canEditRolesPermisos = canAny([
+    PERMISSIONS.ROLES_PERMISOS_ROLES_EDITAR,
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_GUARDAR,
+    PERMISSIONS.ROLES_PERMISOS_PERMISOS_TOGGLE,
+    PERMISSIONS.ROLES_PERMISOS_EDITAR
+  ]);
   const [roles, setRoles] = useState([]);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
   const [selectedRole, setSelectedRole] = useState(null);
   const [allPermisos, setAllPermisos] = useState([]);
   const [permisos, setPermisos] = useState([]);
   const [checkedPermisos, setCheckedPermisos] = useState(new Set());
+  const [roleSearch, setRoleSearch] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
@@ -229,6 +246,9 @@ const RolesPermisosTab = () => {
     totalPages: 1
   });
   const roleDetailCacheRef = useRef(new Map());
+  const rolesPanelRef = useRef(null);
+  const permisosPanelRef = useRef(null);
+  const roleDrawerRef = useRef(null);
 
   const [loadingRoles, setLoadingRoles] = useState(true);
   const [loadingPermisos, setLoadingPermisos] = useState(false);
@@ -246,6 +266,10 @@ const RolesPermisosTab = () => {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [activePreviewGroupKey, setActivePreviewGroupKey] = useState("");
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 768px)").matches : false
+  );
+  const [mobileSection, setMobileSection] = useState("roles");
   const [roleDrawerOpen, setRoleDrawerOpen] = useState(false);
   const [roleDrawerMode, setRoleDrawerMode] = useState("create");
   const [roleForm, setRoleForm] = useState(() => buildRoleFormState());
@@ -278,6 +302,17 @@ const RolesPermisosTab = () => {
   }, []);
 
   const closeRoleDrawer = useCallback(() => {
+    if (typeof document !== "undefined") {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        roleDrawerRef.current &&
+        roleDrawerRef.current.contains(activeElement) &&
+        typeof activeElement.blur === "function"
+      ) {
+        activeElement.blur();
+      }
+    }
     setRoleDrawerOpen(false);
     setRoleDrawerMode("create");
     setRoleEditingTarget(null);
@@ -302,6 +337,25 @@ const RolesPermisosTab = () => {
     const timer = setTimeout(() => closeToast(), 3500);
     return () => clearTimeout(timer);
   }, [toast.show, closeToast]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const mediaQuery = window.matchMedia("(max-width: 768px)");
+    const updateLayout = (event) => {
+      const isMobile = Boolean(event.matches);
+      setIsMobileLayout(isMobile);
+      if (!isMobile) setMobileSection("roles");
+    };
+
+    updateLayout(mediaQuery);
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", updateLayout);
+      return () => mediaQuery.removeEventListener("change", updateLayout);
+    }
+
+    mediaQuery.addListener(updateLayout);
+    return () => mediaQuery.removeListener(updateLayout);
+  }, []);
 
   const loadRoles = useCallback(async (preferredRoleId = null) => {
     setLoadingRoles(true);
@@ -557,15 +611,26 @@ const RolesPermisosTab = () => {
   }, [loadRoleDetail, selectedRoleId]);
 
   const filteredPermisos = useMemo(() => {
-    const searchTerm = String(search || "").trim().toLowerCase();
+    const searchTerm = normalizeSearchText(search);
     if (!searchTerm) return allPermisos;
 
     return allPermisos.filter((permiso) => {
-      const technical = String(permiso?.nombre_permiso || "").toLowerCase();
-      const humanized = humanizePermissionName(permiso?.nombre_permiso).toLowerCase();
-      return technical.includes(searchTerm) || humanized.includes(searchTerm);
+      const technical = String(permiso?.nombre_permiso || "");
+      const humanized = humanizePermissionName(permiso?.nombre_permiso);
+      return includesSearch(technical, searchTerm) || includesSearch(humanized, searchTerm);
     });
   }, [allPermisos, search]);
+
+  const filteredRoles = useMemo(() => {
+    const searchTerm = normalizeSearchText(roleSearch);
+    if (!searchTerm) return roles;
+
+    return roles.filter((role) => {
+      const roleCode = String(role?.nombre || "");
+      const roleLabel = humanizeRoleName(role?.nombre || "");
+      return includesSearch(roleCode, searchTerm) || includesSearch(roleLabel, searchTerm);
+    });
+  }, [roleSearch, roles]);
 
   useEffect(() => {
     const total = filteredPermisos.length;
@@ -603,6 +668,15 @@ const RolesPermisosTab = () => {
     setPermisos([]);
     setCheckedPermisos(new Set());
     setSelectedRoleId(Number(idRol));
+    if (isMobileLayout) {
+      if (typeof document !== "undefined") {
+        const activeElement = document.activeElement;
+        if (activeElement && typeof activeElement.blur === "function") {
+          activeElement.blur();
+        }
+      }
+      setMobileSection("permisos");
+    }
   };
 
   const handleTogglePermiso = (idPermiso) => {
@@ -640,6 +714,11 @@ const RolesPermisosTab = () => {
     const nextSearch = event.target.value;
     setSearch(nextSearch);
     setPage(1);
+  };
+
+  const handleRoleSearchChange = (event) => {
+    const nextSearch = event.target.value;
+    setRoleSearch(nextSearch);
   };
 
   const handleLimitChange = (event) => {
@@ -799,6 +878,22 @@ const RolesPermisosTab = () => {
   const selectedRoleName = humanizeRoleName(currentRole?.nombre || "Rol");
   const visibleStart = pagination.total === 0 ? 0 : (page - 1) * limit + 1;
   const visibleEnd = Math.min(page * limit, pagination.total);
+  const showingRolesPanel = !isMobileLayout || mobileSection === "roles";
+  const showingPermisosPanel = !isMobileLayout || mobileSection === "permisos";
+  const hasPendingChanges = useMemo(() => {
+    const assigned = new Set(
+      allPermisos
+        .filter((permiso) => permiso.asignado)
+        .map((permiso) => Number(permiso.id_permiso))
+    );
+
+    if (assigned.size !== checkedPermisos.size) return true;
+    for (const permisoId of assigned) {
+      if (!checkedPermisos.has(permisoId)) return true;
+    }
+    return false;
+  }, [allPermisos, checkedPermisos]);
+
   const previewGroups = useMemo(() => groupPreviewPermisos(previewPermisos), [previewPermisos]);
   const activePreviewGroup =
     previewGroups.find((group) => group.key === activePreviewGroupKey) || previewGroups[0] || null;
@@ -816,6 +911,30 @@ const RolesPermisosTab = () => {
       setActivePreviewGroupKey(previewGroups[0].key);
     }
   }, [activePreviewGroupKey, previewGroups]);
+
+  useEffect(() => {
+    if (!isMobileLayout) return;
+    if (!selectedRoleId && mobileSection !== "roles") {
+      setMobileSection("roles");
+    }
+  }, [isMobileLayout, mobileSection, selectedRoleId]);
+
+  useEffect(() => {
+    if (!isMobileLayout || typeof document === "undefined") return;
+    const activeElement = document.activeElement;
+    if (!activeElement || typeof activeElement.blur !== "function") return;
+
+    if (mobileSection === "roles") {
+      if (permisosPanelRef.current?.contains(activeElement)) {
+        activeElement.blur();
+      }
+      return;
+    }
+
+    if (rolesPanelRef.current?.contains(activeElement)) {
+      activeElement.blur();
+    }
+  }, [isMobileLayout, mobileSection]);
 
   return (
     <>
@@ -854,9 +973,55 @@ const RolesPermisosTab = () => {
             </div>
           ) : null}
 
+          {isMobileLayout ? (
+            <div className="roles-permisos-mobile-nav" role="tablist" aria-label="Secciones de roles y permisos">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileSection === "roles"}
+                className={`roles-permisos-mobile-tab ${mobileSection === "roles" ? "is-active" : ""}`}
+                onClick={() => setMobileSection("roles")}
+              >
+                <i className="bi bi-people" />
+                <span>Roles</span>
+                <small>{filteredRoles.length}</small>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobileSection === "permisos"}
+                className={`roles-permisos-mobile-tab ${mobileSection === "permisos" ? "is-active" : ""}`}
+                onClick={() => setMobileSection("permisos")}
+                disabled={!selectedRoleId}
+              >
+                <i className="bi bi-sliders" />
+                <span>Permisos</span>
+                <small>{checkedPermisos.size}</small>
+              </button>
+            </div>
+          ) : null}
+
           <div className="roles-permisos-layout">
-            <aside className="roles-permisos-panel roles-permisos-panel--roles">
+            <aside
+              ref={rolesPanelRef}
+              className={`roles-permisos-panel roles-permisos-panel--roles ${
+                showingRolesPanel ? "" : "is-mobile-hidden"
+              }`.trim()}
+              inert={!showingRolesPanel}
+            >
               <div className="roles-permisos-panel-title">Roles</div>
+              <div className="roles-permisos-role-search-wrap">
+                <label className="roles-permisos-search roles-permisos-search--roles" aria-label="Buscar rol">
+                  <i className="bi bi-search" />
+                  <input
+                    type="search"
+                    placeholder="Buscar rol..."
+                    value={roleSearch}
+                    onChange={handleRoleSearchChange}
+                    disabled={loadingRoles}
+                  />
+                </label>
+              </div>
 
               {loadingRoles ? (
                 <InlineLoader />
@@ -864,14 +1029,17 @@ const RolesPermisosTab = () => {
                 <div className="roles-permisos-empty">
                   <p className="mb-0">No hay roles registrados.</p>
                 </div>
+              ) : filteredRoles.length === 0 ? (
+                <div className="roles-permisos-empty">
+                  <p className="mb-0">No se encontraron roles para esa busqueda.</p>
+                </div>
               ) : (
                 <div className="roles-permisos-roles-list">
-                  {roles.map((role, index) => {
+                  {filteredRoles.map((role, index) => {
                     const isActive = Number(role.id_rol) === Number(selectedRoleId);
                     const roleName = humanizeRoleName(role.nombre);
                     const openRoleCard = () => {
                       handleSelectRole(role.id_rol);
-                      void openRolePreview(role);
                     };
                     return (
                       <article
@@ -889,7 +1057,7 @@ const RolesPermisosTab = () => {
                             openRoleCard();
                           }
                         }}
-                        aria-label={`Ver detalle del rol ${roleName}`}
+                        aria-label={`Seleccionar rol ${roleName}`}
                         aria-pressed={isActive}
                       >
                         <div className="roles-permisos-role-card__top">
@@ -963,7 +1131,13 @@ const RolesPermisosTab = () => {
               )}
             </aside>
 
-            <section className="roles-permisos-panel roles-permisos-panel--permisos">
+            <section
+              ref={permisosPanelRef}
+              className={`roles-permisos-panel roles-permisos-panel--permisos ${
+                showingPermisosPanel ? "" : "is-mobile-hidden"
+              }`.trim()}
+              inert={!showingPermisosPanel}
+            >
               {!selectedRoleId && !loadingRoles ? (
                 <div className="roles-permisos-empty">
                   <p className="mb-0">Selecciona un rol para administrar sus permisos.</p>
@@ -972,6 +1146,16 @@ const RolesPermisosTab = () => {
                 <>
                   <div className="roles-permisos-panel-top">
                     <div>
+                      {isMobileLayout ? (
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm roles-permisos-mobile-back"
+                          onClick={() => setMobileSection("roles")}
+                        >
+                          <i className="bi bi-chevron-left" />
+                          <span>Ver roles</span>
+                        </button>
+                      ) : null}
                       <h5 className="mb-1">Permisos de: {selectedRoleName}</h5>
                       <small className="text-muted">
                         {checkedPermisos.size} permisos seleccionados
@@ -1122,6 +1306,13 @@ const RolesPermisosTab = () => {
                   </div>
 
                   <div className="roles-permisos-footer">
+                    {hasPendingChanges ? (
+                      <div className="roles-permisos-pending-alert">
+                        <i className="bi bi-exclamation-circle" />
+                        <span>Cambios pendientes</span>
+                      </div>
+                    ) : null}
+
                     <button
                       type="button"
                       className="btn btn-primary roles-permisos-save-btn"
@@ -1131,7 +1322,8 @@ const RolesPermisosTab = () => {
                         loadingPermisos ||
                         hydratingSelection ||
                         !selectedRoleId ||
-                        !canEditRolesPermisos
+                        !canEditRolesPermisos ||
+                        !hasPendingChanges
                       }
                     >
                       {saving ? (
@@ -1251,25 +1443,27 @@ const RolesPermisosTab = () => {
       />
 
       <aside
+        ref={roleDrawerRef}
         id="roles-permisos-drawer"
-        className={`inv-prod-drawer inv-cat-v2__drawer roles-permisos-drawer ${roleDrawerOpen ? "show" : ""}`}
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal roles-permisos-drawer ${roleDrawerOpen ? "show" : ""} ${
+          roleDrawerMode === "create" ? "is-create" : "is-edit"
+        }`}
         role={roleDrawerOpen ? "dialog" : undefined}
         aria-modal={roleDrawerOpen ? "true" : undefined}
-        aria-hidden={!roleDrawerOpen}
+        inert={!roleDrawerOpen}
       >
-        <div className="inv-prod-drawer-head roles-permisos-drawer__head">
-          <i className={`bi ${roleDrawerMode === "create" ? "bi-shield-plus" : "bi-pencil-square"} inv-cat-v2__drawer-mark`} aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">
+        <div className="inv-prod-drawer-head roles-permisos-drawer__head crud-modal__header">
+          <div className="crud-modal__header-copy">
+            <div className="inv-prod-drawer-title crud-modal__title">
               {roleDrawerMode === "create" ? "Nuevo rol" : "Editar rol"}
             </div>
-            <div className="inv-prod-drawer-sub">
+            <div className="inv-prod-drawer-sub crud-modal__subtitle">
               Define el nombre del rol. El codigo tecnico se genera automaticamente.
             </div>
           </div>
           <button
             type="button"
-            className="inv-prod-drawer-close"
+            className="inv-prod-drawer-close crud-modal__close"
             onClick={closeRoleDrawer}
             title="Cerrar"
             disabled={roleFormSubmitting}
@@ -1278,43 +1472,45 @@ const RolesPermisosTab = () => {
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite roles-permisos-drawer__body" onSubmit={handleRoleSubmit}>
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite roles-permisos-drawer__body crud-modal__body" onSubmit={handleRoleSubmit}>
           {roleFormErrors.general ? (
             <div className="alert alert-danger mb-3">{roleFormErrors.general}</div>
           ) : null}
 
-          <div className="mb-3">
-            <label className="form-label" htmlFor="roles_nombre_visible">Nombre del rol</label>
-            <input
-              id="roles_nombre_visible"
-              className={`form-control ${roleFormErrors.displayName ? "is-invalid" : ""}`}
-              value={roleForm.displayName}
-              onChange={handleRoleFormChange}
-              placeholder="Ej: Auxiliar Cocina"
-              disabled={roleFormSubmitting}
-            />
-            {roleFormErrors.displayName ? (
-              <div className="invalid-feedback d-block">{roleFormErrors.displayName}</div>
-            ) : null}
-          </div>
+          <div className="row g-3 crud-modal__grid">
+            <div className="col-12">
+              <label className="form-label" htmlFor="roles_nombre_visible">Nombre del rol</label>
+              <input
+                id="roles_nombre_visible"
+                className={`form-control ${roleFormErrors.displayName ? "is-invalid" : ""}`}
+                value={roleForm.displayName}
+                onChange={handleRoleFormChange}
+                placeholder="Ej: Auxiliar Cocina"
+                disabled={roleFormSubmitting}
+              />
+              {roleFormErrors.displayName ? (
+                <div className="invalid-feedback d-block">{roleFormErrors.displayName}</div>
+              ) : null}
+            </div>
 
-          <div className="mb-3">
-            <label className="form-label" htmlFor="roles_codigo_preview">Codigo tecnico</label>
-            <input
-              id="roles_codigo_preview"
-              className="form-control roles-permisos-drawer__code"
-              value={roleForm.code || "Se generara automaticamente"}
-              readOnly
-            />
-            <div className="form-text">
-              Este valor se guarda en la base de datos y se usa como identificador interno del rol.
+            <div className="col-12">
+              <label className="form-label" htmlFor="roles_codigo_preview">Codigo tecnico</label>
+              <input
+                id="roles_codigo_preview"
+                className="form-control roles-permisos-drawer__code"
+                value={roleForm.code || "Se generara automaticamente"}
+                readOnly
+              />
+              <div className="form-text roles-permisos-drawer__helper">
+                Este valor se guarda en la base de datos y se usa como identificador interno del rol.
+              </div>
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
+          <div className="d-flex gap-2 mt-4 roles-permisos-drawer__footer crud-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill"
+              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
               onClick={closeRoleDrawer}
               disabled={roleFormSubmitting}
             >
@@ -1322,7 +1518,7 @@ const RolesPermisosTab = () => {
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill"
+              className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
               disabled={roleFormSubmitting || !roleForm.code}
             >
               {roleFormSubmitting

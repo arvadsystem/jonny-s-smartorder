@@ -7,6 +7,12 @@ import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpleadoCard from "./components/empleados/EmpleadoCard";
 import EmployeeDetailModal from "./components/empleados/EmployeeDetailModal";
+import SearchSuggestionsDropdown from "./components/common/SearchSuggestionsDropdown";
+import useSearchSuggestionsDropdown, {
+  MIN_CHARS_FOR_SUGGESTIONS,
+  normalizeSearchText,
+} from "./components/common/useSearchSuggestionsDropdown";
+import "./components/common/crud-modal-theme.css";
 
 const emptyForm = {
   id_persona: "",
@@ -67,6 +73,12 @@ const extractEmpleadoIdFromCreateResponse = (response) => {
 };
 
 const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
+const normalizeSearchToken = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 const toDateInputValue = (value) => {
   if (!value) return "";
@@ -119,12 +131,20 @@ const getTelefono = (empleado) =>
   empleado?.persona_telefono ??
   empleado?.telefono_persona;
 
+const getCorreo = (empleado) =>
+  empleado?.correo ??
+  empleado?.direccion_correo ??
+  empleado?.email ??
+  empleado?.persona_correo ??
+  empleado?.correo_persona;
+
 const getCargo = (empleado) =>
   empleado?.cargo ??
   empleado?.nombre_cargo ??
   empleado?.cargo_nombre ??
   empleado?.puesto ??
   empleado?.rol;
+const SUGGESTION_LIMIT = 8;
 
 const EMPLOYEE_IMAGES_STORAGE_KEY = "empleado_images";
 const IMAGE_ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -238,6 +258,7 @@ export default function Empleados({ openToast }) {
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("empleadosViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -246,7 +267,7 @@ export default function Empleados({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const limit = 10;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
@@ -271,10 +292,26 @@ export default function Empleados({ openToast }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const panelRef = useRef(null);
   const imageInputRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
+
+  const blurFocusedElementInside = useCallback((containerId) => {
+    if (typeof document === "undefined") return;
+    const container = document.getElementById(containerId);
+    const active = document.activeElement;
+    if (!container || !active) return;
+    if (container.contains(active) && typeof active.blur === "function") {
+      active.blur();
+    }
+  }, []);
+
+  const closeFormDrawer = useCallback(() => {
+    blurFocusedElementInside("empd-form-drawer");
+    setShowModal(false);
+  }, [blurFocusedElementInside]);
 
   const personaOptions = useMemo(
     () =>
@@ -449,7 +486,7 @@ export default function Empleados({ openToast }) {
       const resp = await personaService.getEmpleados({
         page,
         limit,
-        nombre: search?.trim() || undefined,
+        nombre: debouncedSearch || undefined,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -466,7 +503,7 @@ export default function Empleados({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, search, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast]);
 
   const fetchNewestEmpleadoId = useCallback(async () => {
     try {
@@ -504,7 +541,12 @@ export default function Empleados({ openToast }) {
   }, [cargarEmpleados]);
 
   useEffect(() => {
-    setPage(1);
+    const timerId = window.setTimeout(() => {
+      const nextSearch = normalizeSearchText(search);
+      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
   }, [search]);
 
   useEffect(() => {
@@ -692,7 +734,7 @@ export default function Empleados({ openToast }) {
         safeToast("OK", "Empleado creado");
       }
 
-      setShowModal(false);
+      closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
       clearFormImageDraft();
@@ -748,7 +790,7 @@ export default function Empleados({ openToast }) {
       clearPersistedEmployeeImage(id);
 
       if (String(editId) === String(id)) {
-        setShowModal(false);
+        closeFormDrawer();
         setEditId(null);
         setForm(emptyForm);
         clearFormImageDraft();
@@ -776,7 +818,7 @@ export default function Empleados({ openToast }) {
   };
 
   const empleadosFiltrados = useMemo(() => {
-    const needle = search.toLowerCase().trim();
+    const needle = normalizeSearchToken(search);
     const list = [...(Array.isArray(empleados) ? empleados : [])];
 
     const filtered = list.filter((empleado) => {
@@ -797,6 +839,9 @@ export default function Empleados({ openToast }) {
         empleado?.telefono,
         empleado?.telefono_numero,
         empleado?.numero_telefono,
+        empleado?.correo,
+        empleado?.direccion_correo,
+        empleado?.email,
         empleado?.cargo,
         empleado?.nombre_cargo,
         empleado?.puesto,
@@ -805,10 +850,10 @@ export default function Empleados({ openToast }) {
         empleado?.fecha_ingreso,
       ]
         .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+        .join(" ");
+      const haystack = normalizeSearchToken(hay);
 
-      return hay.includes(needle);
+      return haystack.includes(needle);
     });
 
     filtered.sort((a, b) => {
@@ -823,6 +868,88 @@ export default function Empleados({ openToast }) {
 
     return filtered;
   }, [empleados, search, estadoFiltro, sortBy, getPersonaNombre, getSucursalNombre]);
+
+  const predictiveSuggestions = useMemo(() => {
+    const searchTerm = normalizeSearchToken(search);
+    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
+
+    const source = Array.isArray(empleados) ? empleados : [];
+    const suggestions = [];
+    const seen = new Set();
+
+    for (const empleado of source) {
+      const activo = isActivo(empleado);
+      const matchEstado =
+        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activo : !activo;
+      if (!matchEstado) continue;
+
+      const nombre = toDisplayValue(getPersonaNombre(empleado), "Empleado sin nombre");
+      const dni = toDisplayValue(getDni(empleado), "");
+      const telefono = toDisplayValue(getTelefono(empleado), "");
+      const correo = toDisplayValue(getCorreo(empleado), "");
+      const sucursal = toDisplayValue(getSucursalNombre(empleado), "");
+      const cargo = toDisplayValue(getCargo(empleado), "");
+      const haystack = normalizeSearchToken([nombre, dni, telefono, correo, sucursal, cargo].join(" "));
+      if (!haystack.includes(searchTerm)) continue;
+
+      const dedupeKey = normalizeSearchToken(nombre);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const detailParts = [];
+      if (dni && dni !== "No registrado") detailParts.push(`DNI: ${dni}`);
+      if (telefono && telefono !== "No registrado") detailParts.push(telefono);
+      if (correo && correo !== "No registrado") detailParts.push(correo);
+      if (sucursal && sucursal !== "No registrado") detailParts.push(sucursal);
+
+      suggestions.push({
+        id: `empd-${empleado?.id_empleado ?? dedupeKey}`,
+        value: nombre,
+        label: nombre,
+        detail: detailParts.join(" | ") || cargo || "Empleado registrado",
+      });
+
+      if (suggestions.length >= SUGGESTION_LIMIT) break;
+    }
+
+    return suggestions;
+  }, [empleados, estadoFiltro, search, getPersonaNombre, getSucursalNombre]);
+
+  const handleSearchUpdate = useCallback((value, { source } = {}) => {
+    const normalized = normalizeSearchText(value);
+    setPage((prev) => (prev === 1 ? prev : 1));
+    if (!normalized) {
+      setDebouncedSearch("");
+      return;
+    }
+    if (source === "suggestion") {
+      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+    }
+  }, []);
+
+  const {
+    handleSearchInputChange,
+    searchDropdownRef,
+    isSearchDropdownMounted,
+    isSearchDropdownVisible,
+    searchDropdownStyle,
+    searchDropdownTitle,
+    isPredictiveSearch,
+    searchSuggestionItems,
+    activeSuggestionIndex,
+    applySearchSuggestion,
+    removeRecentSearch,
+    clearRecentSearches,
+    recentSearchesCount,
+  } = useSearchSuggestionsDropdown({
+    panelRef,
+    search,
+    setSearch,
+    committedSearch: debouncedSearch,
+    onSearchUpdate: handleSearchUpdate,
+    predictiveSuggestions,
+    recentStorageKey: "empleadosRecentSearchesV1",
+  });
 
   const stats = useMemo(() => {
     const totalFiltradas = empleadosFiltrados.length;
@@ -840,7 +967,7 @@ export default function Empleados({ openToast }) {
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setDetailEmpleado(null);
     setFiltersDraft({ estadoFiltro, sortBy });
     setFiltersOpen(true);
@@ -861,26 +988,26 @@ export default function Empleados({ openToast }) {
   };
 
   const clearAllFilters = () => {
-    setSearch("");
+    handleSearchInputChange("");
     clearVisualFilters();
     setFiltersOpen(false);
   };
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersOpen(false);
   };
 
   return (
-    <div className="personas-page">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+    <div className="personas-page personas-page--empleados">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderModulo
           iconClass="bi bi-person-badge-fill"
           title="Empleados"
           subtitle="Gestion visual de empleados"
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchInputChange}
           searchPlaceholder="Buscar por nombre, sucursal, DNI, cargo o telefono..."
           searchAriaLabel="Buscar empleados"
           filtersOpen={filtersOpen}
@@ -892,6 +1019,22 @@ export default function Empleados({ openToast }) {
           formControlsId="empd-form-drawer"
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+        />
+
+        <SearchSuggestionsDropdown
+          mounted={isSearchDropdownMounted}
+          visible={isSearchDropdownVisible}
+          dropdownRef={searchDropdownRef}
+          dropdownStyle={searchDropdownStyle}
+          title={searchDropdownTitle}
+          isPredictiveSearch={isPredictiveSearch}
+          recentCount={recentSearchesCount}
+          items={searchSuggestionItems}
+          activeIndex={activeSuggestionIndex}
+          searchValue={search}
+          onApplySuggestion={applySearchSuggestion}
+          onRemoveRecent={removeRecentSearch}
+          onClearRecent={clearRecentSearches}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de empleados" />
@@ -1096,7 +1239,7 @@ export default function Empleados({ openToast }) {
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? "show" : ""} ${
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal empleados-modal ${showModal ? "show" : ""} ${
           drawerMode === "create" ? "is-create" : "is-edit"
         }`}
         id="empd-form-drawer"
@@ -1104,24 +1247,23 @@ export default function Empleados({ openToast }) {
         aria-modal="true"
         aria-hidden={!showModal}
       >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-person-badge inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{drawerMode === "create" ? "Nuevo empleado" : "Editar empleado"}</div>
-            <div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div>
+        <div className="inv-prod-drawer-head crud-modal__header">
+          <div className="crud-modal__header-copy">
+            <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo empleado" : "Editar empleado"}</div>
+            <div className="inv-prod-drawer-sub crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
           </div>
           <button
             type="button"
-            className="inv-prod-drawer-close"
-            onClick={() => setShowModal(false)}
+            className="inv-prod-drawer-close crud-modal__close"
+            onClick={closeFormDrawer}
             title="Cerrar"
           >
             <i className="bi bi-x-lg" />
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
-          <div className="row g-3">
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
+          <div className="row g-3 crud-modal__grid">
             <div className="col-12">
               <label className="form-label text-light text-opacity-75">Persona</label>
               <select
@@ -1231,7 +1373,7 @@ export default function Empleados({ openToast }) {
             </div>
 
             <div className="col-12">
-              <div className="form-check">
+              <div className="form-check form-switch m-0">
                 <input
                   className="form-check-input"
                   type="checkbox"
@@ -1246,18 +1388,18 @@ export default function Empleados({ openToast }) {
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
+          <div className="d-flex gap-2 mt-4 crud-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill"
-              onClick={() => setShowModal(false)}
+              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+              onClick={closeFormDrawer}
               disabled={actionLoading || !!deletingId}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill"
+              className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
               disabled={actionLoading || !!deletingId}
             >
               {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}

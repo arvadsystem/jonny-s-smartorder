@@ -1,10 +1,89 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
+import AsyncSelect from 'react-select/async';
 import './usuarios-modal.css';
+import '../common/crud-modal-theme.css';
 
 const toDisplayValue = (value, fallback = 'No registrado') => {
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
   return text || fallback;
+};
+
+const buildUsuariosSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: hasError
+      ? 'var(--bs-danger, #dc3545)'
+      : state.isFocused
+        ? 'rgba(158, 105, 61, 0.72)'
+        : 'rgba(206, 196, 177, 0.9)',
+    boxShadow: state.isFocused
+      ? '0 0 0 0.2rem rgba(158, 105, 61, 0.18)'
+      : 'none',
+    backgroundColor: '#fff',
+    '&:hover': {
+      borderColor: hasError
+        ? 'var(--bs-danger, #dc3545)'
+        : 'rgba(158, 105, 61, 0.72)',
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: '2px 12px',
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: 'rgba(98, 83, 73, 0.75)',
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: '#2f1a10',
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 4,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? 'rgba(99, 58, 37, 0.9)' : 'rgba(99, 58, 37, 0.65)',
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: 'rgba(120, 84, 66, 0.72)',
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 3000,
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: '1px solid rgba(206, 196, 177, 0.9)',
+    overflow: 'hidden',
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? 'rgba(243, 238, 226, 0.95)'
+      : state.isSelected
+        ? 'rgba(236, 222, 205, 0.95)'
+        : '#fff',
+    color: state.isDisabled ? 'rgba(120, 97, 84, 0.75)' : '#2f1a10',
+  }),
+});
+
+const buildEmpleadoOptionLabel = (empleado, linked = false) => {
+  const nombreCompleto = toDisplayValue(empleado?.nombre_completo, 'Empleado sin nombre');
+  const dni = toDisplayValue(empleado?.dni, 'N/D');
+  const correo = toDisplayValue(empleado?.correo, 'Sin correo');
+  return `${nombreCompleto} | DNI: ${dni} | ${correo}${linked ? ' (ya tiene usuario)' : ''}`;
 };
 
 export default function UsuarioModal({
@@ -45,6 +124,87 @@ export default function UsuarioModal({
   const employeeOptions = useMemo(
     () => (Array.isArray(filteredEmpleadoOptions) ? filteredEmpleadoOptions : []),
     [filteredEmpleadoOptions]
+  );
+
+  const employeeSelectOptions = useMemo(
+    () =>
+      employeeOptions.map((item) => {
+        const linked = Boolean(empleadosConUsuario?.has?.(String(item.id)));
+        const label = buildEmpleadoOptionLabel(item, linked);
+        const searchText = [
+          item?.nombre_completo,
+          item?.nombre,
+          item?.apellido,
+          item?.dni,
+          item?.correo
+        ]
+          .map((value) => String(value ?? '').trim().toLowerCase())
+          .filter(Boolean)
+          .join(' ');
+
+        return {
+          value: String(item.id ?? ''),
+          label,
+          isDisabled: linked,
+          searchText
+        };
+      }),
+    [employeeOptions, empleadosConUsuario]
+  );
+
+  const employeeSelectValue = useMemo(() => {
+    const selectedId = String(form?.id_empleado ?? '').trim();
+    if (!selectedId) return null;
+
+    const found = employeeSelectOptions.find((option) => option.value === selectedId);
+    if (found) return found;
+
+    return {
+      value: selectedId,
+      label: toDisplayValue(empleadoDisplayName, 'Empleado seleccionado')
+    };
+  }, [employeeSelectOptions, form?.id_empleado, empleadoDisplayName]);
+
+  const empleadoSelectStyles = useMemo(
+    () => buildUsuariosSelectStyles(Boolean(errors?.id_empleado)),
+    [errors?.id_empleado]
+  );
+
+  const filterEmpleadoOption = useCallback((candidate, inputValue) => {
+    const needle = String(inputValue ?? '').trim().toLowerCase();
+    if (!needle) return true;
+    const searchText = String(candidate?.data?.searchText ?? '').toLowerCase();
+    const label = String(candidate?.label ?? '').toLowerCase();
+    return searchText.includes(needle) || label.includes(needle);
+  }, []);
+
+  const filterEmpleadoOptionsList = useCallback((inputValue = '') => {
+    const needle = String(inputValue ?? '').trim().toLowerCase();
+    const filtered = needle
+      ? employeeSelectOptions.filter((option) => {
+        const searchText = String(option?.searchText ?? '').toLowerCase();
+        const label = String(option?.label ?? '').toLowerCase();
+        return searchText.includes(needle) || label.includes(needle);
+      })
+      : employeeSelectOptions;
+
+    // Limita opciones renderizadas para mantener el dropdown fluido en catalogos grandes.
+    return filtered.slice(0, 80);
+  }, [employeeSelectOptions]);
+
+  const loadEmpleadoOptions = useCallback(
+    (inputValue) =>
+      new Promise((resolve) => {
+        window.setTimeout(() => {
+          resolve(filterEmpleadoOptionsList(inputValue));
+        }, 0);
+      }),
+    [filterEmpleadoOptionsList]
+  );
+
+  const defaultEmployeeOptions = useMemo(
+    () => filterEmpleadoOptionsList(''),
+    [filterEmpleadoOptionsList]
   );
 
   const roleOptions = useMemo(
@@ -94,50 +254,53 @@ export default function UsuarioModal({
 
   return (
     <aside
-      className={`inv-prod-drawer inv-cat-v2__drawer usuarios-modal ${isOpen ? 'show' : ''} ${isCreate ? 'is-create' : 'is-edit'}`}
+      className={`inv-prod-drawer inv-cat-v2__drawer crud-modal usuarios-modal ${isOpen ? 'show' : ''} ${isCreate ? 'is-create' : 'is-edit'}`}
       id="usr-form-drawer"
       role={isOpen ? 'dialog' : undefined}
       aria-modal={isOpen ? 'true' : undefined}
-      inert={!isOpen ? '' : undefined}
+      inert={!isOpen}
     >
-      <div className="inv-prod-drawer-head usuarios-modal__header">
-        <div className="usuarios-modal__title-wrap">
-          <div className="inv-prod-drawer-title usuarios-modal__title">{isCreate ? 'Nuevo Usuario' : 'Editar Usuario'}</div>
-          <div className="inv-prod-drawer-sub usuarios-modal__subtitle">Completa los campos y guarda los cambios.</div>
+      <div className="inv-prod-drawer-head usuarios-modal__header crud-modal__header">
+        <div className="usuarios-modal__title-wrap crud-modal__header-copy">
+          <div className="inv-prod-drawer-title usuarios-modal__title crud-modal__title">{isCreate ? 'Nuevo Usuario' : 'Editar Usuario'}</div>
+          <div className="inv-prod-drawer-sub usuarios-modal__subtitle crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
         </div>
-        <button type="button" className="inv-prod-drawer-close usuarios-modal__close" onClick={handleClose} title="Cerrar">
+        <button type="button" className="inv-prod-drawer-close usuarios-modal__close crud-modal__close" onClick={handleClose} title="Cerrar">
           <i className="bi bi-x-lg" />
         </button>
       </div>
 
-      <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite usuarios-modal__body" onSubmit={onSubmit}>
-        <div className="row g-3 mt-0 usuarios-modal__grid">
+      <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite usuarios-modal__body crud-modal__body" onSubmit={onSubmit}>
+        <div className="row g-3 mt-0 usuarios-modal__grid crud-modal__grid">
           {isCreate ? (
             <>
               <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
-                <label className="form-label fw-semibold usuarios-modal__label">Empleado</label>
-                <select
-                  className={`form-select usuarios-modal__input ${errors?.id_empleado ? 'is-invalid' : ''}`}
-                  value={form?.id_empleado || ''}
-                  onChange={(e) => onFieldChange?.('id_empleado', e.target.value)}
-                  disabled={catalogLoading}
-                >
-                  <option value="">Seleccione empleado</option>
-                  {employeeOptions.map((item) => {
-                    const linked = empleadosConUsuario?.has?.(String(item.id));
-                    return (
-                      <option key={item.id} value={item.id} disabled={linked}>
-                        {item.nombre_completo} {item.dni ? `| DNI: ${item.dni}` : ''} | {item.correo || 'Sin correo'}
-                        {linked ? ' (ya tiene usuario)' : ''}
-                      </option>
-                    );
-                  })}
-                </select>
+                <label className="form-label usuarios-modal__label">Empleado</label>
+                <AsyncSelect
+                  inputId="usuario-empleado-select-create"
+                  className={`usuarios-empleado-select ${errors?.id_empleado ? 'is-invalid' : ''}`}
+                  classNamePrefix="usuarios-empleado-select"
+                  placeholder="Seleccione empleado"
+                  cacheOptions
+                  defaultOptions={defaultEmployeeOptions}
+                  loadOptions={loadEmpleadoOptions}
+                  isClearable
+                  value={employeeSelectValue}
+                  onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '')}
+                  isOptionDisabled={(option) => Boolean(option?.isDisabled)}
+                  filterOption={filterEmpleadoOption}
+                  styles={empleadoSelectStyles}
+                  menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled={catalogLoading}
+                  noOptionsMessage={() => 'Sin coincidencias'}
+                  loadingMessage={() => 'Buscando empleados...'}
+                />
                 {errors?.id_empleado ? <div className="invalid-feedback d-block">{errors.id_empleado}</div> : null}
               </div>
 
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Nombre de usuario (Autogenerado)</label>
+                <label className="form-label usuarios-modal__label">Nombre de usuario (Autogenerado)</label>
                 <input
                   type="text"
                   className="form-control usuarios-modal__input"
@@ -147,7 +310,7 @@ export default function UsuarioModal({
               </div>
 
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Roles</label>
+                <label className="form-label usuarios-modal__label">Roles</label>
                 <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
                   {roleOptions.map((rol) => {
                     const roleId = String(rol.id_rol);
@@ -175,16 +338,30 @@ export default function UsuarioModal({
           ) : (
             <>
               <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
-                <label className="form-label fw-semibold usuarios-modal__label">Empleado</label>
-                <input
-                  type="text"
-                  className="form-control usuarios-modal__input"
-                  value={toDisplayValue(empleadoDisplayName)}
-                  readOnly
+                <label className="form-label usuarios-modal__label">Empleado</label>
+                <AsyncSelect
+                  inputId="usuario-empleado-select-edit"
+                  className="usuarios-empleado-select"
+                  classNamePrefix="usuarios-empleado-select"
+                  placeholder="Seleccione empleado"
+                  cacheOptions
+                  defaultOptions={defaultEmployeeOptions}
+                  loadOptions={loadEmpleadoOptions}
+                  isClearable={false}
+                  value={employeeSelectValue}
+                  onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '')}
+                  isOptionDisabled={(option) => Boolean(option?.isDisabled)}
+                  filterOption={filterEmpleadoOption}
+                  styles={empleadoSelectStyles}
+                  menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled
+                  noOptionsMessage={() => 'Sin coincidencias'}
+                  loadingMessage={() => 'Buscando empleados...'}
                 />
               </div>
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Nombre de usuario</label>
+                <label className="form-label usuarios-modal__label">Nombre de usuario</label>
                 <input
                   type="text"
                   className="form-control usuarios-modal__input"
@@ -193,7 +370,7 @@ export default function UsuarioModal({
                 />
               </div>
               <div className="col-12 usuarios-modal__section">
-                <label className="form-label fw-semibold usuarios-modal__label">Roles</label>
+                <label className="form-label usuarios-modal__label">Roles</label>
                 <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
                   {roleOptions.map((rol) => {
                     const roleId = String(rol.id_rol);
@@ -223,7 +400,7 @@ export default function UsuarioModal({
           {!isCreate ? (
             <div className="col-12 usuarios-modal__section">
               <div className="usuarios-modal__switch-row">
-                <label className="usuarios-modal__switch-label fw-semibold" htmlFor="usuario_estado_modal">
+                <label className="usuarios-modal__switch-label" htmlFor="usuario_estado_modal">
                   Usuario Activo
                 </label>
                 <label className="usuarios-modal__switch" htmlFor="usuario_estado_modal">
@@ -246,7 +423,7 @@ export default function UsuarioModal({
           ) : null}
 
           <div className="col-12 usuarios-modal__section">
-            <label className="form-label fw-semibold usuarios-modal__label">Imagen de perfil</label>
+            <label className="form-label usuarios-modal__label">Imagen de perfil</label>
             <div className={`inv-prod-image-field personas-emp-form-image usuarios-modal__image-box ${formImage?.loading ? 'is-loading' : ''}`}>
               <div className={`inv-prod-image-preview usuarios-modal__image-preview ${formImage?.previewUrl ? 'has-image' : ''}`} aria-live="polite">
                 {formImage?.loading ? (
@@ -320,10 +497,10 @@ export default function UsuarioModal({
           ) : null}
         </div>
 
-        <div className="d-flex gap-2 mt-4 usuarios-modal__footer">
+        <div className="d-flex gap-2 mt-4 usuarios-modal__footer crud-modal__footer">
           <button
             type="button"
-            className="btn inv-prod-btn-subtle flex-fill usuarios-modal__btn-cancel"
+            className="btn inv-prod-btn-subtle flex-fill usuarios-modal__btn-cancel crud-modal__btn"
             onClick={handleClose}
             disabled={actionLoading || resetPasswordLoading || !!deletingId}
           >
@@ -333,7 +510,7 @@ export default function UsuarioModal({
           {!isCreate && canResetPassword ? (
             <button
               type="button"
-              className="btn inv-prod-btn-outline flex-fill usuarios-modal__btn-reset"
+              className="btn inv-prod-btn-outline flex-fill usuarios-modal__btn-reset crud-modal__btn"
               onClick={onResetPassword}
               disabled={actionLoading || resetPasswordLoading || !!deletingId}
             >
@@ -343,7 +520,7 @@ export default function UsuarioModal({
 
           <button
             type="submit"
-            className="btn inv-prod-btn-primary flex-fill usuarios-modal__btn-submit"
+            className="btn inv-prod-btn-primary flex-fill usuarios-modal__btn-submit crud-modal__btn"
             disabled={
               isCreate
                 ? createDisabled
