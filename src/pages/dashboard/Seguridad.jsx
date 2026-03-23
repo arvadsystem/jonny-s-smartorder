@@ -8,6 +8,7 @@ import SesionesTab from "./seguridad/SesionesTab";
 import UsuariosTab from "./seguridad/UsuariosTab";
 import PasswordPolicyTab from "./seguridad/PasswordPolicyTab";
 import LoginLogsTab from "./seguridad/LoginLogsTab";
+import BitacorasTab from "./seguridad/BitacorasTab";
 import UsuarioAuditDetail from "./seguridad/UsuarioAuditDetail";
 
 const Seguridad = () => {
@@ -90,6 +91,7 @@ const Seguridad = () => {
       )}
       {activeTab === "password" && <PasswordPolicyTab />}
       {activeTab === "logins" && <LoginLogsTab />}
+      {activeTab === "bitacoras" && <BitacorasTab />}
     </div>
   );
 };

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Select from "react-select";
+import AsyncSelect from "react-select/async";
 import { personaService } from "../../../services/personasService";
 import { parametrosService } from "../../../services/parametrosService";
 import EntityTable from "../../../components/ui/EntityTable";
@@ -6,6 +8,13 @@ import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import ClienteCard from "./components/clientes/ClienteCard";
+import SearchSuggestionsDropdown from "./components/common/SearchSuggestionsDropdown";
+import useSearchSuggestionsDropdown, {
+  MIN_CHARS_FOR_SUGGESTIONS,
+  normalizeSearchText,
+} from "./components/common/useSearchSuggestionsDropdown";
+import "./components/common/crud-modal-theme.css";
+import "./components/clientes/clientes-persona-select.css";
 
 const emptyForm = {
   id_persona: "",
@@ -19,6 +28,76 @@ const emptyForm = {
 const createInitialFiltersDraft = () => ({
   estadoFiltro: "todos",
   sortBy: "recientes",
+});
+
+const buildClientesSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: hasError
+      ? "var(--bs-danger, #dc3545)"
+      : state.isFocused
+        ? "rgba(158, 105, 61, 0.72)"
+        : "rgba(206, 196, 177, 0.9)",
+    boxShadow: state.isFocused
+      ? "0 0 0 0.2rem rgba(158, 105, 61, 0.18)"
+      : "none",
+    backgroundColor: "#fff",
+    "&:hover": {
+      borderColor: hasError
+        ? "var(--bs-danger, #dc3545)"
+        : "rgba(158, 105, 61, 0.72)",
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: "2px 12px",
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: "rgba(98, 83, 73, 0.75)",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: "#2f1a10",
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 4,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? "rgba(99, 58, 37, 0.9)" : "rgba(99, 58, 37, 0.65)",
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: "rgba(120, 84, 66, 0.72)",
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 3000,
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: "1px solid rgba(206, 196, 177, 0.9)",
+    overflow: "hidden",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? "rgba(243, 238, 226, 0.95)"
+      : state.isSelected
+        ? "rgba(236, 222, 205, 0.95)"
+        : "#fff",
+    color: "#2f1a10",
+  }),
 });
 
 const normalizeListResponse = (resp) => {
@@ -46,6 +125,24 @@ const normalizeArrayPayload = (resp) => {
 };
 
 const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
+const normalizeSearchKey = (value) => String(value ?? "").trim().toLowerCase();
+const ASYNC_SELECT_LIMIT = 80;
+const ASYNC_SELECT_DEBOUNCE_MS = 300;
+const SUGGESTION_LIMIT = 8;
+
+const filterAsyncOptions = (options, needle, limit = ASYNC_SELECT_LIMIT) => {
+  const normalizedNeedle = normalizeSearchKey(needle);
+  const source = Array.isArray(options) ? options : [];
+  const filtered = normalizedNeedle
+    ? source.filter((option) =>
+      String(option?.searchText || option?.label || "")
+        .toLowerCase()
+        .includes(normalizedNeedle)
+    )
+    : source;
+
+  return filtered.slice(0, limit);
+};
 
 const toDateInputValue = (value) => {
   if (!value) return "";
@@ -89,23 +186,89 @@ const formatDateLabel = (value) => {
   });
 };
 
-const getDni = (cliente) => cliente?.persona_dni ?? cliente?.dni;
+const firstNonEmptyValue = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
 
-const getTelefono = (cliente) =>
-  cliente?.telefono ??
-  cliente?.telefono_numero ??
-  cliente?.numero_telefono ??
-  cliente?.persona_telefono ??
-  cliente?.telefono_persona;
+const resolveClienteOrigen = (cliente) => {
+  const explicitOrigen = normalizeValue(cliente?.origen_cliente);
+  const hasPersona = Boolean(
+    firstNonEmptyValue(
+      cliente?.id_persona,
+      cliente?.persona_nombre_completo,
+      cliente?.persona_nombre,
+      cliente?.persona_apellido,
+      cliente?.persona_dni,
+      cliente?.dni
+    )
+  );
+  const hasEmpresa = Boolean(
+    firstNonEmptyValue(
+      cliente?.id_empresa,
+      cliente?.nombre_empresa,
+      cliente?.empresa_rtn,
+      cliente?.rtn
+    )
+  );
 
-const getCorreo = (cliente) =>
-  cliente?.correo ??
-  cliente?.direccion_correo ??
-  cliente?.email ??
-  cliente?.persona_correo ??
-  cliente?.correo_persona;
+  if (hasPersona && !hasEmpresa) return "persona";
+  if (hasEmpresa && !hasPersona) return "empresa";
+  if (hasPersona && hasEmpresa) {
+    // Regla legacy segura: si ambas relaciones existen, prioriza persona para visualizacion.
+    return cliente?.id_persona ? "persona" : "empresa";
+  }
 
-const getFechaRegistro = (cliente) => cliente?.fecha_registro ?? cliente?.fecha_ingreso ?? cliente?.created_at;
+  if (explicitOrigen === "empresa") return "empresa";
+  return "persona";
+};
+
+const normalizeClienteForView = (cliente) => {
+  const origen = resolveClienteOrigen(cliente);
+  const nombrePrincipal = firstNonEmptyValue(cliente?.nombre_principal);
+  const documentoTipo = firstNonEmptyValue(cliente?.documento_tipo);
+  const documentoLabel = firstNonEmptyValue(
+    cliente?.documento_label,
+    documentoTipo ? String(documentoTipo).toUpperCase() : null
+  );
+  const documentoValor = firstNonEmptyValue(cliente?.documento_valor);
+  const telefono = firstNonEmptyValue(cliente?.telefono);
+  const correo = firstNonEmptyValue(cliente?.correo);
+  const tipoCliente = firstNonEmptyValue(cliente?.tipo_cliente);
+  const rawPuntos = Number(cliente?.puntos ?? cliente?.puntos_acumulados ?? cliente?.total_puntos);
+  const puntos = Number.isFinite(rawPuntos) && rawPuntos >= 0 ? rawPuntos : 0;
+  const fechaIngreso = firstNonEmptyValue(cliente?.fecha_ingreso);
+  const codigoCliente = firstNonEmptyValue(
+    cliente?.codigo_cliente,
+    cliente?.id_cliente ? `CLI-${cliente.id_cliente}` : null
+  );
+
+  return {
+    ...cliente,
+    codigo_cliente: codigoCliente,
+    origen_cliente: origen,
+    origen_label: origen === "empresa" ? "Cliente Empresa" : "Cliente Persona",
+    nombre_principal: nombrePrincipal || null,
+    subtitulo_principal: firstNonEmptyValue(cliente?.subtitulo_principal),
+    tipo_cliente: tipoCliente || null,
+    telefono: telefono || null,
+    correo: correo || null,
+    fecha_ingreso: fechaIngreso || null,
+    puntos,
+    documento_tipo: documentoTipo || null,
+    documento_label: documentoLabel || null,
+    documento_valor: documentoValor || null,
+  };
+};
+
+const parseIntegerValue = (value) => {
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isInteger(parsed) ? parsed : NaN;
+};
 
 const detectEstadoField = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return "estado";
@@ -135,6 +298,7 @@ const Clientes = ({ openToast }) => {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("clientesViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -143,12 +307,13 @@ const Clientes = ({ openToast }) => {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const limit = 10;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [clienteOriginType, setClienteOriginType] = useState("persona");
   const [errors, setErrors] = useState({});
 
   const [actionLoading, setActionLoading] = useState(false);
@@ -165,9 +330,32 @@ const Clientes = ({ openToast }) => {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const panelRef = useRef(null);
+  const empresaSearchCacheRef = useRef(new Map());
+  const tipoSearchCacheRef = useRef(new Map());
+  const empresaDebounceTimerRef = useRef(null);
+  const tipoDebounceTimerRef = useRef(null);
+  const empresaAbortRef = useRef(null);
+  const empresaAsyncReqSeqRef = useRef(0);
+  const tipoAsyncReqSeqRef = useRef(0);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
+
+  const blurFocusedElementInside = useCallback((containerId) => {
+    if (typeof document === "undefined") return;
+    const container = document.getElementById(containerId);
+    const active = document.activeElement;
+    if (!container || !active) return;
+    if (container.contains(active) && typeof active.blur === "function") {
+      active.blur();
+    }
+  }, []);
+
+  const closeFormDrawer = useCallback(() => {
+    blurFocusedElementInside("cli-form-drawer");
+    setShowModal(false);
+  }, [blurFocusedElementInside]);
 
   const personaOptions = useMemo(
     () =>
@@ -183,16 +371,107 @@ const Clientes = ({ openToast }) => {
     [personasCatalogo]
   );
 
+  const personaSelectOptions = useMemo(
+    () =>
+      personaOptions.map((item) => ({
+        value: item.id,
+        label: item.dni ? `${item.label} | DNI: ${item.dni}` : item.label,
+      })),
+    [personaOptions]
+  );
+
+  const personaSelectValue = useMemo(() => {
+    const selectedId = String(form.id_persona ?? "");
+    if (!selectedId) return null;
+    return personaSelectOptions.find((option) => option.value === selectedId) || null;
+  }, [form.id_persona, personaSelectOptions]);
+
+  const personaSelectStyles = useMemo(
+    () => buildClientesSelectStyles(Boolean(errors.id_persona)),
+    [errors.id_persona]
+  );
+
   const empresaOptions = useMemo(
     () =>
       (Array.isArray(empresasCatalogo) ? empresasCatalogo : []).map((e) => {
         const id = e?.id_empresa;
+        const nombreEmpresa = String(e?.nombre_empresa || `Empresa #${id ?? "N/D"}`).trim();
+        const rtn = firstNonEmptyValue(e?.rtn);
+        const correo = firstNonEmptyValue(e?.direccion_correo, e?.correo);
+        const telefono = firstNonEmptyValue(e?.telefono);
+        const labelParts = [nombreEmpresa];
+        if (rtn) labelParts.push(`RTN: ${rtn}`);
+        if (correo) labelParts.push(correo);
+        const label = labelParts.join(" | ");
+        const searchText = normalizeSearchKey([nombreEmpresa, rtn, correo, telefono].join(" "));
+
         return {
           id: id ? String(id) : "",
-          label: String(e?.nombre_empresa || `Empresa #${id ?? "N/D"}`),
+          label,
+          nombre_empresa: nombreEmpresa,
+          rtn,
+          correo,
+          telefono,
+          searchText,
         };
       }),
     [empresasCatalogo]
+  );
+
+  const empresaSelectOptions = useMemo(
+    () =>
+      empresaOptions.map((item) => ({
+        value: item.id,
+        label: item.label,
+        searchText: item.searchText,
+      })),
+    [empresaOptions]
+  );
+
+  const empresaSelectOptionsById = useMemo(
+    () => new Map(empresaSelectOptions.map((option) => [option.value, option])),
+    [empresaSelectOptions]
+  );
+
+  const empresaSelectFallbackValue = useMemo(() => {
+    const selectedId = String(form.id_empresa ?? "").trim();
+    if (!selectedId) return null;
+    const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? ""));
+    const nombre = firstNonEmptyValue(clienteActual?.nombre_empresa, clienteActual?.nombre_principal, `Empresa #${selectedId}`);
+    const rtn = firstNonEmptyValue(clienteActual?.rtn, clienteActual?.documento_tipo === "rtn" ? clienteActual?.documento_valor : "");
+    const correo = firstNonEmptyValue(clienteActual?.correo);
+    const labelParts = [nombre];
+    if (rtn) labelParts.push(`RTN: ${rtn}`);
+    if (correo) labelParts.push(correo);
+    return {
+      value: selectedId,
+      label: labelParts.join(" | "),
+      searchText: normalizeSearchKey(`${nombre} ${rtn} ${correo}`),
+    };
+  }, [clientes, editId, form.id_empresa]);
+
+  const empresaSelectValue = useMemo(() => {
+    const selectedId = String(form.id_empresa ?? "").trim();
+    if (!selectedId) return null;
+    return (
+      empresaSelectOptionsById.get(selectedId)
+      || empresaSelectFallbackValue
+      || {
+        value: selectedId,
+        label: `Empresa #${selectedId}`,
+        searchText: normalizeSearchKey(`empresa ${selectedId}`),
+      }
+    );
+  }, [form.id_empresa, empresaSelectOptionsById, empresaSelectFallbackValue]);
+
+  const empresaSelectStyles = useMemo(
+    () => buildClientesSelectStyles(Boolean(errors.id_empresa)),
+    [errors.id_empresa]
+  );
+
+  const empresaDefaultOptions = useMemo(
+    () => filterAsyncOptions(empresaSelectOptions, ""),
+    [empresaSelectOptions]
   );
 
   const tipoClienteOptions = useMemo(
@@ -203,46 +482,66 @@ const Clientes = ({ openToast }) => {
         return {
           id: id ? String(id) : "",
           label: String(label),
+          searchText: normalizeSearchKey(label),
         };
       }),
     [tiposCliente]
   );
 
-  const getPersonaNombre = useCallback((cliente) => {
-    const fromBackend = cliente?.persona_nombre_completo?.trim();
-    if (fromBackend) return fromBackend;
+  const tipoClienteSelectOptions = useMemo(
+    () =>
+      tipoClienteOptions.map((item) => ({
+        value: item.id,
+        label: item.label,
+        searchText: item.searchText,
+      })),
+    [tipoClienteOptions]
+  );
 
-    const fallback = `${cliente?.persona_nombre || ""} ${cliente?.persona_apellido || ""}`.trim();
-    if (fallback) return fallback;
+  const tipoClienteSelectOptionsById = useMemo(
+    () => new Map(tipoClienteSelectOptions.map((option) => [option.value, option])),
+    [tipoClienteSelectOptions]
+  );
 
-    const personaId = cliente?.id_persona ? String(cliente.id_persona) : "";
-    if (!personaId) return "No registrado";
+  const tipoClienteSelectFallbackValue = useMemo(() => {
+    const selectedId = String(form.id_tipo_cliente ?? "").trim();
+    if (!selectedId) return null;
+    const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? ""));
+    const label = firstNonEmptyValue(clienteActual?.tipo_cliente, `Tipo #${selectedId}`);
+    return {
+      value: selectedId,
+      label,
+      searchText: normalizeSearchKey(label),
+    };
+  }, [clientes, editId, form.id_tipo_cliente]);
 
-    const option = personaOptions.find((item) => item.id === personaId);
-    return option?.label || `Persona #${personaId}`;
-  }, [personaOptions]);
+  const tipoClienteSelectValue = useMemo(() => {
+    const selectedId = String(form.id_tipo_cliente ?? "").trim();
+    if (!selectedId) return null;
+    return (
+      tipoClienteSelectOptionsById.get(selectedId)
+      || tipoClienteSelectFallbackValue
+      || {
+        value: selectedId,
+        label: `Tipo #${selectedId}`,
+        searchText: normalizeSearchKey(`tipo ${selectedId}`),
+      }
+    );
+  }, [form.id_tipo_cliente, tipoClienteSelectOptionsById, tipoClienteSelectFallbackValue]);
 
-  const getEmpresaNombre = useCallback((cliente) => {
-    const fromBackend = cliente?.nombre_empresa || cliente?.empresa_nombre || cliente?.empresa;
-    if (String(fromBackend ?? "").trim()) return String(fromBackend).trim();
+  const tipoClienteSelectStyles = useMemo(
+    () => buildClientesSelectStyles(Boolean(errors.id_tipo_cliente)),
+    [errors.id_tipo_cliente]
+  );
 
-    const empresaId = cliente?.id_empresa ? String(cliente.id_empresa) : "";
-    if (!empresaId) return "No registrado";
+  const tipoClienteDefaultOptions = useMemo(
+    () => filterAsyncOptions(tipoClienteSelectOptions, ""),
+    [tipoClienteSelectOptions]
+  );
 
-    const option = empresaOptions.find((item) => item.id === empresaId);
-    return option?.label || `Empresa #${empresaId}`;
-  }, [empresaOptions]);
-
-  const getTipoClienteNombre = useCallback((cliente) => {
-    const fromBackend = cliente?.tipo_cliente_nombre || cliente?.tipo_cliente || cliente?.nombre_tipo_cliente;
-    if (String(fromBackend ?? "").trim()) return String(fromBackend).trim();
-
-    const tipoId = cliente?.id_tipo_cliente ? String(cliente.id_tipo_cliente) : "";
-    if (!tipoId) return "No registrado";
-
-    const option = tipoClienteOptions.find((item) => item.id === tipoId);
-    return option?.label || `Tipo #${tipoId}`;
-  }, [tipoClienteOptions]);
+  const getClientePrincipalNombre = useCallback((cliente) => {
+    return firstNonEmptyValue(cliente?.nombre_principal);
+  }, []);
 
   const resolveIdFromLabel = (rawValue, options) => {
     const normalized = normalizeValue(rawValue);
@@ -252,37 +551,184 @@ const Clientes = ({ openToast }) => {
   };
 
   const buildFormFromCliente = useCallback(
-    (cliente) => ({
-      id_persona:
+    (cliente) => {
+      const resolvedPersona =
         cliente?.id_persona
           ? String(cliente.id_persona)
           : resolveIdFromLabel(
               cliente?.persona_nombre_completo ||
                 `${cliente?.persona_nombre || ""} ${cliente?.persona_apellido || ""}`.trim(),
               personaOptions
-            ),
-      id_empresa:
+            );
+
+      const resolvedEmpresa =
         cliente?.id_empresa
           ? String(cliente.id_empresa)
           : resolveIdFromLabel(
               cliente?.nombre_empresa || cliente?.empresa_nombre || cliente?.empresa,
               empresaOptions
-            ),
-      id_tipo_cliente:
-        cliente?.id_tipo_cliente
-          ? String(cliente.id_tipo_cliente)
-          : resolveIdFromLabel(
-              cliente?.tipo_cliente_nombre || cliente?.tipo_cliente || cliente?.nombre_tipo_cliente,
-              tipoClienteOptions
-            ),
-      fecha_ingreso: toDateInputValue(cliente?.fecha_ingreso),
-      puntos:
-        cliente?.puntos === null || cliente?.puntos === undefined
-          ? ""
-          : String(cliente.puntos),
-      estado: isActivo(cliente),
-    }),
+            );
+
+      // Regla de prioridad para legados con ambas relaciones: priorizar persona en edición.
+      const keepPersona = Boolean(resolvedPersona);
+
+      return {
+        id_persona: keepPersona ? resolvedPersona : "",
+        id_empresa: keepPersona ? "" : resolvedEmpresa,
+        id_tipo_cliente:
+          cliente?.id_tipo_cliente
+            ? String(cliente.id_tipo_cliente)
+            : resolveIdFromLabel(
+                cliente?.tipo_cliente_nombre || cliente?.tipo_cliente || cliente?.nombre_tipo_cliente,
+                tipoClienteOptions
+              ),
+        fecha_ingreso: toDateInputValue(cliente?.fecha_ingreso),
+        puntos:
+          cliente?.puntos === null || cliente?.puntos === undefined
+            ? ""
+            : String(cliente.puntos),
+        estado: isActivo(cliente),
+      };
+    },
     [personaOptions, empresaOptions, tipoClienteOptions]
+  );
+
+  useEffect(() => {
+    empresaSearchCacheRef.current.clear();
+  }, [empresaSelectOptions]);
+
+  useEffect(() => {
+    tipoSearchCacheRef.current.clear();
+  }, [tipoClienteSelectOptions]);
+
+  const loadEmpresaOptions = useCallback(
+    (inputValue = "") =>
+      new Promise((resolve) => {
+        const searchTerm = normalizeSearchKey(inputValue);
+        const cacheKey = searchTerm || "__default__";
+
+        if (empresaSearchCacheRef.current.has(cacheKey)) {
+          resolve(empresaSearchCacheRef.current.get(cacheKey));
+          return;
+        }
+
+        if (empresaDebounceTimerRef.current) {
+          clearTimeout(empresaDebounceTimerRef.current);
+        }
+
+        if (empresaAbortRef.current) {
+          empresaAbortRef.current.abort();
+        }
+
+        const requestSeq = ++empresaAsyncReqSeqRef.current;
+
+        empresaDebounceTimerRef.current = setTimeout(async () => {
+          try {
+            if (!mountedRef.current || requestSeq !== empresaAsyncReqSeqRef.current) {
+              resolve([]);
+              return;
+            }
+
+            let options = [];
+
+            if (searchTerm) {
+              const controller = new AbortController();
+              empresaAbortRef.current = controller;
+
+              const response = await personaService.getEmpresas({
+                page: 1,
+                limit: ASYNC_SELECT_LIMIT,
+                nombre: searchTerm,
+                signal: controller.signal,
+              });
+
+              if (!mountedRef.current || requestSeq !== empresaAsyncReqSeqRef.current) {
+                resolve([]);
+                return;
+              }
+
+              const fetchedItems = normalizeListResponse(response).items;
+              if (Array.isArray(fetchedItems) && fetchedItems.length) {
+                setEmpresasCatalogo((prev) => {
+                  const current = Array.isArray(prev) ? prev : [];
+                  const map = new Map(current.map((item) => [String(item?.id_empresa ?? ""), item]));
+                  fetchedItems.forEach((item) => {
+                    const key = String(item?.id_empresa ?? "");
+                    if (key) map.set(key, item);
+                  });
+                  return Array.from(map.values());
+                });
+              }
+
+              const fetchedOptions = (Array.isArray(fetchedItems) ? fetchedItems : []).map((item) => {
+                const id = String(item?.id_empresa ?? "").trim();
+                const nombreEmpresa = firstNonEmptyValue(item?.nombre_empresa, `Empresa #${id || "N/D"}`);
+                const rtn = firstNonEmptyValue(item?.rtn);
+                const correo = firstNonEmptyValue(item?.direccion_correo, item?.correo);
+                const telefono = firstNonEmptyValue(item?.telefono);
+                const labelParts = [nombreEmpresa];
+                if (rtn) labelParts.push(`RTN: ${rtn}`);
+                if (correo) labelParts.push(correo);
+                return {
+                  value: id,
+                  label: labelParts.join(" | "),
+                  searchText: normalizeSearchKey(`${nombreEmpresa} ${rtn} ${correo} ${telefono}`),
+                };
+              });
+
+              options = filterAsyncOptions(fetchedOptions, searchTerm);
+            }
+
+            if (!options.length) {
+              options = filterAsyncOptions(empresaSelectOptions, searchTerm);
+            }
+
+            empresaSearchCacheRef.current.set(cacheKey, options);
+            resolve(options);
+          } catch (error) {
+            if (error?.name === "AbortError") {
+              resolve([]);
+              return;
+            }
+            resolve(filterAsyncOptions(empresaSelectOptions, searchTerm));
+          } finally {
+            if (requestSeq === empresaAsyncReqSeqRef.current) {
+              empresaAbortRef.current = null;
+            }
+          }
+        }, ASYNC_SELECT_DEBOUNCE_MS);
+      }),
+    [empresaSelectOptions]
+  );
+
+  const loadTipoClienteOptions = useCallback(
+    (inputValue = "") =>
+      new Promise((resolve) => {
+        const searchTerm = normalizeSearchKey(inputValue);
+        const cacheKey = searchTerm || "__default__";
+
+        if (tipoSearchCacheRef.current.has(cacheKey)) {
+          resolve(tipoSearchCacheRef.current.get(cacheKey));
+          return;
+        }
+
+        if (tipoDebounceTimerRef.current) {
+          clearTimeout(tipoDebounceTimerRef.current);
+        }
+
+        const requestSeq = ++tipoAsyncReqSeqRef.current;
+        tipoDebounceTimerRef.current = setTimeout(() => {
+          if (!mountedRef.current || requestSeq !== tipoAsyncReqSeqRef.current) {
+            resolve([]);
+            return;
+          }
+
+          const options = filterAsyncOptions(tipoClienteSelectOptions, searchTerm);
+          tipoSearchCacheRef.current.set(cacheKey, options);
+          resolve(options);
+        }, ASYNC_SELECT_DEBOUNCE_MS);
+      }),
+    [tipoClienteSelectOptions]
   );
 
   const cargarCatalogos = useCallback(async () => {
@@ -314,13 +760,13 @@ const Clientes = ({ openToast }) => {
       const resp = await personaService.getClientes({
         page,
         limit,
-        nombre: search?.trim() || undefined,
+        nombre: debouncedSearch || undefined,
       });
 
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
       const { items, total: totalResp } = normalizeListResponse(resp);
-      setClientes(items);
+      setClientes((Array.isArray(items) ? items : []).map(normalizeClienteForView));
       setTotal(totalResp);
     } catch (error) {
       if (!mountedRef.current) return;
@@ -332,12 +778,21 @@ const Clientes = ({ openToast }) => {
         setLoading(false);
       }
     }
-  }, [page, limit, search, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (empresaDebounceTimerRef.current) {
+        clearTimeout(empresaDebounceTimerRef.current);
+      }
+      if (tipoDebounceTimerRef.current) {
+        clearTimeout(tipoDebounceTimerRef.current);
+      }
+      if (empresaAbortRef.current) {
+        empresaAbortRef.current.abort();
+      }
     };
   }, []);
 
@@ -350,7 +805,12 @@ const Clientes = ({ openToast }) => {
   }, [cargarClientes]);
 
   useEffect(() => {
-    setPage(1);
+    const timerId = window.setTimeout(() => {
+      const nextSearch = normalizeSearchText(search);
+      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
   }, [search]);
 
   useEffect(() => {
@@ -384,22 +844,38 @@ const Clientes = ({ openToast }) => {
     });
   }, [showModal, editId, clientes, buildFormFromCliente]);
 
-  const sanitizeForm = () => ({
-    id_persona: Number.parseInt(String(form.id_persona), 10),
-    id_empresa: Number.parseInt(String(form.id_empresa), 10),
-    id_tipo_cliente: Number.parseInt(String(form.id_tipo_cliente), 10),
-    fecha_ingreso: form.fecha_ingreso,
-    puntos: Number.parseInt(String(form.puntos), 10),
-    estado: Boolean(form.estado),
-  });
+  const sanitizeForm = () => {
+    const personaId = String(form.id_persona ?? "").trim();
+    const empresaId = String(form.id_empresa ?? "").trim();
+    const tipoClienteId = String(form.id_tipo_cliente ?? "").trim();
+
+    return {
+      id_persona: personaId ? parseIntegerValue(personaId) : null,
+      id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
+      id_tipo_cliente: tipoClienteId ? parseIntegerValue(tipoClienteId) : null,
+      fecha_ingreso: form.fecha_ingreso,
+      puntos: parseIntegerValue(form.puntos),
+      estado: Boolean(form.estado),
+    };
+  };
 
   const validar = () => {
     const currentErrors = {};
     const today = new Date().toISOString().split("T")[0];
     const payload = sanitizeForm();
+    const hasPersona = Boolean(String(form.id_persona ?? "").trim());
+    const hasEmpresa = Boolean(String(form.id_empresa ?? "").trim());
 
-    if (!form.id_persona) currentErrors.id_persona = "Seleccione";
-    if (!form.id_empresa) currentErrors.id_empresa = "Seleccione";
+    if (hasPersona && hasEmpresa) {
+      currentErrors.id_persona = "Solo puede seleccionar una opcion";
+      currentErrors.id_empresa = "Solo puede seleccionar una opcion";
+    } else if (clienteOriginType === "persona") {
+      if (!hasPersona) currentErrors.id_persona = "Seleccione una persona";
+      if (hasEmpresa) currentErrors.id_empresa = "No aplica para Cliente Persona";
+    } else if (clienteOriginType === "empresa") {
+      if (!hasEmpresa) currentErrors.id_empresa = "Seleccione una empresa";
+      if (hasPersona) currentErrors.id_persona = "No aplica para Cliente Empresa";
+    }
     if (!form.id_tipo_cliente) currentErrors.id_tipo_cliente = "Seleccione";
     if (!form.fecha_ingreso || form.fecha_ingreso > today) currentErrors.fecha_ingreso = "Fecha invalida";
     if (form.puntos === "") currentErrors.puntos = "Requerido";
@@ -453,7 +929,7 @@ const Clientes = ({ openToast }) => {
         safeToast("OK", "Cliente creado");
       }
 
-      setShowModal(false);
+      closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
       await cargarClientes();
@@ -468,7 +944,9 @@ const Clientes = ({ openToast }) => {
     setFiltersOpen(false);
     setEditId(cliente.id_cliente);
     setErrors({});
-    setForm(buildFormFromCliente(cliente));
+    const formValues = buildFormFromCliente(cliente);
+    setForm(formValues);
+    setClienteOriginType(formValues.id_empresa ? "empresa" : "persona");
     setShowModal(true);
   };
 
@@ -478,14 +956,26 @@ const Clientes = ({ openToast }) => {
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
+    setClienteOriginType("persona");
     setShowModal(true);
+  };
+
+  const handleOriginTypeChange = (nextType) => {
+    if (nextType !== "persona" && nextType !== "empresa") return;
+    setClienteOriginType(nextType);
+    setForm((state) =>
+      nextType === "persona"
+        ? { ...state, id_empresa: "" }
+        : { ...state, id_persona: "" }
+    );
+    setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
   };
 
   const openConfirmDelete = (cliente) =>
     setConfirmModal({
       show: true,
       idToDelete: cliente?.id_cliente ?? null,
-      nombre: getPersonaNombre(cliente) || "",
+      nombre: firstNonEmptyValue(cliente?.nombre_principal, getClientePrincipalNombre(cliente)),
     });
 
   const closeConfirmDelete = () =>
@@ -500,7 +990,7 @@ const Clientes = ({ openToast }) => {
       await personaService.deleteCliente(id);
 
       if (String(editId) === String(id)) {
-        setShowModal(false);
+        closeFormDrawer();
         setEditId(null);
         setForm(emptyForm);
       }
@@ -535,17 +1025,14 @@ const Clientes = ({ openToast }) => {
       if (!needle) return true;
 
       const hay = [
-        getPersonaNombre(cliente),
-        getEmpresaNombre(cliente),
-        getTipoClienteNombre(cliente),
-        cliente?.persona_dni,
+        cliente?.nombre_principal,
+        cliente?.origen_label,
+        cliente?.tipo_cliente,
+        cliente?.documento_valor,
         cliente?.dni,
+        cliente?.rtn,
         cliente?.telefono,
-        cliente?.telefono_numero,
-        cliente?.numero_telefono,
         cliente?.correo,
-        cliente?.direccion_correo,
-        cliente?.email,
         cliente?.puntos,
         cliente?.fecha_ingreso,
       ]
@@ -558,16 +1045,97 @@ const Clientes = ({ openToast }) => {
 
     filtered.sort((a, b) => {
       if (sortBy === "nombre_asc") {
-        return getPersonaNombre(a).localeCompare(getPersonaNombre(b), "es", { sensitivity: "base" });
+        return getClientePrincipalNombre(a).localeCompare(getClientePrincipalNombre(b), "es", { sensitivity: "base" });
       }
       if (sortBy === "nombre_desc") {
-        return getPersonaNombre(b).localeCompare(getPersonaNombre(a), "es", { sensitivity: "base" });
+        return getClientePrincipalNombre(b).localeCompare(getClientePrincipalNombre(a), "es", { sensitivity: "base" });
       }
       return Number(b?.id_cliente ?? 0) - Number(a?.id_cliente ?? 0);
     });
 
     return filtered;
-  }, [clientes, search, estadoFiltro, sortBy, getPersonaNombre, getEmpresaNombre, getTipoClienteNombre]);
+  }, [clientes, search, estadoFiltro, sortBy, getClientePrincipalNombre]);
+
+  const predictiveSuggestions = useMemo(() => {
+    const searchTerm = normalizeSearchText(search).toLowerCase();
+    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
+
+    const source = Array.isArray(clientes) ? clientes : [];
+    const suggestions = [];
+    const seen = new Set();
+
+    for (const cliente of source) {
+      const activo = isActivo(cliente);
+      const matchEstado =
+        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activo : !activo;
+      if (!matchEstado) continue;
+
+      const nombre = toDisplayValue(cliente?.nombre_principal, "Cliente sin nombre");
+      const documento = toDisplayValue(cliente?.documento_valor, "");
+      const telefono = toDisplayValue(cliente?.telefono, "");
+      const correo = toDisplayValue(cliente?.correo, "");
+      const tipo = toDisplayValue(cliente?.tipo_cliente, "");
+      const haystack = [nombre, documento, telefono, correo, tipo].join(" ").toLowerCase();
+      if (!haystack.includes(searchTerm)) continue;
+
+      const dedupeKey = normalizeValue(nombre);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const detailParts = [];
+      if (documento && documento !== "No registrado") detailParts.push(documento);
+      if (correo && correo !== "No registrado") detailParts.push(correo);
+      else if (telefono && telefono !== "No registrado") detailParts.push(telefono);
+      if (!detailParts.length && tipo && tipo !== "No registrado") detailParts.push(tipo);
+
+      suggestions.push({
+        id: `cli-${cliente?.id_cliente ?? dedupeKey}`,
+        value: nombre,
+        label: nombre,
+        detail: detailParts.join(" | ") || "Cliente registrado",
+      });
+
+      if (suggestions.length >= SUGGESTION_LIMIT) break;
+    }
+
+    return suggestions;
+  }, [clientes, estadoFiltro, search]);
+
+  const handleSearchUpdate = useCallback((value, { source } = {}) => {
+    const normalized = normalizeSearchText(value);
+    setPage((prev) => (prev === 1 ? prev : 1));
+    if (!normalized) {
+      setDebouncedSearch("");
+      return;
+    }
+    if (source === "suggestion") {
+      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+    }
+  }, []);
+
+  const {
+    handleSearchInputChange,
+    searchDropdownRef,
+    isSearchDropdownMounted,
+    isSearchDropdownVisible,
+    searchDropdownStyle,
+    searchDropdownTitle,
+    isPredictiveSearch,
+    searchSuggestionItems,
+    activeSuggestionIndex,
+    applySearchSuggestion,
+    removeRecentSearch,
+    clearRecentSearches,
+    recentSearchesCount,
+  } = useSearchSuggestionsDropdown({
+    panelRef,
+    search,
+    setSearch,
+    committedSearch: debouncedSearch,
+    onSearchUpdate: handleSearchUpdate,
+    predictiveSuggestions,
+    recentStorageKey: "clientesRecentSearchesV1",
+  });
 
   const stats = useMemo(() => {
     const totalFiltradas = clientesFiltrados.length;
@@ -582,10 +1150,13 @@ const Clientes = ({ openToast }) => {
 
   const drawerMode = editId ? "edit" : "create";
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
+  const personaDisabled = actionLoading || clienteOriginType === "empresa";
+  const empresaDisabled = actionLoading || clienteOriginType === "persona";
+  const formOriginLabel = clienteOriginType === "empresa" ? "Cliente Empresa" : "Cliente Persona";
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersDraft({ estadoFiltro, sortBy });
     setFiltersOpen(true);
   };
@@ -605,26 +1176,26 @@ const Clientes = ({ openToast }) => {
   };
 
   const clearAllFilters = () => {
-    setSearch("");
+    handleSearchInputChange("");
     clearVisualFilters();
     setFiltersOpen(false);
   };
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersOpen(false);
   };
 
   return (
-    <div className="personas-page">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+    <div className="personas-page personas-page--clientes">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderModulo
           iconClass="bi bi-person-lines-fill"
           title="Clientes"
           subtitle="Gestion visual de clientes"
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchInputChange}
           searchPlaceholder="Buscar por persona, empresa, tipo, DNI, telefono o correo..."
           searchAriaLabel="Buscar clientes"
           filtersOpen={filtersOpen}
@@ -636,6 +1207,22 @@ const Clientes = ({ openToast }) => {
           formControlsId="cli-form-drawer"
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+        />
+
+        <SearchSuggestionsDropdown
+          mounted={isSearchDropdownMounted}
+          visible={isSearchDropdownVisible}
+          dropdownRef={searchDropdownRef}
+          dropdownStyle={searchDropdownStyle}
+          title={searchDropdownTitle}
+          isPredictiveSearch={isPredictiveSearch}
+          recentCount={recentSearchesCount}
+          items={searchSuggestionItems}
+          activeIndex={activeSuggestionIndex}
+          searchValue={search}
+          onApplySuggestion={applySearchSuggestion}
+          onRemoveRecent={removeRecentSearch}
+          onClearRecent={clearRecentSearches}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de clientes" />
@@ -681,7 +1268,7 @@ const Clientes = ({ openToast }) => {
                     <tr>
                       <th scope="col">Cliente</th>
                       <th scope="col">Empresa</th>
-                      <th scope="col">DNI</th>
+                      <th scope="col">Documento</th>
                       <th scope="col">Telefono</th>
                       <th scope="col">Correo</th>
                       <th scope="col">Fecha registro</th>
@@ -700,13 +1287,20 @@ const Clientes = ({ openToast }) => {
                       return (
                         <tr key={cliente?.id_cliente ?? idx} className={isActive ? "" : "is-inactive-state"}>
                           <td>
-                            <strong>{tableIndex + 1}. {toDisplayValue(getPersonaNombre(cliente), "Cliente sin nombre")}</strong>
+                            <div className="clientes-origin-cell">
+                              <strong>{tableIndex + 1}. {toDisplayValue(cliente?.nombre_principal, "Cliente sin nombre")}</strong>
+                              <span
+                                className={`clientes-origin-chip ${cliente?.origen_cliente === "empresa" ? "is-empresa" : "is-persona"}`}
+                              >
+                                {toDisplayValue(cliente?.origen_label, "Cliente Persona")}
+                              </span>
+                            </div>
                           </td>
-                          <td>{toDisplayValue(getEmpresaNombre(cliente))}</td>
-                          <td>{toDisplayValue(getDni(cliente), "N/D")}</td>
-                          <td>{toDisplayValue(getTelefono(cliente), "Sin telefono")}</td>
-                          <td>{toDisplayValue(getCorreo(cliente), "Sin correo")}</td>
-                          <td>{formatDateLabel(getFechaRegistro(cliente))}</td>
+                          <td>{toDisplayValue(cliente?.nombre_empresa)}</td>
+                          <td>{toDisplayValue(cliente?.documento_valor, "N/D")}</td>
+                          <td>{toDisplayValue(cliente?.telefono, "Sin telefono")}</td>
+                          <td>{toDisplayValue(cliente?.correo, "Sin correo")}</td>
+                          <td>{formatDateLabel(cliente?.fecha_ingreso)}</td>
                           <td>
                             <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
                               {isActive ? "ACTIVO" : "INACTIVO"}
@@ -715,7 +1309,9 @@ const Clientes = ({ openToast }) => {
                           <td>
                             <div className="inv-catpro-code-wrap personas-page__table-code-wrap">
                               <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
-                              <span className="inv-catpro-code">CLI-{String(idCliente ?? "-")}</span>
+                              <span className="inv-catpro-code">
+                                {toDisplayValue(cliente?.codigo_cliente, `CLI-${String(idCliente ?? "-")}`)}
+                              </span>
                             </div>
                           </td>
                           <td className="text-end">
@@ -760,8 +1356,6 @@ const Clientes = ({ openToast }) => {
                     onOpenDelete={openConfirmDelete}
                     actionLoading={actionLoading}
                     deletingId={deletingId}
-                    getPersonaNombre={getPersonaNombre}
-                    getEmpresaNombre={getEmpresaNombre}
                   />
                 ))}
               </div>
@@ -827,7 +1421,7 @@ const Clientes = ({ openToast }) => {
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? "show" : ""} ${
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal clientes-modal ${showModal ? "show" : ""} ${
           drawerMode === "create" ? "is-create" : "is-edit"
         }`}
         id="cli-form-drawer"
@@ -835,74 +1429,159 @@ const Clientes = ({ openToast }) => {
         aria-modal="true"
         aria-hidden={!showModal}
       >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-person-lines-fill inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{drawerMode === "create" ? "Nuevo cliente" : "Editar cliente"}</div>
-            <div className="inv-prod-drawer-sub">
+        <div className="inv-prod-drawer-head crud-modal__header">
+          <div className="crud-modal__header-copy">
+            <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo cliente" : "Editar cliente"}</div>
+            <div className="inv-prod-drawer-sub crud-modal__subtitle">
               Completa los campos y guarda los cambios.
             </div>
           </div>
           <button
             type="button"
-            className="inv-prod-drawer-close"
-            onClick={() => setShowModal(false)}
+            className="inv-prod-drawer-close crud-modal__close"
+            onClick={closeFormDrawer}
             title="Cerrar"
           >
             <i className="bi bi-x-lg" />
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
-          <div className="row g-3">
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Persona</label>
-              <select
-                className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
-                value={form.id_persona}
-                onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
+          <div className="clientes-modal__origin-helper">
+            <div
+              className="personas-page__view-toggle clientes-modal__origin-toggle"
+              role="tablist"
+              aria-label="Tipo de cliente"
+            >
+              <button
+                type="button"
+                className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "persona" ? "is-active" : ""}`}
+                onClick={() => handleOriginTypeChange("persona")}
+                disabled={actionLoading}
+                aria-pressed={clienteOriginType === "persona"}
+                title="Cliente Persona"
               >
-                <option value="">Seleccione</option>
-                {personaOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
-                  </option>
-                ))}
-              </select>
-              {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
+                Cliente Persona
+              </button>
+              <button
+                type="button"
+                className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "empresa" ? "is-active" : ""}`}
+                onClick={() => handleOriginTypeChange("empresa")}
+                disabled={actionLoading}
+                aria-pressed={clienteOriginType === "empresa"}
+                title="Cliente Empresa"
+              >
+                Cliente Empresa
+              </button>
             </div>
 
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Empresa</label>
-              <select
-                className={`form-select ${errors.id_empresa ? "is-invalid" : ""}`}
-                value={form.id_empresa}
-                onChange={(event) => setForm((state) => ({ ...state, id_empresa: event.target.value }))}
+            <div className="clientes-modal__origin-row">
+              <span
+                className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}
               >
-                <option value="">Seleccione</option>
-                {empresaOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              {errors.id_empresa && <div className="invalid-feedback d-block">{errors.id_empresa}</div>}
+                {formOriginLabel}
+              </span>
+              <span className="clientes-modal__origin-caption">
+                {drawerMode === "edit" ? "Origen actual del cliente" : "Define el origen del cliente"}
+              </span>
             </div>
+            <p className="clientes-modal__origin-text">
+              Seleccione una persona o una empresa. Solo puede elegir una opcion.
+            </p>
+          </div>
+
+          <div className="row g-3 crud-modal__grid">
+            {clienteOriginType === "persona" ? (
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Persona</label>
+                <Select
+                  inputId="cliente-persona-select"
+                  className={`clientes-persona-select ${errors.id_persona ? "is-invalid" : ""}`}
+                  classNamePrefix="clientes-persona-select"
+                  placeholder="Seleccione"
+                  isSearchable
+                  isClearable
+                  options={personaSelectOptions}
+                  value={personaSelectValue}
+                  onChange={(option) => {
+                    setClienteOriginType("persona");
+                    setForm((state) => ({
+                      ...state,
+                      id_persona: option?.value ? String(option.value) : "",
+                      id_empresa: "",
+                    }));
+                    setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
+                  }}
+                  styles={personaSelectStyles}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled={personaDisabled}
+                />
+                {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
+                <small className="clientes-modal__field-hint">
+                  Para cambiar a empresa, selecciona primero el tipo "Cliente Empresa".
+                </small>
+              </div>
+            ) : (
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Empresa</label>
+                <AsyncSelect
+                  inputId="cliente-empresa-select"
+                  className={`clientes-persona-select ${errors.id_empresa ? "is-invalid" : ""}`}
+                  classNamePrefix="clientes-persona-select"
+                  placeholder="Seleccione"
+                  cacheOptions
+                  defaultOptions={empresaDefaultOptions}
+                  loadOptions={loadEmpresaOptions}
+                  isClearable
+                  value={empresaSelectValue}
+                  onChange={(option) => {
+                    setClienteOriginType("empresa");
+                    setForm((state) => ({
+                      ...state,
+                      id_empresa: option?.value ? String(option.value) : "",
+                      id_persona: "",
+                    }));
+                    setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
+                  }}
+                  styles={empresaSelectStyles}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled={empresaDisabled}
+                  noOptionsMessage={() => "No se encontraron resultados"}
+                  loadingMessage={() => "Buscando..."}
+                />
+                {errors.id_empresa && <div className="invalid-feedback d-block">{errors.id_empresa}</div>}
+                <small className="clientes-modal__field-hint">
+                  Para cambiar a persona, selecciona primero el tipo "Cliente Persona".
+                </small>
+              </div>
+            )}
 
             <div className="col-12">
               <label className="form-label text-light text-opacity-75">Tipo cliente</label>
-              <select
-                className={`form-select ${errors.id_tipo_cliente ? "is-invalid" : ""}`}
-                value={form.id_tipo_cliente}
-                onChange={(event) => setForm((state) => ({ ...state, id_tipo_cliente: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {tipoClienteOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
+              <AsyncSelect
+                inputId="cliente-tipo-select"
+                className={`clientes-persona-select ${errors.id_tipo_cliente ? "is-invalid" : ""}`}
+                classNamePrefix="clientes-persona-select"
+                placeholder="Seleccione"
+                cacheOptions
+                defaultOptions={tipoClienteDefaultOptions}
+                loadOptions={loadTipoClienteOptions}
+                isClearable={false}
+                value={tipoClienteSelectValue}
+                onChange={(option) =>
+                  setForm((state) => ({
+                    ...state,
+                    id_tipo_cliente: option?.value ? String(option.value) : "",
+                  }))
+                }
+                styles={tipoClienteSelectStyles}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
+                noOptionsMessage={() => "No se encontraron resultados"}
+                loadingMessage={() => "Buscando..."}
+              />
               {errors.id_tipo_cliente && <div className="invalid-feedback d-block">{errors.id_tipo_cliente}</div>}
             </div>
 
@@ -931,7 +1610,7 @@ const Clientes = ({ openToast }) => {
             </div>
 
             <div className="col-12">
-              <div className="form-check">
+              <div className="form-check form-switch m-0">
                 <input
                   className="form-check-input"
                   type="checkbox"
@@ -946,18 +1625,18 @@ const Clientes = ({ openToast }) => {
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
+          <div className="d-flex gap-2 mt-4 crud-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill"
-              onClick={() => setShowModal(false)}
+              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+              onClick={closeFormDrawer}
               disabled={actionLoading || !!deletingId}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill"
+              className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
               disabled={actionLoading || !!deletingId}
             >
               {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}

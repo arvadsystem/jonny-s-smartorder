@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { inventarioService } from '../../../services/inventarioService';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 
 const AlertasTab = ({ openToast }) => {
+  const navigate = useNavigate();
+  const { can } = usePermisos();
+  // AM: CTA opcional para crear solicitud OC desde alertas de stock.
+  const canCreateOc = can(PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR);
   // ==============================
   // TOAST (SI NO VIENE DEL PADRE)
   // ==============================
@@ -79,7 +86,8 @@ const AlertasTab = ({ openToast }) => {
   const getAlmacenLabel = useCallback((id) => {
     const a = almacenesMap.get(String(id));
     if (!a) return String(id || '-');
-    return `${a.nombre} (Sucursal ${a.id_sucursal})`;
+    // AM: el usuario pidio mostrar solo el nombre del almacen.
+    return `${a.nombre}`;
   }, [almacenesMap]);
 
   const getCategoriaLabel = useCallback((id) => {
@@ -332,14 +340,26 @@ const AlertasTab = ({ openToast }) => {
       <div className="card-header fw-semibold d-flex align-items-center justify-content-between">
         <span>Alertas de stock</span>
 
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-secondary"
-          onClick={cargarTodo}
-          disabled={loading}
-        >
-          {loading ? 'Actualizando...' : 'Actualizar'}
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          {canCreateOc && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary"
+              onClick={() => navigate('/dashboard/inventario?tab=ordenes_compra')}
+            >
+              Crear solicitud OC
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            onClick={cargarTodo}
+            disabled={loading}
+          >
+            {loading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
       </div>
 
       <div className="card-body">
@@ -417,7 +437,7 @@ const AlertasTab = ({ openToast }) => {
               <option value="todos">Todos almacenes</option>
               {almacenes.map((a) => (
                 <option key={a.id_almacen} value={a.id_almacen}>
-                  {a.nombre} (Sucursal {a.id_sucursal})
+                  {a.nombre}
                 </option>
               ))}
             </select>

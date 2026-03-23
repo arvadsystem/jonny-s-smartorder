@@ -802,7 +802,7 @@ export default function Usuarios({ openToast }) {
                 </div>
                 <div className="col-12">
                   <div className="alert alert-info mb-0">
-                    Se enviara un correo con usuario y contrasena temporal. En el primer ingreso se solicitara cambiar la contrasena.
+                    Se enviara un correo con usuario y contraseña temporal. En el primer ingreso se solicitara cambiar la contraseña.
                   </div>
                 </div>
               </>

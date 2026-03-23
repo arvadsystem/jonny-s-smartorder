@@ -1,10 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { personaService } from "../../../services/personasService";
 import EntityTable from "../../../components/ui/EntityTable";
 import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
 import ModuleKPICards from "./components/common/ModuleKPICards";
 import EmpresaCard from "./components/empresas/EmpresaCard";
+import SearchSuggestionsDropdown from "./components/common/SearchSuggestionsDropdown";
+import useSearchSuggestionsDropdown, {
+  MIN_CHARS_FOR_SUGGESTIONS,
+  normalizeSearchText,
+} from "./components/common/useSearchSuggestionsDropdown";
+import "./components/empresas/empresas-modal.css";
 
 const emptyForm = {
   rtn: "",
@@ -12,6 +18,7 @@ const emptyForm = {
   id_telefono: "",
   id_direccion: "",
   id_correo: "",
+  estado: true,
 };
 
 const createInitialFiltersDraft = () => ({
@@ -19,19 +26,62 @@ const createInitialFiltersDraft = () => ({
   sortBy: "recientes",
 });
 
-const normalizeValue = (v) => String(v ?? "").trim().toLowerCase();
+const EMAIL_WITH_DOMAIN_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const RTN_DIGITS_LENGTH = 14;
+const RTN_DISPLAY_MAX_LENGTH = 16;
+const PHONE_DIGITS_LENGTH = 8;
+const PHONE_DISPLAY_MAX_LENGTH = 9;
+const RTN_FORMAT_ERROR = "El RTN debe contener 14 digitos numericos.";
+const SUGGESTION_LIMIT = 8;
 
-const findFkId = (record, fkKey, textKeys, catalog, idKey, labelKey) => {
-  if (record?.[fkKey]) return String(record[fkKey]);
+const normalizeText = (value) => String(value ?? "").trim();
+const toSearchableText = (value) => normalizeText(value).toLowerCase();
 
-  const recordTexts = textKeys.map((k) => normalizeValue(record?.[k])).filter(Boolean);
-  if (!recordTexts.length) return "";
+const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
+const limitText = (value, max) => String(value ?? "").slice(0, max);
 
-  const found = (Array.isArray(catalog) ? catalog : []).find((item) =>
-    recordTexts.includes(normalizeValue(item?.[labelKey]))
+const formatRtn = (rawValue) => {
+  const clean = limitText(digitsOnly(rawValue), RTN_DIGITS_LENGTH);
+  const part1 = clean.slice(0, 4);
+  const part2 = clean.slice(4, 8);
+  const part3 = clean.slice(8, 14);
+
+  if (clean.length <= 4) return part1;
+  if (clean.length <= 8) return `${part1}-${part2}`;
+  return `${part1}-${part2}-${part3}`;
+};
+
+const resolveCaretFromDigitIndex = (formattedValue, digitIndex) => {
+  if (!formattedValue) return 0;
+  if (digitIndex <= 0) return 0;
+
+  let seenDigits = 0;
+  for (let index = 0; index < formattedValue.length; index += 1) {
+    const char = formattedValue[index];
+    if (char >= "0" && char <= "9") {
+      seenDigits += 1;
+      if (seenDigits >= digitIndex) return index + 1;
+    }
+  }
+
+  return formattedValue.length;
+};
+
+const formatPhone = (digits8) => {
+  const clean = String(digits8 ?? "");
+  const part1 = clean.slice(0, 4);
+  const part2 = clean.slice(4, 8);
+  if (clean.length <= 4) return part1;
+  return `${part1}-${part2}`;
+};
+
+const findCatalogLabelById = (catalog, idKey, labelKey, idValue) => {
+  const idAsText = normalizeText(idValue);
+  if (!idAsText) return "";
+  const found = (Array.isArray(catalog) ? catalog : []).find(
+    (item) => normalizeText(item?.[idKey]) === idAsText
   );
-
-  return found?.[idKey] ? String(found[idKey]) : "";
+  return normalizeText(found?.[labelKey]);
 };
 
 const normalizeListResponse = (resp) => {
@@ -68,17 +118,16 @@ const readViewMode = (storageKey) => {
   }
 };
 
-const detectEstadoField = (empresa) => {
-  if (Object.prototype.hasOwnProperty.call(empresa || {}, "estado")) return "estado";
-  if (Object.prototype.hasOwnProperty.call(empresa || {}, "activo")) return "activo";
-  if (Object.prototype.hasOwnProperty.call(empresa || {}, "habilitado")) return "habilitado";
-  return null;
-};
-
 const isEmpresaActiva = (empresa) => {
-  const field = detectEstadoField(empresa);
-  if (!field) return true;
-  return Boolean(empresa[field]);
+  const raw = empresa?.estado;
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "number") return raw === 1;
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    if (["true", "1", "t", "si", "activo"].includes(normalized)) return true;
+    if (["false", "0", "f", "no", "inactivo"].includes(normalized)) return false;
+  }
+  return false;
 };
 
 export default function Empresas({ openToast }) {
@@ -96,6 +145,7 @@ export default function Empresas({ openToast }) {
   const [empresas, setEmpresas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("empresasViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
@@ -104,7 +154,7 @@ export default function Empresas({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const limit = 10;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
@@ -114,7 +164,6 @@ export default function Empresas({ openToast }) {
 
   const [actionLoading, setActionLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-  const [togglingEstadoId, setTogglingEstadoId] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     show: false,
     idToDelete: null,
@@ -124,6 +173,11 @@ export default function Empresas({ openToast }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogosCargadosRef = useRef(false);
+  const panelRef = useRef(null);
+  const rtnInputRef = useRef(null);
+  const rtnCaretRef = useRef(null);
+  const telefonoInputRef = useRef(null);
+  const telefonoCaretRef = useRef(null);
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
   );
@@ -131,36 +185,87 @@ export default function Empresas({ openToast }) {
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
 
+  const blurFocusedElementInside = useCallback((containerId) => {
+    if (typeof document === "undefined") return;
+    const container = document.getElementById(containerId);
+    const active = document.activeElement;
+    if (!container || !active) return;
+    if (container.contains(active) && typeof active.blur === "function") {
+      active.blur();
+    }
+  }, []);
+
+  const closeFormDrawer = useCallback(() => {
+    blurFocusedElementInside("emp-form-drawer");
+    setShowModal(false);
+  }, [blurFocusedElementInside]);
+
   const buildFormFromEmpresa = useCallback(
     (empresa) => ({
-      rtn: empresa?.rtn || "",
-      nombre_empresa: empresa?.nombre_empresa || "",
-      id_telefono: findFkId(
-        empresa,
-        "id_telefono",
-        ["telefono", "telefono_numero", "numero_telefono"],
-        telefonos,
-        "id_telefono",
-        "telefono"
+      rtn: formatRtn(empresa?.rtn),
+      nombre_empresa: normalizeText(empresa?.nombre_empresa),
+      id_telefono: formatPhone(
+        limitText(
+          digitsOnly(
+            empresa?.telefono ??
+              empresa?.telefono_numero ??
+              empresa?.numero_telefono ??
+              findCatalogLabelById(
+                telefonos,
+                "id_telefono",
+                "telefono",
+                empresa?.id_telefono
+              )
+          ),
+          PHONE_DIGITS_LENGTH
+        )
       ),
-      id_direccion: findFkId(
-        empresa,
-        "id_direccion",
-        ["direccion", "direccion_detalle"],
-        direcciones,
-        "id_direccion",
-        "direccion"
+      id_direccion: normalizeText(
+        empresa?.direccion ??
+          empresa?.direccion_detalle ??
+          findCatalogLabelById(
+            direcciones,
+            "id_direccion",
+            "direccion",
+            empresa?.id_direccion
+          )
       ),
-      id_correo: findFkId(
-        empresa,
-        "id_correo",
-        ["correo", "direccion_correo", "email"],
-        correos,
-        "id_correo",
-        "direccion_correo"
+      id_correo: normalizeText(
+        empresa?.correo ??
+          empresa?.direccion_correo ??
+          empresa?.email ??
+          findCatalogLabelById(
+            correos,
+            "id_correo",
+            "direccion_correo",
+            empresa?.id_correo
+          )
       ),
+      estado: isEmpresaActiva(empresa),
     }),
     [telefonos, direcciones, correos]
+  );
+
+  const buildEmpresaPayloadFromForm = useCallback(
+    (sourceForm) => {
+      const rtnRaw = limitText(digitsOnly(sourceForm?.rtn), RTN_DIGITS_LENGTH);
+      const telefonoRaw = limitText(digitsOnly(sourceForm?.id_telefono), PHONE_DIGITS_LENGTH);
+      const direccion = normalizeText(sourceForm?.id_direccion);
+      const correo = normalizeText(sourceForm?.id_correo);
+
+      const payload = {
+        rtn: rtnRaw,
+        nombre_empresa: normalizeText(sourceForm?.nombre_empresa),
+        estado: Boolean(sourceForm?.estado),
+      };
+
+      if (telefonoRaw) payload.texto_telefono = formatPhone(telefonoRaw);
+      if (direccion) payload.texto_direccion = direccion;
+      if (correo) payload.texto_correo = correo;
+
+      return payload;
+    },
+    []
   );
 
   const cargarCatalogos = useCallback(async () => {
@@ -192,7 +297,7 @@ export default function Empresas({ openToast }) {
       const resp = await personaService.getEmpresas({
         page,
         limit,
-        nombre: search?.trim() || undefined,
+        nombre: debouncedSearch || undefined,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -209,7 +314,7 @@ export default function Empresas({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, search, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -227,7 +332,12 @@ export default function Empresas({ openToast }) {
   }, [cargarEmpresas]);
 
   useEffect(() => {
-    setPage(1);
+    const timerId = window.setTimeout(() => {
+      const nextSearch = normalizeSearchText(search);
+      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
   }, [search]);
 
   useEffect(() => {
@@ -243,6 +353,34 @@ export default function Empresas({ openToast }) {
       // Keep working even if storage is unavailable.
     }
   }, [viewMode]);
+
+  useLayoutEffect(() => {
+    if (rtnCaretRef.current === null) return;
+    const input = rtnInputRef.current;
+    if (!input) return;
+
+    const nextCaret = rtnCaretRef.current;
+    rtnCaretRef.current = null;
+    try {
+      input.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+      // Some browsers can throw when the element is not focusable.
+    }
+  }, [form.rtn]);
+
+  useLayoutEffect(() => {
+    if (telefonoCaretRef.current === null) return;
+    const input = telefonoInputRef.current;
+    if (!input) return;
+
+    const nextCaret = telefonoCaretRef.current;
+    telefonoCaretRef.current = null;
+    try {
+      input.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+      // Some browsers can throw when the element is not focusable.
+    }
+  }, [form.id_telefono]);
 
   useEffect(() => {
     if (!showModal || !editId) return;
@@ -261,23 +399,95 @@ export default function Empresas({ openToast }) {
     });
   }, [showModal, editId, empresas, buildFormFromEmpresa]);
 
-  const validar = () => {
+  const handleRtnChange = useCallback((event) => {
+    const inputValue = event.target.value ?? "";
+    const caretPosition = event.target.selectionStart ?? inputValue.length;
+    const digitsBeforeCaret = digitsOnly(inputValue.slice(0, caretPosition)).length;
+    const clean = limitText(digitsOnly(inputValue), RTN_DIGITS_LENGTH);
+    const formatted = formatRtn(clean);
+
+    rtnCaretRef.current = resolveCaretFromDigitIndex(
+      formatted,
+      Math.min(digitsBeforeCaret, clean.length)
+    );
+
+    setForm((state) => ({ ...state, rtn: formatted }));
+    setErrors((state) => ({ ...state, rtn: undefined }));
+  }, []);
+
+  const handleRtnPaste = useCallback((event) => {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData("text") ?? "";
+    const clean = limitText(digitsOnly(pasted), RTN_DIGITS_LENGTH);
+    const formatted = formatRtn(clean);
+
+    rtnCaretRef.current = formatted.length;
+    setForm((state) => ({ ...state, rtn: formatted }));
+    setErrors((state) => ({ ...state, rtn: undefined }));
+  }, []);
+
+  const handleTelefonoChange = useCallback((event) => {
+    const inputValue = event.target.value ?? "";
+    const caretPosition = event.target.selectionStart ?? inputValue.length;
+    const digitsBeforeCaret = digitsOnly(inputValue.slice(0, caretPosition)).length;
+    const raw = limitText(digitsOnly(inputValue), PHONE_DIGITS_LENGTH);
+    const formatted = formatPhone(raw);
+
+    telefonoCaretRef.current = resolveCaretFromDigitIndex(
+      formatted,
+      Math.min(digitsBeforeCaret, raw.length)
+    );
+
+    setForm((state) => ({ ...state, id_telefono: formatted }));
+    setErrors((state) => ({ ...state, id_telefono: undefined }));
+  }, []);
+
+  const handleTelefonoPaste = useCallback((event) => {
+    event.preventDefault();
+    const pasted = event.clipboardData?.getData("text") ?? "";
+    const raw = limitText(digitsOnly(pasted), PHONE_DIGITS_LENGTH);
+    const formatted = formatPhone(raw);
+
+    telefonoCaretRef.current = formatted.length;
+    setForm((state) => ({ ...state, id_telefono: formatted }));
+    setErrors((state) => ({ ...state, id_telefono: undefined }));
+  }, []);
+
+  const handleFieldChange = useCallback((field, value) => {
+    setForm((state) => ({ ...state, [field]: value }));
+    setErrors((state) => ({ ...state, [field]: undefined }));
+  }, []);
+
+  const validar = useCallback(() => {
     const currentErrors = {};
+    const rtnRaw = limitText(digitsOnly(form.rtn), RTN_DIGITS_LENGTH);
+    const telefonoRaw = digitsOnly(form.id_telefono);
+    const correoValue = normalizeText(form.id_correo);
 
     if (!form.nombre_empresa?.trim()) currentErrors.nombre_empresa = "Requerido";
-    if (!form.rtn?.trim()) currentErrors.rtn = "Requerido";
-    if (!form.id_telefono) currentErrors.id_telefono = "Seleccione";
-    if (!form.id_direccion) currentErrors.id_direccion = "Seleccione";
-    if (!form.id_correo) currentErrors.id_correo = "Seleccione";
+    if (!rtnRaw) {
+      currentErrors.rtn = "Requerido";
+    } else if (rtnRaw.length !== RTN_DIGITS_LENGTH) {
+      currentErrors.rtn = RTN_FORMAT_ERROR;
+    }
+
+    if (telefonoRaw && telefonoRaw.length !== PHONE_DIGITS_LENGTH) {
+      currentErrors.id_telefono = "Formato invalido";
+    }
+
+    if (correoValue && !EMAIL_WITH_DOMAIN_REGEX.test(correoValue)) {
+      currentErrors.id_correo = "Ingrese un correo valido con dominio";
+    }
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
-  };
+  }, [form]);
 
   const guardar = async (event) => {
     event.preventDefault();
     if (!validar() || actionLoading) return;
 
+    const payloadActual = buildEmpresaPayloadFromForm(form);
     setActionLoading(true);
     try {
       if (editId) {
@@ -289,10 +499,14 @@ export default function Empresas({ openToast }) {
         }
 
         const originalForm = buildFormFromEmpresa(empresaOriginal);
+        const originalPayload = buildEmpresaPayloadFromForm(originalForm);
         const changedPayload = Object.fromEntries(
-          Object.keys(emptyForm)
-            .filter((key) => String(form[key] ?? "") !== String(originalForm[key] ?? ""))
-            .map((key) => [key, form[key]])
+          Object.keys(payloadActual)
+            .filter(
+              (key) =>
+                String(payloadActual[key] ?? "") !== String(originalPayload[key] ?? "")
+            )
+            .map((key) => [key, payloadActual[key]])
         );
 
         if (!Object.keys(changedPayload).length) {
@@ -302,11 +516,11 @@ export default function Empresas({ openToast }) {
           safeToast("OK", "Empresa actualizada");
         }
       } else {
-        await personaService.createEmpresa(form);
+        await personaService.createEmpresa(payloadActual);
         safeToast("OK", "Empresa creada");
       }
 
-      setShowModal(false);
+      closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
       await cargarEmpresas();
@@ -326,41 +540,12 @@ export default function Empresas({ openToast }) {
   };
 
   const openCreate = () => {
-    if (actionLoading || deletingId || togglingEstadoId) return;
+    if (actionLoading || deletingId) return;
     setFiltersOpen(false);
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
     setShowModal(true);
-  };
-
-  const toggleEstadoEmpresa = async (empresa, nextEstado) => {
-    if (actionLoading || deletingId || togglingEstadoId) return;
-    const id = empresa.id_empresa;
-    const estadoField = detectEstadoField(empresa) || "estado";
-
-    if (!window.confirm(`Deseas ${nextEstado ? "habilitar" : "deshabilitar"} esta empresa?`)) {
-      return;
-    }
-
-    setTogglingEstadoId(id);
-    try {
-      await personaService.updateEmpresa(id, { [estadoField]: nextEstado });
-
-      setEmpresas((prev) =>
-        prev.map((item) =>
-          String(item.id_empresa) === String(id)
-            ? { ...item, [estadoField]: nextEstado }
-            : item
-        )
-      );
-
-      safeToast("OK", `Empresa ${nextEstado ? "habilitada" : "deshabilitada"}`);
-    } catch (error) {
-      safeToast("ERROR", error.message || "No se pudo actualizar estado", "danger");
-    } finally {
-      if (mountedRef.current) setTogglingEstadoId(null);
-    }
   };
 
   const openConfirmDelete = (empresa) => {
@@ -376,14 +561,14 @@ export default function Empresas({ openToast }) {
 
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
-    if (!id || actionLoading || deletingId || togglingEstadoId) return;
+    if (!id || actionLoading || deletingId) return;
 
     setDeletingId(id);
     try {
       await personaService.deleteEmpresa(id);
 
       if (String(editId) === String(id)) {
-        setShowModal(false);
+        closeFormDrawer();
         setEditId(null);
         setForm(emptyForm);
       }
@@ -453,6 +638,92 @@ export default function Empresas({ openToast }) {
     return filtered;
   }, [empresas, search, estadoFiltro, sortBy]);
 
+  const predictiveSuggestions = useMemo(() => {
+    const searchTerm = toSearchableText(search);
+    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
+
+    const source = Array.isArray(empresas) ? empresas : [];
+    const suggestions = [];
+    const seen = new Set();
+
+    for (const empresa of source) {
+      const activa = isEmpresaActiva(empresa);
+      const matchEstado =
+        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activa : !activa;
+      if (!matchEstado) continue;
+
+      const nombre = toDisplayValue(empresa?.nombre_empresa, "Empresa sin nombre");
+      const rtn = normalizeText(empresa?.rtn);
+      const telefono = normalizeText(
+        empresa?.telefono ?? empresa?.telefono_numero ?? empresa?.numero_telefono
+      );
+      const correo = normalizeText(
+        empresa?.correo ?? empresa?.direccion_correo ?? empresa?.email
+      );
+      const direccion = normalizeText(empresa?.direccion ?? empresa?.direccion_detalle);
+      const haystack = toSearchableText([nombre, rtn, telefono, correo, direccion].join(" "));
+
+      if (!haystack.includes(searchTerm)) continue;
+
+      const dedupeKey = toSearchableText(nombre);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const detailParts = [];
+      if (rtn) detailParts.push(`RTN: ${rtn}`);
+      if (correo) detailParts.push(correo);
+      else if (telefono) detailParts.push(telefono);
+      if (!detailParts.length && direccion) detailParts.push(direccion);
+
+      suggestions.push({
+        id: `emp-${empresa?.id_empresa ?? dedupeKey}`,
+        value: nombre,
+        label: nombre,
+        detail: detailParts.join(" | ") || "Empresa registrada",
+      });
+
+      if (suggestions.length >= SUGGESTION_LIMIT) break;
+    }
+
+    return suggestions;
+  }, [empresas, estadoFiltro, search]);
+
+  const handleSearchUpdate = useCallback((value, { source } = {}) => {
+    const normalized = normalizeSearchText(value);
+    setPage((prev) => (prev === 1 ? prev : 1));
+    if (!normalized) {
+      setDebouncedSearch("");
+      return;
+    }
+    if (source === "suggestion") {
+      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+    }
+  }, []);
+
+  const {
+    handleSearchInputChange,
+    searchDropdownRef,
+    isSearchDropdownMounted,
+    isSearchDropdownVisible,
+    searchDropdownStyle,
+    searchDropdownTitle,
+    isPredictiveSearch,
+    searchSuggestionItems,
+    activeSuggestionIndex,
+    applySearchSuggestion,
+    removeRecentSearch,
+    clearRecentSearches,
+    recentSearchesCount,
+  } = useSearchSuggestionsDropdown({
+    panelRef,
+    search,
+    setSearch,
+    committedSearch: debouncedSearch,
+    onSearchUpdate: handleSearchUpdate,
+    predictiveSuggestions,
+    recentStorageKey: "empresasRecentSearchesV1",
+  });
+
   const stats = useMemo(() => {
     const totalFiltradas = empresasFiltradas.length;
     const activas = empresasFiltradas.filter((item) => isEmpresaActiva(item)).length;
@@ -469,7 +740,7 @@ export default function Empresas({ openToast }) {
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersDraft({ estadoFiltro, sortBy });
     setFiltersOpen(true);
   };
@@ -489,26 +760,26 @@ export default function Empresas({ openToast }) {
   };
 
   const clearAllFilters = () => {
-    setSearch("");
+    handleSearchInputChange("");
     clearVisualFilters();
     setFiltersOpen(false);
   };
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
-    setShowModal(false);
+    closeFormDrawer();
     setFiltersOpen(false);
   };
 
   return (
-    <div className="personas-page">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+    <div className="personas-page personas-page--empresas">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderModulo
           iconClass="bi bi-buildings-fill"
           title="Empresas"
           subtitle="Gestion visual de empresas"
           search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchInputChange}
           searchPlaceholder="Buscar por nombre, RTN, telefono, correo o direccion..."
           searchAriaLabel="Buscar empresas"
           filtersOpen={filtersOpen}
@@ -520,6 +791,22 @@ export default function Empresas({ openToast }) {
           formControlsId="emp-form-drawer"
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+        />
+
+        <SearchSuggestionsDropdown
+          mounted={isSearchDropdownMounted}
+          visible={isSearchDropdownVisible}
+          dropdownRef={searchDropdownRef}
+          dropdownStyle={searchDropdownStyle}
+          title={searchDropdownTitle}
+          isPredictiveSearch={isPredictiveSearch}
+          recentCount={recentSearchesCount}
+          items={searchSuggestionItems}
+          activeIndex={activeSuggestionIndex}
+          searchValue={search}
+          onApplySuggestion={applySearchSuggestion}
+          onRemoveRecent={removeRecentSearch}
+          onClearRecent={clearRecentSearches}
         />
 
         <ModuleKPICards stats={stats} totalLabel="Total de empresas" />
@@ -578,7 +865,6 @@ export default function Empresas({ openToast }) {
                       const isActive = isEmpresaActiva(empresa);
                       const idEmpresa = empresa?.id_empresa;
                       const deleting = deletingId === idEmpresa;
-                      const toggling = togglingEstadoId === idEmpresa;
                       const tableIndex = (page - 1) * limit + idx;
                       const telefono = empresa?.telefono ?? empresa?.telefono_numero ?? empresa?.numero_telefono;
                       const correo = empresa?.correo ?? empresa?.direccion_correo ?? empresa?.email;
@@ -611,7 +897,7 @@ export default function Empresas({ openToast }) {
                                 className="inv-catpro-action edit inv-catpro-action-compact"
                                 onClick={() => iniciarEdicion(empresa)}
                                 title="Editar"
-                                disabled={actionLoading || deleting || toggling}
+                                disabled={actionLoading || deleting}
                               >
                                 <i className="bi bi-pencil-square" />
                                 <span className="inv-catpro-action-label">Editar</span>
@@ -619,23 +905,10 @@ export default function Empresas({ openToast }) {
 
                               <button
                                 type="button"
-                                className={`inv-catpro-action ${isActive ? "state-off" : "state-on"} inv-catpro-action-compact`}
-                                onClick={() => toggleEstadoEmpresa(empresa, !isActive)}
-                                title={isActive ? "Inactivar" : "Activar"}
-                                disabled={actionLoading || deleting || toggling}
-                              >
-                                <i className={`bi ${isActive ? "bi-slash-circle" : "bi-check-circle"}`} />
-                                <span className="inv-catpro-action-label">
-                                  {toggling ? "Procesando" : isActive ? "Inactivar" : "Activar"}
-                                </span>
-                              </button>
-
-                              <button
-                                type="button"
                                 className="inv-catpro-action danger inv-catpro-action-compact"
                                 onClick={() => openConfirmDelete(empresa)}
                                 title="Eliminar"
-                                disabled={actionLoading || deleting || toggling}
+                                disabled={actionLoading || deleting}
                               >
                                 <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
                                 <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
@@ -657,10 +930,8 @@ export default function Empresas({ openToast }) {
                     index={(page - 1) * limit + idx}
                     onOpenEdit={iniciarEdicion}
                     onOpenDelete={openConfirmDelete}
-                    onToggleEstado={toggleEstadoEmpresa}
                     actionLoading={actionLoading}
                     deletingId={deletingId}
-                    togglingEstadoId={togglingEstadoId}
                   />
                 ))}
               </div>
@@ -671,7 +942,7 @@ export default function Empresas({ openToast }) {
             <button
               type="button"
               className="btn btn-outline-secondary"
-              disabled={page === 1 || loading || actionLoading || !!deletingId || !!togglingEstadoId}
+              disabled={page === 1 || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev - 1)}
             >
               <i className="bi bi-chevron-left me-1" />
@@ -684,7 +955,7 @@ export default function Empresas({ openToast }) {
             <button
               type="button"
               className="btn btn-outline-secondary"
-              disabled={page >= totalPages || loading || actionLoading || !!deletingId || !!togglingEstadoId}
+              disabled={page >= totalPages || loading || actionLoading || !!deletingId}
               onClick={() => setPage((prev) => prev + 1)}
             >
               Siguiente
@@ -699,7 +970,7 @@ export default function Empresas({ openToast }) {
         className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? "is-hidden" : ""}`}
         onClick={openCreate}
         title="Nuevo"
-        disabled={actionLoading || !!deletingId || !!togglingEstadoId}
+        disabled={actionLoading || !!deletingId}
       >
         <i className="bi bi-plus" />
       </button>
@@ -727,7 +998,7 @@ export default function Empresas({ openToast }) {
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${showModal ? "show" : ""} ${
+        className={`inv-prod-drawer inv-cat-v2__drawer empresas-modal ${showModal ? "show" : ""} ${
           drawerMode === "create" ? "is-create" : "is-edit"
         }`}
         id="emp-form-drawer"
@@ -735,113 +1006,142 @@ export default function Empresas({ openToast }) {
         aria-modal="true"
         aria-hidden={!showModal}
       >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-buildings inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{drawerMode === "create" ? "Nueva empresa" : "Editar empresa"}</div>
-            <div className="inv-prod-drawer-sub">Completa los campos y guarda los cambios.</div>
+        <div className="inv-prod-drawer-head empresas-modal__header">
+          <div className="empresas-modal__header-copy">
+            <div className="inv-prod-drawer-title empresas-modal__title">
+              {drawerMode === "create" ? "Nueva empresa" : "Editar empresa"}
+            </div>
+            <div className="inv-prod-drawer-sub empresas-modal__subtitle">
+              Completa los campos y guarda los cambios.
+            </div>
           </div>
-          <button type="button" className="inv-prod-drawer-close" onClick={() => setShowModal(false)} title="Cerrar">
+          <button
+            type="button"
+            className="inv-prod-drawer-close empresas-modal__close"
+            onClick={closeFormDrawer}
+            title="Cerrar"
+          >
             <i className="bi bi-x-lg" />
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite" onSubmit={guardar}>
-          <div className="row g-3">
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">RTN</label>
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite empresas-modal__body" onSubmit={guardar}>
+          <div className="row g-3 empresas-modal__grid">
+            <div className="col-12 col-md-6 empresas-modal__field">
+              <label className="form-label empresas-modal__label">RTN</label>
               <input
-                className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
+                ref={rtnInputRef}
+                type="text"
+                inputMode="numeric"
+                maxLength={RTN_DISPLAY_MAX_LENGTH}
+                className={`form-control empresas-modal__input ${errors.rtn ? "is-invalid" : ""}`}
+                placeholder="0801-9010-000000"
                 value={form.rtn}
-                onChange={(event) => setForm((state) => ({ ...state, rtn: event.target.value }))}
+                onChange={handleRtnChange}
+                onPaste={handleRtnPaste}
               />
               {errors.rtn && <div className="invalid-feedback d-block">{errors.rtn}</div>}
             </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Nombre empresa</label>
+            <div className="col-12 col-md-6 empresas-modal__field">
+              <label className="form-label empresas-modal__label">Nombre empresa</label>
               <input
-                className={`form-control ${errors.nombre_empresa ? "is-invalid" : ""}`}
+                className={`form-control empresas-modal__input ${errors.nombre_empresa ? "is-invalid" : ""}`}
+                placeholder="Ej: Inversiones La Esperanza"
                 value={form.nombre_empresa}
-                onChange={(event) => setForm((state) => ({ ...state, nombre_empresa: event.target.value }))}
+                onChange={(event) => handleFieldChange("nombre_empresa", event.target.value)}
               />
               {errors.nombre_empresa && <div className="invalid-feedback d-block">{errors.nombre_empresa}</div>}
             </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Telefono</label>
-              <select
-                className={`form-select ${errors.id_telefono ? "is-invalid" : ""}`}
+            <div className="col-12 col-md-6 empresas-modal__field">
+              <label className="form-label empresas-modal__label">Telefono</label>
+              <input
+                ref={telefonoInputRef}
+                type="text"
+                inputMode="numeric"
+                maxLength={PHONE_DISPLAY_MAX_LENGTH}
+                list="emp-telefonos-sugeridos"
+                placeholder="0000-0000"
+                className={`form-control empresas-modal__input ${errors.id_telefono ? "is-invalid" : ""}`}
                 value={form.id_telefono}
-                onChange={(event) => setForm((state) => ({ ...state, id_telefono: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
+                onChange={handleTelefonoChange}
+                onPaste={handleTelefonoPaste}
+              />
+              <datalist id="emp-telefonos-sugeridos">
                 {telefonos.map((telefono) => (
-                  <option key={telefono.id_telefono} value={telefono.id_telefono}>
-                    {telefono.telefono}
-                  </option>
+                  <option key={telefono.id_telefono} value={toDisplayValue(telefono.telefono, "")} />
                 ))}
-              </select>
+              </datalist>
               {errors.id_telefono && <div className="invalid-feedback d-block">{errors.id_telefono}</div>}
             </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Direccion</label>
-              <select
-                className={`form-select ${errors.id_direccion ? "is-invalid" : ""}`}
+            <div className="col-12 col-md-6 empresas-modal__field">
+              <label className="form-label empresas-modal__label">Direccion</label>
+              <input
+                type="text"
+                list="emp-direcciones-sugeridas"
+                placeholder="Ej: Col. Palmira, Avenida Republica..."
+                className={`form-control empresas-modal__input ${errors.id_direccion ? "is-invalid" : ""}`}
                 value={form.id_direccion}
-                onChange={(event) => setForm((state) => ({ ...state, id_direccion: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
+                onChange={(event) => handleFieldChange("id_direccion", event.target.value)}
+              />
+              <datalist id="emp-direcciones-sugeridas">
                 {direcciones.map((direccion) => (
-                  <option key={direccion.id_direccion} value={direccion.id_direccion}>
-                    {direccion.direccion}
-                  </option>
+                  <option key={direccion.id_direccion} value={toDisplayValue(direccion.direccion, "")} />
                 ))}
-              </select>
+              </datalist>
               {errors.id_direccion && <div className="invalid-feedback d-block">{errors.id_direccion}</div>}
             </div>
 
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Correo</label>
-              <select
-                className={`form-select ${errors.id_correo ? "is-invalid" : ""}`}
+            <div className="col-12 empresas-modal__field">
+              <label className="form-label empresas-modal__label">Correo</label>
+              <input
+                type="email"
+                list="emp-correos-sugeridos"
+                placeholder="empresa@dominio.com"
+                className={`form-control empresas-modal__input ${errors.id_correo ? "is-invalid" : ""}`}
                 value={form.id_correo}
-                onChange={(event) => setForm((state) => ({ ...state, id_correo: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
+                onChange={(event) => handleFieldChange("id_correo", event.target.value)}
+              />
+              <datalist id="emp-correos-sugeridos">
                 {correos.map((correo) => (
-                  <option key={correo.id_correo} value={correo.id_correo}>
-                    {correo.direccion_correo}
-                  </option>
+                  <option key={correo.id_correo} value={toDisplayValue(correo.direccion_correo, "")} />
                 ))}
-              </select>
+              </datalist>
               {errors.id_correo && <div className="invalid-feedback d-block">{errors.id_correo}</div>}
             </div>
 
-            <div className="col-12">
-              <div className="form-check mt-1">
-                <input className="form-check-input" type="checkbox" checked readOnly id="empresa_estado_visual" />
-                <label className="form-check-label text-light text-opacity-75" htmlFor="empresa_estado_visual">
+            <div className="col-12 empresas-modal__field empresas-modal__switch-wrap">
+              <div className="form-check form-switch m-0">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={Boolean(form.estado)}
+                  onChange={(event) => handleFieldChange("estado", event.target.checked)}
+                  id="empresa_estado_visual"
+                  disabled={actionLoading || !!deletingId}
+                />
+                <label className="form-check-label empresas-modal__label" htmlFor="empresa_estado_visual">
                   Registro habilitado
                 </label>
               </div>
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4">
+          <div className="d-flex gap-2 mt-4 empresas-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill"
-              onClick={() => setShowModal(false)}
-              disabled={actionLoading || !!deletingId || !!togglingEstadoId}
+              className="btn inv-prod-btn-subtle flex-fill empresas-modal__btn"
+              onClick={closeFormDrawer}
+              disabled={actionLoading || !!deletingId}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill"
-              disabled={actionLoading || !!deletingId || !!togglingEstadoId}
+              className="btn inv-prod-btn-primary flex-fill empresas-modal__btn"
+              disabled={actionLoading || !!deletingId}
             >
               {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}
             </button>

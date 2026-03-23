@@ -8,6 +8,11 @@ import ModuleKPICards from './components/common/ModuleKPICards';
 import UsuarioCard from './components/usuarios/UsuarioCard';
 import UsuarioDetailModal from './components/usuarios/UsuarioDetailModal';
 import UsuarioModal from './components/usuarios/UsuarioModal';
+import SearchSuggestionsDropdown from './components/common/SearchSuggestionsDropdown';
+import useSearchSuggestionsDropdown, {
+  MIN_CHARS_FOR_SUGGESTIONS,
+  normalizeSearchText,
+} from './components/common/useSearchSuggestionsDropdown';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
 import {
@@ -163,18 +168,25 @@ const readFileAsDataUrl = (file) =>
   });
 
 const isValidUrlPhoto = (value) => isUsuarioUploadsImageUrl(value);
+const SUGGESTION_LIMIT = 8;
 
 export default function UsuariosTab({ openToast }) {
   const { canAny } = usePermisos();
+  const canListUsuarios = canAny([PERMISSIONS.USUARIOS_LISTADO_VER, PERMISSIONS.USUARIOS_VER]);
   const canCreateUsuario = canAny([PERMISSIONS.USUARIOS_CREAR]);
   const canEditUsuario = canAny([PERMISSIONS.USUARIOS_EDITAR]);
   const canDeleteUsuario = canAny([PERMISSIONS.USUARIOS_ELIMINAR]);
   const canResetPassword = canAny([PERMISSIONS.USUARIOS_PASSWORD_RESETEAR]);
+  const canReadRolesCatalog = canAny([
+    PERMISSIONS.USUARIOS_ROL_ASIGNAR,
+    PERMISSIONS.USUARIOS_CREAR,
+    PERMISSIONS.USUARIOS_EDITAR
+  ]);
   const canEditFotoUsuario = canAny([
     PERMISSIONS.USUARIOS_IMAGEN_SUBIR,
     PERMISSIONS.USUARIOS_IMAGEN_ELIMINAR
   ]);
-  const canVerDetalleUsuario = canAny([PERMISSIONS.USUARIOS_VER]);
+  const canVerDetalleUsuario = canAny([PERMISSIONS.USUARIOS_DETALLE_VER, PERMISSIONS.USUARIOS_VER]);
 
   const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
@@ -188,6 +200,7 @@ export default function UsuariosTab({ openToast }) {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [viewMode, setViewMode] = useState(() => readViewMode('usuariosViewMode'));
 
   const [estadoFiltro, setEstadoFiltro] = useState('todos');
@@ -196,7 +209,7 @@ export default function UsuariosTab({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const limit = 10;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
@@ -241,6 +254,7 @@ export default function UsuariosTab({ openToast }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogLoadedRef = useRef(false);
+  const panelRef = useRef(null);
   const imageInputRef = useRef(null);
 
   const getNombreCompleto = useCallback((u) =>
@@ -308,11 +322,22 @@ export default function UsuariosTab({ openToast }) {
     setCatalogLoading(true);
     setRolesLoading(true);
     try {
-      const [empleadosResp, personasResp, rolesResp] = await Promise.all([
+      const [empleadosResp, personasResp] = await Promise.all([
         personaService.getEmpleados({ page: 1, limit: 100 }),
-        personaService.getPersonasDetalle({ page: 1, limit: 100 }),
-        personaService.getRolesUsuariosV2(),
+        personaService.getPersonasDetalle({ page: 1, limit: 100 })
       ]);
+
+      let rolesItems = [];
+      if (canReadRolesCatalog) {
+        try {
+          const rolesResp = await personaService.getRolesUsuariosV2();
+          rolesItems = Array.isArray(rolesResp)
+            ? rolesResp
+            : normalizeListResponse(rolesResp).items;
+        } catch (error) {
+          safeToast('ERROR', error.message || 'No se pudo cargar el catalogo de roles', 'danger');
+        }
+      }
 
       if (!mountedRef.current) return;
 
@@ -341,10 +366,6 @@ export default function UsuariosTab({ openToast }) {
         };
       }).filter((row) => row.id);
 
-      const rolesItems = Array.isArray(rolesResp)
-        ? rolesResp
-        : normalizeListResponse(rolesResp).items;
-
       const parsedRoles = rolesItems
         .map((role) => ({
           id_rol: String(role?.id_rol ?? ''),
@@ -361,14 +382,27 @@ export default function UsuariosTab({ openToast }) {
       if (mountedRef.current) setCatalogLoading(false);
       if (mountedRef.current) setRolesLoading(false);
     }
-  }, [safeToast]);
+  }, [canReadRolesCatalog, safeToast]);
 
   const cargarUsuarios = useCallback(async () => {
+    if (!canListUsuarios) {
+      if (mountedRef.current) {
+        setUsuarios([]);
+        setTotal(0);
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     const reqId = ++requestIdRef.current;
 
     try {
-      const response = await personaService.getUsuariosV2({ page, limit, q: search?.trim() || '' });
+      const response = await personaService.getUsuariosV2({
+        page,
+        limit,
+        q: debouncedSearch || '',
+      });
       if (!mountedRef.current || reqId !== requestIdRef.current) return;
 
       const { items, total: totalResp } = normalizeListResponse(response);
@@ -382,7 +416,7 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current && reqId === requestIdRef.current) setLoading(false);
     }
-  }, [page, limit, search, safeToast]);
+  }, [canListUsuarios, page, limit, debouncedSearch, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -401,7 +435,12 @@ export default function UsuariosTab({ openToast }) {
   }, [cargarUsuarios]);
 
   useEffect(() => {
-    setPage(1);
+    const timerId = window.setTimeout(() => {
+      const nextSearch = normalizeSearchText(search);
+      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
+    }, 300);
+
+    return () => window.clearTimeout(timerId);
   }, [search]);
 
   useEffect(() => {
@@ -587,9 +626,9 @@ export default function UsuariosTab({ openToast }) {
         document.execCommand('copy');
         document.body.removeChild(el);
       }
-      safeToast('OK', 'Contrasena temporal copiada');
+      safeToast('OK', 'Contraseña temporal copiada');
     } catch {
-      safeToast('ERROR', 'No se pudo copiar la contrasena temporal', 'danger');
+      safeToast('ERROR', 'No se pudo copiar la contraseña temporal', 'danger');
     }
   }, [tempPasswordModal.password, safeToast]);
 
@@ -745,7 +784,7 @@ export default function UsuariosTab({ openToast }) {
       const response = await personaService.resetPasswordUsuarioV2(editId);
       const tempPassword = normalizeText(response?.temp_password);
       if (!tempPassword) {
-        safeToast('ERROR', 'No se recibio la contrasena temporal', 'danger');
+        safeToast('ERROR', 'No se recibio la contraseña temporal', 'danger');
       } else {
         const fallbackUsername =
           normalizeText(
@@ -753,15 +792,15 @@ export default function UsuariosTab({ openToast }) {
           );
         setTempPasswordModal({
           show: true,
-          title: 'Contrasena temporal regenerada',
+          title: 'Contraseña temporal regenerada',
           password: tempPassword,
           username: normalizeText(response?.nombre_usuario) || fallbackUsername,
           revealed: false,
         });
-        safeToast('OK', 'Contrasena temporal regenerada');
+        safeToast('OK', 'Contraseña temporal regenerada');
       }
     } catch (error) {
-      safeToast('ERROR', error?.message || 'No se pudo resetear la contrasena temporal', 'danger');
+      safeToast('ERROR', error?.message || 'No se pudo resetear la contraseña temporal', 'danger');
     } finally {
       if (mountedRef.current) setResetPasswordLoading(false);
     }
@@ -868,6 +907,85 @@ export default function UsuariosTab({ openToast }) {
     return filtered;
   }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo, getRolNombre]);
 
+  const predictiveSuggestions = useMemo(() => {
+    const searchTerm = normalizeSearchText(search).toLowerCase();
+    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
+
+    const source = Array.isArray(usuarios) ? usuarios : [];
+    const suggestions = [];
+    const seen = new Set();
+
+    for (const usuario of source) {
+      const active = parseBooleanField(usuario);
+      const matchEstado = estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? active : !active;
+      if (!matchEstado) continue;
+
+      const nombre = toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre');
+      const dni = toDisplayValue(getDni(usuario), '');
+      const correo = toDisplayValue(getCorreo(usuario), '');
+      const username = toDisplayValue(usuario?.nombre_usuario, '');
+      const rol = toDisplayValue(getRolNombre(usuario), '');
+      const haystack = [nombre, dni, correo, username, rol].join(' ').toLowerCase();
+      if (!haystack.includes(searchTerm)) continue;
+
+      const dedupeKey = normalizeText(nombre).toLowerCase();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const detailParts = [];
+      if (dni && dni !== 'No registrado') detailParts.push(`DNI: ${dni}`);
+      if (correo && correo !== 'No registrado') detailParts.push(correo);
+      if (username && username !== 'No registrado') detailParts.push(`Usuario: ${username}`);
+
+      suggestions.push({
+        id: `usr-${usuario?.id_usuario ?? dedupeKey}`,
+        value: nombre,
+        label: nombre,
+        detail: detailParts.join(' | ') || rol || 'Usuario registrado',
+      });
+
+      if (suggestions.length >= SUGGESTION_LIMIT) break;
+    }
+
+    return suggestions;
+  }, [estadoFiltro, getCorreo, getDni, getNombreCompleto, getRolNombre, search, usuarios]);
+
+  const handleSearchUpdate = useCallback((value, { source } = {}) => {
+    const normalized = normalizeSearchText(value);
+    setPage((prev) => (prev === 1 ? prev : 1));
+    if (!normalized) {
+      setDebouncedSearch('');
+      return;
+    }
+    if (source === 'suggestion') {
+      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+    }
+  }, []);
+
+  const {
+    handleSearchInputChange,
+    searchDropdownRef,
+    isSearchDropdownMounted,
+    isSearchDropdownVisible,
+    searchDropdownStyle,
+    searchDropdownTitle,
+    isPredictiveSearch,
+    searchSuggestionItems,
+    activeSuggestionIndex,
+    applySearchSuggestion,
+    removeRecentSearch,
+    clearRecentSearches,
+    recentSearchesCount,
+  } = useSearchSuggestionsDropdown({
+    panelRef,
+    search,
+    setSearch,
+    committedSearch: debouncedSearch,
+    onSearchUpdate: handleSearchUpdate,
+    predictiveSuggestions,
+    recentStorageKey: 'usuariosRecentSearchesV1',
+  });
+
   const stats = useMemo(() => {
     const totalRows = usuariosFiltrados.length;
     const activas = usuariosFiltrados.filter((u) => parseBooleanField(u)).length;
@@ -891,11 +1009,11 @@ export default function UsuariosTab({ openToast }) {
     setFiltersOpen(false);
   };
 
-  const clearVisualFilters = () => {
+  const clearVisualFilters = useCallback(() => {
     setEstadoFiltro('todos');
     setSortBy('recientes');
     setFiltersDraft(createInitialFiltersDraft());
-  };
+  }, []);
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
@@ -904,17 +1022,38 @@ export default function UsuariosTab({ openToast }) {
   };
 
   const selectedUser = usuarios.find((item) => String(item.id_usuario) === String(editId)) || null;
+  const clearAllFilters = useCallback(() => {
+    handleSearchInputChange('');
+    clearVisualFilters();
+    setFiltersOpen(false);
+  }, [clearVisualFilters, handleSearchInputChange]);
 
   return (
-    <div className="personas-page">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+    <div className="personas-page personas-page--usuarios">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3" ref={panelRef}>
         <HeaderModulo iconClass="bi bi-people-fill" title="Usuarios" subtitle="Gestion visual de usuarios" search={search}
-          onSearchChange={setSearch}
+          onSearchChange={handleSearchInputChange}
           searchPlaceholder="Buscar por nombre, usuario, sucursal, DNI, telefono o correo..."
           searchAriaLabel="Buscar usuarios" filtersOpen={filtersOpen} onOpenFilters={openFiltersDrawer}
           createOpen={showModal} onOpenCreate={openCreate} createLabel="Nuevo" canCreate={canCreateUsuario}
           filtersControlsId="usr-filtros-drawer" formControlsId="usr-form-drawer"
           viewMode={viewMode} onViewModeChange={setViewMode} />
+
+        <SearchSuggestionsDropdown
+          mounted={isSearchDropdownMounted}
+          visible={isSearchDropdownVisible}
+          dropdownRef={searchDropdownRef}
+          dropdownStyle={searchDropdownStyle}
+          title={searchDropdownTitle}
+          isPredictiveSearch={isPredictiveSearch}
+          recentCount={recentSearchesCount}
+          items={searchSuggestionItems}
+          activeIndex={activeSuggestionIndex}
+          searchValue={search}
+          onApplySuggestion={applySearchSuggestion}
+          onRemoveRecent={removeRecentSearch}
+          onClearRecent={clearRecentSearches}
+        />
 
         <ModuleKPICards stats={stats} totalLabel="Total de usuarios" />
 
@@ -929,7 +1068,7 @@ export default function UsuariosTab({ openToast }) {
             {loading ? (
               <div className="inv-catpro-loading" role="status" aria-live="polite"><span className="spinner-border spinner-border-sm" aria-hidden="true" /><span>Cargando usuarios...</span></div>
             ) : usuariosFiltrados.length === 0 ? (
-              <div className="inv-catpro-empty"><div className="inv-catpro-empty-icon"><i className="bi bi-people" /></div><div className="inv-catpro-empty-title">No hay usuarios para mostrar</div><div className="inv-catpro-empty-sub">{hasActiveFilters ? 'Prueba limpiar filtros o crea un nuevo usuario.' : 'Crea tu primer usuario.'}</div><div className="d-flex gap-2 justify-content-center flex-wrap">{hasActiveFilters ? <button type="button" className="btn btn-outline-secondary" onClick={() => { setSearch(''); clearVisualFilters(); }}>Limpiar filtros</button> : null}{canCreateUsuario ? <button type="button" className="btn btn-primary" onClick={openCreate}>Nuevo usuario</button> : null}</div></div>
+              <div className="inv-catpro-empty"><div className="inv-catpro-empty-icon"><i className="bi bi-people" /></div><div className="inv-catpro-empty-title">No hay usuarios para mostrar</div><div className="inv-catpro-empty-sub">{hasActiveFilters ? 'Prueba limpiar filtros o crea un nuevo usuario.' : 'Crea tu primer usuario.'}</div><div className="d-flex gap-2 justify-content-center flex-wrap">{hasActiveFilters ? <button type="button" className="btn btn-outline-secondary" onClick={clearAllFilters}>Limpiar filtros</button> : null}{canCreateUsuario ? <button type="button" className="btn btn-primary" onClick={openCreate}>Nuevo usuario</button> : null}</div></div>
             ) : viewMode === 'table' ? (
               <EntityTable>
                 <table className="table personas-page__table">
@@ -1033,7 +1172,7 @@ export default function UsuariosTab({ openToast }) {
                 <i className="bi bi-key-fill" />
               </div>
               <div>
-                <div className="inv-pro-confirm-title">{tempPasswordModal.title || 'Contrasena temporal'}</div>
+                <div className="inv-pro-confirm-title">{tempPasswordModal.title || 'Contraseña temporal'}</div>
                 <div className="inv-pro-confirm-sub">Solo se mostrara una vez. Guardela antes de cerrar.</div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeTempPasswordModal} aria-label="Cerrar">
@@ -1061,7 +1200,7 @@ export default function UsuariosTab({ openToast }) {
 
               <div>
                 <label className="form-label mb-1">
-                  <strong>Contrasena temporal</strong>
+                  <strong>Contraseña temporal</strong>
                 </label>
                 <div className="input-group">
                   <input

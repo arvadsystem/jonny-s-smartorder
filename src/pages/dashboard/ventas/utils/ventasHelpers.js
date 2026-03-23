@@ -79,42 +79,44 @@ export const extractApiMessage = (error, fallbackMessage) => {
 
 export const normalizeCategoriaRecord = (row) => ({
   ...row,
-  id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
-  nombre_departamento: String(row?.nombre_departamento ?? 'General'),
+  id_categoria_producto: Number(row?.id_categoria_producto ?? 0) || null,
+  nombre_categoria: String(row?.nombre_categoria ?? 'Sin categoría'),
   estado: parseBoolean(row?.estado)
 });
 
 export const buildCategoriasMap = (categorias) =>
   new Map(
     (Array.isArray(categorias) ? categorias : []).map((categoria) => [
-      Number(categoria.id_tipo_departamento),
+      Number(categoria.id_categoria_producto),
       categoria
     ])
   );
 
 export const normalizeProductoRecord = (row, categoriasMap = new Map()) => {
-  const idTipoDepartamento =
-    row?.id_tipo_departamento === null || row?.id_tipo_departamento === undefined
+  const idCategoria =
+    row?.id_categoria_producto === null || row?.id_categoria_producto === undefined
       ? null
-      : Number(row.id_tipo_departamento);
-  const categoria = idTipoDepartamento ? categoriasMap.get(idTipoDepartamento) : null;
+      : Number(row.id_categoria_producto);
+  const categoria = idCategoria ? categoriasMap.get(idCategoria) : null;
 
   return {
     ...row,
     id_producto: Number(row?.id_producto ?? 0) || null,
-    id_tipo_departamento: idTipoDepartamento,
+    id_categoria_producto: idCategoria,
+    id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
     nombre_producto: String(row?.nombre_producto ?? 'Producto'),
     descripcion_producto: String(row?.descripcion_producto ?? ''),
     precio: roundMoney(row?.precio),
     cantidad: Number(row?.cantidad ?? 0) || 0,
     estado: parseBoolean(row?.estado),
-    categoria_label: categoria?.nombre_departamento || 'General'
+    categoria_label: categoria?.nombre_categoria || 'Sin categoría'
   };
 };
 
 export const normalizeComboRecord = (row) => ({
   ...row,
   id_combo: Number(row?.id_combo ?? 0) || null,
+  id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
   descripcion: String(row?.descripcion ?? 'Combo'),
   precio: roundMoney(row?.precio),
   estado: parseBoolean(row?.estado)
@@ -124,6 +126,7 @@ export const normalizeRecetaRecord = (row) => ({
   ...row,
   id_receta: Number(row?.id_receta ?? 0) || null,
   id_producto_base: Number(row?.id_producto_base ?? 0) || null,
+  id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
   nombre_receta: String(row?.nombre_receta ?? 'Receta'),
   nombre_producto_base: String(row?.nombre_producto_base ?? ''),
   precio: roundMoney(row?.precio),
@@ -181,21 +184,21 @@ export const normalizeVentaDetail = (row) => {
   const base = normalizeVentaRecord(row);
   const items = Array.isArray(row?.items)
     ? row.items.map((item) => ({
-        ...item,
-        id_detalle: Number(item?.id_detalle ?? 0) || null,
-        id_producto: Number(item?.id_producto ?? 0) || null,
-        id_combo: Number(item?.id_combo ?? 0) || null,
-        id_receta: Number(item?.id_receta ?? 0) || null,
-        tipo_item: String(item?.tipo_item ?? 'PRODUCTO'),
-        cantidad: Number(item?.cantidad ?? 0) || 0,
-        precio_unitario: roundMoney(item?.precio_unitario),
-        sub_total: roundMoney(item?.sub_total),
-        total_linea: roundMoney(item?.total_linea),
-        descuento: roundMoney(item?.descuento),
-        nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
-        nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
-        observacion: String(item?.observacion ?? '').trim()
-      }))
+      ...item,
+      id_detalle: Number(item?.id_detalle ?? 0) || null,
+      id_producto: Number(item?.id_producto ?? 0) || null,
+      id_combo: Number(item?.id_combo ?? 0) || null,
+      id_receta: Number(item?.id_receta ?? 0) || null,
+      tipo_item: String(item?.tipo_item ?? 'PRODUCTO'),
+      cantidad: Number(item?.cantidad ?? 0) || 0,
+      precio_unitario: roundMoney(item?.precio_unitario),
+      sub_total: roundMoney(item?.sub_total),
+      total_linea: roundMoney(item?.total_linea),
+      descuento: roundMoney(item?.descuento),
+      nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
+      nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
+      observacion: String(item?.observacion ?? '').trim()
+    }))
     : [];
 
   return {
