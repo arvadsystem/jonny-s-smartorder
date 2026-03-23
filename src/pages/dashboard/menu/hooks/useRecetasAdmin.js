@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../../../hooks/useAuth';
 import recetasAdminService from '../../../../services/recetasAdminService';
+import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
   defaultFilters,
   emptyForm,
@@ -137,6 +139,12 @@ const useRecetasAdmin = () => {
   const [viewMode, setViewMode] = useState('cards');
   const [cardImageErrors, setCardImageErrors] = useState({});
   const [formPreviewError, setFormPreviewError] = useState(false);
+  const { user } = useAuth();
+  // Prefill tecnico para reducir captura manual de id_usuario/id_menu en el MVP.
+  const [defaultIds, setDefaultIds] = useState({
+    id_usuario: '',
+    id_menu: ''
+  });
 
   const isAnyDrawerOpen = drawerOpen || filtersOpen;
 
@@ -167,6 +175,42 @@ const useRecetasAdmin = () => {
     setFormPreviewError(false);
   }, [form.url_imagen_publica]);
 
+  useEffect(() => {
+    const idUsuario = Number(user?.id_usuario || 0);
+    if (!idUsuario) return;
+
+    setDefaultIds((current) => ({
+      ...current,
+      id_usuario: String(idUsuario)
+    }));
+  }, [user?.id_usuario]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDefaultMenu = async () => {
+      try {
+        const sucursales = await menuPublicacionAdminService.getSucursales();
+        const withMenu = (Array.isArray(sucursales) ? sucursales : []).find(
+          (branch) => Number(branch?.id_menu || 0) > 0
+        );
+
+        if (!isMounted || !withMenu) return;
+        setDefaultIds((current) => ({
+          ...current,
+          id_menu: String(withMenu.id_menu)
+        }));
+      } catch {
+        // Sin bloqueo: si falla este preload se mantiene captura manual.
+      }
+    };
+
+    void loadDefaultMenu();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const recetasFiltradas = useMemo(() => {
     const searchTerm = String(search || '').trim().toLowerCase();
 
@@ -197,12 +241,16 @@ const useRecetasAdmin = () => {
     setFiltersOpen(false);
     setDrawerMode('create');
     setEditingId(null);
-    setForm({ ...emptyForm });
+    setForm({
+      ...emptyForm,
+      id_usuario: defaultIds.id_usuario || emptyForm.id_usuario,
+      id_menu: defaultIds.id_menu || emptyForm.id_menu
+    });
     setDrawerOpen(true);
     setError('');
     setSuccess('');
     setFormPreviewError(false);
-  }, []);
+  }, [defaultIds.id_menu, defaultIds.id_usuario]);
 
   const closeCreateDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -247,7 +295,11 @@ const useRecetasAdmin = () => {
         setSuccess('Receta creada correctamente.');
       }
 
-      setForm({ ...emptyForm });
+      setForm({
+        ...emptyForm,
+        id_usuario: defaultIds.id_usuario || emptyForm.id_usuario,
+        id_menu: defaultIds.id_menu || emptyForm.id_menu
+      });
       setEditingId(null);
       setDrawerMode('create');
       setDrawerOpen(false);
@@ -258,7 +310,7 @@ const useRecetasAdmin = () => {
     } finally {
       setSaving(false);
     }
-  }, [cargarRecetas, editingId, form]);
+  }, [cargarRecetas, defaultIds.id_menu, defaultIds.id_usuario, editingId, form]);
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {

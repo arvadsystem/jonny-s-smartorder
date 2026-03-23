@@ -847,30 +847,52 @@
   width: clamp(240px, 26vw, 340px);
 }
 
-.menu-module-head .menu-module-switch.menu-module-switch--triple {
-  width: clamp(320px, 34vw, 460px);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.menu-module-switch.menu-module-switch--triple .inv-cat-compact-switch__thumb {
-  width: calc((100% - 6px) / 3);
-}
-
-.menu-module-switch.menu-module-switch--triple.is-recetas .inv-cat-compact-switch__thumb {
-  transform: translateX(0);
-}
-
-.menu-module-switch.menu-module-switch--triple.is-combos .inv-cat-compact-switch__thumb {
-  transform: translateX(100%);
-}
-
-.menu-module-switch.menu-module-switch--triple.is-pos .inv-cat-compact-switch__thumb {
-  transform: translateX(200%);
-}
-
 .menu-recetas-admin__header-actions {
   gap: 8px;
   flex-wrap: wrap;
+}
+/* Toolbar de Menu alineada visualmente al patron de Ventas (buscador + accion principal). */
+.menu-toolbar-actions {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.menu-toolbar-actions .menu-toolbar-search {
+  min-width: min(420px, 100%);
+  max-width: 560px;
+  flex: 1 1 auto;
+}
+
+.menu-recetas-admin__top-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.menu-recetas-admin__view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(157, 150, 112, 0.38);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.menu-recetas-admin__view-btn {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.72);
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.menu-recetas-admin__view-btn.is-active {
+  background: linear-gradient(145deg, #9a5319, #b86821);
+  color: #fff;
 }
 
 .menu-recetas-admin__results-meta {
@@ -1175,10 +1197,6 @@
   .menu-module-head .menu-module-switch {
     width: min(100%, 340px);
   }
-
-  .menu-module-head .menu-module-switch.menu-module-switch--triple {
-    width: min(100%, 460px);
-  }
 }
 
 @media (max-width: 767.98px) {
@@ -1208,3 +1226,198 @@
     justify-self: start;
   }
 }
+
+/* Menu Admin tabs (sin POS) - formato visual alineado a Ventas */
+.menu-module-head .menu-module-switch.menu-module-switch--ventas-like {
+  width: clamp(420px, 62vw, 860px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.menu-module-switch--ventas-like .menu-module-switch__tab {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  background: rgba(249, 245, 240, 0.96);
+  color: rgba(82, 44, 34, 0.84);
+  padding: 9px 14px;
+  border-radius: 14px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
+  transition: all 160ms ease;
+}
+
+.menu-module-switch--ventas-like .menu-module-switch__tab i {
+  font-size: 0.92rem;
+}
+
+.menu-module-switch--ventas-like .menu-module-switch__tab:hover {
+  border-color: rgba(154, 83, 25, 0.36);
+  background: rgba(252, 246, 238, 0.98);
+  color: rgba(74, 34, 22, 0.92);
+}
+
+.menu-module-switch--ventas-like .menu-module-switch__tab.is-active {
+  background: linear-gradient(145deg, #9a5319, #b86821);
+  border-color: rgba(154, 83, 25, 0.58);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(161, 87, 35, 0.24);
+}
+
+.menu-module-switch--ventas-like .menu-module-switch__tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(184, 104, 33, 0.2);
+}
+
+.menu-productos-admin__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.menu-vista-previa-admin__selector {
+  max-width: 420px;
+}
+
+.menu-pub-admin__selector {
+  display: grid;
+  gap: 8px;
+}
+
+.menu-pub-admin__selector-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.86rem;
+  color: rgba(82, 44, 34, 0.84);
+}
+
+.menu-pub-admin__table-wrap {
+  border: 1px solid rgba(157, 150, 112, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.menu-pub-admin__table thead th {
+  white-space: nowrap;
+  background: rgba(247, 241, 231, 0.65);
+}
+
+.menu-pub-admin__type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.menu-pub-admin__type-badge.is-receta {
+  color: #5a2e1e;
+  background: rgba(245, 206, 156, 0.45);
+  border-color: rgba(194, 144, 95, 0.45);
+}
+
+.menu-pub-admin__type-badge.is-combo {
+  color: #3b2f78;
+  background: rgba(211, 202, 248, 0.5);
+  border-color: rgba(140, 126, 214, 0.45);
+}
+
+.menu-pub-admin__type-badge.is-producto {
+  color: #145749;
+  background: rgba(179, 229, 214, 0.55);
+  border-color: rgba(71, 154, 126, 0.45);
+}
+
+.menu-pub-admin__preview {
+  border: 1px solid rgba(157, 150, 112, 0.3);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.menu-pub-admin__preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.menu-pub-admin__preview-head h6 {
+  margin: 0;
+  font-weight: 800;
+}
+
+.menu-pub-admin__preview-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.84rem;
+  color: rgba(82, 44, 34, 0.8);
+}
+
+.menu-pub-admin__preview-list {
+  max-height: 380px;
+  overflow-y: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.menu-pub-admin__preview-category {
+  border: 1px solid rgba(157, 150, 112, 0.25);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.menu-pub-admin__preview-category header {
+  padding: 6px 10px;
+  font-weight: 800;
+  font-size: 0.82rem;
+  background: rgba(247, 241, 231, 0.7);
+}
+
+.menu-pub-admin__preview-category ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.menu-pub-admin__preview-category li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid rgba(157, 150, 112, 0.18);
+}
+
+.menu-pub-admin__preview-category li:first-child {
+  border-top: 0;
+}
+
+.menu-pub-admin__preview-category strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.menu-pub-admin__preview-category small {
+  font-size: 0.72rem;
+  color: rgba(82, 44, 34, 0.66);
+}
+
+@media (max-width: 991.98px) {
+  .menu-module-head .menu-module-switch.menu-module-switch--ventas-like {
+    width: min(100%, 760px);
+  }
+}
+

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../../../hooks/useAuth';
 import combosAdminService from '../../../../services/combosAdminService';
 import recetasAdminService from '../../../../services/recetasAdminService';
+import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
   emptyComboForm,
   extractArchivoId,
@@ -161,6 +163,12 @@ const useCombosAdmin = () => {
   const [form, setForm] = useState({ ...emptyComboForm });
   const [cardImageErrors, setCardImageErrors] = useState({});
   const [formPreviewError, setFormPreviewError] = useState(false);
+  const { user } = useAuth();
+  // Prefill tecnico para reducir captura manual de id_usuario/id_menu en el MVP.
+  const [defaultIds, setDefaultIds] = useState({
+    id_usuario: '',
+    id_menu: ''
+  });
 
   const cargarCombos = useCallback(async () => {
     try {
@@ -253,6 +261,42 @@ const useCombosAdmin = () => {
   useEffect(() => {
     setFormPreviewError(false);
   }, [form.url_imagen_publica]);
+  useEffect(() => {
+    const idUsuario = Number(user?.id_usuario || 0);
+    if (!idUsuario) return;
+
+    setDefaultIds((current) => ({
+      ...current,
+      id_usuario: String(idUsuario)
+    }));
+  }, [user?.id_usuario]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDefaultMenu = async () => {
+      try {
+        const sucursales = await menuPublicacionAdminService.getSucursales();
+        const withMenu = (Array.isArray(sucursales) ? sucursales : []).find(
+          (branch) => Number(branch?.id_menu || 0) > 0
+        );
+
+        if (!isMounted || !withMenu) return;
+        setDefaultIds((current) => ({
+          ...current,
+          id_menu: String(withMenu.id_menu)
+        }));
+      } catch {
+        // Mantiene captura manual en caso de error.
+      }
+    };
+
+    void loadDefaultMenu();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const combosFiltrados = useMemo(() => {
     const searchTerm = String(search || '').trim().toLowerCase();
@@ -296,14 +340,18 @@ const useCombosAdmin = () => {
   const openCreateDrawer = useCallback(() => {
     setDrawerMode('create');
     setEditingId(null);
-    setForm({ ...emptyComboForm });
+    setForm({
+      ...emptyComboForm,
+      id_usuario: defaultIds.id_usuario || emptyComboForm.id_usuario,
+      id_menu: defaultIds.id_menu || emptyComboForm.id_menu
+    });
     setDrawerOpen(true);
     setError('');
     setSuccess('');
     setFormPreviewError(false);
     // Refresca el catalogo al abrir para tomar recetas nuevas sin recargar pagina.
     void cargarCatalogoRecetas();
-  }, [cargarCatalogoRecetas]);
+  }, [cargarCatalogoRecetas, defaultIds.id_menu, defaultIds.id_usuario]);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -404,7 +452,11 @@ const useCombosAdmin = () => {
       // Reinicia fallback de imagen para que pruebe la URL nueva al volver a pintar cards.
       setCardImageErrors({});
 
-      setForm({ ...emptyComboForm });
+      setForm({
+        ...emptyComboForm,
+        id_usuario: defaultIds.id_usuario || emptyComboForm.id_usuario,
+        id_menu: defaultIds.id_menu || emptyComboForm.id_menu
+      });
       setEditingId(null);
       setDrawerMode('create');
       setDrawerOpen(false);
@@ -414,7 +466,7 @@ const useCombosAdmin = () => {
     } finally {
       setSaving(false);
     }
-  }, [cargarCombos, editingId, form]);
+  }, [cargarCombos, defaultIds.id_menu, defaultIds.id_usuario, editingId, form]);
 
   const onEditar = useCallback(async (idCombo) => {
     try {

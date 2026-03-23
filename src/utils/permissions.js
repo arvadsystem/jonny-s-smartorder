@@ -463,6 +463,23 @@ const VENTAS_TAB_PERMISSIONS_MAP = Object.freeze({
   ])
 });
 
+const MENU_TAB_BASE_PERMISSIONS = uniquePermissions([
+  PERMISSIONS.MENU_VER,
+  PERMISSIONS.MENU_PEDIDO_AGREGAR_ITEM,
+  PERMISSIONS.MENU_PRODUCTO_DETALLE_VER,
+  PERMISSIONS.MENU_PEDIDO_EDITAR_CANTIDAD,
+  PERMISSIONS.MENU_PEDIDO_ELIMINAR_ITEM,
+  PERMISSIONS.MENU_PEDIDO_CONFIRMAR
+]);
+
+const MENU_TAB_PERMISSIONS_MAP = Object.freeze({
+  recetas: MENU_TAB_BASE_PERMISSIONS,
+  combos: MENU_TAB_BASE_PERMISSIONS,
+  'productos-menu': MENU_TAB_BASE_PERMISSIONS,
+  publicacion: MENU_TAB_BASE_PERMISSIONS,
+  'vista-previa': MENU_TAB_BASE_PERMISSIONS
+});
+
 const MODULE_ROUTE_PERMISSIONS = Object.freeze({
   dashboard: uniquePermissions([PERMISSIONS.DASHBOARD_VER]),
   personas: uniquePermissions(Object.values(PERSONAS_TAB_PERMISSIONS_MAP).flat()),
@@ -491,14 +508,7 @@ const MODULE_ROUTE_PERMISSIONS = Object.freeze({
     PERMISSIONS.COCINA_PEDIDO_MARCAR_LISTO,
     PERMISSIONS.COCINA_PEDIDO_ENTREGAR
   ]),
-  menu: uniquePermissions([
-    PERMISSIONS.MENU_VER,
-    PERMISSIONS.MENU_PEDIDO_AGREGAR_ITEM,
-    PERMISSIONS.MENU_PRODUCTO_DETALLE_VER,
-    PERMISSIONS.MENU_PEDIDO_EDITAR_CANTIDAD,
-    PERMISSIONS.MENU_PEDIDO_ELIMINAR_ITEM,
-    PERMISSIONS.MENU_PEDIDO_CONFIRMAR
-  ]),
+  menu: uniquePermissions(Object.values(MENU_TAB_PERMISSIONS_MAP).flat()),
   seguridad: uniquePermissions([
     PERMISSIONS.SEGURIDAD_VER,
     ...Object.values(SEGURIDAD_TAB_PERMISSIONS_MAP).flat()
@@ -552,6 +562,7 @@ export const INVENTARIO_TAB_PERMISSIONS = Object.freeze(INVENTARIO_TAB_PERMISSIO
 export const PERSONAS_TAB_PERMISSIONS = Object.freeze(PERSONAS_TAB_PERMISSIONS_MAP);
 export const SEGURIDAD_TAB_PERMISSIONS = Object.freeze(SEGURIDAD_TAB_PERMISSIONS_MAP);
 export const VENTAS_TAB_PERMISSIONS = Object.freeze(VENTAS_TAB_PERMISSIONS_MAP);
+export const MENU_TAB_PERMISSIONS = Object.freeze(MENU_TAB_PERMISSIONS_MAP);
 
 export const MODULE_NAV_ITEMS = Object.freeze([
   { key: 'dashboard', name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
@@ -610,6 +621,23 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'caja', label: 'Caja', icon: 'bi bi-cart3', required: VENTAS_TAB_PERMISSIONS_MAP.caja },
     { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS_MAP.pedidos },
     { key: 'descuentos', label: 'Descuentos', icon: 'bi bi-tags', required: VENTAS_TAB_PERMISSIONS_MAP.descuentos }
+  ],
+  menu: [
+    { key: 'recetas', label: 'Recetas', icon: 'bi bi-journal-richtext', required: MENU_TAB_PERMISSIONS_MAP.recetas },
+    { key: 'combos', label: 'Combos', icon: 'bi bi-collection', required: MENU_TAB_PERMISSIONS_MAP.combos },
+    {
+      key: 'productos-menu',
+      label: 'Productos del menu',
+      icon: 'bi bi-cup-straw',
+      required: MENU_TAB_PERMISSIONS_MAP['productos-menu']
+    },
+    { key: 'publicacion', label: 'Publicacion', icon: 'bi bi-cloud-upload', required: MENU_TAB_PERMISSIONS_MAP.publicacion },
+    {
+      key: 'vista-previa',
+      label: 'Vista previa',
+      icon: 'bi bi-eye',
+      required: MENU_TAB_PERMISSIONS_MAP['vista-previa']
+    }
   ]
 });
 

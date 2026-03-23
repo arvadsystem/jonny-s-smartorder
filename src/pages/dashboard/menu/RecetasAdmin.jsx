@@ -51,47 +51,71 @@ const RecetasAdmin = () => {
 
   return (
     <>
-      <div className="card shadow-sm mb-3 inv-prod-card menu-recetas-admin">
-        <div className="card-header inv-prod-header">
-          <div className="inv-prod-title-wrap">
-            <div className="inv-prod-title-row">
-              <i className="bi bi-journal-richtext inv-prod-title-icon" />
-              <span className="inv-prod-title">Recetas</span>
-            </div>
-            <div className="inv-prod-subtitle">Administracion del catalogo de recetas del menu</div>
+      <div className="menu-recetas-admin-page">
+        <div className="menu-recetas-admin__top-controls">
+          {/* Selector de vista estilo Ventas, colocado arriba de las acciones del toolbar. */}
+          <div className="menu-recetas-admin__view-toggle" role="tablist" aria-label="Cambiar vista recetas">
+            <button
+              type="button"
+              className={`menu-recetas-admin__view-btn ${viewMode === 'cards' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('cards')}
+              aria-pressed={viewMode === 'cards'}
+              title="Vista en tarjetas"
+            >
+              <i className="bi bi-grid-3x3-gap-fill" />
+            </button>
+            <button
+              type="button"
+              className={`menu-recetas-admin__view-btn ${viewMode === 'table' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('table')}
+              aria-pressed={viewMode === 'table'}
+              title="Vista en lista"
+            >
+              <i className="bi bi-list-ul" />
+            </button>
           </div>
-
-          <RecetasToolbar
-            search={search}
-            onSearchChange={setSearch}
-            filtersOpen={filtersOpen}
-            onOpenFilters={openFiltersDrawer}
-            drawerOpen={drawerOpen}
-            onOpenCreate={openCreateDrawer}
-            viewMode={viewMode}
-            onChangeViewMode={setViewMode}
-          />
         </div>
 
-        <div className="card-body inv-prod-body">
-          {error ? <div className="alert alert-danger inv-prod-alert">{error}</div> : null}
-          {success ? <div className="alert alert-success inv-prod-alert">{success}</div> : null}
+        <div className="card shadow-sm mb-3 inv-prod-card menu-recetas-admin">
+          <div className="card-header inv-prod-header">
+            <div className="inv-prod-title-wrap">
+              <div className="inv-prod-title-row">
+                <i className="bi bi-journal-richtext inv-prod-title-icon" />
+                <span className="inv-prod-title">Recetas</span>
+              </div>
+              <div className="inv-prod-subtitle">Administracion del catalogo de recetas del menu</div>
+            </div>
 
-          <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
-            <span>{recetasFiltradas.length} recetas</span>
-            {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
+            <RecetasToolbar
+              search={search}
+              onSearchChange={setSearch}
+              filtersOpen={filtersOpen}
+              onOpenFilters={openFiltersDrawer}
+              drawerOpen={drawerOpen}
+              onOpenCreate={openCreateDrawer}
+            />
           </div>
 
-          <RecetasTable
-            loading={loading}
-            recetas={recetasFiltradas}
-            viewMode={viewMode}
-            togglingId={togglingId}
-            cardImageErrors={cardImageErrors}
-            onCardImageError={setCardImageError}
-            onEditar={onEditar}
-            onCambiarEstado={onCambiarEstado}
-          />
+          <div className="card-body inv-prod-body">
+            {error ? <div className="alert alert-danger inv-prod-alert">{error}</div> : null}
+            {success ? <div className="alert alert-success inv-prod-alert">{success}</div> : null}
+
+            <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
+              <span>{recetasFiltradas.length} recetas</span>
+              {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
+            </div>
+
+            <RecetasTable
+              loading={loading}
+              recetas={recetasFiltradas}
+              viewMode={viewMode}
+              togglingId={togglingId}
+              cardImageErrors={cardImageErrors}
+              onCardImageError={setCardImageError}
+              onEditar={onEditar}
+              onCambiarEstado={onCambiarEstado}
+            />
+          </div>
         </div>
       </div>
 
