@@ -15,6 +15,7 @@ import Cocina from './pages/dashboard/Cocina';
 import Parametros from './pages/dashboard/Parametros';
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from './routes/RequirePerm';
+import { PublicMenuRoutes } from './modules/public-menu';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -32,6 +33,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<Login />} />
+      <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
 
       <Route element={<ProtectedRoute />}>
         <Route path="/cambiar-password" element={<ForcePasswordChange />} />
