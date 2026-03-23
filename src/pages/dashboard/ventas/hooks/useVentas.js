@@ -25,6 +25,9 @@ export const useVentas = () => {
   const [productos, setProductos] = useState([]);
   const [combos, setCombos] = useState([]);
   const [recetas, setRecetas] = useState([]);
+  const [descuentosCatalogo, setDescuentosCatalogo] = useState([]);
+  const [tiposDescuento, setTiposDescuento] = useState([]);
+  const [tiposDepartamento, setTiposDepartamento] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [catalogLoading, setCatalogLoading] = useState(true);
@@ -82,20 +85,26 @@ export const useVentas = () => {
         productosResponse,
         clientesResponse,
         combosResponse,
-        recetasResponse
+        recetasResponse,
+        descuentosResponse,
+        tiposDescuentoResponse,
+        tiposDepartamentoResponse
       ] = await Promise.all([
         ventasService.getCategoriasCatalog(),
         ventasService.getProductosCatalog(),
         ventasService.getClientesCatalog(),
         ventasService.getCombosCatalog(),
-        ventasService.getRecetasCatalog()
+        ventasService.getRecetasCatalog(),
+        ventasService.getDescuentosCatalog(),
+        ventasService.getTiposDescuentoCatalog(),
+        ventasService.getTipoDepartamentos()
       ]);
 
       const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
         .map(normalizeCategoriaRecord)
         .filter((categoria) => categoria.estado)
         .sort((a, b) =>
-          a.nombre_departamento.localeCompare(b.nombre_departamento, 'es', {
+          a.nombre_categoria.localeCompare(b.nombre_categoria, 'es', {
             sensitivity: 'base'
           })
         );
@@ -142,10 +151,47 @@ export const useVentas = () => {
           })
         );
 
+      const normalizedTiposDescuento = (Array.isArray(tiposDescuentoResponse) ? tiposDescuentoResponse : [])
+        .filter((row) => row && (row.estado === true || row.estado === 'true' || row.estado === 1 || row.estado === '1'))
+        .map((row) => ({
+          id_tipo_descuento: Number(row.id_tipo_descuento ?? 0) || null,
+          nombre_tipo_descuento: String(row.nombre_tipo_descuento ?? '')
+        }))
+        .filter((row) => row.id_tipo_descuento && row.nombre_tipo_descuento);
+
+      const normalizedDescuentosCatalogo = (Array.isArray(descuentosResponse) ? descuentosResponse : [])
+        .map((row) => ({
+          id_descuento_catalogo: Number(row.id_descuento_catalogo ?? 0) || null,
+          nombre_descuento: String(row.nombre_descuento ?? 'Descuento'),
+          descripcion: String(row.descripcion ?? ''),
+          valor_descuento: Number(row.valor_descuento ?? 0) || 0,
+          id_tipo_descuento: Number(row.id_tipo_descuento ?? 0) || null,
+          nombre_tipo_descuento: String(row.nombre_tipo_descuento ?? ''),
+          estado: true
+        }))
+        .filter((row) => row.id_descuento_catalogo && row.valor_descuento > 0);
+
+      // El SQL ya filtra estado=true, por lo que todos los registros que
+      // lleguen aqui son departamentos activos – omitimos el filtro de estado
+      // para evitar problemas de tipo (bool/string/number) entre el driver y JS.
+      const normalizedTiposDepartamento = (Array.isArray(tiposDepartamentoResponse) ? tiposDepartamentoResponse : [])
+        .map((row) => ({
+          id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
+          nombre_tipo_departamento: String(row?.nombre_departamento ?? row?.nombre_tipo_departamento ?? '')
+        }))
+        .filter((row) => row.id_tipo_departamento && row.nombre_tipo_departamento);
+
+      // DEBUG TEMPORAL - borrar después
+      // eslint-disable-next-line no-console
+      console.log('[DEBUG tipos_dep] raw:', tiposDepartamentoResponse, '| normalized:', normalizedTiposDepartamento);
+
       setCategorias(normalizedCategorias);
       setProductos(normalizedProductos);
       setCombos(normalizedCombos);
       setRecetas(normalizedRecetas);
+      setDescuentosCatalogo(normalizedDescuentosCatalogo);
+      setTiposDescuento(normalizedTiposDescuento);
+      setTiposDepartamento(normalizedTiposDepartamento);
       setClientes(normalizedClientes);
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar los catalogos de ventas.');
@@ -204,9 +250,12 @@ export const useVentas = () => {
   return {
     ventas,
     categorias,
+    tiposDepartamento,
     productos,
     combos,
     recetas,
+    descuentosCatalogo,
+    tiposDescuento,
     clientes,
     loading,
     catalogLoading,

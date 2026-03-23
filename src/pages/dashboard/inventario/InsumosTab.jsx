@@ -8,7 +8,7 @@ import {
   revokeInventarioObjectUrl
 } from '../../../utils/inventarioImagenes';
 
-const DEFAULT_FILTERS = Object.freeze({ estados: [], almacen: 'todos', categoria: 'todos', sortBy: 'recientes' });
+const DEFAULT_FILTERS = Object.freeze({ estados: [], almacenes: [], categoria: 'todos', sortBy: 'recientes' });
 const STATUS_CHIPS = [
   { key: 'existencia', label: 'En existencia' },
   { key: 'bajo', label: 'Stock bajo' },
@@ -29,6 +29,7 @@ const INSUMO_FILTER_SORT_LABELS = Object.freeze(Object.fromEntries(SORTS));
 const INSUMOS_LIST_PAGE_SIZE = 10;
 const DETAIL_SECTION_DEFAULT = 'summary';
 const INSUMO_DB_INT32_MAX = 2147483647;
+const SINGLE_ALMACEN_TEMP_MESSAGE = 'Temporalmente solo se permite un almacén por producto o insumo.';
 
 const getInsumosCarouselConfig = (viewportWidth) => {
   if (viewportWidth >= 1280) return { perPage: 6, columns: 3 };
@@ -78,6 +79,8 @@ const emptyForm = () => ({
   stock_minimo: '0',
   fecha_ingreso_insumo: '',
   id_almacen: '',
+  // AM: seleccion multi-almacen para crear/editar en una o varias sucursales.
+  id_almacenes: [],
   // NEW: categoria de insumo editable en alta/edicion, alineada con la FK real `insumos.id_categoria_insumo`.
   // WHY: permitir asignar categorias de insumos desde el frontend sin inventar campos nuevos.
   // IMPACT: payloads de create/edit incluiran `id_categoria_insumo` solo cuando se seleccione.
@@ -90,7 +93,27 @@ const emptyForm = () => ({
   descripcion: ''
 });
 
-const cloneFilters = (f) => ({ ...DEFAULT_FILTERS, ...(f || {}), estados: Array.isArray(f?.estados) ? [...f.estados] : [] });
+const cloneFilters = (f) => {
+  const source = f || {};
+  const normalizedAlmacenes = Array.from(
+    new Set(
+      (Array.isArray(source?.almacenes)
+        ? source.almacenes
+        : source?.almacen && source.almacen !== 'todos'
+        ? [source.almacen]
+        : [])
+        .map((value) => Number.parseInt(String(value ?? '').trim(), 10))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+  );
+  return {
+    ...DEFAULT_FILTERS,
+    ...source,
+    estados: Array.isArray(source?.estados) ? [...source.estados] : [],
+    almacenes: normalizedAlmacenes,
+    almacen: 'todos'
+  };
+};
 const toDateInputValue = (v) => (!v ? '' : String(v).includes('T') ? String(v).split('T')[0] : String(v));
 const parseIntSafe = (v, fb = 0) => { const n = Number.parseInt(String(v ?? ''), 10); return Number.isNaN(n) ? fb : n; };
 const parseFloatSafe = (v, fb = 0) => { const n = Number.parseFloat(String(v ?? '')); return Number.isNaN(n) ? fb : n; };
@@ -98,6 +121,38 @@ const fmtMoney = (v) => `L. ${parseFloatSafe(v, 0).toFixed(2)}`;
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 const sanitizeSpaces = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ''));
+
+// AM: utilidades de seleccion multi-almacen para formularios de insumos.
+const normalizeSelectedAlmacenes = (rawValues, fallbackSingle = '') => {
+  const source = Array.isArray(rawValues)
+    ? rawValues
+    : rawValues === undefined || rawValues === null || rawValues === ''
+    ? []
+    : [rawValues];
+
+  const unique = [];
+  for (const raw of source) {
+    const parsed = Number.parseInt(String(raw ?? '').trim(), 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) continue;
+    if (!unique.includes(parsed)) unique.push(parsed);
+  }
+
+  if (unique.length > 0) return [unique[0]];
+
+  const parsedFallback = Number.parseInt(String(fallbackSingle ?? '').trim(), 10);
+  if (Number.isInteger(parsedFallback) && parsedFallback > 0) return [parsedFallback];
+
+  return [];
+};
+
+// AM: alterna un almacen en el array `id_almacenes` manteniendo IDs unicos y orden estable.
+const toggleAlmacenEnSeleccion = (currentValues, targetId, checked) => {
+  const normalizedCurrent = normalizeSelectedAlmacenes(currentValues);
+  const normalizedTarget = Number.parseInt(String(targetId ?? '').trim(), 10);
+  if (!Number.isInteger(normalizedTarget) || normalizedTarget <= 0) return normalizedCurrent;
+  if (checked) return [normalizedTarget];
+  return normalizedCurrent.filter((id) => id !== normalizedTarget);
+};
 
 const dateLabel = (v) => {
   const d = toDateInputValue(v);
@@ -273,7 +328,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const getAlmacenLabel = useCallback((id) => {
     const a = almacenesMap.get(String(id));
-    return a ? `${a.nombre} (Sucursal ${a.id_sucursal})` : `Almacen ID #${String(id || '-')}`;
+    // AM: el usuario pidio mostrar solo nombre del almacen, sin sufijo de sucursal.
+    return a ? `${a.nombre}` : `Almacen ID #${String(id || '-')}`;
   }, [almacenesMap]);
 
   const getUnidadMedidaLabel = useCallback((id) => {
@@ -497,6 +553,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       stock_minimo: cleaned.stock_minimo,
       fecha_ingreso_insumo: cleaned.fecha_ingreso_insumo || '',
       id_almacen: cleaned.id_almacen,
+      id_almacenes: Array.isArray(cleaned.id_almacenes) ? cleaned.id_almacenes : [cleaned.id_almacen].filter(Boolean),
       id_categoria_insumo: cleaned.id_categoria_insumo,
       id_unidad_medida: cleaned.id_unidad_medida,
       fecha_caducidad: cleaned.fecha_caducidad || '',
@@ -512,14 +569,17 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   // NEW: validacion centralizada para create/edit con reglas consistentes.
   // WHY: evitar diferencias entre alta y edicion y bloquear submit invalido.
   // IMPACT: no cambia endpoints; solo mejora UX y consistencia del frontend.
-  const validarInsumo = useCallback((data) => {
+  const validarInsumo = useCallback((data, options = {}) => {
+    const includeCantidad = options.includeCantidad !== false;
     const errors = {};
     const nombre = sanitizeSpaces(data?.nombre_insumo);
     const descripcion = sanitizeSpaces(data?.descripcion);
     const precioRaw = String(data?.precio ?? '').trim();
     const cantidadRaw = String(data?.cantidad ?? '').trim();
     const stockRaw = String(data?.stock_minimo ?? '').trim();
-    const almacenRaw = String(data?.id_almacen ?? '').trim();
+    const rawAlmacenesCount = Array.isArray(data?.id_almacenes) ? data.id_almacenes.filter((v) => String(v ?? '').trim() !== '').length : 0;
+    const almacenesSelected = normalizeSelectedAlmacenes(data?.id_almacenes, data?.id_almacen);
+    const almacenRaw = String(almacenesSelected[0] ?? data?.id_almacen ?? '').trim();
     const categoriaInsumoRaw = String(data?.id_categoria_insumo ?? '').trim();
     const unidadMedidaRaw = String(data?.id_unidad_medida ?? '').trim();
     const ingreso = String(data?.fecha_ingreso_insumo ?? '').trim();
@@ -535,13 +595,16 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     else if (nombre.length > 80) errors.nombre_insumo = 'MAXIMO 80 CARACTERES';
     if (!precioRaw) errors.precio = 'EL PRECIO ES OBLIGATORIO';
     else if (Number.isNaN(precio) || precio < 0) errors.precio = 'DEBE SER UN NUMERO >= 0';
-    if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
-    else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
-    else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
+    if (includeCantidad) {
+      if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
+      else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
+      else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
+    }
     if (!stockRaw) errors.stock_minimo = 'EL STOCK MINIMO ES OBLIGATORIO';
     else if (!/^\d+$/.test(stockRaw)) errors.stock_minimo = 'SOLO ENTEROS (SIN DECIMALES)';
     else if (Number.isNaN(stock_minimo) || stock_minimo < 0) errors.stock_minimo = 'DEBE SER UN ENTERO >= 0';
-    if (!almacenRaw) errors.id_almacen = 'EL ALMACEN ES OBLIGATORIO';
+    if (rawAlmacenesCount > 1) errors.id_almacen = SINGLE_ALMACEN_TEMP_MESSAGE;
+    if (almacenesSelected.length === 0) errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACEN';
     else if (Number.isNaN(id_almacen) || id_almacen <= 0) errors.id_almacen = 'DEBE SER UN NUMERO > 0';
     // NEW: categoria de insumo opcional con validacion defensiva cuando se envia.
     // WHY: permitir asignar FK real sin romper registros legacy que aun no tengan categoria.
@@ -575,8 +638,9 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       cleaned: {
         nombre_insumo: nombre,
         precio,
-        cantidad,
+        cantidad: Number.isNaN(cantidad) || cantidad < 0 ? 0 : cantidad,
         stock_minimo,
+        id_almacenes: id_almacen > 0 ? [id_almacen] : [],
         id_almacen,
         id_categoria_insumo: categoriaInsumoRaw && !Number.isNaN(id_categoria_insumo) && id_categoria_insumo > 0 ? id_categoria_insumo : null,
         id_unidad_medida: unidadMedidaRaw && !Number.isNaN(id_unidad_medida) && id_unidad_medida > 0 ? id_unidad_medida : null,
@@ -587,8 +651,17 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     };
   }, []);
 
-  const buildPayload = useCallback((c) => {
-    const payload = { nombre_insumo: c.nombre_insumo, precio: c.precio, cantidad: c.cantidad, stock_minimo: c.stock_minimo, id_almacen: c.id_almacen };
+  const buildPayload = useCallback((c, options = {}) => {
+    const includeCantidad = options.includeCantidad !== false;
+    const payload = {
+      nombre_insumo: c.nombre_insumo,
+      precio: c.precio,
+      stock_minimo: c.stock_minimo,
+      id_almacen: c.id_almacen,
+      // AM: payload multi-almacen (backend acepta uno o varios IDs).
+      id_almacenes: c.id_almacenes
+    };
+    if (includeCantidad) payload.cantidad = c.cantidad;
     // NEW: enviar `id_categoria_insumo` solo si el usuario selecciono una categoria valida.
     // WHY: mantener compatibilidad con payloads legacy evitando mandar strings vacios/null innecesarios.
     // IMPACT: el backend recibe la FK real cuando se usa el nuevo select; resto del payload no cambia.
@@ -609,7 +682,14 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       setFieldErrors((prev) => ({ ...prev, ...mapped }));
     }
     const s = Number(e?.status || 0);
-    safeToast(s === 401 ? 'SESION EXPIRADA' : s === 403 ? 'SIN PERMISOS' : s === 400 ? 'VALIDACION' : 'ERROR', msg, s >= 500 ? 'danger' : (s === 400 || s === 401 || s === 403 ? 'warning' : 'danger'));
+    const title =
+      s === 401 ? 'SESION EXPIRADA'
+      : s === 403 ? 'SIN PERMISOS'
+      : s === 400 ? 'VALIDACION'
+      : s === 409 ? 'CONFLICTO'
+      : 'ERROR';
+    const variant = s >= 500 ? 'danger' : (s === 400 || s === 401 || s === 403 || s === 409 ? 'warning' : 'danger');
+    safeToast(title, msg, variant);
     return msg;
   }, [safeToast]);
 
@@ -647,7 +727,15 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setLoadingAlmacenes(true);
     try {
       const data = await inventarioService.getAlmacenes();
-      setAlmacenes(Array.isArray(data) ? data : []);
+      // AM: tolera respuestas array u objeto ({data|resultado}) para no dejar vacio el selector multi-almacen.
+      const rows = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.resultado)
+        ? data.resultado
+        : [];
+      setAlmacenes(rows);
     } catch (e) {
       setError(apiError(e, 'ERROR CARGANDO ALMACENES'));
     } finally {
@@ -698,6 +786,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const startEdit = useCallback((i) => {
     if (!i) return;
+    // AM: en edicion prioriza asignaciones multi-almacen y mantiene id_almacen legacy como respaldo.
+    const selectedAlmacenes = normalizeSelectedAlmacenes(i?.id_almacenes, i?.id_almacen);
     setEditId(i.id_insumo);
     setEditErrors({});
     setEditForm({
@@ -706,7 +796,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       cantidad: String(i?.cantidad ?? ''),
       stock_minimo: String(i?.stock_minimo ?? '0'),
       fecha_ingreso_insumo: toDateInputValue(i?.fecha_ingreso_insumo),
-      id_almacen: String(i?.id_almacen ?? ''),
+      id_almacen: selectedAlmacenes[0] ? String(selectedAlmacenes[0]) : String(i?.id_almacen ?? ''),
+      id_almacenes: selectedAlmacenes,
       id_categoria_insumo: String(i?.id_categoria_insumo ?? ''),
       id_unidad_medida: String(i?.id_unidad_medida ?? ''),
       fecha_caducidad: toDateInputValue(i?.fecha_caducidad),
@@ -948,13 +1039,19 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
         };
       }
       const createResp = await inventarioService.crearInsumo(payload);
-      const createdLocalInsumo = buildLocalInsumoFromCreate(v.cleaned, createResp, uploadedImage);
-      upsertInsumoLocal(createdLocalInsumo);
-      if (createdLocalInsumo?.__local_temp_id === true) {
-        // NEW: sincronizacion silenciosa posterior al alta cuando el backend no devuelve `id_insumo`.
-        // WHY: reemplazar el ID temporal local sin mostrar loader ni vaciar cards/listado.
-        // IMPACT: el usuario ve el nuevo insumo al instante y el dataset se reconcilia en segundo plano.
-        void syncInsumosSilently();
+      const selectedAlmacenes = Array.isArray(v.cleaned?.id_almacenes) ? v.cleaned.id_almacenes : [];
+      if (selectedAlmacenes.length > 1) {
+        // AM: alta multi-almacen requiere reconciliar dataset completo para reflejar todas las sucursales creadas.
+        await syncInsumosSilently();
+      } else {
+        const createdLocalInsumo = buildLocalInsumoFromCreate(v.cleaned, createResp, uploadedImage);
+        upsertInsumoLocal(createdLocalInsumo);
+        if (createdLocalInsumo?.__local_temp_id === true) {
+          // NEW: sincronizacion silenciosa posterior al alta cuando el backend no devuelve `id_insumo`.
+          // WHY: reemplazar el ID temporal local sin mostrar loader ni vaciar cards/listado.
+          // IMPACT: el usuario ve el nuevo insumo al instante y el dataset se reconcilia en segundo plano.
+          void syncInsumosSilently();
+        }
       }
       resetCreate();
       closeDrawer();
@@ -970,7 +1067,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const saveEdit = useCallback(async () => {
     if (!editId || !editForm || savingEdit) return;
-    const v = validarInsumo(editForm);
+    const v = validarInsumo(editForm, { includeCantidad: false });
     setEditErrors(v.errors);
     if (!v.ok) return;
     setSavingEdit(true);
@@ -979,10 +1076,27 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       const actual = insumos.find((x) => Number(x?.id_insumo) === Number(editId));
       if (!actual) throw new Error('INSUMO NO ENCONTRADO');
       const c = v.cleaned;
+      const almacenesSolicitados = normalizeSelectedAlmacenes(c?.id_almacenes, c?.id_almacen);
+      const almacenActual = parseIntSafe(actual?.id_almacen, 0);
+      const isMultiSync = almacenesSolicitados.length > 1 || (almacenesSolicitados[0] && almacenesSolicitados[0] !== almacenActual);
+
+      if (isMultiSync) {
+        const payloadMulti = buildPayload({
+          ...c,
+          id_almacenes: almacenesSolicitados,
+          id_almacen: almacenesSolicitados[0]
+        }, { includeCantidad: false });
+        await inventarioService.actualizarInsumoMultiAlmacen(editId, payloadMulti);
+        await syncInsumosSilently();
+        closeDrawer();
+        setDrawerMsg('CAMBIOS GUARDADOS.');
+        safeToast('ACTUALIZADO', 'EL INSUMO SE ACTUALIZO CORRECTAMENTE.', 'success');
+        return;
+      }
+
       const changes = [];
       if (c.nombre_insumo !== sanitizeSpaces(actual?.nombre_insumo)) changes.push(['nombre_insumo', c.nombre_insumo]);
       if (c.precio !== parseFloatSafe(actual?.precio, 0)) changes.push(['precio', c.precio]);
-      if (c.cantidad !== parseIntSafe(actual?.cantidad, 0)) changes.push(['cantidad', c.cantidad]);
       if (c.stock_minimo !== parseIntSafe(actual?.stock_minimo, 0)) changes.push(['stock_minimo', c.stock_minimo]);
       if (c.id_almacen !== parseIntSafe(actual?.id_almacen, 0)) changes.push(['id_almacen', c.id_almacen]);
       if (c.id_categoria_insumo !== (parseIntSafe(actual?.id_categoria_insumo, 0) || null)) changes.push(['id_categoria_insumo', c.id_categoria_insumo]);
@@ -1013,7 +1127,19 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     } finally {
       setSavingEdit(false);
     }
-  }, [apiError, closeDrawer, editForm, editId, insumos, patchInsumoLocalById, safeToast, savingEdit, validarInsumo]);
+  }, [
+    apiError,
+    buildPayload,
+    closeDrawer,
+    editForm,
+    editId,
+    insumos,
+    patchInsumoLocalById,
+    safeToast,
+    savingEdit,
+    syncInsumosSilently,
+    validarInsumo
+  ]);
 
   const setConfirm = useCallback((id, nombre) => setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' }), []);
   const closeConfirm = useCallback(() => { setConfirmModal({ show: false, idToDelete: null, nombre: '' }); setDeleting(false); }, []);
@@ -1126,6 +1252,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const filtered = useMemo(() => {
     const s = normalize(search);
     const statusSet = new Set(appliedFilters.estados);
+    const selectedAlmacenes = Array.isArray(appliedFilters.almacenes) ? appliedFilters.almacenes : [];
     const list = [...insumos].filter((i) => {
       const snap = snapshot(i);
       const st = snap.ui.key;
@@ -1135,7 +1262,10 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       const matchViewEstado = showInactiveInsumos ? !snap.activo : snap.activo;
       if (!matchViewEstado) return false;
       if (statusSet.size && !statusSet.has(st)) return false;
-      if (appliedFilters.almacen !== 'todos' && String(i?.id_almacen ?? '') !== String(appliedFilters.almacen)) return false;
+      if (selectedAlmacenes.length > 0) {
+        const idAlmacen = Number.parseInt(String(i?.id_almacen ?? ''), 10);
+        if (!selectedAlmacenes.includes(idAlmacen)) return false;
+      }
       if (appliedFilters.categoria !== 'todos' && String(getCategoriaValue(i) || '') !== String(appliedFilters.categoria)) return false;
       if (!s) return true;
       const text = `${i?.nombre_insumo ?? ''} ${i?.descripcion ?? ''} ${getAlmacenLabel(i?.id_almacen)} ${getCategoriaLabel(i)} ${getUnidadMedidaLabel(i?.id_unidad_medida)} ${i?.id_insumo ?? ''}`.toLowerCase();
@@ -1281,7 +1411,11 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   };
 
   const hasActiveFilters = useMemo(() => (
-    search.trim() !== '' || appliedFilters.almacen !== 'todos' || appliedFilters.categoria !== 'todos' || appliedFilters.sortBy !== 'recientes' || appliedFilters.estados.length > 0
+    search.trim() !== '' ||
+    (Array.isArray(appliedFilters.almacenes) && appliedFilters.almacenes.length > 0) ||
+    appliedFilters.categoria !== 'todos' ||
+    appliedFilters.sortBy !== 'recientes' ||
+    appliedFilters.estados.length > 0
   ), [appliedFilters, search]);
 
   useEffect(() => {
@@ -2037,6 +2171,12 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 {draftFilters.estados.length ? `${draftFilters.estados.length} Estados` : 'Todos Los Estados'}
               </span>
               <span className="inv-ins-create-hero__chip">
+                <i className="bi bi-shop" aria-hidden="true" />
+                {(Array.isArray(draftFilters.almacenes) && draftFilters.almacenes.length > 0)
+                  ? `${draftFilters.almacenes.length} Almacen(es)`
+                  : 'Todos Los Almacenes'}
+              </span>
+              <span className="inv-ins-create-hero__chip">
                 <i className="bi bi-arrow-down-up" aria-hidden="true" />
                 {INSUMO_FILTER_SORT_LABELS[draftFilters.sortBy] || 'Mas recientes'}
               </span>
@@ -2069,10 +2209,41 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
               <div className="inv-ins-drawer-fields">
                 <div>
                   <label className="form-label">Almacen</label>
-                  <select className="form-select" value={String(draftFilters.almacen)} onChange={(e) => setDraftFilters((s) => ({ ...s, almacen: e.target.value }))}>
-                    <option value="todos">Todos los almacenes</option>
-                    {almacenes.map((a) => <option key={a.id_almacen} value={a.id_almacen}>{a.nombre} (Sucursal {a.id_sucursal})</option>)}
-                  </select>
+                  <div className="d-flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${
+                        !Array.isArray(draftFilters.almacenes) || draftFilters.almacenes.length === 0
+                          ? 'btn-dark'
+                          : 'btn-outline-secondary'
+                      }`}
+                      onClick={() => setDraftFilters((s) => ({ ...s, almacenes: [], almacen: 'todos' }))}
+                    >
+                      Todos
+                    </button>
+                    {almacenes.map((a) => {
+                      const idAlmacen = Number.parseInt(String(a?.id_almacen ?? ''), 10);
+                      const selected = Array.isArray(draftFilters.almacenes) && draftFilters.almacenes.includes(idAlmacen);
+                      return (
+                        <button
+                          key={a.id_almacen}
+                          type="button"
+                          className={`btn btn-sm ${selected ? 'btn-primary' : 'btn-outline-secondary'}`}
+                          onClick={() =>
+                            setDraftFilters((s) => {
+                              const current = Array.isArray(s.almacenes) ? s.almacenes : [];
+                              const next = current.includes(idAlmacen)
+                                ? current.filter((value) => value !== idAlmacen)
+                                : [...current, idAlmacen];
+                              return { ...s, almacenes: next, almacen: 'todos' };
+                            })
+                          }
+                        >
+                          {a.nombre}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div>
@@ -2173,20 +2344,64 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
               </div>
               <div>
                 <label className="form-label">Cantidad</label>
-                <input ref={cantidadInputRef} className={`form-control ${formErrors.cantidad ? 'is-invalid' : ''}`} type="number" step="1" min="0" inputMode="numeric" value={formValues.cantidad ?? ''} onKeyDown={blockNonIntegerKeys} onChange={(e) => setField('cantidad', intInput(e.target.value))} />
-                {fieldErr('cantidad')}
+                <input
+                  ref={cantidadInputRef}
+                  className={`form-control ${drawerMode === 'edit' ? '' : (formErrors.cantidad ? 'is-invalid' : '')}`}
+                  type="number"
+                  step="1"
+                  min="0"
+                  inputMode="numeric"
+                  value={formValues.cantidad ?? ''}
+                  readOnly={drawerMode === 'edit'}
+                  disabled={drawerMode === 'edit'}
+                  title={drawerMode === 'edit' ? 'La cantidad se ajusta desde movimientos de inventario.' : undefined}
+                  onKeyDown={drawerMode === 'edit' ? undefined : blockNonIntegerKeys}
+                  onChange={drawerMode === 'edit' ? undefined : (e) => setField('cantidad', intInput(e.target.value))}
+                />
+                {drawerMode === 'edit'
+                  ? <div className="form-text">Gestiona la cantidad desde Movimientos de inventario.</div>
+                  : fieldErr('cantidad')}
               </div>
               <div>
                 <label className="form-label">Stock Minimo</label>
                 <input className={`form-control ${formErrors.stock_minimo ? 'is-invalid' : ''}`} type="number" step="1" min="0" inputMode="numeric" value={formValues.stock_minimo ?? ''} onKeyDown={blockNonIntegerKeys} onChange={(e) => setField('stock_minimo', intInput(e.target.value))} />
                 {fieldErr('stock_minimo')}
               </div>
-              <div>
-                <label className="form-label">Almacen</label>
-                <select className={`form-select ${formErrors.id_almacen ? 'is-invalid' : ''}`} value={String(formValues.id_almacen ?? '')} onChange={(e) => setField('id_almacen', e.target.value)} disabled={loadingAlmacenes}>
-                  <option value="">{loadingAlmacenes ? 'Cargando almacenes...' : 'Seleccione un almacen'}</option>
-                  {almacenes.map((a) => <option key={a.id_almacen} value={a.id_almacen}>{a.nombre} (Sucursal {a.id_sucursal})</option>)}
-                </select>
+              <div className="inv-ins-drawer-field--span-2">
+                <label className="form-label">Almacén asignado</label>
+                <div className={`inv-almacenes-checkboxes ${formErrors.id_almacen ? 'is-invalid' : ''}`}>
+                  {loadingAlmacenes ? (
+                    <div className="form-text">Cargando almacenes...</div>
+                  ) : null}
+                  {!loadingAlmacenes && almacenes.length === 0 ? (
+                    <div className="form-text text-muted">No hay almacenes disponibles</div>
+                  ) : null}
+                  {almacenes.map((a) => {
+                    const idAlmacen = Number.parseInt(String(a?.id_almacen ?? ''), 10);
+                    if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return null;
+                    const checked = normalizeSelectedAlmacenes(formValues.id_almacenes).includes(idAlmacen);
+                    const inputId = `inv-ins-alm-${idAlmacen}`;
+                    return (
+                      <div key={idAlmacen} className="form-check">
+                        <input
+                          id={inputId}
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={checked}
+                          disabled={loadingAlmacenes}
+                          onChange={(e) => {
+                            const selected = toggleAlmacenEnSeleccion(formValues.id_almacenes, idAlmacen, e.target.checked);
+                            setField('id_almacenes', selected);
+                            setField('id_almacen', selected[0] ? String(selected[0]) : '');
+                          }}
+                        />
+                        <label className="form-check-label" htmlFor={inputId}>
+                          {a.nombre}
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
                 {fieldErr('id_almacen')}
               </div>
               <div>

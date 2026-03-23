@@ -93,11 +93,14 @@ export const formatTimerLabel = (value, now = Date.now()) => {
   const startDate = parseDate(value);
   if (!startDate) return '--:--';
 
+  const Math = globalThis.Math;
   const elapsedMs = Math.max(0, now - startDate.getTime());
   const totalSeconds = Math.floor(elapsedMs / 1000);
-  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
   const seconds = String(totalSeconds % 60).padStart(2, '0');
-  return `${minutes}:${seconds}`;
+  
+  return `${hours}:${minutes}:${seconds}`;
 };
 
 export const formatServiceLabel = (value) => {

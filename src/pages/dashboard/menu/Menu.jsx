@@ -23,7 +23,9 @@ import { PERMISSIONS } from '../../../utils/permissions';
 import CurrentOrderPanel from './CurrentOrderPanel';
 import ProductDetailOverlay from './ProductDetailOverlay';
 import ProductoGrid from './ProductoGrid';
+import CombosAdmin from './CombosAdmin';
 import RecetasAdmin from './RecetasAdmin';
+import useMenuPosOrder from './hooks/useMenuPosOrder';
 import { toDisplayTitle } from './textFormat';
 
 const normalizeCategoriaNombre = (value) =>
@@ -42,41 +44,6 @@ const getCategoriaDisplayName = (nombre) => {
 
   return toDisplayTitle(nombre || 'Categoria');
 };
-
-const normalizeSauceSelection = (selection) =>
-  (Array.isArray(selection?.salsasPorUnidad) ? selection.salsasPorUnidad : [])
-    .map((item) => ({
-      id_salsa: Number(item?.id_salsa || 0),
-      nombre: String(item?.nombre || 'Salsa'),
-      cantidad: Number(item?.cantidad || 0),
-    }))
-    .filter((item) => item.id_salsa > 0 && item.cantidad > 0)
-    .sort((a, b) => Number(a.id_salsa) - Number(b.id_salsa));
-
-const serializeSauceSelection = (selection) =>
-  (Array.isArray(selection?.salsasPorUnidad) ? selection.salsasPorUnidad : [])
-    .filter((item) => Number(item?.cantidad || 0) > 0)
-    .sort((a, b) => Number(a?.id_salsa || 0) - Number(b?.id_salsa || 0))
-    .map((item) => `${Number(item?.id_salsa || 0)}:${Number(item?.cantidad || 0)}`)
-    .join('|');
-
-const getMenuItemKey = (producto, selection = null) => {
-  let baseKey = 'item-desconocido';
-
-  if (producto?.id_combo) {
-    baseKey = `combo-${producto.id_combo}`;
-  } else if (producto?.id_receta) {
-    baseKey = `receta-${producto.id_receta}`;
-  } else if (producto?.id_producto) {
-    baseKey = `producto-${producto.id_producto}`;
-  }
-
-  const saucesKey = serializeSauceSelection(selection);
-  return saucesKey ? `${baseKey}|salsas:${saucesKey}` : baseKey;
-};
-
-const getMenuItemName = (producto) =>
-  toDisplayTitle(producto?.nombre_producto || producto?.descripcion || 'Producto sin nombre');
 
 const getCatalogItemPriority = (item) => {
   if (item?.id_combo) return 3;
@@ -208,8 +175,10 @@ const CategorySelector = ({ categorias, selected, onSelect }) => (
   </div>
 );
 
+const MENU_VIEWS = ['recetas', 'combos', 'pos'];
+
 const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
-  const safeValue = value === 'pos' ? 'pos' : 'recetas';
+  const safeValue = MENU_VIEWS.includes(value) ? value : 'recetas';
 
   const setView = (nextView) => {
     if (nextView === safeValue) return;
@@ -222,20 +191,22 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
       setView(targetView);
       return;
     }
+    const currentIndex = MENU_VIEWS.indexOf(safeValue);
+
     if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      setView('recetas');
+      setView(MENU_VIEWS[(currentIndex + MENU_VIEWS.length - 1) % MENU_VIEWS.length]);
       return;
     }
     if (event.key === 'ArrowRight') {
       event.preventDefault();
-      setView('pos');
+      setView(MENU_VIEWS[(currentIndex + 1) % MENU_VIEWS.length]);
     }
   };
 
   return (
     <div
-      className={`inv-cat-compact-switch menu-module-switch ${safeValue === 'pos' ? 'is-productos' : 'is-insumos'}`}
+      className={`inv-cat-compact-switch menu-module-switch menu-module-switch--triple is-${safeValue}`}
       role="tablist"
       aria-label="Cambiar vista de menu"
     >
@@ -249,6 +220,16 @@ const MenuViewSwitch = ({ value = 'recetas', onChange }) => {
         onKeyDown={(event) => onOptionKeyDown(event, 'recetas')}
       >
         RECETAS
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={safeValue === 'combos'}
+        className={`inv-cat-compact-switch__option ${safeValue === 'combos' ? 'is-active' : ''}`}
+        onClick={() => setView('combos')}
+        onKeyDown={(event) => onOptionKeyDown(event, 'combos')}
+      >
+        COMBOS
       </button>
       <button
         type="button"
@@ -286,8 +267,21 @@ const Menu = () => {
   const [errorProductos, setErrorProductos] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [orderItems, setOrderItems] = useState([]);
+  const [detailVersion, setDetailVersion] = useState(0);
   const [vistaActiva, setVistaActiva] = useState('recetas');
+  const {
+    items: orderItems,
+    totalItems,
+    totalAmount,
+    addConfiguredProduct,
+    increaseLineQuantity,
+    decreaseLineQuantity,
+    removeLine,
+    confirmOrder,
+    isSubmitting,
+    submitError,
+    submitSuccess
+  } = useMenuPosOrder();
 
   useEffect(() => {
     if (vistaActiva !== 'pos') return undefined;
@@ -340,89 +334,22 @@ const Menu = () => {
     cargarProductos(selected?.id_tipo_departamento ?? null);
   }, [cargarProductos, selected, vistaActiva]);
 
-  const onAgregarProducto = useCallback((producto, salsaSelection = null) => {
+  const onAgregarProducto = useCallback((producto, configuracion = null) => {
     if (!canAddMenuProduct) return;
-
-    setOrderItems((current) => {
-      const normalizedSauces = normalizeSauceSelection(salsaSelection);
-      const nextSelection = {
-        salsasPorUnidad: normalizedSauces,
-        salsasRequeridasPorUnidad: Number(salsaSelection?.salsasRequeridasPorUnidad || 0),
-      };
-      const itemKey = getMenuItemKey(producto, nextSelection);
-      const existingIndex = current.findIndex((item) => item.itemKey === itemKey);
-
-      if (existingIndex === -1) {
-        return [
-          ...current,
-          {
-            itemKey,
-            id_producto: producto?.id_producto ?? null,
-            id_combo: producto?.id_combo ?? null,
-            id_receta: producto?.id_receta ?? null,
-            nombre: getMenuItemName(producto),
-            precio: Number(producto?.precio || 0),
-            cantidad: 1,
-            salsasPorUnidad: normalizedSauces,
-            salsasRequeridasPorUnidad: Number(salsaSelection?.salsasRequeridasPorUnidad || 0),
-          },
-        ];
-      }
-
-      return current.map((item, index) =>
-        index === existingIndex
-          ? { ...item, cantidad: item.cantidad + 1 }
-          : item
-      );
-    });
-  }, [canAddMenuProduct]);
-
-  const onIncreaseItem = useCallback((itemKey) => {
-    if (!canEditMenuOrder) return;
-
-    setOrderItems((current) =>
-      current.map((item) =>
-        item.itemKey === itemKey ? { ...item, cantidad: item.cantidad + 1 } : item
-      )
-    );
-  }, [canEditMenuOrder]);
-
-  const onDecreaseItem = useCallback((itemKey) => {
-    if (!canEditMenuOrder) return;
-
-    setOrderItems((current) =>
-      current.map((item) =>
-        item.itemKey === itemKey
-          ? { ...item, cantidad: Math.max(1, item.cantidad - 1) }
-          : item
-      )
-    );
-  }, [canEditMenuOrder]);
-
-  const onRemoveItem = useCallback((itemKey) => {
-    if (!canEditMenuOrder) return;
-    setOrderItems((current) => current.filter((item) => item.itemKey !== itemKey));
-  }, [canEditMenuOrder]);
+    addConfiguredProduct(producto, configuracion);
+  }, [addConfiguredProduct, canAddMenuProduct]);
 
   const onOpenDetail = useCallback((producto) => {
     if (!canViewMenuDetail) return;
     setSelectedProduct(producto);
+    setDetailVersion((current) => current + 1);
     setIsDetailOpen(true);
   }, [canViewMenuDetail]);
 
   const onCloseDetail = useCallback(() => {
     setIsDetailOpen(false);
-  }, []);
-
-  const onDetailExited = useCallback(() => {
     setSelectedProduct(null);
   }, []);
-
-  const totalItems = orderItems.reduce((acc, item) => acc + Number(item?.cantidad || 0), 0);
-  const totalAmount = orderItems.reduce(
-    (acc, item) => acc + Number(item?.precio || 0) * Number(item?.cantidad || 0),
-    0
-  );
 
   return (
     <div className="container-fluid p-3">
@@ -433,7 +360,7 @@ const Menu = () => {
               <i className="bi bi-grid-1x2-fill inv-prod-title-icon" />
               <span className="inv-prod-title">Menu</span>
             </div>
-            <div className="inv-prod-subtitle">Administracion de recetas y vista POS en la misma pantalla</div>
+            <div className="inv-prod-subtitle">Administracion de recetas, combos y vista POS en la misma pantalla</div>
           </div>
           <div className="inv-prod-header-actions">
             <MenuViewSwitch value={vistaActiva} onChange={setVistaActiva} />
@@ -443,6 +370,8 @@ const Menu = () => {
 
       {vistaActiva === 'recetas' ? (
         <RecetasAdmin />
+      ) : vistaActiva === 'combos' ? (
+        <CombosAdmin />
       ) : (
         <>
           <div className="card shadow-sm mb-3 inv-prod-card menu-pos-shell">
@@ -496,9 +425,13 @@ const Menu = () => {
                 items={orderItems}
                 totalAmount={totalAmount}
                 totalItems={totalItems}
-                onDecrease={onDecreaseItem}
-                onIncrease={onIncreaseItem}
-                onRemove={onRemoveItem}
+                onDecrease={decreaseLineQuantity}
+                onIncrease={increaseLineQuantity}
+                onRemove={removeLine}
+                onConfirmOrder={confirmOrder}
+                isSubmitting={isSubmitting}
+                submitError={submitError}
+                submitSuccess={submitSuccess}
                 canEdit={canEditMenuOrder}
                 canConfirm={canConfirmMenuOrder}
               />
@@ -506,12 +439,12 @@ const Menu = () => {
           )}
 
           <ProductDetailOverlay
+            key={`menu-detail-${detailVersion}`}
             isOpen={isDetailOpen}
             product={selectedProduct}
             onAdd={onAgregarProducto}
             canAdd={canAddMenuProduct}
             onClose={onCloseDetail}
-            onExited={onDetailExited}
           />
         </>
       )}

@@ -131,6 +131,7 @@ const RecetasFormDrawer = ({
             name="id_nivel_picante"
             value={form.id_nivel_picante}
             onChange={onChangeField}
+            required
           />
         </div>
 

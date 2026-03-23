@@ -3,7 +3,7 @@ export const emptyForm = {
   descripcion: '',
   precio: '',
   id_menu: '',
-  id_nivel_picante: '',
+  id_nivel_picante: '1',
   id_usuario: '',
   estado: 'true',
   id_tipo_departamento: '',
@@ -36,10 +36,18 @@ export const normalizeRows = (response) => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.data)) return response.data;
   if (Array.isArray(response?.rows)) return response.rows;
+  if (response && typeof response === 'object') {
+    const values = Object.values(response).filter(
+      (item) => item && typeof item === 'object' && !Array.isArray(item)
+    );
+    if (values.length > 0) return values;
+  }
   return [];
 };
 
 export const resolveRecetaActiva = (receta) => parseBoolean(receta?.estado);
+
+const sanitizeDriveFileId = (value) => String(value || '').trim().split('=')[0];
 
 const getDriveFileId = (parsedUrl) => {
   const path = String(parsedUrl?.pathname || '');
@@ -47,7 +55,12 @@ const getDriveFileId = (parsedUrl) => {
     path.match(/\/file\/d\/([^/?#]+)/i)?.[1] ||
     path.match(/\/d\/([^/?#]+)/i)?.[1];
   const fileByQuery = parsedUrl?.searchParams?.get('id');
-  return fileByPath || fileByQuery || '';
+  return sanitizeDriveFileId(fileByPath || fileByQuery || '');
+};
+
+const getDriveResourceKey = (parsedUrl) => {
+  const resourceKey = parsedUrl?.searchParams?.get('resourcekey');
+  return sanitizeDriveFileId(resourceKey || '');
 };
 
 export const getDriveFileIdFromUrl = (rawUrl) => {
@@ -57,7 +70,11 @@ export const getDriveFileIdFromUrl = (rawUrl) => {
   try {
     const parsed = new URL(safeUrl);
     const host = String(parsed.hostname || '').toLowerCase();
-    if (!host.includes('drive.google.com') && !host.includes('drive.usercontent.google.com')) {
+    if (
+      !host.includes('drive.google.com') &&
+      !host.includes('drive.usercontent.google.com') &&
+      !host.includes('lh3.googleusercontent.com')
+    ) {
       return '';
     }
     return getDriveFileId(parsed);
@@ -86,17 +103,29 @@ export const getImageUrlCandidates = (rawUrl) => {
   try {
     const parsed = new URL(safeUrl);
     const host = String(parsed.hostname || '').toLowerCase();
-    if (!host.includes('drive.google.com')) return [safeUrl];
+    const isGoogleDriveUrl =
+      host.includes('drive.google.com') ||
+      host.includes('drive.usercontent.google.com') ||
+      host.includes('lh3.googleusercontent.com');
+    if (!isGoogleDriveUrl) return [safeUrl];
 
     const fileId = getDriveFileId(parsed);
     if (!fileId) return [safeUrl];
 
     const encodedId = encodeURIComponent(fileId);
+    const resourceKey = getDriveResourceKey(parsed);
+    const encodedResourceKey = resourceKey ? encodeURIComponent(resourceKey) : '';
+    const resourceKeySuffix = resourceKey ? `&resourcekey=${encodedResourceKey}` : '';
+
     return uniqueNonEmpty([
-      safeUrl,
-      `https://drive.google.com/thumbnail?id=${encodedId}&sz=w1000`,
-      `https://drive.google.com/uc?export=view&id=${encodedId}`,
-      `https://drive.usercontent.google.com/download?id=${encodedId}&export=view`
+      `https://lh3.googleusercontent.com/d/${encodedId}=w1200`,
+      `https://drive.usercontent.google.com/uc?id=${encodedId}&export=download${resourceKeySuffix}`,
+      `https://drive.usercontent.google.com/download?id=${encodedId}&export=view${resourceKeySuffix}`,
+      `https://drive.google.com/uc?export=download&id=${encodedId}${resourceKeySuffix}`,
+      `https://drive.google.com/uc?export=view&id=${encodedId}${resourceKeySuffix}`,
+      `https://drive.google.com/uc?id=${encodedId}${resourceKeySuffix}`,
+      `https://drive.google.com/thumbnail?id=${encodedId}&sz=w1000${resourceKeySuffix}`,
+      safeUrl
     ]);
   } catch {
     return [safeUrl];
@@ -108,9 +137,27 @@ export const toDrivePreviewUrl = (rawUrl) => {
   const safeUrl = String(rawUrl || '').trim();
   if (!safeUrl) return '';
 
-  const driveFileId = getDriveFileIdFromUrl(safeUrl);
-  if (driveFileId) {
-    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w1000`;
+  try {
+    const parsed = new URL(safeUrl);
+    const host = String(parsed.hostname || '').toLowerCase();
+    const isGoogleDriveUrl =
+      host.includes('drive.google.com') ||
+      host.includes('drive.usercontent.google.com') ||
+      host.includes('lh3.googleusercontent.com');
+
+    if (isGoogleDriveUrl) {
+      const driveFileId = getDriveFileId(parsed);
+      if (driveFileId) {
+        const resourceKey = getDriveResourceKey(parsed);
+        const resourceKeySuffix = resourceKey
+          ? `&resourcekey=${encodeURIComponent(resourceKey)}`
+          : '';
+
+        return `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w1000${resourceKeySuffix}`;
+      }
+    }
+  } catch {
+    // fallback abajo
   }
 
   return getImageUrlCandidates(safeUrl)[0] || '';
@@ -149,7 +196,10 @@ export const isPublicHttpUrl = (value) => {
 };
 
 export const normalizeRecetaForForm = (receta) => {
-  const imageUrl = resolveRecetaImageUrl(receta);
+  // Se conserva la URL cruda de backend para detectar cambios reales al editar.
+  const imageUrl = String(
+    receta?.url_imagen_publica || receta?.imagen_principal_url || receta?.url_imagen || ''
+  ).trim();
   return {
     nombre_receta: String(receta?.nombre_receta || ''),
     descripcion: String(receta?.descripcion || ''),

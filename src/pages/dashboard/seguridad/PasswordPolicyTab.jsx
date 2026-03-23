@@ -216,29 +216,6 @@ const PasswordPolicyTab = () => {
                   </div>
                 </div>
 
-                <div className="mt-4">
-                  <h6 className="text-muted mb-2">Valores actuales (BD)</h6>
-                  <div className="table-responsive">
-                    <table className="table table-sm">
-                      <thead>
-                        <tr>
-                          <th>Clave</th>
-                          <th>Valor</th>
-                          <th>Descripción</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {policies.map((p) => (
-                          <tr key={p.clave}>
-                            <td>{p.clave}</td>
-                            <td>{String(p.valor)}</td>
-                            <td>{p.descripcion || "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
               </>
             )}
           </div>

@@ -145,6 +145,14 @@ const PERMISSION_VALUES = Object.freeze({
   INVENTARIO_ALERTAS_VER: 'INVENTARIO_ALERTAS_VER',
   INVENTARIO_ALERTAS_ACTUALIZAR: 'INVENTARIO_ALERTAS_ACTUALIZAR',
   INVENTARIO_ALERTAS_STOCK_MINIMO_EDITAR: 'INVENTARIO_ALERTAS_STOCK_MINIMO_EDITAR',
+  // AM: permisos del submodulo de ordenes de compra.
+  INVENTARIO_ORDENES_COMPRA_VER: 'INVENTARIO_ORDENES_COMPRA_VER',
+  INVENTARIO_ORDENES_COMPRA_CREAR: 'INVENTARIO_ORDENES_COMPRA_CREAR',
+  INVENTARIO_ORDENES_COMPRA_VER_TODAS: 'INVENTARIO_ORDENES_COMPRA_VER_TODAS',
+  INVENTARIO_ORDENES_COMPRA_GESTIONAR: 'INVENTARIO_ORDENES_COMPRA_GESTIONAR',
+  INVENTARIO_ORDENES_COMPRA_CONVERTIR: 'INVENTARIO_ORDENES_COMPRA_CONVERTIR',
+  INVENTARIO_ORDENES_COMPRA_ABASTECER: 'INVENTARIO_ORDENES_COMPRA_ABASTECER',
+  INVENTARIO_ORDENES_COMPRA_RECEPCIONAR: 'INVENTARIO_ORDENES_COMPRA_RECEPCIONAR',
 
   VENTAS_VER: 'VENTAS_VER',
   VENTAS_CREAR: 'VENTAS_CREAR',
@@ -153,6 +161,10 @@ const PERMISSION_VALUES = Object.freeze({
   VENTAS_DETALLE_VER: 'VENTAS_DETALLE_VER',
   VENTAS_CARRITO_EDITAR: 'VENTAS_CARRITO_EDITAR',
   VENTAS_DESCUENTO_APLICAR: 'VENTAS_DESCUENTO_APLICAR',
+  VENTAS_DESCUENTOS_CATALOGO_VER: 'VENTAS_DESCUENTOS_CATALOGO_VER',
+  VENTAS_DESCUENTOS_CATALOGO_CREAR: 'VENTAS_DESCUENTOS_CATALOGO_CREAR',
+  VENTAS_DESCUENTOS_CATALOGO_EDITAR: 'VENTAS_DESCUENTOS_CATALOGO_EDITAR',
+  VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR: 'VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR',
   VENTAS_METODO_PAGO_SELECCIONAR: 'VENTAS_METODO_PAGO_SELECCIONAR',
 
   COCINA_VER: 'COCINA_VER',
@@ -360,6 +372,16 @@ const INVENTARIO_TAB_PERMISSIONS_MAP = Object.freeze({
     PERMISSIONS.INVENTARIO_ALERTAS_VER,
     PERMISSIONS.INVENTARIO_ALERTAS_ACTUALIZAR,
     PERMISSIONS.INVENTARIO_ALERTAS_STOCK_MINIMO_EDITAR
+  ]),
+  // AM: tab de ordenes de compra dentro de Inventario.
+  ordenes_compra: uniquePermissions([
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR
   ])
 });
 
@@ -409,6 +431,10 @@ const SEGURIDAD_TAB_PERMISSIONS_MAP = Object.freeze({
   logins: uniquePermissions([
     PERMISSIONS.SEGURIDAD_VER,
     PERMISSIONS.SEGURIDAD_LOGINS_VER
+  ]),
+  bitacoras: uniquePermissions([
+    PERMISSIONS.SEGURIDAD_SESIONES_VER_GLOBAL,
+    PERMISSIONS.SEGURIDAD_USUARIOS_AUDITORIA_VER
   ])
 });
 
@@ -428,6 +454,12 @@ const VENTAS_TAB_PERMISSIONS_MAP = Object.freeze({
   pedidos: uniquePermissions([
     PERMISSIONS.VENTAS_VER,
     PERMISSIONS.VENTAS_DETALLE_VER
+  ]),
+  descuentos: uniquePermissions([
+    PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_VER,
+    PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_CREAR,
+    PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_EDITAR,
+    PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR
   ])
 });
 
@@ -554,7 +586,9 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam', required: INVENTARIO_TAB_PERMISSIONS_MAP.insumos },
     { key: 'productos', label: 'Productos', icon: 'bi bi-basket', required: INVENTARIO_TAB_PERMISSIONS_MAP.productos },
     { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building', required: INVENTARIO_TAB_PERMISSIONS_MAP.almacenes },
-    { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS_MAP.alertas }
+    { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS_MAP.alertas },
+    // AM: acceso visual al submodulo de ordenes de compra.
+    { key: 'ordenes_compra', label: 'Ordenes compra', icon: 'bi bi-bag-check', required: INVENTARIO_TAB_PERMISSIONS_MAP.ordenes_compra }
   ],
   personas: [
     { key: 'personas', label: 'Personas', icon: 'bi bi-person', required: PERSONAS_TAB_PERMISSIONS_MAP.personas },
@@ -568,14 +602,32 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop', required: SEGURIDAD_TAB_PERMISSIONS_MAP.sesiones },
     { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people', required: SEGURIDAD_TAB_PERMISSIONS_MAP.usuarios },
     { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key', required: SEGURIDAD_TAB_PERMISSIONS_MAP.password },
-    { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text', required: SEGURIDAD_TAB_PERMISSIONS_MAP.logins }
+    { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text', required: SEGURIDAD_TAB_PERMISSIONS_MAP.logins },
+    { key: 'bitacoras', label: 'Bitacoras', icon: 'bi bi-clipboard-data', required: SEGURIDAD_TAB_PERMISSIONS_MAP.bitacoras }
   ],
   ventas: [
     { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS_MAP.ventas },
     { key: 'caja', label: 'Caja', icon: 'bi bi-cart3', required: VENTAS_TAB_PERMISSIONS_MAP.caja },
-    { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS_MAP.pedidos }
+    { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS_MAP.pedidos },
+    { key: 'descuentos', label: 'Descuentos', icon: 'bi bi-tags', required: VENTAS_TAB_PERMISSIONS_MAP.descuentos }
   ]
 });
+
+const VENTAS_STATS_POLICY = Object.freeze({
+  DEFAULT: ['totalVentas', 'totalFacturado', 'ticketPromedio', 'completadas', 'pendientes'],
+  CAJERO: ['totalVentas', 'completadas', 'pendientes']
+});
+
+export const resolveVentasStatsVisibility = (roles, options = {}) => {
+  if (options?.isSuperAdmin) return VENTAS_STATS_POLICY.DEFAULT;
+
+  const roleSet = new Set(normalizeRoles(roles));
+  if (roleSet.has('CAJERO')) {
+    return VENTAS_STATS_POLICY.CAJERO;
+  }
+
+  return VENTAS_STATS_POLICY.DEFAULT;
+};
 
 export const isTabAllowed = (permissionSet, tabKey, map, options = {}) => {
   const required = map?.[tabKey] || [];

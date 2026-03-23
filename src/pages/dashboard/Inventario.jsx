@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { inventarioService } from '../../services/inventarioService';
 import SinPermiso from '../../components/common/SinPermiso';
 import { usePermisos } from '../../context/PermisosContext';
@@ -10,9 +11,11 @@ import InsumosTab from './inventario/InsumosTab.jsx';
 import ProductosTab from './inventario/ProductosTab.jsx';
 import AlmacenesTab from './inventario/AlmacenesTab.jsx';
 import AlertasTab from './inventario/AlertasTab.jsx';
+import OrdenesCompraTab from './inventario/OrdenesCompraTab.jsx';
 
 // AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
-const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'alertas'];
+// AM: agrega tab de workflow de ordenes de compra en inventario.
+const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'alertas', 'ordenes_compra'];
 
 const Inventario = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -24,7 +27,13 @@ const Inventario = () => {
   );
   const fallbackTab = allowedTabs[0] || null;
   const rawTab = (searchParams.get('tab') || fallbackTab || '').toLowerCase();
-  const normalizedTab = rawTab === 'movimientos' ? 'almacenes' : rawTab;
+  // AM: controla tabs invalidos desde querystring para no romper fallback por permisos.
+  const normalizedTab =
+    rawTab === 'movimientos'
+      ? 'almacenes'
+      : INVENTARIO_TAB_KEYS.includes(rawTab)
+      ? rawTab
+      : fallbackTab;
   const activeTab = fallbackTab && allowedTabs.includes(normalizedTab) ? normalizedTab : fallbackTab;
 
   useEffect(() => {
@@ -213,8 +222,9 @@ const Inventario = () => {
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
       {activeTab === 'alertas' && <AlertasTab openToast={openToast} />}
+      {activeTab === 'ordenes_compra' && <OrdenesCompraTab openToast={openToast} />}
 
-      {toast.show && (
+      {toast.show && createPortal(
         <div className="inv-toast-wrap" role="status" aria-live="polite">
           <div className={`inv-toast-card ${toastVariant}`}>
             <div className="inv-toast-icon">
@@ -232,7 +242,8 @@ const Inventario = () => {
 
             <div className="inv-toast-progress" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

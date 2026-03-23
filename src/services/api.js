@@ -12,6 +12,12 @@ class ApiError extends Error {
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+const appendNoCacheParam = (endpoint) => {
+  const safeEndpoint = String(endpoint || '');
+  const separator = safeEndpoint.includes('?') ? '&' : '?';
+  return `${safeEndpoint}${separator}_ts=${Date.now()}`;
+};
+
 const readBody = async (response) => {
   const text = await response.text().catch(() => '');
   if (!text) return null;
@@ -40,8 +46,12 @@ const getCookie = (name) => {
   }
 };
 
-export const apiFetch = async (endpoint, method = 'GET', body = null) => {
+export const apiFetch = async (endpoint, method = 'GET', body = null, config = {}) => {
   const upperMethod = method.toUpperCase();
+  const noCache = Boolean(config?.noCache);
+  const resolvedEndpoint = noCache && SAFE_METHODS.has(upperMethod)
+    ? appendNoCacheParam(endpoint)
+    : endpoint;
 
   const headers = {
     'Content-Type': 'application/json'
@@ -53,17 +63,17 @@ export const apiFetch = async (endpoint, method = 'GET', body = null) => {
     if (csrf) headers['X-CSRF-Token'] = csrf;
   }
 
-  const options = {
+  const requestOptions = {
     method: upperMethod,
     headers,
     credentials: 'include' // envía cookies (HttpOnly JWT)
   };
 
   if (body !== null && body !== undefined) {
-    options.body = JSON.stringify(body);
+    requestOptions.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, options);
+  const response = await fetch(`${API_URL}${resolvedEndpoint}`, requestOptions);
 
   // 401 -> no autenticado
   if (response.status === 401) {

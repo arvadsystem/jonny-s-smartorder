@@ -15,5 +15,9 @@ export const securityAuditApi = {
 
   getUsuarioLogins: async (idUsuario, qs = '') => {
     return apiFetch(`/seguridad/usuarios/${idUsuario}/logins${qs ? `?${qs}` : ''}`, 'GET');
+  },
+
+  getBitacoras: async (qs = '') => {
+    return apiFetch(`/seguridad/bitacoras${qs ? `?${qs}` : ''}`, 'GET');
   }
 };
