@@ -148,6 +148,29 @@ export default function VentaComposerSummary({ composer, saving }) {
       </div>
 
       <div className="ventas-create-modal__form-row ventas-summary__fields-row">
+        <label className="ventas-create-modal__field ventas-create-modal__field--inline">
+          <span title="Sucursal operativa">
+            <i className="bi bi-shop" /> Sucursal{composer.isSuperAdmin ? ' *' : ''}
+          </span>
+          <select
+            value={composer.selectedSucursal}
+            onChange={(event) => composer.setSelectedSucursal(event.target.value)}
+            disabled={composer.sucursalLocked}
+          >
+            {composer.isSuperAdmin ? (
+              <option value="">Seleccionar sucursal...</option>
+            ) : null}
+            {composer.sucursales.map((sucursal) => (
+              <option key={sucursal.id_sucursal} value={String(sucursal.id_sucursal)}>
+                {sucursal.nombre_sucursal}
+              </option>
+            ))}
+          </select>
+          {!composer.isSuperAdmin ? (
+            <small className="text-muted">{composer.selectedSucursalLabel}</small>
+          ) : null}
+        </label>
+
         <div className="ventas-summary__discount-wrap" ref={discountPickerRef}>
           <button
             type="button"

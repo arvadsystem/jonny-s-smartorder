@@ -27,7 +27,7 @@ const extractApiMessage = (error, fallbackMessage) => {
   return fallbackMessage;
 };
 
-export const useCocina = ({ selectedSucursalId }) => {
+export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true }) => {
   const [pedidos, setPedidos] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,11 +62,15 @@ export const useCocina = ({ selectedSucursalId }) => {
   }, [toast.show]);
 
   const loadSucursales = useCallback(async () => {
+    if (!includeSucursalesCatalog) {
+      setSucursales([]);
+      return [];
+    }
     const response = await sucursalesService.getAll();
     const rows = filterActiveSucursales(response);
     setSucursales(rows);
     return rows;
-  }, []);
+  }, [includeSucursalesCatalog]);
 
   const loadPedidos = useCallback(
     async ({ silent = false } = {}) => {
