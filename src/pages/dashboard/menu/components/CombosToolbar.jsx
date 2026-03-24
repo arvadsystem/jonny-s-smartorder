@@ -11,7 +11,7 @@ const CombosToolbar = ({
         type="search"
         value={search}
         onChange={(event) => onSearchChange(event.target.value)}
-        placeholder="Buscar combo por descripcion o ID"
+        placeholder="Buscar combo por nombre o ID"
       />
     </label>
 

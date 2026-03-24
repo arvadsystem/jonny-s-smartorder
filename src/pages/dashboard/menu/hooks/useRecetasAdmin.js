@@ -13,7 +13,9 @@ import {
   resolveRecetaActiva,
   sortRecetas,
   toDrivePreviewUrl,
-  toNumberOrNull
+  toNumberOrNull,
+  DEFAULT_NIVEL_PICANTE_ID,
+  shouldRequireSpiceLevel
 } from '../utils/recetasAdminUtils';
 
 const validarFormulario = (form) => {
@@ -23,8 +25,9 @@ const validarFormulario = (form) => {
   if (toNumberOrNull(form.id_menu) === null) {
     return 'id_menu es obligatorio.';
   }
-  if (toNumberOrNull(form.id_nivel_picante) === null) {
-    return 'id_nivel_picante es obligatorio.';
+  const requiresSpiceLevel = shouldRequireSpiceLevel(form.nombre_receta);
+  if (requiresSpiceLevel && toNumberOrNull(form.id_nivel_picante) === null) {
+    return 'id_nivel_picante es obligatorio para alitas/tenders.';
   }
   if (toNumberOrNull(form.id_tipo_departamento) === null) {
     return 'id_tipo_departamento es obligatorio.';
@@ -50,16 +53,24 @@ const validarFormulario = (form) => {
   return '';
 };
 
-const buildPayloadBase = (form) => ({
-  nombre_receta: String(form.nombre_receta || '').trim(),
-  descripcion: String(form.descripcion || '').trim(),
-  precio: Number(form.precio),
-  id_menu: Number(form.id_menu),
-  id_nivel_picante: Number(form.id_nivel_picante),
-  id_usuario: Number(form.id_usuario),
-  estado: parseBoolean(form.estado),
-  id_tipo_departamento: Number(form.id_tipo_departamento)
-});
+const buildPayloadBase = (form) => {
+  const requiresSpiceLevel = shouldRequireSpiceLevel(form.nombre_receta);
+  const resolvedSpiceLevelId = requiresSpiceLevel
+    ? Number(form.id_nivel_picante)
+    : DEFAULT_NIVEL_PICANTE_ID;
+
+  return {
+    nombre_receta: String(form.nombre_receta || '').trim(),
+    descripcion: String(form.descripcion || '').trim(),
+    precio: Number(form.precio),
+    id_menu: Number(form.id_menu),
+    // Para no alitas/tenders se envia un nivel por defecto de No aplica.
+    id_nivel_picante: resolvedSpiceLevelId,
+    id_usuario: Number(form.id_usuario),
+    estado: parseBoolean(form.estado),
+    id_tipo_departamento: Number(form.id_tipo_departamento)
+  };
+};
 
 const toSafeRecetaBaseName = (value) => {
   const sanitized = String(value || '')

@@ -939,6 +939,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
   gap: 12px;
+  align-items: stretch;
 }
 
 .menu-recetas-card {
@@ -970,7 +971,9 @@
 
 .menu-recetas-card__media {
   position: relative;
-  min-height: 145px;
+  height: clamp(170px, 14vw, 220px);
+  min-height: clamp(170px, 14vw, 220px);
+  overflow: hidden;
   background: linear-gradient(140deg, #e8dece, #d2c2ab);
   border-bottom: 1px solid rgba(237, 235, 179, 0.76);
 }
@@ -978,8 +981,8 @@
 .menu-recetas-card__media img {
   width: 100%;
   height: 100%;
-  min-height: 145px;
   object-fit: cover;
+  object-position: center;
   display: block;
 }
 
@@ -1007,7 +1010,8 @@
 
 .menu-recetas-card__placeholder {
   width: 100%;
-  min-height: 145px;
+  height: 100%;
+  min-height: 0;
   display: grid;
   place-items: center;
   gap: 4px;
@@ -1120,6 +1124,78 @@
 .menu-combos-receta-picker {
   display: grid;
   gap: 8px;
+}
+
+.menu-combos-receta-picker__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #6a3a2a;
+  background: rgba(243, 241, 216, 0.72);
+  border: 1px solid rgba(157, 150, 112, 0.32);
+}
+
+.menu-combos-selected {
+  display: grid;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid rgba(157, 150, 112, 0.32);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.menu-combos-selected__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  background: rgba(247, 241, 231, 0.56);
+}
+
+.menu-combos-selected__name {
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: #17080a;
+}
+
+.menu-combos-selected__meta {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: rgba(106, 58, 42, 0.9);
+}
+
+.menu-combos-selected__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-combos-selected__remove {
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  background: #fff;
+  color: #6a3a2a;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.5;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.menu-combos-selected__remove:hover {
+  border-color: rgba(184, 52, 52, 0.45);
+  color: #b83434;
+  background: rgba(255, 240, 240, 0.8);
 }
 
 .menu-combos-receta-picker__search {
@@ -1420,4 +1496,3 @@
     width: min(100%, 760px);
   }
 }
-

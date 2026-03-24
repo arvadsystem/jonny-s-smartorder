@@ -9,24 +9,38 @@ const normalizeText = (value) => (
     .trim()
 );
 
-const isMenuProductsDepartment = (name) => {
-  const normalized = normalizeText(name);
-  return (
-    normalized.includes('cerveza') ||
-    normalized.includes('refresco') ||
-    normalized.includes('agua') ||
-    normalized.includes('bebida') ||
-    normalized.includes('helado') ||
-    normalized.includes('snack')
+const MENU_DEPARTMENT_GROUPS = Object.freeze([
+  { key: 'cervezas', keywords: ['cerveza'] },
+  { key: 'refrescos_agua', keywords: ['refresco', 'agua', 'soda'] },
+  { key: 'helados', keywords: ['helado', 'sarita'] },
+  { key: 'snacks', keywords: ['snack'] }
+]);
+
+const resolveMenuGroupByText = (value) => {
+  const normalized = normalizeText(value);
+  if (!normalized) return '';
+
+  const match = MENU_DEPARTMENT_GROUPS.find((group) =>
+    group.keywords.some((keyword) => normalized.includes(keyword))
   );
+
+  return match?.key || '';
 };
 
-const isRowActive = (value) => (
-  value === true ||
-  value === 1 ||
-  value === '1' ||
-  String(value ?? '').trim().toLowerCase() === 'true'
-);
+const isMenuProductsDepartment = (name) => Boolean(resolveMenuGroupByText(name));
+
+const isRowActive = (value) => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return (
+    value === true ||
+    value === 1 ||
+    normalized === '1' ||
+    normalized === 'true' ||
+    normalized === 't' ||
+    normalized === 'activo' ||
+    normalized === 'activa'
+  );
+};
 
 const formatMoney = (value) => {
   const parsed = Number(value);
@@ -37,6 +51,7 @@ const formatMoney = (value) => {
 // Vista administrativa ligera de productos del menu alineada con el catalogo de Ventas.
 const MenuProductosAdmin = () => {
   const [categorias, setCategorias] = useState([]);
+  const [categoriasProducto, setCategoriasProducto] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [items, setItems] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
@@ -52,17 +67,30 @@ const MenuProductosAdmin = () => {
         setError('');
 
         // Reutiliza la misma fuente que Ventas para evitar desalineaciones.
-        const rows = await apiFetch('/ventas/catalogos/tipo-departamento', 'GET');
-        const normalizedRows = Array.isArray(rows) ? rows : [];
-        const menuProductsRows = normalizedRows.filter((row) =>
+        const [tiposDepartamentoRows, categoriasProductoRows] = await Promise.all([
+          apiFetch('/ventas/catalogos/tipo-departamento', 'GET'),
+          apiFetch('/categorias_productos', 'GET')
+        ]);
+
+        const normalizedDepartmentRows = Array.isArray(tiposDepartamentoRows) ? tiposDepartamentoRows : [];
+        const normalizedProductCategoryRows = Array.isArray(categoriasProductoRows) ? categoriasProductoRows : [];
+
+        const menuProductsRows = normalizedDepartmentRows.filter((row) =>
           isMenuProductsDepartment(row?.nombre_departamento)
         );
+
+        const activeProductCategories = normalizedProductCategoryRows.filter((row) =>
+          isRowActive(row?.estado)
+        );
+
         if (!isMounted) return;
 
         setCategorias(menuProductsRows);
+        setCategoriasProducto(activeProductCategories);
       } catch (e) {
         if (!isMounted) return;
         setCategorias([]);
+        setCategoriasProducto([]);
         setError(e?.message || 'No se pudieron cargar categorias de productos del menu.');
       } finally {
         if (isMounted) setLoadingCategories(false);
@@ -75,6 +103,36 @@ const MenuProductosAdmin = () => {
       isMounted = false;
     };
   }, []);
+
+  const categoriasById = useMemo(() => {
+    const map = new Map();
+    categorias.forEach((category) => {
+      const id = Number(category?.id_tipo_departamento ?? 0);
+      if (id > 0) map.set(id, category.nombre_departamento);
+    });
+    return map;
+  }, [categorias]);
+
+  const categoriasProductoById = useMemo(() => {
+    const map = new Map();
+    categoriasProducto.forEach((category) => {
+      const id = Number(category?.id_categoria_producto ?? 0);
+      if (id > 0) map.set(id, category.nombre_categoria);
+    });
+    return map;
+  }, [categoriasProducto]);
+
+  const allowedDepartmentIds = useMemo(() =>
+    new Set(categorias.map((category) => String(category?.id_tipo_departamento ?? ''))),
+  [categorias]);
+
+  const selectedCategoryGroup = useMemo(() => {
+    if (!selectedCategoryId) return '';
+    const selected = categorias.find(
+      (category) => String(category?.id_tipo_departamento ?? '') === String(selectedCategoryId)
+    );
+    return resolveMenuGroupByText(selected?.nombre_departamento);
+  }, [categorias, selectedCategoryId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -91,8 +149,24 @@ const MenuProductosAdmin = () => {
         const filteredRows = normalizedRows
           .filter((row) => isRowActive(row?.estado))
           .filter((row) => {
-            if (!selectedCategoryId) return true;
-            return String(row?.id_tipo_departamento ?? '') === String(selectedCategoryId);
+            const rowTipoDepartamentoId = String(row?.id_tipo_departamento ?? '');
+            const rowCategoriaProductoNombre =
+              categoriasProductoById.get(Number(row?.id_categoria_producto ?? 0)) ||
+              row?.nombre_categoria ||
+              row?.categoria_label ||
+              '';
+            const rowTipoDepartamentoNombre = row?.nombre_departamento || row?.nombre_tipo_departamento || '';
+            const rowGroup = resolveMenuGroupByText(`${rowCategoriaProductoNombre} ${rowTipoDepartamentoNombre}`);
+
+            if (!selectedCategoryId) {
+              // Sin chip seleccionado: mostrar solo productos que pertenezcan al alcance del menu.
+              return allowedDepartmentIds.has(rowTipoDepartamentoId) || Boolean(rowGroup);
+            }
+
+            // Con chip seleccionado: primera regla por FK directa; fallback por nombre de categoria.
+            if (rowTipoDepartamentoId === String(selectedCategoryId)) return true;
+            if (selectedCategoryGroup && rowGroup === selectedCategoryGroup) return true;
+            return false;
           });
 
         if (!isMounted) return;
@@ -111,16 +185,7 @@ const MenuProductosAdmin = () => {
     return () => {
       isMounted = false;
     };
-  }, [selectedCategoryId]);
-
-  const categoriasById = useMemo(() => {
-    const map = new Map();
-    categorias.forEach((category) => {
-      const id = Number(category?.id_tipo_departamento ?? 0);
-      if (id > 0) map.set(id, category.nombre_departamento);
-    });
-    return map;
-  }, [categorias]);
+  }, [allowedDepartmentIds, categoriasProductoById, selectedCategoryGroup, selectedCategoryId]);
 
   const categoriesLabel = useMemo(() => {
     if (loadingCategories) return 'Cargando categorias...';
@@ -194,12 +259,19 @@ const MenuProductosAdmin = () => {
               </thead>
               <tbody>
                 {items.map((item) => {
-                  const active = item?.estado !== false;
+                  const active = isRowActive(item?.estado);
+                  const categoryLabel =
+                    categoriasProductoById.get(Number(item?.id_categoria_producto ?? 0)) ||
+                    categoriasById.get(Number(item?.id_tipo_departamento ?? 0)) ||
+                    item?.nombre_categoria ||
+                    item?.nombre_departamento ||
+                    'Sin categoria';
+
                   return (
                     <tr key={`menu-producto-${item.id_producto}`}>
                       <td>#{item.id_producto}</td>
                       <td>{item.nombre_producto || item.nombre || 'Producto'}</td>
-                      <td>{categoriasById.get(Number(item?.id_tipo_departamento ?? 0)) || 'Sin categoria'}</td>
+                      <td>{categoryLabel}</td>
                       <td>{formatMoney(item.precio)}</td>
                       <td>
                         <span className={`menu-recetas-admin__estado-badge ${active ? 'is-active' : 'is-inactive'}`}>

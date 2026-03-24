@@ -14,13 +14,14 @@ import {
   parseBoolean,
   resolveComboActivo,
   resolveComboImageUrl,
+  resolveComboNombre,
   toNumberOrNull,
   toSafeComboBaseName
 } from '../utils/combosAdminUtils';
 
 const validarFormulario = (form) => {
-  if (!String(form.descripcion || '').trim()) {
-    return 'descripcion es obligatoria.';
+  if (!String(form.nombre_combo || '').trim()) {
+    return 'nombre_combo es obligatorio.';
   }
 
   const precio = toNumberOrNull(form.precio);
@@ -89,15 +90,21 @@ const resolveRecetaNombre = (row) => String(
   ''
 ).trim();
 
-const buildPayloadBase = (form) => ({
-  descripcion: String(form.descripcion || '').trim(),
-  precio: Number(form.precio),
-  cant_personas: Number(form.cant_personas),
-  id_menu: Number(form.id_menu),
-  id_usuario: Number(form.id_usuario),
-  estado: parseBoolean(form.estado),
-  detalle: normalizeDetallePayload(form.detalle)
-});
+const buildPayloadBase = (form) => {
+  const nombreCombo = String(form.nombre_combo || '').trim();
+  const descripcion = String(form.descripcion || '').trim();
+
+  return {
+    nombre_combo: nombreCombo,
+    descripcion: descripcion || nombreCombo,
+    precio: Number(form.precio),
+    cant_personas: Number(form.cant_personas),
+    id_menu: Number(form.id_menu),
+    id_usuario: Number(form.id_usuario),
+    estado: parseBoolean(form.estado),
+    detalle: normalizeDetallePayload(form.detalle)
+  };
+};
 
 /**
  * Registra una URL de imagen en la tabla archivos y retorna su id_archivo.
@@ -105,7 +112,7 @@ const buildPayloadBase = (form) => ({
  */
 const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
   const payloadArchivo = {
-    nombre_original: `${toSafeComboBaseName(form.descripcion)}-url`,
+    nombre_original: `${toSafeComboBaseName(form.nombre_combo || form.descripcion)}-url`,
     url_publica: imageUrl,
     tipo_archivo: 'image/url',
     tamano_bytes: null,
@@ -305,9 +312,10 @@ const useCombosAdmin = () => {
     if (!searchTerm) return rows;
 
     return rows.filter((combo) => {
+      const nombreCombo = String(resolveComboNombre(combo) || '').toLowerCase();
       const descripcion = String(combo?.descripcion || '').toLowerCase();
       const idText = String(combo?.id_combo || '');
-      return descripcion.includes(searchTerm) || idText.includes(searchTerm);
+      return nombreCombo.includes(searchTerm) || descripcion.includes(searchTerm) || idText.includes(searchTerm);
     });
   }, [combos, search]);
 
@@ -574,3 +582,7 @@ const useCombosAdmin = () => {
 };
 
 export default useCombosAdmin;
+
+
+
+
