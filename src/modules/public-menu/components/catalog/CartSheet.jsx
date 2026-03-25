@@ -13,7 +13,8 @@ const CartSheet = ({
   onIncrease,
   onDecrease,
   onRemove,
-  onConfirm
+  onConfirm,
+  confirming = false
 }) => {
   if (!open) return null;
 
@@ -90,10 +91,10 @@ const CartSheet = ({
           <button
             type="button"
             className="btn btn-dark pm-cart-sheet__confirm"
-            disabled={items.length === 0}
+            disabled={items.length === 0 || confirming}
             onClick={onConfirm}
           >
-            Confirmar pedido
+            {confirming ? 'Enviando pedido...' : 'Confirmar pedido'}
           </button>
         </footer>
       </section>

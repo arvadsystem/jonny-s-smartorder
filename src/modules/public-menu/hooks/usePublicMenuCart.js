@@ -184,6 +184,7 @@ export const usePublicMenuCart = ({ branch }) => {
     sucursal_slug: branchSlug,
     origen: 'public-menu',
     items: items.map((item) => ({
+      id_detalle_menu: Number(item.id_detalle_menu || 0) || null,
       tipo_item: item.tipo_item,
       id_item_origen: item.id_item_origen,
       nombre: item.nombre,

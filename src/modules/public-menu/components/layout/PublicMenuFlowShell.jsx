@@ -56,6 +56,11 @@ const PublicMenuFlowShell = () => {
 
   const handleBack = () => {
     if (!hasPreviousStep) return;
+    // En el paso de catalogo regresamos directo al selector de sucursal.
+    if (currentStep === PUBLIC_MENU_STEPS.MENU) {
+      navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.BRANCH));
+      return;
+    }
     const previousStep = PUBLIC_MENU_STEP_ORDER[currentStepIndex - 1];
     navigate(getPublicMenuPathByStep(previousStep));
   };

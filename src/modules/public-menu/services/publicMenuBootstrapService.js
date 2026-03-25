@@ -141,5 +141,11 @@ export const publicMenuBootstrapService = {
       menu: payload?.menu ? normalizeMenu(payload.menu) : null,
       item: payload?.item ? normalizeCatalogItem(payload.item) : null
     };
+  },
+
+  // Registra pedido publico para que aparezca en Ventas > Pedidos.
+  async createOrder(payload) {
+    const response = await apiFetch('/public-menu/pedidos', 'POST', payload);
+    return response?.data || null;
   }
 };

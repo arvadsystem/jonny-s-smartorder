@@ -2,11 +2,50 @@ import { useEffect, useMemo, useState } from 'react';
 import MenuPreviewPanel from './components/MenuPreviewPanel';
 import menuPublicacionAdminService from './services/menuPublicacionAdminService';
 import { buildPublicMenuUrlByBranch } from './utils/publicMenuBranchUrl';
+import { publicMenuBootstrapService } from '../../../modules/public-menu/services/publicMenuBootstrapService';
 
+// Fallback operativo para evitar select vacio en ambiente local MVP.
+const STATIC_PREVIEW_BRANCHES = [
+  { id_sucursal: 1, nombre_sucursal: "Sucursal Jonny's El Carmen", estado: true },
+  { id_sucursal: 6, nombre_sucursal: "Sucursal Jonny's 21 Octubre", estado: true }
+];
+
+const normalizeBranchOption = (raw, index) => {
+  const id = Number(raw?.id_sucursal ?? raw?.id ?? raw?.idSucursal ?? 0) || null;
+  const nombre =
+    String(raw?.nombre_sucursal ?? raw?.nombre ?? raw?.name ?? '')
+      .replace(/\s+/g, ' ')
+      .trim() || '';
+
+  return {
+    ...raw,
+    id_sucursal: id,
+    nombre_sucursal: nombre || (id ? `Sucursal #${id}` : `Sucursal ${index + 1}`),
+    estado: raw?.estado ?? raw?.isOpen ?? true
+  };
+};
+
+const dedupeBranchesById = (rows = []) => {
+  const map = new Map();
+  rows.forEach((row) => {
+    const id = Number(row?.id_sucursal || 0);
+    if (!id) return;
+    map.set(id, row);
+  });
+  return Array.from(map.values());
+};
+
+const STATIC_BRANCH_OPTIONS = dedupeBranchesById(
+  STATIC_PREVIEW_BRANCHES.map((row, index) => normalizeBranchOption(row, index))
+);
+
+// million-ignore
 // Vista previa separada para revisar exactamente el render del cliente por sucursal.
 const MenuVistaPreviaAdmin = () => {
-  const [sucursales, setSucursales] = useState([]);
-  const [selectedSucursalId, setSelectedSucursalId] = useState('');
+  const [sucursales, setSucursales] = useState(STATIC_BRANCH_OPTIONS);
+  const [selectedSucursalId, setSelectedSucursalId] = useState(
+    String(STATIC_BRANCH_OPTIONS?.[0]?.id_sucursal || '')
+  );
   const [preview, setPreview] = useState(null);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -20,20 +59,47 @@ const MenuVistaPreviaAdmin = () => {
         setLoadingBranches(true);
         setError('');
 
-        const rows = await menuPublicacionAdminService.getSucursales();
+        const [adminResult, publicResult] = await Promise.allSettled([
+          menuPublicacionAdminService.getSucursales(),
+          publicMenuBootstrapService.getBranches()
+        ]);
+
         if (!isMounted) return;
 
-        const nextRows = Array.isArray(rows) ? rows : [];
-        setSucursales(nextRows);
+        const adminRows = adminResult.status === 'fulfilled' ? adminResult.value : [];
+        const publicRows = publicResult.status === 'fulfilled' ? publicResult.value : [];
 
-        if (nextRows.length > 0) {
-          const firstActive = nextRows.find((branch) => Boolean(branch?.estado));
-          const fallback = firstActive || nextRows[0];
+        let nextRows = (Array.isArray(adminRows) ? adminRows : [])
+          .map(normalizeBranchOption)
+          .filter((branch) => Number(branch?.id_sucursal || 0) > 0);
+
+        const normalizedPublicRows = (Array.isArray(publicRows) ? publicRows : [])
+          .map((branch, index) => normalizeBranchOption({
+            id_sucursal: branch?.id,
+            nombre_sucursal: branch?.displayName || branch?.name,
+            direccion: branch?.address,
+            estado: branch?.isOpen ?? true
+          }, index))
+          .filter((branch) => Number(branch?.id_sucursal || 0) > 0);
+
+        nextRows = [...nextRows, ...normalizedPublicRows];
+        nextRows = [...nextRows, ...STATIC_PREVIEW_BRANCHES.map(normalizeBranchOption)];
+
+        const uniqueRows = dedupeBranchesById(nextRows);
+        const finalRows = uniqueRows.length > 0 ? uniqueRows : STATIC_BRANCH_OPTIONS;
+        setSucursales(finalRows);
+
+        if (finalRows.length > 0) {
+          const firstActive = finalRows.find((branch) => Boolean(branch?.estado));
+          const fallback = firstActive || finalRows[0];
           setSelectedSucursalId(String(fallback?.id_sucursal || ''));
+        } else {
+          setError('No se encontraron sucursales para vista previa.');
         }
       } catch (e) {
         if (!isMounted) return;
-        setSucursales([]);
+        setSucursales(STATIC_BRANCH_OPTIONS);
+        setSelectedSucursalId(String(STATIC_BRANCH_OPTIONS?.[0]?.id_sucursal || ''));
         setError(e?.message || 'No se pudieron cargar las sucursales.');
       } finally {
         if (isMounted) setLoadingBranches(false);
@@ -47,9 +113,43 @@ const MenuVistaPreviaAdmin = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!Array.isArray(sucursales) || sucursales.length === 0) return;
+    if (
+      selectedSucursalId &&
+      sucursales.some((branch) => String(branch.id_sucursal) === String(selectedSucursalId))
+    ) {
+      return;
+    }
+
+    const firstActive = sucursales.find((branch) => Boolean(branch?.estado));
+    const fallback = firstActive || sucursales[0];
+    setSelectedSucursalId(String(fallback?.id_sucursal || ''));
+  }, [selectedSucursalId, sucursales]);
+
+  // Nunca deja el select vacio: combina estado cargado + fallback fijo.
+  const availableSucursales = useMemo(
+    () => dedupeBranchesById([...(Array.isArray(sucursales) ? sucursales : []), ...STATIC_BRANCH_OPTIONS]),
+    [sucursales]
+  );
+
+  useEffect(() => {
+    if (!Array.isArray(availableSucursales) || availableSucursales.length === 0) return;
+    if (
+      selectedSucursalId &&
+      availableSucursales.some((branch) => String(branch.id_sucursal) === String(selectedSucursalId))
+    ) {
+      return;
+    }
+
+    const firstActive = availableSucursales.find((branch) => Boolean(branch?.estado));
+    const fallback = firstActive || availableSucursales[0];
+    setSelectedSucursalId(String(fallback?.id_sucursal || ''));
+  }, [availableSucursales, selectedSucursalId]);
+
   const selectedSucursal = useMemo(
-    () => sucursales.find((branch) => String(branch.id_sucursal) === String(selectedSucursalId)) || null,
-    [selectedSucursalId, sucursales]
+    () => availableSucursales.find((branch) => String(branch.id_sucursal) === String(selectedSucursalId)) || null,
+    [availableSucursales, selectedSucursalId]
   );
 
   useEffect(() => {
@@ -116,10 +216,12 @@ const MenuVistaPreviaAdmin = () => {
             className="form-select"
             value={selectedSucursalId}
             onChange={(event) => setSelectedSucursalId(event.target.value)}
-            disabled={loadingBranches || sucursales.length === 0}
+            disabled={loadingBranches || availableSucursales.length === 0}
           >
-            {sucursales.length === 0 ? <option value="">Sin sucursales</option> : null}
-            {sucursales.map((branch) => (
+            <option value="">
+              {availableSucursales.length === 0 ? 'Sin sucursales' : 'Selecciona sucursal'}
+            </option>
+            {availableSucursales.map((branch) => (
               <option key={branch.id_sucursal} value={String(branch.id_sucursal)}>
                 {branch.nombre_sucursal}{Boolean(branch?.estado) ? '' : ' (Inactiva)'}
               </option>

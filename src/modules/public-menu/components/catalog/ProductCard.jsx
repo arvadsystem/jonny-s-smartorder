@@ -12,9 +12,23 @@ const ProductCard = ({ product, onOpenDetail }) => {
   const finalPrice = product?.precio?.final;
   const isSoldOut = !product?.disponibilidad?.available;
   const canOpenDetail = typeof onOpenDetail === 'function' && Number(product?.id_detalle_menu) > 0;
+  const imageUrl = String(product?.imagen_url || '').trim();
 
   return (
     <article className={`pm-product-card ${isSoldOut ? 'is-soldout' : ''}`}>
+      <div className="pm-product-card__media">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={product?.nombre || 'Imagen del item'}
+            className="pm-product-card__image"
+            loading="lazy"
+          />
+        ) : (
+          <div className="pm-product-card__placeholder">Sin imagen</div>
+        )}
+      </div>
+
       <div className="pm-product-card__top">
         <p className="pm-product-card__category">{product.categoria.nombre}</p>
         {isSoldOut ? <SoldOutBadge /> : null}

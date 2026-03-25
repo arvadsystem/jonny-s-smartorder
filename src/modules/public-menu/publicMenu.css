@@ -385,6 +385,51 @@
   font-size: 0.86rem;
 }
 
+.pm-branch-confirm-card__order {
+  margin-top: 0.8rem;
+  padding: 0.68rem;
+  border: 1px solid #e5dbc8;
+  border-radius: 12px;
+  background: #fffaf1;
+}
+
+.pm-branch-confirm-card__order h4 {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.pm-branch-confirm-card__order small {
+  display: block;
+  margin-top: 0.45rem;
+  color: #5c645f;
+  font-size: 0.76rem;
+}
+
+.pm-branch-confirm-card__order-grid {
+  margin-top: 0.55rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.46rem;
+}
+
+.pm-branch-confirm-card__order-btn {
+  border: 1px solid #d7cebf;
+  background: #fff;
+  border-radius: 10px;
+  min-height: 38px;
+  font-size: 0.81rem;
+  font-weight: 700;
+  color: #2f3238;
+  padding: 0.35rem 0.55rem;
+}
+
+.pm-branch-confirm-card__order-btn.is-selected {
+  border-color: #16181d;
+  background: #16181d;
+  color: #fff;
+}
+
 .pm-branch-confirm-card__actions {
   display: grid;
   grid-template-columns: 1fr;
@@ -408,6 +453,19 @@
   color: #2e2f35;
   padding: 0.5rem 0.7rem;
   font-size: 0.83rem;
+}
+
+.pm-branch-banner__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.pm-branch-banner__change {
+  border-radius: 999px;
+  font-size: 0.76rem;
+  white-space: nowrap;
 }
 
 .pm-catalog-header {
@@ -520,6 +578,31 @@
 
 .pm-product-card.is-soldout {
   opacity: 0.86;
+}
+
+.pm-product-card__media {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e7e1d6;
+  background: #f2eee6;
+  margin-bottom: 0.62rem;
+  min-height: 138px;
+}
+
+.pm-product-card__image {
+  width: 100%;
+  height: 138px;
+  object-fit: cover;
+  display: block;
+}
+
+.pm-product-card__placeholder {
+  min-height: 138px;
+  display: grid;
+  place-items: center;
+  color: #7a7367;
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .pm-product-card__top {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import CatalogHeader from '../components/catalog/CatalogHeader';
 import CartSheet from '../components/catalog/CartSheet';
 import CartFab from '../components/catalog/CartFab';
@@ -7,17 +8,20 @@ import ProductCard from '../components/catalog/ProductCard';
 import ProductDetailSheet from '../components/catalog/ProductDetailSheet';
 import SearchInput from '../components/catalog/SearchInput';
 import StateBlock from '../components/feedback/StateBlock';
+import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { useCatalogProducts } from '../hooks/useCatalogProducts';
 import { useMenuItemDetail } from '../hooks/useMenuItemDetail';
 import { usePublicMenuCart } from '../hooks/usePublicMenuCart';
 import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
-import { PUBLIC_MENU_ORDER_TYPE_OPTIONS } from '../types/publicMenuTypes';
+import { getPublicMenuPathByStep } from '../routes/flowSteps';
+import { PUBLIC_MENU_ORDER_TYPE_OPTIONS, PUBLIC_MENU_STEPS } from '../types/publicMenuTypes';
 
 const getOrderTypeLabel = (orderTypeId) =>
   PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === orderTypeId)?.title || 'Pedido';
 
 // Paso 3: catalogo real basado en menu_vigente + detalle_menu.
 const CatalogScreen = () => {
+  const navigate = useNavigate();
   const { state, actions } = usePublicMenuFlow();
   const branchId = state.selectedBranch?.id;
   const orderType = state.orderType;
@@ -40,6 +44,7 @@ const CatalogScreen = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItemId, setDetailItemId] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
+  const [confirmingOrder, setConfirmingOrder] = useState(false);
 
   const {
     itemDetail,
@@ -105,17 +110,52 @@ const CatalogScreen = () => {
     });
   };
 
-  const handleConfirmOrder = () => {
-    const payload = buildOrderPayload();
-    console.log('public-menu-order-payload', payload);
+  const handleConfirmOrder = async () => {
+    if (confirmingOrder) return;
 
-    actions.pushToast({
-      type: 'success',
-      message: 'Pedido listo para enviar. Revisa la consola para ver el payload.'
-    });
+    const payload = {
+      ...buildOrderPayload(),
+      tipo_pedido: orderType
+    };
 
-    setCartOpen(false);
+    if (!payload.id_sucursal || !payload.tipo_pedido || !Array.isArray(payload.items) || payload.items.length === 0) {
+      actions.pushToast({
+        type: 'error',
+        message: 'No se pudo preparar el pedido. Verifica sucursal, tipo de pedido y carrito.'
+      });
+      return;
+    }
+
+    try {
+      setConfirmingOrder(true);
+      const created = await publicMenuBootstrapService.createOrder(payload);
+
+      actions.pushToast({
+        type: 'success',
+        message: created?.numero_ticket
+          ? `Pedido ${created.numero_ticket} enviado correctamente.`
+          : 'Pedido enviado correctamente.'
+      });
+
+      setCartOpen(false);
+      clearCart();
+    } catch (e) {
+      actions.pushToast({
+        type: 'error',
+        message: e?.message || 'No se pudo enviar el pedido. Intenta nuevamente.'
+      });
+    } finally {
+      setConfirmingOrder(false);
+    }
+  };
+
+  // Permite corregir sucursal desde catalogo sin mezclar carrito entre sedes.
+  const handleChangeBranch = () => {
     clearCart();
+    actions.selectMenu(null);
+    actions.selectOrderType(null);
+    actions.selectBranch(null);
+    navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.BRANCH));
   };
 
   if (loading) {
@@ -153,7 +193,19 @@ const CatalogScreen = () => {
   return (
     <section className="pm-screen pm-catalog-screen" aria-label="Catalogo publico">
       <div className="pm-branch-banner">
-        Estas ordenando en: <strong>{state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal'}</strong>
+        <div className="pm-branch-banner__row">
+          <span>
+            Estas ordenando en:{' '}
+            <strong>{state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal'}</strong>
+          </span>
+          <button
+            type="button"
+            className="btn btn-outline-dark btn-sm pm-branch-banner__change"
+            onClick={handleChangeBranch}
+          >
+            Cambiar sucursal
+          </button>
+        </div>
       </div>
 
       <CatalogHeader
@@ -230,6 +282,7 @@ const CatalogScreen = () => {
         onDecrease={decreaseItem}
         onRemove={removeItem}
         onConfirm={handleConfirmOrder}
+        confirming={confirmingOrder}
       />
     </section>
   );

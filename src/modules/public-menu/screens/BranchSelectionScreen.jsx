@@ -7,6 +7,7 @@ import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { getPublicMenuPathByStep } from '../routes/flowSteps';
 import {
   PUBLIC_MENU_CART_STORAGE_KEY,
+  PUBLIC_MENU_ORDER_TYPE_OPTIONS,
   PUBLIC_MENU_ORDER_TYPES,
   PUBLIC_MENU_STEPS
 } from '../types/publicMenuTypes';
@@ -92,6 +93,9 @@ const BranchSelectionScreen = () => {
   ]);
 
   const selectedBranch = state.selectedBranch;
+  const selectedOrderType = state.orderType || DEFAULT_ORDER_TYPE;
+  const selectedOrderTypeMeta =
+    PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === selectedOrderType) || null;
   const showConfirmation = Boolean(selectedBranch?.id) && !manualSelectionEnabled;
 
   const handleContinueToMenu = () => {
@@ -175,6 +179,26 @@ const BranchSelectionScreen = () => {
           <div className="pm-branch-confirm-card__body">
             <h3>{selectedBranch.displayName || selectedBranch.name}</h3>
             <p>{selectedBranch.address || 'Direccion no disponible'}</p>
+
+            <div className="pm-branch-confirm-card__order">
+              <h4>Tipo de pedido</h4>
+              <div className="pm-branch-confirm-card__order-grid">
+                {PUBLIC_MENU_ORDER_TYPE_OPTIONS.map((option) => {
+                  const isSelected = option.id === selectedOrderType;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`pm-branch-confirm-card__order-btn ${isSelected ? 'is-selected' : ''}`}
+                      onClick={() => actions.selectOrderType(option.id)}
+                    >
+                      {option.title}
+                    </button>
+                  );
+                })}
+              </div>
+              <small>{selectedOrderTypeMeta?.paymentCopy || ''}</small>
+            </div>
 
             <div className="pm-branch-confirm-card__actions">
               <button type="button" className="btn btn-dark" onClick={handleContinueToMenu}>

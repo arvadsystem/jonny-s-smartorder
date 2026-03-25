@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import MenuPreviewPanel from './components/MenuPreviewPanel';
 import MenuProgramacionPanel from './components/MenuProgramacionPanel';
 import MenuPublicationTable from './components/MenuPublicationTable';
-import MenuSucursalSelector from './components/MenuSucursalSelector';
 import MenuActionToast from './components/MenuActionToast';
 import useMenuPublicacionAdmin from './hooks/useMenuPublicacionAdmin';
 import menuPublicacionAdminService from './services/menuPublicacionAdminService';
 
+// million-ignore
 // Pantalla MVP para publicar menu por sucursal desde el panel admin.
 const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const {
@@ -134,6 +134,18 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     if (ids.length === 0) return 1;
     return Math.max(...ids) + 1;
   }, [menusProgramables]);
+
+  const branchRows = useMemo(() => {
+    const rows = Array.isArray(sucursales) ? sucursales : [];
+    return rows
+      .map((branch) => ({
+        ...branch,
+        id_sucursal: Number(branch?.id_sucursal || 0) || null,
+        nombre_sucursal: String(branch?.nombre_sucursal || '').trim()
+      }))
+      .filter((branch) => Number(branch?.id_sucursal || 0) > 0)
+      .sort((a, b) => Number(a.id_sucursal) - Number(b.id_sucursal));
+  }, [sucursales]);
 
   const handleProgramarMenu = async () => {
     setScheduleError('');
@@ -278,15 +290,61 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           </div>
         ) : null}
 
-        <MenuSucursalSelector
-          sucursales={sucursales}
-          selectedSucursalId={selectedSucursalId}
-          selectedSucursal={selectedSucursal}
-          menuSummary={menuSummary}
-          loading={loadingSucursales || loadingCatalogo}
-          onChange={onSelectSucursal}
-          onReload={reloadCurrent}
-        />
+        <section className="menu-pub-admin__selector" aria-label="Selector de sucursal para publicacion">
+          <div className="d-flex flex-wrap align-items-end justify-content-between gap-2">
+            <div className="flex-grow-1">
+              <label className="form-label mb-1" htmlFor="menu_publicacion_sucursal">Sucursal</label>
+              <select
+                id="menu_publicacion_sucursal"
+                className="form-select"
+                value={String(selectedSucursalId || '')}
+                onChange={(event) => onSelectSucursal?.(event.target.value)}
+                disabled={loadingSucursales || loadingCatalogo || branchRows.length === 0}
+              >
+                <option value="">
+                  {branchRows.length === 0 ? 'Sin sucursales disponibles' : 'Selecciona sucursal'}
+                </option>
+                {branchRows.map((branch) => {
+                  const id = String(branch?.id_sucursal || '');
+                  const label = String(branch?.nombre_sucursal || `Sucursal #${id}`).trim();
+                  return (
+                    <option key={`menu-pub-branch-${id}`} value={id}>
+                      {label}{Boolean(branch?.estado) ? '' : ' (Inactiva)'}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              className="btn inv-prod-btn-subtle"
+              onClick={reloadCurrent}
+              disabled={loadingSucursales || loadingCatalogo || !selectedSucursalId}
+            >
+              Recargar
+            </button>
+          </div>
+
+          <div className="menu-pub-admin__selector-meta">
+            {selectedSucursalId ? (
+              !selectedSucursal ? (
+                <span className="text-danger">La sucursal seleccionada ya no esta disponible. Selecciona otra sucursal.</span>
+              ) : !Boolean(selectedSucursal?.estado) ? (
+                <span className="text-danger">La sucursal seleccionada esta inactiva.</span>
+              ) : menuSummary ? (
+                <>
+                  <span>Menu vigente: <strong>{menuSummary.nombre_menu || 'Menu'}</strong></span>
+                  <span>ID menu: <strong>{menuSummary.id_menu}</strong></span>
+                </>
+              ) : (
+                <span className="text-danger">La sucursal no tiene menu vigente activo.</span>
+              )
+            ) : (
+              <span className="text-muted">Selecciona una sucursal para editar publicacion.</span>
+            )}
+          </div>
+        </section>
 
         <MenuProgramacionPanel
           selectedSucursal={selectedSucursal}
