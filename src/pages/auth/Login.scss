@@ -1,128 +1,420 @@
-// src/pages/auth/Login.scss
-@use "sass:color";
-// Variables de color (puedes moverlas a un archivo global luego)
-$jonnys-red: #d32f2f;
-$dark-bg: #121212;
-$dark-input: #1e1e1e;
-$text-muted: #b0bec5;
+@use 'sass:color';
+/* src/pages/auth/Login.scss */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-.login-page {
-  // 1. Configuración del contenedor principal para que ocupe toda la pantalla
+// ── Variables ────────────────────────────────────────────────────
+$dark:        #0e0704;
+$gold:        #d4a574;
+$gold-light:  #f0c896;
+$brown-btn:   #9B4D1A;
+$input-bg:    #1a1108;
+$input-border: rgba(255, 255, 255, 0.14);
+
+// ── Root ─────────────────────────────────────────────────────────
+.login-root {
+  display: flex;
   min-height: 100vh;
   width: 100%;
-  
-  // 2. Imagen de fondo con una capa oscura encima para que el texto se lea bien
-  background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
-              url('../../assets/images/login-bg.jpg'); // Asegúrate que este sea el nombre de tu imagen
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-color: $dark;
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow: hidden;
 
-  // 3. Centrar la tarjeta del formulario (Flexbox)
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px; // Un poco de espacio en móviles
+  // ────────────────────────────────────────────────────────────
+  // PANEL IZQUIERDO
+  // ────────────────────────────────────────────────────────────
+  .panel-left {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
 
-  .login-card {
-    // 4. Efecto "Glassmorphism" (Tarjeta transparente)
-    background-color: rgba(20, 20, 20, 0.85); // Color negro semi-transparente
-    backdrop-filter: blur(8px); // Desenfoca el fondo detrás de la tarjeta
-    -webkit-backdrop-filter: blur(8px); // Para Safari
-    border: 1px solid rgba(255, 255, 255, 0.1); // Borde sutil
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    
-    border-radius: 16px;
-    padding: 2.5rem;
-    width: 100%;
-    max-width: 450px; // Ancho máximo para que no se vea gigante
-    text-align: center;
-    color: white;
-
-    .login-logo {
-      width: 120px;
-      margin-bottom: 1.5rem;
+    // Capa 1 — imagen de comida
+    .bg-food {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      opacity: 0.37;
+      z-index: 1;
     }
 
-    h3 {
-      font-weight: 600;
-      margin-bottom: 2rem;
-      font-size: 1.5rem;
+    // Capa 2 — vignette radial
+    .vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(
+        ellipse at 30% 50%,
+        rgba(14, 7, 4, 0.2)  0%,
+        rgba(14, 7, 4, 0.85) 100%
+      );
+      z-index: 2;
     }
 
-    // --- Estilos para los Inputs y Botones (igual que antes) ---
-    .form-control {
-      background-color: $dark-input;
-      border: 1px solid #333;
-      color: white;
-      padding: 0.8rem 1rem;
-      border-radius: 8px;
-
-      &::placeholder {
-        color: $text-muted;
-      }
-
-      &:focus {
-        background-color: color.adjust($dark-input, $lightness: 5%);
-        border-color: $jonnys-red;
-        box-shadow: none;
-      }
+    // Capa 3 — fade lateral (la fusión)
+    .side-fade {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 128px;
+      background: linear-gradient(to right, transparent, $dark);
+      z-index: 3;
+      pointer-events: none;
     }
 
-    .input-group-text {
-      background-color: $dark-input;
-      border: 1px solid #333;
-      border-left: none;
-      color: $text-muted;
-      cursor: pointer;
-      border-top-right-radius: 8px;
-      border-bottom-right-radius: 8px;
-    }
-    
-    .form-control + .input-group-text {
-         border-top-left-radius: 0;
-         border-bottom-left-radius: 0;
-    }
+    // Capa 4 — contenido sobre todas las capas
+    .left-content {
+      position: relative;
+      z-index: 10;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 2rem 3.5rem;
 
-    .options-row {
-      font-size: 0.9rem;
-      color: $text-muted;
-      margin-bottom: 2rem;
+      // Badge "SISTEMA DE GESTIÓN"
+      .badge {
+        position: absolute;
+        top: 1.5rem;
+        left: 1.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 2px;
+        color: rgba(255, 255, 255, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 0.4rem 0.9rem;
+        border-radius: 2rem;
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(4px);
 
-      a {
-        color: $text-muted;
-        text-decoration: underline;
-        &:hover { color: white; }
-      }
-
-      .form-check-input {
-        background-color: $dark-input;
-        border-color: #333;
-        &:checked {
-            background-color: $jonnys-red;
-            border-color: $jonnys-red;
+        .dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: $gold;
+          box-shadow: 0 0 6px $gold;
+          flex-shrink: 0;
+          animation: pulse-dot 2s ease-in-out infinite;
         }
-        &:focus { box-shadow: none; }
+      }
+
+      // Área de marca
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 1.75rem;
+
+        .logo-ring {
+          position: relative;
+          width: 140px;
+          height: 140px;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          .halo {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba($gold, 0.3) 0%, transparent 70%);
+          }
+
+          .ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 2px dashed rgba($gold, 0.45);
+            animation: spin-ring 22s linear infinite;
+          }
+
+          .logo-img {
+            width: 78%;
+            height: 78%;
+            object-fit: contain;
+            mix-blend-mode: screen;
+            position: relative;
+            z-index: 2;
+          }
+        }
+
+        .brand-text {
+          display: flex;
+          flex-direction: column;
+
+          .brand-sub {
+            font-size: 0.65rem;
+            letter-spacing: 3px;
+            color: rgba(255, 255, 255, 0.4);
+            font-weight: 500;
+          }
+
+          .brand-name {
+            font-size: 3rem;
+            font-weight: 800;
+            color: #fff;
+            margin: 0;
+            line-height: 1;
+            letter-spacing: 1px;
+          }
+
+          .brand-sub2 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin: 0;
+            letter-spacing: 4px;
+            background: linear-gradient(90deg, $gold 0%, $gold-light 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+          }
+
+          .gold-line {
+            width: 52px;
+            height: 2px;
+            margin-top: 0.75rem;
+            background: linear-gradient(90deg, $gold, transparent);
+            border-radius: 2px;
+          }
+        }
+      }
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // PANEL DERECHO
+  // ────────────────────────────────────────────────────────────
+  .panel-right {
+    width: 450px;
+    flex-shrink: 0;
+    background-color: $dark;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 3.5rem 3rem;
+    z-index: 20;
+
+    .form-header {
+      margin-bottom: 2.25rem;
+
+      h2 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #fdfaf5;
+        margin: 0 0 0.4rem;
+      }
+
+      p {
+        font-size: 0.875rem;
+        color: rgba($gold, 0.75);
+        margin: 0;
       }
     }
 
-    .btn { padding: 0.8rem; border-radius: 8px; font-weight: 600; }
+    // ── Formulario ──────────────────────────────────────────────
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
 
-    .btn-jonnys-red {
-      background-color: $jonnys-red;
-      border: none;
-      color: white;
-      &:hover { background-color: color.adjust($jonnys-red, $lightness: -10%); }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+
+        label {
+          font-size: 0.7rem;
+          font-weight: 600;
+          letter-spacing: 1.5px;
+          color: rgba(255, 255, 255, 0.5);
+        }
+
+        .input-wrap {
+          position: relative;
+          display: flex;
+          align-items: center;
+
+          .field-icon {
+            position: absolute;
+            left: 1rem;
+            color: rgba(255, 255, 255, 0.32);
+            font-size: 1rem;
+            pointer-events: none;
+          }
+
+          input {
+            width: 100%;
+            background: $input-bg;
+            border: 1px solid $input-border;
+            border-radius: 10px;
+            padding: 0.85rem 3rem 0.85rem 2.75rem;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 0.95rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.25s, box-shadow 0.25s;
+
+            // Override autofill blanco del browser
+            &:-webkit-autofill,
+            &:-webkit-autofill:hover,
+            &:-webkit-autofill:focus {
+              -webkit-box-shadow: 0 0 0 1000px $input-bg inset !important;
+              -webkit-text-fill-color: rgba(255, 255, 255, 0.85) !important;
+              caret-color: rgba(255, 255, 255, 0.85);
+            }
+
+            &::placeholder { color: rgba(255, 255, 255, 0.22); }
+
+            &:focus {
+              border-color: rgba($gold, 0.5);
+              box-shadow: 0 0 0 3px rgba($gold, 0.1);
+            }
+          }
+
+          .eye-btn {
+            position: absolute;
+            right: 0.9rem;
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.35);
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            font-size: 1.1rem;
+            transition: color 0.2s;
+            &:hover { color: rgba(255, 255, 255, 0.7); }
+          }
+        }
+      }
+
+      // Recordar sesión
+      .remember-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.82rem;
+
+        .check-label {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          color: rgba(255, 255, 255, 0.5);
+          cursor: pointer;
+          user-select: none;
+          input[type='checkbox'] {
+            width: 14px;
+            height: 14px;
+            accent-color: $gold;
+            cursor: pointer;
+          }
+        }
+
+        .forgot-link {
+          background: none;
+          border: none;
+          padding: 0;
+          color: rgba($gold, 0.7);
+          font-size: 0.82rem;
+          cursor: pointer;
+          transition: color 0.2s;
+          &:hover { color: $gold-light; }
+        }
+      }
+
+      // Error
+      .error-msg {
+        background: rgba(220, 53, 69, 0.12);
+        border: 1px solid rgba(220, 53, 69, 0.3);
+        color: #ff7b7b;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        font-size: 0.83rem;
+      }
+
+      // ── Botón CTA ────────────────────────────────────────────
+      .btn-cta {
+        width: 100%;
+        padding: 0.95rem 1.5rem;
+        background: $brown-btn;
+        color: #fff;
+        font-size: 0.92rem;
+        font-weight: 600;
+        font-family: inherit;
+        letter-spacing: 1.5px;
+        border-radius: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.05),
+          0 1px 3px rgba(0, 0, 0, 0.5);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3rem;
+        transition: box-shadow 0.25s, background 0.25s;
+
+        &:hover:not(:disabled) {
+          background: color.adjust($brown-btn, $lightness: 5%);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 4px 16px rgba(155, 77, 26, 0.4);
+        }
+
+        &:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .loading-inner {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+        }
+
+        .spin {
+          width: 15px;
+          height: 15px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-top-color: #fff;
+          border-radius: 50%;
+          animation: spin-ring 0.8s linear infinite;
+        }
+      }
+    }
+  }
+
+  // ── Keyframes ─────────────────────────────────────────────────
+  @keyframes pulse-dot {
+    0%   { transform: scale(0.9); box-shadow: 0 0 0 0 rgba($gold, 0.7); }
+    60%  { transform: scale(1);   box-shadow: 0 0 0 7px rgba($gold, 0); }
+    100% { transform: scale(0.9); }
+  }
+
+  @keyframes spin-ring {
+    to { transform: rotate(360deg); }
+  }
+
+  // ── Responsive ────────────────────────────────────────────────
+  @media (max-width: 900px) {
+    flex-direction: column;
+
+    .panel-left {
+      min-height: 40vh;
+      .left-content {
+        justify-content: flex-end;
+        padding: 1.5rem 2rem 2rem;
+        .brand { flex-direction: column; align-items: flex-start; gap: 1rem; }
+      }
     }
 
-    .btn-jonnys-outline {
-      background-color: transparent;
-      border: 2px solid #333;
-      color: white;
-      &:hover {
-          border-color: white;
-          background-color: rgba(255,255,255,0.1);
-      }
+    .panel-right {
+      width: 100%;
+      padding: 2rem;
     }
   }
 }

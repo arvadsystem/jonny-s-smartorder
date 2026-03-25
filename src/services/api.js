@@ -11,6 +11,7 @@ class ApiError extends Error {
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 
 const appendNoCacheParam = (endpoint) => {
   const safeEndpoint = String(endpoint || '');
@@ -46,6 +47,46 @@ const getCookie = (name) => {
   }
 };
 
+const createRequestSignal = (config = {}) => {
+  const timeoutRaw = Number.parseInt(String(config?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS), 10);
+  const timeoutMs = Number.isInteger(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : DEFAULT_REQUEST_TIMEOUT_MS;
+
+  const externalSignal = config?.signal ?? null;
+  const controller = new AbortController();
+  const timerId = setTimeout(() => {
+    try {
+      controller.abort(new DOMException('Request timed out', 'AbortError'));
+    } catch {
+      controller.abort();
+    }
+  }, timeoutMs);
+
+  let unsubscribeExternal = null;
+  if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+    const onExternalAbort = () => {
+      try {
+        controller.abort(externalSignal.reason);
+      } catch {
+        controller.abort();
+      }
+    };
+
+    if (externalSignal.aborted) {
+      onExternalAbort();
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+      unsubscribeExternal = () => externalSignal.removeEventListener('abort', onExternalAbort);
+    }
+  }
+
+  const cleanup = () => {
+    clearTimeout(timerId);
+    if (unsubscribeExternal) unsubscribeExternal();
+  };
+
+  return { signal: controller.signal, cleanup, timeoutMs };
+};
+
 export const apiFetch = async (endpoint, method = 'GET', body = null, config = {}) => {
   const upperMethod = method.toUpperCase();
   const noCache = Boolean(config?.noCache);
@@ -57,7 +98,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     'Content-Type': 'application/json'
   };
 
-  // ✅ CSRF SOLO para métodos que cambian estado
+  // CSRF only for non-safe methods.
   if (!SAFE_METHODS.has(upperMethod)) {
     const csrf = getCookie('csrf_token');
     if (csrf) headers['X-CSRF-Token'] = csrf;
@@ -66,16 +107,34 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
   const requestOptions = {
     method: upperMethod,
     headers,
-    credentials: 'include' // envía cookies (HttpOnly JWT)
+    credentials: 'include'
   };
 
   if (body !== null && body !== undefined) {
     requestOptions.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_URL}${resolvedEndpoint}`, requestOptions);
+  const { signal, cleanup, timeoutMs } = createRequestSignal(config);
+  requestOptions.signal = signal;
 
-  // 401 -> no autenticado
+  let response;
+  try {
+    response = await fetch(`${API_URL}${resolvedEndpoint}`, requestOptions);
+  } catch (error) {
+    const aborted = error?.name === 'AbortError';
+    const message = aborted
+      ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
+      : 'No se pudo establecer comunicacion con el servidor.';
+    throw new ApiError(message, {
+      status: aborted ? 408 : 0,
+      code: aborted ? 'REQUEST_TIMEOUT' : 'FETCH_ERROR',
+      data: error
+    });
+  } finally {
+    cleanup();
+  }
+
+  // 401 -> not authenticated
   if (response.status === 401) {
     const errorData = await readBody(response);
     const msg =
@@ -83,14 +142,13 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
       (typeof errorData === 'string' ? errorData : '') ||
       'No autorizado';
 
-      // ✅ HU79/HU82: si el backend dice 401, forzamos logout global en la app
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:logout'));
-      }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+    }
     throw new ApiError(msg, { status: 401, code: 'UNAUTHORIZED', data: errorData });
   }
 
-  // ✅ 403 -> distinguir permisos vs CSRF
+  // 403 -> permissions or CSRF
   if (response.status === 403) {
     const errorData = await readBody(response);
     const msg =
@@ -98,17 +156,14 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
       (typeof errorData === 'string' ? errorData : '') ||
       'Acceso denegado';
 
-    // Si el método es seguro (GET/HEAD/OPTIONS), NO es CSRF, es FORBIDDEN (RBAC)
     if (SAFE_METHODS.has(upperMethod)) {
       throw new ApiError(msg, { status: 403, code: 'FORBIDDEN', data: errorData });
     }
 
-    // En métodos no seguros, un 403 puede ser CSRF o permisos.
-    // Conservamos tu mensaje por compatibilidad.
-    throw new ApiError(msg || 'Acción bloqueada (CSRF)', { status: 403, code: 'CSRF', data: errorData });
+    throw new ApiError(msg || 'Accion bloqueada (CSRF)', { status: 403, code: 'CSRF', data: errorData });
   }
 
-  // otros errores HTTP
+  // Other HTTP errors.
   if (!response.ok) {
     const errorData = await readBody(response);
     const msg =
@@ -123,3 +178,4 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
 
   return await readBody(response);
 };
+

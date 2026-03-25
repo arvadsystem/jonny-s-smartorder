@@ -11,6 +11,21 @@ import {
 } from '../utils/permissions';
 
 const PermisosContext = createContext(null);
+const PERMISOS_FETCH_TIMEOUT_MS = 8000;
+
+const withTimeout = (promise, timeoutMs) =>
+  new Promise((resolve, reject) => {
+    const timerId = setTimeout(() => reject(new Error('PERMISOS_FETCH_TIMEOUT')), timeoutMs);
+    Promise.resolve(promise)
+      .then((result) => {
+        clearTimeout(timerId);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timerId);
+        reject(error);
+      });
+  });
 
 export const PermisosProvider = ({ children }) => {
   const { user } = useAuth();
@@ -21,7 +36,7 @@ export const PermisosProvider = ({ children }) => {
   const hydrateFromRemote = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      const data = await apiFetch('/seguridad/permisos', 'GET');
+      const data = await withTimeout(apiFetch('/seguridad/permisos', 'GET'), PERMISOS_FETCH_TIMEOUT_MS);
       setPermisos(buildPermissionSet(data?.permisos));
     } catch {
       if (!silent) setPermisos(new Set());
