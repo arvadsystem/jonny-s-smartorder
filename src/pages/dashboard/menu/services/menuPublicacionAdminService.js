@@ -28,8 +28,42 @@ const menuPublicacionAdminService = {
     return toRows(response);
   },
 
-  async getCatalogoPublicacion(idSucursal) {
-    const endpoint = withQueryParams(`${BASE_ENDPOINT}/catalogo`, { id_sucursal: idSucursal });
+  async getMenusProgramables() {
+    const response = await apiFetch(`${BASE_ENDPOINT}/menus`, 'GET', null, { noCache: true });
+    return toRows(response);
+  },
+
+  async createMenuProgramable({ nombreMenu, descripcion }) {
+    return apiFetch(`${BASE_ENDPOINT}/menus`, 'POST', {
+      nombre_menu: nombreMenu,
+      descripcion: descripcion || null
+    });
+  },
+
+  // Activa un menu de inmediato para la sucursal seleccionada.
+  async activarMenuSucursal({ idSucursal, idMenu }) {
+    return apiFetch(`${BASE_ENDPOINT}/programacion`, 'POST', {
+      id_sucursal: idSucursal,
+      id_menu: idMenu,
+      fecha_inicio: null
+    });
+  },
+
+  // Compatibilidad temporal con llamadas anteriores.
+  async programarMenuSucursal({ idSucursal, idMenu, fechaInicio }) {
+    return apiFetch(`${BASE_ENDPOINT}/programacion`, 'POST', {
+      id_sucursal: idSucursal,
+      id_menu: idMenu,
+      fecha_inicio: fechaInicio || null
+    });
+  },
+
+  // Permite cargar catalogo por sucursal y, opcionalmente, por menu destino seleccionado.
+  async getCatalogoPublicacion(idSucursal, idMenu = null) {
+    const endpoint = withQueryParams(`${BASE_ENDPOINT}/catalogo`, {
+      id_sucursal: idSucursal,
+      id_menu: idMenu
+    });
     const response = await apiFetch(endpoint, 'GET', null, { noCache: true });
     return response?.data || {
       menu: null,
@@ -39,14 +73,20 @@ const menuPublicacionAdminService = {
     };
   },
 
-  async saveCatalogoPublicacion({ idSucursal, items }) {
-    const endpoint = withQueryParams(`${BASE_ENDPOINT}/catalogo`, { id_sucursal: idSucursal });
+  async saveCatalogoPublicacion({ idSucursal, idMenu = null, items }) {
+    const endpoint = withQueryParams(`${BASE_ENDPOINT}/catalogo`, {
+      id_sucursal: idSucursal,
+      id_menu: idMenu
+    });
     return apiFetch(endpoint, 'PUT', { items });
   },
 
-  // Reusa el endpoint publico real para preview del cliente.
-  async getPreviewPublico(idSucursal) {
-    const endpoint = withQueryParams('/public-menu/catalogo', { id_sucursal: idSucursal });
+  // Preview administrativo coherente con el menu seleccionado (no depende del menu vigente publico).
+  async getPreviewPublico(idSucursal, idMenu = null) {
+    const endpoint = withQueryParams(`${BASE_ENDPOINT}/preview`, {
+      id_sucursal: idSucursal,
+      id_menu: idMenu
+    });
     const response = await apiFetch(endpoint, 'GET', null, { noCache: true });
     return response?.data || {
       menu: null,

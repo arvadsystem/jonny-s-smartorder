@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import RecetasFormDrawer from './components/RecetasFormDrawer';
 import RecetasTable from './components/RecetasTable';
 import RecetasToolbar from './components/RecetasToolbar';
+import MenuActionToast from './components/MenuActionToast';
 import useRecetasAdmin from './hooks/useRecetasAdmin';
 
 const RecetasAdmin = () => {
@@ -48,6 +50,14 @@ const RecetasAdmin = () => {
       setCardImageError
     }
   } = useRecetasAdmin();
+
+  const [toastMessage, setToastMessage] = useState('');
+
+  // Muestra confirmacion visible despues de crear/editar/cambiar estado de recetas.
+  useEffect(() => {
+    if (!success) return;
+    setToastMessage(success);
+  }, [success]);
 
   return (
     <>
@@ -219,6 +229,12 @@ const RecetasAdmin = () => {
         formPreviewUrl={formPreviewUrl}
         formPreviewError={formPreviewError}
         onPreviewError={() => setFormPreviewError(true)}
+      />
+
+      <MenuActionToast
+        title="Recetas"
+        message={toastMessage}
+        onClose={() => setToastMessage('')}
       />
     </>
   );

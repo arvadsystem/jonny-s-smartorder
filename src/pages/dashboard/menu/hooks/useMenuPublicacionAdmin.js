@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
+import { buildPublicMenuUrlByBranch } from '../utils/publicMenuBranchUrl';
 
 // Hook centralizado de estado/validacion para publicacion admin por sucursal.
 
@@ -25,24 +26,10 @@ const normalizeDraftRow = (row, index) => ({
   orden_input: row?.orden === null || row?.orden === undefined ? String(index + 1) : String(row.orden)
 });
 
-const resolvePublicBranchSlug = (branch) => {
-  const idSucursal = Number(branch?.id_sucursal || 0);
-  if (idSucursal === 1) return '21-octubre';
-  if (idSucursal === 2) return 'el-carmen';
-
-  const name = String(branch?.nombre_sucursal || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-  if (name.includes('21') || name.includes('octubre')) return '21-octubre';
-  if (name.includes('carmen')) return 'el-carmen';
-  return '';
-};
-
 const useMenuPublicacionAdmin = () => {
   const [sucursales, setSucursales] = useState([]);
   const [selectedSucursalId, setSelectedSucursalId] = useState('');
+  const [selectedCatalogMenuId, setSelectedCatalogMenuId] = useState('');
 
   const [menuSummary, setMenuSummary] = useState(null);
   const [capabilities, setCapabilities] = useState({});
@@ -69,9 +56,7 @@ const useMenuPublicacionAdmin = () => {
   );
 
   const openAsClientUrl = useMemo(() => {
-    const slug = resolvePublicBranchSlug(selectedSucursal);
-    if (!slug) return '/menu-publico/sucursal';
-    return `/menu-publico/sucursal?sucursal=${encodeURIComponent(slug)}`;
+    return buildPublicMenuUrlByBranch(selectedSucursal);
   }, [selectedSucursal]);
 
   const loadSucursales = useCallback(async () => {
@@ -88,7 +73,7 @@ const useMenuPublicacionAdmin = () => {
     }
   }, []);
 
-  const loadCatalogo = useCallback(async (idSucursal) => {
+  const loadCatalogo = useCallback(async (idSucursal, idMenu = null) => {
     const id = Number(idSucursal || 0);
     if (!id) {
       setMenuSummary(null);
@@ -100,7 +85,7 @@ const useMenuPublicacionAdmin = () => {
     try {
       setLoadingCatalogo(true);
       setError('');
-      const data = await menuPublicacionAdminService.getCatalogoPublicacion(id);
+      const data = await menuPublicacionAdminService.getCatalogoPublicacion(id, idMenu);
       const nextItems = (Array.isArray(data?.items) ? data.items : []).map(normalizeDraftRow);
       setMenuSummary(data?.menu || null);
       setCapabilities(data?.capabilities || {});
@@ -116,7 +101,7 @@ const useMenuPublicacionAdmin = () => {
     }
   }, []);
 
-  const loadPreview = useCallback(async (idSucursal) => {
+  const loadPreview = useCallback(async (idSucursal, idMenu = null) => {
     const id = Number(idSucursal || 0);
     if (!id) {
       setPreview(null);
@@ -126,7 +111,7 @@ const useMenuPublicacionAdmin = () => {
     try {
       setLoadingPreview(true);
       setPreviewError('');
-      const data = await menuPublicacionAdminService.getPreviewPublico(id);
+      const data = await menuPublicacionAdminService.getPreviewPublico(id, idMenu);
       setPreview(data);
     } catch (e) {
       setPreviewError(e?.message || 'No se pudo cargar el preview del menu publico.');
@@ -141,6 +126,32 @@ const useMenuPublicacionAdmin = () => {
   }, [loadSucursales]);
 
   useEffect(() => {
+    if (selectedSucursalId) return;
+    if (!Array.isArray(sucursales) || sucursales.length === 0) return;
+
+    const preferred = sucursales.find((branch) => Boolean(branch?.estado) && Boolean(branch?.tiene_menu_vigente))
+      || sucursales.find((branch) => Boolean(branch?.estado))
+      || sucursales[0];
+
+    if (preferred?.id_sucursal) {
+      setSelectedSucursalId(String(preferred.id_sucursal));
+    }
+  }, [selectedSucursalId, sucursales]);
+
+  useEffect(() => {
+    // Evita estados huerfanos cuando el ID seleccionado ya no existe en el catalogo cargado.
+    if (!selectedSucursalId) return;
+    if (!Array.isArray(sucursales) || sucursales.length === 0) return;
+    if (selectedSucursal) return;
+
+    const fallback = sucursales.find((branch) => Boolean(branch?.estado) && Boolean(branch?.tiene_menu_vigente))
+      || sucursales.find((branch) => Boolean(branch?.estado))
+      || null;
+
+    setSelectedSucursalId(fallback?.id_sucursal ? String(fallback.id_sucursal) : '');
+  }, [selectedSucursal, selectedSucursalId, sucursales]);
+
+  useEffect(() => {
     if (!selectedSucursalId) {
       setMenuSummary(null);
       setCapabilities({});
@@ -150,12 +161,39 @@ const useMenuPublicacionAdmin = () => {
       return;
     }
 
-    void loadCatalogo(selectedSucursalId);
-    void loadPreview(selectedSucursalId);
-  }, [loadCatalogo, loadPreview, selectedSucursalId]);
+    if (!selectedSucursal && Array.isArray(sucursales) && sucursales.length > 0) {
+      setMenuSummary(null);
+      setCapabilities({});
+      setItems([]);
+      setPreview(null);
+      setWarnings(['La sucursal seleccionada no esta disponible. Selecciona una sucursal valida.']);
+      return;
+    }
+
+    if (selectedSucursal && !Boolean(selectedSucursal?.estado)) {
+      setMenuSummary(null);
+      setCapabilities({});
+      setItems([]);
+      setPreview(null);
+      setWarnings(['La sucursal seleccionada esta inactiva y no permite publicacion.']);
+      return;
+    }
+
+    void loadCatalogo(selectedSucursalId, selectedCatalogMenuId || null);
+    void loadPreview(selectedSucursalId, selectedCatalogMenuId || null);
+  }, [loadCatalogo, loadPreview, selectedCatalogMenuId, selectedSucursal, selectedSucursalId, sucursales]);
 
   const onSelectSucursal = useCallback((nextSucursalId) => {
     setSelectedSucursalId(nextSucursalId);
+    setSelectedCatalogMenuId('');
+    setError('');
+    setSuccess('');
+    setValidationErrors([]);
+    setWarnings([]);
+  }, []);
+
+  const onSelectCatalogMenu = useCallback((nextMenuId) => {
+    setSelectedCatalogMenuId(String(nextMenuId || ''));
     setError('');
     setSuccess('');
     setValidationErrors([]);
@@ -254,6 +292,16 @@ const useMenuPublicacionAdmin = () => {
       return;
     }
 
+    if (!selectedSucursal) {
+      setValidationErrors(['La sucursal seleccionada no existe o no esta disponible.']);
+      return;
+    }
+
+    if (!Boolean(selectedSucursal?.estado)) {
+      setValidationErrors(['La sucursal seleccionada esta inactiva y no permite guardar publicacion.']);
+      return;
+    }
+
     const validation = validateAndBuildPayload(items);
     if (validation.errors.length > 0) {
       setValidationErrors(validation.errors);
@@ -265,6 +313,7 @@ const useMenuPublicacionAdmin = () => {
       setSaving(true);
       const response = await menuPublicacionAdminService.saveCatalogoPublicacion({
         idSucursal,
+        idMenu: selectedCatalogMenuId || null,
         items: validation.payload
       });
 
@@ -274,8 +323,8 @@ const useMenuPublicacionAdmin = () => {
       setWarnings([...validation.warnings, ...responseWarnings]);
 
       await Promise.all([
-        loadCatalogo(idSucursal),
-        loadPreview(idSucursal)
+        loadCatalogo(idSucursal, selectedCatalogMenuId || null),
+        loadPreview(idSucursal, selectedCatalogMenuId || null)
       ]);
     } catch (e) {
       setError(e?.message || 'No se pudo guardar la publicacion.');
@@ -284,21 +333,30 @@ const useMenuPublicacionAdmin = () => {
     } finally {
       setSaving(false);
     }
-  }, [items, loadCatalogo, loadPreview, selectedSucursalId, validateAndBuildPayload]);
+  }, [
+    items,
+    loadCatalogo,
+    loadPreview,
+    selectedCatalogMenuId,
+    selectedSucursal,
+    selectedSucursalId,
+    validateAndBuildPayload
+  ]);
 
   const reloadCurrent = useCallback(async () => {
     const idSucursal = Number(selectedSucursalId || 0);
     if (!idSucursal) return;
     await Promise.all([
-      loadCatalogo(idSucursal),
-      loadPreview(idSucursal)
+      loadCatalogo(idSucursal, selectedCatalogMenuId || null),
+      loadPreview(idSucursal, selectedCatalogMenuId || null)
     ]);
-  }, [loadCatalogo, loadPreview, selectedSucursalId]);
+  }, [loadCatalogo, loadPreview, selectedCatalogMenuId, selectedSucursalId]);
 
   return {
     state: {
       sucursales,
       selectedSucursalId,
+      selectedCatalogMenuId,
       selectedSucursal,
       menuSummary,
       capabilities,
@@ -317,6 +375,7 @@ const useMenuPublicacionAdmin = () => {
     },
     actions: {
       onSelectSucursal,
+      onSelectCatalogMenu,
       onToggleVisible,
       onChangePrecioPublico,
       onChangeOrden,
@@ -327,3 +386,4 @@ const useMenuPublicacionAdmin = () => {
 };
 
 export default useMenuPublicacionAdmin;
+

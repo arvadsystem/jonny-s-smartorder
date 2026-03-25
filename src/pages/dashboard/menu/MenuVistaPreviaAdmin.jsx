@@ -1,21 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import MenuPreviewPanel from './components/MenuPreviewPanel';
 import menuPublicacionAdminService from './services/menuPublicacionAdminService';
-
-const resolvePublicBranchSlug = (branch) => {
-  const idSucursal = Number(branch?.id_sucursal || 0);
-  if (idSucursal === 1) return '21-octubre';
-  if (idSucursal === 2) return 'el-carmen';
-
-  const name = String(branch?.nombre_sucursal || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-  if (name.includes('21') || name.includes('octubre')) return '21-octubre';
-  if (name.includes('carmen')) return 'el-carmen';
-  return '';
-};
+import { buildPublicMenuUrlByBranch } from './utils/publicMenuBranchUrl';
 
 // Vista previa separada para revisar exactamente el render del cliente por sucursal.
 const MenuVistaPreviaAdmin = () => {
@@ -41,7 +27,9 @@ const MenuVistaPreviaAdmin = () => {
         setSucursales(nextRows);
 
         if (nextRows.length > 0) {
-          setSelectedSucursalId(String(nextRows[0].id_sucursal));
+          const firstActive = nextRows.find((branch) => Boolean(branch?.estado));
+          const fallback = firstActive || nextRows[0];
+          setSelectedSucursalId(String(fallback?.id_sucursal || ''));
         }
       } catch (e) {
         if (!isMounted) return;
@@ -59,6 +47,11 @@ const MenuVistaPreviaAdmin = () => {
     };
   }, []);
 
+  const selectedSucursal = useMemo(
+    () => sucursales.find((branch) => String(branch.id_sucursal) === String(selectedSucursalId)) || null,
+    [selectedSucursalId, sucursales]
+  );
+
   useEffect(() => {
     let isMounted = true;
 
@@ -66,6 +59,12 @@ const MenuVistaPreviaAdmin = () => {
       const idSucursal = Number(selectedSucursalId || 0);
       if (!idSucursal) {
         setPreview(null);
+        return;
+      }
+
+      if (selectedSucursal && !Boolean(selectedSucursal?.estado)) {
+        setPreview(null);
+        setError('La sucursal seleccionada esta inactiva y no tiene menu publico disponible.');
         return;
       }
 
@@ -89,18 +88,9 @@ const MenuVistaPreviaAdmin = () => {
     return () => {
       isMounted = false;
     };
-  }, [selectedSucursalId]);
+  }, [selectedSucursal, selectedSucursalId]);
 
-  const selectedSucursal = useMemo(
-    () => sucursales.find((branch) => String(branch.id_sucursal) === String(selectedSucursalId)) || null,
-    [selectedSucursalId, sucursales]
-  );
-
-  const openAsClientUrl = useMemo(() => {
-    const slug = resolvePublicBranchSlug(selectedSucursal);
-    if (!slug) return '/menu-publico/sucursal';
-    return `/menu-publico/sucursal?sucursal=${encodeURIComponent(slug)}`;
-  }, [selectedSucursal]);
+  const openAsClientUrl = useMemo(() => buildPublicMenuUrlByBranch(selectedSucursal), [selectedSucursal]);
 
   return (
     <div className="card shadow-sm mb-3 inv-prod-card menu-vista-previa-admin">
@@ -131,7 +121,7 @@ const MenuVistaPreviaAdmin = () => {
             {sucursales.length === 0 ? <option value="">Sin sucursales</option> : null}
             {sucursales.map((branch) => (
               <option key={branch.id_sucursal} value={String(branch.id_sucursal)}>
-                {branch.nombre_sucursal}
+                {branch.nombre_sucursal}{Boolean(branch?.estado) ? '' : ' (Inactiva)'}
               </option>
             ))}
           </select>

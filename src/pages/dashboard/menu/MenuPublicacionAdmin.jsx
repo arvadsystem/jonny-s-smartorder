@@ -1,7 +1,11 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import MenuPreviewPanel from './components/MenuPreviewPanel';
+import MenuProgramacionPanel from './components/MenuProgramacionPanel';
 import MenuPublicationTable from './components/MenuPublicationTable';
 import MenuSucursalSelector from './components/MenuSucursalSelector';
+import MenuActionToast from './components/MenuActionToast';
 import useMenuPublicacionAdmin from './hooks/useMenuPublicacionAdmin';
+import menuPublicacionAdminService from './services/menuPublicacionAdminService';
 
 // Pantalla MVP para publicar menu por sucursal desde el panel admin.
 const MenuPublicacionAdmin = ({ showPreview = false }) => {
@@ -9,6 +13,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     state: {
       sucursales,
       selectedSucursalId,
+      selectedSucursal,
       menuSummary,
       items,
       preview,
@@ -25,6 +30,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     },
     actions: {
       onSelectSucursal,
+      onSelectCatalogMenu,
       onToggleVisible,
       onChangePrecioPublico,
       onChangeOrden,
@@ -32,6 +38,194 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       reloadCurrent
     }
   } = useMenuPublicacionAdmin();
+
+  const [menusProgramables, setMenusProgramables] = useState([]);
+  const [loadingMenus, setLoadingMenus] = useState(false);
+  const [selectedMenuProgramacionId, setSelectedMenuProgramacionId] = useState('');
+  const [schedulingMenu, setSchedulingMenu] = useState(false);
+  const [scheduleSuccess, setScheduleSuccess] = useState('');
+  const [scheduleError, setScheduleError] = useState('');
+
+  const [newMenuName, setNewMenuName] = useState('');
+  const [newMenuDescription, setNewMenuDescription] = useState('');
+  const [creatingMenu, setCreatingMenu] = useState(false);
+  const [createMenuSuccess, setCreateMenuSuccess] = useState('');
+  const [createMenuError, setCreateMenuError] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
+  const loadMenusProgramables = useCallback(async () => {
+    try {
+      setLoadingMenus(true);
+      const rows = await menuPublicacionAdminService.getMenusProgramables();
+      setMenusProgramables(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setMenusProgramables([]);
+      setScheduleError(e?.message || 'No se pudieron cargar los menus disponibles.');
+    } finally {
+      setLoadingMenus(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMenusProgramables();
+  }, [loadMenusProgramables]);
+
+  useEffect(() => {
+    if (selectedMenuProgramacionId) return;
+    if (menuSummary?.id_menu) {
+      const nextMenuId = String(menuSummary.id_menu);
+      setSelectedMenuProgramacionId(nextMenuId);
+      onSelectCatalogMenu(nextMenuId);
+      return;
+    }
+
+    if (Array.isArray(menusProgramables) && menusProgramables.length > 0) {
+      const nextMenuId = String(menusProgramables[0].id_menu);
+      setSelectedMenuProgramacionId(nextMenuId);
+      onSelectCatalogMenu(nextMenuId);
+    }
+  }, [menuSummary, menusProgramables, onSelectCatalogMenu, selectedMenuProgramacionId]);
+
+  useEffect(() => {
+    // Si cambia el menu vigente de la sucursal, sincronizamos el selector para evitar errores de operador.
+    if (!menuSummary?.id_menu) return;
+    const nextMenuId = String(menuSummary.id_menu);
+    setSelectedMenuProgramacionId(nextMenuId);
+    onSelectCatalogMenu(nextMenuId);
+  }, [menuSummary?.id_menu, onSelectCatalogMenu]);
+
+  useEffect(() => {
+    setScheduleError('');
+    setScheduleSuccess('');
+  }, [selectedSucursalId]);
+
+  // Refuerza feedback visual de acciones principales en publicacion/menu temporada.
+  useEffect(() => {
+    if (!success) return;
+    setToastMessage(success);
+  }, [success]);
+
+  useEffect(() => {
+    if (!scheduleSuccess) return;
+    setToastMessage(scheduleSuccess);
+  }, [scheduleSuccess]);
+
+  useEffect(() => {
+    if (!createMenuSuccess) return;
+    setToastMessage(createMenuSuccess);
+  }, [createMenuSuccess]);
+
+  const handleCreateNameChange = useCallback((value) => {
+    setNewMenuName(value);
+    if (createMenuError) setCreateMenuError('');
+    if (createMenuSuccess) setCreateMenuSuccess('');
+  }, [createMenuError, createMenuSuccess]);
+
+  const handleCreateDescriptionChange = useCallback((value) => {
+    setNewMenuDescription(value);
+    if (createMenuError) setCreateMenuError('');
+    if (createMenuSuccess) setCreateMenuSuccess('');
+  }, [createMenuError, createMenuSuccess]);
+
+  const nextMenuNumber = useMemo(() => {
+    const ids = (Array.isArray(menusProgramables) ? menusProgramables : [])
+      .map((item) => Number(item?.id_menu || 0))
+      .filter((value) => Number.isInteger(value) && value > 0);
+
+    if (ids.length === 0) return 1;
+    return Math.max(...ids) + 1;
+  }, [menusProgramables]);
+
+  const handleProgramarMenu = async () => {
+    setScheduleError('');
+    setScheduleSuccess('');
+
+    const idSucursal = Number(selectedSucursalId || 0);
+    const idMenu = Number(selectedMenuProgramacionId || 0);
+
+    if (!idSucursal) {
+      setScheduleError('Selecciona una sucursal antes de cambiar el menu.');
+      return;
+    }
+
+    if (!selectedSucursal || !Boolean(selectedSucursal?.estado)) {
+      setScheduleError('La sucursal seleccionada no esta disponible para cambios.');
+      return;
+    }
+
+    if (!idMenu) {
+      setScheduleError('Selecciona un menu para activar.');
+      return;
+    }
+
+    if (Number(menuSummary?.id_menu || 0) === idMenu) {
+      setScheduleSuccess('Ese menu ya esta activo en esta sucursal.');
+      return;
+    }
+    try {
+      setSchedulingMenu(true);
+      const response = await menuPublicacionAdminService.activarMenuSucursal({
+        idSucursal,
+        idMenu
+      });
+
+      setSelectedMenuProgramacionId(String(idMenu));
+      onSelectCatalogMenu(String(idMenu));
+      setScheduleSuccess(response?.message || 'Menu activo actualizado correctamente.');
+      await reloadCurrent();
+    } catch (e) {
+      setScheduleError(e?.message || 'No se pudo activar el menu para esta sucursal.');
+    } finally {
+      setSchedulingMenu(false);
+    }
+  };
+
+  const handleCreateMenu = async () => {
+    setCreateMenuError('');
+    setCreateMenuSuccess('');
+
+    const name = String(newMenuName || '').trim();
+    const description = String(newMenuDescription || '').trim();
+
+    if (!name) {
+      setCreateMenuError('Ingresa el nombre del menu.');
+      return;
+    }
+
+    if (name.length < 3) {
+      setCreateMenuError('El nombre del menu debe tener al menos 3 caracteres.');
+      return;
+    }
+
+    try {
+      setCreatingMenu(true);
+      const response = await menuPublicacionAdminService.createMenuProgramable({
+        nombreMenu: name,
+        descripcion: description || null
+      });
+
+      const createdMenu = response?.data?.menu || null;
+      if (!createdMenu?.id_menu) {
+        throw new Error('No se recibio el menu creado.');
+      }
+
+      setMenusProgramables((current) => {
+        const rows = Array.isArray(current) ? [...current] : [];
+        const withoutDup = rows.filter((menu) => Number(menu?.id_menu || 0) !== Number(createdMenu.id_menu));
+        withoutDup.push(createdMenu);
+        return withoutDup.sort((a, b) => Number(a?.id_menu || 0) - Number(b?.id_menu || 0));
+      });
+
+      setSelectedMenuProgramacionId(String(createdMenu.id_menu));
+      onSelectCatalogMenu(String(createdMenu.id_menu));
+      setNewMenuName('');
+      setNewMenuDescription('');
+      setCreateMenuSuccess(response?.message || `Menu #${createdMenu.id_menu} creado correctamente.`);
+    } catch (e) {
+      setCreateMenuError(e?.message || 'No se pudo crear el menu de temporada.');
+    } finally {
+      setCreatingMenu(false);
+    }
+  };
 
   return (
     <div className="card shadow-sm mb-3 inv-prod-card menu-pub-admin">
@@ -51,7 +245,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             type="button"
             className="btn inv-prod-btn-primary"
             onClick={savePublication}
-            disabled={saving || loadingCatalogo || !selectedSucursalId}
+            disabled={saving || loadingCatalogo || !selectedSucursalId || !selectedSucursal || !Boolean(selectedSucursal?.estado)}
           >
             {saving ? 'Guardando...' : 'Guardar publicacion'}
           </button>
@@ -87,10 +281,37 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
         <MenuSucursalSelector
           sucursales={sucursales}
           selectedSucursalId={selectedSucursalId}
+          selectedSucursal={selectedSucursal}
           menuSummary={menuSummary}
           loading={loadingSucursales || loadingCatalogo}
           onChange={onSelectSucursal}
           onReload={reloadCurrent}
+        />
+
+        <MenuProgramacionPanel
+          selectedSucursal={selectedSucursal}
+          menus={menusProgramables}
+          selectedMenuId={selectedMenuProgramacionId}
+          currentMenuId={String(menuSummary?.id_menu || '')}
+          loading={loadingMenus}
+          scheduling={schedulingMenu}
+          success={scheduleSuccess}
+          error={scheduleError}
+          onChangeMenu={(nextMenuId) => {
+            setSelectedMenuProgramacionId(nextMenuId);
+            onSelectCatalogMenu(nextMenuId);
+          }}
+          onProgramar={handleProgramarMenu}
+          onReloadMenus={loadMenusProgramables}
+          nextMenuNumber={nextMenuNumber}
+          createName={newMenuName}
+          createDescription={newMenuDescription}
+          creating={creatingMenu}
+          createSuccess={createMenuSuccess}
+          createError={createMenuError}
+          onChangeCreateName={handleCreateNameChange}
+          onChangeCreateDescription={handleCreateDescriptionChange}
+          onCreateMenu={handleCreateMenu}
         />
 
         <div className="row g-3 mt-1">
@@ -115,9 +336,18 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             </div>
           ) : null}
         </div>
+
+        <MenuActionToast
+          title="Publicacion"
+          message={toastMessage}
+          onClose={() => setToastMessage('')}
+        />
       </div>
     </div>
   );
 };
 
 export default MenuPublicacionAdmin;
+
+
+

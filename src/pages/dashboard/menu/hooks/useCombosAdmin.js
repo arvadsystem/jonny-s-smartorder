@@ -285,7 +285,7 @@ const useCombosAdmin = () => {
       try {
         const sucursales = await menuPublicacionAdminService.getSucursales();
         const withMenu = (Array.isArray(sucursales) ? sucursales : []).find(
-          (branch) => Number(branch?.id_menu || 0) > 0
+          (branch) => Boolean(branch?.estado) && Number(branch?.id_menu || 0) > 0
         );
 
         if (!isMounted || !withMenu) return;
@@ -582,6 +582,7 @@ const useCombosAdmin = () => {
 };
 
 export default useCombosAdmin;
+
 
 
 

@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import CombosFormDrawer from './components/CombosFormDrawer';
 import CombosTable from './components/CombosTable';
 import CombosToolbar from './components/CombosToolbar';
+import MenuActionToast from './components/MenuActionToast';
 import useCombosAdmin from './hooks/useCombosAdmin';
 
 const CombosAdmin = () => {
@@ -41,6 +43,14 @@ const CombosAdmin = () => {
       setCardImageError
     }
   } = useCombosAdmin();
+
+  const [toastMessage, setToastMessage] = useState('');
+
+  // Muestra confirmacion visible despues de crear/editar/cambiar estado de combos.
+  useEffect(() => {
+    if (!success) return;
+    setToastMessage(success);
+  }, [success]);
 
   return (
     <>
@@ -106,6 +116,12 @@ const CombosAdmin = () => {
         onAgregarRecetaDetalle={onAgregarRecetaDetalle}
         onActualizarDetalleReceta={onActualizarDetalleReceta}
         onQuitarRecetaDetalle={onQuitarRecetaDetalle}
+      />
+
+      <MenuActionToast
+        title="Combos"
+        message={toastMessage}
+        onClose={() => setToastMessage('')}
       />
     </>
   );
