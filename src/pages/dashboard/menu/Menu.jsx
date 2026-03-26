@@ -7,10 +7,11 @@ import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from '../../../utils/permis
 import CombosAdmin from './CombosAdmin';
 import MenuProductosAdmin from './MenuProductosAdmin';
 import MenuPublicacionAdmin from './MenuPublicacionAdmin';
+import MenuSalsasAdmin from './MenuSalsasAdmin';
 import MenuVistaPreviaAdmin from './MenuVistaPreviaAdmin';
 import RecetasAdmin from './RecetasAdmin';
 
-const MENU_TAB_KEYS = ['recetas', 'combos', 'productos-menu', 'publicacion', 'vista-previa'];
+const MENU_TAB_KEYS = ['recetas', 'combos', 'productos-menu', 'salsas', 'publicacion', 'vista-previa'];
 
 const Menu = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -44,6 +45,7 @@ const Menu = () => {
     if (activeTab === 'recetas') return <RecetasAdmin />;
     if (activeTab === 'combos') return <CombosAdmin />;
     if (activeTab === 'productos-menu') return <MenuProductosAdmin />;
+    if (activeTab === 'salsas') return <MenuSalsasAdmin />;
     if (activeTab === 'publicacion') return <MenuPublicacionAdmin showPreview={false} />;
     return <MenuVistaPreviaAdmin />;
   };
@@ -70,7 +72,7 @@ const Menu = () => {
             </div>
             {/* Las tabs de Menu ahora viven en la barra superior global para mantener consistencia con Ventas. */}
             <div className="inv-prod-subtitle">
-              Administracion de recetas, combos, productos del menu, publicacion y vista previa.
+              Administracion de recetas, combos, productos del menu, salsas, publicacion y vista previa.
             </div>
           </div>
         </div>
@@ -82,4 +84,3 @@ const Menu = () => {
 };
 
 export default Menu;
-

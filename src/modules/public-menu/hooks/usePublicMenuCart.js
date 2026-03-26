@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PUBLIC_MENU_CART_STORAGE_KEY } from '../types/publicMenuTypes';
+import {
+  getItemExtraOptions,
+  normalizeSelectedSauces
+} from '../utils/publicMenuItemConfig';
 
 const toMoney = (value) => {
   const parsed = Number(value);
@@ -43,21 +47,90 @@ const clearSnapshot = () => {
   }
 };
 
-const buildCartItem = (product) => {
+const normalizeSelectedExtras = (product, extras = []) => {
+  const optionsById = new Map(
+    getItemExtraOptions(product).map((extra) => [String(extra.id_extra), extra])
+  );
+  const requestedIds = [
+    ...new Set(
+      (Array.isArray(extras) ? extras : [])
+        .map((entry) => String(entry?.id_extra || entry || '').trim())
+        .filter(Boolean)
+    )
+  ];
+
+  return requestedIds
+    .map((id) => optionsById.get(id))
+    .filter(Boolean)
+    .map((extra) => ({
+      id_extra: String(extra.id_extra),
+      codigo: String(extra.codigo || extra.id_extra),
+      nombre: String(extra.nombre || 'Extra'),
+      precio_adicional: toMoney(extra.precio_adicional || 0)
+    }));
+};
+
+const buildConfigSignature = ({ extras = [], salsasPorUnidad = [] }) => {
+  const extrasToken = (Array.isArray(extras) ? extras : [])
+    .map((entry) => String(entry?.id_extra || '').trim())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+
+  const saucesToken = normalizeSelectedSauces(salsasPorUnidad)
+    .map((entry) => `${entry.id_salsa}:${entry.cantidad}`)
+    .join('|');
+
+  return `${extrasToken}::${saucesToken}`;
+};
+
+const buildLineKey = ({ idDetalleMenu, configSignature }) =>
+  `${Number(idDetalleMenu || 0)}::${String(configSignature || '')}`;
+
+const buildCartLine = ({ product, quantity = 1, extras = [], salsasPorUnidad = [] }) => {
   const idDetalleMenu = Number(product?.id_detalle_menu || 0);
-  const precioUnitario = toMoney(product?.precio?.final);
-  const quantity = 1;
+  const safeQuantity = toPositiveInt(quantity, 1);
+  const normalizedExtras = normalizeSelectedExtras(product, extras);
+  const normalizedSauces = normalizeSelectedSauces(salsasPorUnidad);
+  const extrasAmountPerUnit = normalizedExtras.reduce(
+    (sum, extra) => sum + Number(extra?.precio_adicional || 0),
+    0
+  );
+  const precioBase = toMoney(product?.precio?.final || 0);
+  const precioUnitario = toMoney(precioBase + extrasAmountPerUnit);
+  const subtotal = toMoney(precioUnitario * safeQuantity);
+  const configSignature = buildConfigSignature({
+    extras: normalizedExtras,
+    salsasPorUnidad: normalizedSauces
+  });
 
   return {
+    line_key: buildLineKey({ idDetalleMenu, configSignature }),
     id_detalle_menu: idDetalleMenu,
     tipo_item: String(product?.tipo_item || 'PRODUCTO'),
     id_item_origen: Number(product?.id_item_base || 0) || null,
     nombre: String(product?.nombre || 'Item sin nombre'),
-    cantidad: quantity,
+    cantidad: safeQuantity,
     precio_unitario: precioUnitario,
-    subtotal: toMoney(precioUnitario * quantity)
+    subtotal,
+    extras: normalizedExtras,
+    salsas_por_unidad: normalizedSauces
   };
 };
+
+const recalculateLine = (line, nextQuantity) => {
+  const cantidad = toPositiveInt(nextQuantity, 1);
+  const precioUnitario = toMoney(line?.precio_unitario || 0);
+  return {
+    ...line,
+    cantidad,
+    subtotal: toMoney(precioUnitario * cantidad)
+  };
+};
+
+const isSimpleLine = (line) =>
+  (!Array.isArray(line?.extras) || line.extras.length === 0) &&
+  (!Array.isArray(line?.salsas_por_unidad) || line.salsas_por_unidad.length === 0);
 
 export const usePublicMenuCart = ({ branch }) => {
   const branchId = Number(branch?.id || 0) || null;
@@ -94,73 +167,102 @@ export const usePublicMenuCart = ({ branch }) => {
     });
   }, [branchId, branchSlug, items]);
 
-  const addItem = (product) => {
-    const nextItem = buildCartItem(product);
-    if (!nextItem.id_detalle_menu) return;
+  const addItem = (product, configuration = {}) => {
+    const nextLine = buildCartLine({
+      product,
+      quantity: configuration?.cantidad || 1,
+      extras: configuration?.extras,
+      salsasPorUnidad: configuration?.salsasPorUnidad
+    });
+
+    if (!nextLine.id_detalle_menu) return;
 
     setItems((current) => {
-      const index = current.findIndex(
-        (item) => Number(item?.id_detalle_menu || 0) === nextItem.id_detalle_menu
-      );
-
-      if (index === -1) {
-        return [...current, nextItem];
-      }
+      const index = current.findIndex((line) => line?.line_key === nextLine.line_key);
+      if (index === -1) return [...current, nextLine];
 
       const copy = [...current];
       const previous = copy[index];
-      const cantidad = toPositiveInt(previous?.cantidad, 1) + 1;
-      copy[index] = {
-        ...previous,
-        cantidad,
-        subtotal: toMoney(toMoney(previous?.precio_unitario) * cantidad)
-      };
+      const quantity = toPositiveInt(previous?.cantidad, 1) + toPositiveInt(nextLine.cantidad, 1);
+      copy[index] = recalculateLine(previous, quantity);
       return copy;
     });
   };
 
-  const increaseItem = (idDetalleMenu) => {
-    const targetId = Number(idDetalleMenu || 0);
-    if (!targetId) return;
+  const increaseItemByLine = (lineKey) => {
+    const safeLineKey = String(lineKey || '').trim();
+    if (!safeLineKey) return;
 
     setItems((current) =>
-      current.map((item) => {
-        if (Number(item?.id_detalle_menu || 0) !== targetId) return item;
-        const cantidad = toPositiveInt(item?.cantidad, 1) + 1;
-        return {
-          ...item,
-          cantidad,
-          subtotal: toMoney(toMoney(item?.precio_unitario) * cantidad)
-        };
+      current.map((line) => {
+        if (String(line?.line_key || '') !== safeLineKey) return line;
+        return recalculateLine(line, toPositiveInt(line?.cantidad, 1) + 1);
       })
     );
   };
 
-  const decreaseItem = (idDetalleMenu) => {
-    const targetId = Number(idDetalleMenu || 0);
-    if (!targetId) return;
+  const decreaseItemByLine = (lineKey) => {
+    const safeLineKey = String(lineKey || '').trim();
+    if (!safeLineKey) return;
 
     setItems((current) =>
       current
-        .map((item) => {
-          if (Number(item?.id_detalle_menu || 0) !== targetId) return item;
-          const cantidad = toPositiveInt(item?.cantidad, 1) - 1;
-          if (cantidad <= 0) return null;
-          return {
-            ...item,
-            cantidad,
-            subtotal: toMoney(toMoney(item?.precio_unitario) * cantidad)
-          };
+        .map((line) => {
+          if (String(line?.line_key || '') !== safeLineKey) return line;
+          const nextQuantity = toPositiveInt(line?.cantidad, 1) - 1;
+          if (nextQuantity <= 0) return null;
+          return recalculateLine(line, nextQuantity);
         })
         .filter(Boolean)
     );
   };
 
-  const removeItem = (idDetalleMenu) => {
-    const targetId = Number(idDetalleMenu || 0);
-    if (!targetId) return;
+  const removeItemByLine = (lineKey) => {
+    const safeLineKey = String(lineKey || '').trim();
+    if (!safeLineKey) return;
+
     setItems((current) =>
-      current.filter((item) => Number(item?.id_detalle_menu || 0) !== targetId)
+      current.filter((line) => String(line?.line_key || '') !== safeLineKey)
+    );
+  };
+
+  // Para cards simples (sin extras/salsas), mantiene UX rapida de +/-.
+  const increaseSimpleItem = (product) => {
+    const targetId = Number(product?.id_detalle_menu || 0);
+    if (!targetId) return;
+
+    setItems((current) => {
+      const index = current.findIndex(
+        (line) => Number(line?.id_detalle_menu || 0) === targetId && isSimpleLine(line)
+      );
+
+      if (index === -1) {
+        const line = buildCartLine({ product, quantity: 1 });
+        return line.id_detalle_menu ? [...current, line] : current;
+      }
+
+      const copy = [...current];
+      copy[index] = recalculateLine(copy[index], toPositiveInt(copy[index]?.cantidad, 1) + 1);
+      return copy;
+    });
+  };
+
+  const decreaseSimpleItem = (product) => {
+    const targetId = Number(product?.id_detalle_menu || 0);
+    if (!targetId) return;
+
+    setItems((current) =>
+      current
+        .map((line) => {
+          if (Number(line?.id_detalle_menu || 0) !== targetId || !isSimpleLine(line)) {
+            return line;
+          }
+
+          const nextQuantity = toPositiveInt(line?.cantidad, 1) - 1;
+          if (nextQuantity <= 0) return null;
+          return recalculateLine(line, nextQuantity);
+        })
+        .filter(Boolean)
     );
   };
 
@@ -190,7 +292,11 @@ export const usePublicMenuCart = ({ branch }) => {
       nombre: item.nombre,
       cantidad: toPositiveInt(item.cantidad, 1),
       precio_unitario: toMoney(item.precio_unitario),
-      subtotal: toMoney(item.subtotal)
+      subtotal: toMoney(item.subtotal),
+      extras: (Array.isArray(item.extras) ? item.extras : []).map((extra) => ({
+        id_extra: String(extra?.id_extra || '').trim()
+      })),
+      salsas_por_unidad: normalizeSelectedSauces(item.salsas_por_unidad)
     })),
     total
   });
@@ -200,11 +306,12 @@ export const usePublicMenuCart = ({ branch }) => {
     totalItems,
     total,
     addItem,
-    increaseItem,
-    decreaseItem,
-    removeItem,
+    increaseItemByLine,
+    decreaseItemByLine,
+    removeItemByLine,
+    increaseSimpleItem,
+    decreaseSimpleItem,
     clearCart,
     buildOrderPayload
   };
 };
-

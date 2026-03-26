@@ -4,17 +4,17 @@ import CatalogHeader from '../components/catalog/CatalogHeader';
 import CartSheet from '../components/catalog/CartSheet';
 import CartFab from '../components/catalog/CartFab';
 import CategoryChips from '../components/catalog/CategoryChips';
-import ProductCard from '../components/catalog/ProductCard';
 import ProductDetailSheet from '../components/catalog/ProductDetailSheet';
+import ProductCard from '../components/catalog/ProductCard';
 import SearchInput from '../components/catalog/SearchInput';
 import StateBlock from '../components/feedback/StateBlock';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { useCatalogProducts } from '../hooks/useCatalogProducts';
-import { useMenuItemDetail } from '../hooks/useMenuItemDetail';
 import { usePublicMenuCart } from '../hooks/usePublicMenuCart';
 import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { getPublicMenuPathByStep } from '../routes/flowSteps';
 import { PUBLIC_MENU_ORDER_TYPE_OPTIONS, PUBLIC_MENU_STEPS } from '../types/publicMenuTypes';
+import { requiresItemConfiguration } from '../utils/publicMenuItemConfig';
 
 const getOrderTypeLabel = (orderTypeId) =>
   PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === orderTypeId)?.title || 'Pedido';
@@ -41,74 +41,77 @@ const CatalogScreen = () => {
     reloadCatalog
   } = useCatalogProducts({ branchId, orderType });
 
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailItemId, setDetailItemId] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [confirmingOrder, setConfirmingOrder] = useState(false);
-
-  const {
-    itemDetail,
-    loading: detailLoading,
-    error: detailError,
-    loadItemDetail,
-    clearItemDetail
-  } = useMenuItemDetail({ branchId });
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailItem, setDetailItem] = useState(null);
 
   const {
     items: cartItems,
     totalItems,
     total,
     addItem,
-    increaseItem,
-    decreaseItem,
-    removeItem,
+    increaseItemByLine,
+    decreaseItemByLine,
+    removeItemByLine,
+    increaseSimpleItem,
+    decreaseSimpleItem,
     clearCart,
     buildOrderPayload
   } = usePublicMenuCart({
     branch: state.selectedBranch
   });
 
+  const cartQuantityByDetail = useMemo(
+    () => {
+      const map = new Map();
+      (Array.isArray(cartItems) ? cartItems : []).forEach((item) => {
+        const idDetalle = Number(item?.id_detalle_menu || 0);
+        if (!idDetalle) return;
+        const current = Number(map.get(idDetalle) || 0);
+        map.set(idDetalle, current + Number(item?.cantidad || 0));
+      });
+      return map;
+    },
+    [cartItems]
+  );
+
+  const openConfigSheet = (product) => {
+    setDetailItem(product);
+    setDetailOpen(true);
+  };
+
+  const closeConfigSheet = () => {
+    setDetailOpen(false);
+    setDetailItem(null);
+  };
+
+  const handleCardAdd = (product) => {
+    if (requiresItemConfiguration(product)) {
+      openConfigSheet(product);
+      return;
+    }
+
+    addItem(product, { cantidad: 1 });
+  };
+
+  const handleCardIncrease = (product) => {
+    increaseSimpleItem(product);
+  };
+
+  const handleCardDecrease = (product) => {
+    decreaseSimpleItem(product);
+  };
+
+  const handleConfiguredAdd = (product, configuration) => {
+    addItem(product, configuration);
+    closeConfigSheet();
+  };
+
   // Guarda menu vigente en store para los siguientes pasos del flujo.
   useEffect(() => {
     actions.selectMenu(menuSummary);
   }, [actions, menuSummary]);
-
-  // Mantiene helper para reintento del detalle con el mismo id.
-  const retryDetailLoad = useMemo(
-    () =>
-      detailItemId
-        ? () => {
-            loadItemDetail(detailItemId);
-          }
-        : null,
-    [detailItemId, loadItemDetail]
-  );
-
-  // Abre detalle real de item por id_detalle_menu.
-  const openDetail = async (product) => {
-    const nextId = Number(product?.id_detalle_menu);
-    if (!nextId) return;
-
-    setDetailItemId(nextId);
-    setDetailOpen(true);
-    await loadItemDetail(nextId);
-  };
-
-  // Cierra sheet y limpia estado del detalle.
-  const closeDetail = () => {
-    setDetailOpen(false);
-    setDetailItemId(null);
-    clearItemDetail();
-  };
-
-  const handleAddToCart = (item) => {
-    addItem(item);
-    closeDetail();
-    actions.pushToast({
-      type: 'success',
-      message: 'Item agregado al carrito.'
-    });
-  };
 
   const handleConfirmOrder = async () => {
     if (confirmingOrder) return;
@@ -151,6 +154,7 @@ const CatalogScreen = () => {
 
   // Permite corregir sucursal desde catalogo sin mezclar carrito entre sedes.
   const handleChangeBranch = () => {
+    closeConfigSheet();
     clearCart();
     actions.selectMenu(null);
     actions.selectOrderType(null);
@@ -254,7 +258,10 @@ const CatalogScreen = () => {
             <ProductCard
               key={product.id_detalle_menu}
               product={product}
-              onOpenDetail={openDetail}
+              cartQuantity={cartQuantityByDetail.get(Number(product?.id_detalle_menu || 0)) || 0}
+              onAdd={handleCardAdd}
+              onIncrease={handleCardIncrease}
+              onDecrease={handleCardDecrease}
             />
           ))}
         </div>
@@ -262,27 +269,26 @@ const CatalogScreen = () => {
 
       <CartFab itemCount={totalItems} disabled={totalItems <= 0} onClick={() => setCartOpen(true)} />
 
-      <ProductDetailSheet
-        open={detailOpen}
-        item={itemDetail}
-        loading={detailLoading}
-        error={detailError}
-        onClose={closeDetail}
-        onRetry={retryDetailLoad}
-        onAdd={handleAddToCart}
-      />
-
       <CartSheet
         open={cartOpen}
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
         items={cartItems}
         total={total}
         onClose={() => setCartOpen(false)}
-        onIncrease={increaseItem}
-        onDecrease={decreaseItem}
-        onRemove={removeItem}
+        onIncrease={increaseItemByLine}
+        onDecrease={decreaseItemByLine}
+        onRemove={removeItemByLine}
         onConfirm={handleConfirmOrder}
         confirming={confirmingOrder}
+      />
+
+      <ProductDetailSheet
+        open={detailOpen}
+        item={detailItem}
+        loading={false}
+        error=""
+        onClose={closeConfigSheet}
+        onAdd={handleConfiguredAdd}
       />
     </section>
   );

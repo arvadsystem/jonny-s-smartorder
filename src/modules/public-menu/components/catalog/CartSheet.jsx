@@ -4,6 +4,24 @@ const currencyFormatter = new Intl.NumberFormat('es-HN', {
   maximumFractionDigits: 2
 });
 
+const formatExtras = (extras = []) =>
+  (Array.isArray(extras) ? extras : [])
+    .map((extra) => String(extra?.nombre || '').trim())
+    .filter(Boolean)
+    .join(', ');
+
+const formatSauces = (sauces = []) =>
+  (Array.isArray(sauces) ? sauces : [])
+    .map((sauce) => {
+      const qty = Number(sauce?.cantidad || 0);
+      const name = String(sauce?.nombre || '').trim();
+      const id = Number(sauce?.id_salsa || 0);
+      if (!qty || (!name && !id)) return null;
+      return `${qty}x ${name || `salsa #${id}`}`;
+    })
+    .filter(Boolean)
+    .join(', ');
+
 const CartSheet = ({
   open,
   branchName,
@@ -51,27 +69,35 @@ const CartSheet = ({
           ) : (
             <ul className="pm-cart-sheet__list">
               {items.map((item) => (
-                <li key={item.id_detalle_menu} className="pm-cart-sheet__item">
+                <li key={item.line_key || item.id_detalle_menu} className="pm-cart-sheet__item">
                   <div className="pm-cart-sheet__item-main">
                     <strong>{item.nombre}</strong>
                     <small>{item.tipo_item}</small>
+                    {formatExtras(item.extras) ? (
+                      <small className="pm-cart-sheet__line-meta">Extras: {formatExtras(item.extras)}</small>
+                    ) : null}
+                    {formatSauces(item.salsas_por_unidad) ? (
+                      <small className="pm-cart-sheet__line-meta">
+                        Salsas: {formatSauces(item.salsas_por_unidad)}
+                      </small>
+                    ) : null}
                   </div>
 
                   <div className="pm-cart-sheet__item-side">
                     <span>{currencyFormatter.format(item.subtotal || 0)}</span>
                     <div className="pm-cart-sheet__qty">
-                      <button type="button" onClick={() => onDecrease?.(item.id_detalle_menu)}>
+                      <button type="button" onClick={() => onDecrease?.(item.line_key)}>
                         -
                       </button>
                       <span>{item.cantidad}</span>
-                      <button type="button" onClick={() => onIncrease?.(item.id_detalle_menu)}>
+                      <button type="button" onClick={() => onIncrease?.(item.line_key)}>
                         +
                       </button>
                     </div>
                     <button
                       type="button"
                       className="pm-cart-sheet__remove"
-                      onClick={() => onRemove?.(item.id_detalle_menu)}
+                      onClick={() => onRemove?.(item.line_key)}
                     >
                       Quitar
                     </button>
@@ -103,4 +129,3 @@ const CartSheet = ({
 };
 
 export default CartSheet;
-

@@ -476,6 +476,7 @@ const MENU_TAB_PERMISSIONS_MAP = Object.freeze({
   recetas: MENU_TAB_BASE_PERMISSIONS,
   combos: MENU_TAB_BASE_PERMISSIONS,
   'productos-menu': MENU_TAB_BASE_PERMISSIONS,
+  salsas: MENU_TAB_BASE_PERMISSIONS,
   publicacion: MENU_TAB_BASE_PERMISSIONS,
   'vista-previa': MENU_TAB_BASE_PERMISSIONS
 });
@@ -631,6 +632,7 @@ export const MODULE_TAB_CONFIG = Object.freeze({
       icon: 'bi bi-cup-straw',
       required: MENU_TAB_PERMISSIONS_MAP['productos-menu']
     },
+    { key: 'salsas', label: 'Salsas', icon: 'bi bi-droplet', required: MENU_TAB_PERMISSIONS_MAP.salsas },
     { key: 'publicacion', label: 'Publicacion', icon: 'bi bi-cloud-upload', required: MENU_TAB_PERMISSIONS_MAP.publicacion },
     {
       key: 'vista-previa',

@@ -7,12 +7,8 @@ import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { getPublicMenuPathByStep } from '../routes/flowSteps';
 import {
   PUBLIC_MENU_CART_STORAGE_KEY,
-  PUBLIC_MENU_ORDER_TYPE_OPTIONS,
-  PUBLIC_MENU_ORDER_TYPES,
   PUBLIC_MENU_STEPS
 } from '../types/publicMenuTypes';
-
-const DEFAULT_ORDER_TYPE = PUBLIC_MENU_ORDER_TYPES.PICKUP;
 
 const clearPublicMenuCartStorage = () => {
   if (typeof window === 'undefined') return;
@@ -34,7 +30,6 @@ const BranchSelectionScreen = () => {
   const navigate = useNavigate();
   const { state, actions } = usePublicMenuFlow();
   const { branches, loading, error, reloadBranches } = useBranches();
-  const [manualSelectionEnabled, setManualSelectionEnabled] = useState(false);
   const [ignoreQueryPrefill, setIgnoreQueryPrefill] = useState(false);
 
   const queryBranchSlug = useMemo(() => {
@@ -45,17 +40,11 @@ const BranchSelectionScreen = () => {
   useEffect(() => {
     if (queryBranchSlug) {
       setIgnoreQueryPrefill(false);
-      setManualSelectionEnabled(false);
       return;
     }
 
     setIgnoreQueryPrefill(true);
-    setManualSelectionEnabled(true);
-    actions.selectBranch(null);
-    actions.selectOrderType(null);
-    actions.selectMenu(null);
-    clearPublicMenuCartStorage();
-  }, [actions, queryBranchSlug]);
+  }, [queryBranchSlug]);
 
   useEffect(() => {
     if (!queryBranchSlug || ignoreQueryPrefill) return;
@@ -65,7 +54,6 @@ const BranchSelectionScreen = () => {
     const branchFromQuery = findBranchBySlug(branches, queryBranchSlug);
     if (!branchFromQuery) {
       setIgnoreQueryPrefill(true);
-      setManualSelectionEnabled(true);
 
       if (state.selectedBranch?.id) {
         actions.selectBranch(null);
@@ -78,8 +66,7 @@ const BranchSelectionScreen = () => {
 
     if (Number(state.selectedBranch?.id) !== Number(branchFromQuery.id)) {
       actions.selectBranch(branchFromQuery);
-      actions.selectOrderType(DEFAULT_ORDER_TYPE);
-      setManualSelectionEnabled(false);
+      actions.selectOrderType(null);
       clearPublicMenuCartStorage();
     }
   }, [
@@ -92,36 +79,16 @@ const BranchSelectionScreen = () => {
     state.selectedBranch?.id
   ]);
 
-  const selectedBranch = state.selectedBranch;
-  const selectedOrderType = state.orderType || DEFAULT_ORDER_TYPE;
-  const selectedOrderTypeMeta =
-    PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === selectedOrderType) || null;
-  const showConfirmation = Boolean(selectedBranch?.id) && !manualSelectionEnabled;
-
-  const handleContinueToMenu = () => {
-    if (!selectedBranch?.id) return;
-    if (!state.orderType) {
-      actions.selectOrderType(DEFAULT_ORDER_TYPE);
-    }
-    navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.MENU));
-  };
-
-  const handleChangeBranch = () => {
-    setManualSelectionEnabled(true);
-    setIgnoreQueryPrefill(true);
-    actions.selectBranch(null);
-    actions.selectMenu(null);
-    actions.selectOrderType(null);
-    clearPublicMenuCartStorage();
-  };
-
   const handleSelectBranch = (branch) => {
+    const isBranchChange = Number(state.selectedBranch?.id) !== Number(branch?.id);
     setIgnoreQueryPrefill(true);
     actions.selectBranch(branch);
-    actions.selectOrderType(DEFAULT_ORDER_TYPE);
-    actions.selectMenu(null);
-    setManualSelectionEnabled(false);
-    clearPublicMenuCartStorage();
+    if (isBranchChange) {
+      actions.selectOrderType(null);
+      actions.selectMenu(null);
+      clearPublicMenuCartStorage();
+    }
+    navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.ORDER_TYPE));
   };
 
   if (loading) {
@@ -156,71 +123,13 @@ const BranchSelectionScreen = () => {
     );
   }
 
-  if (showConfirmation) {
-    return (
-      <section className="pm-screen pm-branch-screen" aria-label="Confirmacion de sucursal">
-        <div className="pm-screen__intro pm-branch-screen__hero">
-          <span className="pm-screen__eyebrow">Paso 1 de 3</span>
-          <h2 className="pm-screen__title">Confirma tu sucursal</h2>
-          <p className="pm-screen__subtitle">
-            Verifica que esta sea la sucursal correcta antes de ver el menu.
-          </p>
-        </div>
-
-        <article className="pm-branch-confirm-card">
-          {selectedBranch.imageUrl ? (
-            <img
-              src={selectedBranch.imageUrl}
-              alt={selectedBranch.displayName || selectedBranch.name}
-              className="pm-branch-confirm-card__image"
-            />
-          ) : null}
-
-          <div className="pm-branch-confirm-card__body">
-            <h3>{selectedBranch.displayName || selectedBranch.name}</h3>
-            <p>{selectedBranch.address || 'Direccion no disponible'}</p>
-
-            <div className="pm-branch-confirm-card__order">
-              <h4>Tipo de pedido</h4>
-              <div className="pm-branch-confirm-card__order-grid">
-                {PUBLIC_MENU_ORDER_TYPE_OPTIONS.map((option) => {
-                  const isSelected = option.id === selectedOrderType;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={`pm-branch-confirm-card__order-btn ${isSelected ? 'is-selected' : ''}`}
-                      onClick={() => actions.selectOrderType(option.id)}
-                    >
-                      {option.title}
-                    </button>
-                  );
-                })}
-              </div>
-              <small>{selectedOrderTypeMeta?.paymentCopy || ''}</small>
-            </div>
-
-            <div className="pm-branch-confirm-card__actions">
-              <button type="button" className="btn btn-dark" onClick={handleContinueToMenu}>
-                Ver menu
-              </button>
-              <button type="button" className="btn btn-outline-dark" onClick={handleChangeBranch}>
-                Cambiar sucursal
-              </button>
-            </div>
-          </div>
-        </article>
-      </section>
-    );
-  }
-
   return (
     <section className="pm-screen pm-branch-screen" aria-label="Seleccion de sucursal">
       <div className="pm-screen__intro pm-branch-screen__hero">
         <span className="pm-screen__eyebrow">Paso 1 de 3</span>
         <h2 className="pm-screen__title">Selecciona tu sucursal</h2>
         <p className="pm-screen__subtitle">
-          Esta seleccion define menu vigente, tiempos y disponibilidad de productos.
+          Elige primero la sucursal y luego selecciona el tipo de pedido.
         </p>
       </div>
 
