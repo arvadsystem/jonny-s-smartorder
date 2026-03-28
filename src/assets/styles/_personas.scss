@@ -16,6 +16,17 @@
   overflow: hidden;
 }
 
+.personas-page .personas-page__scope-note {
+  margin: 0 1rem 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(194, 170, 149, 0.52);
+  background: rgba(249, 241, 228, 0.78);
+  color: rgba(99, 58, 37, 0.9);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
 .personas-page .personas-page__toolbar {
   align-items: flex-start;
 }

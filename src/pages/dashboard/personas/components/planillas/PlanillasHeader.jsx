@@ -1,4 +1,6 @@
 const ESTADO_LABELS = {
+  borrador: 'Borrador',
+  calculada: 'Calculada',
   abierta: 'Abierta',
   cerrada: 'Cerrada',
   pagada: 'Pagada',
@@ -26,6 +28,7 @@ export default function PlanillasHeader({
 }) {
   const estadoRaw = String(
     selectedPlanilla?.estado_descripcion ||
+      selectedPlanilla?.estado_planilla ||
       selectedPlanilla?.estado ||
       selectedPlanilla?.descripcion_estado ||
       ''
@@ -33,7 +36,11 @@ export default function PlanillasHeader({
     .trim()
     .toLowerCase();
 
-  const estadoLabel = ESTADO_LABELS[estadoRaw] || selectedPlanilla?.estado_descripcion || 'Sin estado';
+  const estadoLabel =
+    ESTADO_LABELS[estadoRaw] ||
+    selectedPlanilla?.estado_descripcion ||
+    selectedPlanilla?.estado_planilla ||
+    'Sin estado';
 
   const planillaCode =
     selectedPlanilla?.codigo_planilla ||

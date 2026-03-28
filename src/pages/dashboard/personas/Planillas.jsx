@@ -60,7 +60,16 @@ const normalizeResumen = (response) => {
   return {};
 };
 
-export default function Planillas({ openToast }) {
+const normalizeSucursalId = (value) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : '';
+};
+
+export default function Planillas({
+  openToast,
+  selectedSucursalId = '',
+  onSelectedSucursalChange,
+}) {
   const { canAny } = usePermisos();
 
   const canView = canAny([PERMISSIONS.PLANILLAS_LISTADO_VER, PERMISSIONS.PLANILLAS_MODULO_VER]);
@@ -135,6 +144,22 @@ export default function Planillas({ openToast }) {
     items: []
   });
 
+  const externalSucursalId = useMemo(
+    () => normalizeSucursalId(selectedSucursalId),
+    [selectedSucursalId]
+  );
+
+  const handleSucursalChange = useCallback(
+    (value) => {
+      const normalized = normalizeSucursalId(value);
+      setSelectedSucursal(normalized);
+      if (typeof onSelectedSucursalChange === 'function') {
+        onSelectedSucursalChange(normalized);
+      }
+    },
+    [onSelectedSucursalChange]
+  );
+
   const selectedPlanilla = useMemo(
     () =>
       planillas.find((planilla) => String(planilla.id_planilla ?? '') === String(selectedPlanillaId)) ||
@@ -161,15 +186,31 @@ export default function Planillas({ openToast }) {
       const response = await sucursalesService.getAll();
       const parsed = normalizeListResponse(response);
       setSucursales(parsed.items);
-      if (!selectedSucursal && parsed.items[0]?.id_sucursal) {
-        setSelectedSucursal(String(parsed.items[0].id_sucursal));
+
+      const currentSucursalId = normalizeSucursalId(externalSucursalId || selectedSucursal);
+      const hasCurrentSucursal = currentSucursalId
+        ? parsed.items.some(
+            (item) => normalizeSucursalId(item?.id_sucursal) === currentSucursalId
+          )
+        : false;
+
+      if (!hasCurrentSucursal) {
+        const fallbackSucursal = normalizeSucursalId(parsed.items[0]?.id_sucursal);
+        if (fallbackSucursal) {
+          handleSucursalChange(fallbackSucursal);
+        }
       }
     } catch (error) {
       safeToast('ERROR', error.message || 'No se pudieron cargar sucursales', 'danger');
     } finally {
       setLoadingSucursales(false);
     }
-  }, [safeToast, selectedSucursal]);
+  }, [externalSucursalId, handleSucursalChange, safeToast, selectedSucursal]);
+
+  useEffect(() => {
+    if (!externalSucursalId) return;
+    setSelectedSucursal((previous) => (previous === externalSucursalId ? previous : externalSucursalId));
+  }, [externalSucursalId]);
 
   const loadPlanillas = useCallback(async () => {
     if (!canView || !selectedSucursal) {
@@ -322,10 +363,29 @@ export default function Planillas({ openToast }) {
 
   const handleChangeEstado = (estado) => {
     if (!selectedPlanilla?.id_planilla) return;
-    const ok = window.confirm(`Confirmar accion: ${estado.toUpperCase()} planilla actual?`);
+    const estadoMap = {
+      cerrada: 'CALCULADA',
+      pagada: 'PAGADA',
+      anulada: 'ANULADA',
+      borrador: 'BORRADOR',
+      calculada: 'CALCULADA',
+    };
+    const estadoLabelMap = {
+      cerrada: 'cerrar',
+      pagada: 'pagar',
+      anulada: 'anular',
+      borrador: 'marcar como borrador',
+      calculada: 'calcular',
+    };
+    const normalizedEstado = estadoMap[String(estado || '').toLowerCase()] || estado;
+    const actionLabel = estadoLabelMap[String(estado || '').toLowerCase()] || 'actualizar estado';
+    const ok = window.confirm(`Confirma que deseas ${actionLabel} la planilla seleccionada?`);
     if (!ok) return;
     withAction(
-      () => planillasService.actualizarEstadoPlanilla(selectedPlanilla.id_planilla, { estado }),
+      () =>
+        planillasService.actualizarEstadoPlanilla(selectedPlanilla.id_planilla, {
+          estado: normalizedEstado,
+        }),
       `Planilla marcada como ${estado}`
     );
   };
@@ -333,7 +393,7 @@ export default function Planillas({ openToast }) {
   const handleAnular = () => {
     if (!selectedPlanilla?.id_planilla) return;
     const motivo = window.prompt('Motivo de anulacion de planilla:') || '';
-    if (!window.confirm('Esta accion anulara la planilla completa. Deseas continuar?')) return;
+    if (!window.confirm('Esta accion anulara la planilla completa y revertira adelantos aplicados. Deseas continuar?')) return;
     withAction(
       () => planillasService.anularPlanilla(selectedPlanilla.id_planilla, { motivo }),
       'Planilla anulada correctamente'
@@ -395,7 +455,7 @@ export default function Planillas({ openToast }) {
     const id = movimiento.id_movimiento_planilla || movimiento.id_movimiento;
     if (!id) return;
     const motivo = window.prompt('Motivo de anulacion del movimiento:') || '';
-    if (!window.confirm('Deseas anular este movimiento?')) return;
+    if (!window.confirm('Deseas anular este movimiento de planilla?')) return;
 
     withAction(
       async () => {
@@ -433,7 +493,7 @@ export default function Planillas({ openToast }) {
           <PlanillasHeader
             sucursalOptions={sucursalOptions}
             sucursalId={selectedSucursal}
-            onSucursalChange={setSelectedSucursal}
+            onSucursalChange={handleSucursalChange}
             periodo={periodo}
             onPeriodoChange={setPeriodo}
             selectedPlanilla={selectedPlanilla}
@@ -464,7 +524,10 @@ export default function Planillas({ openToast }) {
                 {planillas.map((planilla) => (
                   <option key={planilla.id_planilla} value={planilla.id_planilla}>
                     {planilla.codigo_planilla || `Planilla #${planilla.id_planilla}`} ·{' '}
-                    {planilla.estado_descripcion || planilla.estado || 'Sin estado'}
+                    {planilla.estado_descripcion ||
+                      planilla.estado_planilla ||
+                      planilla.estado ||
+                      'Sin estado'}
                   </option>
                 ))}
               </select>
@@ -491,10 +554,10 @@ export default function Planillas({ openToast }) {
                 onChange={(event) => setEstadoFiltro(event.target.value)}
               >
                 <option value="">Todos</option>
-                <option value="abierta">Abierta</option>
-                <option value="cerrada">Cerrada</option>
-                <option value="pagada">Pagada</option>
-                <option value="anulada">Anulada</option>
+                <option value="BORRADOR">Borrador</option>
+                <option value="CALCULADA">Calculada</option>
+                <option value="PAGADA">Pagada</option>
+                <option value="ANULADA">Anulada</option>
               </select>
             </div>
 

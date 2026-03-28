@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import SinPermiso from "../../components/common/SinPermiso";
 import { usePermisos } from "../../context/PermisosContext";
 import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from "../../utils/permissions";
+import sucursalesService from "../../services/sucursalesService";
 
 import PersonasTab from "./personas/PersonasTab";
 import EmpresasTab from "./personas/EmpresasTab";
@@ -22,9 +23,24 @@ const PERSONAS_TAB_KEYS = [
   "roles",
 ];
 
+const parsePositiveInt = (value) => {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeSucursalList = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.rows)) return response.rows;
+  return [];
+};
+
 export default function Personas() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
+  const [sucursales, setSucursales] = useState([]);
+  const [sucursalesLoading, setSucursalesLoading] = useState(false);
 
   const [toast, setToast] = useState({
     show: false,
@@ -39,6 +55,26 @@ export default function Personas() {
   );
 
   const fallbackTab = allowedTabs[0] || null;
+  const selectedSucursalId = useMemo(() => {
+    const parsed = parsePositiveInt(searchParams.get("sucursal"));
+    return parsed ? String(parsed) : "";
+  }, [searchParams]);
+
+  const applySucursalContext = useCallback(
+    (nextSucursalId) => {
+      const next = new URLSearchParams(searchParams);
+      const normalized = parsePositiveInt(nextSucursalId);
+
+      if (normalized) {
+        next.set("sucursal", String(normalized));
+      } else {
+        next.delete("sucursal");
+      }
+
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
 
   const activeTab = useMemo(() => {
     if (!fallbackTab) return null;
@@ -53,8 +89,42 @@ export default function Personas() {
 
     const next = new URLSearchParams(searchParams);
     next.set("tab", activeTab);
+    if (!next.has("sucursal") && selectedSucursalId) {
+      next.set("sucursal", selectedSucursalId);
+    }
     setSearchParams(next, { replace: true });
-  }, [activeTab, permisosLoading, searchParams, setSearchParams]);
+  }, [activeTab, permisosLoading, searchParams, selectedSucursalId, setSearchParams]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSucursales = async () => {
+      setSucursalesLoading(true);
+      try {
+        const response = await sucursalesService.getAll();
+        if (!active) return;
+        const next = normalizeSucursalList(response);
+        setSucursales(next);
+      } catch {
+        if (!active) return;
+        setSucursales([]);
+      } finally {
+        if (active) setSucursalesLoading(false);
+      }
+    };
+
+    loadSucursales();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (sucursalesLoading || selectedSucursalId) return;
+    const firstSucursalId = parsePositiveInt(sucursales[0]?.id_sucursal);
+    if (!firstSucursalId) return;
+    applySucursalContext(firstSucursalId);
+  }, [applySucursalContext, selectedSucursalId, sucursales, sucursalesLoading]);
 
   // =============================
   // TOAST GLOBAL
@@ -89,21 +159,27 @@ export default function Personas() {
     if (!activeTab) return null;
     switch (activeTab) {
       case "empresas":
-        return <EmpresasTab openToast={openToast} />;
+        return <EmpresasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "empleados":
-        return <EmpleadosTab openToast={openToast} />;
+        return <EmpleadosTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "usuarios":
-        return <UsuariosTab openToast={openToast} />;
+        return <UsuariosTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "planillas":
-        return <PlanillasTab openToast={openToast} />;
+        return (
+          <PlanillasTab
+            openToast={openToast}
+            selectedSucursalId={selectedSucursalId}
+            onSelectedSucursalChange={applySucursalContext}
+          />
+        );
       case "roles":
         return <RolesPermisosTab openToast={openToast} />;
       case "clientes":
-        return <ClientesTab openToast={openToast} />;
+        return <ClientesTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       default:
-        return <PersonasTab openToast={openToast} />;
+        return <PersonasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
     }
-  }, [activeTab, openToast]);
+  }, [activeTab, applySucursalContext, openToast, selectedSucursalId]);
 
   if (permisosLoading) {
     return null;
@@ -120,6 +196,39 @@ export default function Personas() {
 
   return (
     <div className="container-fluid p-3">
+      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+        <div className="inv-catpro-body inv-prod-body p-3 d-flex flex-wrap align-items-center gap-2">
+          <span className="fw-semibold text-secondary-emphasis">
+            Contexto de sucursal
+          </span>
+          <select
+            className="form-select form-select-sm"
+            style={{ maxWidth: 320 }}
+            value={selectedSucursalId}
+            onChange={(event) => applySucursalContext(event.target.value)}
+            disabled={sucursalesLoading}
+          >
+            <option value="">Todas las sucursales</option>
+            {sucursales.map((sucursal) => {
+              const id = parsePositiveInt(sucursal?.id_sucursal);
+              if (!id) return null;
+              const nombre =
+                sucursal?.nombre_sucursal ||
+                sucursal?.nombre ||
+                sucursal?.sucursal ||
+                `Sucursal #${id}`;
+              return (
+                <option key={id} value={id}>
+                  {nombre}
+                </option>
+              );
+            })}
+          </select>
+          <span className="text-muted small">
+            Este contexto aplica en submodulos que operan por sucursal.
+          </span>
+        </div>
+      </div>
 
       {/* ================= CONTENIDO ================= */}
       {tabContent}

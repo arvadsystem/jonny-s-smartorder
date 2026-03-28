@@ -130,7 +130,7 @@ const isEmpresaActiva = (empresa) => {
   return false;
 };
 
-export default function Empresas({ openToast }) {
+export default function Empresas({ openToast, selectedSucursalId = "" }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -181,6 +181,10 @@ export default function Empresas({ openToast }) {
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
   );
+  const normalizedSucursalContext = useMemo(() => {
+    const parsed = Number.parseInt(String(selectedSucursalId ?? ""), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : "";
+  }, [selectedSucursalId]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -808,6 +812,12 @@ export default function Empresas({ openToast }) {
           onRemoveRecent={removeRecentSearch}
           onClearRecent={clearRecentSearches}
         />
+
+        {normalizedSucursalContext ? (
+          <div className="personas-page__scope-note" role="status" aria-live="polite">
+            Empresas se muestra en modo global para la sucursal seleccionada. El modelo actual no segmenta empresas por sucursal.
+          </div>
+        ) : null}
 
         <ModuleKPICards stats={stats} totalLabel="Total de empresas" />
 

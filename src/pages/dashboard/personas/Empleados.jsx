@@ -13,6 +13,14 @@ import useSearchSuggestionsDropdown, {
   MIN_CHARS_FOR_SUGGESTIONS,
   normalizeSearchText,
 } from "./components/common/useSearchSuggestionsDropdown";
+import SmartSelectEntity from "./components/common/SmartSelectEntity";
+import PersonaInlineCreateModal from "./components/common/PersonaInlineCreateModal";
+import {
+  buildPersonaPayloadFromForm,
+  createInitialPersonaForm,
+  normalizePersonaFormValues,
+  validatePersonaForm,
+} from "./components/common/persona-form-shared";
 import "./components/common/crud-modal-theme.css";
 import "./components/empleados/empleados-modal.css";
 
@@ -26,6 +34,8 @@ const emptyForm = {
   telefono_referencia: "",
   estado: true,
 };
+
+const emptyInlinePersonaForm = createInitialPersonaForm();
 
 const createInitialFiltersDraft = () => ({
   estadoFiltro: "todos",
@@ -431,7 +441,7 @@ const isActivo = (record) => {
   return Boolean(record[field]);
 };
 
-export default function Empleados({ openToast }) {
+export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -461,6 +471,9 @@ export default function Empleados({ openToast }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
+  const [useInlinePersonaCreate, setUseInlinePersonaCreate] = useState(false);
+  const [inlinePersonaForm, setInlinePersonaForm] = useState(emptyInlinePersonaForm);
+  const [showPersonaCreateModal, setShowPersonaCreateModal] = useState(false);
   const [detailEmpleado, setDetailEmpleado] = useState(null);
   const [formImage, setFormImage] = useState(() => createImageDraftState());
   const [employeeImages, setEmployeeImages] = useState(() => loadEmployeeImages());
@@ -499,6 +512,7 @@ export default function Empleados({ openToast }) {
 
   const closeFormDrawer = useCallback(() => {
     blurFocusedElementInside("empd-form-drawer");
+    setShowPersonaCreateModal(false);
     setShowModal(false);
   }, [blurFocusedElementInside]);
 
@@ -747,6 +761,7 @@ export default function Empleados({ openToast }) {
         page,
         limit,
         nombre: debouncedSearch || undefined,
+        id_sucursal: selectedSucursalId || undefined,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -763,7 +778,7 @@ export default function Empleados({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, debouncedSearch, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast, selectedSucursalId]);
 
   const fetchNewestEmpleadoId = useCallback(async () => {
     try {
@@ -1017,7 +1032,17 @@ export default function Empleados({ openToast }) {
     const today = new Date().toISOString().split("T")[0];
     const payload = sanitizeForm();
 
-    if (!form.id_persona) currentErrors.id_persona = "Seleccione";
+    if (!useInlinePersonaCreate && !form.id_persona) {
+      currentErrors.id_persona = "Seleccione";
+    }
+
+    if (useInlinePersonaCreate) {
+      const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
+      if (Object.keys(personaValidationErrors).length > 0) {
+        currentErrors.id_persona = "Completa los datos de la persona nueva";
+      }
+    }
+
     if (!form.id_sucursal) currentErrors.id_sucursal = "Seleccione";
     if (!form.fecha_ingreso || form.fecha_ingreso > today) currentErrors.fecha_ingreso = "Fecha invalida";
     if (form.salario_base === "") currentErrors.salario_base = "Requerido";
@@ -1134,7 +1159,12 @@ export default function Empleados({ openToast }) {
           safeToast("OK", "Empleado actualizado");
         }
       } else {
-        const createResp = await personaService.createEmpleado(payloadLimpio);
+        const createResp = useInlinePersonaCreate
+          ? await personaService.createEmpleadoAtomico({
+              persona: buildPersonaPayloadFromForm(inlinePersonaForm),
+              empleado: payloadLimpio,
+            })
+          : await personaService.createEmpleado(payloadLimpio);
         if (createImagePreview) {
           const createdEmpleadoId = await resolveCreatedEmpleadoId(createResp);
           if (createdEmpleadoId) {
@@ -1149,6 +1179,8 @@ export default function Empleados({ openToast }) {
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
+      setUseInlinePersonaCreate(false);
+      setInlinePersonaForm(emptyInlinePersonaForm);
       clearFormImageDraft();
       await cargarEmpleados();
     } catch (error) {
@@ -1163,11 +1195,20 @@ export default function Empleados({ openToast }) {
     setDetailEmpleado(null);
     setEditId(empleado.id_empleado);
     setErrors({});
+    setUseInlinePersonaCreate(false);
+    setInlinePersonaForm(emptyInlinePersonaForm);
+    setShowPersonaCreateModal(false);
     setForm(buildFormFromEmpleado(empleado));
     setFormImage(createImageDraftState(resolveEmpleadoImage(empleado)));
     clearImagePicker();
     setShowModal(true);
   };
+
+  const handleInlinePersonaModalSave = useCallback(async (_personaPayload, personaFormState) => {
+    setInlinePersonaForm(normalizePersonaFormValues(personaFormState));
+    setErrors((state) => ({ ...state, id_persona: undefined }));
+    setShowPersonaCreateModal(false);
+  }, []);
 
   const openCreate = () => {
     if (actionLoading || deletingId) return;
@@ -1176,6 +1217,9 @@ export default function Empleados({ openToast }) {
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
+    setUseInlinePersonaCreate(false);
+    setInlinePersonaForm(emptyInlinePersonaForm);
+    setShowPersonaCreateModal(false);
     clearFormImageDraft();
     setShowModal(true);
   };
@@ -1681,44 +1725,95 @@ export default function Empleados({ openToast }) {
 
             <div className="row g-3 crud-modal__grid">
               <div className="col-12">
-                <label className="form-label text-light text-opacity-75">Persona</label>
-                {drawerMode === "create" ? (
-                  <Select
-                    inputId="empleado-persona-select"
-                    className={`empleados-select ${errors.id_persona ? "is-invalid" : ""}`}
-                    classNamePrefix="empleados-select"
-                    placeholder="Seleccione"
-                    isSearchable
-                    isClearable
-                    options={personaSelectOptions}
-                    value={personaSelectValue}
-                    onChange={(option) => {
-                      setForm((state) => ({
-                        ...state,
-                        id_persona: option?.value ? String(option.value) : "",
-                      }));
-                      setErrors((state) => ({ ...state, id_persona: undefined }));
-                    }}
-                    styles={personaSelectStyles}
-                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                    menuPosition="fixed"
-                    isDisabled={actionLoading || Boolean(deletingId)}
-                  />
-                ) : (
-                  <select
-                    className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
-                    value={form.id_persona}
-                    onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
-                  >
-                    <option value="">Seleccione</option>
-                    {personaOptions.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
+                <SmartSelectEntity
+                  label="Persona"
+                  showToggle={drawerMode === "create"}
+                  isInlineCreate={drawerMode === "create" && useInlinePersonaCreate}
+                  onToggleInline={() => {
+                    setUseInlinePersonaCreate((prev) => {
+                      const next = !prev;
+                      if (next) {
+                        setShowPersonaCreateModal(true);
+                        setForm((state) => ({ ...state, id_persona: "" }));
+                      } else {
+                        setInlinePersonaForm(emptyInlinePersonaForm);
+                        setShowPersonaCreateModal(false);
+                      }
+                      return next;
+                    });
+                    setErrors((state) => ({ ...state, id_persona: undefined }));
+                  }}
+                  toggleCreateLabel="+ Crear persona nueva"
+                  toggleExistingLabel="Usar persona existente"
+                  toggleDisabled={actionLoading || Boolean(deletingId)}
+                  selector={
+                    drawerMode === "create" ? (
+                      <Select
+                        inputId="empleado-persona-select"
+                        className={`empleados-select ${errors.id_persona ? "is-invalid" : ""}`}
+                        classNamePrefix="empleados-select"
+                        placeholder="Seleccione"
+                        isSearchable
+                        isClearable
+                        options={personaSelectOptions}
+                        value={personaSelectValue}
+                        onChange={(option) => {
+                          setForm((state) => ({
+                            ...state,
+                            id_persona: option?.value ? String(option.value) : "",
+                          }));
+                          setErrors((state) => ({ ...state, id_persona: undefined }));
+                        }}
+                        styles={personaSelectStyles}
+                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                        menuPosition="fixed"
+                        isDisabled={actionLoading || Boolean(deletingId) || useInlinePersonaCreate}
+                      />
+                    ) : (
+                      <select
+                        className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
+                        value={form.id_persona}
+                        onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
+                      >
+                        <option value="">Seleccione</option>
+                        {personaOptions.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )
+                  }
+                  error={errors.id_persona}
+                  inlineContent={
+                    <div className="smart-select-entity__summary">
+                      <div className="small text-muted mb-2">
+                        {String(inlinePersonaForm.nombre ?? "").trim()
+                          ? "Persona nueva lista para guardar."
+                          : "Completa los datos de la persona nueva para continuar."}
+                      </div>
+                      <div className="d-flex flex-wrap gap-2 align-items-center">
+                        <span className="badge text-bg-light border">
+                          {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
+                          {String(inlinePersonaForm.apellido ?? "").trim()}
+                        </span>
+                        <span className="badge text-bg-light border">
+                          DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary mt-2"
+                        onClick={() => setShowPersonaCreateModal(true)}
+                        disabled={actionLoading || Boolean(deletingId)}
+                      >
+                        {String(inlinePersonaForm.nombre ?? "").trim()
+                          ? "Editar datos de persona"
+                          : "Completar datos de persona"}
+                      </button>
+                    </div>
+                  }
+                />
               </div>
 
               <div className="col-12">
@@ -1940,6 +2035,13 @@ export default function Empleados({ openToast }) {
           </div>
         </form>
       </aside>
+
+      <PersonaInlineCreateModal
+        show={showModal && drawerMode === "create" && useInlinePersonaCreate && showPersonaCreateModal}
+        initialForm={inlinePersonaForm}
+        onClose={() => setShowPersonaCreateModal(false)}
+        onSave={handleInlinePersonaModalSave}
+      />
 
       <EmployeeDetailModal
         open={Boolean(detailEmpleado)}
