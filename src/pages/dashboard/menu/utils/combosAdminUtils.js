@@ -6,6 +6,7 @@ import {
 } from './recetasAdminUtils';
 
 export const emptyComboForm = {
+  nombre_combo: '',
   descripcion: '',
   precio: '',
   cant_personas: '1',
@@ -59,6 +60,12 @@ export const isPublicHttpUrl = (value) => {
 
 export const resolveComboActivo = (combo) => parseBoolean(combo?.estado);
 
+export const resolveComboNombre = (combo) => String(
+  combo?.nombre_combo ||
+  combo?.descripcion ||
+  ''
+).trim();
+
 export const resolveComboImageCandidates = (combo) => {
   const raw = String(combo?.url_imagen_publica || combo?.url_imagen || '').trim();
   return getImageUrlCandidates(raw);
@@ -73,7 +80,8 @@ export const normalizeComboForForm = (combo) => {
   const detalle = Array.isArray(combo?.detalle) ? combo.detalle : [];
 
   return {
-    descripcion: String(combo?.descripcion || ''),
+    nombre_combo: resolveComboNombre(combo),
+    descripcion: String(combo?.descripcion || resolveComboNombre(combo) || ''),
     precio: String(combo?.precio ?? ''),
     cant_personas:
       combo?.cant_personas === null || combo?.cant_personas === undefined
@@ -137,3 +145,4 @@ export const normalizeDriveStorageUrl = (rawUrl) => {
 };
 
 export const getComparableImageKey = (rawUrl) => toComparableImageKey(rawUrl);
+

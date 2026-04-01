@@ -12,6 +12,15 @@ export const emptyForm = {
   id_archivo: ''
 };
 
+// Nivel picante por defecto para recetas donde no aplica (no alitas/tenders).
+export const DEFAULT_NIVEL_PICANTE_ID = 1;
+
+const SPICE_KEYWORDS_REGEX = /\b(alitas?|tenders?)\b/i;
+
+// Regla MVP: solo pedir nivel picante cuando el nombre menciona alitas o tenders.
+export const shouldRequireSpiceLevel = (nombreReceta) =>
+  SPICE_KEYWORDS_REGEX.test(String(nombreReceta || '').trim());
+
 export const defaultFilters = {
   estado: 'todos',
   sortBy: 'recientes'
@@ -117,15 +126,16 @@ export const getImageUrlCandidates = (rawUrl) => {
     const encodedResourceKey = resourceKey ? encodeURIComponent(resourceKey) : '';
     const resourceKeySuffix = resourceKey ? `&resourcekey=${encodedResourceKey}` : '';
 
+    // Prioriza la URL guardada en BD para no romper configuraciones ya operativas.
     return uniqueNonEmpty([
-      `https://lh3.googleusercontent.com/d/${encodedId}=w1200`,
+      safeUrl,
+      `https://drive.google.com/thumbnail?id=${encodedId}&sz=w1000${resourceKeySuffix}`,
+      `https://drive.google.com/uc?export=view&id=${encodedId}${resourceKeySuffix}`,
+      `https://drive.google.com/uc?id=${encodedId}${resourceKeySuffix}`,
       `https://drive.usercontent.google.com/uc?id=${encodedId}&export=download${resourceKeySuffix}`,
       `https://drive.usercontent.google.com/download?id=${encodedId}&export=view${resourceKeySuffix}`,
       `https://drive.google.com/uc?export=download&id=${encodedId}${resourceKeySuffix}`,
-      `https://drive.google.com/uc?export=view&id=${encodedId}${resourceKeySuffix}`,
-      `https://drive.google.com/uc?id=${encodedId}${resourceKeySuffix}`,
-      `https://drive.google.com/thumbnail?id=${encodedId}&sz=w1000${resourceKeySuffix}`,
-      safeUrl
+      `https://lh3.googleusercontent.com/d/${encodedId}=w1200`
     ]);
   } catch {
     return [safeUrl];

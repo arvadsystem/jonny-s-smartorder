@@ -21,8 +21,7 @@ import Cocina from './pages/dashboard/Cocina';
 import Parametros from './pages/dashboard/Parametros';
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from './routes/RequirePerm';
-import MenuPublico from './pages/public/MenuPublico';
-import Carrito from './pages/public/Carrito';
+import { PublicMenuRoutes } from './modules/public-menu';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -41,6 +40,7 @@ function App() {
     <Routes>
       {/* ── Autenticación ───────────────────────────────────────────── */}
       <Route path="/" element={<Login />} />
+      <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
       <Route path="/registro" element={<Registro />} />
       <Route path="/recuperar-password" element={<RecuperarPassword />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
@@ -48,7 +48,7 @@ function App() {
 
       {/* ── Mundo Público (sin auth requerida) ───────────────── */}
       <Route element={<PublicLayout />}>
-        <Route path="/menu" element={<MenuPublico />} />
+        
         <Route path="/carrito" element={<Carrito />} />
       </Route>
 

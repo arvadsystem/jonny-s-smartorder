@@ -1,7 +1,8 @@
 import {
   formatMoney,
   resolveComboActivo,
-  resolveComboImageCandidates
+  resolveComboImageCandidates,
+  resolveComboNombre
 } from '../utils/combosAdminUtils';
 
 const CombosTable = ({
@@ -45,7 +46,7 @@ const CombosTable = ({
               {imageUrl ? (
                 <img
                   src={imageUrl}
-                  alt={`Imagen de combo ${String(combo?.descripcion || id)}`}
+                  alt={`Imagen de combo ${String(resolveComboNombre(combo) || id)}`}
                   onError={() => onCardImageError(id)}
                 />
               ) : (
@@ -64,7 +65,7 @@ const CombosTable = ({
 
             <div className="menu-recetas-card__body">
               <div className="menu-recetas-card__title-row">
-                <h6>{String(combo?.descripcion || `Combo #${id}`)}</h6>
+                <h6>{String(resolveComboNombre(combo) || `Combo #${id}`)}</h6>
                 <span className="menu-recetas-card__id">#{id}</span>
               </div>
 
@@ -113,4 +114,6 @@ const CombosTable = ({
 };
 
 export default CombosTable;
+
+
 
