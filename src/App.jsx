@@ -22,6 +22,7 @@ import Parametros from './pages/dashboard/Parametros';
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from './routes/RequirePerm';
 import { PublicMenuRoutes } from './modules/public-menu';
+import Carrito from './pages/public/Carrito';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -39,7 +40,8 @@ function App() {
   return (
     <Routes>
       {/* ── Autenticación ───────────────────────────────────────────── */}
-      <Route path="/" element={<Login />} />
+      <Route path="/auth/login" element={<Login />} />
+      <Route path="/" element={<Navigate to="/menu-publico" replace />} />
       <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
       <Route path="/registro" element={<Registro />} />
       <Route path="/recuperar-password" element={<RecuperarPassword />} />
@@ -82,7 +84,7 @@ function App() {
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/" />} />
+      <Route path="*" element={<Navigate to="/menu-publico" replace />} />
     </Routes>
   );
 }

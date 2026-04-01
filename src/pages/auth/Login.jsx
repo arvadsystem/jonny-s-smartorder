@@ -36,7 +36,7 @@ const Login = () => {
     const mustChange = Boolean(user?.must_change_password);
     if (isCliente) {
       const from = searchParams.get('from');
-      navigate(from === 'carrito' ? '/carrito' : '/menu', { replace: true });
+      navigate(from === 'carrito' ? '/carrito' : '/menu-publico', { replace: true });
     } else {
       navigate(mustChange ? '/cambiar-password' : '/dashboard', { replace: true });
     }
@@ -230,7 +230,7 @@ const Login = () => {
 
           {/* Link menú público */}
           <div className="menu-link-row">
-            <button type="button" className="menu-publico-link" onClick={() => navigate('/menu')}>
+            <button type="button" className="menu-publico-link" onClick={() => navigate('/menu-publico')}>
               Ver menú sin iniciar sesión →
             </button>
           </div>

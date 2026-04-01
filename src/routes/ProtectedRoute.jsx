@@ -56,7 +56,7 @@ const ProtectedRoute = () => {
 
   // If user is not authenticated and not in reconnect flow, go to login.
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/auth/login" replace />;
   }
 
   if (mustChangePassword && !isMustChangeRoute) {

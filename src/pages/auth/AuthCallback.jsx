@@ -70,7 +70,7 @@ const AuthCallback = () => {
           if (response?.usuario) {
             login(response);
             const isCliente = response.usuario.tipo_usuario === 'CLIENTE' || response.roles?.includes('Cliente');
-            navigate(isCliente ? '/menu' : '/dashboard', { replace: true });
+            navigate(isCliente ? '/menu-publico' : '/dashboard', { replace: true });
             return;
           }
         }
