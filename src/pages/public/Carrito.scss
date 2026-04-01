@@ -1,0 +1,230 @@
+/* Carrito.scss */
+$brown:  #9B4D1A;
+$dark:   #0e0704;
+$gold:   #d4a574;
+
+.carrito {
+  max-width: 640px;
+  margin: 0 auto;
+  font-family: 'Inter', sans-serif;
+
+  &--vacio {
+    text-align: center;
+    padding: 4rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+
+    i {
+      font-size: 4rem;
+      color: rgba($dark, 0.2);
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: $dark;
+      margin: 0;
+    }
+
+    p {
+      color: rgba($dark, 0.5);
+      margin: 0;
+      font-size: 0.92rem;
+    }
+  }
+
+  &__volver-btn {
+    margin-top: 0.75rem;
+    background: $brown;
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    padding: 0.6rem 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    &:hover { background: darken($brown, 8%); }
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+
+    h2 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: $dark;
+      margin: 0;
+    }
+  }
+
+  &__limpiar {
+    background: none;
+    border: 1px solid rgba($dark, 0.15);
+    border-radius: 20px;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.82rem;
+    color: rgba($dark, 0.5);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 0.2s;
+
+    &:hover {
+      border-color: #dc3545;
+      color: #dc3545;
+    }
+  }
+
+  &__items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  &__resumen {
+    background: #fff;
+    border: 1px solid #f0e8e0;
+    border-radius: 16px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  &__total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1.05rem;
+
+    span { color: rgba($dark, 0.6); }
+
+    strong {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: $brown;
+    }
+  }
+
+  &__nota {
+    font-size: 0.78rem;
+    color: rgba($dark, 0.4);
+    margin: 0;
+  }
+
+  &__confirmar {
+    width: 100%;
+    background: $brown;
+    color: #fff;
+    border: none;
+    border-radius: 30px;
+    padding: 0.9rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+
+    &:hover {
+      background: darken($brown, 6%);
+      transform: translateY(-1px);
+    }
+  }
+
+  &__seguir {
+    background: none;
+    border: none;
+    font-size: 0.85rem;
+    color: rgba($dark, 0.5);
+    cursor: pointer;
+    text-align: center;
+
+    &:hover { color: $brown; }
+  }
+}
+
+// ── Item ─────────────────────────────────────────────────────────────
+.carrito-item {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: #fff;
+  border: 1px solid #f0e8e0;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+
+  &__img {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  &__info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  &__nombre {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: $dark;
+  }
+
+  &__precio {
+    font-size: 0.88rem;
+    color: $brown;
+    font-weight: 600;
+  }
+
+  &__qty {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+
+    button {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 1px solid #e0d6cd;
+      background: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+      &:hover { background: #f5ede4; }
+    }
+
+    span {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: $dark;
+      min-width: 18px;
+      text-align: center;
+    }
+  }
+
+  &__remove {
+    background: none;
+    border: none;
+    color: rgba($dark, 0.3);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: color 0.15s;
+    padding: 0.25rem;
+    &:hover { color: #dc3545; }
+  }
+}
