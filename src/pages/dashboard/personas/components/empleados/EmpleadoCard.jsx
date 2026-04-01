@@ -1,3 +1,6 @@
+import { useState } from "react";
+import "./empleados-card.css";
+
 const parseEstado = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return Boolean(record.estado);
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return Boolean(record.activo);
@@ -22,21 +25,97 @@ const formatDateLabel = (value) => {
   });
 };
 
+const getFirstNonEmptyField = (record, keys) => {
+  if (!record || !Array.isArray(keys)) return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getFirstNonEmptyValue = (values) => {
+  if (!Array.isArray(values)) return "";
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
 const getTelefono = (empleado) =>
-  empleado?.telefono ??
-  empleado?.telefono_numero ??
-  empleado?.numero_telefono ??
-  empleado?.persona_telefono ??
-  empleado?.telefono_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+  ]);
 
 const getCargo = (empleado) =>
-  empleado?.cargo ??
-  empleado?.nombre_cargo ??
-  empleado?.cargo_nombre ??
-  empleado?.puesto ??
-  empleado?.rol;
+  getFirstNonEmptyField(empleado, [
+    "cargo",
+    "nombre_cargo",
+    "cargo_nombre",
+    "puesto",
+    "rol",
+    "cargo_puesto",
+    "cargo_descripcion",
+  ]);
 
-const getDni = (empleado) => empleado?.persona_dni ?? empleado?.dni;
+const getDni = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, ["persona_dni", "dni"]),
+    getFirstNonEmptyField(empleado?.persona, ["dni", "persona_dni"]),
+  ]);
+
+const getSalario = (empleado) =>
+  getFirstNonEmptyField(empleado, ["salario_base", "sueldo", "salario", "salarioBase"]);
+
+const formatSalaryLabel = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") return "Sin sueldo";
+  const parsed = Number.parseFloat(String(value).replace(",", "."));
+  if (!Number.isFinite(parsed)) return String(value);
+  return parsed.toLocaleString("es-HN", {
+    style: "currency",
+    currency: "HNL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+const getInitials = (fullName) => {
+  const clean = String(fullName ?? "").trim();
+  if (!clean) return "EM";
+
+  const parts = clean
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const first = parts[0]?.charAt(0) || "";
+  const second = (parts.length > 1 ? parts[parts.length - 1]?.charAt(0) : "") || "";
+  const initials = `${first}${second}`.toUpperCase();
+  return initials || first.toUpperCase() || "EM";
+};
 
 export default function EmpleadoCard({
   empleado,
@@ -55,97 +134,125 @@ export default function EmpleadoCard({
   const deleting = deletingId === idEmpleado;
   const personaNombre = typeof getPersonaNombre === "function" ? getPersonaNombre(empleado) : "No registrado";
   const sucursalNombre = typeof getSucursalNombre === "function" ? getSucursalNombre(empleado) : "No registrado";
+  const telefono = getTelefono(empleado);
   const cargo = getCargo(empleado);
+  const salario = getSalario(empleado);
+  const initials = getInitials(personaNombre);
+  const codeLabel = `EMP-${String(idEmpleado ?? "-")}`;
+  const [hasImageError, setHasImageError] = useState(false);
+  const showImage = Boolean(imageSrc) && !hasImageError;
 
   return (
     <article
-      className={`inv-prod-catalog-card personas-emp-card inv-anim-in ${isActive ? "is-ok" : "is-inactive"} ${
+      className={`inv-prod-catalog-card personas-emp-card empleados-card inv-anim-in ${isActive ? "is-ok" : "is-inactive"} ${
         isActive ? "" : "is-inactive-state"
       }`.trim()}
       style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
     >
-      <div className="inv-prod-thumb-wrap personas-emp-card__thumb">
-        {imageSrc ? (
-          <img src={imageSrc} alt={toDisplayValue(personaNombre, "Empleado")} className="inv-prod-thumb" loading="lazy" />
-        ) : (
-          <div className="inv-prod-thumb placeholder">
-            <i className="bi bi-image" />
-            <span>Sin imagen</span>
-          </div>
-        )}
-        <span className={`inv-prod-card-state ${isActive ? "is-ok" : "is-inactive"}`}>
-          {isActive ? "Activo" : "Inactivo"}
-        </span>
-      </div>
+      <div className="inv-prod-card-body personas-emp-card__body empleados-card__body">
+        <header className="empleados-card__header">
+          <div className="empleados-card__identity">
+            <div className={`empleados-card__avatar ${showImage ? "has-image" : ""}`}>
+              {showImage ? (
+                <img
+                  src={imageSrc}
+                  alt={toDisplayValue(personaNombre, "Empleado")}
+                  loading="lazy"
+                  onError={() => setHasImageError(true)}
+                />
+              ) : (
+                <span>{initials}</span>
+              )}
+            </div>
 
-      <div className="inv-prod-card-body personas-emp-card__body">
-        <div className="inv-prod-card-bg-icon" aria-hidden="true">
-          <i className="bi bi-person-badge" />
-        </div>
-
-        <div className="inv-prod-card-name">{`${index + 1}. ${toDisplayValue(personaNombre, "Empleado sin nombre")}`}</div>
-        <div className="inv-prod-card-category">{`Sucursal: ${toDisplayValue(sucursalNombre)}`}</div>
-
-        <div className="personas-emp-card__meta">
-          <div className="personas-page__card-row">
-            <i className="bi bi-person-vcard" />
-            <span>DNI: {toDisplayValue(getDni(empleado), "N/D")}</span>
-          </div>
-          <div className="personas-page__card-row">
-            <i className="bi bi-telephone" />
-            <span>{toDisplayValue(getTelefono(empleado), "Sin telefono")}</span>
-          </div>
-          <div className="personas-page__card-row">
-            <i className="bi bi-briefcase" />
-            <span>{toDisplayValue(cargo, "Sin cargo")}</span>
-          </div>
-          <div className="personas-page__card-row">
-            <i className="bi bi-calendar-event" />
-            <span>{formatDateLabel(empleado?.fecha_ingreso)}</span>
-          </div>
-        </div>
-
-        <div className="inv-prod-stock-line personas-emp-card__footer">
-          <div className="inv-prod-stock-meta personas-emp-card__stock-meta">
-            <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
-            <div className="inv-prod-stock-copy personas-emp-card__stock-copy">
-              <span>{toDisplayValue(cargo, isActive ? "Empleado activo" : "Empleado inactivo")}</span>
-              <small className="personas-emp-card__code">{`EMP-${String(idEmpleado ?? "-")}`}</small>
+            <div className="empleados-card__title-wrap">
+              <div className="inv-prod-card-name empleados-card__name">{`${index + 1}. ${toDisplayValue(personaNombre, "Empleado sin nombre")}`}</div>
+              <small className="empleados-card__code">{codeLabel}</small>
             </div>
           </div>
 
-          <div className="personas-emp-card__actions">
+          <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"} empleados-card__badge`}>
+            <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
+            <span>{isActive ? "Activo" : "Inactivo"}</span>
+          </span>
+        </header>
+
+        <div className="empleados-card__meta" aria-label="Datos del empleado">
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-shop" />
+            <span>{`Sucursal: ${toDisplayValue(sucursalNombre, "Sin sucursal")}`}</span>
+          </div>
+
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-person-vcard" />
+            <span>{`DNI: ${toDisplayValue(getDni(empleado), "N/D")}`}</span>
+          </div>
+
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-calendar-event" />
+            <span>{`Ingreso: ${formatDateLabel(empleado?.fecha_ingreso)}`}</span>
+          </div>
+
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-briefcase" />
+            <span>{`Cargo: ${toDisplayValue(cargo, "Sin cargo")}`}</span>
+          </div>
+
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-cash-stack" />
+            <span>{`Sueldo: ${formatSalaryLabel(salario)}`}</span>
+          </div>
+
+          <div className="personas-page__card-row empleados-card__row">
+            <i className="bi bi-telephone" />
+            <span>{`Telefono: ${toDisplayValue(telefono, "Sin telefono")}`}</span>
+          </div>
+        </div>
+
+        <div className="inv-prod-stock-line personas-emp-card__footer empleados-card__footer">
+          <div className="inv-prod-stock-meta personas-emp-card__stock-meta">
+            <span className={`inv-catpro-state-dot ${isActive ? "ok" : "off"}`} />
+            <div className="inv-prod-stock-copy personas-emp-card__stock-copy empleados-card__summary">
+              <span>{isActive ? "Empleado activo" : "Empleado inactivo"}</span>
+              <small className="personas-emp-card__code">{toDisplayValue(cargo, "Sin cargo")}</small>
+            </div>
+          </div>
+
+          <div className="personas-emp-card__actions empleados-card__actions">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle personas-emp-card__action"
+              className="empleados-card__icon-action empleados-card__icon-action--detail"
               onClick={() => onOpenDetail?.(empleado)}
               disabled={actionLoading || deleting}
               title="Ver detalle"
+              aria-label="Ver detalle"
             >
               <i className="bi bi-eye" />
-              <span>Ver detalle</span>
+              <span className="empleados-card__icon-action-label">Detalle</span>
             </button>
 
             <button
               type="button"
-              className="btn inv-prod-btn-outline personas-emp-card__action"
+              className="empleados-card__icon-action empleados-card__icon-action--edit"
               onClick={() => onOpenEdit(empleado)}
               disabled={actionLoading || deleting}
               title="Editar"
+              aria-label="Editar"
             >
               <i className="bi bi-pencil-square" />
-              <span>Editar</span>
+              <span className="empleados-card__icon-action-label">Editar</span>
             </button>
 
             <button
               type="button"
-              className="btn inv-prod-card-action danger inv-prod-card-action-compact personas-emp-card__action personas-emp-card__action--danger"
+              className="empleados-card__icon-action empleados-card__icon-action--delete"
               onClick={() => onOpenDelete(empleado)}
               disabled={actionLoading || deleting}
               title="Eliminar"
+              aria-label={deleting ? "Eliminando..." : "Eliminar"}
             >
               <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
-              <span className="inv-prod-card-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+              <span className="empleados-card__icon-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
             </button>
           </div>
         </div>

@@ -69,6 +69,18 @@ const PERMISSION_VALUES = Object.freeze({
   EMPLEADOS_FICHA_IMPRIMIR: 'EMPLEADOS_FICHA_IMPRIMIR',
   EMPLEADOS_VER_SOLO_RELACIONADOS: 'EMPLEADOS_VER_SOLO_RELACIONADOS',
   EMPLEADOS_VER_SOLO_PROPIOS: 'EMPLEADOS_VER_SOLO_PROPIOS',
+  PLANILLAS_MODULO_VER: 'PLANILLAS_MODULO_VER',
+  PLANILLAS_LISTADO_VER: 'PLANILLAS_LISTADO_VER',
+  PLANILLAS_DETALLE_VER: 'PLANILLAS_DETALLE_VER',
+  PLANILLAS_GENERAR: 'PLANILLAS_GENERAR',
+  PLANILLAS_RECALCULAR: 'PLANILLAS_RECALCULAR',
+  PLANILLAS_ADELANTOS_APLICAR: 'PLANILLAS_ADELANTOS_APLICAR',
+  PLANILLAS_MOVIMIENTO_REGISTRAR: 'PLANILLAS_MOVIMIENTO_REGISTRAR',
+  PLANILLAS_MOVIMIENTO_ANULAR: 'PLANILLAS_MOVIMIENTO_ANULAR',
+  PLANILLAS_CERRAR: 'PLANILLAS_CERRAR',
+  PLANILLAS_PAGAR: 'PLANILLAS_PAGAR',
+  PLANILLAS_ANULAR: 'PLANILLAS_ANULAR',
+  PLANILLAS_AUDITORIA_VER: 'PLANILLAS_AUDITORIA_VER',
   USUARIOS_MODULO_VER: 'USUARIOS_MODULO_VER',
   USUARIOS_LISTADO_VER: 'USUARIOS_LISTADO_VER',
   USUARIOS_DETALLE_VER: 'USUARIOS_DETALLE_VER',
@@ -398,6 +410,9 @@ const PERSONAS_TAB_PERMISSIONS_MAP = Object.freeze({
   empleados: uniquePermissions([
     PERMISSIONS.EMPLEADOS_MODULO_VER
   ]),
+  planillas: uniquePermissions([
+    PERMISSIONS.PLANILLAS_MODULO_VER
+  ]),
   usuarios: uniquePermissions([
     PERMISSIONS.USUARIOS_MODULO_VER
   ]),
@@ -607,6 +622,7 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'empresas', label: 'Empresas', icon: 'bi bi-building', required: PERSONAS_TAB_PERMISSIONS_MAP.empresas },
     { key: 'clientes', label: 'Clientes', icon: 'bi bi-people', required: PERSONAS_TAB_PERMISSIONS_MAP.clientes },
     { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase', required: PERSONAS_TAB_PERMISSIONS_MAP.empleados },
+    { key: 'planillas', label: 'Planillas', icon: 'bi bi-cash-coin', required: PERSONAS_TAB_PERMISSIONS_MAP.planillas },
     { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear', required: PERSONAS_TAB_PERMISSIONS_MAP.usuarios },
     { key: 'roles', label: 'Roles y permisos', icon: 'bi bi-person-lock', required: PERSONAS_TAB_PERMISSIONS_MAP.roles }
   ],
