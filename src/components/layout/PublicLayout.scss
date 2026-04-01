@@ -1,0 +1,158 @@
+/* PublicLayout.scss */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+$dark:       #0e0704;
+$gold:       #d4a574;
+$gold-light: #f0c896;
+$brown:      #9B4D1A;
+
+.public-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #faf7f4;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+// ── NAV ─────────────────────────────────────────────────────────────
+.public-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 2rem;
+  background: $dark;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.4);
+
+  &__brand {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    cursor: pointer;
+    user-select: none;
+    outline: none;
+
+    &:focus-visible {
+      outline: 2px solid $gold;
+      border-radius: 6px;
+    }
+  }
+
+  &__logo {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    mix-blend-mode: screen;
+  }
+
+  &__brand-name {
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #fff;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  &__cart-btn {
+    position: relative;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.75);
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+
+    &:hover {
+      background: rgba($gold, 0.15);
+      color: $gold;
+    }
+  }
+
+  &__badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: $brown;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  &__login-btn {
+    background: $brown;
+    border: none;
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.5rem 1.25rem;
+    border-radius: 20px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: background 0.2s;
+
+    &:hover { background: lighten($brown, 8%); }
+  }
+
+  &__user-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba($gold, 0.12);
+    border: 1px solid rgba($gold, 0.3);
+    color: $gold-light;
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.45rem 1rem;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:hover { background: rgba($gold, 0.2); }
+  }
+}
+
+// ── MAIN ─────────────────────────────────────────────────────────────
+.public-main {
+  flex: 1;
+  padding: 2rem;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+// ── FOOTER ───────────────────────────────────────────────────────────
+.public-footer {
+  background: $dark;
+  padding: 1.25rem 2rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.3);
+}
+
+// ── Responsive ───────────────────────────────────────────────────────
+@media (max-width: 600px) {
+  .public-main { padding: 1rem; }
+  .public-nav { padding: 0.75rem 1rem; }
+  .public-nav__brand-name { font-size: 1rem; }
+}

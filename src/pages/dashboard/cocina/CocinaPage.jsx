@@ -12,12 +12,13 @@ import { useCocina } from './hooks/useCocina';
 import {
   buildCocinaStats,
   groupOrdersByColumn,
-  matchesKitchenOrder
+  matchesKitchenOrder,
+  resolveOrderColumnKey
 } from './utils/cocinaHelpers';
 import './styles/cocina.css';
 
 export default function CocinaPage() {
-  const { canAny } = usePermisos();
+  const { canAny, isSuperAdmin } = usePermisos();
   const [search, setSearch] = useState('');
   const [selectedSucursalId, setSelectedSucursalId] = useState(null);
   const [selectedPedido, setSelectedPedido] = useState(null);
@@ -26,6 +27,13 @@ export default function CocinaPage() {
     action: null
   });
   const [now, setNow] = useState(() => Date.now());
+  const canSearch = canAny([PERMISSIONS.COCINA_BUSCAR]);
+  const canRefresh = canAny([PERMISSIONS.COCINA_ACTUALIZAR_TABLERO]);
+  const canViewDetail = canAny([PERMISSIONS.COCINA_DETALLE_VER]);
+  const canFilterSucursal = canAny([PERMISSIONS.COCINA_FILTRAR_SUCURSAL]);
+  const canStartPedido = canAny([PERMISSIONS.COCINA_PEDIDO_INICIAR]);
+  const canMarkReady = canAny([PERMISSIONS.COCINA_PEDIDO_MARCAR_LISTO]);
+  const canDeliverPedido = canAny([PERMISSIONS.COCINA_PEDIDO_ENTREGAR]);
 
   const {
     pedidos,
@@ -40,16 +48,9 @@ export default function CocinaPage() {
     advancePedido,
     mutatingIds
   } = useCocina({
-    selectedSucursalId
+    selectedSucursalId,
+    includeSucursalesCatalog: canFilterSucursal || isSuperAdmin
   });
-
-  const canSearch = canAny([PERMISSIONS.COCINA_BUSCAR]);
-  const canRefresh = canAny([PERMISSIONS.COCINA_ACTUALIZAR_TABLERO]);
-  const canViewDetail = canAny([PERMISSIONS.COCINA_DETALLE_VER]);
-  const canFilterSucursal = canAny([PERMISSIONS.COCINA_FILTRAR_SUCURSAL]);
-  const canStartPedido = canAny([PERMISSIONS.COCINA_PEDIDO_INICIAR]);
-  const canMarkReady = canAny([PERMISSIONS.COCINA_PEDIDO_MARCAR_LISTO]);
-  const canDeliverPedido = canAny([PERMISSIONS.COCINA_PEDIDO_ENTREGAR]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -78,7 +79,7 @@ export default function CocinaPage() {
   const groupedPedidos = useMemo(() => groupOrdersByColumn(filteredPedidos), [filteredPedidos]);
   const stats = useMemo(() => buildCocinaStats(filteredPedidos), [filteredPedidos]);
   const canAdvancePedido = (pedido) => {
-    const columnKey = String(pedido?.columna_kds || '');
+    const columnKey = resolveOrderColumnKey(pedido);
     if (columnKey === 'PENDIENTES') return canStartPedido;
     if (columnKey === 'EN_PREPARACION') return canMarkReady;
     if (columnKey === 'LISTOS_PARA_ENTREGA') return canDeliverPedido;
@@ -100,7 +101,11 @@ export default function CocinaPage() {
             current
               ? {
                   ...current,
-                  estado_codigo: confirmState.action.nextStatus
+                  estado_codigo: confirmState.action.nextStatus,
+                  columna_kds: resolveOrderColumnKey({
+                    columna_kds: current.columna_kds,
+                    estado_codigo: confirmState.action.nextStatus
+                  })
                 }
               : current
           );

@@ -5,8 +5,8 @@ const authService = {
     return await apiFetch('/login', 'POST', credentials);
   },
 
-  me: async () => {
-    return await apiFetch('/me', 'GET');
+  me: async (config = {}) => {
+    return await apiFetch('/me', 'GET', null, config);
   },
 
   logout: async () => {
