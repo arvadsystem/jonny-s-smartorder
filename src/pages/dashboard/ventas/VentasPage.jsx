@@ -23,6 +23,7 @@ export default function VentasPage() {
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
   const {
     ventas,
+    sucursales,
     categorias,
     productos,
     combos,
@@ -57,6 +58,7 @@ export default function VentasPage() {
   const canCreateDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_CREAR]);
   const canEditDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_EDITAR]);
   const canToggleDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR]);
+  const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
   const statsVisibility = useMemo(
     () => resolveVentasStatsVisibility(user?.roles, { isSuperAdmin }),
     [isSuperAdmin, user?.roles]
@@ -153,6 +155,9 @@ export default function VentasPage() {
 
       {activeTab === 'caja' ? (
         <CajaView
+          sucursales={sucursales}
+          isSuperAdmin={isSuperAdmin}
+          defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           productos={productos}
           categorias={categorias}
           tiposDepartamento={tiposDepartamento}

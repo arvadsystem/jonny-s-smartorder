@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../../../hooks/useAuth';
 import recetasAdminService from '../../../../services/recetasAdminService';
+import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
   defaultFilters,
   emptyForm,
@@ -11,7 +13,9 @@ import {
   resolveRecetaActiva,
   sortRecetas,
   toDrivePreviewUrl,
-  toNumberOrNull
+  toNumberOrNull,
+  DEFAULT_NIVEL_PICANTE_ID,
+  shouldRequireSpiceLevel
 } from '../utils/recetasAdminUtils';
 
 const validarFormulario = (form) => {
@@ -21,8 +25,9 @@ const validarFormulario = (form) => {
   if (toNumberOrNull(form.id_menu) === null) {
     return 'id_menu es obligatorio.';
   }
-  if (toNumberOrNull(form.id_nivel_picante) === null) {
-    return 'id_nivel_picante es obligatorio.';
+  const requiresSpiceLevel = shouldRequireSpiceLevel(form.nombre_receta);
+  if (requiresSpiceLevel && toNumberOrNull(form.id_nivel_picante) === null) {
+    return 'id_nivel_picante es obligatorio para alitas/tenders.';
   }
   if (toNumberOrNull(form.id_tipo_departamento) === null) {
     return 'id_tipo_departamento es obligatorio.';
@@ -48,16 +53,24 @@ const validarFormulario = (form) => {
   return '';
 };
 
-const buildPayloadBase = (form) => ({
-  nombre_receta: String(form.nombre_receta || '').trim(),
-  descripcion: String(form.descripcion || '').trim(),
-  precio: Number(form.precio),
-  id_menu: Number(form.id_menu),
-  id_nivel_picante: Number(form.id_nivel_picante),
-  id_usuario: Number(form.id_usuario),
-  estado: parseBoolean(form.estado),
-  id_tipo_departamento: Number(form.id_tipo_departamento)
-});
+const buildPayloadBase = (form) => {
+  const requiresSpiceLevel = shouldRequireSpiceLevel(form.nombre_receta);
+  const resolvedSpiceLevelId = requiresSpiceLevel
+    ? Number(form.id_nivel_picante)
+    : DEFAULT_NIVEL_PICANTE_ID;
+
+  return {
+    nombre_receta: String(form.nombre_receta || '').trim(),
+    descripcion: String(form.descripcion || '').trim(),
+    precio: Number(form.precio),
+    id_menu: Number(form.id_menu),
+    // Para no alitas/tenders se envia un nivel por defecto de No aplica.
+    id_nivel_picante: resolvedSpiceLevelId,
+    id_usuario: Number(form.id_usuario),
+    estado: parseBoolean(form.estado),
+    id_tipo_departamento: Number(form.id_tipo_departamento)
+  };
+};
 
 const toSafeRecetaBaseName = (value) => {
   const sanitized = String(value || '')
@@ -137,6 +150,12 @@ const useRecetasAdmin = () => {
   const [viewMode, setViewMode] = useState('cards');
   const [cardImageErrors, setCardImageErrors] = useState({});
   const [formPreviewError, setFormPreviewError] = useState(false);
+  const { user } = useAuth();
+  // Prefill tecnico para reducir captura manual de id_usuario/id_menu en el MVP.
+  const [defaultIds, setDefaultIds] = useState({
+    id_usuario: '',
+    id_menu: ''
+  });
 
   const isAnyDrawerOpen = drawerOpen || filtersOpen;
 
@@ -167,6 +186,42 @@ const useRecetasAdmin = () => {
     setFormPreviewError(false);
   }, [form.url_imagen_publica]);
 
+  useEffect(() => {
+    const idUsuario = Number(user?.id_usuario || 0);
+    if (!idUsuario) return;
+
+    setDefaultIds((current) => ({
+      ...current,
+      id_usuario: String(idUsuario)
+    }));
+  }, [user?.id_usuario]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDefaultMenu = async () => {
+      try {
+        const sucursales = await menuPublicacionAdminService.getSucursales();
+        const withMenu = (Array.isArray(sucursales) ? sucursales : []).find(
+          (branch) => Boolean(branch?.estado) && Number(branch?.id_menu || 0) > 0
+        );
+
+        if (!isMounted || !withMenu) return;
+        setDefaultIds((current) => ({
+          ...current,
+          id_menu: String(withMenu.id_menu)
+        }));
+      } catch {
+        // Sin bloqueo: si falla este preload se mantiene captura manual.
+      }
+    };
+
+    void loadDefaultMenu();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const recetasFiltradas = useMemo(() => {
     const searchTerm = String(search || '').trim().toLowerCase();
 
@@ -197,12 +252,16 @@ const useRecetasAdmin = () => {
     setFiltersOpen(false);
     setDrawerMode('create');
     setEditingId(null);
-    setForm({ ...emptyForm });
+    setForm({
+      ...emptyForm,
+      id_usuario: defaultIds.id_usuario || emptyForm.id_usuario,
+      id_menu: defaultIds.id_menu || emptyForm.id_menu
+    });
     setDrawerOpen(true);
     setError('');
     setSuccess('');
     setFormPreviewError(false);
-  }, []);
+  }, [defaultIds.id_menu, defaultIds.id_usuario]);
 
   const closeCreateDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -247,7 +306,11 @@ const useRecetasAdmin = () => {
         setSuccess('Receta creada correctamente.');
       }
 
-      setForm({ ...emptyForm });
+      setForm({
+        ...emptyForm,
+        id_usuario: defaultIds.id_usuario || emptyForm.id_usuario,
+        id_menu: defaultIds.id_menu || emptyForm.id_menu
+      });
       setEditingId(null);
       setDrawerMode('create');
       setDrawerOpen(false);
@@ -258,7 +321,7 @@ const useRecetasAdmin = () => {
     } finally {
       setSaving(false);
     }
-  }, [cargarRecetas, editingId, form]);
+  }, [cargarRecetas, defaultIds.id_menu, defaultIds.id_usuario, editingId, form]);
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {
@@ -387,3 +450,4 @@ const useRecetasAdmin = () => {
 };
 
 export default useRecetasAdmin;
+

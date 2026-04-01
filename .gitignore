@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backup Archives
+*.zip
+*.tar
+*.gz

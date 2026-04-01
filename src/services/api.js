@@ -11,6 +11,7 @@ class ApiError extends Error {
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 
 const appendNoCacheParam = (endpoint) => {
   const safeEndpoint = String(endpoint || '');
@@ -77,6 +78,46 @@ const getCookie = (name) => {
   }
 };
 
+const createRequestSignal = (config = {}) => {
+  const timeoutRaw = Number.parseInt(String(config?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS), 10);
+  const timeoutMs = Number.isInteger(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : DEFAULT_REQUEST_TIMEOUT_MS;
+
+  const externalSignal = config?.signal ?? null;
+  const controller = new AbortController();
+  const timerId = setTimeout(() => {
+    try {
+      controller.abort(new DOMException('Request timed out', 'AbortError'));
+    } catch {
+      controller.abort();
+    }
+  }, timeoutMs);
+
+  let unsubscribeExternal = null;
+  if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+    const onExternalAbort = () => {
+      try {
+        controller.abort(externalSignal.reason);
+      } catch {
+        controller.abort();
+      }
+    };
+
+    if (externalSignal.aborted) {
+      onExternalAbort();
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+      unsubscribeExternal = () => externalSignal.removeEventListener('abort', onExternalAbort);
+    }
+  }
+
+  const cleanup = () => {
+    clearTimeout(timerId);
+    if (unsubscribeExternal) unsubscribeExternal();
+  };
+
+  return { signal: controller.signal, cleanup, timeoutMs };
+};
+
 export const apiFetch = async (endpoint, method = 'GET', body = null, config = {}) => {
   const upperMethod = method.toUpperCase();
   const noCache = Boolean(config?.noCache);
@@ -104,23 +145,41 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     requestOptions.body = JSON.stringify(body);
   }
 
-  const response = await fetch(`${API_URL}${resolvedEndpoint}`, requestOptions);
+  const { signal, cleanup, timeoutMs } = createRequestSignal(config);
+  requestOptions.signal = signal;
 
+  let response;
+  try {
+    response = await fetch(`${API_URL}${resolvedEndpoint}`, requestOptions);
+  } catch (error) {
+    const aborted = error?.name === 'AbortError';
+    const message = aborted
+      ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
+      : 'No se pudo establecer comunicacion con el servidor.';
+    throw new ApiError(message, {
+      status: aborted ? 408 : 0,
+      code: aborted ? 'REQUEST_TIMEOUT' : 'FETCH_ERROR',
+      data: error
+    });
+  } finally {
+    cleanup();
+  }
+
+  // 401 -> not authenticated
   if (response.status === 401) {
     const errorData = await readBody(response);
-    const msg = safeUiErrorMessage(extractErrorMessage(errorData), 'No autorizado');
+    const msg =
+      (errorData && typeof errorData === 'object' && (errorData.message || errorData.mensaje)) ||
+      (typeof errorData === 'string' ? errorData : '') ||
+      'No autorizado';
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }
-
-    throw new ApiError(msg, {
-      status: 401,
-      code: (errorData && typeof errorData === 'object' && errorData.code) || 'UNAUTHORIZED',
-      data: errorData
-    });
+    throw new ApiError(msg, { status: 401, code: 'UNAUTHORIZED', data: errorData });
   }
 
+  // 403 -> permissions or CSRF
   if (response.status === 403) {
     const errorData = await readBody(response);
     const msg = safeUiErrorMessage(extractErrorMessage(errorData), 'Acceso denegado');
@@ -133,13 +192,10 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
       });
     }
 
-    throw new ApiError(msg || 'Accion bloqueada (CSRF)', {
-      status: 403,
-      code: (errorData && typeof errorData === 'object' && errorData.code) || 'CSRF',
-      data: errorData
-    });
+    throw new ApiError(msg || 'Accion bloqueada (CSRF)', { status: 403, code: 'CSRF', data: errorData });
   }
 
+  // Other HTTP errors.
   if (!response.ok) {
     const errorData = await readBody(response);
     const msg = safeUiErrorMessage(
@@ -158,3 +214,4 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
 
   return await readBody(response);
 };
+

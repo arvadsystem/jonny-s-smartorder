@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../../../hooks/useAuth';
 import combosAdminService from '../../../../services/combosAdminService';
 import recetasAdminService from '../../../../services/recetasAdminService';
+import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
   emptyComboForm,
   extractArchivoId,
@@ -12,13 +14,14 @@ import {
   parseBoolean,
   resolveComboActivo,
   resolveComboImageUrl,
+  resolveComboNombre,
   toNumberOrNull,
   toSafeComboBaseName
 } from '../utils/combosAdminUtils';
 
 const validarFormulario = (form) => {
-  if (!String(form.descripcion || '').trim()) {
-    return 'descripcion es obligatoria.';
+  if (!String(form.nombre_combo || '').trim()) {
+    return 'nombre_combo es obligatorio.';
   }
 
   const precio = toNumberOrNull(form.precio);
@@ -87,15 +90,21 @@ const resolveRecetaNombre = (row) => String(
   ''
 ).trim();
 
-const buildPayloadBase = (form) => ({
-  descripcion: String(form.descripcion || '').trim(),
-  precio: Number(form.precio),
-  cant_personas: Number(form.cant_personas),
-  id_menu: Number(form.id_menu),
-  id_usuario: Number(form.id_usuario),
-  estado: parseBoolean(form.estado),
-  detalle: normalizeDetallePayload(form.detalle)
-});
+const buildPayloadBase = (form) => {
+  const nombreCombo = String(form.nombre_combo || '').trim();
+  const descripcion = String(form.descripcion || '').trim();
+
+  return {
+    nombre_combo: nombreCombo,
+    descripcion: descripcion || nombreCombo,
+    precio: Number(form.precio),
+    cant_personas: Number(form.cant_personas),
+    id_menu: Number(form.id_menu),
+    id_usuario: Number(form.id_usuario),
+    estado: parseBoolean(form.estado),
+    detalle: normalizeDetallePayload(form.detalle)
+  };
+};
 
 /**
  * Registra una URL de imagen en la tabla archivos y retorna su id_archivo.
@@ -103,7 +112,7 @@ const buildPayloadBase = (form) => ({
  */
 const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
   const payloadArchivo = {
-    nombre_original: `${toSafeComboBaseName(form.descripcion)}-url`,
+    nombre_original: `${toSafeComboBaseName(form.nombre_combo || form.descripcion)}-url`,
     url_publica: imageUrl,
     tipo_archivo: 'image/url',
     tamano_bytes: null,
@@ -161,6 +170,12 @@ const useCombosAdmin = () => {
   const [form, setForm] = useState({ ...emptyComboForm });
   const [cardImageErrors, setCardImageErrors] = useState({});
   const [formPreviewError, setFormPreviewError] = useState(false);
+  const { user } = useAuth();
+  // Prefill tecnico para reducir captura manual de id_usuario/id_menu en el MVP.
+  const [defaultIds, setDefaultIds] = useState({
+    id_usuario: '',
+    id_menu: ''
+  });
 
   const cargarCombos = useCallback(async () => {
     try {
@@ -253,6 +268,42 @@ const useCombosAdmin = () => {
   useEffect(() => {
     setFormPreviewError(false);
   }, [form.url_imagen_publica]);
+  useEffect(() => {
+    const idUsuario = Number(user?.id_usuario || 0);
+    if (!idUsuario) return;
+
+    setDefaultIds((current) => ({
+      ...current,
+      id_usuario: String(idUsuario)
+    }));
+  }, [user?.id_usuario]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadDefaultMenu = async () => {
+      try {
+        const sucursales = await menuPublicacionAdminService.getSucursales();
+        const withMenu = (Array.isArray(sucursales) ? sucursales : []).find(
+          (branch) => Boolean(branch?.estado) && Number(branch?.id_menu || 0) > 0
+        );
+
+        if (!isMounted || !withMenu) return;
+        setDefaultIds((current) => ({
+          ...current,
+          id_menu: String(withMenu.id_menu)
+        }));
+      } catch {
+        // Mantiene captura manual en caso de error.
+      }
+    };
+
+    void loadDefaultMenu();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const combosFiltrados = useMemo(() => {
     const searchTerm = String(search || '').trim().toLowerCase();
@@ -261,9 +312,10 @@ const useCombosAdmin = () => {
     if (!searchTerm) return rows;
 
     return rows.filter((combo) => {
+      const nombreCombo = String(resolveComboNombre(combo) || '').toLowerCase();
       const descripcion = String(combo?.descripcion || '').toLowerCase();
       const idText = String(combo?.id_combo || '');
-      return descripcion.includes(searchTerm) || idText.includes(searchTerm);
+      return nombreCombo.includes(searchTerm) || descripcion.includes(searchTerm) || idText.includes(searchTerm);
     });
   }, [combos, search]);
 
@@ -296,14 +348,18 @@ const useCombosAdmin = () => {
   const openCreateDrawer = useCallback(() => {
     setDrawerMode('create');
     setEditingId(null);
-    setForm({ ...emptyComboForm });
+    setForm({
+      ...emptyComboForm,
+      id_usuario: defaultIds.id_usuario || emptyComboForm.id_usuario,
+      id_menu: defaultIds.id_menu || emptyComboForm.id_menu
+    });
     setDrawerOpen(true);
     setError('');
     setSuccess('');
     setFormPreviewError(false);
     // Refresca el catalogo al abrir para tomar recetas nuevas sin recargar pagina.
     void cargarCatalogoRecetas();
-  }, [cargarCatalogoRecetas]);
+  }, [cargarCatalogoRecetas, defaultIds.id_menu, defaultIds.id_usuario]);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -404,7 +460,11 @@ const useCombosAdmin = () => {
       // Reinicia fallback de imagen para que pruebe la URL nueva al volver a pintar cards.
       setCardImageErrors({});
 
-      setForm({ ...emptyComboForm });
+      setForm({
+        ...emptyComboForm,
+        id_usuario: defaultIds.id_usuario || emptyComboForm.id_usuario,
+        id_menu: defaultIds.id_menu || emptyComboForm.id_menu
+      });
       setEditingId(null);
       setDrawerMode('create');
       setDrawerOpen(false);
@@ -414,7 +474,7 @@ const useCombosAdmin = () => {
     } finally {
       setSaving(false);
     }
-  }, [cargarCombos, editingId, form]);
+  }, [cargarCombos, defaultIds.id_menu, defaultIds.id_usuario, editingId, form]);
 
   const onEditar = useCallback(async (idCombo) => {
     try {
@@ -522,3 +582,8 @@ const useCombosAdmin = () => {
 };
 
 export default useCombosAdmin;
+
+
+
+
+

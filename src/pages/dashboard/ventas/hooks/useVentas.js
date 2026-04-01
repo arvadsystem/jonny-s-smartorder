@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import ventasService from '../../../../services/ventasService';
+import sucursalesService from '../../../../services/sucursalesService';
 import {
   buildCategoriasMap,
   extractApiMessage,
@@ -19,8 +20,12 @@ const initialToast = {
   variant: 'success'
 };
 
+const isTruthyState = (value) =>
+  value === true || value === 'true' || value === 1 || value === '1';
+
 export const useVentas = () => {
   const [ventas, setVentas] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
   const [combos, setCombos] = useState([]);
@@ -88,7 +93,8 @@ export const useVentas = () => {
         recetasResponse,
         descuentosResponse,
         tiposDescuentoResponse,
-        tiposDepartamentoResponse
+        tiposDepartamentoResponse,
+        sucursalesResponse
       ] = await Promise.all([
         ventasService.getCategoriasCatalog(),
         ventasService.getProductosCatalog(),
@@ -97,7 +103,8 @@ export const useVentas = () => {
         ventasService.getRecetasCatalog(),
         ventasService.getDescuentosCatalog(),
         ventasService.getTiposDescuentoCatalog(),
-        ventasService.getTipoDepartamentos()
+        ventasService.getTipoDepartamentos(),
+        sucursalesService.getAll()
       ]);
 
       const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
@@ -181,9 +188,16 @@ export const useVentas = () => {
         }))
         .filter((row) => row.id_tipo_departamento && row.nombre_tipo_departamento);
 
-      // DEBUG TEMPORAL - borrar después
-      // eslint-disable-next-line no-console
-      console.log('[DEBUG tipos_dep] raw:', tiposDepartamentoResponse, '| normalized:', normalizedTiposDepartamento);
+      const normalizedSucursales = (Array.isArray(sucursalesResponse) ? sucursalesResponse : [])
+        .filter((row) => isTruthyState(row?.estado))
+        .map((row) => ({
+          id_sucursal: Number(row?.id_sucursal ?? 0) || null,
+          nombre_sucursal: String(row?.nombre_sucursal ?? '').trim()
+        }))
+        .filter((row) => row.id_sucursal && row.nombre_sucursal)
+        .sort((a, b) =>
+          a.nombre_sucursal.localeCompare(b.nombre_sucursal, 'es', { sensitivity: 'base' })
+        );
 
       setCategorias(normalizedCategorias);
       setProductos(normalizedProductos);
@@ -193,6 +207,7 @@ export const useVentas = () => {
       setTiposDescuento(normalizedTiposDescuento);
       setTiposDepartamento(normalizedTiposDepartamento);
       setClientes(normalizedClientes);
+      setSucursales(normalizedSucursales);
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar los catalogos de ventas.');
       openToast('ERROR', message, 'danger');
@@ -249,6 +264,7 @@ export const useVentas = () => {
 
   return {
     ventas,
+    sucursales,
     categorias,
     tiposDepartamento,
     productos,
@@ -270,3 +286,4 @@ export const useVentas = () => {
     createVenta
   };
 };
+

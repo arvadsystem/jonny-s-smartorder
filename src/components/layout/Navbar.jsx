@@ -247,6 +247,7 @@ const Navbar = () => {
     if (location.pathname.startsWith('/dashboard/seguridad')) return 'seguridad';
     if (location.pathname.startsWith('/dashboard/personas')) return 'personas';
     if (location.pathname.startsWith('/dashboard/ventas')) return 'ventas';
+    if (location.pathname.startsWith('/dashboard/menu')) return 'menu';
     return null;
   }, [location.pathname]);
 

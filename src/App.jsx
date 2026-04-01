@@ -1,9 +1,15 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/auth/Login';
+import Registro from './pages/auth/Registro';
+import RecuperarPassword from './pages/auth/RecuperarPassword';
+import AuthCallback from './pages/auth/AuthCallback';
+import ResetPassword from './pages/auth/ResetPassword';
 import ForcePasswordChange from './pages/auth/ForcePasswordChange';
 import DashboardLayout from './components/layout/DashboardLayout';
+import PublicLayout from './components/layout/PublicLayout';
 import Inicio from './pages/dashboard/Inicio';
 import ProtectedRoute from './routes/ProtectedRoute';
+import ClienteRoute from './routes/ClienteRoute';
 import Inventario from './pages/dashboard/Inventario';
 import Seguridad from './pages/dashboard/Seguridad';
 import Perfil from './pages/dashboard/Perfil';
@@ -15,6 +21,7 @@ import Cocina from './pages/dashboard/Cocina';
 import Parametros from './pages/dashboard/Parametros';
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from './routes/RequirePerm';
+import { PublicMenuRoutes } from './modules/public-menu';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -31,104 +38,47 @@ const PaginaEnConstruccion = ({ titulo }) => {
 function App() {
   return (
     <Routes>
+      {/* ── Autenticación ───────────────────────────────────────────── */}
       <Route path="/" element={<Login />} />
+      <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
+      <Route path="/registro" element={<Registro />} />
+      <Route path="/recuperar-password" element={<RecuperarPassword />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
+      {/* ── Mundo Público (sin auth requerida) ───────────────── */}
+      <Route element={<PublicLayout />}>
+        
+        <Route path="/carrito" element={<Carrito />} />
+      </Route>
+
+      {/* ── Rutas protegidas staff ────────────────────────────── */}
       <Route element={<ProtectedRoute />}>
         <Route path="/cambiar-password" element={<ForcePasswordChange />} />
 
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<Inicio />} />
 
-          <Route
-            path="personas"
-            element={
-              <RequirePerm moduleKey="personas">
-                <Personas />
-              </RequirePerm>
-            }
-          />
-
-          <Route
-            path="sucursales"
-            element={
-              <RequirePerm moduleKey="sucursales">
-                <Sucursales />
-              </RequirePerm>
-            }
-          />
-
-          <Route
-            path="inventario"
-            element={
-              <RequirePerm moduleKey="inventario">
-                <Inventario />
-              </RequirePerm>
-            }
-          />
-
-          <Route
-            path="ventas"
-            element={
-              <RequirePerm moduleKey="ventas">
-                <Ventas />
-              </RequirePerm>
-            }
-          />
-
-          <Route
-            path="cocina"
-            element={
-              <RequirePerm moduleKey="cocina">
-                <Cocina />
-              </RequirePerm>
-            }
-          />
-
-          <Route
-            path="parametros"
-            element={
-              <RequirePerm moduleKey="parametros">
-                <Parametros />
-              </RequirePerm>
-            }
-          />
-
-          <Route
-            path="menu"
-            element={
-              <RequirePerm moduleKey="menu">
-                <Menu />
-              </RequirePerm>
-            }
-          />
-
-          <Route
-            path="seguridad"
-            element={
-              <RequirePerm moduleKey="seguridad">
-                <Seguridad />
-              </RequirePerm>
-            }
-          />
-
-          <Route
-            path="perfil"
-            element={
-              <RequirePerm moduleKey="perfil">
-                <Perfil />
-              </RequirePerm>
-            }
-          />
-
+          <Route path="personas" element={<RequirePerm moduleKey="personas"><Personas /></RequirePerm>} />
+          <Route path="sucursales" element={<RequirePerm moduleKey="sucursales"><Sucursales /></RequirePerm>} />
+          <Route path="inventario" element={<RequirePerm moduleKey="inventario"><Inventario /></RequirePerm>} />
+          <Route path="ventas" element={<RequirePerm moduleKey="ventas"><Ventas /></RequirePerm>} />
+          <Route path="cocina" element={<RequirePerm moduleKey="cocina"><Cocina /></RequirePerm>} />
+          <Route path="parametros" element={<RequirePerm moduleKey="parametros"><Parametros /></RequirePerm>} />
+          <Route path="menu" element={<RequirePerm moduleKey="menu"><Menu /></RequirePerm>} />
+          <Route path="seguridad" element={<RequirePerm moduleKey="seguridad"><Seguridad /></RequirePerm>} />
+          <Route path="perfil" element={<RequirePerm moduleKey="perfil"><Perfil /></RequirePerm>} />
           <Route path="perfil/cambiar-contrasena" element={<CambioContrasena />} />
-          <Route
-            path="configuracion"
-            element={
-              <RequirePerm moduleKey="configuracion">
-                <PaginaEnConstruccion titulo="Configuracion" />
-              </RequirePerm>
-            }
-          />
+          <Route path="configuracion" element={<RequirePerm moduleKey="configuracion"><PaginaEnConstruccion titulo="Configuracion" /></RequirePerm>} />
+        </Route>
+      </Route>
+
+      {/* ── Rutas protegidas cliente ──────────────────────────── */}
+      <Route element={<ClienteRoute />}>
+        <Route element={<PublicLayout />}>
+          <Route path="/cliente/pedidos" element={<PaginaEnConstruccion titulo="Mis Pedidos" />} />
+          <Route path="/cliente/perfil" element={<PaginaEnConstruccion titulo="Mi Perfil" />} />
+          <Route path="/cliente/checkout" element={<PaginaEnConstruccion titulo="Confirmar Pedido" />} />
         </Route>
       </Route>
 

@@ -16,7 +16,13 @@ const RequirePerm = ({
 }) => {
   const { can, canAny, canAll, isSuperAdmin, loading, permisos } = usePermisos();
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="p-4 text-center text-muted" role="status" aria-live="polite">
+        Cargando permisos...
+      </div>
+    );
+  }
 
   const normalizedAnyOf = toArray(anyOf);
   const normalizedAllOf = toArray(allOf);
