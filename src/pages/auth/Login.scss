@@ -326,18 +326,31 @@ $input-border: rgba(255, 255, 255, 0.14);
         }
       }
 
-      // Error
-      .error-msg {
-        background: rgba(220, 53, 69, 0.12);
-        border: 1px solid rgba(220, 53, 69, 0.3);
-        color: #ff7b7b;
+      // Error / Éxito
+      .error-msg,
+      .success-msg {
         padding: 0.75rem 1rem;
         border-radius: 8px;
         font-size: 0.83rem;
       }
 
-      // ── Botón CTA ────────────────────────────────────────────
-      .btn-cta {
+      .error-msg {
+        background: rgba(220, 53, 69, 0.12);
+        border: 1px solid rgba(220, 53, 69, 0.3);
+        color: #ff7b7b;
+      }
+
+      .success-msg {
+        background: rgba(40, 167, 69, 0.12);
+        border: 1px solid rgba(40, 167, 69, 0.3);
+        color: #6fcf97;
+      }
+    }
+  }
+
+  // ── Botón CTA (nivel panel-right, aplica dentro y fuera del form) ───
+  .panel-right {
+    .btn-cta {
         width: 100%;
         padding: 0.95rem 1.5rem;
         background: $brown-btn;
@@ -386,7 +399,6 @@ $input-border: rgba(255, 255, 255, 0.14);
         }
       }
     }
-  }
 
   // ── Keyframes ─────────────────────────────────────────────────
   @keyframes pulse-dot {
@@ -416,5 +428,186 @@ $input-border: rgba(255, 255, 255, 0.14);
       width: 100%;
       padding: 2rem;
     }
+  }
+
+  // ── Botón Registrarse (dorado) ─────────────────────────────────
+  .btn-register {
+    width: 100%;
+    padding: 0.85rem 1.5rem;
+    background: transparent;
+    color: $gold;
+    font-size: 0.88rem;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 1.5px;
+    border-radius: 30px;
+    border: 2px solid rgba($gold, 0.5);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s;
+
+    &:hover {
+      background: rgba($gold, 0.1);
+      border-color: $gold;
+      color: $gold-light;
+    }
+  }
+
+  // ── Separador social ────────────────────────────────────────
+  .social-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.1rem 0;
+
+    .divider-line {
+      flex: 1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .divider-text {
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.35);
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+  }
+
+  // ── Botón Google ───────────────────────────────────────────
+  .btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.8rem 1.5rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 30px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.88rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.25s;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+
+    svg {
+      flex-shrink: 0;
+    }
+  }
+
+  // ── Verificación enviada (éxito del registro) ─────────────────
+  .verification-sent {
+    text-align: center;
+    padding: 1rem 0;
+
+    .verification-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba($gold, 0.15);
+      color: $gold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.25rem;
+      border: 2px solid rgba($gold, 0.3);
+
+      &.success-icon {
+        background: rgba(40, 167, 69, 0.15);
+        color: #6fcf97;
+        border-color: rgba(40, 167, 69, 0.3);
+      }
+    }
+
+    h3 {
+      color: #fdfaf5;
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0 0 0.75rem;
+    }
+
+    p {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 0.88rem;
+      line-height: 1.6;
+      margin: 0;
+    }
+  }
+
+  // ── Callback spinner ───────────────────────────────────────
+  .callback-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba($gold, 0.2);
+    border-top-color: $gold;
+    border-radius: 50%;
+    margin: 0 auto;
+    animation: spin-ring 0.8s linear infinite;
+  }
+
+  // ── Campos en fila (nombre + apellido) ───────────────────────
+  .fields-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  // ── Link button (texto clicable inline) ──────────────────────
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: rgba($gold, 0.85);
+    font-size: inherit;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.2s;
+    &:hover { color: $gold-light; }
+  }
+
+  // ── Texto "¿No tienes cuenta?" ───────────────────────────────
+  .login-switch {
+    text-align: center;
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.4);
+    margin: 0.25rem 0 0;
+  }
+
+  // ── Enlace ver menú sin login ─────────────────────────────────
+  .menu-link-row {
+    text-align: center;
+    margin-top: 0.1rem;
+  }
+
+  .menu-publico-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.25);
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.2s;
+    &:hover { color: rgba($gold, 0.6); }
+  }
+
+  // ── Mensaje de éxito ─────────────────────────────────────────
+  .success-msg {
+    background: rgba(40, 167, 69, 0.12);
+    border: 1px solid rgba(40, 167, 69, 0.3);
+    color: #6fcf97;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.83rem;
   }
 }
