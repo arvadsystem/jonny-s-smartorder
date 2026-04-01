@@ -32,7 +32,7 @@ const Carrito = () => {
         <i className="bi bi-cart-x" />
         <h2>Tu carrito está vacío</h2>
         <p>Agrega productos desde el menú para comenzar tu pedido.</p>
-        <button className="carrito__volver-btn" onClick={() => navigate('/menu')}>
+        <button className="carrito__volver-btn" onClick={() => navigate('/menu-publico')}>
           Ver menú
         </button>
       </div>
@@ -83,7 +83,7 @@ const Carrito = () => {
         <button className="carrito__confirmar" onClick={handleConfirmar}>
           {!user || !isCliente ? 'Iniciar sesión para confirmar' : 'Confirmar pedido →'}
         </button>
-        <button className="carrito__seguir" onClick={() => navigate('/menu')}>
+        <button className="carrito__seguir" onClick={() => navigate('/menu-publico')}>
           ← Seguir viendo el menú
         </button>
       </div>

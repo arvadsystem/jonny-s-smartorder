@@ -113,7 +113,7 @@ const Registro = () => {
             <motion.button
               type="button"
               className="btn-cta"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/auth/login')}
               whileHover={{ y: -1 }}
               whileTap={{ scale: 0.98 }}
               style={{ marginTop: '1.5rem' }}
@@ -214,7 +214,7 @@ const Registro = () => {
 
             <p className="login-switch">
               ¿Ya tienes cuenta?{' '}
-              <button type="button" className="link-btn" onClick={() => navigate('/')}>
+              <button type="button" className="link-btn" onClick={() => navigate('/auth/login')}>
                 Inicia sesión
               </button>
             </p>

@@ -137,7 +137,7 @@ const ResetPassword = () => {
             <motion.button
               type="button"
               className="btn-cta"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/auth/login')}
               whileHover={{ y: -1 }}
               whileTap={{ scale: 0.98 }}
               style={{ marginTop: '1.5rem' }}
@@ -195,7 +195,7 @@ const ResetPassword = () => {
             </motion.button>
 
             <p className="login-switch">
-              <button type="button" className="link-btn" onClick={() => navigate('/')}>
+              <button type="button" className="link-btn" onClick={() => navigate('/auth/login')}>
                 ← Volver al login
               </button>
             </p>

@@ -20,7 +20,7 @@ const PublicLayout = () => {
     <div className="public-layout">
       {/* NAV BAR */}
       <nav className="public-nav">
-        <div className="public-nav__brand" onClick={() => navigate('/menu')} role="button" tabIndex={0}>
+        <div className="public-nav__brand" onClick={() => navigate('/menu-publico')} role="button" tabIndex={0}>
           <img src={logo} alt="Jonnys" className="public-nav__logo" />
           <span className="public-nav__brand-name">JONNY'S</span>
         </div>
@@ -49,7 +49,7 @@ const PublicLayout = () => {
           ) : (
             <button
               className="public-nav__login-btn"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/auth/login')}
             >
               Iniciar sesión
             </button>

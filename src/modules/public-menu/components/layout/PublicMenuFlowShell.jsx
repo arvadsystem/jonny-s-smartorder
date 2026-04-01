@@ -3,6 +3,7 @@ import PublicHeader from './PublicHeader';
 import StickyActionBar from './StickyActionBar';
 import ConfirmModal from '../feedback/ConfirmModal';
 import ToastHost from '../feedback/ToastHost';
+import { useAuth } from '../../../../hooks/useAuth';
 import { usePublicMenuFlow } from '../../hooks/usePublicMenuFlow';
 import { PUBLIC_MENU_STEPS } from '../../types/publicMenuTypes';
 import {
@@ -30,6 +31,7 @@ const STEP_COPY = {
 const PublicMenuFlowShell = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
   const { state, actions, selectors } = usePublicMenuFlow();
   const currentStep = getPublicMenuStepFromPath(location.pathname);
   const currentStepIndex = PUBLIC_MENU_STEP_ORDER.indexOf(currentStep);
@@ -112,6 +114,32 @@ const PublicMenuFlowShell = () => {
       >
         Reiniciar flujo
       </button>
+
+      {/* Botón provisional solicitado para iniciar sesión / Cerrar sesión */}
+      {user ? (
+        <button
+          type="button"
+          className="pm-shell__reset-btn"
+          style={{ right: '140px', background: 'white', color: '#dc2626', fontWeight: 'bold', padding: '0.4rem 0.8rem', borderRadius: '4px' }}
+          onClick={() => {
+            logout();
+            navigate('/menu-publico');
+          }}
+        >
+          <i className="bi bi-box-arrow-right" style={{ marginRight: '6px' }}></i>
+          Cerrar Sesión
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="pm-shell__reset-btn"
+          style={{ right: '140px', background: 'white', color: '#311008', fontWeight: 'bold', padding: '0.4rem 0.8rem', borderRadius: '4px' }}
+          onClick={() => navigate('/auth/login')}
+        >
+          <i className="bi bi-person-fill" style={{ marginRight: '6px' }}></i>
+          Iniciar Sesión
+        </button>
+      )}
 
       <ConfirmModal
         open={state.ui.confirm.isOpen}
