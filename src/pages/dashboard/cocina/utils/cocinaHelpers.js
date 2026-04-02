@@ -32,6 +32,17 @@ export const BOARD_COLUMNS = Object.freeze([
 ]);
 
 const COLUMN_META_MAP = new Map(BOARD_COLUMNS.map((column) => [column.key, column]));
+const ORDER_STATUS_TO_COLUMN = Object.freeze({
+  EN_COCINA: 'PENDIENTES',
+  EN_PREPARACION: 'EN_PREPARACION',
+  LISTO_PARA_ENTREGA: 'LISTOS_PARA_ENTREGA'
+});
+const STATUS_LABEL_BY_CODE = Object.freeze({
+  EN_COCINA: 'Pendiente',
+  EN_PREPARACION: 'En preparacion',
+  LISTO_PARA_ENTREGA: 'Listo para entrega',
+  COMPLETADO: 'Completado'
+});
 
 const normalizeTextKey = (value) =>
   String(value || '')
@@ -109,40 +120,66 @@ export const formatServiceLabel = (value) => {
   return 'Local';
 };
 
-export const normalizeKitchenOrder = (row) => ({
-  ...row,
-  id_pedido: Number(row?.id_pedido ?? 0) || null,
-  id_sucursal: Number(row?.id_sucursal ?? 0) || null,
-  id_estado_pedido: Number(row?.id_estado_pedido ?? 0) || null,
-  total: roundMoney(row?.total),
-  total_items: Number(row?.total_items ?? 0) || 0,
-  numero_ticket: String(row?.numero_ticket ?? ''),
-  nombre_sucursal: String(row?.nombre_sucursal ?? 'Sucursal no definida'),
-  cliente_nombre: String(row?.cliente_nombre ?? 'Consumidor final'),
-  estado_codigo: String(row?.estado_codigo ?? 'EN_COCINA'),
-  columna_kds: String(row?.columna_kds ?? 'PENDIENTES'),
-  tipo_servicio: String(row?.tipo_servicio ?? 'LOCAL'),
-  descripcion_pedido: String(row?.descripcion_pedido ?? ''),
-  descripcion_envio: String(row?.descripcion_envio ?? ''),
-  items: (Array.isArray(row?.items) ? row.items : []).map((item) => ({
-    ...item,
-    id_detalle: Number(item?.id_detalle ?? 0) || null,
-    id_producto: Number(item?.id_producto ?? 0) || null,
-    id_combo: Number(item?.id_combo ?? 0) || null,
-    id_receta: Number(item?.id_receta ?? 0) || null,
-    cantidad: Number(item?.cantidad ?? 0) || 0,
-    nombre_item: String(item?.nombre_item ?? 'Item'),
-    observacion: String(item?.observacion ?? '').trim(),
-    modificaciones: inferModifications(item, row?.descripcion_pedido)
-  }))
-});
+const normalizeUpper = (value) =>
+  String(value || '')
+    .trim()
+    .toUpperCase();
+
+export const resolveOrderColumnKey = (order) => {
+  const rawColumn = normalizeUpper(order?.columna_kds);
+  if (COLUMN_META_MAP.has(rawColumn)) return rawColumn;
+
+  const statusCode = normalizeUpper(order?.estado_codigo);
+  return ORDER_STATUS_TO_COLUMN[statusCode] || 'PENDIENTES';
+};
+
+export const formatKitchenStatusLabel = (order) => {
+  const statusCode = normalizeUpper(order?.estado_codigo);
+  return STATUS_LABEL_BY_CODE[statusCode] || 'Pendiente';
+};
+
+export const normalizeKitchenOrder = (row) => {
+  const estadoCodigo = normalizeUpper(row?.estado_codigo || 'EN_COCINA');
+  const columnaKds = resolveOrderColumnKey({
+    columna_kds: row?.columna_kds,
+    estado_codigo: estadoCodigo
+  });
+
+  return {
+    ...row,
+    id_pedido: Number(row?.id_pedido ?? 0) || null,
+    id_sucursal: Number(row?.id_sucursal ?? 0) || null,
+    id_estado_pedido: Number(row?.id_estado_pedido ?? 0) || null,
+    total: roundMoney(row?.total),
+    total_items: Number(row?.total_items ?? 0) || 0,
+    numero_ticket: String(row?.numero_ticket ?? ''),
+    nombre_sucursal: String(row?.nombre_sucursal ?? 'Sucursal no definida'),
+    cliente_nombre: String(row?.cliente_nombre ?? 'Consumidor final'),
+    estado_codigo: estadoCodigo,
+    columna_kds: columnaKds,
+    tipo_servicio: String(row?.tipo_servicio ?? 'LOCAL'),
+    descripcion_pedido: String(row?.descripcion_pedido ?? ''),
+    descripcion_envio: String(row?.descripcion_envio ?? ''),
+    items: (Array.isArray(row?.items) ? row.items : []).map((item) => ({
+      ...item,
+      id_detalle: Number(item?.id_detalle ?? 0) || null,
+      id_producto: Number(item?.id_producto ?? 0) || null,
+      id_combo: Number(item?.id_combo ?? 0) || null,
+      id_receta: Number(item?.id_receta ?? 0) || null,
+      cantidad: Number(item?.cantidad ?? 0) || 0,
+      nombre_item: String(item?.nombre_item ?? 'Item'),
+      observacion: String(item?.observacion ?? '').trim(),
+      modificaciones: inferModifications(item, row?.descripcion_pedido)
+    }))
+  };
+};
 
 export const buildCocinaStats = (orders) => {
   const rows = Array.isArray(orders) ? orders : [];
   return {
-    pendientes: rows.filter((item) => item?.columna_kds === 'PENDIENTES').length,
-    enPreparacion: rows.filter((item) => item?.columna_kds === 'EN_PREPARACION').length,
-    listos: rows.filter((item) => item?.columna_kds === 'LISTOS_PARA_ENTREGA').length
+    pendientes: rows.filter((item) => resolveOrderColumnKey(item) === 'PENDIENTES').length,
+    enPreparacion: rows.filter((item) => resolveOrderColumnKey(item) === 'EN_PREPARACION').length,
+    listos: rows.filter((item) => resolveOrderColumnKey(item) === 'LISTOS_PARA_ENTREGA').length
   };
 };
 
@@ -178,8 +215,8 @@ export const groupOrdersByColumn = (orders) => {
   };
 
   (Array.isArray(orders) ? orders : []).forEach((order) => {
-    const key = grouped[order?.columna_kds] ? order.columna_kds : 'PENDIENTES';
-    grouped[key].push(order);
+    const key = resolveOrderColumnKey(order);
+    grouped[key].push({ ...order, columna_kds: key });
   });
 
   Object.values(grouped).forEach((list) => {
@@ -197,7 +234,7 @@ export const getColumnMeta = (columnKey) =>
   COLUMN_META_MAP.get(columnKey) || COLUMN_META_MAP.get('PENDIENTES');
 
 export const getOrderAction = (order) => {
-  const column = getColumnMeta(order?.columna_kds);
+  const column = getColumnMeta(resolveOrderColumnKey(order));
   return {
     label: column.actionLabel,
     nextStatus: column.actionStatus,

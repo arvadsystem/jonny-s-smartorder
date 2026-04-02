@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Select from "react-select";
 import { personaService } from "../../../services/personasService";
 import sucursalesService from "../../../services/sucursalesService";
 import EntityTable from "../../../components/ui/EntityTable";
@@ -12,19 +13,103 @@ import useSearchSuggestionsDropdown, {
   MIN_CHARS_FOR_SUGGESTIONS,
   normalizeSearchText,
 } from "./components/common/useSearchSuggestionsDropdown";
+import SmartSelectEntity from "./components/common/SmartSelectEntity";
+import PersonaInlineCreateModal from "./components/common/PersonaInlineCreateModal";
+import {
+  buildPersonaPayloadFromForm,
+  createInitialPersonaForm,
+  normalizePersonaFormValues,
+  validatePersonaForm,
+} from "./components/common/persona-form-shared";
 import "./components/common/crud-modal-theme.css";
+import "./components/empleados/empleados-modal.css";
 
 const emptyForm = {
   id_persona: "",
   id_sucursal: "",
   fecha_ingreso: "",
   salario_base: "",
+  cargo: "",
+  nombre_referencia: "",
+  telefono_referencia: "",
   estado: true,
 };
+
+const emptyInlinePersonaForm = createInitialPersonaForm();
 
 const createInitialFiltersDraft = () => ({
   estadoFiltro: "todos",
   sortBy: "recientes",
+});
+
+const buildEmpleadosSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: hasError
+      ? "var(--bs-danger, #dc3545)"
+      : state.isFocused
+        ? "rgba(158, 105, 61, 0.72)"
+        : "rgba(206, 196, 177, 0.9)",
+    boxShadow: state.isFocused
+      ? "0 0 0 0.2rem rgba(158, 105, 61, 0.18)"
+      : "none",
+    backgroundColor: "#fff",
+    "&:hover": {
+      borderColor: hasError
+        ? "var(--bs-danger, #dc3545)"
+        : "rgba(158, 105, 61, 0.72)",
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: "2px 12px",
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: "rgba(98, 83, 73, 0.75)",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: "#2f1a10",
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 4,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? "rgba(99, 58, 37, 0.9)" : "rgba(99, 58, 37, 0.65)",
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: "rgba(120, 84, 66, 0.72)",
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 3000,
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: "1px solid rgba(206, 196, 177, 0.9)",
+    overflow: "hidden",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? "rgba(243, 238, 226, 0.95)"
+      : state.isSelected
+        ? "rgba(236, 222, 205, 0.95)"
+        : "#fff",
+    color: "#2f1a10",
+  }),
 });
 
 const normalizeListResponse = (resp) => {
@@ -90,6 +175,49 @@ const toDateInputValue = (value) => {
   return date.toISOString().slice(0, 10);
 };
 
+const REFERENCE_PHONE_DIGITS = 8;
+const ALLOWED_EDITING_KEYS = new Set([
+  "Backspace",
+  "Delete",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Tab",
+  "Home",
+  "End",
+  "Enter",
+]);
+const REFERENCE_NAME_CHAR_REGEX = /^[\p{L}\s]$/u;
+
+const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
+
+const resolveCaretFromDigitIndex = (formattedValue, digitIndex) => {
+  if (!formattedValue) return 0;
+  if (digitIndex <= 0) return 0;
+
+  let seenDigits = 0;
+  for (let index = 0; index < formattedValue.length; index += 1) {
+    const char = formattedValue[index];
+    if (char >= "0" && char <= "9") {
+      seenDigits += 1;
+      if (seenDigits >= digitIndex) return index + 1;
+    }
+  }
+
+  return formattedValue.length;
+};
+
+const formatReferencePhone = (value) => {
+  const digits = digitsOnly(value).slice(0, REFERENCE_PHONE_DIGITS);
+  if (!digits) return "";
+  if (digits.length < 4) return digits;
+  if (digits.length === 4) return `${digits}-`;
+  return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+};
+
+const sanitizeReferenceName = (value) => String(value ?? "").replace(/[^\p{L}\s]/gu, "");
+
 const resolveCardsPerPage = (width) => {
   if (width >= 1200) return 6;
   if (width >= 620) return 4;
@@ -122,28 +250,97 @@ const formatDateLabel = (value) => {
   });
 };
 
-const getDni = (empleado) => empleado?.persona_dni ?? empleado?.dni;
+const getFirstNonEmptyField = (record, keys) => {
+  if (!record || !Array.isArray(keys)) return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getFirstNonEmptyValue = (values) => {
+  if (!Array.isArray(values)) return "";
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getDni = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, ["persona_dni", "dni"]),
+    getFirstNonEmptyField(empleado?.persona, ["dni", "persona_dni"]),
+  ]);
 
 const getTelefono = (empleado) =>
-  empleado?.telefono ??
-  empleado?.telefono_numero ??
-  empleado?.numero_telefono ??
-  empleado?.persona_telefono ??
-  empleado?.telefono_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+  ]);
 
 const getCorreo = (empleado) =>
-  empleado?.correo ??
-  empleado?.direccion_correo ??
-  empleado?.email ??
-  empleado?.persona_correo ??
-  empleado?.correo_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+  ]);
 
 const getCargo = (empleado) =>
-  empleado?.cargo ??
-  empleado?.nombre_cargo ??
-  empleado?.cargo_nombre ??
-  empleado?.puesto ??
-  empleado?.rol;
+  getFirstNonEmptyField(empleado, [
+    "cargo",
+    "nombre_cargo",
+    "cargo_nombre",
+    "puesto",
+    "rol",
+    "cargo_puesto",
+    "cargo_descripcion",
+  ]);
+
+const getNombreReferencia = (empleado) =>
+  getFirstNonEmptyField(empleado, ["nombre_referencia", "referencia_nombre", "nombre_contacto_referencia"]);
+
+const getTelefonoReferencia = (empleado) =>
+  getFirstNonEmptyField(empleado, ["telefono_referencia", "referencia_telefono", "telefono_contacto_referencia"]);
 const SUGGESTION_LIMIT = 8;
 
 const EMPLOYEE_IMAGES_STORAGE_KEY = "empleado_images";
@@ -244,7 +441,7 @@ const isActivo = (record) => {
   return Boolean(record[field]);
 };
 
-export default function Empleados({ openToast }) {
+export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -274,6 +471,9 @@ export default function Empleados({ openToast }) {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
+  const [useInlinePersonaCreate, setUseInlinePersonaCreate] = useState(false);
+  const [inlinePersonaForm, setInlinePersonaForm] = useState(emptyInlinePersonaForm);
+  const [showPersonaCreateModal, setShowPersonaCreateModal] = useState(false);
   const [detailEmpleado, setDetailEmpleado] = useState(null);
   const [formImage, setFormImage] = useState(() => createImageDraftState());
   const [employeeImages, setEmployeeImages] = useState(() => loadEmployeeImages());
@@ -294,6 +494,8 @@ export default function Empleados({ openToast }) {
   const catalogosCargadosRef = useRef(false);
   const panelRef = useRef(null);
   const imageInputRef = useRef(null);
+  const telefonoReferenciaInputRef = useRef(null);
+  const telefonoReferenciaCaretRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -310,6 +512,7 @@ export default function Empleados({ openToast }) {
 
   const closeFormDrawer = useCallback(() => {
     blurFocusedElementInside("empd-form-drawer");
+    setShowPersonaCreateModal(false);
     setShowModal(false);
   }, [blurFocusedElementInside]);
 
@@ -338,6 +541,74 @@ export default function Empleados({ openToast }) {
         };
       }),
     [sucursales]
+  );
+
+  const personaSelectOptions = useMemo(
+    () =>
+      personaOptions.map((item) => ({
+        value: item.id,
+        label: item.dni ? `${item.label} | DNI: ${item.dni}` : item.label,
+      })),
+    [personaOptions]
+  );
+
+  const personaSelectValue = useMemo(() => {
+    const selectedId = String(form.id_persona ?? "");
+    if (!selectedId) return null;
+    return personaSelectOptions.find((option) => option.value === selectedId) || null;
+  }, [form.id_persona, personaSelectOptions]);
+
+  const personaSelectStyles = useMemo(
+    () => buildEmpleadosSelectStyles(Boolean(errors.id_persona)),
+    [errors.id_persona]
+  );
+
+  const sucursalSelectOptions = useMemo(
+    () =>
+      sucursalOptions.map((item) => ({
+        value: item.id,
+        label: item.label,
+      })),
+    [sucursalOptions]
+  );
+
+  const sucursalSelectValue = useMemo(() => {
+    const selectedId = String(form.id_sucursal ?? "");
+    if (!selectedId) return null;
+    return sucursalSelectOptions.find((option) => option.value === selectedId) || null;
+  }, [form.id_sucursal, sucursalSelectOptions]);
+
+  const sucursalSelectStyles = useMemo(
+    () => buildEmpleadosSelectStyles(Boolean(errors.id_sucursal)),
+    [errors.id_sucursal]
+  );
+
+  const selectedPersona = useMemo(() => {
+    const selectedPersonaId = String(form.id_persona ?? "").trim();
+    if (!selectedPersonaId) return null;
+    return (
+      (Array.isArray(personasCatalogo) ? personasCatalogo : []).find(
+        (persona) => String(persona?.id_persona ?? "") === selectedPersonaId
+      ) || null
+    );
+  }, [form.id_persona, personasCatalogo]);
+
+  const selectedPersonaDni = useMemo(
+    () => getFirstNonEmptyField(selectedPersona, ["dni", "persona_dni"]),
+    [selectedPersona]
+  );
+
+  const selectedPersonaTelefono = useMemo(
+    () =>
+      getFirstNonEmptyField(selectedPersona, [
+        "telefono",
+        "texto_telefono",
+        "telefono_numero",
+        "numero_telefono",
+        "persona_telefono",
+        "telefono_persona",
+      ]),
+    [selectedPersona]
   );
 
   const resolveEmpleadoImage = useCallback(
@@ -454,6 +725,9 @@ export default function Empleados({ openToast }) {
         empleado?.salario_base === null || empleado?.salario_base === undefined
           ? ""
           : String(empleado.salario_base),
+      cargo: getCargo(empleado),
+      nombre_referencia: getNombreReferencia(empleado),
+      telefono_referencia: formatReferencePhone(getTelefonoReferencia(empleado)),
       estado: isActivo(empleado),
     }),
     [resolvePersonaId, resolveSucursalId]
@@ -487,6 +761,7 @@ export default function Empleados({ openToast }) {
         page,
         limit,
         nombre: debouncedSearch || undefined,
+        id_sucursal: selectedSucursalId || undefined,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
@@ -503,7 +778,7 @@ export default function Empleados({ openToast }) {
         setLoading(false);
       }
     }
-  }, [page, limit, debouncedSearch, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast, selectedSucursalId]);
 
   const fetchNewestEmpleadoId = useCallback(async () => {
     try {
@@ -584,6 +859,20 @@ export default function Empleados({ openToast }) {
     });
   }, [showModal, editId, empleados, buildFormFromEmpleado, resolveEmpleadoImage]);
 
+  useLayoutEffect(() => {
+    if (telefonoReferenciaCaretRef.current === null) return;
+    const input = telefonoReferenciaInputRef.current;
+    if (!input) return;
+
+    const nextCaret = telefonoReferenciaCaretRef.current;
+    telefonoReferenciaCaretRef.current = null;
+    try {
+      input.setSelectionRange(nextCaret, nextCaret);
+    } catch {
+      // Some browsers can throw when the element is not focusable.
+    }
+  }, [form.telefono_referencia]);
+
   useEffect(() => {
     if (!detailEmpleado) return;
 
@@ -601,11 +890,140 @@ export default function Empleados({ openToast }) {
     }
   }, [empleados, detailEmpleado]);
 
+  const handleNombreReferenciaChange = useCallback((event) => {
+    const sanitized = sanitizeReferenceName(event.target.value);
+    setForm((state) => ({ ...state, nombre_referencia: sanitized }));
+    setErrors((state) => ({ ...state, nombre_referencia: undefined }));
+  }, []);
+
+  const handleNombreReferenciaBeforeInput = useCallback((event) => {
+    const data = event?.nativeEvent?.data ?? event?.data;
+    if (!data) return;
+    if (!REFERENCE_NAME_CHAR_REGEX.test(data)) {
+      event.preventDefault();
+    }
+  }, []);
+
+  const handleNombreReferenciaKeyDown = useCallback((event) => {
+    if (event.ctrlKey || event.metaKey) return;
+    if (ALLOWED_EDITING_KEYS.has(event.key)) return;
+    if (event.key.length !== 1) return;
+    if (!REFERENCE_NAME_CHAR_REGEX.test(event.key)) {
+      event.preventDefault();
+    }
+  }, []);
+
+  const handleNombreReferenciaPaste = useCallback(
+    (event) => {
+      event.preventDefault();
+      const pasted = String(event.clipboardData?.getData("text") ?? "");
+      const current = String(form.nombre_referencia ?? "");
+      const input = event.currentTarget;
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : current.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const merged = `${current.slice(0, selectionStart)}${pasted}${current.slice(selectionEnd)}`;
+      const sanitized = sanitizeReferenceName(merged).slice(0, 120);
+      setForm((state) => ({ ...state, nombre_referencia: sanitized }));
+      setErrors((state) => ({ ...state, nombre_referencia: undefined }));
+    },
+    [form.nombre_referencia]
+  );
+
+  const handleTelefonoReferenciaChange = useCallback((event) => {
+    const inputValue = event.target.value ?? "";
+    const caretPosition = event.target.selectionStart ?? inputValue.length;
+    const digitsBeforeCaret = digitsOnly(inputValue.slice(0, caretPosition)).length;
+    const raw = digitsOnly(inputValue).slice(0, REFERENCE_PHONE_DIGITS);
+    const formatted = formatReferencePhone(raw);
+
+    telefonoReferenciaCaretRef.current = resolveCaretFromDigitIndex(
+      formatted,
+      Math.min(digitsBeforeCaret, raw.length)
+    );
+
+    setForm((state) => ({ ...state, telefono_referencia: formatted }));
+    setErrors((state) => ({ ...state, telefono_referencia: undefined }));
+  }, []);
+
+  const handleTelefonoReferenciaBeforeInput = useCallback(
+    (event) => {
+      const data = event?.nativeEvent?.data ?? event?.data;
+      if (!data) return;
+      if (/\D/.test(data)) {
+        event.preventDefault();
+        return;
+      }
+
+      const input = event.currentTarget;
+      const currentFormatted = String(form.telefono_referencia ?? "");
+      const currentRaw = digitsOnly(currentFormatted);
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+      const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+      const nextLength = currentRaw.length - (rawEnd - rawStart) + digitsOnly(data).length;
+      if (nextLength > REFERENCE_PHONE_DIGITS) {
+        event.preventDefault();
+      }
+    },
+    [form.telefono_referencia]
+  );
+
+  const handleTelefonoReferenciaKeyDown = useCallback(
+    (event) => {
+      if (event.ctrlKey || event.metaKey) return;
+      if (ALLOWED_EDITING_KEYS.has(event.key)) return;
+      if (event.key.length !== 1) return;
+      if (!/\d/.test(event.key)) {
+        event.preventDefault();
+        return;
+      }
+
+      const input = event.currentTarget;
+      const currentFormatted = String(form.telefono_referencia ?? "");
+      const currentRaw = digitsOnly(currentFormatted);
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+      const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+      const nextLength = currentRaw.length - (rawEnd - rawStart) + 1;
+      if (nextLength > REFERENCE_PHONE_DIGITS) {
+        event.preventDefault();
+      }
+    },
+    [form.telefono_referencia]
+  );
+
+  const handleTelefonoReferenciaPaste = useCallback(
+    (event) => {
+      event.preventDefault();
+      const pastedRaw = digitsOnly(event.clipboardData?.getData("text") ?? "");
+      const currentFormatted = String(form.telefono_referencia ?? "");
+      const currentRaw = digitsOnly(currentFormatted);
+      const input = event.currentTarget;
+      const selectionStart = typeof input.selectionStart === "number" ? input.selectionStart : currentFormatted.length;
+      const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
+      const rawStart = digitsOnly(currentFormatted.slice(0, selectionStart)).length;
+      const rawEnd = digitsOnly(currentFormatted.slice(0, selectionEnd)).length;
+      const mergedRaw = `${currentRaw.slice(0, rawStart)}${pastedRaw}${currentRaw.slice(rawEnd)}`.slice(
+        0,
+        REFERENCE_PHONE_DIGITS
+      );
+      telefonoReferenciaCaretRef.current = formatReferencePhone(mergedRaw).length;
+      setForm((state) => ({ ...state, telefono_referencia: formatReferencePhone(mergedRaw) }));
+      setErrors((state) => ({ ...state, telefono_referencia: undefined }));
+    },
+    [form.telefono_referencia]
+  );
+
   const sanitizeForm = () => ({
     id_persona: Number.parseInt(String(form.id_persona), 10),
     id_sucursal: Number.parseInt(String(form.id_sucursal), 10),
     fecha_ingreso: form.fecha_ingreso,
     salario_base: Number.parseFloat(String(form.salario_base).replace(",", ".")),
+    cargo: String(form.cargo ?? "").trim(),
+    nombre_referencia: String(form.nombre_referencia ?? "").trim(),
+    telefono_referencia: String(form.telefono_referencia ?? "").trim(),
     estado: Boolean(form.estado),
   });
 
@@ -614,12 +1032,31 @@ export default function Empleados({ openToast }) {
     const today = new Date().toISOString().split("T")[0];
     const payload = sanitizeForm();
 
-    if (!form.id_persona) currentErrors.id_persona = "Seleccione";
+    if (!useInlinePersonaCreate && !form.id_persona) {
+      currentErrors.id_persona = "Seleccione";
+    }
+
+    if (useInlinePersonaCreate) {
+      const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
+      if (Object.keys(personaValidationErrors).length > 0) {
+        currentErrors.id_persona = "Completa los datos de la persona nueva";
+      }
+    }
+
     if (!form.id_sucursal) currentErrors.id_sucursal = "Seleccione";
     if (!form.fecha_ingreso || form.fecha_ingreso > today) currentErrors.fecha_ingreso = "Fecha invalida";
     if (form.salario_base === "") currentErrors.salario_base = "Requerido";
     if (Number.isNaN(payload.salario_base) || payload.salario_base < 0) {
       currentErrors.salario_base = "Debe ser un numero valido";
+    }
+    const referenceName = String(form.nombre_referencia ?? "").trim();
+    if (referenceName && !/^[\p{L}\s]+$/u.test(referenceName)) {
+      currentErrors.nombre_referencia = "Solo letras y espacios";
+    }
+
+    const referencePhoneDigits = digitsOnly(form.telefono_referencia);
+    if (referencePhoneDigits.length > 0 && referencePhoneDigits.length !== REFERENCE_PHONE_DIGITS) {
+      currentErrors.telefono_referencia = "Formato invalido";
     }
 
     setErrors(currentErrors);
@@ -722,7 +1159,12 @@ export default function Empleados({ openToast }) {
           safeToast("OK", "Empleado actualizado");
         }
       } else {
-        const createResp = await personaService.createEmpleado(payloadLimpio);
+        const createResp = useInlinePersonaCreate
+          ? await personaService.createEmpleadoAtomico({
+              persona: buildPersonaPayloadFromForm(inlinePersonaForm),
+              empleado: payloadLimpio,
+            })
+          : await personaService.createEmpleado(payloadLimpio);
         if (createImagePreview) {
           const createdEmpleadoId = await resolveCreatedEmpleadoId(createResp);
           if (createdEmpleadoId) {
@@ -737,6 +1179,8 @@ export default function Empleados({ openToast }) {
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
+      setUseInlinePersonaCreate(false);
+      setInlinePersonaForm(emptyInlinePersonaForm);
       clearFormImageDraft();
       await cargarEmpleados();
     } catch (error) {
@@ -751,11 +1195,20 @@ export default function Empleados({ openToast }) {
     setDetailEmpleado(null);
     setEditId(empleado.id_empleado);
     setErrors({});
+    setUseInlinePersonaCreate(false);
+    setInlinePersonaForm(emptyInlinePersonaForm);
+    setShowPersonaCreateModal(false);
     setForm(buildFormFromEmpleado(empleado));
     setFormImage(createImageDraftState(resolveEmpleadoImage(empleado)));
     clearImagePicker();
     setShowModal(true);
   };
+
+  const handleInlinePersonaModalSave = useCallback(async (_personaPayload, personaFormState) => {
+    setInlinePersonaForm(normalizePersonaFormValues(personaFormState));
+    setErrors((state) => ({ ...state, id_persona: undefined }));
+    setShowPersonaCreateModal(false);
+  }, []);
 
   const openCreate = () => {
     if (actionLoading || deletingId) return;
@@ -764,6 +1217,9 @@ export default function Empleados({ openToast }) {
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
+    setUseInlinePersonaCreate(false);
+    setInlinePersonaForm(emptyInlinePersonaForm);
+    setShowPersonaCreateModal(false);
     clearFormImageDraft();
     setShowModal(true);
   };
@@ -834,18 +1290,16 @@ export default function Empleados({ openToast }) {
       const hay = [
         persona,
         sucursal,
-        empleado?.persona_dni,
-        empleado?.dni,
-        empleado?.telefono,
-        empleado?.telefono_numero,
-        empleado?.numero_telefono,
-        empleado?.correo,
-        empleado?.direccion_correo,
-        empleado?.email,
-        empleado?.cargo,
-        empleado?.nombre_cargo,
-        empleado?.puesto,
-        empleado?.rol,
+        getDni(empleado),
+        getTelefono(empleado),
+        getCorreo(empleado),
+        getCargo(empleado),
+        getNombreReferencia(empleado),
+        getTelefonoReferencia(empleado),
+        empleado?.cargo_puesto,
+        empleado?.cargo_descripcion,
+        empleado?.direccion,
+        empleado?.texto_direccion,
         empleado?.salario_base,
         empleado?.fecha_ingreso,
       ]
@@ -1263,130 +1717,304 @@ export default function Empleados({ openToast }) {
         </div>
 
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
-          <div className="row g-3 crud-modal__grid">
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Persona</label>
-              <select
-                className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
-                value={form.id_persona}
-                onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {personaOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
-                  </option>
-                ))}
-              </select>
-              {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
-            </div>
+          <section className="crud-modal__section empleados-modal__section">
+            <header className="crud-modal__section-head">
+              <h4>Datos del empleado</h4>
+              <p>Selecciona la persona base y completa la informacion laboral.</p>
+            </header>
 
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Sucursal</label>
-              <select
-                className={`form-select ${errors.id_sucursal ? "is-invalid" : ""}`}
-                value={form.id_sucursal}
-                onChange={(event) => setForm((state) => ({ ...state, id_sucursal: event.target.value }))}
-              >
-                <option value="">Seleccione</option>
-                {sucursalOptions.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              {errors.id_sucursal && <div className="invalid-feedback d-block">{errors.id_sucursal}</div>}
-            </div>
-
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Fecha ingreso</label>
-              <input
-                type="date"
-                className={`form-control ${errors.fecha_ingreso ? "is-invalid" : ""}`}
-                value={form.fecha_ingreso}
-                onChange={(event) => setForm((state) => ({ ...state, fecha_ingreso: event.target.value }))}
-              />
-              {errors.fecha_ingreso && <div className="invalid-feedback d-block">{errors.fecha_ingreso}</div>}
-            </div>
-
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Salario base</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className={`form-control ${errors.salario_base ? "is-invalid" : ""}`}
-                value={form.salario_base}
-                onChange={(event) => setForm((state) => ({ ...state, salario_base: event.target.value }))}
-              />
-              {errors.salario_base && <div className="invalid-feedback d-block">{errors.salario_base}</div>}
-            </div>
-
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Imagen (opcional)</label>
-              <div className={`inv-prod-image-field personas-emp-form-image ${formImage.loading ? "is-loading" : ""}`}>
-                <div className={`inv-prod-image-preview ${formImage.previewUrl ? "has-image" : ""}`} aria-live="polite">
-                  {formImage.loading ? (
-                    <div className="inv-prod-image-loading" role="status">
-                      <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-                      <span>Procesando imagen...</span>
+            <div className="row g-3 crud-modal__grid">
+              <div className="col-12">
+                <SmartSelectEntity
+                  label="Persona"
+                  showToggle={drawerMode === "create"}
+                  isInlineCreate={drawerMode === "create" && useInlinePersonaCreate}
+                  onToggleInline={() => {
+                    setUseInlinePersonaCreate((prev) => {
+                      const next = !prev;
+                      if (next) {
+                        setShowPersonaCreateModal(true);
+                        setForm((state) => ({ ...state, id_persona: "" }));
+                      } else {
+                        setInlinePersonaForm(emptyInlinePersonaForm);
+                        setShowPersonaCreateModal(false);
+                      }
+                      return next;
+                    });
+                    setErrors((state) => ({ ...state, id_persona: undefined }));
+                  }}
+                  toggleCreateLabel="+ Crear persona nueva"
+                  toggleExistingLabel="Usar persona existente"
+                  toggleDisabled={actionLoading || Boolean(deletingId)}
+                  selector={
+                    drawerMode === "create" ? (
+                      <Select
+                        inputId="empleado-persona-select"
+                        className={`empleados-select ${errors.id_persona ? "is-invalid" : ""}`}
+                        classNamePrefix="empleados-select"
+                        placeholder="Seleccione"
+                        isSearchable
+                        isClearable
+                        options={personaSelectOptions}
+                        value={personaSelectValue}
+                        onChange={(option) => {
+                          setForm((state) => ({
+                            ...state,
+                            id_persona: option?.value ? String(option.value) : "",
+                          }));
+                          setErrors((state) => ({ ...state, id_persona: undefined }));
+                        }}
+                        styles={personaSelectStyles}
+                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                        menuPosition="fixed"
+                        isDisabled={actionLoading || Boolean(deletingId) || useInlinePersonaCreate}
+                      />
+                    ) : (
+                      <select
+                        className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
+                        value={form.id_persona}
+                        onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
+                      >
+                        <option value="">Seleccione</option>
+                        {personaOptions.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )
+                  }
+                  error={errors.id_persona}
+                  inlineContent={
+                    <div className="smart-select-entity__summary">
+                      <div className="small text-muted mb-2">
+                        {String(inlinePersonaForm.nombre ?? "").trim()
+                          ? "Persona nueva lista para guardar."
+                          : "Completa los datos de la persona nueva para continuar."}
+                      </div>
+                      <div className="d-flex flex-wrap gap-2 align-items-center">
+                        <span className="badge text-bg-light border">
+                          {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
+                          {String(inlinePersonaForm.apellido ?? "").trim()}
+                        </span>
+                        <span className="badge text-bg-light border">
+                          DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary mt-2"
+                        onClick={() => setShowPersonaCreateModal(true)}
+                        disabled={actionLoading || Boolean(deletingId)}
+                      >
+                        {String(inlinePersonaForm.nombre ?? "").trim()
+                          ? "Editar datos de persona"
+                          : "Completar datos de persona"}
+                      </button>
                     </div>
-                  ) : formImage.previewUrl ? (
-                    <img src={formImage.previewUrl} alt="Vista previa del empleado" />
+                  }
+                />
+              </div>
+
+              <div className="col-12">
+                <div className="empleados-modal__persona-meta" role="status" aria-live="polite">
+                  <div className="empleados-modal__persona-meta-item">
+                    <span>DNI</span>
+                    <strong>{toDisplayValue(selectedPersonaDni, "N/D")}</strong>
+                  </div>
+                  <div className="empleados-modal__persona-meta-item">
+                    <span>Telefono</span>
+                    <strong>{toDisplayValue(selectedPersonaTelefono, "Sin telefono")}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Sucursal</label>
+                {drawerMode === "create" ? (
+                  <Select
+                    inputId="empleado-sucursal-select"
+                    className={`empleados-select ${errors.id_sucursal ? "is-invalid" : ""}`}
+                    classNamePrefix="empleados-select"
+                    placeholder="Seleccione"
+                    isSearchable
+                    isClearable
+                    options={sucursalSelectOptions}
+                    value={sucursalSelectValue}
+                    onChange={(option) => {
+                      setForm((state) => ({
+                        ...state,
+                        id_sucursal: option?.value ? String(option.value) : "",
+                      }));
+                      setErrors((state) => ({ ...state, id_sucursal: undefined }));
+                    }}
+                    styles={sucursalSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    menuPosition="fixed"
+                    isDisabled={actionLoading || Boolean(deletingId)}
+                  />
+                ) : (
+                  <select
+                    className={`form-select ${errors.id_sucursal ? "is-invalid" : ""}`}
+                    value={form.id_sucursal}
+                    onChange={(event) => setForm((state) => ({ ...state, id_sucursal: event.target.value }))}
+                  >
+                    <option value="">Seleccione</option>
+                    {sucursalOptions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {errors.id_sucursal && <div className="invalid-feedback d-block">{errors.id_sucursal}</div>}
+              </div>
+
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Cargo / Puesto</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={form.cargo}
+                  onChange={(event) => setForm((state) => ({ ...state, cargo: event.target.value }))}
+                  placeholder="Ej. Cajero, Supervisor, Auxiliar"
+                  maxLength={120}
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label text-light text-opacity-75">Nombre referencia</label>
+                <input
+                  type="text"
+                  className={`form-control ${errors.nombre_referencia ? "is-invalid" : ""}`}
+                  value={form.nombre_referencia}
+                  onChange={handleNombreReferenciaChange}
+                  onBeforeInput={handleNombreReferenciaBeforeInput}
+                  onKeyDown={handleNombreReferenciaKeyDown}
+                  onPaste={handleNombreReferenciaPaste}
+                  placeholder="Nombre del contacto de referencia"
+                  maxLength={120}
+                />
+                {errors.nombre_referencia && <div className="invalid-feedback d-block">{errors.nombre_referencia}</div>}
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label text-light text-opacity-75">Telefono referencia</label>
+                <input
+                  ref={telefonoReferenciaInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  className={`form-control ${errors.telefono_referencia ? "is-invalid" : ""}`}
+                  value={form.telefono_referencia}
+                  onChange={handleTelefonoReferenciaChange}
+                  onBeforeInput={handleTelefonoReferenciaBeforeInput}
+                  onKeyDown={handleTelefonoReferenciaKeyDown}
+                  onPaste={handleTelefonoReferenciaPaste}
+                  placeholder="Numero de referencia"
+                  maxLength={9}
+                />
+                {errors.telefono_referencia && <div className="invalid-feedback d-block">{errors.telefono_referencia}</div>}
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label text-light text-opacity-75">Fecha ingreso</label>
+                <input
+                  type="date"
+                  className={`form-control ${errors.fecha_ingreso ? "is-invalid" : ""}`}
+                  value={form.fecha_ingreso}
+                  onChange={(event) => setForm((state) => ({ ...state, fecha_ingreso: event.target.value }))}
+                />
+                {errors.fecha_ingreso && <div className="invalid-feedback d-block">{errors.fecha_ingreso}</div>}
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label text-light text-opacity-75">Salario base</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={`form-control ${errors.salario_base ? "is-invalid" : ""}`}
+                  value={form.salario_base}
+                  onChange={(event) => setForm((state) => ({ ...state, salario_base: event.target.value }))}
+                />
+                {errors.salario_base && <div className="invalid-feedback d-block">{errors.salario_base}</div>}
+              </div>
+            </div>
+          </section>
+
+          <section className="crud-modal__section empleados-modal__section empleados-modal__section--secondary">
+            <header className="crud-modal__section-head">
+              <h4>Presentacion y estado</h4>
+              <p>Configura imagen de perfil y disponibilidad del registro.</p>
+            </header>
+
+            <div className="row g-3 crud-modal__grid">
+              <div className="col-12">
+                <label className="form-label text-light text-opacity-75">Imagen (opcional)</label>
+                <div className={`inv-prod-image-field personas-emp-form-image ${formImage.loading ? "is-loading" : ""}`}>
+                  <div className={`inv-prod-image-preview ${formImage.previewUrl ? "has-image" : ""}`} aria-live="polite">
+                    {formImage.loading ? (
+                      <div className="inv-prod-image-loading" role="status">
+                        <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                        <span>Procesando imagen...</span>
+                      </div>
+                    ) : formImage.previewUrl ? (
+                      <img src={formImage.previewUrl} alt="Vista previa del empleado" />
+                    ) : (
+                      <div className="inv-prod-image-placeholder">
+                        <i className="bi bi-image" />
+                        <span>Sin imagen seleccionada</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="inv-prod-image-actions">
+                    <label className="btn inv-prod-btn-subtle inv-prod-image-picker">
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={onFormImageChange}
+                        disabled={actionLoading}
+                      />
+                      <i className="bi bi-upload" />
+                      <span>{formImage.previewUrl ? "Cambiar imagen" : "Seleccionar imagen"}</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      className="btn inv-prod-btn-outline"
+                      onClick={removeFormImage}
+                      disabled={!formImage.previewUrl && !formImage.error && !formImage.loading}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+
+                  {formImage.error ? (
+                    <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
                   ) : (
-                    <div className="inv-prod-image-placeholder">
-                      <i className="bi bi-image" />
-                      <span>Sin imagen seleccionada</span>
-                    </div>
+                    <div className="inv-prod-image-feedback">JPG, PNG o WEBP hasta 6 MB.</div>
                   )}
                 </div>
+              </div>
 
-                <div className="inv-prod-image-actions">
-                  <label className="btn inv-prod-btn-subtle inv-prod-image-picker">
-                    <input
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={onFormImageChange}
-                      disabled={actionLoading}
-                    />
-                    <i className="bi bi-upload" />
-                    <span>{formImage.previewUrl ? "Cambiar imagen" : "Seleccionar imagen"}</span>
+              <div className="col-12">
+                <div className="form-check form-switch m-0">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    id="empleado_estado"
+                    checked={Boolean(form.estado)}
+                    onChange={(event) => setForm((state) => ({ ...state, estado: event.target.checked }))}
+                  />
+                  <label className="form-check-label text-light text-opacity-75" htmlFor="empleado_estado">
+                    Registro activo
                   </label>
-
-                  <button
-                    type="button"
-                    className="btn inv-prod-btn-outline"
-                    onClick={removeFormImage}
-                    disabled={!formImage.previewUrl && !formImage.error && !formImage.loading}
-                  >
-                    Quitar
-                  </button>
                 </div>
-
-                {formImage.error ? (
-                  <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
-                ) : (
-                  <div className="inv-prod-image-feedback">JPG, PNG o WEBP hasta 6 MB.</div>
-                )}
               </div>
             </div>
-
-            <div className="col-12">
-              <div className="form-check form-switch m-0">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="empleado_estado"
-                  checked={Boolean(form.estado)}
-                  onChange={(event) => setForm((state) => ({ ...state, estado: event.target.checked }))}
-                />
-                <label className="form-check-label text-light text-opacity-75" htmlFor="empleado_estado">
-                  Registro activo
-                </label>
-              </div>
-            </div>
-          </div>
+          </section>
 
           <div className="d-flex gap-2 mt-4 crud-modal__footer">
             <button
@@ -1407,6 +2035,13 @@ export default function Empleados({ openToast }) {
           </div>
         </form>
       </aside>
+
+      <PersonaInlineCreateModal
+        show={showModal && drawerMode === "create" && useInlinePersonaCreate && showPersonaCreateModal}
+        initialForm={inlinePersonaForm}
+        onClose={() => setShowPersonaCreateModal(false)}
+        onSave={handleInlinePersonaModalSave}
+      />
 
       <EmployeeDetailModal
         open={Boolean(detailEmpleado)}

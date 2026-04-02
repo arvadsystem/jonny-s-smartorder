@@ -1,19 +1,20 @@
 import { useEffect, useMemo } from "react";
 import brandLogo from "../../../../../assets/images/logo-jonnys.png";
+import "./employee-detail-modal.css";
 
-const toDisplayValue = (value, fallback = "—") => {
+const toDisplayValue = (value, fallback = "-") => {
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
   return text || fallback;
 };
 
-const formatDateLabel = (value) => {
-  if (!value) return "—";
+const formatLongDateLabel = (value) => {
+  if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return toDisplayValue(value);
   return date.toLocaleDateString("es-HN", {
     year: "numeric",
-    month: "short",
+    month: "long",
     day: "2-digit",
   });
 };
@@ -25,28 +26,134 @@ const detectEstado = (record) => {
   return null;
 };
 
-const getDni = (empleado) => empleado?.persona_dni ?? empleado?.dni;
+const getFirstNonEmptyField = (record, keys) => {
+  if (!record || !Array.isArray(keys)) return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getFirstNonEmptyValue = (values) => {
+  if (!Array.isArray(values)) return "";
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const getDni = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, ["persona_dni", "dni"]),
+    getFirstNonEmptyField(empleado?.persona, ["dni", "persona_dni"]),
+  ]);
 
 const getTelefono = (empleado) =>
-  empleado?.telefono ??
-  empleado?.telefono_numero ??
-  empleado?.numero_telefono ??
-  empleado?.persona_telefono ??
-  empleado?.telefono_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "telefono",
+      "texto_telefono",
+      "telefono_texto",
+      "telefono_numero",
+      "numero_telefono",
+      "persona_telefono",
+      "telefono_persona",
+      "celular",
+    ]),
+  ]);
 
 const getCargo = (empleado) =>
-  empleado?.cargo ??
-  empleado?.nombre_cargo ??
-  empleado?.cargo_nombre ??
-  empleado?.puesto ??
-  empleado?.rol;
+  getFirstNonEmptyField(empleado, [
+    "cargo",
+    "nombre_cargo",
+    "cargo_nombre",
+    "puesto",
+    "rol",
+    "cargo_puesto",
+    "cargo_descripcion",
+  ]);
 
 const getCorreo = (empleado) =>
-  empleado?.correo ??
-  empleado?.direccion_correo ??
-  empleado?.email ??
-  empleado?.persona_correo ??
-  empleado?.correo_persona;
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+  ]);
+
+const getDireccion = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "direccion",
+      "texto_direccion",
+      "direccion_texto",
+      "direccion_persona",
+      "persona_direccion",
+      "direccion_residencia",
+      "direccion_completa",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "direccion",
+      "texto_direccion",
+      "direccion_texto",
+      "direccion_persona",
+      "persona_direccion",
+      "direccion_residencia",
+      "direccion_completa",
+    ]),
+  ]);
+
+const getNombreReferencia = (empleado) =>
+  getFirstNonEmptyField(empleado, ["nombre_referencia", "referencia_nombre", "nombre_contacto_referencia"]);
+
+const getTelefonoReferencia = (empleado) =>
+  getFirstNonEmptyField(empleado, ["telefono_referencia", "referencia_telefono", "telefono_contacto_referencia"]);
+
+const getSalario = (empleado) =>
+  getFirstNonEmptyField(empleado, ["salario_base", "sueldo", "salario", "salarioBase"]);
+
+const formatSalaryLabel = (value, fallback = "Sin sueldo") => {
+  if (value === null || value === undefined || String(value).trim() === "") return fallback;
+  const parsed = Number.parseFloat(String(value).replace(",", "."));
+  if (!Number.isFinite(parsed)) return String(value);
+  return parsed.toLocaleString("es-HN", {
+    style: "currency",
+    currency: "HNL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
 
 const escapeHtml = (value) =>
   String(value ?? "")
@@ -76,6 +183,88 @@ const formatPrintDateTime = () =>
     minute: "2-digit",
   });
 
+const loadImageFromSrc = (src) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("No se pudo cargar el logo"));
+    image.src = src;
+  });
+
+const isLightNeutralPixel = (r, g, b, a) => {
+  if (a <= 10) return true;
+  const maxChannel = Math.max(r, g, b);
+  const minChannel = Math.min(r, g, b);
+  const chroma = maxChannel - minChannel;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance >= 172 && chroma <= 22;
+};
+
+const buildSheetLogoSrc = async (src) => {
+  if (!src || typeof document === "undefined") return src;
+
+  try {
+    const image = await loadImageFromSrc(src);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) return src;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return src;
+
+    ctx.drawImage(image, 0, 0, width, height);
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const { data } = imageData;
+    const visited = new Uint8Array(width * height);
+    const queue = [];
+
+    const pushPixel = (x, y) => {
+      const pixelIndex = y * width + x;
+      if (visited[pixelIndex]) return;
+
+      const offset = pixelIndex * 4;
+      if (!isLightNeutralPixel(data[offset], data[offset + 1], data[offset + 2], data[offset + 3])) return;
+
+      visited[pixelIndex] = 1;
+      queue.push(pixelIndex);
+    };
+
+    for (let x = 0; x < width; x += 1) {
+      pushPixel(x, 0);
+      pushPixel(x, height - 1);
+    }
+
+    for (let y = 1; y < height - 1; y += 1) {
+      pushPixel(0, y);
+      pushPixel(width - 1, y);
+    }
+
+    while (queue.length) {
+      const pixelIndex = queue.pop();
+      const offset = pixelIndex * 4;
+      data[offset + 3] = 0;
+
+      const x = pixelIndex % width;
+      const y = Math.floor(pixelIndex / width);
+
+      if (x > 0) pushPixel(x - 1, y);
+      if (x < width - 1) pushPixel(x + 1, y);
+      if (y > 0) pushPixel(x, y - 1);
+      if (y < height - 1) pushPixel(x, y + 1);
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL("image/png");
+  } catch {
+    return src;
+  }
+};
+
 const renderPrintRows = (rows) =>
   rows
     .map(
@@ -91,11 +280,20 @@ const renderPrintRows = (rows) =>
 const buildEmployeePrintTemplate = ({
   logoSrc,
   nombre,
+  employeeCode,
   imageSrc,
   fechaImpresion,
   leftRows,
   rightRows,
-}) => `<!doctype html>
+  intent = "print",
+}) => {
+  const isPdfIntent = intent === "pdf";
+  const sheetIntentTitle = isPdfIntent ? "Exportacion PDF" : "Impresion";
+  const sheetIntentHint = isPdfIntent
+    ? "Use el dialogo del navegador y seleccione Guardar como PDF."
+    : "Documento listo para impresion.";
+
+  return `<!doctype html>
 <html lang="es">
   <head>
     <meta charset="utf-8" />
@@ -136,7 +334,7 @@ const buildEmployeePrintTemplate = ({
         display: flex;
         align-items: center;
         min-height: 102px;
-        padding: 16px 18px 14px 120px;
+        padding: 16px 18px 14px 124px;
         background: #fff;
         break-inside: avoid-page;
         page-break-inside: avoid;
@@ -152,23 +350,21 @@ const buildEmployeePrintTemplate = ({
       }
       .header-logo {
         position: absolute;
-        left: 10px;
-        top: 2px;
-        width: 100px;
-        height: 100px;
-        border-radius: 0;
-        background: transparent;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: visible;
+        left: 16px;
+        top: 23px;
         z-index: 2;
-      }
-      .header-logo img {
-        width: 100%;
-        height: 100%;
+        display: block;
+        width: auto;
+        height: 56px;
+        max-width: 96px;
+        max-height: 56px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
         object-fit: contain;
-        filter: drop-shadow(0 1.5px 1px rgba(24, 9, 6, 0.22));
+        object-position: center;
       }
       .header-copy {
         position: relative;
@@ -213,6 +409,14 @@ const buildEmployeePrintTemplate = ({
         color: #2f1710;
         font-weight: 800;
       }
+      .employee-code {
+        margin: 4px auto 0;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        color: #6f4c3b;
+      }
       .image-wrap {
         margin: 6px auto 10px;
         width: 170px;
@@ -246,6 +450,21 @@ const buildEmployeePrintTemplate = ({
         height: 2px;
         margin: 0 auto 10px;
         background: linear-gradient(90deg, transparent 0%, #9f5d3d 20%, #9f5d3d 80%, transparent 100%);
+      }
+      .intent-badge {
+        margin: -2px auto 8px;
+        max-width: 86%;
+        text-align: center;
+        font-size: 12px;
+        line-height: 1.35;
+        color: #5f4334;
+        background: #f0e5d8;
+        border: 1px solid #dbc9b6;
+        border-radius: 10px;
+        padding: 6px 10px;
+      }
+      .intent-badge strong {
+        font-weight: 800;
       }
       .grid {
         display: grid;
@@ -343,17 +562,16 @@ const buildEmployeePrintTemplate = ({
   <body>
     <main class="sheet">
       <header class="header">
-        <div class="header-logo">
-          ${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="Jonny's SmartOrder" />` : ""}
-        </div>
+        ${logoSrc ? `<img class="header-logo" src="${escapeHtml(logoSrc)}" alt="Jonny's SmartOrder" />` : ""}
         <div class="header-copy">
           <h1>Detalle de Empleado</h1>
-          <p>Ficha individual de recurso humano</p>
+          <p>Informacion completa del colaborador</p>
         </div>
       </header>
       <section class="content">
         <div class="eyebrow">Empleado</div>
         <h2 class="employee-name">${escapeHtml(nombre)}</h2>
+        <p class="employee-code">${escapeHtml(employeeCode)}</p>
         <div class="image-wrap">
           ${
             imageSrc
@@ -362,6 +580,7 @@ const buildEmployeePrintTemplate = ({
           }
         </div>
         <div class="separator"></div>
+        <div class="intent-badge"><strong>${escapeHtml(sheetIntentTitle)}:</strong> ${escapeHtml(sheetIntentHint)}</div>
         <section class="grid" aria-label="Datos del empleado">
           <div class="column">${renderPrintRows(leftRows)}</div>
           <div class="column">${renderPrintRows(rightRows)}</div>
@@ -388,10 +607,13 @@ const buildEmployeePrintTemplate = ({
       window.addEventListener('load', function () {
         setTimeout(function () { window.print(); }, 220);
       });
-      window.onafterprint = function () { window.close(); };
+      window.onafterprint = function () {
+        ${isPdfIntent ? "" : "window.close();"}
+      };
     </script>
   </body>
 </html>`;
+};
 
 export default function EmployeeDetailModal({
   open = false,
@@ -428,47 +650,61 @@ export default function EmployeeDetailModal({
   const imageSrc = typeof getImageSrc === "function" ? toDisplayValue(getImageSrc(empleado), "") : "";
   const estadoValue = detectEstado(empleado);
 
-  const handlePrintFicha = () => {
+  const openFichaWindow = async (intent = "print") => {
     if (!empleado) return;
-
     const safeNombre = toDisplayValue(personaNombre, "Empleado sin nombre");
-    const safeSucursal = toDisplayValue(sucursalNombre, "-");
-    const safeDni = toDisplayValue(getDni(empleado), "-");
-    const safeTelefono = toDisplayValue(getTelefono(empleado), "-");
-    const safeCargo = toDisplayValue(getCargo(empleado), "-");
-    const safeCorreo = toDisplayValue(getCorreo(empleado), "-");
-    const safeEstado = estadoValue === null ? "-" : estadoValue ? "Activo" : "Inactivo";
+    const safeCode = `EMP-${String(empleado?.id_empleado ?? "-")}`;
+    const safeSucursal = toDisplayValue(sucursalNombre, "Sin sucursal");
+    const safeDni = toDisplayValue(getDni(empleado), "Sin DNI");
+    const safeTelefono = toDisplayValue(getTelefono(empleado), "Sin telefono");
+    const safeCargo = toDisplayValue(getCargo(empleado), "Sin cargo");
+    const safeSalario = formatSalaryLabel(getSalario(empleado), "Sin sueldo");
+    const safeCorreo = toDisplayValue(getCorreo(empleado), "Sin correo");
+    const safeDireccion = toDisplayValue(getDireccion(empleado), "Sin direccion");
+    const safeNombreRef = toDisplayValue(getNombreReferencia(empleado), "Sin referencia");
+    const safeTelRef = toDisplayValue(getTelefonoReferencia(empleado), "Sin referencia");
+    const safeEstado = estadoValue === null ? "No definido" : estadoValue ? "Activo" : "Inactivo";
     const safeFechaIngreso = formatPrintDateLabel(empleado?.fecha_ingreso);
     const safeFechaImpresion = formatPrintDateTime();
 
     const leftRows = [
+      { label: "Codigo de empleado", value: safeCode },
       { label: "Nombre completo", value: safeNombre },
+      { label: "Sucursal", value: safeSucursal },
       { label: "DNI", value: safeDni },
       { label: "Cargo / Puesto", value: safeCargo },
+      { label: "Sueldo", value: safeSalario },
       { label: "Fecha de ingreso", value: safeFechaIngreso },
     ];
 
     const rightRows = [
-      { label: "Sucursal", value: safeSucursal },
       { label: "Telefono", value: safeTelefono },
+      { label: "Correo", value: safeCorreo },
+      { label: "Direccion", value: safeDireccion },
       {
         label: "Estado",
         value: safeEstado,
         valueClass: safeEstado === "Activo" ? "state-active" : safeEstado === "Inactivo" ? "state-inactive" : "",
       },
-      { label: "Correo", value: safeCorreo },
+      { label: "Nombre referencia", value: safeNombreRef },
+      { label: "Telefono referencia", value: safeTelRef },
     ];
 
     const printWindow = window.open("", "_blank", "width=1100,height=900");
     if (!printWindow) return;
 
+    const sheetLogoSrc = await buildSheetLogoSrc(brandLogo);
+    if (printWindow.closed) return;
+
     const printDocument = buildEmployeePrintTemplate({
-      logoSrc: brandLogo,
+      logoSrc: sheetLogoSrc || brandLogo,
       nombre: safeNombre,
+      employeeCode: safeCode,
       imageSrc: imageSrc || "",
       fechaImpresion: safeFechaImpresion,
       leftRows,
       rightRows,
+      intent,
     });
 
     printWindow.document.open();
@@ -476,7 +712,11 @@ export default function EmployeeDetailModal({
     printWindow.document.close();
   };
 
-  const detailFields = useMemo(
+  const handlePrintFicha = () => {
+    void openFichaWindow("print");
+  };
+
+  const infoCards = useMemo(
     () => [
       {
         key: "nombre",
@@ -488,7 +728,7 @@ export default function EmployeeDetailModal({
         key: "sucursal",
         icon: "bi-shop",
         label: "Sucursal",
-        value: sucursalNombre,
+        value: toDisplayValue(sucursalNombre, "Sin sucursal"),
       },
       {
         key: "dni",
@@ -497,39 +737,58 @@ export default function EmployeeDetailModal({
         value: toDisplayValue(getDni(empleado)),
       },
       {
+        key: "fecha_ingreso",
+        icon: "bi-calendar-event",
+        label: "Fecha de ingreso",
+        value: formatLongDateLabel(empleado?.fecha_ingreso),
+      },
+      {
         key: "telefono",
         icon: "bi-telephone",
         label: "Telefono",
-        value: toDisplayValue(getTelefono(empleado)),
+        value: toDisplayValue(getTelefono(empleado), "Sin telefono"),
       },
       {
         key: "cargo",
         icon: "bi-briefcase",
         label: "Cargo / Puesto",
-        value: toDisplayValue(getCargo(empleado)),
+        value: toDisplayValue(getCargo(empleado), "Sin cargo"),
+      },
+      {
+        key: "salario",
+        icon: "bi-cash-stack",
+        label: "Sueldo",
+        value: formatSalaryLabel(getSalario(empleado), "Sin sueldo"),
       },
       {
         key: "estado",
-        icon: "bi-toggle-on",
+        icon: "bi-patch-check",
         label: "Estado",
-        value:
-          estadoValue === null
-            ? "—"
-            : estadoValue
-              ? "Activo"
-              : "Inactivo",
-      },
-      {
-        key: "fecha_ingreso",
-        icon: "bi-calendar-event",
-        label: "Fecha de ingreso",
-        value: formatDateLabel(empleado?.fecha_ingreso),
+        value: estadoValue === null ? "No definido" : estadoValue ? "Activo" : "Inactivo",
       },
       {
         key: "correo",
         icon: "bi-envelope",
         label: "Correo",
-        value: toDisplayValue(getCorreo(empleado)),
+        value: toDisplayValue(getCorreo(empleado), "Sin correo"),
+      },
+      {
+        key: "direccion",
+        icon: "bi-geo-alt",
+        label: "Direccion",
+        value: toDisplayValue(getDireccion(empleado), "Sin direccion"),
+      },
+      {
+        key: "nombre_referencia",
+        icon: "bi-person-lines-fill",
+        label: "Nombre referencia",
+        value: toDisplayValue(getNombreReferencia(empleado), "Sin referencia"),
+      },
+      {
+        key: "telefono_referencia",
+        icon: "bi-telephone-forward",
+        label: "Telefono referencia",
+        value: toDisplayValue(getTelefonoReferencia(empleado), "Sin referencia"),
       },
     ],
     [empleado, estadoValue, personaNombre, sucursalNombre]
@@ -537,92 +796,125 @@ export default function EmployeeDetailModal({
 
   if (!open || !empleado) return null;
 
+  const empleadoCode = `EMP-${String(empleado?.id_empleado ?? "-")}`;
+  const estadoLabel = estadoValue === null ? "No definido" : estadoValue ? "Activo" : "Inactivo";
+  const estadoTone = estadoValue === true ? "is-active" : estadoValue === false ? "is-inactive" : "is-neutral";
+  const avatarInitials =
+    personaNombre
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((chunk) => chunk.charAt(0).toUpperCase())
+      .join("") || "EM";
+
   return (
     <div
       className="modal fade show inv-prod-modal-backdrop personas-emp-detail-backdrop"
-      style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)", zIndex: 2550 }}
+      style={{ display: "block", zIndex: 2550 }}
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="modal-dialog modal-dialog-centered modal-dialog-scrollable inv-prod-modal-dialog inv-ins-detail-modal-dialog personas-emp-detail-dialog"
+        className="modal-dialog modal-dialog-centered modal-dialog-scrollable inv-prod-modal-dialog personas-emp-detail-dialog"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="modal-content shadow inv-prod-modal-content inv-ins-detail-modal inv-ins-detail-modal--editorial personas-emp-detail-modal">
-          <div className="modal-header inv-ins-detail-modal__header">
-            <div className="inv-ins-detail-modal__title-wrap">
-              <div className="inv-ins-detail-modal__icon">
-                <i className="bi bi-person-badge" />
-              </div>
-              <div>
-                <div className="fw-semibold">Detalle de empleado</div>
-                <div className="small text-muted">{personaNombre}</div>
+        <div className="modal-content personas-emp-detail-modal">
+          <div className="modal-header personas-emp-detail__header">
+            <div className="personas-emp-detail__header-left">
+              <span className="personas-emp-detail__header-icon" aria-hidden="true">
+                <i className="bi bi-person-vcard" />
+              </span>
+              <div className="personas-emp-detail__header-copy">
+                <h3>Detalle de empleado</h3>
+                <p>Informacion completa del colaborador</p>
               </div>
             </div>
 
-            <div className="inv-ins-detail-modal__header-actions">
-              <button
-                type="button"
-                className="btn btn-sm inv-prod-btn-subtle"
-                onClick={handlePrintFicha}
-                aria-label="Imprimir ficha"
-              >
-                <i className="bi bi-printer me-1" />
-                Imprimir ficha
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm inv-ins-detail-modal__close"
-                onClick={onClose}
-                aria-label="Cerrar detalle"
-              >
+            <div className="personas-emp-detail__header-actions">
+              <button type="button" className="personas-emp-detail__close-btn" onClick={onClose} aria-label="Cerrar detalle">
                 <i className="bi bi-x-lg" />
               </button>
             </div>
           </div>
 
-          <div className="modal-body inv-prod-modal-body inv-ins-detail-modal__body inv-ins-detail-modal__body--editorial">
-            <div className="inv-ins-detail-modal__ambient" aria-hidden="true">
-              <span className="is-one" />
-              <span className="is-two" />
-              <span className="is-three" />
-            </div>
+          <div className="modal-body personas-emp-detail__body">
+            <section className="personas-emp-detail__summary">
+              <section className="personas-emp-detail__hero">
+                <div className="personas-emp-detail__avatar-wrap">
+                  <div className="personas-emp-detail__avatar">{imageSrc ? <img src={imageSrc} alt={personaNombre} /> : <span>{avatarInitials}</span>}</div>
+                  <span className="personas-emp-detail__avatar-chip" aria-hidden="true">
+                    <i className="bi bi-camera" />
+                  </span>
+                </div>
 
-            <div className="inv-ins-detail-modal__editorial-grid">
-              <section className="inv-ins-detail-modal__lead personas-emp-detail__lead">
-                <span className="inv-ins-detail-modal__eyebrow">Empleado</span>
-                <strong className="inv-ins-detail-modal__lead-price personas-emp-detail__lead-price">{personaNombre}</strong>
+                <span className="personas-emp-detail__hero-divider" aria-hidden="true" />
 
-                <div className={`inv-prod-image-preview personas-emp-detail__image ${imageSrc ? "has-image" : ""}`}>
-                  {imageSrc ? (
-                    <img src={imageSrc} alt={personaNombre} />
-                  ) : (
-                    <div className="inv-prod-image-placeholder">
-                      <i className="bi bi-image" />
-                      <span>Sin imagen</span>
-                    </div>
-                  )}
+                <div className="personas-emp-detail__hero-copy">
+                  <h2>{personaNombre}</h2>
+
+                  <div className="personas-emp-detail__hero-meta">
+                    <span className="personas-emp-detail__code-pill">
+                      <i className="bi bi-person-badge" />
+                      <span>{empleadoCode}</span>
+                    </span>
+
+                    <span className={`personas-emp-detail__status-pill ${estadoTone}`}>
+                      <span className="personas-emp-detail__status-dot" />
+                      {estadoLabel}
+                    </span>
+                  </div>
+
+                  <p className="personas-emp-detail__branch">
+                    <i className="bi bi-shop" />
+                    <span>
+                      Sucursal <strong>{sucursalNombre}</strong>
+                    </span>
+                  </p>
                 </div>
               </section>
 
-              <section className="inv-ins-detail-modal__list" aria-label="Datos del empleado">
-                {detailFields.map((item, index) => (
-                  <article
-                    key={item.key}
-                    className="inv-ins-detail-modal__line"
-                    style={{ animationDelay: `${index * 70}ms` }}
-                  >
-                    <div className="inv-ins-detail-modal__line-icon" aria-hidden="true">
-                      <i className={`bi ${item.icon}`} />
-                    </div>
-                    <div className="inv-ins-detail-modal__line-copy">
-                      <span>{item.label}</span>
-                      <strong>{item.value}</strong>
-                    </div>
-                  </article>
-                ))}
+              <section className="personas-emp-detail__panel">
+                <header className="personas-emp-detail__panel-head">
+                  <h4>Informacion personal y laboral</h4>
+                  <span className="personas-emp-detail__panel-line" aria-hidden="true" />
+                </header>
+
+                <div className="personas-emp-detail__grid" aria-label="Datos del empleado">
+                  {infoCards.map((item) => (
+                    <article key={item.key} className="personas-emp-detail__info-card">
+                      <div className="personas-emp-detail__info-icon" aria-hidden="true">
+                        <i className={`bi ${item.icon}`} />
+                      </div>
+                      <div className="personas-emp-detail__info-copy">
+                        <span>{item.label}</span>
+                        <strong>{item.value}</strong>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </section>
+            </section>
+          </div>
+
+          <div className="modal-footer personas-emp-detail__footer">
+            <div className="personas-emp-detail__footer-code">
+              <i className="bi bi-person-badge" />
+              <span>{empleadoCode}</span>
+            </div>
+            <div className="personas-emp-detail__footer-actions">
+              <button type="button" className="personas-emp-detail__ghost-btn" onClick={onClose}>
+                Cerrar
+              </button>
+              <button
+                type="button"
+                className="personas-emp-detail__print-btn personas-emp-detail__print-btn--footer"
+                onClick={handlePrintFicha}
+                aria-label="Imprimir ficha"
+              >
+                <i className="bi bi-printer" />
+                <span>Imprimir ficha</span>
+              </button>
             </div>
           </div>
         </div>

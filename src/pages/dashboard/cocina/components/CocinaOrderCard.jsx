@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import {
+  formatKitchenStatusLabel,
   formatServiceLabel,
   formatTimerLabel,
   getOrderAction
@@ -43,6 +44,7 @@ export default function CocinaOrderCard({
           <div className="cocina-order-card__ticket">{pedido.numero_ticket}</div>
           <div className="cocina-order-card__badges">
             <span className="cocina-chip is-service">{formatServiceLabel(pedido.tipo_servicio)}</span>
+            <span className="cocina-chip is-status">{formatKitchenStatusLabel(pedido)}</span>
             <span className="cocina-chip is-timer">
               <i className="bi bi-clock" /> {formatTimerLabel(pedido.fecha_hora_facturacion || pedido.fecha_hora_pedido, now)}
             </span>

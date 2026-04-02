@@ -13,10 +13,11 @@ export const CATALOG_TABS = [
   { key: 'RECETAS', label: 'Recetas', icon: 'bi bi-journal-richtext' }
 ];
 
-const buildInitialState = () => ({
+const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = {}) => ({
   activeCatalog: 'PRODUCTOS',
   search: '',
   activeCategory: 'all',
+  selectedSucursal: isSuperAdmin ? '' : String(defaultSucursalId || ''),
   selectedClient: 'cf',
   clientPickerOpen: false,
   paymentPickerOpen: false,
@@ -141,6 +142,9 @@ export const useVentaComposer = ({
   productos,
   categorias,
   tiposDepartamento,
+  sucursales,
+  isSuperAdmin = false,
+  defaultSucursalId = null,
   clientes,
   combos,
   recetas,
@@ -148,13 +152,13 @@ export const useVentaComposer = ({
   onSubmit,
   resetKey
 }) => {
-  const [state, setState] = useState(buildInitialState);
+  const [state, setState] = useState(() => buildInitialState({ isSuperAdmin, defaultSucursalId }));
   const deferredSearch = useDeferredValue(state.search);
 
   useEffect(() => {
     if (resetKey === undefined) return;
-    setState(buildInitialState());
-  }, [resetKey]);
+    setState(buildInitialState({ isSuperAdmin, defaultSucursalId }));
+  }, [defaultSucursalId, isSuperAdmin, resetKey]);
 
   const setPartialState = (partial) => {
     setState((current) => ({
@@ -164,7 +168,7 @@ export const useVentaComposer = ({
   };
 
   const resetComposer = () => {
-    setState(buildInitialState());
+    setState(buildInitialState({ isSuperAdmin, defaultSucursalId }));
   };
 
   const selectedClientLabel = useMemo(() => {
@@ -185,6 +189,28 @@ export const useVentaComposer = ({
     ) || null,
     [normalizedDescuentosCatalogo, state.selectedDiscountId]
   );
+
+  const normalizedSucursales = useMemo(
+    () => (Array.isArray(sucursales) ? sucursales : []),
+    [sucursales]
+  );
+
+  useEffect(() => {
+    if (isSuperAdmin) return;
+    setState((current) => ({
+      ...current,
+      selectedSucursal: String(defaultSucursalId || '')
+    }));
+  }, [defaultSucursalId, isSuperAdmin]);
+
+  const selectedSucursalLabel = useMemo(() => {
+    const selectedId = Number.parseInt(String(state.selectedSucursal || ''), 10);
+    if (!Number.isInteger(selectedId) || selectedId <= 0) return 'Sin sucursal';
+    const match = normalizedSucursales.find(
+      (row) => Number(row?.id_sucursal) === selectedId
+    );
+    return match?.nombre_sucursal || `Sucursal #${selectedId}`;
+  }, [normalizedSucursales, state.selectedSucursal]);
 
   const filteredProducts = useMemo(() => {
     const categoryValue = state.activeCategory;
@@ -263,8 +289,12 @@ export const useVentaComposer = ({
     return Number.isFinite(numeric) && numeric >= 0 ? roundMoney(numeric) : 0;
   }, [state.cashReceived, total]);
 
+  const selectedSucursalId = Number.parseInt(String(state.selectedSucursal || ''), 10);
+  const hasSelectedSucursal = Number.isInteger(selectedSucursalId) && selectedSucursalId > 0;
   const change = roundMoney(Math.max(cashValue - total, 0));
-  const canSubmit = state.cart.length > 0 && (state.paymentMethod !== 'efectivo' || cashValue >= total);
+  const canSubmit = hasSelectedSucursal
+    && state.cart.length > 0
+    && (state.paymentMethod !== 'efectivo' || cashValue >= total);
   const resultsLabel = getResultsLabel(state.activeCatalog, currentCatalogRows.length);
 
   const getCurrentProductoQuantityInCart = (idProducto, cart) =>
@@ -381,6 +411,15 @@ export const useVentaComposer = ({
       return null;
     }
 
+    if (!hasSelectedSucursal) {
+      setPartialState({
+        submitError: isSuperAdmin
+          ? 'Selecciona una sucursal para registrar la venta.'
+          : 'No tienes sucursal operativa asignada para registrar ventas.'
+      });
+      return null;
+    }
+
     if (state.cart.length === 0) {
       setPartialState({
         submitError: 'Agrega al menos un item al carrito.'
@@ -398,6 +437,7 @@ export const useVentaComposer = ({
     try {
       const response = await onSubmit({
         id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
+        id_sucursal: selectedSucursalId,
         metodo_pago: 'efectivo',
         id_descuento_catalogo: state.selectedDiscountId ? Number(state.selectedDiscountId) : null,
         descuento: state.selectedDiscountId ? 0 : discountValue,
@@ -429,6 +469,10 @@ export const useVentaComposer = ({
     activeCatalog: state.activeCatalog,
     activeCategory: state.activeCategory,
     search: state.search,
+    isSuperAdmin,
+    sucursalLocked: !isSuperAdmin,
+    selectedSucursal: state.selectedSucursal,
+    selectedSucursalLabel,
     selectedClient: state.selectedClient,
     selectedClientLabel,
     clientPickerOpen: state.clientPickerOpen,
@@ -463,6 +507,11 @@ export const useVentaComposer = ({
     setPaymentPickerOpen: (value) => setPartialState({ paymentPickerOpen: value }),
     setDescuentoPickerOpen: (value) => setPartialState({ descuentoPickerOpen: value }),
     setClientPickerOpen: (value) => setPartialState({ clientPickerOpen: value }),
+    setSelectedSucursal: (value) =>
+      setPartialState({
+        selectedSucursal: value,
+        submitError: ''
+      }),
     setSelectedClient: (value) =>
       setPartialState({
         selectedClient: value,
@@ -485,6 +534,7 @@ export const useVentaComposer = ({
     removeLine,
     handleSearchKeyDown,
     handleSubmit,
+    sucursales: normalizedSucursales,
     categorias: Array.isArray(categorias) ? categorias : [],
     tiposDepartamento: Array.isArray(tiposDepartamento) ? tiposDepartamento : [],
     clientes: Array.isArray(clientes) ? clientes : [],
