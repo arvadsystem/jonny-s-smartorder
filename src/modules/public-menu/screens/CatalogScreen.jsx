@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CatalogHeader from '../components/catalog/CatalogHeader';
 import CartSheet from '../components/catalog/CartSheet';
@@ -8,6 +8,7 @@ import ProductDetailSheet from '../components/catalog/ProductDetailSheet';
 import ProductCard from '../components/catalog/ProductCard';
 import SearchInput from '../components/catalog/SearchInput';
 import StateBlock from '../components/feedback/StateBlock';
+import jonnysLogo from '../../../assets/images/jonny_logo_no_bg_keep_teeth.png';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { useCatalogProducts } from '../hooks/useCatalogProducts';
 import { usePublicMenuCart } from '../hooks/usePublicMenuCart';
@@ -45,6 +46,9 @@ const CatalogScreen = () => {
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
+  const [showCategorySplash, setShowCategorySplash] = useState(false);
+  const [contentTransitionKey, setContentTransitionKey] = useState(0);
+  const transitionRef = useRef(0);
 
   const {
     items: cartItems,
@@ -162,6 +166,31 @@ const CatalogScreen = () => {
     navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.BRANCH));
   };
 
+  useEffect(() => {
+    if (!selectedCategory || selectedCategory === 'all') {
+      setShowCategorySplash(false);
+      return;
+    }
+
+    const current = transitionRef.current + 1;
+    transitionRef.current = current;
+    setShowCategorySplash(true);
+    const start = Date.now();
+    const minDuration = 650;
+
+    const timer = window.setTimeout(() => {
+      const elapsed = Date.now() - start;
+      const remaining = Math.max(minDuration - elapsed, 0);
+      window.setTimeout(() => {
+        if (transitionRef.current !== current) return;
+        setShowCategorySplash(false);
+        setContentTransitionKey((prev) => prev + 1);
+      }, remaining);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [selectedCategory]);
+
   if (loading) {
     return (
       <StateBlock
@@ -196,6 +225,20 @@ const CatalogScreen = () => {
 
   return (
     <section className="pm-screen pm-catalog-screen" aria-label="Catalogo publico">
+      <div
+        className={`pm-catalog-hero ${state.selectedBranch?.imageUrl ? 'has-photo' : ''}`}
+        style={state.selectedBranch?.imageUrl ? { backgroundImage: `url(${state.selectedBranch.imageUrl})` } : undefined}
+      >
+        <div className="pm-catalog-hero__overlay" aria-hidden="true" />
+        <div className="pm-catalog-hero__content">
+          <span className="pm-catalog-hero__eyebrow">Menu publico</span>
+          <h1 className="pm-catalog-hero__title">{menuSummary?.nombreMenu || 'Catalogo'}</h1>
+          <p className="pm-catalog-hero__subtitle">
+            {state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal'} · {getOrderTypeLabel(orderType)}
+          </p>
+        </div>
+      </div>
+
       <div className="pm-branch-banner">
         <div className="pm-branch-banner__row">
           <span>
@@ -233,39 +276,50 @@ const CatalogScreen = () => {
         onSelect={setSelectedCategory}
       />
 
-      {stats.allFilteredSoldOut ? (
-        <StateBlock
-          variant="warning"
-          title="Todo agotado por ahora"
-          description="Prueba otra categoria o vuelve en unos minutos."
-        />
+      {showCategorySplash ? (
+        <div className="pm-category-splash" aria-hidden="true">
+          <div className="pm-category-splash__card">
+            <img src={jonnysLogo} alt="Jonny's" />
+            <span>Cargando categoria...</span>
+          </div>
+        </div>
       ) : null}
 
-      {!filteredProducts.length ? (
-        <StateBlock
-          variant="empty"
-          title="Sin resultados"
-          description="No encontramos productos con ese filtro. Prueba otro termino."
-          actionLabel="Limpiar filtros"
-          onAction={() => {
-            setSearchTerm('');
-            setSelectedCategory('all');
-          }}
-        />
-      ) : (
-        <div className="pm-product-grid">
-          {filteredProducts.map((product) => (
-            <ProductCard
-              key={product.id_detalle_menu}
-              product={product}
-              cartQuantity={cartQuantityByDetail.get(Number(product?.id_detalle_menu || 0)) || 0}
-              onAdd={handleCardAdd}
-              onIncrease={handleCardIncrease}
-              onDecrease={handleCardDecrease}
-            />
-          ))}
-        </div>
-      )}
+      <div key={contentTransitionKey} className="pm-category-content">
+        {stats.allFilteredSoldOut ? (
+          <StateBlock
+            variant="warning"
+            title="Todo agotado por ahora"
+            description="Prueba otra categoria o vuelve en unos minutos."
+          />
+        ) : null}
+
+        {!filteredProducts.length ? (
+          <StateBlock
+            variant="empty"
+            title="Sin resultados"
+            description="No encontramos productos con ese filtro. Prueba otro termino."
+            actionLabel="Limpiar filtros"
+            onAction={() => {
+              setSearchTerm('');
+              setSelectedCategory('all');
+            }}
+          />
+        ) : (
+          <div className="pm-product-grid">
+            {filteredProducts.map((product) => (
+              <ProductCard
+                key={product.id_detalle_menu}
+                product={product}
+                cartQuantity={cartQuantityByDetail.get(Number(product?.id_detalle_menu || 0)) || 0}
+                onAdd={handleCardAdd}
+                onIncrease={handleCardIncrease}
+                onDecrease={handleCardDecrease}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       <CartFab itemCount={totalItems} disabled={totalItems <= 0} onClick={() => setCartOpen(true)} />
 

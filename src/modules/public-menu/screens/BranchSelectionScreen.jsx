@@ -31,6 +31,10 @@ const BranchSelectionScreen = () => {
   const { state, actions } = usePublicMenuFlow();
   const { branches, loading, error, reloadBranches } = useBranches();
   const [ignoreQueryPrefill, setIgnoreQueryPrefill] = useState(false);
+  const heroImage = useMemo(
+    () => (Array.isArray(branches) ? branches.find((branch) => branch?.imageUrl)?.imageUrl : ''),
+    [branches]
+  );
 
   const queryBranchSlug = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -125,12 +129,18 @@ const BranchSelectionScreen = () => {
 
   return (
     <section className="pm-screen pm-branch-screen" aria-label="Seleccion de sucursal">
-      <div className="pm-screen__intro pm-branch-screen__hero">
-        <span className="pm-screen__eyebrow">Paso 1 de 3</span>
-        <h2 className="pm-screen__title">Selecciona tu sucursal</h2>
-        <p className="pm-screen__subtitle">
-          Elige primero la sucursal y luego selecciona el tipo de pedido.
-        </p>
+      <div
+        className={`pm-screen__intro pm-branch-screen__hero ${heroImage ? 'has-photo' : ''}`}
+        style={heroImage ? { backgroundImage: `url(${heroImage})` } : undefined}
+      >
+        <div className="pm-branch-screen__hero-overlay" aria-hidden="true" />
+        <div className="pm-branch-screen__hero-content">
+          <span className="pm-screen__eyebrow">Paso 1 de 3</span>
+          <h2 className="pm-screen__title">Selecciona tu sucursal</h2>
+          <p className="pm-screen__subtitle">
+            Tu menu se ajusta a la sede y al tipo de pedido que elijas.
+          </p>
+        </div>
       </div>
 
       <div className="pm-screen__list">
