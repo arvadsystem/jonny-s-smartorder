@@ -143,11 +143,30 @@ export default function PedidosView() {
 
 function PedidoCard({ pedido, onNext, nextLabel }) {
   const clienteName = pedido.nombres_cliente ? `${pedido.nombres_cliente} ${pedido.apellidos_cliente || ''}` : 'Consumidor Final';
-  
+  const isMenu = pedido.origen_pedido === 'MENU';
+  const isCaja = pedido.origen_pedido === 'CAJA';
+
   return (
     <div className="ventas-create-modal__cart-item mb-2">
       <div className="ventas-create-modal__cart-item-head">
         <div>
+          <div className="d-flex align-items-center gap-2 mb-1">
+            {isCaja && (
+              <span className="badge" style={{ background: '#3b82f6', fontSize: '0.65rem', fontWeight: 'bold' }}>
+                <i className="bi bi-shop me-1" /> CAJA
+              </span>
+            )}
+            {isMenu && (
+              <span className="badge" style={{ background: '#f59e0b', fontSize: '0.65rem', fontWeight: 'bold' }}>
+                <i className="bi bi-phone me-1" /> MENÚ
+              </span>
+            )}
+            {!isCaja && !isMenu && (
+              <span className="badge bg-secondary" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
+                PEDIDO
+              </span>
+            )}
+          </div>
           <strong className="d-flex align-items-center gap-2">
              <span>#{pedido.id_pedido} - {clienteName}</span>
           </strong>
