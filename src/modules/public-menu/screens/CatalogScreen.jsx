@@ -278,9 +278,13 @@ const CatalogScreen = () => {
 
       {showCategorySplash ? (
         <div className="pm-category-splash" aria-hidden="true">
-          <div className="pm-category-splash__card">
-            <img src={jonnysLogo} alt="Jonny's" />
-            <span>Cargando categoria...</span>
+          <div className="pm-category-splash__loader">
+            <div className="pm-category-splash__halo" />
+            <div className="pm-category-splash__ring" />
+            <img src={jonnysLogo} alt="Jonny's" className="pm-category-splash__logo" />
+          </div>
+          <div className="pm-category-splash__label">
+            Cargando categoria...
           </div>
         </div>
       ) : null}

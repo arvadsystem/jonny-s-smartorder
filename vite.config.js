@@ -8,8 +8,9 @@ const buildProxyTarget = () => ({
   target: BACKEND,
   changeOrigin: true,
   secure: false,
-  timeout: 15000,
-  proxyTimeout: 15000,
+  // Publicacion de menu puede enviar muchos items y tardar mas de 15s.
+  timeout: 60000,
+  proxyTimeout: 60000,
   configure: (proxy) => {
     proxy.on('error', (error, req) => {
       const method = req?.method || 'UNKNOWN';
