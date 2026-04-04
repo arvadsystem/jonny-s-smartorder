@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import { buildPublicMenuUrlByBranch } from '../utils/publicMenuBranchUrl';
 
@@ -221,6 +221,25 @@ const useMenuPublicacionAdmin = () => {
     }));
   }, []);
 
+  const onToggleAllVisible = useCallback((nextVisible) => {
+    setItems((current) => (Array.isArray(current) ? current : []).map((row, index) => {
+      const shouldBeVisible = Boolean(nextVisible) && Boolean(row?.estado_item);
+      const nextRow = { ...row, visible: shouldBeVisible };
+
+      if (nextRow.visible && !String(nextRow.orden_input || '').trim()) {
+        nextRow.orden_input = String(index + 1);
+      }
+
+      if (nextRow.visible && !String(nextRow.precio_publico_input || '').trim()) {
+        if (Number.isFinite(Number(nextRow.precio_base))) {
+          nextRow.precio_publico_input = String(nextRow.precio_base);
+        }
+      }
+
+      return nextRow;
+    }));
+  }, []);
+
   const onChangePrecioPublico = useCallback((itemKey, value) => {
     setItems((current) => (Array.isArray(current) ? current : []).map((row) => {
       if (String(row?.item_key || '') !== String(itemKey || '')) return row;
@@ -377,6 +396,7 @@ const useMenuPublicacionAdmin = () => {
       onSelectSucursal,
       onSelectCatalogMenu,
       onToggleVisible,
+      onToggleAllVisible,
       onChangePrecioPublico,
       onChangeOrden,
       savePublication,

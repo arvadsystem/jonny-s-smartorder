@@ -1,4 +1,4 @@
-import { apiFetch } from '../../../../services/api';
+﻿import { apiFetch } from '../../../../services/api';
 
 // Servicio HTTP del modulo menu admin (publicacion por sucursal).
 const BASE_ENDPOINT = '/api/admin/menu-publicacion';
@@ -78,7 +78,8 @@ const menuPublicacionAdminService = {
       id_sucursal: idSucursal,
       id_menu: idMenu
     });
-    return apiFetch(endpoint, 'PUT', { items });
+    // Guardar publicacion puede tardar mas cuando se actualizan muchos items.
+    return apiFetch(endpoint, 'PUT', { items }, { timeoutMs: 60000 });
   },
 
   // Preview administrativo coherente con el menu seleccionado (no depende del menu vigente publico).
