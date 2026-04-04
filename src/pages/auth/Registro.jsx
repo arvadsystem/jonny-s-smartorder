@@ -12,6 +12,7 @@ const Registro = () => {
 
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
+  const [nombreUsuario, setNombreUsuario] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -26,8 +27,8 @@ const Registro = () => {
     setError('');
     setSuccessMsg('');
 
-    if (!email.trim() || !password.trim()) {
-      setError('Correo y contraseña son obligatorios.');
+    if (!nombre.trim() || !apellido.trim() || !nombreUsuario.trim() || !email.trim() || !password.trim()) {
+      setError('Todos los campos son obligatorios (Nombre, Apellido, Usuario, Correo y Contraseña).');
       return;
     }
 
@@ -43,7 +44,13 @@ const Registro = () => {
 
     setLoading(true);
     try {
-      const response = await clientePublicoService.register({ email, clave: password, nombre, apellido });
+      const response = await clientePublicoService.register({ 
+        email, 
+        clave: password, 
+        nombre, 
+        apellido, 
+        nombreUsuario 
+      });
 
       if (response?.requiresVerification) {
         setSuccessMsg(`Te hemos enviado un correo de verificación a ${email}. Revisa tu bandeja de entrada para activar tu cuenta.`);
@@ -149,6 +156,21 @@ const Registro = () => {
                     onChange={(e) => setApellido(e.target.value)}
                   />
                 </div>
+              </div>
+            </div>
+
+            <div className="field">
+              <label>NOMBRE DE USUARIO</label>
+              <div className="input-wrap">
+                <FiUser className="field-icon" />
+                <input
+                  id="register-username"
+                  type="text"
+                  placeholder="Tu usuario"
+                  value={nombreUsuario}
+                  onChange={(e) => setNombreUsuario(e.target.value)}
+                  autoComplete="username"
+                />
               </div>
             </div>
 
