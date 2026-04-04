@@ -32,6 +32,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<Login />} />
+      <Route path="/login" element={<Login />} />
 
       <Route element={<ProtectedRoute />}>
         <Route path="/cambiar-password" element={<ForcePasswordChange />} />
