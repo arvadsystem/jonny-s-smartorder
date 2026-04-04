@@ -435,6 +435,10 @@ const SEGURIDAD_TAB_PERMISSIONS_MAP = Object.freeze({
   bitacoras: uniquePermissions([
     PERMISSIONS.SEGURIDAD_SESIONES_VER_GLOBAL,
     PERMISSIONS.SEGURIDAD_USUARIOS_AUDITORIA_VER
+  ]),
+  dashboard: uniquePermissions([
+    PERMISSIONS.SEGURIDAD_SESIONES_VER_GLOBAL,
+    PERMISSIONS.SEGURIDAD_USUARIOS_AUDITORIA_VER
   ])
 });
 
@@ -603,7 +607,14 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people', required: SEGURIDAD_TAB_PERMISSIONS_MAP.usuarios },
     { key: 'password', label: 'Politicas de contrasena', icon: 'bi bi-key', required: SEGURIDAD_TAB_PERMISSIONS_MAP.password },
     { key: 'logins', label: 'Logs de login', icon: 'bi bi-journal-text', required: SEGURIDAD_TAB_PERMISSIONS_MAP.logins },
-    { key: 'bitacoras', label: 'Bitacoras', icon: 'bi bi-clipboard-data', required: SEGURIDAD_TAB_PERMISSIONS_MAP.bitacoras }
+    { key: 'bitacoras', label: 'Bitacoras', icon: 'bi bi-clipboard-data', required: SEGURIDAD_TAB_PERMISSIONS_MAP.bitacoras },
+    {
+      key: 'dashboard',
+      label: 'Dashboard',
+      icon: 'bi bi-graph-up-arrow',
+      required: SEGURIDAD_TAB_PERMISSIONS_MAP.dashboard,
+      superAdminOnly: true
+    }
   ],
   ventas: [
     { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS_MAP.ventas },
@@ -651,6 +662,7 @@ export const getVisibleModuleItems = (permissionSet, options = {}) =>
 export const getAllowedTabs = (moduleKey, permissionSet, options = {}) =>
   (MODULE_TAB_CONFIG[moduleKey] || []).filter((tab) =>
     hasAnyPermission(permissionSet, tab.required || [], options)
+    && (!tab.superAdminOnly || Boolean(options?.isSuperAdmin))
   );
 
 export const getFirstAccessibleDashboardPath = (permissionSet, options = {}) => {
