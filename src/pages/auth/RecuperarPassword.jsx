@@ -111,7 +111,7 @@ const RecuperarPassword = () => {
           </motion.button>
 
           <p className="login-switch">
-            <button type="button" className="link-btn" onClick={() => navigate('/')}>
+            <button type="button" className="link-btn" onClick={() => navigate('/auth/login')}>
               <FiArrowLeft style={{ marginRight: '0.3rem', verticalAlign: 'middle' }} />
               Volver al login
             </button>

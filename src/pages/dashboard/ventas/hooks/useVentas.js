@@ -107,6 +107,13 @@ export const useVentas = () => {
         sucursalesService.getAll()
       ]);
 
+      console.log('DEBUG: loadCatalogs Raw Responses:', {
+        categorias: Array.isArray(categoriasResponse) ? categoriasResponse.length : 'not an array',
+        productos: Array.isArray(productosResponse) ? productosResponse.length : 'not an array',
+        combos: Array.isArray(combosResponse) ? combosResponse.length : 'not an array',
+        recetas: Array.isArray(recetasResponse) ? recetasResponse.length : 'not an array',
+      });
+
       const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
         .map(normalizeCategoriaRecord)
         .filter((categoria) => categoria.estado)

@@ -33,7 +33,12 @@ const ventasService = {
   updateDescuentoCatalogo: (id, payload) =>
     apiFetch(`/ventas/descuentos-catalogos/${id}`, 'PUT', payload),
   toggleDescuentoCatalogoEstado: (id, estado) =>
-    apiFetch(`/ventas/descuentos-catalogos/${id}/estado`, 'PATCH', { estado })
+    apiFetch(`/ventas/descuentos-catalogos/${id}/estado`, 'PATCH', { estado }),
+
+  // Pedidos menú público
+  getPedidosMenu: () => apiFetch('/ventas/pedidos-menu', 'GET'),
+  updatePedidoEstado: (id, id_estado_pedido) =>
+    apiFetch(`/ventas/pedidos-menu/${id}/estado`, 'PUT', { id_estado_pedido })
 };
 
 export default ventasService;

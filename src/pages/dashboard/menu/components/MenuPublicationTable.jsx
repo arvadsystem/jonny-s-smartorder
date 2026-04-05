@@ -1,3 +1,5 @@
+﻿import { useEffect, useMemo, useRef } from 'react';
+
 // Tabla editable de visibilidad, precio publico y orden por item.
 const formatMoney = (value) => {
   const parsed = Number(value);
@@ -21,14 +23,29 @@ const MenuPublicationTable = ({
   items = [],
   loading = false,
   onToggleVisible,
+  onToggleAllVisible,
   onChangePrecioPublico,
   onChangeOrden
 }) => {
+  const headerCheckboxRef = useRef(null);
+
+  const safeItems = Array.isArray(items) ? items : [];
+  const activableItems = useMemo(() => safeItems.filter((row) => Boolean(row?.estado_item)), [safeItems]);
+  const totalActivable = activableItems.length;
+  const visibleActivable = activableItems.filter((row) => Boolean(row?.visible)).length;
+  const allChecked = totalActivable > 0 && visibleActivable === totalActivable;
+  const someChecked = visibleActivable > 0 && visibleActivable < totalActivable;
+
+  useEffect(() => {
+    if (!headerCheckboxRef.current) return;
+    headerCheckboxRef.current.indeterminate = someChecked;
+  }, [someChecked]);
+
   if (loading) {
     return <div className="text-center py-4">Cargando catalogo de publicacion...</div>;
   }
 
-  if (!Array.isArray(items) || items.length === 0) {
+  if (safeItems.length === 0) {
     return (
       <div className="alert alert-warning mb-0">
         No hay items para publicar en esta sucursal.
@@ -44,13 +61,27 @@ const MenuPublicationTable = ({
             <th>Tipo</th>
             <th>Item</th>
             <th>Estado</th>
-            <th className="text-center">Visible</th>
+            <th className="text-center">
+              <div className="d-inline-flex align-items-center gap-2">
+                <span>Visible</span>
+                <input
+                  ref={headerCheckboxRef}
+                  type="checkbox"
+                  className="form-check-input"
+                  checked={allChecked}
+                  disabled={totalActivable === 0}
+                  title="Seleccionar todos"
+                  aria-label="Seleccionar todos los items visibles"
+                  onChange={(event) => onToggleAllVisible?.(event.target.checked)}
+                />
+              </div>
+            </th>
             <th>Precio publico</th>
             <th>Orden</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((row) => {
+          {safeItems.map((row) => {
             const isActive = Boolean(row?.estado_item);
             const basePrice = Number(row?.precio_base);
             return (

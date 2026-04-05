@@ -198,7 +198,7 @@ const normalizeCatalogItem = (raw) => ({
 export const publicMenuBootstrapService = {
   // Lista sucursales publicas.
   async getBranches() {
-    const response = await apiFetch('/public-menu/sucursales', 'GET', null, { noCache: true });
+    const response = await apiFetch('/api/public-menu/sucursales', 'GET', null, { noCache: true });
     const rows = Array.isArray(response?.data) ? response.data : [];
     return rows
       .map(normalizeBranchWithUi)
@@ -208,7 +208,7 @@ export const publicMenuBootstrapService = {
   // Obtiene menu vigente de la sucursal seleccionada.
   async getBranchActiveMenu(idSucursal) {
     const response = await apiFetch(
-      `/public-menu/sucursales/${idSucursal}/menu-vigente`,
+      `/api/public-menu/sucursales/${idSucursal}/menu-vigente`,
       'GET',
       null,
       { noCache: true }
@@ -226,7 +226,7 @@ export const publicMenuBootstrapService = {
     const inFlight = catalogCache.get(cacheKey)?.inFlight;
     if (inFlight) return inFlight;
 
-    const endpoint = withQueryParams('/public-menu/catalogo', {
+    const endpoint = withQueryParams('/api/public-menu/catalogo', {
       id_sucursal: idSucursal,
       tipo_pedido: orderType
     });
@@ -277,7 +277,7 @@ export const publicMenuBootstrapService = {
 
   // Obtiene detalle real de un item puntual para HU-133.
   async getCatalogItemDetail({ idSucursal, idDetalleMenu }) {
-    const endpoint = withQueryParams(`/public-menu/items/${idDetalleMenu}`, {
+    const endpoint = withQueryParams(`/api/public-menu/items/${idDetalleMenu}`, {
       id_sucursal: idSucursal
     });
 
@@ -292,7 +292,7 @@ export const publicMenuBootstrapService = {
 
   // Registra pedido publico para que aparezca en Ventas > Pedidos.
   async createOrder(payload) {
-    const response = await apiFetch('/public-menu/pedidos', 'POST', payload);
+    const response = await apiFetch('/api/public-menu/pedidos', 'POST', payload);
     return response?.data || null;
   }
 };

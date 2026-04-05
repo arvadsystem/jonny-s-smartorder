@@ -14,7 +14,7 @@ const ClienteRoute = () => {
   if (bootstrapState === 'checking') return null;
 
   // No autenticado → ir al login
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) return <Navigate to="/auth/login" replace />;
 
   const isCliente = user.tipo_usuario === 'CLIENTE' || user.roles?.includes('Cliente');
 

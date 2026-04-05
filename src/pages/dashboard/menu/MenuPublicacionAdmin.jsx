@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import MenuPreviewPanel from './components/MenuPreviewPanel';
 import MenuProgramacionPanel from './components/MenuProgramacionPanel';
 import MenuPublicationTable from './components/MenuPublicationTable';
@@ -32,6 +32,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       onSelectSucursal,
       onSelectCatalogMenu,
       onToggleVisible,
+      onToggleAllVisible,
       onChangePrecioPublico,
       onChangeOrden,
       savePublication,
@@ -378,6 +379,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
               items={items}
               loading={loadingCatalogo}
               onToggleVisible={onToggleVisible}
+              onToggleAllVisible={onToggleAllVisible}
               onChangePrecioPublico={onChangePrecioPublico}
               onChangeOrden={onChangeOrden}
             />

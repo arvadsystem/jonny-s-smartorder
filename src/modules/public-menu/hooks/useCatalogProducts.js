@@ -9,6 +9,23 @@ const normalizeText = (value) =>
     .toLowerCase()
     .trim();
 
+// Unifica etiquetas largas/equivalentes para el carrusel de categorias.
+const toCategoryBucket = (rawCategoryName) => {
+  const normalized = normalizeText(rawCategoryName).replace(/\s*\/\s*/g, '/');
+
+  if (
+    normalized === 'refrescos/agua' ||
+    normalized === 'gaseosas y refrescos' ||
+    normalized === 'gaseosas/refrescos' ||
+    normalized === 'aguas, isotonicos y energeticas' ||
+    normalized === 'aguas isotonicos y energeticas'
+  ) {
+    return 'Refrescos / Agua';
+  }
+
+  return String(rawCategoryName || '').trim() || 'Sin categoria';
+};
+
 // Hook real de catalogo publico conectado al backend.
 export const useCatalogProducts = ({ branchId, orderType }) => {
   const [products, setProducts] = useState([]);
@@ -54,7 +71,9 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
 
   // Categorias dinamicas desde el payload real.
   const categories = useMemo(() => {
-    const unique = new Set(products.map((product) => product.categoria.nombre));
+    const unique = new Set(
+      products.map((product) => toCategoryBucket(product?.categoria?.nombre))
+    );
     return ['all', ...Array.from(unique)];
   }, [products]);
 
@@ -63,7 +82,8 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
     const normalizedSearch = normalizeText(searchTerm);
 
     return products.filter((product) => {
-      const inCategory = selectedCategory === 'all' || product.categoria.nombre === selectedCategory;
+      const productCategory = toCategoryBucket(product?.categoria?.nombre);
+      const inCategory = selectedCategory === 'all' || productCategory === selectedCategory;
       if (!inCategory) return false;
 
       if (!normalizedSearch) return true;

@@ -14,16 +14,16 @@ const SucursalCard = ({ branch, selected, onSelect }) => (
     onClick={() => onSelect?.(branch)}
     aria-pressed={selected}
   >
-    {branch.imageUrl ? (
-      <div className="pm-branch-card__media">
+    <div className={`pm-branch-card__media ${branch.imageUrl ? '' : 'is-empty'}`}>
+      {branch.imageUrl ? (
         <img src={branch.imageUrl} alt={branch.displayName || branch.name} className="pm-branch-card__image" />
-        <div className="pm-branch-card__media-overlay" />
-        <div className="pm-branch-card__media-content">
-          <span className="pm-branch-card__code">{getBranchCode(branch)}</span>
-          <small className="pm-branch-card__hint">Toca para seleccionar</small>
-        </div>
+      ) : null}
+      <div className="pm-branch-card__media-overlay" />
+      <div className="pm-branch-card__media-content">
+        <span className="pm-branch-card__code">{getBranchCode(branch)}</span>
+        <small className="pm-branch-card__hint">Toca para seleccionar</small>
       </div>
-    ) : null}
+    </div>
 
     <div className="pm-option-card__top">
       <h3 className="pm-option-card__title">{branch.displayName || branch.name}</h3>
@@ -41,6 +41,11 @@ const SucursalCard = ({ branch, selected, onSelect }) => (
     <small className="pm-option-card__meta">
       <i className="bi bi-bicycle" aria-hidden="true" /> Tiempo estimado: {branch.etaMinutes}
     </small>
+
+    <div className="pm-branch-card__cta">
+      <span>Ver menu</span>
+      <i className="bi bi-arrow-right-short" aria-hidden="true" />
+    </div>
   </button>
 );
 
