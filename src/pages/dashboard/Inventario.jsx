@@ -10,12 +10,12 @@ import CategoriasTab from './inventario/CategoriasTab.jsx';
 import InsumosTab from './inventario/InsumosTab.jsx';
 import ProductosTab from './inventario/ProductosTab.jsx';
 import AlmacenesTab from './inventario/AlmacenesTab.jsx';
-import AlertasTab from './inventario/AlertasTab.jsx';
 import OrdenesCompraTab from './inventario/OrdenesCompraTab.jsx';
+import MobiliarioTab from './inventario/MobiliarioTab.jsx';
 
 // AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
 // AM: agrega tab de workflow de ordenes de compra en inventario.
-const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'alertas', 'ordenes_compra'];
+const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'ordenes_compra', 'mobiliario'];
 
 const Inventario = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -221,8 +221,8 @@ const Inventario = () => {
       {activeTab === 'insumos' && <InsumosTab categorias={categorias} categoriasInsumos={categoriasInsumos} openToast={openToast} />}
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
-      {activeTab === 'alertas' && <AlertasTab openToast={openToast} />}
       {activeTab === 'ordenes_compra' && <OrdenesCompraTab openToast={openToast} />}
+      {activeTab === 'mobiliario' && <MobiliarioTab openToast={openToast} />}
 
       {toast.show && createPortal(
         <div className="inv-toast-wrap" role="status" aria-live="polite">

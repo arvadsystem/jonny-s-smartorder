@@ -215,6 +215,12 @@ const stockBadgeClass = (stockState) => {
   return 'is-ok';
 };
 
+const stockStateLabel = (stockState) => {
+  if (stockState === 'SIN STOCK') return 'Sin stock';
+  if (stockState === 'STOCK BAJO') return 'Stock bajo';
+  return 'Con stock';
+};
+
 const resolveItemIcon = (itemTipo) => (itemTipo === 'producto' ? 'bi bi-basket2-fill' : 'bi bi-box-seam-fill');
 
 const formatDate = (rawValue) => {
@@ -246,6 +252,56 @@ const resolveSucursalLabel = (row) => {
   if (nombre) return nombre;
   const idSucursal = parsePositiveInt(row?.id_sucursal);
   return idSucursal ? `Sucursal #${idSucursal}` : '-';
+};
+
+// AM: etiquetas de historial de evidencias para lectura clara en detalle de OC abastecida.
+const formatEvidenceTypeLabel = (tipo) => {
+  const normalized = String(tipo || '')
+    .trim()
+    .toUpperCase();
+  if (normalized === 'FACTURA_RECEPCION') return 'Factura recepcion';
+  if (normalized === 'DEPOSITO_TRANSFERENCIA') return 'Deposito / transferencia';
+  return 'Evidencia';
+};
+
+const formatEvidenceOriginLabel = (origen) => {
+  const normalized = String(origen || '')
+    .trim()
+    .toUpperCase();
+  if (normalized === 'RECEPCION_SUCURSAL') return 'Recepcion sucursal';
+  if (normalized === 'CONVERSION_ADMIN') return 'Conversion administrativa';
+  return normalizeText(origen, 80) || 'Origen no disponible';
+};
+
+// AM: mensaje de negocio uniforme para incoherencia item-vs-almacen destino devuelta por backend (409).
+const getWarehouseMismatchMessage = (error) => {
+  const backendCode = String(error?.data?.code || '')
+    .trim()
+    .toUpperCase();
+  const status = Number(error?.status || 0);
+  if (status !== 409 || backendCode !== 'WAREHOUSE_ITEM_MISMATCH') return null;
+
+  const mismatchData = error?.data?.data || {};
+  const itemTipo = String(mismatchData?.item_tipo || '')
+    .trim()
+    .toLowerCase();
+  const itemLabel = itemTipo === 'producto' ? 'producto' : itemTipo === 'insumo' ? 'insumo' : 'item';
+  const idItem = parsePositiveInt(mismatchData?.id_item);
+  const idAlmacenDestino = parsePositiveInt(mismatchData?.id_almacen_destino);
+  const idAlmacenActual = parsePositiveInt(mismatchData?.id_almacen_actual);
+  const idDetalle = parsePositiveInt(mismatchData?.id_detalle);
+  const detalleLabel = idDetalle ? ` (detalle ${idDetalle})` : '';
+
+  if (idItem && idAlmacenDestino && idAlmacenActual) {
+    return `No se puede continuar: el ${itemLabel} ${idItem} pertenece al almacen ${idAlmacenActual} y no al destino ${idAlmacenDestino}${detalleLabel}.`;
+  }
+  if (idAlmacenDestino && idAlmacenActual) {
+    return `No se puede continuar: el item pertenece al almacen ${idAlmacenActual} y no al destino ${idAlmacenDestino}${detalleLabel}.`;
+  }
+  return (
+    error?.message ||
+    `No se puede continuar por incoherencia entre almacen destino y almacen real del item${detalleLabel}.`
+  );
 };
 
 // AM: recepcion se considera registrada aunque la factura sea opcional.
@@ -283,6 +339,7 @@ const toCatalog = (productos, insumos) => {
         id_almacen: idAlmacenes[0] || null,
         id_almacenes: idAlmacenes,
         nombre: row.nombre_producto || `Producto #${row.id_producto}`,
+        categoria: getCategoriaLabel(row, 'Sin categoria'),
         descripcion: row.descripcion_producto || '',
         cantidad: Number.parseInt(String(row.cantidad ?? '0'), 10) || 0,
         stock_minimo: Number.parseInt(String(row.stock_minimo ?? '0'), 10) || 0
@@ -300,6 +357,7 @@ const toCatalog = (productos, insumos) => {
         id_almacen: idAlmacenes[0] || null,
         id_almacenes: idAlmacenes,
         nombre: row.nombre_insumo || `Insumo #${row.id_insumo}`,
+        categoria: getCategoriaLabel(row, 'Sin categoria'),
         descripcion: row.descripcion || '',
         cantidad: Number.parseInt(String(row.cantidad ?? '0'), 10) || 0,
         stock_minimo: Number.parseInt(String(row.stock_minimo ?? '0'), 10) || 0
@@ -454,6 +512,17 @@ const OrdenesCompraTab = ({ openToast }) => {
   // AM: separa actor operativo (cocina/cajero) de actor administrativo para no mezclar etapas.
   const isAdminFlowActor = canConvertir || canAbastecer || canGestionar || canVerTodas;
   const isSucursalOperativeActor = canRecepcionar && !isAdminFlowActor;
+  // AM: visibilidad de historial/evidencias abastecidas limitada a super admin.
+  const isSuperAdmin = Array.isArray(user?.roles)
+    ? user.roles
+        .map((role) =>
+          String(role || '')
+            .trim()
+            .replace(/[\s-]+/g, '_')
+            .toUpperCase()
+        )
+        .includes('SUPER_ADMIN')
+    : false;
   const toast = useCallback(
     (title, message, variant = 'success') => {
       if (typeof openToast === 'function') openToast(title, message, variant);
@@ -483,6 +552,10 @@ const OrdenesCompraTab = ({ openToast }) => {
 // AM: pagina visual del carrusel del flujo de OC, sin tocar la paginacion backend existente.
   const [flowCarouselPage, setFlowCarouselPage] = useState(0);
   const [flowFiltersOpen, setFlowFiltersOpen] = useState(false);
+  // AM: controla desplegables del layout OC sin alterar la logica interna de cada bloque.
+  const [flowSectionOpen, setFlowSectionOpen] = useState(true);
+  const [createSectionOpen, setCreateSectionOpen] = useState(false);
+  const [draftSectionOpen, setDraftSectionOpen] = useState(false);
   const [draft, setDraft] = useState([]);
   const [draftItemRequests, setDraftItemRequests] = useState([]);
   const [observacion, setObservacion] = useState('');
@@ -500,6 +573,8 @@ const OrdenesCompraTab = ({ openToast }) => {
   const [rowBusy, setRowBusy] = useState({});
 
   const [detalleActual, setDetalleActual] = useState({ loading: false, error: '', data: null });
+  // AM: visor inline de evidencias dentro del modal de detalle para no abrir pestanas externas.
+  const [detailEvidencePreview, setDetailEvidencePreview] = useState({ url: '', title: '' });
   const [convertPanel, setConvertPanel] = useState(emptyConvertPanel);
   const [reviewModal, setReviewModal] = useState(emptyReviewModal);
   const [supplyModal, setSupplyModal] = useState(emptySupplyModal);
@@ -1678,6 +1753,7 @@ const flowDotItems = useMemo(() => {
   const verDetalle = async (orden) => {
     const idOrden = parsePositiveInt(orden?.id_orden_compra);
     if (!idOrden) return;
+    setDetailEvidencePreview({ url: '', title: '' });
     setDetalleActual({ loading: true, error: '', data: null });
     try {
       const response = await inventarioService.getOrdenCompraWorkflowById(idOrden);
@@ -1689,6 +1765,11 @@ const flowDotItems = useMemo(() => {
         data: null
       });
     }
+  };
+
+  const closeDetalleModal = () => {
+    setDetalleActual({ loading: false, error: '', data: null });
+    setDetailEvidencePreview({ url: '', title: '' });
   };
 
   const openConvert = async (orden) => {
@@ -2034,11 +2115,12 @@ const flowDotItems = useMemo(() => {
         await verDetalle({ id_orden_compra: idOrden });
       }
     } catch (error) {
+      const mismatchMessage = getWarehouseMismatchMessage(error);
       setConvertPanel((prev) => ({
         ...prev,
         loading: false,
         submit_action: '',
-        error: error?.message || 'No se pudo convertir orden.'
+        error: mismatchMessage || error?.message || 'No se pudo convertir orden.'
       }));
     } finally {
       setBusy(idOrden, false);
@@ -2085,10 +2167,11 @@ const flowDotItems = useMemo(() => {
       setSupplyModal(emptySupplyModal());
       await loadOrdenes();
     } catch (error) {
+      const mismatchMessage = getWarehouseMismatchMessage(error);
       setSupplyModal((prev) => ({
         ...prev,
         loading: false,
-        error: error?.message || 'No se pudo abastecer la orden.'
+        error: mismatchMessage || error?.message || 'No se pudo abastecer la orden.'
       }));
     } finally {
       setBusy(idOrden, false);
@@ -2241,31 +2324,58 @@ const flowDotItems = useMemo(() => {
 
   return (
     <div className="inv-oc-module d-flex flex-column gap-3">
-      <section className="inv-oc-hero">
-        <div className="inv-oc-hero__copy">
-          <p className="inv-oc-hero__eyebrow mb-1">Inventario inteligente</p>
-          <h3 className="inv-oc-hero__title mb-2">Ordenes de compra</h3>
-          <p className="inv-oc-hero__subtitle mb-0">
-            Solicita, revisa y abastece en un flujo claro para cocina, caja y administracion.
-          </p>
+      <section className="card shadow-sm mb-0 inv-prod-card inv-has-sticky-header inv-oc-summary-card">
+        <div className="card-header inv-prod-header">
+          <div className="inv-prod-title-wrap">
+            <div className="inv-prod-title-row">
+              <i className="bi bi-bag-check inv-prod-title-icon" aria-hidden="true" />
+              <span className="inv-prod-title">Ordenes de compra</span>
+            </div>
+            <div className="inv-prod-subtitle">Solicita, revisa y abastece en un flujo claro para cocina, caja y administracion</div>
+          </div>
+          <div className="inv-prod-header-actions inv-oc-summary-header-actions">
+            <span className="badge rounded-pill text-bg-light border">Total en flujo: {pagination.total}</span>
+          </div>
         </div>
-        <div className="inv-oc-hero__stats">
-          <article className="inv-oc-stat-card is-pending">
-            <span>Pendientes</span>
-            <strong>{workflowStats.pendientes}</strong>
-          </article>
-          <article className="inv-oc-stat-card is-approved">
-            <span>Aprobadas</span>
-            <strong>{workflowStats.aprobadas}</strong>
-          </article>
-          <article className="inv-oc-stat-card is-buying">
-            <span>En compra</span>
-            <strong>{workflowStats.enCompra}</strong>
-          </article>
-          <article className="inv-oc-stat-card is-stocked">
-            <span>Abastecidas</span>
-            <strong>{workflowStats.abastecidas}</strong>
-          </article>
+        <div className="card-body inv-oc-summary-body">
+          <div className="inv-oc-stats-band">
+            <article className="inv-oc-stat-card inv-invstat-card is-pending">
+              <div className="inv-invstat-icon" aria-hidden="true">
+                <i className="bi bi-clock-history" />
+              </div>
+              <div className="inv-prod-kpi-content">
+                <span>Pendientes</span>
+                <strong>{workflowStats.pendientes}</strong>
+              </div>
+            </article>
+            <article className="inv-oc-stat-card inv-invstat-card is-approved">
+              <div className="inv-invstat-icon" aria-hidden="true">
+                <i className="bi bi-check-circle" />
+              </div>
+              <div className="inv-prod-kpi-content">
+                <span>Aprobadas</span>
+                <strong>{workflowStats.aprobadas}</strong>
+              </div>
+            </article>
+            <article className="inv-oc-stat-card inv-invstat-card is-buying">
+              <div className="inv-invstat-icon" aria-hidden="true">
+                <i className="bi bi-cart-check" />
+              </div>
+              <div className="inv-prod-kpi-content">
+                <span>En compra</span>
+                <strong>{workflowStats.enCompra}</strong>
+              </div>
+            </article>
+            <article className="inv-oc-stat-card inv-invstat-card is-stocked">
+              <div className="inv-invstat-icon" aria-hidden="true">
+                <i className="bi bi-box-seam" />
+              </div>
+              <div className="inv-prod-kpi-content">
+                <span>Abastecidas</span>
+                <strong>{workflowStats.abastecidas}</strong>
+              </div>
+            </article>
+          </div>
         </div>
       </section>
 
@@ -2279,12 +2389,8 @@ const flowDotItems = useMemo(() => {
                 <div className="inv-oc-panel-title-wrap">
                   <div className="inv-oc-panel-title-row">
                     <i className="bi bi-bag-plus inv-oc-panel-title-icon" aria-hidden="true" />
-                    <h4 className="mb-0 inv-oc-title-stacked">
-                      <span>Nueva solicitud</span>
-                      <span>de compra</span>
-                    </h4>
+                    <h4 className="mb-0">Nueva solicitud de compra</h4>
                   </div>
-                  <p className="mb-0 text-muted small">Selecciona productos o insumos y arma la solicitud.</p>
                 </div>
 
                 <div className="inv-oc-panel-header-actions">
@@ -2298,16 +2404,25 @@ const flowDotItems = useMemo(() => {
                     />
                   </label>
 
-                  <label htmlFor="oc-filtro-alerta" className="inv-oc-toggle inv-oc-toggle--compact mb-0">
-                    <input
-                      id="oc-filtro-alerta"
-                      className="form-check-input"
-                      type="checkbox"
-                      checked={soloAlertas}
-                      onChange={(e) => setSoloAlertas(e.target.checked)}
-                    />
-                    <span>Solo alertas</span>
-                  </label>
+                  <button
+                    type="button"
+                    className={`inv-oc-panel-toolbar-btn ${soloAlertas ? 'is-on' : ''}`}
+                    onClick={() => setSoloAlertas((prev) => !prev)}
+                    aria-pressed={soloAlertas}
+                  >
+                    <i className="bi bi-funnel" aria-hidden="true" />
+                    <span>Filtros</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="inv-oc-panel-collapse-btn"
+                    onClick={() => setCreateSectionOpen((prev) => !prev)}
+                    aria-expanded={createSectionOpen}
+                    aria-controls="inv-oc-create-body"
+                    title={createSectionOpen ? 'Contraer' : 'Desplegar'}
+                  >
+                    <i className={`bi ${createSectionOpen ? 'bi-chevron-up' : 'bi-chevron-down'}`} aria-hidden="true" />
+                  </button>
                 </div>
               </div>
 
@@ -2339,34 +2454,22 @@ const flowDotItems = useMemo(() => {
                         );
                       })}
                     </div>
+                    <label htmlFor="oc-ver-todos-sucursal" className="inv-oc-toggle inv-oc-toggle--compact mb-0">
+                      <input
+                        id="oc-ver-todos-sucursal"
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={!soloAlertas}
+                        onChange={(e) => setSoloAlertas(!e.target.checked)}
+                      />
+                      <span>Ver todos de la sucursal</span>
+                    </label>
                   </div>
                 )}
               </div>
             </div>
-            <div className="card-body d-flex flex-column">
-                {!isOperationalCreateRestricted && almacenesCatalogFiltradosPorSucursal.length > 0 && (
-                  /* AM: se muestran solo botones de almacenes debajo del buscador/toggle, sin bloque de titulo adicional. */
-                  <div className="inv-oc-warehouse-base mb-2">
-                    <div className="inv-oc-warehouse-chips">
-                      {almacenesCatalogFiltradosPorSucursal.map((almacen) => {
-                        const idAlmacen = Number(almacen.id_almacen);
-                        const selected = selectedBaseAlmacenes.includes(idAlmacen);
-                        return (
-                          <button
-                            key={`base-almacen-${idAlmacen}`}
-                            type="button"
-                            className={`inv-oc-warehouse-chip ${selected ? 'is-active' : ''}`}
-                            onClick={() => toggleDraftAlmacenBase(idAlmacen)}
-                            title={formatAlmacenDisplay(almacen)}
-                          >
-                            <i className="bi bi-building" aria-hidden="true" />
-                            <span>{almacen.nombre_sucursal || almacen.nombre}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+            {createSectionOpen && (
+            <div id="inv-oc-create-body" className="card-body d-flex flex-column">
                 {almacenesCatalog.length === 0 && (
                   <div className="alert alert-warning py-2 mb-2">
                     No hay almacenes activos para enviar la solicitud. Configura al menos un almacen.
@@ -2387,30 +2490,27 @@ const flowDotItems = useMemo(() => {
                               <i className={resolveItemIcon(item.item_tipo)} aria-hidden="true" />
                               <h5>{item.nombre}</h5>
                             </div>
-                            <span className={`inv-oc-stock-badge ${stockBadgeClass(item.stock_state)}`}>
-                              {item.stock_state}
-                            </span>
                           </div>
-                          <div className="inv-oc-catalog-card__meta">
-                            <span className="text-capitalize">{item.item_tipo}</span>
-                            <span>
-                              Almacenes:{' '}
-                              {(() => {
-                                const ids = normalizeAlmacenesSelection(item?.id_almacenes, 50);
-                                if (ids.length === 0) return '-';
-                                const labels = ids
-                                  .map((idAlmacen) => {
-                                    const almacen = almacenesMap.get(idAlmacen);
-                                    return almacen?.nombre_sucursal || almacen?.nombre || null;
-                                  })
-                                  .filter(Boolean);
-                                if (labels.length === 0) return '-';
-                                const joined = labels.slice(0, 2).join(', ');
-                                return labels.length > 2 ? `${joined}...` : joined;
-                              })()}
-                            </span>
-                            <span>Stock: {item.cantidad}</span>
-                            <span>Min: {item.stock_minimo}</span>
+                          {/* AM: ficha simplificada para lectura rapida en alta de solicitud (sin mostrar almacen). */}
+                          <div className="inv-oc-catalog-card__fields">
+                            <div className="inv-oc-catalog-card__field">
+                              <span>Estado</span>
+                              <span className={`inv-oc-stock-badge ${stockBadgeClass(item.stock_state)} inv-oc-stock-badge--card`}>
+                                {stockStateLabel(item.stock_state)}
+                              </span>
+                            </div>
+                            <div className="inv-oc-catalog-card__field">
+                              <span>Tipo</span>
+                              <strong>{String(item.item_tipo || '').toLowerCase() === 'producto' ? 'Producto' : 'Insumo'}</strong>
+                            </div>
+                            <div className="inv-oc-catalog-card__field">
+                              <span>Stock</span>
+                              <strong>{item.cantidad}</strong>
+                            </div>
+                            <div className="inv-oc-catalog-card__field">
+                              <span>Stock minimo</span>
+                              <strong>{item.stock_minimo}</strong>
+                            </div>
                           </div>
                           <button className="inv-oc-catalog-card__action" onClick={() => addToDraft(item)}>
                             <i className="bi bi-plus-circle" aria-hidden="true" />
@@ -2474,6 +2574,7 @@ const flowDotItems = useMemo(() => {
                 )}
                 {/* AM: totales movidos al header compacto para mantener el cuerpo mas limpio. */}
               </div>
+              )}
             </section>
           )}
 
@@ -2485,17 +2586,12 @@ const flowDotItems = useMemo(() => {
                   <div className="inv-oc-panel-title-wrap">
                     <div className="inv-oc-panel-title-row">
                       <i className="bi bi-kanban inv-oc-panel-title-icon" aria-hidden="true" />
-                      <div className="inv-oc-panel-title-copy">
-                        <h4 className="mb-0">Flujo de ordenes de compra</h4>
-                        <p className="mb-0 text-muted small">
-                          Visualiza solicitudes, busca rapido y abre filtros cuando los necesites.
-                        </p>
-                      </div>
+                      <h4 className="mb-0">Flujo de ordenes de compra</h4>
                     </div>
                   </div>
 
                   <div className="inv-oc-panel-header-actions">
-                    {/* AM: buscador visual basado en el header de Productos, sin cambiar la logica de filtrado. */}
+                    {/* AM: buscador alineado en una sola fila despues del titulo para mantener lectura compacta. */}
                     <label className="inv-oc-panel-search" aria-label="Buscar ordenes de compra">
                       <i className="bi bi-search" aria-hidden="true" />
                       <input
@@ -2508,7 +2604,6 @@ const flowDotItems = useMemo(() => {
                         placeholder="Buscar por ID, usuario o texto..."
                       />
                     </label>
-
                     <button
                       type="button"
                       className={`inv-oc-panel-toolbar-btn ${flowFiltersOpen ? 'is-on' : ''}`}
@@ -2519,10 +2614,21 @@ const flowDotItems = useMemo(() => {
                       <i className="bi bi-funnel" aria-hidden="true" />
                       <span>Filtros</span>
                     </button>
+                    <button
+                      type="button"
+                      className="inv-oc-panel-collapse-btn"
+                      onClick={() => setFlowSectionOpen((prev) => !prev)}
+                      aria-expanded={flowSectionOpen}
+                      aria-controls="inv-oc-flow-body"
+                      title={flowSectionOpen ? 'Contraer' : 'Desplegar'}
+                    >
+                      <i className={`bi ${flowSectionOpen ? 'bi-chevron-up' : 'bi-chevron-down'}`} aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
               </div>
-              <div className="card-body d-flex flex-column gap-3">
+              {flowSectionOpen && (
+              <div id="inv-oc-flow-body" className="card-body d-flex flex-column gap-3">
                 {flowFiltersOpen && (
                   <div id="inv-oc-flow-filters" className="inv-oc-flow-filters-panel">
                     <div className="row g-2">
@@ -2706,13 +2812,8 @@ const flowDotItems = useMemo(() => {
                 </>
                 )}
 
-                <div className="inv-oc-flow-footnote">
-                  <div className="small text-muted">
-                    <i className="bi bi-collection me-1" aria-hidden="true" />
-                    Pagina {pagination.page} de {pagination.totalPages} - Total {pagination.total} orden(es)
-                  </div>
-                </div>
               </div>
+              )}
             </section>
           )}
         </div>
@@ -2751,10 +2852,21 @@ const flowDotItems = useMemo(() => {
                         <span>Solicitar item nuevo</span>
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="inv-oc-panel-collapse-btn"
+                      onClick={() => setDraftSectionOpen((prev) => !prev)}
+                      aria-expanded={draftSectionOpen}
+                      aria-controls="inv-oc-draft-body"
+                      title={draftSectionOpen ? 'Contraer' : 'Desplegar'}
+                    >
+                      <i className={`bi ${draftSectionOpen ? 'bi-chevron-up' : 'bi-chevron-down'}`} aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
               </div>
-              <div className="card-body d-flex flex-column gap-3">
+              {draftSectionOpen && (
+              <div id="inv-oc-draft-body" className="card-body d-flex flex-column gap-3">
                 <div className="inv-oc-draft-summary-band">
                   <article className="inv-oc-draft-summary-pill">
                     <i className="bi bi-card-checklist" aria-hidden="true" />
@@ -2956,6 +3068,7 @@ const flowDotItems = useMemo(() => {
                   </section>
                 </div>
               </div>
+              )}
             </section>
         </div>
       )}
@@ -2972,7 +3085,7 @@ const flowDotItems = useMemo(() => {
                   type="button"
                   className="btn-close"
                   aria-label="Close"
-                  onClick={() => setDetalleActual({ loading: false, error: '', data: null })}
+                  onClick={closeDetalleModal}
                 />
               </div>
               <div className="modal-body">
@@ -2987,28 +3100,15 @@ const flowDotItems = useMemo(() => {
                       const orden = detalleActual.data?.orden || {};
                       // AM: detalles reales de la OC para mostrar claramente que se esta solicitando.
                       const detalles = Array.isArray(detalleActual.data?.detalles) ? detalleActual.data.detalles : [];
+                      const evidenciasHistorial = Array.isArray(detalleActual.data?.evidencias_historial)
+                        ? detalleActual.data.evidencias_historial
+                        : [];
                       const solicitudesItem = Array.isArray(detalleActual.data?.solicitudes_item)
                         ? detalleActual.data.solicitudes_item
                         : [];
                       const estadoOrden = resolveEstadoVisual(orden);
                       const estadoOrdenReal = resolveEstado(orden);
-                      // AM: resumen rapido de lineas y cantidades solicitadas para mejorar UX del detalle.
-                      const cantidadTotalSolicitada = detalles.reduce(
-                        (acc, row) => acc + Number(row?.cantidad_orden || 0),
-                        0,
-                      );
-                      // AM: resumen de estados movido al detalle para evitar ruido en el card.
-                      const solicitudesResumen = solicitudesItem.reduce(
-                        (acc, row) => {
-                          const estado = parseItemRequestState(row?.estado);
-                          acc.total += 1;
-                          if (estado === ITEM_REQUEST_STATE_PENDIENTE) acc.pendientes += 1;
-                          else if (estado === ITEM_REQUEST_STATE_EN_REVISION) acc.enRevision += 1;
-                          else if (estado === ITEM_REQUEST_STATE_ATENDIDA) acc.atendidas += 1;
-                          return acc;
-                        },
-                        { total: 0, pendientes: 0, enRevision: 0, atendidas: 0 },
-                      );
+                      const canViewEvidenciasAbastecida = isSuperAdmin && estadoOrdenReal === 'ABASTECIDA';
                       return (
                         <div className="inv-oc-detail-modal">
                           <section className="inv-oc-detail-hero-card">
@@ -3048,125 +3148,156 @@ const flowDotItems = useMemo(() => {
                           )}
 
                           <section className="inv-oc-detail-section">
-                            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                              <div>
-                                <h6 className="mb-0 inv-oc-detail-section__title">
-                                  <i className="bi bi-box-seam" aria-hidden="true" />
-                                  Lo solicitado en esta orden
-                                </h6>
-                                <small className="text-muted">Aqui se muestran claramente los productos e insumos solicitados.</small>
-                              </div>
-                              <div className="d-flex flex-wrap gap-1">
-                                <span className="badge text-bg-secondary">Lineas: {detalles.length}</span>
-                                <span className="badge text-bg-light border">Cantidad total: {cantidadTotalSolicitada}</span>
-                              </div>
-                            </div>
-
                             {detalles.length === 0 ? (
                               <div className="inv-oc-empty-state">
                                 <i className="bi bi-box" aria-hidden="true" />
                                 <span>Esta orden no tiene lineas de productos o insumos registradas.</span>
                               </div>
                             ) : (
-                              <>
-                                <div className="inv-oc-detail-meta-grid">
-                                  <article className="inv-oc-detail-meta-card">
-                                    <h6>Resumen de la orden</h6>
-                                    <p>
-                                      <span>Solicitante</span>
-                                      <strong>{orden.solicitante_nombre_usuario || '-'}</strong>
-                                    </p>
-                                    <p>
-                                      <span>Sucursal</span>
-                                      <strong>{resolveSucursalLabel(orden)}</strong>
-                                    </p>
-                                  </article>
+                              <div className="inv-oc-detail-line-grid">
+                                {detalles.map((row) => {
+                                  const itemTipo = String(row?.item_tipo || '').toLowerCase() === 'producto' ? 'Producto' : 'Insumo';
+                                  const itemIcon = itemTipo === 'Producto' ? 'bi-bag-check' : 'bi-box2-heart';
+                                  const itemNombre = row?.item_nombre || `Detalle #${row?.id_detalle_orden || '-'}`;
 
-                                  <article className="inv-oc-detail-meta-card">
-                                    <h6>Estado y recepcion</h6>
-                                    <p>
-                                      <span>Estado</span>
-                                      <strong>{estadoOrden}</strong>
-                                    </p>
-                                    <p>
-                                      <span>Recepcion</span>
-                                      <strong>{hasReceptionRegistered(orden) ? 'Registrada' : 'Pendiente'}</strong>
-                                    </p>
-                                  </article>
+                                  return (
+                                    <article
+                                      key={`detalle-orden-${row.id_detalle_orden}`}
+                                      className="inv-oc-detail-line-card"
+                                    >
+                                      <div className="inv-oc-detail-line-card__head">
+                                        <div className="inv-oc-detail-line-card__title">
+                                          <span className="inv-oc-detail-line-card__type">
+                                            <i className={`bi ${itemIcon}`} aria-hidden="true" />
+                                            {itemTipo}
+                                          </span>
+                                          <strong>{itemNombre}</strong>
+                                        </div>
+
+                                        <span className="inv-oc-detail-line-card__qty">
+                                          x{row?.cantidad_orden || 0}
+                                        </span>
+                                      </div>
+
+                                      <div className="inv-oc-detail-line-card__meta">
+                                        <span>
+                                          <i className="bi bi-shop-window" aria-hidden="true" />
+                                          {row?.almacen_destino_nombre || 'Sin almacen destino'}
+                                        </span>
+
+                                        <span>
+                                          <i className="bi bi-bar-chart-line" aria-hidden="true" />
+                                          Stock actual: {row?.stock_actual ?? 0}
+                                        </span>
+
+                                        {hasValue(row?.proveedor_sugerido_nombre) && (
+                                          <span>
+                                            <i className="bi bi-truck" aria-hidden="true" />
+                                            {row.proveedor_sugerido_nombre}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </section>
+
+                          {/* AM: bloque historico de evidencias solo para super admin cuando la OC ya esta abastecida. */}
+                          {canViewEvidenciasAbastecida && (
+                            <section className="inv-oc-detail-section">
+                              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                                <h6 className="mb-0 inv-oc-detail-section__title">
+                                  <i className="bi bi-images" aria-hidden="true" />
+                                  Evidencias de orden abastecida
+                                </h6>
+                                <span className="badge text-bg-success">Super Admin</span>
+                              </div>
+
+                              {detailEvidencePreview.url ? (
+                                <div className="border rounded-3 p-2 bg-white">
+                                  <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                    <strong>{detailEvidencePreview.title || 'Vista previa de evidencia'}</strong>
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-secondary"
+                                      onClick={() => setDetailEvidencePreview({ url: '', title: '' })}
+                                    >
+                                      Cerrar imagen
+                                    </button>
+                                  </div>
+                                  <img
+                                    src={detailEvidencePreview.url}
+                                    alt={detailEvidencePreview.title || 'Evidencia de orden de compra'}
+                                    className="img-fluid rounded border"
+                                  />
                                 </div>
+                              ) : null}
 
-                                <div className="inv-oc-detail-line-grid">
-                                  {detalles.map((row) => {
-                                    const itemTipo = String(row?.item_tipo || '').toLowerCase() === 'producto' ? 'Producto' : 'Insumo';
-                                    const itemIcon = itemTipo === 'Producto' ? 'bi-bag-check' : 'bi-box2-heart';
-                                    const itemNombre = row?.item_nombre || `Detalle #${row?.id_detalle_orden || '-'}`;
-
+                              {evidenciasHistorial.length === 0 ? (
+                                <div className="inv-oc-empty-state">
+                                  <i className="bi bi-clock-history" aria-hidden="true" />
+                                  <span>Sin historial de evidencias para esta orden.</span>
+                                </div>
+                              ) : (
+                                <div className="d-flex flex-column gap-2">
+                                  {evidenciasHistorial.map((row) => {
+                                    const evidenciaUrl = resolveInventarioImageUrl(row?.evidencia_url_publica);
                                     return (
                                       <article
-                                        key={`detalle-orden-${row.id_detalle_orden}`}
-                                        className="inv-oc-detail-line-card"
+                                        key={`evidencia-historial-${row?.id_historial_evidencia || `${row?.tipo_evidencia}-${row?.id_archivo}-${row?.fecha_registro}`}`}
+                                        className="border rounded-3 p-2 d-flex flex-column gap-1"
                                       >
-                                        <div className="inv-oc-detail-line-card__head">
-                                          <div className="inv-oc-detail-line-card__title">
-                                            <span className="inv-oc-detail-line-card__type">
-                                              <i className={`bi ${itemIcon}`} aria-hidden="true" />
-                                              {itemTipo}
-                                            </span>
-                                            <strong>{itemNombre}</strong>
-                                          </div>
-
-                                          <span className="inv-oc-detail-line-card__qty">
-                                            x{row?.cantidad_orden || 0}
+                                        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                          <strong>{formatEvidenceTypeLabel(row?.tipo_evidencia)}</strong>
+                                          <span className="badge text-bg-light border">
+                                            {formatEvidenceOriginLabel(row?.origen_etapa)}
                                           </span>
                                         </div>
-
-                                        <div className="inv-oc-detail-line-card__meta">
-                                          <span>
-                                            <i className="bi bi-shop-window" aria-hidden="true" />
-                                            {row?.almacen_destino_nombre || 'Sin almacen destino'}
-                                          </span>
-
-                                          <span>
-                                            <i className="bi bi-bar-chart-line" aria-hidden="true" />
-                                            Stock actual: {row?.stock_actual ?? 0}
-                                          </span>
-
-                                          {hasValue(row?.proveedor_sugerido_nombre) && (
-                                            <span>
-                                              <i className="bi bi-truck" aria-hidden="true" />
-                                              {row.proveedor_sugerido_nombre}
-                                            </span>
-                                          )}
-                                        </div>
+                                        <small className="text-muted">
+                                          {formatDate(row?.fecha_registro)} {formatTime(row?.fecha_registro)} -{' '}
+                                          {normalizeText(row?.usuario_registro_nombre, 120) || 'Usuario no disponible'}
+                                        </small>
+                                        {parsePositiveInt(row?.id_compra) && (
+                                          <small className="text-muted">Compra relacionada: #{row.id_compra}</small>
+                                        )}
+                                        {evidenciaUrl ? (
+                                          <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-primary align-self-start"
+                                            title="Ver Factura"
+                                            onClick={() =>
+                                              setDetailEvidencePreview({
+                                                url: evidenciaUrl,
+                                                title: formatEvidenceTypeLabel(row?.tipo_evidencia)
+                                              })
+                                            }
+                                          >
+                                            Ver Factura
+                                          </button>
+                                        ) : (
+                                          <small className="text-muted">Archivo no disponible.</small>
+                                        )}
                                       </article>
                                     );
                                   })}
                                 </div>
-                              </>
-                            )}
-                          </section>
-
-                          <section className="inv-oc-detail-section">
-                            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                              <h6 className="mb-0 inv-oc-detail-section__title">
-                                <i className="bi bi-lightbulb" aria-hidden="true" />
-                                Solicitudes de item no registrado
-                              </h6>
-                              {solicitudesResumen.total > 0 && (
-                                <div className="d-flex flex-wrap gap-1">
-                                  <span className="badge text-bg-secondary">Solicitudes: {solicitudesResumen.total}</span>
-                                  <span className="badge text-bg-warning">Pendientes: {solicitudesResumen.pendientes}</span>
-                                  <span className="badge text-bg-info">En revision: {solicitudesResumen.enRevision}</span>
-                                  <span className="badge text-bg-success">Atendidas: {solicitudesResumen.atendidas}</span>
-                                </div>
                               )}
-                            </div>
-                            {solicitudesItem.length === 0 ? (
-                              <div className="inv-oc-empty-state">
-                                <i className="bi bi-lightbulb" aria-hidden="true" />
-                                <span>Sin solicitudes de item no registrado.</span>
+                            </section>
+                          )}
+
+                          {solicitudesItem.length > 0 && (
+                            <section className="inv-oc-detail-section">
+                              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                                <h6 className="mb-0 inv-oc-detail-section__title">
+                                  <i className="bi bi-lightbulb" aria-hidden="true" />
+                                  Solicitudes de item no registrado
+                                </h6>
+                                <div className="d-flex flex-wrap gap-1">
+                                  <span className="badge text-bg-secondary">Solicitudes: {solicitudesItem.length}</span>
+                                </div>
                               </div>
-                            ) : (
                               <div className="d-flex flex-column gap-2">
                                 {solicitudesItem.map((row) => {
                                   const estadoSolicitud = parseItemRequestState(row?.estado);
@@ -3248,8 +3379,8 @@ const flowDotItems = useMemo(() => {
                                   );
                                 })}
                               </div>
-                            )}
-                          </section>
+                            </section>
+                          )}
                         </div>
                       );
                     })()}
@@ -3259,7 +3390,7 @@ const flowDotItems = useMemo(() => {
               <div className="modal-footer">
                 <button
                   className="btn btn-outline-secondary"
-                  onClick={() => setDetalleActual({ loading: false, error: '', data: null })}
+                  onClick={closeDetalleModal}
                 >
                   Cerrar
                 </button>
