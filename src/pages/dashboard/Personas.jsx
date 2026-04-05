@@ -120,11 +120,11 @@ export default function Personas() {
   }, []);
 
   useEffect(() => {
-    if (sucursalesLoading || selectedSucursalId) return;
+    if (sucursalesLoading || selectedSucursalId || activeTab === "planillas") return;
     const firstSucursalId = parsePositiveInt(sucursales[0]?.id_sucursal);
     if (!firstSucursalId) return;
     applySucursalContext(firstSucursalId);
-  }, [applySucursalContext, selectedSucursalId, sucursales, sucursalesLoading]);
+  }, [activeTab, applySucursalContext, selectedSucursalId, sucursales, sucursalesLoading]);
 
   // =============================
   // TOAST GLOBAL

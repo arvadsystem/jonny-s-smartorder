@@ -1,4 +1,4 @@
-const ESTADO_LABELS = {
+﻿const ESTADO_LABELS = {
   borrador: 'Borrador',
   calculada: 'Calculada',
   abierta: 'Abierta',
@@ -19,11 +19,14 @@ export default function PlanillasHeader({
   onCerrar,
   onPagar,
   onAnular,
+  onExport,
   canGenerar = false,
   canRecalcular = false,
   canCerrar = false,
   canPagar = false,
   canAnular = false,
+  canExport = false,
+  exportLoading = false,
   loadingAction = false
 }) {
   const estadoRaw = String(
@@ -96,6 +99,23 @@ export default function PlanillasHeader({
       </div>
 
       <div className="planillas-header__actions">
+        {canExport ? (
+          <button
+            type="button"
+            className="btn btn-outline-dark"
+            onClick={onExport}
+            disabled={loadingAction || exportLoading || !selectedPlanilla?.id_planilla}
+            title="Exportar planilla"
+          >
+            {exportLoading ? (
+              <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />
+            ) : (
+              <i className="bi bi-download me-1" />
+            )}
+            Exportar
+          </button>
+        ) : null}
+
         {canGenerar ? (
           <button type="button" className="btn btn-primary" onClick={onGenerar} disabled={loadingAction || !sucursalId || !periodo}>
             <i className="bi bi-plus-circle me-1" />

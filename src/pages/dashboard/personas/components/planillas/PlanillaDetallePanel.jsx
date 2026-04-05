@@ -1,3 +1,6 @@
+import PlanillasModalActions from './PlanillasModalActions';
+import PlanillasModalLayout from './PlanillasModalLayout';
+
 const toText = (value, fallback = 'Sin dato') => {
   const text = String(value ?? '').trim();
   return text || fallback;
@@ -9,6 +12,27 @@ const money = (value) => {
   return `L ${amount.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+const buildDetailSections = (item) => [
+  {
+    title: 'Datos del empleado',
+    fields: [
+      { label: 'DNI', value: toText(item.dni, 'Sin DNI') },
+      { label: 'Cargo', value: toText(item.cargo, 'Sin cargo') },
+      { label: 'Salario base', value: money(item.salario_base) },
+      { label: 'Horas extra tiempo', value: toText(item.he_tiempo ?? item.horas_extra_tiempo, '0') }
+    ]
+  },
+  {
+    title: 'Totales en planilla',
+    fields: [
+      { label: 'Bonos', value: money(item.total_bonos ?? item.bonos) },
+      { label: 'Deducciones', value: money(item.total_deducciones ?? item.deducciones) },
+      { label: 'Adelantos', value: money(item.total_adelantos_aplicados ?? item.adelantos) },
+      { label: 'Neto a pagar', value: money(item.neto_pagar ?? item.total_neto_pagar ?? item.neto), tone: 'neto' }
+    ]
+  }
+];
+
 export default function PlanillaDetallePanel({ open, item, onClose }) {
   if (!open || !item) return null;
 
@@ -18,30 +42,36 @@ export default function PlanillaDetallePanel({ open, item, onClose }) {
     item.nombre_empleado ||
     `${item.nombre || ''} ${item.apellido || ''}`.trim();
 
-  return (
-    <div className="planillas-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="planillas-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="planillas-modal__head">
-          <div>
-            <h5>Detalle de empleado en planilla</h5>
-            <p>{toText(nombre, 'Empleado sin nombre')}</p>
-          </div>
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>
-            <i className="bi bi-x-lg" />
-          </button>
-        </div>
+  const sections = buildDetailSections(item);
 
-        <div className="planillas-detail-grid">
-          <div><span>DNI</span><strong>{toText(item.dni, 'Sin DNI')}</strong></div>
-          <div><span>Cargo</span><strong>{toText(item.cargo, 'Sin cargo')}</strong></div>
-          <div><span>Salario base</span><strong>{money(item.salario_base)}</strong></div>
-          <div><span>Bonos</span><strong>{money(item.total_bonos ?? item.bonos)}</strong></div>
-          <div><span>Deducciones</span><strong>{money(item.total_deducciones ?? item.deducciones)}</strong></div>
-          <div><span>Adelantos</span><strong>{money(item.total_adelantos_aplicados ?? item.adelantos)}</strong></div>
-          <div><span>Horas extra tiempo</span><strong>{toText(item.he_tiempo ?? item.horas_extra_tiempo, '0')}</strong></div>
-          <div><span>Neto a pagar</span><strong>{money(item.neto_pagar ?? item.total_neto_pagar ?? item.neto)}</strong></div>
-        </div>
+  return (
+    <PlanillasModalLayout
+      open={open}
+      onClose={onClose}
+      title="Detalle de empleado en planilla"
+      subtitle={toText(nombre, 'Empleado sin nombre')}
+      size="lg"
+      className="planillas-modal-shell--detalle"
+      actions={<PlanillasModalActions onCancel={onClose} cancelLabel="Cerrar" hidePrimary />}
+    >
+      <div className="planillas-detail-panel">
+        {sections.map((section) => (
+          <section key={section.title} className="planillas-detail-panel__section">
+            <h6 className="planillas-detail-panel__section-title">{section.title}</h6>
+            <div className="planillas-detail-panel__grid">
+              {section.fields.map((field) => (
+                <article
+                  key={`${section.title}-${field.label}`}
+                  className={`planillas-detail-panel__card ${field.tone ? `is-${field.tone}` : ''}`}
+                >
+                  <span className="planillas-detail-panel__label">{field.label}</span>
+                  <strong className="planillas-detail-panel__value">{field.value}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
-    </div>
+    </PlanillasModalLayout>
   );
 }
