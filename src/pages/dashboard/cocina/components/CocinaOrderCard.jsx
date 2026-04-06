@@ -8,6 +8,7 @@ import {
 
 export default function CocinaOrderCard({
   canAdvance,
+  isSuperAdmin = false,
   canOpenDetail,
   pedido,
   now,
@@ -87,7 +88,7 @@ export default function CocinaOrderCard({
         })}
       </div>
 
-      {canAdvance && (
+      {(canAdvance || isSuperAdmin) && (
         <button
           type="button"
           className={`cocina-order-card__action ${action.buttonClass}`}

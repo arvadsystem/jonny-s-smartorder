@@ -14,6 +14,7 @@ const buildDiscountLabel = (discount) => {
 export default function VentaComposerSummary({ composer, saving }) {
   const clientPickerRef = useRef(null);
   const paymentPickerRef = useRef(null);
+  const sucursalPickerRef = useRef(null);
   const discountPickerRef = useRef(null);
   const [totalsExpanded, setTotalsExpanded] = useState(false);
 
@@ -59,6 +60,24 @@ export default function VentaComposerSummary({ composer, saving }) {
     const handlePointerDown = (event) => {
       if (discountPickerRef.current && !discountPickerRef.current.contains(event.target)) {
         composer.setDescuentoPickerOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [composer]);
+
+  useEffect(() => {
+    if (!composer.sucursalPickerOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (sucursalPickerRef.current && !sucursalPickerRef.current.contains(event.target)) {
+        composer.setSucursalPickerOpen(false);
       }
     };
 
@@ -152,8 +171,49 @@ export default function VentaComposerSummary({ composer, saving }) {
           <span title="Sucursal operativa">
             <i className="bi bi-shop" /> Sucursal
           </span>
-          <div className="ventas-summary__static-field">
-            {composer.selectedSucursalLabel || 'Cargando...'}
+          <div className="ventas-summary__sucursal-wrap" ref={sucursalPickerRef}>
+            {composer.isSuperAdmin ? (
+              <>
+                <button
+                  type="button"
+                  className="ventas-summary__sucursal-btn"
+                  onClick={() => composer.setSucursalPickerOpen(!composer.sucursalPickerOpen)}
+                  title="Cambiar sucursal"
+                >
+                  <span className="ventas-summary__sucursal-name">
+                    {composer.selectedSucursalLabel}
+                  </span>
+                  <i className="bi bi-chevron-down ventas-summary__chevron" />
+                </button>
+
+                {composer.sucursalPickerOpen && (
+                  <div className="ventas-summary__dropdown" role="listbox" aria-label="Seleccionar sucursal">
+                    {composer.sucursales.map((sucursal) => {
+                      const val = String(sucursal.id_sucursal);
+                      const isSelected = val === String(composer.selectedSucursal);
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          className={`ventas-create-modal__client-option ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            composer.setSelectedSucursal(val);
+                            composer.setSucursalPickerOpen(false);
+                          }}
+                        >
+                          <span>{sucursal.nombre_sucursal}</span>
+                          {isSelected ? <i className="bi bi-check2" aria-hidden="true" /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="ventas-summary__static-field">
+                {composer.selectedSucursalLabel || 'Cargando...'}
+              </div>
+            )}
           </div>
         </label>
 

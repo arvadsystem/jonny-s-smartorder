@@ -46,7 +46,8 @@ export default function CocinaPage() {
     closeToast,
     refreshBoard,
     advancePedido,
-    mutatingIds
+    mutatingIds,
+    isRealtimeConnected
   } = useCocina({
     selectedSucursalId,
     includeSucursalesCatalog: canFilterSucursal || isSuperAdmin
@@ -78,12 +79,25 @@ export default function CocinaPage() {
   );
   const groupedPedidos = useMemo(() => groupOrdersByColumn(filteredPedidos), [filteredPedidos]);
   const stats = useMemo(() => buildCocinaStats(filteredPedidos), [filteredPedidos]);
+
+  // Lógica robusta para determinar si se pueden avanzar los pedidos
   const canAdvancePedido = (pedido) => {
+    // Si somos Super Admin, siempre tenemos permiso
+    if (isSuperAdmin) return true;
+
     const columnKey = resolveOrderColumnKey(pedido);
-    if (columnKey === 'PENDIENTES') return canStartPedido;
-    if (columnKey === 'EN_PREPARACION') return canMarkReady;
-    if (columnKey === 'LISTOS_PARA_ENTREGA') return canDeliverPedido;
-    return false;
+    
+    // Verificamos permisos específicos según la columna
+    switch (columnKey) {
+      case 'PENDIENTES':
+        return canStartPedido;
+      case 'EN_PREPARACION':
+        return canMarkReady;
+      case 'LISTOS_PARA_ENTREGA':
+        return canDeliverPedido;
+      default:
+        return false;
+    }
   };
 
   const handleConfirmAction = async () => {
@@ -124,6 +138,7 @@ export default function CocinaPage() {
           onSearchChange={setSearch}
           canRefresh={canRefresh}
           canSearch={canSearch}
+          isRealtimeConnected={isRealtimeConnected}
           onRefresh={() => {
             if (!canRefresh) return;
             refreshBoard({ silent: true }).catch(() => {});
@@ -158,6 +173,7 @@ export default function CocinaPage() {
           ) : (
             <CocinaBoard
               canAdvancePedido={canAdvancePedido}
+              isSuperAdmin={isSuperAdmin}
               canOpenDetail={canViewDetail}
               groupedPedidos={groupedPedidos}
               now={now}

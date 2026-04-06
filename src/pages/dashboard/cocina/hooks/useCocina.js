@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import sucursalesService from '../../../../services/sucursalesService';
 import { cocinaApi } from '../services/cocinaApi';
+import { supabase } from '../../../../lib/supabaseClient';
 import {
   applyKitchenTransition,
   filterActiveSucursales,
@@ -36,6 +37,7 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
   const [error, setError] = useState('');
   const [toast, setToast] = useState(initialToast);
   const [mutatingIds, setMutatingIds] = useState([]);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
 
   const mutatingIdsRef = useRef(mutatingIds);
   mutatingIdsRef.current = mutatingIds;
@@ -140,6 +142,37 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
     };
   }, [pollBoard]);
 
+  useEffect(() => {
+    // Suscripción Realtime a cambios en la tabla 'pedidos'
+    const channel = supabase
+      .channel('cocina-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pedidos'
+        },
+        (payload) => {
+          // Si el pedido cambiado pertenece a la sucursal seleccionada (o si estamos viendo todas), refrescamos.
+          // El refreshBoard ya maneja el filtro de sucursal.
+          const changedRecord = payload.new || payload.old;
+          const idSucursalChanged = Number(changedRecord?.id_sucursal ?? 0);
+
+          if (!selectedSucursalId || idSucursalChanged === Number(selectedSucursalId)) {
+            refreshBoard({ silent: true }).catch(() => {});
+          }
+        }
+      )
+      .subscribe((status) => {
+        setIsRealtimeConnected(status === 'SUBSCRIBED');
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refreshBoard, selectedSucursalId]);
+
   const advancePedido = useCallback(
     async (pedido, estadoDestino) => {
       const idPedido = Number(pedido?.id_pedido ?? 0);
@@ -179,12 +212,14 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
       closeToast,
       refreshBoard,
       advancePedido,
-      mutatingIds
+      mutatingIds,
+      isRealtimeConnected
     }),
     [
       advancePedido,
       closeToast,
       error,
+      isRealtimeConnected,
       loading,
       mutatingIds,
       pedidos,
