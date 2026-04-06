@@ -4,6 +4,7 @@ import CocinaOrderCard from './CocinaOrderCard';
 
 export default function CocinaColumn({
   canAdvancePedido,
+  isSuperAdmin = false,
   canOpenDetail,
   columnKey,
   pedidos,
@@ -32,6 +33,7 @@ export default function CocinaColumn({
               pedido={pedido}
               now={now}
               canAdvance={canAdvancePedido(pedido)}
+              isSuperAdmin={isSuperAdmin}
               canOpenDetail={canOpenDetail}
               disabled={mutatingIds.includes(pedido.id_pedido)}
               onOpenDetail={onOpenDetail}
