@@ -18,7 +18,8 @@ import Personas from './pages/dashboard/Personas';
 import Sucursales from './pages/dashboard/Sucursales';
 import Ventas from './pages/dashboard/Ventas';
 import Cocina from './pages/dashboard/Cocina';
-import Parametros from './pages/dashboard/Parametros';
+import Planillas from './pages/dashboard/personas/Planillas';
+import Fidelizacion from './pages/dashboard/Fidelizacion';
 import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from './routes/RequirePerm';
 import { PublicMenuRoutes } from './modules/public-menu';
@@ -39,15 +40,17 @@ const PaginaEnConstruccion = ({ titulo }) => {
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Login />} />
+      {/* ── Rutas de Autenticación ────────────────────────────────────────── */}
       <Route path="/login" element={<Login />} />
-      {/* ── Autenticación ───────────────────────────────────────────── */}
-      <Route path="/" element={<Navigate to="/menu-publico" replace />} />
-      <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
+      <Route path="/auth/login" element={<Login />} />
       <Route path="/registro" element={<Registro />} />
       <Route path="/recuperar-password" element={<RecuperarPassword />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+
+      {/* ── Inicio y Mundo Público ───────────────────────────────────────── */}
+      <Route path="/" element={<Navigate to="/menu-publico" replace />} />
+      <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
 
       {/* ── Mundo Público (sin auth requerida) ───────────────── */}
       <Route element={<PublicLayout />}>
@@ -67,7 +70,8 @@ function App() {
           <Route path="inventario" element={<RequirePerm moduleKey="inventario"><Inventario /></RequirePerm>} />
           <Route path="ventas" element={<RequirePerm moduleKey="ventas"><Ventas /></RequirePerm>} />
           <Route path="cocina" element={<RequirePerm moduleKey="cocina"><Cocina /></RequirePerm>} />
-          <Route path="parametros" element={<RequirePerm moduleKey="parametros"><Parametros /></RequirePerm>} />
+          <Route path="planillas" element={<RequirePerm moduleKey="planillas"><Planillas /></RequirePerm>} />
+          <Route path="fidelizacion" element={<RequirePerm moduleKey="fidelizacion"><Fidelizacion /></RequirePerm>} />
           <Route path="menu" element={<RequirePerm moduleKey="menu"><Menu /></RequirePerm>} />
           <Route path="seguridad" element={<RequirePerm moduleKey="seguridad"><Seguridad /></RequirePerm>} />
           <Route path="perfil" element={<RequirePerm moduleKey="perfil"><Perfil /></RequirePerm>} />

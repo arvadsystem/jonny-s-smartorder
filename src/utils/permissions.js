@@ -587,27 +587,14 @@ const MODULE_ROUTE_PERMISSIONS = Object.freeze({
     PERMISSIONS.SEGURIDAD_VER,
     ...Object.values(SEGURIDAD_TAB_PERMISSIONS_MAP).flat()
   ]),
-  parametros: uniquePermissions([
-    PERMISSIONS.PARAMETROS_VER,
-    PERMISSIONS.PARAMETROS_CATALOGOS_VER,
-    PERMISSIONS.PARAMETROS_CATALOGOS_CREAR,
-    PERMISSIONS.PARAMETROS_CATALOGOS_EDITAR,
-    PERMISSIONS.PARAMETROS_CATALOGOS_ELIMINAR,
-    PERMISSIONS.PARAMETROS_CATALOGOS_RECARGAR,
-    PERMISSIONS.PARAMETROS_TIPO_DEPARTAMENTO_VER,
-    PERMISSIONS.PARAMETROS_CATEGORIAS_PRODUCTOS_VER,
-    PERMISSIONS.PARAMETROS_UNIDADES_MEDIDA_VER,
-    PERMISSIONS.PARAMETROS_TIPO_CLIENTE_VER,
-    PERMISSIONS.PARAMETROS_TIPO_NOTIFICACION_VER,
-    PERMISSIONS.PARAMETROS_ESTADOS_PEDIDO_VER,
-    PERMISSIONS.PARAMETROS_DISPOSITIVOS_BIOMETRICOS_VER,
-    PERMISSIONS.PARAMETROS_TIPO_HORA_EXTRA_VER,
-    PERMISSIONS.PARAMETROS_FACTOR_HORAS_EXTRA_VER,
-    PERMISSIONS.PARAMETROS_TIPO_NOMINA_VER,
-    PERMISSIONS.PARAMETROS_TIPO_NATURALEZA_VER,
-    PERMISSIONS.PARAMETROS_CONCEPTO_NOMINA_VER,
-    PERMISSIONS.PARAMETROS_ESTADO_PLANILLA_VER
+  planillas: uniquePermissions([
+    PERMISSIONS.PLANILLAS_MODULO_VER,
+    PERMISSIONS.PLANILLAS_LISTADO_VER,
+    PERMISSIONS.PLANILLAS_DETALLE_VER,
+    PERMISSIONS.PLANILLAS_GENERAR,
+    PERMISSIONS.PLANILLAS_RECALCULAR
   ]),
+  fidelizacion: uniquePermissions([PERMISSIONS.DASHBOARD_VER]),
   configuracion: uniquePermissions([PERMISSIONS.CONFIGURACION_VER]),
   perfil: uniquePermissions([
     PERMISSIONS.PERFIL_VER,
@@ -628,7 +615,8 @@ export const NAV_ITEM_PERMISSIONS = Object.freeze({
   '/dashboard/cocina': MODULE_ROUTE_PERMISSIONS.cocina,
   '/dashboard/menu': MODULE_ROUTE_PERMISSIONS.menu,
   '/dashboard/seguridad': MODULE_ROUTE_PERMISSIONS.seguridad,
-  '/dashboard/parametros': MODULE_ROUTE_PERMISSIONS.parametros,
+  '/dashboard/planillas': MODULE_ROUTE_PERMISSIONS.planillas,
+  '/dashboard/fidelizacion': MODULE_ROUTE_PERMISSIONS.fidelizacion,
   '/dashboard/configuracion': MODULE_ROUTE_PERMISSIONS.configuracion,
   '/dashboard/perfil': MODULE_ROUTE_PERMISSIONS.perfil
 });
@@ -643,13 +631,13 @@ export const MODULE_NAV_ITEMS = Object.freeze([
   { key: 'dashboard', name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
   { key: 'sucursales', name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
   { key: 'personas', name: 'Personas/Empresas', path: '/dashboard/personas', icon: 'bi-people' },
-  { key: 'planillas', name: 'Planillas', path: '/dashboard/personas?tab=planillas', icon: 'bi-cash-coin' },
+  { key: 'planillas', name: 'Planillas', path: '/dashboard/planillas', icon: 'bi-cash-coin' },
   { key: 'inventario', name: 'Inventario', path: '/dashboard/inventario', icon: 'bi-box-seam' },
   { key: 'ventas', name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
   { key: 'cocina', name: 'Cocina', path: '/dashboard/cocina', icon: 'bi-display' },
   { key: 'menu', name: 'Menu', path: '/dashboard/menu', icon: 'bi-journal-text' },
+  { key: 'fidelizacion', name: 'Fidelizacion', path: '/dashboard/fidelizacion', icon: 'bi-star' },
   { key: 'seguridad', name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
-  { key: 'parametros', name: 'Parametros', path: '/dashboard/parametros', icon: 'bi-sliders' },
   { key: 'configuracion', name: 'Configuracion', path: '/dashboard/configuracion', icon: 'bi-gear' }
 ]);
 
@@ -662,8 +650,8 @@ export const MODULE_PRIMARY_PERMISSION = Object.freeze({
   ventas: PERMISSIONS.VENTAS_VER,
   cocina: PERMISSIONS.COCINA_VER,
   menu: PERMISSIONS.MENU_VER,
+  fidelizacion: PERMISSIONS.DASHBOARD_VER, // Temporary, until specific permission is created
   seguridad: PERMISSIONS.SEGURIDAD_VER,
-  parametros: PERMISSIONS.PARAMETROS_VER,
   configuracion: PERMISSIONS.CONFIGURACION_VER,
   perfil: PERMISSIONS.PERFIL_VER
 });
@@ -684,7 +672,6 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'empresas', label: 'Empresas', icon: 'bi bi-building', required: PERSONAS_TAB_PERMISSIONS_MAP.empresas },
     { key: 'clientes', label: 'Clientes', icon: 'bi bi-people', required: PERSONAS_TAB_PERMISSIONS_MAP.clientes },
     { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase', required: PERSONAS_TAB_PERMISSIONS_MAP.empleados },
-    { key: 'planillas', label: 'Planillas', icon: 'bi bi-cash-coin', required: PERSONAS_TAB_PERMISSIONS_MAP.planillas },
     { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear', required: PERSONAS_TAB_PERMISSIONS_MAP.usuarios },
     { key: 'roles', label: 'Roles y permisos', icon: 'bi bi-person-lock', required: PERSONAS_TAB_PERMISSIONS_MAP.roles }
   ],
