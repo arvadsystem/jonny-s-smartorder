@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import RecetasImagePreview from './RecetasImagePreview';
 
 const CombosFormDrawer = ({
@@ -21,6 +21,13 @@ const CombosFormDrawer = ({
   onQuitarRecetaDetalle
 }) => {
   const [recetaSearch, setRecetaSearch] = useState('');
+  const [showRecipePicker, setShowRecipePicker] = useState(false);
+
+  useEffect(() => {
+    // En crear se abre el selector; en editar queda cerrado por defecto.
+    setShowRecipePicker(drawerMode === 'create');
+    setRecetaSearch('');
+  }, [drawerMode, drawerOpen]);
 
   const recetasFiltradas = useMemo(() => {
     const term = String(recetaSearch || '').trim().toLowerCase();
@@ -31,6 +38,29 @@ const CombosFormDrawer = ({
       || String(receta?.id_receta || '').includes(term)
     ));
   }, [recetaSearch, recetasDisponibles]);
+
+  const recetasById = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(recetasDisponibles) ? recetasDisponibles : []).forEach((receta) => {
+      const id = Number(receta?.id_receta || 0);
+      if (!id) return;
+      map.set(id, String(receta?.nombre_receta || '').trim());
+    });
+    return map;
+  }, [recetasDisponibles]);
+
+  const resolveDetalleNombre = (item) => {
+    const fromItem = String(item?.nombre_receta || '').trim();
+    if (fromItem) return fromItem;
+
+    const idReceta = Number(item?.id_receta || 0);
+    const fromCatalog = String(recetasById.get(idReceta) || '').trim();
+    if (fromCatalog) return fromCatalog;
+
+    return `Receta #${idReceta || '-'}`;
+  };
+
+  const totalDetalle = Array.isArray(form.detalle) ? form.detalle.length : 0;
 
   return (
     <aside
@@ -62,6 +92,20 @@ const CombosFormDrawer = ({
       <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite menu-recetas-admin__form" onSubmit={onSubmit}>
         <div className="row g-2">
           <div className="col-12">
+            <label className="form-label" htmlFor="combo_nombre_combo">Nombre</label>
+            <input
+              id="combo_nombre_combo"
+              className="form-control"
+              name="nombre_combo"
+              value={form.nombre_combo}
+              onChange={onChangeField}
+              placeholder="Ej: Combo 6 alitas + 2 tacos"
+              required
+            />
+            <div className="form-text">Este nombre sera el titulo visible del combo.</div>
+          </div>
+
+          <div className="col-12">
             <label className="form-label" htmlFor="combo_descripcion">Descripcion</label>
             <input
               id="combo_descripcion"
@@ -69,7 +113,7 @@ const CombosFormDrawer = ({
               name="descripcion"
               value={form.descripcion}
               onChange={onChangeField}
-              required
+              placeholder="Ej: Incluye papas y bebida"
             />
           </div>
 
@@ -176,104 +220,125 @@ const CombosFormDrawer = ({
 
         <div className="mb-2 d-flex justify-content-between align-items-center gap-2">
           <strong>Detalle del combo</strong>
+          <span className="menu-combos-receta-picker__count">{totalDetalle} agregadas</span>
         </div>
 
         <div className="small text-muted mb-2">
-          {loadingRecetasCatalogo
-            ? 'Cargando recetas disponibles...'
-            : `${recetasDisponibles.length} recetas disponibles para agregar.`}
+          {totalDetalle > 0
+            ? `${totalDetalle} receta(s) en este combo.`
+            : 'Aun no agregas recetas al combo.'}
         </div>
 
-        {!loadingRecetasCatalogo ? (
-          <div className="menu-combos-receta-picker mb-3">
-            <input
-              type="text"
-              className="form-control form-control-sm menu-combos-receta-picker__search"
-              placeholder="Buscar receta por nombre o ID..."
-              value={recetaSearch}
-              onChange={(event) => setRecetaSearch(event.target.value)}
-            />
-
-            <div className="menu-combos-receta-picker__list">
-              {recetasFiltradas.length > 0 ? (
-                recetasFiltradas.map((receta) => (
-                  <button
-                    key={`pick-${receta.id_receta}`}
-                    type="button"
-                    className="menu-combos-receta-picker__item"
-                    onClick={() => onAgregarRecetaDetalle(receta.id_receta)}
-                  >
-                    <span className="menu-combos-receta-picker__item-id">#{receta.id_receta}</span>
-                    <span className="menu-combos-receta-picker__item-name">
-                      {receta.nombre_receta || `Receta ${receta.id_receta}`}
-                    </span>
-                    <span className="menu-combos-receta-picker__item-add">Agregar</span>
-                  </button>
-                ))
-              ) : (
-                <div className="small text-muted px-1 py-2">
-                  No hay recetas que coincidan con la busqueda.
-                </div>
-              )}
+        {totalDetalle > 0 ? (
+          <div className="list-group mb-3">
+            <div className="list-group-item py-2">
+              <div className="d-flex align-items-center gap-2 small text-muted fw-semibold">
+                <span className="flex-grow-1">Receta</span>
+                <span style={{ width: '84px', textAlign: 'center' }}>Cant.</span>
+                <span style={{ width: '84px', textAlign: 'center' }}>Orden</span>
+                <span style={{ width: '78px' }} />
+              </div>
             </div>
-          </div>
-        ) : null}
 
-        {Array.isArray(form.detalle) && form.detalle.length > 0 ? (
-          <div className="table-responsive">
-            <table className="table table-sm align-middle mb-0">
-              <thead>
-                <tr>
-                  <th>Receta</th>
-                  <th style={{ width: '120px' }}>Cantidad</th>
-                  <th style={{ width: '120px' }}>Orden</th>
-                  <th className="text-end">Accion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {form.detalle.map((item) => (
-                  <tr key={item.id_receta}>
-                    <td>
-                      <div className="fw-semibold">#{item.id_receta}</div>
-                      <div className="small text-muted">{item.nombre_receta || 'Receta'}</div>
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        className="form-control form-control-sm"
-                        value={item.cantidad}
-                        onChange={(event) => onActualizarDetalleReceta(item.id_receta, 'cantidad', event.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        className="form-control form-control-sm"
-                        value={item.orden}
-                        onChange={(event) => onActualizarDetalleReceta(item.id_receta, 'orden', event.target.value)}
-                      />
-                    </td>
-                    <td className="text-end">
-                      <button
-                        type="button"
-                        className="btn btn-sm inv-prod-btn-danger-lite"
-                        onClick={() => onQuitarRecetaDetalle(item.id_receta)}
-                      >
-                        Quitar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {form.detalle.map((item) => (
+              <div key={`sel-${item.id_receta}`} className="list-group-item py-2">
+                <div className="d-flex align-items-center gap-2">
+                  <div className="flex-grow-1">
+                    <div className="fw-semibold">{resolveDetalleNombre(item)}</div>
+                    <div className="small text-muted">#{item.id_receta}</div>
+                  </div>
+
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-control form-control-sm"
+                    style={{ width: '84px', textAlign: 'center' }}
+                    value={item.cantidad}
+                    onChange={(event) => onActualizarDetalleReceta(item.id_receta, 'cantidad', event.target.value)}
+                  />
+
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-control form-control-sm"
+                    style={{ width: '84px', textAlign: 'center' }}
+                    value={item.orden}
+                    onChange={(event) => onActualizarDetalleReceta(item.id_receta, 'orden', event.target.value)}
+                  />
+
+                  <button
+                    type="button"
+                    className="btn btn-sm inv-prod-btn-danger-lite"
+                    onClick={() => onQuitarRecetaDetalle(item.id_receta)}
+                    aria-label={`Quitar receta ${resolveDetalleNombre(item)} del combo`}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="alert alert-warning mb-0">
+          <div className="alert alert-warning mb-3">
             Agrega al menos una receta para guardar el combo.
           </div>
         )}
+
+        <div className="mb-2 d-flex justify-content-between align-items-center gap-2">
+          <strong>Agregar receta</strong>
+          <button
+            type="button"
+            className="btn btn-sm inv-prod-btn-subtle"
+            onClick={() => setShowRecipePicker((prev) => !prev)}
+          >
+            {showRecipePicker ? 'Ocultar' : 'Mostrar'}
+          </button>
+        </div>
+
+        {showRecipePicker ? (
+          <>
+            <div className="small text-muted mb-2">
+              {loadingRecetasCatalogo
+                ? 'Cargando recetas disponibles...'
+                : `${recetasDisponibles.length} recetas disponibles para agregar.`}
+            </div>
+
+            {!loadingRecetasCatalogo ? (
+              <div className="menu-combos-receta-picker mb-3">
+                <input
+                  type="text"
+                  className="form-control form-control-sm menu-combos-receta-picker__search"
+                  placeholder="Buscar receta por nombre o ID..."
+                  value={recetaSearch}
+                  onChange={(event) => setRecetaSearch(event.target.value)}
+                />
+
+                <div className="menu-combos-receta-picker__list">
+                  {recetasFiltradas.length > 0 ? (
+                    recetasFiltradas.map((receta) => (
+                      <button
+                        key={`pick-${receta.id_receta}`}
+                        type="button"
+                        className="menu-combos-receta-picker__item"
+                        onClick={() => onAgregarRecetaDetalle(receta.id_receta)}
+                      >
+                        <span className="menu-combos-receta-picker__item-id">#{receta.id_receta}</span>
+                        <span className="menu-combos-receta-picker__item-name">
+                          {receta.nombre_receta || `Receta ${receta.id_receta}`}
+                        </span>
+                        <span className="menu-combos-receta-picker__item-add">Agregar</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="small text-muted px-1 py-2">
+                      No hay recetas que coincidan con la busqueda.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
 
         <div className="d-flex gap-2 mt-3">
           <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={onClose} disabled={saving}>
@@ -289,3 +354,5 @@ const CombosFormDrawer = ({
 };
 
 export default CombosFormDrawer;
+
+

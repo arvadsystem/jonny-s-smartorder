@@ -15,6 +15,13 @@ const toNullableCleanString = (value) => {
   return text || null;
 };
 
+const pickAllowedFields = (payload, allowedFields = []) => {
+  if (!isPlainObject(payload)) return {};
+  return Object.fromEntries(
+    Object.entries(payload).filter(([field, value]) => allowedFields.includes(field) && value !== undefined)
+  );
+};
+
 const applyRbacContextToPayload = (payload, context) => {
   const normalizedContext = toCleanString(context).toLowerCase();
   if (!normalizedContext) return payload;
@@ -99,10 +106,26 @@ const readResponseBody = async (response) => {
 };
 
 const getErrorMessage = (payload, fallback) => {
+  const technicalPatterns = [
+    /function\s+[\w.]+\s*\(/i,
+    /relation\s+["'\w.]+\s+does not exist/i,
+    /column\s+["'\w.]+\s+does not exist/i,
+    /duplicate key value violates/i,
+    /violates (foreign key|unique|check|not-null)/i,
+    /syntax error at or near/i,
+    /pg_/i
+  ];
+  const toSafe = (raw) => {
+    const text = String(raw || '').trim();
+    if (!text) return fallback;
+    if (technicalPatterns.some((pattern) => pattern.test(text))) return fallback;
+    return text;
+  };
+
   if (payload && typeof payload === 'object') {
-    return payload.message || payload.mensaje || fallback;
+    return toSafe(payload.message || payload.mensaje || fallback);
   }
-  if (typeof payload === 'string' && payload.trim()) return payload;
+  if (typeof payload === 'string' && payload.trim()) return toSafe(payload);
   return fallback;
 };
 
@@ -242,7 +265,21 @@ export const personaService = {
     apiFetch(`/empresas/${id}`, 'GET'),
 
   createEmpresa: (data, options = {}) =>
-    apiFetch('/empresas', 'POST', applyRbacContextToPayload(data, options?.context)),
+    apiFetch(
+      '/empresas',
+      'POST',
+      applyRbacContextToPayload(
+        pickAllowedFields(data, [
+          'rtn',
+          'nombre_empresa',
+          'texto_direccion',
+          'texto_telefono',
+          'texto_correo',
+          'estado'
+        ]),
+        options?.context
+      )
+    ),
 
   updateEmpresa: async (id, updates = {}) => {
     if (isPlainObject(updates) && Object.prototype.hasOwnProperty.call(updates, 'campo')) {
@@ -256,14 +293,19 @@ export const personaService = {
       throw new Error('El payload de actualizacion debe ser un objeto');
     }
 
-    const fields = Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined);
-    if (!fields.length) return { error: false, message: 'Sin cambios para actualizar' };
-
-    let result = null;
-    for (const [campo, valor] of fields) {
-      result = await apiFetch(`/empresas/${id}`, 'PUT', { campo, valor });
-    }
-    return result;
+    const payload = pickAllowedFields(updates, [
+      'rtn',
+      'nombre_empresa',
+      'id_telefono',
+      'id_direccion',
+      'id_correo',
+      'texto_direccion',
+      'texto_telefono',
+      'texto_correo',
+      'estado'
+    ]);
+    if (!Object.keys(payload).length) return { error: false, message: 'Sin cambios para actualizar' };
+    return apiFetch(`/empresas/${id}`, 'PUT', payload);
   },
 
   deleteEmpresa: (id) =>
@@ -272,7 +314,7 @@ export const personaService = {
   // ==============================
   // EMPLEADOS (SUBMODULO PERSONAS)
   // ==============================
-  getEmpleados: async ({ page = 1, limit = 10, nombre, search, q, estado } = {}) => {
+  getEmpleados: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -283,6 +325,9 @@ export const personaService = {
         : (typeof nombre === 'string' ? nombre.trim() : ''));
     if (normalizedSearch) params.set('nombre', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+    if (id_sucursal !== undefined && id_sucursal !== null && String(id_sucursal).trim() !== '') {
+      params.set('id_sucursal', String(id_sucursal).trim());
+    }
     const query = params.toString();
 
     try {
@@ -296,7 +341,22 @@ export const personaService = {
   },
 
   createEmpleado: (data) =>
-    apiFetch('/empleados', 'POST', data),
+    apiFetch('/empleados', 'POST', pickAllowedFields(data, [
+      'fecha_ingreso',
+      'salario_base',
+      'estado',
+      'id_sucursal',
+      'id_persona',
+      'cargo',
+      'nombre_referencia',
+      'telefono_referencia'
+    ])),
+
+  createEmpleadoAtomico: (payload = {}) =>
+    apiFetch('/empleados/atomico', 'POST', {
+      ...(isPlainObject(payload) ? payload : {}),
+      rbac_context: 'empleados'
+    }),
 
   updateEmpleado: async (id, updates = {}) => {
     if (isPlainObject(updates) && Object.prototype.hasOwnProperty.call(updates, 'campo')) {
@@ -310,14 +370,24 @@ export const personaService = {
       throw new Error('El payload de actualizacion debe ser un objeto');
     }
 
-    const fields = Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined);
-    if (!fields.length) return { error: false, message: 'Sin cambios para actualizar' };
+    const payload = Object.fromEntries(
+      Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined)
+    );
+    if (!Object.keys(payload).length) return { error: false, message: 'Sin cambios para actualizar' };
 
-    let result = null;
-    for (const [campo, valor] of fields) {
-      result = await apiFetch(`/empleados/${id}`, 'PUT', { campo, valor });
+    try {
+      // Prefer JSON payload so backend can forward directly to empleados_actualizar(p_id, p_datos::json).
+      return await apiFetch(`/empleados/${id}`, 'PUT', payload);
+    } catch (error) {
+      // Backward compatibility with handlers that still expect { campo, valor }.
+      if (!error || ![400, 404, 405, 409, 415, 422].includes(error.status)) throw error;
+
+      let result = null;
+      for (const [campo, valor] of Object.entries(payload)) {
+        result = await apiFetch(`/empleados/${id}`, 'PUT', { campo, valor });
+      }
+      return result;
     }
-    return result;
   },
 
   deleteEmpleado: (id) =>
@@ -326,7 +396,7 @@ export const personaService = {
   // ==============================
   // CLIENTES (SUBMODULO PERSONAS)
   // ==============================
-  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado } = {}) => {
+  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -337,6 +407,9 @@ export const personaService = {
         : (typeof nombre === 'string' ? nombre.trim() : ''));
     if (normalizedSearch) params.set('nombre', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+    if (id_sucursal !== undefined && id_sucursal !== null && String(id_sucursal).trim() !== '') {
+      params.set('id_sucursal', String(id_sucursal).trim());
+    }
     const query = params.toString();
 
     try {
@@ -350,7 +423,21 @@ export const personaService = {
   },
 
   createCliente: (data) =>
-    apiFetch('/clientes', 'POST', data),
+    apiFetch('/clientes', 'POST', pickAllowedFields(data, [
+      'fecha_ingreso',
+      'puntos',
+      'id_tipo_cliente',
+      'id_persona',
+      'id_empresa',
+      'id_sucursal',
+      'estado'
+    ])),
+
+  createClienteAtomico: (payload = {}) =>
+    apiFetch('/clientes/atomico', 'POST', {
+      ...(isPlainObject(payload) ? payload : {}),
+      rbac_context: 'clientes'
+    }),
 
   updateCliente: async (id, updates = {}) => {
     if (isPlainObject(updates) && Object.prototype.hasOwnProperty.call(updates, 'campo')) {

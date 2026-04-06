@@ -5692,6 +5692,25 @@
   --inv-oc-border: rgba(138, 95, 57, 0.24);
 }
 
+.inv-oc-summary-card {
+  border: 1px solid var(--inv-oc-border);
+}
+
+.inv-oc-summary-body {
+  padding-top: 0.72rem;
+  padding-bottom: 0.72rem;
+}
+
+.inv-oc-summary-header-actions {
+  align-items: center;
+}
+
+.inv-oc-stats-band {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
 .inv-oc-hero {
   display: flex;
   align-items: stretch;
@@ -5722,7 +5741,7 @@
 
 .inv-oc-hero__title {
   color: #2f130c;
-  font-size: clamp(1.4rem, 1.8vw, 1.9rem);
+  font-size: clamp(1.7rem, 2.3vw, 2.35rem);
   letter-spacing: -0.02em;
   font-weight: 700;
 }
@@ -5883,7 +5902,7 @@
 
 .inv-oc-panel-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
   width: 100%;
@@ -5926,7 +5945,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0.55rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .inv-oc-panel-search {
@@ -5988,6 +6007,31 @@
   border-color: transparent;
 }
 
+.inv-oc-panel-collapse-btn {
+  width: 41px;
+  height: 41px;
+  min-height: 41px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 14px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.92);
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.inv-oc-panel-collapse-btn:hover,
+.inv-oc-panel-collapse-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(65, 31, 20, 0.08);
+  border-color: rgba(127, 29, 29, 0.24);
+}
+
 .inv-oc-header-meta {
   width: 100%;
   display: flex;
@@ -6011,6 +6055,8 @@
   align-items: center;
   justify-content: flex-end;
   flex: 1 1 340px;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .inv-oc-flow-filters-panel {
@@ -6089,14 +6135,16 @@
 .inv-oc-catalog-card {
   border: 1px solid rgba(157, 150, 112, 0.23);
   border-radius: 14px;
-  padding: 0.72rem;
+  padding: 0.78rem;
   background:
     radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 48%),
     rgba(255, 255, 255, 0.92);
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.58rem;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .inv-oc-catalog-card:hover,
@@ -6116,9 +6164,9 @@
 .inv-oc-catalog-card__head h5 {
   margin: 0;
   color: #2f130c;
-  font-size: 1.1rem;
+  font-size: 1.02rem;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.25;
 }
 
 .inv-oc-catalog-card__title-wrap {
@@ -6139,20 +6187,39 @@
   font-size: 0.82rem;
 }
 
-.inv-oc-catalog-card__meta {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+.inv-oc-catalog-card__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
 }
 
-.inv-oc-catalog-card__meta span {
-  border-radius: 999px;
-  border: 1px solid rgba(157, 150, 112, 0.28);
-  background: rgba(255, 249, 239, 0.88);
-  padding: 0.14rem 0.44rem;
-  color: rgba(74, 43, 34, 0.84);
-  font-size: 0.72rem;
-  font-weight: 600;
+.inv-oc-catalog-card__field {
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 10px;
+  background: rgba(255, 249, 239, 0.78);
+  padding: 0.38rem 0.44rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.14rem;
+}
+
+.inv-oc-catalog-card__field span {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-oc-catalog-card__field strong {
+  color: #2f130c;
+  font-size: 0.83rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .inv-oc-catalog-card__action {
@@ -6283,6 +6350,13 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1.2;
+}
+
+.inv-oc-stock-badge--card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
 }
 
 .inv-oc-stock-badge.is-ok {
@@ -7288,6 +7362,10 @@
 }
 
 @media (max-width: 1199.98px) {
+  .inv-oc-stats-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .inv-oc-hero {
     flex-direction: column;
   }
@@ -7335,6 +7413,7 @@
   .inv-oc-panel-header-actions,
   .inv-oc-header-chipline {
     justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .inv-oc-panel-search {
@@ -7343,6 +7422,14 @@
 }
 
 @media (max-width: 767.98px) {
+  .inv-oc-stats-band {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-catalog-card__fields {
+    grid-template-columns: 1fr;
+  }
+
   .inv-oc-hero {
     padding: 0.9rem;
     border-radius: 18px;
@@ -7401,5 +7488,246 @@
   .inv-oc-detail-meta-card p strong {
     max-width: 100%;
     text-align: left;
+  }
+}
+// AM: ajustes UX puntuales del submodulo Inventario > Mobiliario para compactar cards y pulir modal.
+.inv-mob-card {
+  min-height: auto;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.inv-mob-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  position: relative;
+  z-index: 1;
+}
+
+.inv-mob-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.inv-mob-card__title-wrap {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.inv-mob-card__title-wrap .inv-cat-card__title {
+  line-height: 1.2;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+
+.inv-mob-card__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+
+.inv-mob-card__meta-cell {
+  min-width: 0;
+}
+
+.inv-mob-card__meta-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #866e5a;
+  margin-bottom: 0.08rem;
+}
+
+.inv-mob-card .inv-cat-card__description {
+  font-size: 0.93rem;
+  line-height: 1.3;
+}
+
+.inv-mob-card .inv-catpro-item-footer {
+  padding-top: 0.4rem;
+  margin-top: 0.15rem;
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid rgba(179, 144, 111, 0.28);
+}
+
+.inv-mob-card__divider {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(90deg, rgba(176, 128, 84, 0.22), rgba(176, 128, 84, 0.04));
+}
+
+.inv-mob-card__bg-icon {
+  position: absolute;
+  right: -10px;
+  bottom: -14px;
+  width: 112px;
+  height: 112px;
+  border-radius: 28px;
+  pointer-events: none;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(117, 74, 40, 0.1);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.56), rgba(191, 136, 82, 0.08) 58%, rgba(191, 136, 82, 0.02) 100%);
+  transform: rotate(-13deg);
+  animation: invMobBgFloat 3.2s ease-in-out infinite;
+}
+
+.inv-mob-card__bg-icon i {
+  font-size: 2.7rem;
+}
+
+.inv-mob-card .inv-catpro-code-wrap {
+  gap: 0.35rem;
+}
+
+@keyframes invMobIconFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes invMobBgFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-13deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(-9deg);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-mob-card__meta-grid {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .inv-mob-card__title-wrap .inv-cat-card__title {
+    font-size: 0.96rem;
+  }
+}
+
+// AM: unifica cards informativas de Inventario con el patrón visual de Ventas (icono + bloque de valor).
+.inv-catpro-card .inv-prod-kpis,
+.inv-oc-stats-band,
+.inv-warehouse-moves__summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card,
+.inv-oc-stat-card.inv-invstat-card,
+.inv-warehouse-summary-card.inv-invstat-card {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(157, 150, 112, 0.2) !important;
+  background: rgba(243, 241, 216, 0.78) !important;
+  padding: 0.58rem 0.72rem !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content {
+  gap: 1px;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content span,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span {
+  color: rgba(82, 44, 34, 0.8);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content strong,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong {
+  color: #17080a;
+  font-size: 1.46rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.inv-invstat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  color: #9a5319;
+  box-shadow: inset 0 0 0 1px rgba(157, 150, 112, 0.2);
+  flex-shrink: 0;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card.is-ok,
+.inv-oc-stat-card.inv-invstat-card.is-stocked,
+.inv-oc-stat-card.inv-invstat-card.is-approved {
+  background: rgba(229, 244, 236, 0.92) !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card.is-low,
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card.is-empty,
+.inv-oc-stat-card.inv-invstat-card.is-pending,
+.inv-oc-stat-card.inv-invstat-card.is-buying {
+  background: rgba(251, 240, 228, 0.92) !important;
+}
+
+// AM: retira las graficas sparkline de cards informativas en Inventario sin tocar logica de calculo.
+.inv-prod-kpi .inv-prod-kpi-spark {
+  display: none !important;
+}
+
+// AM: compacta y alinea en una sola linea los cards informativos del resumen de Ordenes de Compra.
+.inv-oc-module .inv-oc-stats-band {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch;
+  gap: 10px !important;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
+}
+
+// AM: reduce densidad visual de cards OC para una lectura lineal y mas estructurada.
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 10px !important;
+  padding: 0.48rem 0.56rem !important;
+  gap: 0.5rem !important;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-invstat-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span {
+  font-size: 0.76rem;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong {
+  font-size: 1.24rem;
+}
+
+@media (max-width: 767.98px) {
+  // AM: mantiene linealidad en mobile sin romper legibilidad; permite desplazamiento horizontal controlado.
+  .inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+    flex: 0 0 156px;
   }
 }

@@ -69,6 +69,18 @@ const PERMISSION_VALUES = Object.freeze({
   EMPLEADOS_FICHA_IMPRIMIR: 'EMPLEADOS_FICHA_IMPRIMIR',
   EMPLEADOS_VER_SOLO_RELACIONADOS: 'EMPLEADOS_VER_SOLO_RELACIONADOS',
   EMPLEADOS_VER_SOLO_PROPIOS: 'EMPLEADOS_VER_SOLO_PROPIOS',
+  PLANILLAS_MODULO_VER: 'PLANILLAS_MODULO_VER',
+  PLANILLAS_LISTADO_VER: 'PLANILLAS_LISTADO_VER',
+  PLANILLAS_DETALLE_VER: 'PLANILLAS_DETALLE_VER',
+  PLANILLAS_GENERAR: 'PLANILLAS_GENERAR',
+  PLANILLAS_RECALCULAR: 'PLANILLAS_RECALCULAR',
+  PLANILLAS_ADELANTOS_APLICAR: 'PLANILLAS_ADELANTOS_APLICAR',
+  PLANILLAS_MOVIMIENTO_REGISTRAR: 'PLANILLAS_MOVIMIENTO_REGISTRAR',
+  PLANILLAS_MOVIMIENTO_ANULAR: 'PLANILLAS_MOVIMIENTO_ANULAR',
+  PLANILLAS_CERRAR: 'PLANILLAS_CERRAR',
+  PLANILLAS_PAGAR: 'PLANILLAS_PAGAR',
+  PLANILLAS_ANULAR: 'PLANILLAS_ANULAR',
+  PLANILLAS_AUDITORIA_VER: 'PLANILLAS_AUDITORIA_VER',
   USUARIOS_MODULO_VER: 'USUARIOS_MODULO_VER',
   USUARIOS_LISTADO_VER: 'USUARIOS_LISTADO_VER',
   USUARIOS_DETALLE_VER: 'USUARIOS_DETALLE_VER',
@@ -153,6 +165,11 @@ const PERMISSION_VALUES = Object.freeze({
   INVENTARIO_ORDENES_COMPRA_CONVERTIR: 'INVENTARIO_ORDENES_COMPRA_CONVERTIR',
   INVENTARIO_ORDENES_COMPRA_ABASTECER: 'INVENTARIO_ORDENES_COMPRA_ABASTECER',
   INVENTARIO_ORDENES_COMPRA_RECEPCIONAR: 'INVENTARIO_ORDENES_COMPRA_RECEPCIONAR',
+  // AM: permisos del submodulo Inventario > Mobiliario.
+  INVENTARIO_MOBILIARIO_VER: 'INVENTARIO_MOBILIARIO_VER',
+  INVENTARIO_MOBILIARIO_CREAR: 'INVENTARIO_MOBILIARIO_CREAR',
+  INVENTARIO_MOBILIARIO_EDITAR: 'INVENTARIO_MOBILIARIO_EDITAR',
+  INVENTARIO_MOBILIARIO_ESTADO_CAMBIAR: 'INVENTARIO_MOBILIARIO_ESTADO_CAMBIAR',
 
   VENTAS_VER: 'VENTAS_VER',
   VENTAS_CREAR: 'VENTAS_CREAR',
@@ -382,6 +399,13 @@ const INVENTARIO_TAB_PERMISSIONS_MAP = Object.freeze({
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR,
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER,
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR
+  ]),
+  // AM: tab visual del nuevo submodulo de mobiliario en inventario.
+  mobiliario: uniquePermissions([
+    PERMISSIONS.INVENTARIO_MOBILIARIO_VER,
+    PERMISSIONS.INVENTARIO_MOBILIARIO_CREAR,
+    PERMISSIONS.INVENTARIO_MOBILIARIO_EDITAR,
+    PERMISSIONS.INVENTARIO_MOBILIARIO_ESTADO_CAMBIAR
   ])
 });
 
@@ -397,6 +421,9 @@ const PERSONAS_TAB_PERMISSIONS_MAP = Object.freeze({
   ]),
   empleados: uniquePermissions([
     PERMISSIONS.EMPLEADOS_MODULO_VER
+  ]),
+  planillas: uniquePermissions([
+    PERMISSIONS.PLANILLAS_MODULO_VER
   ]),
   usuarios: uniquePermissions([
     PERMISSIONS.USUARIOS_MODULO_VER
@@ -467,6 +494,24 @@ const VENTAS_TAB_PERMISSIONS_MAP = Object.freeze({
   ])
 });
 
+const MENU_TAB_BASE_PERMISSIONS = uniquePermissions([
+  PERMISSIONS.MENU_VER,
+  PERMISSIONS.MENU_PEDIDO_AGREGAR_ITEM,
+  PERMISSIONS.MENU_PRODUCTO_DETALLE_VER,
+  PERMISSIONS.MENU_PEDIDO_EDITAR_CANTIDAD,
+  PERMISSIONS.MENU_PEDIDO_ELIMINAR_ITEM,
+  PERMISSIONS.MENU_PEDIDO_CONFIRMAR
+]);
+
+const MENU_TAB_PERMISSIONS_MAP = Object.freeze({
+  recetas: MENU_TAB_BASE_PERMISSIONS,
+  combos: MENU_TAB_BASE_PERMISSIONS,
+  'productos-menu': MENU_TAB_BASE_PERMISSIONS,
+  salsas: MENU_TAB_BASE_PERMISSIONS,
+  publicacion: MENU_TAB_BASE_PERMISSIONS,
+  'vista-previa': MENU_TAB_BASE_PERMISSIONS
+});
+
 const MODULE_ROUTE_PERMISSIONS = Object.freeze({
   dashboard: uniquePermissions([PERMISSIONS.DASHBOARD_VER]),
   personas: uniquePermissions(Object.values(PERSONAS_TAB_PERMISSIONS_MAP).flat()),
@@ -495,14 +540,7 @@ const MODULE_ROUTE_PERMISSIONS = Object.freeze({
     PERMISSIONS.COCINA_PEDIDO_MARCAR_LISTO,
     PERMISSIONS.COCINA_PEDIDO_ENTREGAR
   ]),
-  menu: uniquePermissions([
-    PERMISSIONS.MENU_VER,
-    PERMISSIONS.MENU_PEDIDO_AGREGAR_ITEM,
-    PERMISSIONS.MENU_PRODUCTO_DETALLE_VER,
-    PERMISSIONS.MENU_PEDIDO_EDITAR_CANTIDAD,
-    PERMISSIONS.MENU_PEDIDO_ELIMINAR_ITEM,
-    PERMISSIONS.MENU_PEDIDO_CONFIRMAR
-  ]),
+  menu: uniquePermissions(Object.values(MENU_TAB_PERMISSIONS_MAP).flat()),
   seguridad: uniquePermissions([
     PERMISSIONS.SEGURIDAD_VER,
     ...Object.values(SEGURIDAD_TAB_PERMISSIONS_MAP).flat()
@@ -556,6 +594,7 @@ export const INVENTARIO_TAB_PERMISSIONS = Object.freeze(INVENTARIO_TAB_PERMISSIO
 export const PERSONAS_TAB_PERMISSIONS = Object.freeze(PERSONAS_TAB_PERMISSIONS_MAP);
 export const SEGURIDAD_TAB_PERMISSIONS = Object.freeze(SEGURIDAD_TAB_PERMISSIONS_MAP);
 export const VENTAS_TAB_PERMISSIONS = Object.freeze(VENTAS_TAB_PERMISSIONS_MAP);
+export const MENU_TAB_PERMISSIONS = Object.freeze(MENU_TAB_PERMISSIONS_MAP);
 
 export const MODULE_NAV_ITEMS = Object.freeze([
   { key: 'dashboard', name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
@@ -590,15 +629,17 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam', required: INVENTARIO_TAB_PERMISSIONS_MAP.insumos },
     { key: 'productos', label: 'Productos', icon: 'bi bi-basket', required: INVENTARIO_TAB_PERMISSIONS_MAP.productos },
     { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building', required: INVENTARIO_TAB_PERMISSIONS_MAP.almacenes },
-    { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS_MAP.alertas },
     // AM: acceso visual al submodulo de ordenes de compra.
-    { key: 'ordenes_compra', label: 'Ordenes compra', icon: 'bi bi-bag-check', required: INVENTARIO_TAB_PERMISSIONS_MAP.ordenes_compra }
+    { key: 'ordenes_compra', label: 'Ordenes compra', icon: 'bi bi-bag-check', required: INVENTARIO_TAB_PERMISSIONS_MAP.ordenes_compra },
+    // AM: acceso visual al submodulo de mobiliario.
+    { key: 'mobiliario', label: 'Mobiliario', icon: 'bi bi-archive', required: INVENTARIO_TAB_PERMISSIONS_MAP.mobiliario }
   ],
   personas: [
     { key: 'personas', label: 'Personas', icon: 'bi bi-person', required: PERSONAS_TAB_PERMISSIONS_MAP.personas },
     { key: 'empresas', label: 'Empresas', icon: 'bi bi-building', required: PERSONAS_TAB_PERMISSIONS_MAP.empresas },
     { key: 'clientes', label: 'Clientes', icon: 'bi bi-people', required: PERSONAS_TAB_PERMISSIONS_MAP.clientes },
     { key: 'empleados', label: 'Empleados', icon: 'bi bi-briefcase', required: PERSONAS_TAB_PERMISSIONS_MAP.empleados },
+    { key: 'planillas', label: 'Planillas', icon: 'bi bi-cash-coin', required: PERSONAS_TAB_PERMISSIONS_MAP.planillas },
     { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear', required: PERSONAS_TAB_PERMISSIONS_MAP.usuarios },
     { key: 'roles', label: 'Roles y permisos', icon: 'bi bi-person-lock', required: PERSONAS_TAB_PERMISSIONS_MAP.roles }
   ],
@@ -621,6 +662,24 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'caja', label: 'Caja', icon: 'bi bi-cart3', required: VENTAS_TAB_PERMISSIONS_MAP.caja },
     { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS_MAP.pedidos },
     { key: 'descuentos', label: 'Descuentos', icon: 'bi bi-tags', required: VENTAS_TAB_PERMISSIONS_MAP.descuentos }
+  ],
+  menu: [
+    { key: 'recetas', label: 'Recetas', icon: 'bi bi-journal-richtext', required: MENU_TAB_PERMISSIONS_MAP.recetas },
+    { key: 'combos', label: 'Combos', icon: 'bi bi-collection', required: MENU_TAB_PERMISSIONS_MAP.combos },
+    {
+      key: 'productos-menu',
+      label: 'Productos del menu',
+      icon: 'bi bi-cup-straw',
+      required: MENU_TAB_PERMISSIONS_MAP['productos-menu']
+    },
+    { key: 'salsas', label: 'Salsas', icon: 'bi bi-droplet', required: MENU_TAB_PERMISSIONS_MAP.salsas },
+    { key: 'publicacion', label: 'Publicacion', icon: 'bi bi-cloud-upload', required: MENU_TAB_PERMISSIONS_MAP.publicacion },
+    {
+      key: 'vista-previa',
+      label: 'Vista previa',
+      icon: 'bi bi-eye',
+      required: MENU_TAB_PERMISSIONS_MAP['vista-previa']
+    }
   ]
 });
 

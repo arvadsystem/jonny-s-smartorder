@@ -105,6 +105,8 @@ const RecetasTable = ({
                 <img
                   src={imageUrl}
                   alt={`Imagen de ${String(receta?.nombre_receta || 'receta')}`}
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
                   onError={() => onCardImageError(id)}
                 />
               ) : (
@@ -170,3 +172,4 @@ const RecetasTable = ({
 };
 
 export default RecetasTable;
+

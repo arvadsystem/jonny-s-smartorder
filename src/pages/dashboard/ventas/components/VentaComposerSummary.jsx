@@ -148,6 +148,15 @@ export default function VentaComposerSummary({ composer, saving }) {
       </div>
 
       <div className="ventas-create-modal__form-row ventas-summary__fields-row">
+        <label className="ventas-create-modal__field ventas-create-modal__field--inline">
+          <span title="Sucursal operativa">
+            <i className="bi bi-shop" /> Sucursal
+          </span>
+          <div className="ventas-summary__static-field">
+            {composer.selectedSucursalLabel || 'Cargando...'}
+          </div>
+        </label>
+
         <div className="ventas-summary__discount-wrap" ref={discountPickerRef}>
           <button
             type="button"

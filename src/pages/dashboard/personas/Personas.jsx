@@ -619,7 +619,7 @@ const buildStatsFromPersonas = (records, totalOverride = null) => {
   };
 };
 
-export default function Personas({ openToast }) {
+export default function Personas({ openToast, selectedSucursalId = "" }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -697,6 +697,10 @@ export default function Personas({ openToast }) {
   });
   const [isSearchDropdownMounted, setIsSearchDropdownMounted] = useState(false);
   const [isSearchDropdownVisible, setIsSearchDropdownVisible] = useState(false);
+  const normalizedSucursalContext = useMemo(() => {
+    const parsed = Number.parseInt(String(selectedSucursalId ?? ""), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : "";
+  }, [selectedSucursalId]);
 
   const backendTotalPages = Math.max(1, Math.ceil(total / pageSize));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -1855,6 +1859,12 @@ export default function Personas({ openToast }) {
                 <div className="personas-search-dropdown__empty">Sin sugerencias para "{search.trim()}"</div>
               ) : null}
             </div>
+          </div>
+        ) : null}
+
+        {normalizedSucursalContext ? (
+          <div className="personas-page__scope-note" role="status" aria-live="polite">
+            Personas se muestra en modo global para la sucursal seleccionada. El modelo actual no segmenta personas por sucursal.
           </div>
         ) : null}
 

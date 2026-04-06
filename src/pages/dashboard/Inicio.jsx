@@ -16,7 +16,13 @@ const Inicio = () => {
     [isSuperAdmin, permisos]
   );
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="p-4 text-center text-muted" role="status" aria-live="polite">
+        Cargando permisos del dashboard...
+      </div>
+    );
+  }
 
   if (!canViewDashboard) {
     if (fallbackPath) {

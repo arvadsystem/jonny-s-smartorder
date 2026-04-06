@@ -1,0 +1,12 @@
+.persona-inline-create-modal__backdrop {
+  z-index: 2390;
+}
+
+.persona-inline-create-modal.inv-prod-drawer {
+  z-index: 2392;
+}
+
+.persona-inline-create-modal .crud-modal__title {
+  line-height: 1.22;
+}
+

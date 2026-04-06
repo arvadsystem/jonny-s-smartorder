@@ -3,6 +3,9 @@ import VentaComposerSummary from './VentaComposerSummary';
 import { useVentaComposer } from '../hooks/useVentaComposer';
 
 export default function CajaView({
+  sucursales,
+  isSuperAdmin,
+  defaultSucursalId,
   productos,
   categorias,
   tiposDepartamento,
@@ -22,6 +25,9 @@ export default function CajaView({
     combos,
     recetas,
     descuentosCatalogo,
+    sucursales,
+    isSuperAdmin,
+    defaultSucursalId,
     onSubmit
   });
 

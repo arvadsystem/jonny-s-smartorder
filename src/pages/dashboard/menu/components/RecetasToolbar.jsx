@@ -4,18 +4,16 @@ const RecetasToolbar = ({
   filtersOpen,
   onOpenFilters,
   drawerOpen,
-  onOpenCreate,
-  viewMode,
-  onChangeViewMode
+  onOpenCreate
 }) => (
-  <div className="inv-prod-header-actions inv-ins-header-actions menu-recetas-admin__header-actions">
-    <label className="inv-ins-search inv-prod-header-search" aria-label="Buscar recetas">
+  <div className="inv-prod-header-actions inv-ins-header-actions menu-recetas-admin__header-actions menu-toolbar-actions">
+    <label className="inv-ins-search menu-toolbar-search" aria-label="Buscar recetas">
       <i className="bi bi-search" />
       <input
         type="search"
         value={search}
         onChange={(event) => onSearchChange(event.target.value)}
-        placeholder="Buscar receta..."
+        placeholder="Buscar por nombre, descripcion o ID..."
       />
     </label>
 
@@ -40,33 +38,8 @@ const RecetasToolbar = ({
       aria-controls="menu-recetas-form-drawer"
     >
       <i className="bi bi-plus-circle" />
-      <span>Nuevo</span>
+      <span>Nueva receta</span>
     </button>
-
-    <div
-      className="personas-page__view-toggle menu-recetas-admin__view-toggle"
-      role="tablist"
-      aria-label="Cambiar vista recetas"
-    >
-      <button
-        type="button"
-        className={`personas-page__view-btn ${viewMode === 'cards' ? 'is-active' : ''}`}
-        onClick={() => onChangeViewMode('cards')}
-        aria-pressed={viewMode === 'cards'}
-        title="Vista tarjetas"
-      >
-        <i className="bi bi-grid-3x3-gap-fill" />
-      </button>
-      <button
-        type="button"
-        className={`personas-page__view-btn ${viewMode === 'table' ? 'is-active' : ''}`}
-        onClick={() => onChangeViewMode('table')}
-        aria-pressed={viewMode === 'table'}
-        title="Vista tabla"
-      >
-        <i className="bi bi-list-ul" />
-      </button>
-    </div>
   </div>
 );
 

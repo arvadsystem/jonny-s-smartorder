@@ -13,6 +13,21 @@ import useSearchSuggestionsDropdown, {
   MIN_CHARS_FOR_SUGGESTIONS,
   normalizeSearchText,
 } from "./components/common/useSearchSuggestionsDropdown";
+import SmartSelectEntity from "./components/common/SmartSelectEntity";
+import PersonaInlineCreateModal from "./components/common/PersonaInlineCreateModal";
+import EmpresaInlineCreateModal from "./components/common/EmpresaInlineCreateModal";
+import {
+  buildPersonaPayloadFromForm,
+  createInitialPersonaForm,
+  normalizePersonaFormValues,
+  validatePersonaForm,
+} from "./components/common/persona-form-shared";
+import {
+  buildEmpresaPayloadFromForm,
+  createInitialEmpresaForm,
+  normalizeEmpresaFormValues,
+  validateEmpresaForm,
+} from "./components/common/empresa-form-shared";
 import "./components/common/crud-modal-theme.css";
 import "./components/clientes/clientes-persona-select.css";
 
@@ -24,6 +39,10 @@ const emptyForm = {
   puntos: "",
   estado: true,
 };
+
+const emptyInlinePersonaForm = createInitialPersonaForm();
+
+const emptyInlineEmpresaForm = createInitialEmpresaForm();
 
 const createInitialFiltersDraft = () => ({
   estadoFiltro: "todos",
@@ -126,6 +145,7 @@ const normalizeArrayPayload = (resp) => {
 
 const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
 const normalizeSearchKey = (value) => String(value ?? "").trim().toLowerCase();
+
 const ASYNC_SELECT_LIMIT = 80;
 const ASYNC_SELECT_DEBOUNCE_MS = 300;
 const SUGGESTION_LIMIT = 8;
@@ -270,6 +290,21 @@ const parseIntegerValue = (value) => {
   return Number.isInteger(parsed) ? parsed : NaN;
 };
 
+const parsePositiveInteger = (value) => {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const resolveClienteSucursalId = (cliente) =>
+  parsePositiveInteger(
+    firstNonEmptyValue(
+      cliente?.id_sucursal,
+      cliente?.sucursal_id,
+      cliente?.persona_id_sucursal,
+      cliente?.empresa_id_sucursal
+    )
+  );
+
 const detectEstadoField = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return "estado";
   if (Object.prototype.hasOwnProperty.call(record || {}, "activo")) return "activo";
@@ -283,7 +318,7 @@ const isActivo = (record) => {
   return Boolean(record[field]);
 };
 
-const Clientes = ({ openToast }) => {
+const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -315,6 +350,12 @@ const Clientes = ({ openToast }) => {
   const [form, setForm] = useState(emptyForm);
   const [clienteOriginType, setClienteOriginType] = useState("persona");
   const [errors, setErrors] = useState({});
+  const [useInlinePersonaCreate, setUseInlinePersonaCreate] = useState(false);
+  const [useInlineEmpresaCreate, setUseInlineEmpresaCreate] = useState(false);
+  const [inlinePersonaForm, setInlinePersonaForm] = useState(emptyInlinePersonaForm);
+  const [inlineEmpresaForm, setInlineEmpresaForm] = useState(emptyInlineEmpresaForm);
+  const [showPersonaCreateModal, setShowPersonaCreateModal] = useState(false);
+  const [showEmpresaCreateModal, setShowEmpresaCreateModal] = useState(false);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -338,6 +379,7 @@ const Clientes = ({ openToast }) => {
   const empresaAbortRef = useRef(null);
   const empresaAsyncReqSeqRef = useRef(0);
   const tipoAsyncReqSeqRef = useRef(0);
+  const sucursalFallbackNoticeRef = useRef('');
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -354,6 +396,8 @@ const Clientes = ({ openToast }) => {
 
   const closeFormDrawer = useCallback(() => {
     blurFocusedElementInside("cli-form-drawer");
+    setShowPersonaCreateModal(false);
+    setShowEmpresaCreateModal(false);
     setShowModal(false);
   }, [blurFocusedElementInside]);
 
@@ -755,19 +799,51 @@ const Clientes = ({ openToast }) => {
   const cargarClientes = useCallback(async () => {
     setLoading(true);
     const requestId = ++requestIdRef.current;
+    const normalizedSucursalId = parsePositiveInteger(selectedSucursalId);
 
     try {
       const resp = await personaService.getClientes({
         page,
         limit,
         nombre: debouncedSearch || undefined,
+        id_sucursal: normalizedSucursalId || undefined,
       });
 
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
+      const scopeMode = String(resp?.scope_info?.mode ?? '').trim().toLowerCase();
+      if (normalizedSucursalId && scopeMode === 'global_fallback') {
+        const marker = String(normalizedSucursalId);
+        if (sucursalFallbackNoticeRef.current !== marker) {
+          sucursalFallbackNoticeRef.current = marker;
+          safeToast(
+            'INFO',
+            'Clientes se muestra en modo global: el modelo actual no permite filtrar por sucursal en backend.',
+            'info'
+          );
+        }
+      } else if (scopeMode !== 'global_fallback') {
+        sucursalFallbackNoticeRef.current = '';
+      }
+
       const { items, total: totalResp } = normalizeListResponse(resp);
-      setClientes((Array.isArray(items) ? items : []).map(normalizeClienteForView));
-      setTotal(totalResp);
+      const normalizedItems = (Array.isArray(items) ? items : []).map(normalizeClienteForView);
+      const hasSucursalMetadata = normalizedItems.some((item) => resolveClienteSucursalId(item) !== null);
+      const filteredItems =
+        normalizedSucursalId && hasSucursalMetadata
+          ? normalizedItems.filter((item) => {
+              const itemSucursalId = resolveClienteSucursalId(item);
+              if (!itemSucursalId) return true;
+              return itemSucursalId === normalizedSucursalId;
+            })
+          : normalizedItems;
+
+      setClientes(filteredItems);
+      setTotal(
+        normalizedSucursalId && hasSucursalMetadata
+          ? filteredItems.length
+          : totalResp
+      );
     } catch (error) {
       if (!mountedRef.current) return;
       safeToast("ERROR", error.message || "No se pudo cargar clientes", "danger");
@@ -778,7 +854,7 @@ const Clientes = ({ openToast }) => {
         setLoading(false);
       }
     }
-  }, [page, limit, debouncedSearch, safeToast]);
+  }, [page, limit, debouncedSearch, safeToast, selectedSucursalId]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -848,11 +924,13 @@ const Clientes = ({ openToast }) => {
     const personaId = String(form.id_persona ?? "").trim();
     const empresaId = String(form.id_empresa ?? "").trim();
     const tipoClienteId = String(form.id_tipo_cliente ?? "").trim();
+    const contextSucursalId = parsePositiveInteger(selectedSucursalId);
 
     return {
       id_persona: personaId ? parseIntegerValue(personaId) : null,
       id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
       id_tipo_cliente: tipoClienteId ? parseIntegerValue(tipoClienteId) : null,
+      id_sucursal: contextSucursalId || null,
       fecha_ingreso: form.fecha_ingreso,
       puntos: parseIntegerValue(form.puntos),
       estado: Boolean(form.estado),
@@ -865,17 +943,34 @@ const Clientes = ({ openToast }) => {
     const payload = sanitizeForm();
     const hasPersona = Boolean(String(form.id_persona ?? "").trim());
     const hasEmpresa = Boolean(String(form.id_empresa ?? "").trim());
+    const usingInlinePersona = clienteOriginType === "persona" && useInlinePersonaCreate;
+    const usingInlineEmpresa = clienteOriginType === "empresa" && useInlineEmpresaCreate;
 
     if (hasPersona && hasEmpresa) {
       currentErrors.id_persona = "Solo puede seleccionar una opcion";
       currentErrors.id_empresa = "Solo puede seleccionar una opcion";
     } else if (clienteOriginType === "persona") {
-      if (!hasPersona) currentErrors.id_persona = "Seleccione una persona";
+      if (!hasPersona && !usingInlinePersona) currentErrors.id_persona = "Seleccione una persona";
       if (hasEmpresa) currentErrors.id_empresa = "No aplica para Cliente Persona";
     } else if (clienteOriginType === "empresa") {
-      if (!hasEmpresa) currentErrors.id_empresa = "Seleccione una empresa";
+      if (!hasEmpresa && !usingInlineEmpresa) currentErrors.id_empresa = "Seleccione una empresa";
       if (hasPersona) currentErrors.id_persona = "No aplica para Cliente Empresa";
     }
+
+    if (usingInlinePersona) {
+      const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
+      if (Object.keys(personaValidationErrors).length > 0) {
+        currentErrors.id_persona = "Completa los datos de la persona nueva";
+      }
+    }
+
+    if (usingInlineEmpresa) {
+      const empresaValidationErrors = validateEmpresaForm(inlineEmpresaForm);
+      if (Object.keys(empresaValidationErrors).length > 0) {
+        currentErrors.id_empresa = "Completa los datos de la empresa nueva";
+      }
+    }
+
     if (!form.id_tipo_cliente) currentErrors.id_tipo_cliente = "Seleccione";
     if (!form.fecha_ingreso || form.fecha_ingreso > today) currentErrors.fecha_ingreso = "Fecha invalida";
     if (form.puntos === "") currentErrors.puntos = "Requerido";
@@ -888,6 +983,11 @@ const Clientes = ({ openToast }) => {
   const guardar = async (event) => {
     event.preventDefault();
     if (!validar() || actionLoading) return;
+    const contextSucursalId = parsePositiveInteger(selectedSucursalId);
+    if (!editId && !contextSucursalId) {
+      safeToast("INFO", "Selecciona una sucursal antes de crear el cliente", "info");
+      return;
+    }
 
     const payloadLimpio = sanitizeForm();
     setActionLoading(true);
@@ -925,13 +1025,33 @@ const Clientes = ({ openToast }) => {
           safeToast("OK", "Cliente actualizado");
         }
       } else {
-        await personaService.createCliente(payloadLimpio);
+        if (clienteOriginType === "persona" && useInlinePersonaCreate) {
+          await personaService.createClienteAtomico({
+            origen: "persona",
+            persona: buildPersonaPayloadFromForm(inlinePersonaForm),
+            cliente: payloadLimpio,
+          });
+        } else if (clienteOriginType === "empresa" && useInlineEmpresaCreate) {
+          await personaService.createClienteAtomico({
+            origen: "empresa",
+            empresa: buildEmpresaPayloadFromForm(inlineEmpresaForm),
+            cliente: payloadLimpio,
+          });
+        } else {
+          await personaService.createCliente(payloadLimpio);
+        }
         safeToast("OK", "Cliente creado");
       }
 
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
+      setUseInlinePersonaCreate(false);
+      setUseInlineEmpresaCreate(false);
+      setInlinePersonaForm(emptyInlinePersonaForm);
+      setInlineEmpresaForm(emptyInlineEmpresaForm);
+      setShowPersonaCreateModal(false);
+      setShowEmpresaCreateModal(false);
       await cargarClientes();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo guardar", "danger");
@@ -940,10 +1060,28 @@ const Clientes = ({ openToast }) => {
     }
   };
 
+  const handleInlinePersonaModalSave = useCallback(async (_personaPayload, personaFormState) => {
+    setInlinePersonaForm(normalizePersonaFormValues(personaFormState));
+    setErrors((state) => ({ ...state, id_persona: undefined }));
+    setShowPersonaCreateModal(false);
+  }, []);
+
+  const handleInlineEmpresaModalSave = useCallback(async (_empresaPayload, empresaFormState) => {
+    setInlineEmpresaForm(normalizeEmpresaFormValues(empresaFormState));
+    setErrors((state) => ({ ...state, id_empresa: undefined }));
+    setShowEmpresaCreateModal(false);
+  }, []);
+
   const iniciarEdicion = (cliente) => {
     setFiltersOpen(false);
     setEditId(cliente.id_cliente);
     setErrors({});
+    setUseInlinePersonaCreate(false);
+    setUseInlineEmpresaCreate(false);
+    setInlinePersonaForm(emptyInlinePersonaForm);
+    setInlineEmpresaForm(emptyInlineEmpresaForm);
+    setShowPersonaCreateModal(false);
+    setShowEmpresaCreateModal(false);
     const formValues = buildFormFromCliente(cliente);
     setForm(formValues);
     setClienteOriginType(formValues.id_empresa ? "empresa" : "persona");
@@ -957,6 +1095,12 @@ const Clientes = ({ openToast }) => {
     setErrors({});
     setForm(emptyForm);
     setClienteOriginType("persona");
+    setUseInlinePersonaCreate(false);
+    setUseInlineEmpresaCreate(false);
+    setInlinePersonaForm(emptyInlinePersonaForm);
+    setInlineEmpresaForm(emptyInlineEmpresaForm);
+    setShowPersonaCreateModal(false);
+    setShowEmpresaCreateModal(false);
     setShowModal(true);
   };
 
@@ -968,6 +1112,17 @@ const Clientes = ({ openToast }) => {
         ? { ...state, id_empresa: "" }
         : { ...state, id_persona: "" }
     );
+    if (nextType === "persona") {
+      setUseInlineEmpresaCreate(false);
+      setInlineEmpresaForm(emptyInlineEmpresaForm);
+      setShowPersonaCreateModal(false);
+      setShowEmpresaCreateModal(false);
+    } else {
+      setUseInlinePersonaCreate(false);
+      setInlinePersonaForm(emptyInlinePersonaForm);
+      setShowPersonaCreateModal(false);
+      setShowEmpresaCreateModal(false);
+    }
     setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
   };
 
@@ -1493,68 +1648,165 @@ const Clientes = ({ openToast }) => {
           <div className="row g-3 crud-modal__grid">
             {clienteOriginType === "persona" ? (
               <div className="col-12">
-                <label className="form-label text-light text-opacity-75">Persona</label>
-                <Select
-                  inputId="cliente-persona-select"
-                  className={`clientes-persona-select ${errors.id_persona ? "is-invalid" : ""}`}
-                  classNamePrefix="clientes-persona-select"
-                  placeholder="Seleccione"
-                  isSearchable
-                  isClearable
-                  options={personaSelectOptions}
-                  value={personaSelectValue}
-                  onChange={(option) => {
-                    setClienteOriginType("persona");
-                    setForm((state) => ({
-                      ...state,
-                      id_persona: option?.value ? String(option.value) : "",
-                      id_empresa: "",
-                    }));
-                    setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
+                <SmartSelectEntity
+                  label="Persona"
+                  showToggle={drawerMode === "create"}
+                  isInlineCreate={drawerMode === "create" && useInlinePersonaCreate}
+                  onToggleInline={() => {
+                    setUseInlinePersonaCreate((prev) => {
+                      const next = !prev;
+                      if (next) {
+                        setShowPersonaCreateModal(true);
+                        setForm((state) => ({ ...state, id_persona: "" }));
+                      } else {
+                        setInlinePersonaForm(emptyInlinePersonaForm);
+                        setShowPersonaCreateModal(false);
+                      }
+                      return next;
+                    });
+                    setErrors((state) => ({ ...state, id_persona: undefined }));
                   }}
-                  styles={personaSelectStyles}
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                  menuPosition="fixed"
-                  isDisabled={personaDisabled}
+                  toggleCreateLabel="+ Crear persona nueva"
+                  toggleExistingLabel="Usar persona existente"
+                  toggleDisabled={actionLoading}
+                  selector={
+                    <Select
+                      inputId="cliente-persona-select"
+                      className={`clientes-persona-select ${errors.id_persona ? "is-invalid" : ""}`}
+                      classNamePrefix="clientes-persona-select"
+                      placeholder="Seleccione"
+                      isSearchable
+                      isClearable
+                      options={personaSelectOptions}
+                      value={personaSelectValue}
+                      onChange={(option) => {
+                        setClienteOriginType("persona");
+                        setForm((state) => ({
+                          ...state,
+                          id_persona: option?.value ? String(option.value) : "",
+                          id_empresa: "",
+                        }));
+                        setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
+                      }}
+                      styles={personaSelectStyles}
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                      menuPosition="fixed"
+                      isDisabled={personaDisabled || useInlinePersonaCreate}
+                    />
+                  }
+                  error={errors.id_persona}
+                  helperText='Para cambiar a empresa, selecciona primero el tipo "Cliente Empresa".'
+                  inlineContent={
+                    <div className="smart-select-entity__summary">
+                      <div className="small text-muted mb-2">
+                        {String(inlinePersonaForm.nombre ?? "").trim()
+                          ? "Persona nueva lista para guardar."
+                          : "Completa los datos de la persona nueva para continuar."}
+                      </div>
+                      <div className="d-flex flex-wrap gap-2 align-items-center">
+                        <span className="badge text-bg-light border">
+                          {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
+                          {String(inlinePersonaForm.apellido ?? "").trim()}
+                        </span>
+                        <span className="badge text-bg-light border">
+                          DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary mt-2"
+                        onClick={() => setShowPersonaCreateModal(true)}
+                        disabled={actionLoading}
+                      >
+                        {String(inlinePersonaForm.nombre ?? "").trim()
+                          ? "Editar datos de persona"
+                          : "Completar datos de persona"}
+                      </button>
+                    </div>
+                  }
                 />
-                {errors.id_persona && <div className="invalid-feedback d-block">{errors.id_persona}</div>}
-                <small className="clientes-modal__field-hint">
-                  Para cambiar a empresa, selecciona primero el tipo "Cliente Empresa".
-                </small>
               </div>
             ) : (
               <div className="col-12">
-                <label className="form-label text-light text-opacity-75">Empresa</label>
-                <AsyncSelect
-                  inputId="cliente-empresa-select"
-                  className={`clientes-persona-select ${errors.id_empresa ? "is-invalid" : ""}`}
-                  classNamePrefix="clientes-persona-select"
-                  placeholder="Seleccione"
-                  cacheOptions
-                  defaultOptions={empresaDefaultOptions}
-                  loadOptions={loadEmpresaOptions}
-                  isClearable
-                  value={empresaSelectValue}
-                  onChange={(option) => {
-                    setClienteOriginType("empresa");
-                    setForm((state) => ({
-                      ...state,
-                      id_empresa: option?.value ? String(option.value) : "",
-                      id_persona: "",
-                    }));
-                    setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
+                <SmartSelectEntity
+                  label="Empresa"
+                  showToggle={drawerMode === "create"}
+                  isInlineCreate={drawerMode === "create" && useInlineEmpresaCreate}
+                  onToggleInline={() => {
+                    setUseInlineEmpresaCreate((prev) => {
+                      const next = !prev;
+                      if (next) {
+                        setShowEmpresaCreateModal(true);
+                        setForm((state) => ({ ...state, id_empresa: "" }));
+                      } else {
+                        setInlineEmpresaForm(emptyInlineEmpresaForm);
+                        setShowEmpresaCreateModal(false);
+                      }
+                      return next;
+                    });
+                    setErrors((state) => ({ ...state, id_empresa: undefined }));
                   }}
-                  styles={empresaSelectStyles}
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                  menuPosition="fixed"
-                  isDisabled={empresaDisabled}
-                  noOptionsMessage={() => "No se encontraron resultados"}
-                  loadingMessage={() => "Buscando..."}
+                  toggleCreateLabel="+ Crear empresa nueva"
+                  toggleExistingLabel="Usar empresa existente"
+                  toggleDisabled={actionLoading}
+                  selector={
+                    <AsyncSelect
+                      inputId="cliente-empresa-select"
+                      className={`clientes-persona-select ${errors.id_empresa ? "is-invalid" : ""}`}
+                      classNamePrefix="clientes-persona-select"
+                      placeholder="Seleccione"
+                      cacheOptions
+                      defaultOptions={empresaDefaultOptions}
+                      loadOptions={loadEmpresaOptions}
+                      isClearable
+                      value={empresaSelectValue}
+                      onChange={(option) => {
+                        setClienteOriginType("empresa");
+                        setForm((state) => ({
+                          ...state,
+                          id_empresa: option?.value ? String(option.value) : "",
+                          id_persona: "",
+                        }));
+                        setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
+                      }}
+                      styles={empresaSelectStyles}
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                      menuPosition="fixed"
+                      isDisabled={empresaDisabled || useInlineEmpresaCreate}
+                      noOptionsMessage={() => "No se encontraron resultados"}
+                      loadingMessage={() => "Buscando..."}
+                    />
+                  }
+                  error={errors.id_empresa}
+                  helperText='Para cambiar a persona, selecciona primero el tipo "Cliente Persona".'
+                  inlineContent={
+                    <div className="smart-select-entity__summary">
+                      <div className="small text-muted mb-2">
+                        {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
+                          ? "Empresa nueva lista para guardar."
+                          : "Completa los datos de la empresa nueva para continuar."}
+                      </div>
+                      <div className="d-flex flex-wrap gap-2 align-items-center">
+                        <span className="badge text-bg-light border">
+                          {String(inlineEmpresaForm.nombre_empresa ?? "").trim() || "Sin nombre de empresa"}
+                        </span>
+                        <span className="badge text-bg-light border">
+                          RTN: {toDisplayValue(inlineEmpresaForm.rtn, "N/D")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary mt-2"
+                        onClick={() => setShowEmpresaCreateModal(true)}
+                        disabled={actionLoading}
+                      >
+                        {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
+                          ? "Editar datos de empresa"
+                          : "Completar datos de empresa"}
+                      </button>
+                    </div>
+                  }
                 />
-                {errors.id_empresa && <div className="invalid-feedback d-block">{errors.id_empresa}</div>}
-                <small className="clientes-modal__field-hint">
-                  Para cambiar a persona, selecciona primero el tipo "Cliente Persona".
-                </small>
               </div>
             )}
 
@@ -1644,6 +1896,32 @@ const Clientes = ({ openToast }) => {
           </div>
         </form>
       </aside>
+
+      <PersonaInlineCreateModal
+        show={
+          showModal &&
+          drawerMode === "create" &&
+          clienteOriginType === "persona" &&
+          useInlinePersonaCreate &&
+          showPersonaCreateModal
+        }
+        initialForm={inlinePersonaForm}
+        onClose={() => setShowPersonaCreateModal(false)}
+        onSave={handleInlinePersonaModalSave}
+      />
+
+      <EmpresaInlineCreateModal
+        show={
+          showModal &&
+          drawerMode === "create" &&
+          clienteOriginType === "empresa" &&
+          useInlineEmpresaCreate &&
+          showEmpresaCreateModal
+        }
+        initialForm={inlineEmpresaForm}
+        onClose={() => setShowEmpresaCreateModal(false)}
+        onSave={handleInlineEmpresaModalSave}
+      />
 
       {confirmModal.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
