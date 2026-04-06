@@ -4,13 +4,19 @@ import { useAuth } from '../../hooks/useAuth';
 import { usePermisos } from '../../context/PermisosContext';
 import { API_URL } from '../../utils/constants';
 import { getAllowedTabs, PERMISSIONS } from '../../utils/permissions';
+import {
+  isPlanillasContext,
+  PLANILLAS_NAV_QUERY_PARAM,
+  PLANILLAS_PARENT_TAB_KEY
+} from '../../modules/planillas/navigation';
 
 const MAX_VISIBLE_TABS = 3;
 const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
 
 const getTabFromSearch = (search, tabs, fallbackKey, options = {}) => {
   const sp = new URLSearchParams(search || '');
-  const current = String(sp.get('tab') || fallbackKey).toLowerCase();
+  const paramName = String(options.paramName || 'tab');
+  const current = String(sp.get(paramName) || fallbackKey).toLowerCase();
   const normalized = options.normalizeMovimientos && current === 'movimientos' ? 'almacenes' : current;
   return tabs.some((tab) => tab.key === normalized) ? normalized : fallbackKey;
 };
@@ -243,23 +249,29 @@ const Navbar = () => {
   const canViewProfile = canAny([PERMISSIONS.PERFIL_VER]);
 
   const moduleKey = useMemo(() => {
+    if (isPlanillasContext(location.pathname, location.search)) return 'planillas';
     if (location.pathname.startsWith('/dashboard/inventario')) return 'inventario';
     if (location.pathname.startsWith('/dashboard/seguridad')) return 'seguridad';
     if (location.pathname.startsWith('/dashboard/personas')) return 'personas';
     if (location.pathname.startsWith('/dashboard/ventas')) return 'ventas';
     if (location.pathname.startsWith('/dashboard/menu')) return 'menu';
     return null;
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   const moduleTabs = useMemo(() => {
     if (!moduleKey) return [];
-    return getAllowedTabs(moduleKey, permisos, { isSuperAdmin });
+    const tabs = getAllowedTabs(moduleKey, permisos, { isSuperAdmin });
+    if (moduleKey === 'personas') {
+      return tabs.filter((tab) => tab.key !== PLANILLAS_PARENT_TAB_KEY);
+    }
+    return tabs;
   }, [isSuperAdmin, moduleKey, permisos]);
 
   const activeModuleTab = useMemo(() => {
     if (!moduleKey || moduleTabs.length === 0) return null;
     return getTabFromSearch(location.search, moduleTabs, moduleTabs[0].key, {
-      normalizeMovimientos: moduleKey === 'inventario'
+      normalizeMovimientos: moduleKey === 'inventario',
+      paramName: moduleKey === 'planillas' ? PLANILLAS_NAV_QUERY_PARAM : 'tab'
     });
   }, [location.search, moduleKey, moduleTabs]);
 
@@ -305,13 +317,23 @@ const Navbar = () => {
   };
 
   const moduleTabsConfig = useMemo(() => {
-    if (permisosLoading || !moduleKey || moduleTabs.length === 0 || !activeModuleTab) return null;
+    if (permisosLoading || !moduleKey || moduleTabs.length === 0) return null;
     return {
       tabs: moduleTabs,
-      activeKey: activeModuleTab,
-      onGoTab: (key) => navigate(`/dashboard/${moduleKey}?tab=${key}`)
+      activeKey: activeModuleTab ?? '',
+      onGoTab: (key) => {
+        if (moduleKey === 'planillas') {
+          const next = new URLSearchParams(location.search || '');
+          next.set('tab', PLANILLAS_PARENT_TAB_KEY);
+          next.set(PLANILLAS_NAV_QUERY_PARAM, key);
+          navigate(`/dashboard/personas?${next.toString()}`);
+          return;
+        }
+
+        navigate(`/dashboard/${moduleKey}?tab=${key}`);
+      }
     };
-  }, [activeModuleTab, moduleKey, moduleTabs, navigate, permisosLoading]);
+  }, [activeModuleTab, location.search, moduleKey, moduleTabs, navigate, permisosLoading]);
 
   useEffect(() => {
     closeProfileDropdown();

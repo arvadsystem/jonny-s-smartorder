@@ -1,19 +1,33 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import logo from '../../assets/images/sinFondo.jpeg';
 import { usePermisos } from '../../context/PermisosContext';
 import { getVisibleModuleItems } from '../../utils/permissions';
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
+  const location = useLocation();
   const { isSuperAdmin, loading, permisos } = usePermisos();
   const visibleItems = getVisibleModuleItems(permisos, { isSuperAdmin });
   const sidebarItems = visibleItems.filter((item) => item.path !== '/dashboard/configuracion');
+  const currentTab = String(new URLSearchParams(location.search || '').get('tab') || '').toLowerCase();
+
+  const resolveIsActive = (item, isActive) => {
+    if (item.key === 'planillas') {
+      return location.pathname === '/dashboard/personas' && currentTab === 'planillas';
+    }
+
+    if (item.key === 'personas' && location.pathname === '/dashboard/personas' && currentTab === 'planillas') {
+      return false;
+    }
+
+    return isActive;
+  };
 
   const renderLink = (item) => (
     <NavLink
       key={item.path}
       to={item.path}
       end={item.path === '/dashboard'}
-      className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
+      className={({ isActive }) => `menu-item ${resolveIsActive(item, isActive) ? 'active' : ''}`}
       title={isCollapsed ? item.name : undefined}
     >
       <span className="menu-item-icon" aria-hidden="true">

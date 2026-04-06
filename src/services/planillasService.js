@@ -96,6 +96,24 @@ const planillasService = {
       pickAllowedFields(payload, ['observacion', 'id_sucursal'])
     ),
 
+  actualizarHoraExtraPlanilla: (idPlanilla, idHorasExtra, payload = {}) => {
+    const body = pickAllowedFields(payload, [
+      'id_empleado',
+      'fecha',
+      'horas',
+      'observacion',
+      'id_sucursal'
+    ]);
+
+    return apiFetch(`/planillas/${idPlanilla}/horas-extra/${idHorasExtra}/actualizar`, 'POST', body);
+  },
+
+  anularHoraExtraPlanilla: (idPlanilla, idHorasExtra, payload = {}) => {
+    const body = pickAllowedFields(payload, ['motivo', 'observacion', 'id_sucursal']);
+
+    return apiFetch(`/planillas/${idPlanilla}/horas-extra/${idHorasExtra}/anular`, 'POST', body);
+  },
+
   actualizarEstadoPlanilla: (idPlanilla, payload = {}) =>
     apiFetch(
       `/planillas/${idPlanilla}/estado`,

@@ -1,3 +1,5 @@
+import { PLANILLAS_NAV_TAB_KEYS, PLANILLAS_NAV_TABS } from '../modules/planillas/navigation';
+
 const uniquePermissions = (values) => {
   const seen = new Set();
   const result = [];
@@ -433,6 +435,45 @@ const PERSONAS_TAB_PERMISSIONS_MAP = Object.freeze({
   ])
 });
 
+const PLANILLAS_MODULE_PERMISSIONS = uniquePermissions([
+  PERMISSIONS.PLANILLAS_MODULO_VER,
+  PERMISSIONS.PLANILLAS_LISTADO_VER,
+  PERMISSIONS.PLANILLAS_DETALLE_VER,
+  PERMISSIONS.PLANILLAS_GENERAR,
+  PERMISSIONS.PLANILLAS_RECALCULAR,
+  PERMISSIONS.PLANILLAS_ADELANTOS_APLICAR,
+  PERMISSIONS.PLANILLAS_MOVIMIENTO_REGISTRAR,
+  PERMISSIONS.PLANILLAS_MOVIMIENTO_ANULAR,
+  PERMISSIONS.PLANILLAS_CERRAR,
+  PERMISSIONS.PLANILLAS_PAGAR,
+  PERMISSIONS.PLANILLAS_ANULAR,
+  PERMISSIONS.PLANILLAS_AUDITORIA_VER
+]);
+
+const PLANILLAS_NAV_TAB_PERMISSIONS_MAP = Object.freeze({
+  [PLANILLAS_NAV_TAB_KEYS.pagoPlanilla]: uniquePermissions([
+    PERMISSIONS.PLANILLAS_MODULO_VER,
+    PERMISSIONS.PLANILLAS_LISTADO_VER,
+    PERMISSIONS.PLANILLAS_DETALLE_VER,
+    PERMISSIONS.PLANILLAS_GENERAR,
+    PERMISSIONS.PLANILLAS_RECALCULAR,
+    PERMISSIONS.PLANILLAS_CERRAR,
+    PERMISSIONS.PLANILLAS_PAGAR,
+    PERMISSIONS.PLANILLAS_ANULAR
+  ]),
+  [PLANILLAS_NAV_TAB_KEYS.horasExtras]: uniquePermissions([
+    PERMISSIONS.PLANILLAS_MODULO_VER,
+    PERMISSIONS.PLANILLAS_DETALLE_VER,
+    PERMISSIONS.PLANILLAS_RECALCULAR,
+    PERMISSIONS.PLANILLAS_MOVIMIENTO_REGISTRAR
+  ]),
+  [PLANILLAS_NAV_TAB_KEYS.adelantosSalario]: uniquePermissions([
+    PERMISSIONS.PLANILLAS_MODULO_VER,
+    PERMISSIONS.PLANILLAS_DETALLE_VER,
+    PERMISSIONS.PLANILLAS_ADELANTOS_APLICAR
+  ])
+});
+
 const SEGURIDAD_TAB_PERMISSIONS_MAP = Object.freeze({
   sesiones: uniquePermissions([
     PERMISSIONS.SEGURIDAD_VER,
@@ -515,6 +556,7 @@ const MENU_TAB_PERMISSIONS_MAP = Object.freeze({
 const MODULE_ROUTE_PERMISSIONS = Object.freeze({
   dashboard: uniquePermissions([PERMISSIONS.DASHBOARD_VER]),
   personas: uniquePermissions(Object.values(PERSONAS_TAB_PERMISSIONS_MAP).flat()),
+  planillas: PLANILLAS_MODULE_PERMISSIONS,
   sucursales: uniquePermissions([
     PERMISSIONS.SUCURSALES_VER,
     PERMISSIONS.SUCURSALES_CREAR,
@@ -579,6 +621,7 @@ export const ROUTE_PERMISSIONS = Object.freeze(MODULE_ROUTE_PERMISSIONS);
 export const NAV_ITEM_PERMISSIONS = Object.freeze({
   '/dashboard': MODULE_ROUTE_PERMISSIONS.dashboard,
   '/dashboard/personas': MODULE_ROUTE_PERMISSIONS.personas,
+  '/dashboard/personas?tab=planillas': MODULE_ROUTE_PERMISSIONS.planillas,
   '/dashboard/sucursales': MODULE_ROUTE_PERMISSIONS.sucursales,
   '/dashboard/inventario': MODULE_ROUTE_PERMISSIONS.inventario,
   '/dashboard/ventas': MODULE_ROUTE_PERMISSIONS.ventas,
@@ -600,6 +643,7 @@ export const MODULE_NAV_ITEMS = Object.freeze([
   { key: 'dashboard', name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
   { key: 'sucursales', name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
   { key: 'personas', name: 'Personas/Empresas', path: '/dashboard/personas', icon: 'bi-people' },
+  { key: 'planillas', name: 'Planillas', path: '/dashboard/personas?tab=planillas', icon: 'bi-cash-coin' },
   { key: 'inventario', name: 'Inventario', path: '/dashboard/inventario', icon: 'bi-box-seam' },
   { key: 'ventas', name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
   { key: 'cocina', name: 'Cocina', path: '/dashboard/cocina', icon: 'bi-display' },
@@ -612,6 +656,7 @@ export const MODULE_NAV_ITEMS = Object.freeze([
 export const MODULE_PRIMARY_PERMISSION = Object.freeze({
   dashboard: PERMISSIONS.DASHBOARD_VER,
   personas: PERMISSIONS.PERSONAS_MODULO_VER,
+  planillas: PERMISSIONS.PLANILLAS_MODULO_VER,
   sucursales: PERMISSIONS.SUCURSALES_VER,
   inventario: PERMISSIONS.INVENTARIO_VER,
   ventas: PERMISSIONS.VENTAS_VER,
@@ -643,6 +688,12 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-person-gear', required: PERSONAS_TAB_PERMISSIONS_MAP.usuarios },
     { key: 'roles', label: 'Roles y permisos', icon: 'bi bi-person-lock', required: PERSONAS_TAB_PERMISSIONS_MAP.roles }
   ],
+  planillas: PLANILLAS_NAV_TABS.map((tab) => ({
+    key: tab.key,
+    label: tab.label,
+    icon: tab.icon,
+    required: PLANILLAS_NAV_TAB_PERMISSIONS_MAP[tab.key] || PLANILLAS_MODULE_PERMISSIONS
+  })),
   seguridad: [
     { key: 'sesiones', label: 'Sesiones activas', icon: 'bi bi-laptop', required: SEGURIDAD_TAB_PERMISSIONS_MAP.sesiones },
     { key: 'usuarios', label: 'Usuarios', icon: 'bi bi-people', required: SEGURIDAD_TAB_PERMISSIONS_MAP.usuarios },

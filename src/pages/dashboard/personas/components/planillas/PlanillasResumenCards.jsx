@@ -6,7 +6,7 @@ const formatMoney = (value) => {
   return `L ${amount.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-export default function PlanillasResumenCards({ resumen = {} }) {
+export default function PlanillasResumenCards({ resumen = {}, cardKeys = null }) {
   const cards = [
     {
       key: 'salario_base',
@@ -45,9 +45,18 @@ export default function PlanillasResumenCards({ resumen = {} }) {
     }
   ];
 
+  const allowedKeys = Array.isArray(cardKeys) && cardKeys.length > 0 ? new Set(cardKeys) : null;
+  const visibleCards = allowedKeys ? cards.filter((card) => allowedKeys.has(card.key)) : cards;
+  const dynamicColumns = Math.max(1, visibleCards.length);
+
   return (
-    <div className="planillas-resumen-cards" role="list" aria-label="Resumen financiero de planilla">
-      {cards.map((card) => (
+    <div
+      className="planillas-resumen-cards"
+      role="list"
+      aria-label="Resumen financiero de planilla"
+      style={{ '--planillas-resumen-columns': dynamicColumns }}
+    >
+      {visibleCards.map((card) => (
         <SummaryCard
           key={card.key}
           iconClass={card.iconClass}

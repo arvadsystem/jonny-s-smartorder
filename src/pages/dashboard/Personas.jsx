@@ -82,6 +82,8 @@ export default function Personas() {
     return allowedTabs.includes(t) ? t : fallbackTab;
   }, [allowedTabs, fallbackTab, searchParams]);
 
+  const isPlanillasTab = activeTab === "planillas";
+
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
     const rawTab = (searchParams.get("tab") || "").toLowerCase();
@@ -169,7 +171,6 @@ export default function Personas() {
           <PlanillasTab
             openToast={openToast}
             selectedSucursalId={selectedSucursalId}
-            onSelectedSucursalChange={applySucursalContext}
           />
         );
       case "roles":
@@ -195,39 +196,69 @@ export default function Personas() {
   }
 
   return (
-    <div className="container-fluid p-3">
+    <div className={`container-fluid p-3 ${isPlanillasTab ? "personas-branch-context personas-branch-context--planillas" : ""}`}>
       <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
-        <div className="inv-catpro-body inv-prod-body p-3 d-flex flex-wrap align-items-center gap-2">
-          <span className="fw-semibold text-secondary-emphasis">
-            Contexto de sucursal
-          </span>
-          <select
-            className="form-select form-select-sm"
-            style={{ maxWidth: 320 }}
-            value={selectedSucursalId}
-            onChange={(event) => applySucursalContext(event.target.value)}
-            disabled={sucursalesLoading}
-          >
-            <option value="">Todas las sucursales</option>
-            {sucursales.map((sucursal) => {
-              const id = parsePositiveInt(sucursal?.id_sucursal);
-              if (!id) return null;
-              const nombre =
-                sucursal?.nombre_sucursal ||
-                sucursal?.nombre ||
-                sucursal?.sucursal ||
-                `Sucursal #${id}`;
-              return (
-                <option key={id} value={id}>
-                  {nombre}
-                </option>
-              );
-            })}
-          </select>
-          <span className="text-muted small">
-            Este contexto aplica en submodulos que operan por sucursal.
-          </span>
-        </div>
+        {isPlanillasTab ? (
+          <div className="inv-catpro-body inv-prod-body p-3">
+            <div className="personas-branch-context__row">
+              <label className="personas-branch-context__label" htmlFor="personas-sucursal-context">
+                Seleccionar sucursal
+              </label>
+              <select
+                id="personas-sucursal-context"
+                className="form-select personas-branch-context__select"
+                value={selectedSucursalId}
+                onChange={(event) => applySucursalContext(event.target.value)}
+                disabled={sucursalesLoading}
+              >
+                <option value="">Selecciona la sucursal</option>
+                {sucursales.map((sucursal) => {
+                  const id = parsePositiveInt(sucursal?.id_sucursal);
+                  if (!id) return null;
+                  const nombre =
+                    sucursal?.nombre_sucursal ||
+                    sucursal?.nombre ||
+                    sucursal?.sucursal ||
+                    `Sucursal #${id}`;
+                  return (
+                    <option key={id} value={id}>
+                      {nombre}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+        ) : (
+          <div className="inv-catpro-body inv-prod-body p-3 d-flex flex-wrap align-items-center gap-2">
+            <span className="fw-semibold text-secondary-emphasis">Contexto de sucursal</span>
+            <select
+              id="personas-sucursal-context"
+              className="form-select form-select-sm"
+              style={{ maxWidth: 320 }}
+              value={selectedSucursalId}
+              onChange={(event) => applySucursalContext(event.target.value)}
+              disabled={sucursalesLoading}
+            >
+              <option value="">Todas las sucursales</option>
+              {sucursales.map((sucursal) => {
+                const id = parsePositiveInt(sucursal?.id_sucursal);
+                if (!id) return null;
+                const nombre =
+                  sucursal?.nombre_sucursal ||
+                  sucursal?.nombre ||
+                  sucursal?.sucursal ||
+                  `Sucursal #${id}`;
+                return (
+                  <option key={id} value={id}>
+                    {nombre}
+                  </option>
+                );
+              })}
+            </select>
+            <span className="text-muted small">Este contexto aplica en submodulos que operan por sucursal.</span>
+          </div>
+        )}
       </div>
 
       {/* ================= CONTENIDO ================= */}
