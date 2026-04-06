@@ -870,7 +870,7 @@
   margin-bottom: 0.25rem;
 }
 
-.personas-page.personas-page--planillas .planillas-insight__stats strong {
+.personas-page.personas-page--planillas .planillas-insight__stats strong:not(.planillas-insight__state-chip) {
   font-size: 1.85rem;
   line-height: 1;
   color: #1f57c8;
@@ -882,7 +882,9 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  font-weight: 800;
   padding: 0.36rem 0.72rem;
   background: rgba(66, 127, 232, 0.14);
   color: #1f57c8 !important;
@@ -2486,7 +2488,7 @@
     grid-template-columns: 1fr;
   }
 
-  .personas-page.personas-page--planillas .planillas-insight__stats strong {
+  .personas-page.personas-page--planillas .planillas-insight__stats strong:not(.planillas-insight__state-chip) {
     font-size: 1.4rem;
   }
 
@@ -2550,7 +2552,7 @@
     line-height: 1.38;
   }
 
-  .personas-page.personas-page--planillas .planillas-insight__stats strong {
+  .personas-page.personas-page--planillas .planillas-insight__stats strong:not(.planillas-insight__state-chip) {
     font-size: 1.2rem;
   }
 

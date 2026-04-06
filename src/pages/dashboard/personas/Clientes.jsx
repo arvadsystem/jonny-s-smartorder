@@ -924,11 +924,13 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     const personaId = String(form.id_persona ?? "").trim();
     const empresaId = String(form.id_empresa ?? "").trim();
     const tipoClienteId = String(form.id_tipo_cliente ?? "").trim();
+    const contextSucursalId = parsePositiveInteger(selectedSucursalId);
 
     return {
       id_persona: personaId ? parseIntegerValue(personaId) : null,
       id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
       id_tipo_cliente: tipoClienteId ? parseIntegerValue(tipoClienteId) : null,
+      id_sucursal: contextSucursalId || null,
       fecha_ingreso: form.fecha_ingreso,
       puntos: parseIntegerValue(form.puntos),
       estado: Boolean(form.estado),
@@ -981,6 +983,11 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const guardar = async (event) => {
     event.preventDefault();
     if (!validar() || actionLoading) return;
+    const contextSucursalId = parsePositiveInteger(selectedSucursalId);
+    if (!editId && !contextSucursalId) {
+      safeToast("INFO", "Selecciona una sucursal antes de crear el cliente", "info");
+      return;
+    }
 
     const payloadLimpio = sanitizeForm();
     setActionLoading(true);
