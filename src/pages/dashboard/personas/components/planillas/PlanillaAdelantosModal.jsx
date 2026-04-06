@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import PlanillasModalActions from './PlanillasModalActions';
+import PlanillasModalField from './PlanillasModalField';
+import PlanillasModalLayout from './PlanillasModalLayout';
+import PlanillasMoneyInput from './PlanillasMoneyInput';
 
 const money = (value) => {
   const amount = Number(value ?? 0);
@@ -17,16 +21,27 @@ export default function PlanillaAdelantosModal({
   adelantos = [],
   loading = false,
   applying = false,
+  registering = false,
+  canRegister = false,
   onClose,
-  onApply
+  onApply,
+  onRegister
 }) {
   const [selectedId, setSelectedId] = useState('');
   const [monto, setMonto] = useState('');
+  const [registerMonto, setRegisterMonto] = useState('');
+  const [registerFecha, setRegisterFecha] = useState('');
+  const [submittedApply, setSubmittedApply] = useState(false);
+  const [submittedRegister, setSubmittedRegister] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setSelectedId('');
     setMonto('');
+    setRegisterMonto('');
+    setRegisterFecha('');
+    setSubmittedApply(false);
+    setSubmittedRegister(false);
   }, [open, item]);
 
   const selectedAdelanto = useMemo(
@@ -39,10 +54,51 @@ export default function PlanillaAdelantosModal({
 
   if (!open || !item) return null;
 
-  const handleApply = () => {
-    if (!selectedAdelanto) return;
-    const montoAplicar = parsePositiveMoney(monto);
-    if (!montoAplicar) return;
+  const selectedSaldo = Number(
+    selectedAdelanto?.saldo_disponible ?? selectedAdelanto?.saldo ?? selectedAdelanto?.monto_pendiente ?? 0
+  );
+  const montoAplicar = parsePositiveMoney(monto);
+  const registerMontoValue = parsePositiveMoney(registerMonto);
+  const saldoRestante = Number.isFinite(selectedSaldo) ? Math.max(0, selectedSaldo - (montoAplicar || 0)) : 0;
+
+  const applyError = submittedApply
+    ? !selectedAdelanto
+      ? 'Seleccione un adelanto para aplicar.'
+      : !montoAplicar
+        ? 'Ingrese un monto valido.'
+        : montoAplicar > selectedSaldo
+          ? 'El monto a aplicar no puede superar el saldo disponible.'
+          : ''
+    : '';
+
+  const registerError = submittedRegister && !registerMontoValue ? 'Ingrese un monto valido mayor que 0.' : '';
+
+  const canSubmitRegister = Boolean(canRegister && registerMontoValue);
+  const canSubmitApply = Boolean(
+    selectedAdelanto && montoAplicar && Number.isFinite(selectedSaldo) && montoAplicar <= selectedSaldo
+  );
+
+  const handleRegister = (event) => {
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.stopPropagation) event.stopPropagation();
+    setSubmittedRegister(true);
+    if (!canSubmitRegister) return;
+
+    const idEmpleado = Number(item?.id_empleado);
+    if (!Number.isFinite(idEmpleado) || idEmpleado <= 0) return;
+
+    onRegister?.({
+      id_empleado: idEmpleado,
+      monto: registerMontoValue,
+      fecha: registerFecha || null
+    });
+  };
+
+  const handleApply = (event) => {
+    if (event?.preventDefault) event.preventDefault();
+    if (event?.stopPropagation) event.stopPropagation();
+    setSubmittedApply(true);
+    if (!canSubmitApply) return;
 
     onApply?.({
       id_adelanto: selectedAdelanto.id_adelanto_salario || selectedAdelanto.id_adelanto,
@@ -50,98 +106,160 @@ export default function PlanillaAdelantosModal({
     });
   };
 
+  const hasAdelantos = !loading && adelantos.length > 0;
+
   return (
-    <div className="planillas-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="planillas-modal planillas-modal--lg" onClick={(event) => event.stopPropagation()}>
-        <div className="planillas-modal__head">
-          <div>
-            <h5>Aplicar adelanto</h5>
-            <p>{item.nombre_completo || item.empleado_nombre || 'Empleado seleccionado'}</p>
-          </div>
-          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>
-            <i className="bi bi-x-lg" />
-          </button>
+    <PlanillasModalLayout
+      open={open}
+      onClose={onClose}
+      title="Aplicar Adelanto"
+      subtitle={item.nombre_completo || item.empleado_nombre || 'Empleado seleccionado'}
+      size="lg"
+      className="planillas-modal-shell--adelanto"
+      actions={
+        <PlanillasModalActions
+          onCancel={onClose}
+          cancelLabel={hasAdelantos ? 'Cancelar' : 'Cerrar'}
+          cancelDisabled={applying || registering}
+          hidePrimary={!hasAdelantos}
+          primaryType="button"
+          primaryLabel="Aplicar Adelanto"
+          primaryLoadingLabel="Aplicando..."
+          primaryLoading={applying}
+          primaryDisabled={!canSubmitApply || applying}
+          onPrimary={handleApply}
+        />
+      }
+    >
+      {loading ? (
+        <div className="inv-catpro-loading" role="status">
+          <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+          <span>Cargando adelantos...</span>
         </div>
-
-        {loading ? (
-          <div className="inv-catpro-loading" role="status">
-            <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-            <span>Cargando adelantos...</span>
-          </div>
-        ) : adelantos.length === 0 ? (
-          <div className="inv-catpro-empty">
-            <div className="inv-catpro-empty-sub">No hay adelantos aplicables para este empleado.</div>
-          </div>
-        ) : (
-          <>
-            <div className="table-responsive">
-              <table className="table table-sm align-middle">
-                <thead>
-                  <tr>
-                    <th />
-                    <th>Codigo</th>
-                    <th>Saldo disponible</th>
-                    <th>Fecha</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adelantos.map((adelanto) => {
-                    const id =
-                      String(adelanto.id_adelanto_salario || adelanto.id_adelanto || '').trim();
-                    const saldo = adelanto.saldo_disponible ?? adelanto.saldo ?? adelanto.monto_pendiente;
-                    return (
-                      <tr key={id}>
-                        <td>
-                          <input
-                            type="radio"
-                            name="adelantoSeleccionado"
-                            checked={selectedId === id}
-                            onChange={() => {
-                              setSelectedId(id);
-                              setMonto(String(saldo ?? ''));
-                            }}
-                          />
-                        </td>
-                        <td>{adelanto.codigo_adelanto || `AD-${id}`}</td>
-                        <td>{money(saldo)}</td>
-                        <td>{adelanto.fecha || adelanto.fecha_registro || '-'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      ) : (
+        <>
+          {adelantos.length === 0 ? (
+            <div className="inv-catpro-empty planillas-modal-empty">
+              <div className="inv-catpro-empty-sub">No hay adelantos aplicables para este empleado.</div>
             </div>
+          ) : (
+            <>
+              <section className="planillas-modal-section">
+                <h6 className="planillas-modal-section__title">Seleccionar adelanto</h6>
+                <div className="table-responsive">
+                  <table className="table table-sm align-middle planillas-modal-table">
+                    <thead>
+                      <tr>
+                        <th />
+                        <th>Codigo</th>
+                        <th>Saldo disponible</th>
+                        <th>Fecha</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adelantos.map((adelanto) => {
+                        const id = String(adelanto.id_adelanto_salario || adelanto.id_adelanto || '').trim();
+                        const saldo = adelanto.saldo_disponible ?? adelanto.saldo ?? adelanto.monto_pendiente;
+                        return (
+                          <tr key={id}>
+                            <td>
+                              <input
+                                type="radio"
+                                name="adelantoSeleccionado"
+                                className="form-check-input"
+                                checked={selectedId === id}
+                                onChange={() => {
+                                  setSelectedId(id);
+                                  setMonto(String(saldo ?? ''));
+                                }}
+                              />
+                            </td>
+                            <td>{adelanto.codigo_adelanto || `AD-${id}`}</td>
+                            <td>{money(saldo)}</td>
+                            <td>{adelanto.fecha || adelanto.fecha_registro || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
-            <div className="planillas-form-grid">
-              <div>
-                <label className="form-label">Monto a aplicar</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  value={monto}
-                  min="0.01"
-                  step="0.01"
-                  onChange={(event) => setMonto(event.target.value)}
-                />
+              <section className="planillas-modal-section">
+                <h6 className="planillas-modal-section__title">Aplicar adelanto</h6>
+                <div className="planillas-modal-grid">
+                  <PlanillasModalField id="adelanto-monto-aplicar" label="Monto a aplicar" required error={applyError}>
+                    <PlanillasMoneyInput
+                      id="adelanto-monto-aplicar"
+                      value={monto}
+                      onChange={(event) => setMonto(event.target.value)}
+                      currency="L"
+                      placeholder="Ingrese el monto"
+                      error={Boolean(applyError)}
+                    />
+                  </PlanillasModalField>
+                </div>
+
+                <div className="planillas-adelanto-summary">
+                  <article>
+                    <span>Saldo disponible</span>
+                    <strong>{money(selectedSaldo)}</strong>
+                  </article>
+                  <article>
+                    <span>Monto a aplicar</span>
+                    <strong>{money(montoAplicar || 0)}</strong>
+                  </article>
+                  <article>
+                    <span>Saldo restante</span>
+                    <strong>{money(saldoRestante)}</strong>
+                  </article>
+                </div>
+              </section>
+            </>
+          )}
+
+          {canRegister ? (
+            <section className="planillas-modal-section">
+              <h6 className="planillas-modal-section__title">Registrar nuevo adelanto</h6>
+              <div className="planillas-modal-grid">
+                <PlanillasModalField id="adelanto-registrar-monto" label="Monto" required error={registerError}>
+                  <PlanillasMoneyInput
+                    id="adelanto-registrar-monto"
+                    value={registerMonto}
+                    onChange={(event) => setRegisterMonto(event.target.value)}
+                    currency="L"
+                    placeholder="Ingrese el monto"
+                    error={Boolean(registerError)}
+                    disabled={registering}
+                  />
+                </PlanillasModalField>
+
+                <PlanillasModalField id="adelanto-registrar-fecha" label="Fecha (opcional)">
+                  <input
+                    id="adelanto-registrar-fecha"
+                    type="date"
+                    className="form-control planillas-modal-input"
+                    value={registerFecha}
+                    onChange={(event) => setRegisterFecha(event.target.value)}
+                    disabled={registering}
+                  />
+                </PlanillasModalField>
               </div>
 
-              <div className="planillas-form-grid__actions">
-                <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={applying}>
-                  Cancelar
-                </button>
+              <div className="planillas-modal-inline-actions">
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  disabled={applying || !selectedAdelanto || !parsePositiveMoney(monto)}
-                  onClick={handleApply}
+                  className="btn planillas-modal-actions__primary planillas-modal-inline-submit"
+                  onClick={handleRegister}
+                  disabled={registering}
                 >
-                  {applying ? 'Aplicando...' : 'Aplicar adelanto'}
+                  {registering ? 'Registrando...' : 'Registrar adelanto'}
                 </button>
               </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+            </section>
+          ) : null}
+        </>
+      )}
+    </PlanillasModalLayout>
   );
 }

@@ -41,6 +41,7 @@ const proxiedPaths = [
   '/cocina',
   '/clientes',
   '/empleados',
+  '/planillas',
   '/personas',
   '/empresas',
   '/parametros',

@@ -47,9 +47,9 @@ export default function PlanillaAuditoriaModal({
               <tbody>
                 {items.map((row, idx) => (
                   <tr key={row.id_auditoria_planilla || row.id_bitacora || idx}>
-                    <td>{toText(row.fecha_hora || row.fecha)}</td>
+                    <td>{toText(row.fecha_registro || row.fecha_hora || row.fecha)}</td>
                     <td>{toText(row.accion)}</td>
-                    <td>{toText(row.usuario || row.nombre_usuario)}</td>
+                    <td>{toText(row.usuario_accion || row.usuario || row.nombre_usuario)}</td>
                     <td>{toText(row.descripcion || row.detalle, 'Sin detalle')}</td>
                   </tr>
                 ))}

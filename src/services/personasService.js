@@ -429,6 +429,7 @@ export const personaService = {
       'id_tipo_cliente',
       'id_persona',
       'id_empresa',
+      'id_sucursal',
       'estado'
     ])),
 

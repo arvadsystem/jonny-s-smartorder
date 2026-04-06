@@ -1,4 +1,4 @@
-import StatsCardsRow from '../../../../../components/ui/StatsCardsRow';
+import SummaryCard from './SummaryCard';
 
 const formatMoney = (value) => {
   const amount = Number(value ?? 0);
@@ -46,10 +46,17 @@ export default function PlanillasResumenCards({ resumen = {} }) {
   ];
 
   return (
-    <StatsCardsRow
-      cards={cards}
-      className="planillas-resumen-cards"
-      ariaLabel="Resumen financiero de planilla"
-    />
+    <div className="planillas-resumen-cards" role="list" aria-label="Resumen financiero de planilla">
+      {cards.map((card) => (
+        <SummaryCard
+          key={card.key}
+          iconClass={card.iconClass}
+          label={card.label}
+          value={card.value}
+          accent={card.accent}
+          isNet={card.key === 'neto'}
+        />
+      ))}
+    </div>
   );
 }
