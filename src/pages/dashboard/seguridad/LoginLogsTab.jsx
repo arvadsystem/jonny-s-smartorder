@@ -4,6 +4,7 @@ import SinPermiso from "../../../components/common/SinPermiso";
 import { apiFetch } from "../../../services/api";
 import { fmtHN } from "../../../utils/dateTime";
 import "./sesiones-ui.css";
+import "./seguridad-auditoria-ui.css";
 
 // Honduras: siempre formatear con fmtHN (backend manda ISO con Z)
 const fmtDate = (value) => fmtHN(value);
@@ -44,19 +45,21 @@ const LoginLogsTab = () => {
     offset: 0,
   });
 
-  const load = async () => {
+  const load = async ({ nextFilters } = {}) => {
+    const activeFilters = nextFilters || filters;
+
     setLoading(true);
     setError("");
     setNoPermiso(false);
 
     try {
       const qs = new URLSearchParams();
-      if (filters.estado) qs.set("estado", filters.estado);
-      if (filters.desde) qs.set("desde", filters.desde);
-      if (filters.hasta) qs.set("hasta", filters.hasta);
-      if (filters.usuario) qs.set("usuario", filters.usuario);
-      qs.set("limit", String(filters.limit));
-      qs.set("offset", String(filters.offset));
+      if (activeFilters.estado) qs.set("estado", activeFilters.estado);
+      if (activeFilters.desde) qs.set("desde", activeFilters.desde);
+      if (activeFilters.hasta) qs.set("hasta", activeFilters.hasta);
+      if (activeFilters.usuario) qs.set("usuario", activeFilters.usuario);
+      qs.set("limit", String(activeFilters.limit));
+      qs.set("offset", String(activeFilters.offset));
 
       // Endpoint backend HU78
       const data = await apiFetch(`/seguridad/logins?${qs.toString()}`, "GET");
@@ -87,8 +90,9 @@ const LoginLogsTab = () => {
   };
 
   const onClear = () => {
-    setFilters({ estado: "", desde: "", hasta: "", usuario: "", limit: 10, offset: 0 });
-    setTimeout(load, 0);
+    const clearedFilters = { estado: "", desde: "", hasta: "", usuario: "", limit: 10, offset: 0 };
+    setFilters(clearedFilters);
+    void load({ nextFilters: clearedFilters });
   };
 
   const canPrev = filters.offset > 0;
@@ -122,11 +126,11 @@ const LoginLogsTab = () => {
         </div>
 
         <div className="sec-panel-body p-3 sec-sesiones-body">
-          <div className="row g-2 align-items-end mb-3">
-            <div className="col-md-3">
-              <label className="form-label">Estado</label>
+          <div className="row g-2 align-items-end mb-3 sec-audit-filters-toolbar">
+            <div className="col-md-3 sec-audit-filter-col">
+              <label className="form-label sec-audit-filter-label">Estado</label>
               <select
-                className="form-select"
+                className="form-select sec-audit-filter-control"
                 value={filters.estado}
                 onChange={(e) => setFilters((s) => ({ ...s, estado: e.target.value }))}
               >
@@ -136,41 +140,41 @@ const LoginLogsTab = () => {
               </select>
             </div>
 
-            <div className="col-md-3">
-              <label className="form-label">Desde</label>
+            <div className="col-md-3 sec-audit-filter-col">
+              <label className="form-label sec-audit-filter-label">Desde</label>
               <input
                 type="date"
-                className="form-control"
+                className="form-control sec-audit-filter-control"
                 value={filters.desde}
                 onChange={(e) => setFilters((s) => ({ ...s, desde: e.target.value }))}
               />
             </div>
 
-            <div className="col-md-3">
-              <label className="form-label">Hasta</label>
+            <div className="col-md-3 sec-audit-filter-col">
+              <label className="form-label sec-audit-filter-label">Hasta</label>
               <input
                 type="date"
-                className="form-control"
+                className="form-control sec-audit-filter-control"
                 value={filters.hasta}
                 onChange={(e) => setFilters((s) => ({ ...s, hasta: e.target.value }))}
               />
             </div>
 
-            <div className="col-md-3">
-              <label className="form-label">Usuario (opcional)</label>
+            <div className="col-md-3 sec-audit-filter-col">
+              <label className="form-label sec-audit-filter-label">Usuario (opcional)</label>
               <input
-                className="form-control"
+                className="form-control sec-audit-filter-control"
                 placeholder="admin, cajero..."
                 value={filters.usuario}
                 onChange={(e) => setFilters((s) => ({ ...s, usuario: e.target.value }))}
               />
             </div>
 
-            <div className="col-12 d-flex gap-2">
-              <button className="btn btn-primary" onClick={onApplyFilters}>
+            <div className="col-12 d-flex gap-2 sec-audit-filter-actions sec-loginlogs-filter-actions">
+              <button className="btn btn-primary sec-audit-filter-btn" onClick={onApplyFilters}>
                 Aplicar
               </button>
-              <button className="btn btn-outline-secondary" onClick={onClear}>
+              <button className="btn btn-outline-secondary sec-audit-filter-btn" onClick={onClear}>
                 Limpiar
               </button>
             </div>

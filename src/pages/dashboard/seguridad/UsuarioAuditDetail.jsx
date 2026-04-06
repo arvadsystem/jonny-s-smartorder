@@ -124,16 +124,18 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
     }
   };
 
-  const loadLogins = async () => {
+  const loadLogins = async ({ nextFilters } = {}) => {
+    const activeFilters = nextFilters || loginsFilters;
+
     setLoginsLoading(true);
     setError('');
     try {
       const qs = new URLSearchParams();
-      if (loginsFilters.estado) qs.set('estado', loginsFilters.estado);
-      if (loginsFilters.desde) qs.set('desde', loginsFilters.desde);
-      if (loginsFilters.hasta) qs.set('hasta', loginsFilters.hasta);
-      qs.set('limit', String(loginsFilters.limit));
-      qs.set('offset', String(loginsFilters.offset));
+      if (activeFilters.estado) qs.set('estado', activeFilters.estado);
+      if (activeFilters.desde) qs.set('desde', activeFilters.desde);
+      if (activeFilters.hasta) qs.set('hasta', activeFilters.hasta);
+      qs.set('limit', String(activeFilters.limit));
+      qs.set('offset', String(activeFilters.offset));
       qs.set('_ts', String(Date.now()));
 
       const data = await securityAuditApi.getUsuarioLogins(resolvedUserId, qs.toString());
@@ -200,12 +202,14 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
   };
 
   const onLimpiarLogins = () => {
-    setLoginsDraft(initialLoginsDraft);
-    setLoginsFilters({
+    const clearedFilters = {
       ...initialLoginsDraft,
       limit: PAGE_SIZE,
       offset: 0
-    });
+    };
+    setLoginsDraft(initialLoginsDraft);
+    setLoginsFilters(clearedFilters);
+    void loadLogins({ nextFilters: clearedFilters });
   };
 
   const onCerrarSesiones = async () => {
@@ -258,7 +262,7 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
           </div>
 
           <div className="sec-panel-header-actions sec-audit-header-actions gap-2">
-            <button type="button" className="btn btn-outline-secondary" onClick={onBack}>
+            <button type="button" className="btn btn-outline-secondary sec-sesiones-global-btn" onClick={onBack}>
               <i className="bi bi-arrow-left me-2" />
               REGRESAR A USUARIOS
             </button>
@@ -363,11 +367,11 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
 
           {activeTab === 'sesiones' && (
             <>
-              <div className="row g-2 align-items-end mb-3">
-                <div className="col-md-4">
-                  <label className="form-label">Estado</label>
+              <div className="row g-2 align-items-end mb-3 sec-audit-filters-toolbar">
+                <div className="col-md-4 sec-audit-filter-col">
+                  <label className="form-label sec-audit-filter-label">Estado</label>
                   <select
-                    className="form-select"
+                    className="form-select sec-audit-filter-control"
                     value={sesionesFilters.estado}
                     onChange={(e) =>
                       setSesionesFilters((prev) => ({
@@ -382,10 +386,10 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
                     <option value="cerradas">Cerradas</option>
                   </select>
                 </div>
-                <div className="col-md-8 d-flex justify-content-md-end">
+                <div className="col-md-8 d-flex justify-content-md-end sec-audit-filter-actions">
                   {canCloseUserSessions ? (
                     <SecurityConfirmAction
-                      className="btn btn-outline-danger mt-2 mt-md-0"
+                      className="btn btn-outline-danger sec-sesiones-global-btn mt-2 mt-md-0"
                       title="CONFIRMAR CIERRE DE SESIONES"
                       subtitle="Se forzará nuevo inicio de sesión para este usuario."
                       question="¿Deseas cerrar todas las sesiones activas de este usuario?"
@@ -497,11 +501,11 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
 
           {activeTab === 'logins' && (
             <>
-              <div className="row g-2 align-items-end mb-3">
-                <div className="col-md-3">
-                  <label className="form-label">Estado</label>
+              <div className="row g-2 align-items-end mb-3 sec-audit-filters-toolbar">
+                <div className="col-md-3 sec-audit-filter-col">
+                  <label className="form-label sec-audit-filter-label">Estado</label>
                   <select
-                    className="form-select"
+                    className="form-select sec-audit-filter-control"
                     value={loginsDraft.estado}
                     onChange={(e) => setLoginsDraft((prev) => ({ ...prev, estado: e.target.value }))}
                   >
@@ -510,29 +514,29 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
                     <option value="FAIL">Fallidos</option>
                   </select>
                 </div>
-                <div className="col-md-3">
-                  <label className="form-label">Desde</label>
+                <div className="col-md-3 sec-audit-filter-col">
+                  <label className="form-label sec-audit-filter-label">Desde</label>
                   <input
                     type="date"
-                    className="form-control"
+                    className="form-control sec-audit-filter-control"
                     value={loginsDraft.desde}
                     onChange={(e) => setLoginsDraft((prev) => ({ ...prev, desde: e.target.value }))}
                   />
                 </div>
-                <div className="col-md-3">
-                  <label className="form-label">Hasta</label>
+                <div className="col-md-3 sec-audit-filter-col">
+                  <label className="form-label sec-audit-filter-label">Hasta</label>
                   <input
                     type="date"
-                    className="form-control"
+                    className="form-control sec-audit-filter-control"
                     value={loginsDraft.hasta}
                     onChange={(e) => setLoginsDraft((prev) => ({ ...prev, hasta: e.target.value }))}
                   />
                 </div>
-                <div className="col-md-3 d-flex gap-2">
-                  <button className="btn btn-primary w-100" onClick={onAplicarLogins}>
+                <div className="col-md-3 d-flex gap-2 sec-audit-filter-actions">
+                  <button className="btn btn-primary w-100 sec-audit-filter-btn" onClick={onAplicarLogins}>
                     Aplicar
                   </button>
-                  <button className="btn btn-outline-secondary w-100" onClick={onLimpiarLogins}>
+                  <button className="btn btn-outline-secondary w-100 sec-audit-filter-btn" onClick={onLimpiarLogins}>
                     Limpiar
                   </button>
                 </div>

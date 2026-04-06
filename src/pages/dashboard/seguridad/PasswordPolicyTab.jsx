@@ -6,6 +6,7 @@ import { usePermisos } from "../../../context/PermisosContext";
 import { PERMISSIONS } from "../../../utils/permissions";
 import "../perfil-toast.css";
 import "./sesiones-ui.css";
+import "./seguridad-auditoria-ui.css";
 
 const PasswordPolicyTab = () => {
   const { canAny } = usePermisos();
@@ -139,7 +140,7 @@ const PasswordPolicyTab = () => {
 
             <div className="sec-panel-header-actions">
               <button
-                className="btn btn-primary"
+                className="btn btn-primary sec-sesiones-global-btn"
                 onClick={onGuardar}
                 disabled={saving || loading || !canEditPolicy}
               >
@@ -163,9 +164,9 @@ const PasswordPolicyTab = () => {
               <>
                 <div className="row g-3">
                   <div className="col-md-4">
-                    <label className="form-label">Longitud mínima</label>
+                    <label className="form-label sec-audit-filter-label">Longitud mínima</label>
                     <input
-                      className="form-control"
+                      className="form-control sec-audit-filter-control"
                       type="number"
                       min="6"
                       max="64"
@@ -177,9 +178,9 @@ const PasswordPolicyTab = () => {
                   </div>
 
                   <div className="col-md-4">
-                    <label className="form-label">Requiere mayúscula</label>
+                    <label className="form-label sec-audit-filter-label">Requiere mayúscula</label>
                     <select
-                      className="form-select"
+                      className="form-select sec-audit-filter-control"
                       value={String(form.password_require_upper)}
                       onChange={(e) => onChange("password_require_upper", e.target.value)}
                       disabled={!canEditPolicy}
@@ -190,9 +191,9 @@ const PasswordPolicyTab = () => {
                   </div>
 
                   <div className="col-md-4">
-                    <label className="form-label">Requiere número</label>
+                    <label className="form-label sec-audit-filter-label">Requiere número</label>
                     <select
-                      className="form-select"
+                      className="form-select sec-audit-filter-control"
                       value={String(form.password_require_number)}
                       onChange={(e) => onChange("password_require_number", e.target.value)}
                       disabled={!canEditPolicy}
@@ -203,9 +204,9 @@ const PasswordPolicyTab = () => {
                   </div>
 
                   <div className="col-md-4">
-                    <label className="form-label">Requiere símbolo</label>
+                    <label className="form-label sec-audit-filter-label">Requiere símbolo</label>
                     <select
-                      className="form-select"
+                      className="form-select sec-audit-filter-control"
                       value={String(form.password_require_symbol)}
                       onChange={(e) => onChange("password_require_symbol", e.target.value)}
                       disabled={!canEditPolicy}

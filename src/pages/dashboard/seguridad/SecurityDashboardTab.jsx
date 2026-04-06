@@ -332,9 +332,19 @@ const SecurityDashboardTab = () => {
     () => ([
       { key: 'logins_fallidos', label: 'Logins fallidos', value: data?.semaforo?.logins_fallidos },
       { key: 'usuarios_bloqueados', label: 'Usuarios bloqueados', value: data?.semaforo?.usuarios_bloqueados },
-      { key: 'usuarios_sospechosos', label: 'Usuarios sospechosos', value: data?.semaforo?.usuarios_sospechosos }
+      { key: 'usuarios_sospechosos', label: 'Usuarios sospechosos', value: data?.semaforo?.usuarios_sospechosos },
+      {
+        key: 'actividad_critica',
+        label: 'Actividad critica',
+        value: data?.semaforo?.actividad_critica || {
+          valor: toInt(data?.resumen?.actividad_critica_total),
+          estado: toInt(data?.resumen?.actividad_critica_total) > 0 ? 'amarillo' : 'verde',
+          umbral_amarillo: 0,
+          umbral_rojo: 0
+        }
+      }
     ]),
-    [data?.semaforo]
+    [data?.semaforo, data?.resumen?.actividad_critica_total]
   );
 
   const onExportExcel = () => {
@@ -422,17 +432,6 @@ const SecurityDashboardTab = () => {
                 <span className="text-muted">
                   Ultima actualizacion: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : '-'}
                 </span>
-              </div>
-
-              <div className="sec-dashboard-summary-grid">
-                <article className="sec-summary-card">
-                  <span className="sec-summary-label">Sesiones activas totales</span>
-                  <strong>{formatNumber(data?.resumen?.sesiones_activas_totales)}</strong>
-                </article>
-                <article className="sec-summary-card">
-                  <span className="sec-summary-label">Actividad critica</span>
-                  <strong>{formatNumber(data?.resumen?.actividad_critica_total)}</strong>
-                </article>
               </div>
 
               <section className="sec-dashboard-block">

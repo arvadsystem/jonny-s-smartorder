@@ -36,7 +36,9 @@ const UsuariosTab = ({ onOpenAudit }) => {
     offset: 0
   });
 
-  const load = async ({ silent = false } = {}) => {
+  const load = async ({ silent = false, nextFilters } = {}) => {
+    const activeFilters = nextFilters || filters;
+
     if (!silent) {
       setLoading(true);
       setError("");
@@ -45,10 +47,10 @@ const UsuariosTab = ({ onOpenAudit }) => {
 
     try {
       const qs = new URLSearchParams();
-      if (filters.buscar) qs.set("buscar", filters.buscar);
-      if (filters.estado) qs.set("estado", filters.estado);
-      qs.set("limit", String(filters.limit));
-      qs.set("offset", String(filters.offset));
+      if (activeFilters.buscar) qs.set("buscar", activeFilters.buscar);
+      if (activeFilters.estado) qs.set("estado", activeFilters.estado);
+      qs.set("limit", String(activeFilters.limit));
+      qs.set("offset", String(activeFilters.offset));
       qs.set("_ts", String(Date.now()));
 
       const data = await securityService.getUsuariosGlobal(qs.toString());
@@ -76,8 +78,9 @@ const UsuariosTab = ({ onOpenAudit }) => {
   };
 
   const onClear = () => {
-    setFilters({ buscar: "", estado: "", limit: PAGE_SIZE, offset: 0 });
-    setTimeout(() => load(), 0);
+    const clearedFilters = { buscar: "", estado: "", limit: PAGE_SIZE, offset: 0 };
+    setFilters(clearedFilters);
+    void load({ nextFilters: clearedFilters });
   };
 
   const canPrev = filters.offset > 0;
@@ -114,21 +117,21 @@ const UsuariosTab = ({ onOpenAudit }) => {
         </div>
 
         <div className="sec-panel-body p-3 sec-sesiones-body">
-          <div className="row g-2 align-items-end mb-3">
-            <div className="col-md-6">
-              <label className="form-label">Buscar</label>
+          <div className="row g-2 align-items-end mb-3 sec-audit-filters-toolbar">
+            <div className="col-md-6 sec-audit-filter-col">
+              <label className="form-label sec-audit-filter-label">Buscar</label>
               <input
-                className="form-control"
+                className="form-control sec-audit-filter-control"
                 placeholder="usuario, nombre, apellido o rol..."
                 value={filters.buscar}
                 onChange={(e) => setFilters((s) => ({ ...s, buscar: e.target.value }))}
               />
             </div>
 
-            <div className="col-md-3">
-              <label className="form-label">Estado</label>
+            <div className="col-md-3 sec-audit-filter-col">
+              <label className="form-label sec-audit-filter-label">Estado</label>
               <select
-                className="form-select"
+                className="form-select sec-audit-filter-control"
                 value={filters.estado}
                 onChange={(e) => setFilters((s) => ({ ...s, estado: e.target.value }))}
               >
@@ -138,11 +141,11 @@ const UsuariosTab = ({ onOpenAudit }) => {
               </select>
             </div>
 
-            <div className="col-md-3 d-flex gap-2">
-              <button className="btn btn-primary w-100" onClick={onApplyFilters}>
+            <div className="col-md-3 d-flex gap-2 sec-audit-filter-actions">
+              <button className="btn btn-primary w-100 sec-audit-filter-btn" onClick={onApplyFilters}>
                 Aplicar
               </button>
-              <button className="btn btn-outline-secondary w-100" onClick={onClear}>
+              <button className="btn btn-outline-secondary w-100 sec-audit-filter-btn" onClick={onClear}>
                 Limpiar
               </button>
             </div>
