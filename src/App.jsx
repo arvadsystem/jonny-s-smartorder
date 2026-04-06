@@ -39,8 +39,9 @@ const PaginaEnConstruccion = ({ titulo }) => {
 function App() {
   return (
     <Routes>
+      <Route path="/" element={<Login />} />
+      <Route path="/login" element={<Login />} />
       {/* ── Autenticación ───────────────────────────────────────────── */}
-      <Route path="/auth/login" element={<Login />} />
       <Route path="/" element={<Navigate to="/menu-publico" replace />} />
       <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
       <Route path="/registro" element={<Registro />} />

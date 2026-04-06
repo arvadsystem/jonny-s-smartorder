@@ -62,6 +62,81 @@
   justify-content: flex-end;
 }
 
+.sec-audit-filters-toolbar {
+  border: 1px solid rgba(228, 227, 209, 0.95);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), #fbfbf6);
+  padding: 12px;
+}
+
+.sec-audit-filter-col {
+  min-width: 0;
+}
+
+.sec-audit-filter-label {
+  margin-bottom: 6px;
+  color: rgba(82, 44, 34, 0.84);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.sec-audit-filter-control.form-control,
+.sec-audit-filter-control.form-select {
+  min-height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(205, 196, 170, 0.9);
+  background-color: #fff;
+  color: #442f21;
+  font-size: 0.86rem;
+  box-shadow: none;
+}
+
+.sec-audit-filter-control.form-select {
+  background-image: var(--bs-form-select-bg-img), var(--bs-form-select-bg-icon, none);
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 16px 12px;
+  padding-right: 2.25rem;
+}
+
+.sec-audit-filter-control.form-control::placeholder {
+  color: rgba(120, 92, 72, 0.68);
+}
+
+.sec-audit-filter-control.form-control:focus,
+.sec-audit-filter-control.form-select:focus {
+  border-color: rgba(122, 30, 36, 0.42);
+  box-shadow: 0 0 0 0.16rem rgba(122, 30, 36, 0.12);
+}
+
+.sec-audit-filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.sec-loginlogs-filter-actions {
+  justify-content: center;
+}
+
+.sec-audit-filter-btn {
+  min-height: 38px;
+  border-radius: 999px !important;
+  padding: 0 16px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-weight: 700 !important;
+}
+
+.sec-audit-filter-btn.btn-primary {
+  border: 1px solid rgba(155, 39, 36, 0.7) !important;
+  background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
+}
+
 .sec-audit-chip {
   display: inline-flex;
   align-items: center;
@@ -145,6 +220,21 @@
 }
 
 @media (max-width: 768px) {
+  .sec-audit-filters-toolbar {
+    padding: 10px;
+  }
+
+  .sec-audit-filter-actions {
+    width: 100%;
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .sec-audit-filter-actions .sec-audit-filter-btn {
+    flex: 1;
+    min-width: 0;
+  }
+
   .sec-audit-tabs {
     overflow-x: auto;
     overflow-y: hidden;

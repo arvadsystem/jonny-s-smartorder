@@ -39,6 +39,16 @@ export const securityService = {
     return apiFetch(`/seguridad/usuarios/global${qs ? `?${qs}` : ''}`, 'GET');
   },
 
+  // HU161 - Resumen consolidado de seguridad (Super Admin)
+  getSecuritySummary: async (qs = '') => {
+    return apiFetch(`/api/security/summary${qs ? `?${qs}` : ''}`, 'GET');
+  },
+
+  // HU161 - Compatibilidad con implementacion previa
+  getDashboardSeguridad: async (qs = '') => {
+    return apiFetch(`/api/security/summary${qs ? `?${qs}` : ''}`, 'GET');
+  },
+
   // HU81 - Políticas contraseña
   getPasswordPolicies: async () => {
     return apiFetch('/seguridad/configuracion/password', 'GET');
