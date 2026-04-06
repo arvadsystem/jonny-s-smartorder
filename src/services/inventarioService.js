@@ -379,5 +379,35 @@ export const inventarioService = {
   reportarRecepcionOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/recepcion`, 'POST', data),
   abastecerOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
-    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/abastecer`, 'POST', data)
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/abastecer`, 'POST', data),
+
+  // AM: CRUD del submodulo Inventario > Mobiliario (v1).
+  getMobiliario: (options = {}) => {
+    const params = new URLSearchParams();
+    if (options?.q !== undefined && options?.q !== null && String(options.q).trim() !== '') {
+      params.set('q', String(options.q).trim());
+    }
+    const includeInactivos =
+      options?.incluirInactivos === true ||
+      options?.includeInactivos === true ||
+      options?.incluir_inactivos === true;
+    if (includeInactivos) params.set('incluir_inactivos', '1');
+    const query = params.toString();
+    return apiFetch(query ? `/mobiliario?${query}` : '/mobiliario', 'GET');
+  },
+  crearMobiliario: (data = {}) => apiFetch('/mobiliario', 'POST', data),
+  actualizarMobiliario: (idMobiliario, data = {}) => apiFetch(`/mobiliario/${idMobiliario}`, 'PUT', data),
+  cambiarEstadoMobiliario: (idMobiliario, activo) =>
+    apiFetch(`/mobiliario/${idMobiliario}/estado`, 'PATCH', { activo }),
+  getEmpleadosCatalogoMobiliario: async () => {
+    const payload = await apiFetch('/empleados?page=1&limit=200&estado=true', 'GET');
+    const rows = normalizeCatalogRows(payload);
+    return rows.map((row) => ({
+      id_empleado: row?.id_empleado,
+      empleado_nombre:
+        String(row?.persona_nombre_completo ?? '').trim() ||
+        String([row?.persona_nombre, row?.persona_apellido].filter(Boolean).join(' ')).trim() ||
+        `Empleado #${row?.id_empleado ?? ''}`
+    }));
+  }
 };

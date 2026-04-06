@@ -1395,8 +1395,19 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   // IMPACT: componente local de presentacion; no toca logica del resto del modulo.
   const renderKpiCard = (key, label, value, className = '') => {
     const points = buildInventorySparkPoints(insumosKpiSeries[key] || []);
+    const iconByKey = {
+      total: 'bi-grid-1x2',
+      existencia: 'bi-box-seam',
+      bajo: 'bi-exclamation-triangle',
+      sin_stock: 'bi-x-circle',
+      inactivo: 'bi-slash-circle',
+      cad: 'bi-calendar-event'
+    };
     return (
-      <div className={`inv-prod-kpi ${className}`.trim()}>
+      <div className={`inv-prod-kpi inv-invstat-card ${className}`.trim()}>
+        <div className="inv-invstat-icon" aria-hidden="true">
+          <i className={`bi ${iconByKey[key] || 'bi-bar-chart'}`} />
+        </div>
         {points ? (
           <svg className="inv-prod-kpi-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
             <polyline points={points} />

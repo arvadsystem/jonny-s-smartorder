@@ -1806,7 +1806,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
             {selectedProveedor ? (
               <>
                 <div className="inv-warehouse-moves__summary-grid">
-                  <article className="inv-warehouse-summary-card is-entry">
+                  <article className="inv-warehouse-summary-card inv-invstat-card is-entry">
                     <span className="inv-warehouse-summary-card__icon">
                       <i className="bi bi-cart-check" aria-hidden="true" />
                     </span>
@@ -1815,7 +1815,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                       <strong>{formatMetricValue(selectedProveedor.compras_count)}</strong>
                     </div>
                   </article>
-                  <article className="inv-warehouse-summary-card is-adjust">
+                  <article className="inv-warehouse-summary-card inv-invstat-card is-adjust">
                     <span className="inv-warehouse-summary-card__icon">
                       <i className="bi bi-bank" aria-hidden="true" />
                     </span>
@@ -1824,7 +1824,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                       <strong>{formatMetricValue(selectedProveedor.cuentas_bancarias_count)}</strong>
                     </div>
                   </article>
-                  <article className="inv-warehouse-summary-card is-exit">
+                  <article className="inv-warehouse-summary-card inv-invstat-card is-exit">
                     <span className="inv-warehouse-summary-card__icon">
                       <i className="bi bi-calendar2-week" aria-hidden="true" />
                     </span>

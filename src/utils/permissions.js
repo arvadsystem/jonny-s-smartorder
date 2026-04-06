@@ -165,6 +165,11 @@ const PERMISSION_VALUES = Object.freeze({
   INVENTARIO_ORDENES_COMPRA_CONVERTIR: 'INVENTARIO_ORDENES_COMPRA_CONVERTIR',
   INVENTARIO_ORDENES_COMPRA_ABASTECER: 'INVENTARIO_ORDENES_COMPRA_ABASTECER',
   INVENTARIO_ORDENES_COMPRA_RECEPCIONAR: 'INVENTARIO_ORDENES_COMPRA_RECEPCIONAR',
+  // AM: permisos del submodulo Inventario > Mobiliario.
+  INVENTARIO_MOBILIARIO_VER: 'INVENTARIO_MOBILIARIO_VER',
+  INVENTARIO_MOBILIARIO_CREAR: 'INVENTARIO_MOBILIARIO_CREAR',
+  INVENTARIO_MOBILIARIO_EDITAR: 'INVENTARIO_MOBILIARIO_EDITAR',
+  INVENTARIO_MOBILIARIO_ESTADO_CAMBIAR: 'INVENTARIO_MOBILIARIO_ESTADO_CAMBIAR',
 
   VENTAS_VER: 'VENTAS_VER',
   VENTAS_CREAR: 'VENTAS_CREAR',
@@ -394,6 +399,13 @@ const INVENTARIO_TAB_PERMISSIONS_MAP = Object.freeze({
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR,
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER,
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR
+  ]),
+  // AM: tab visual del nuevo submodulo de mobiliario en inventario.
+  mobiliario: uniquePermissions([
+    PERMISSIONS.INVENTARIO_MOBILIARIO_VER,
+    PERMISSIONS.INVENTARIO_MOBILIARIO_CREAR,
+    PERMISSIONS.INVENTARIO_MOBILIARIO_EDITAR,
+    PERMISSIONS.INVENTARIO_MOBILIARIO_ESTADO_CAMBIAR
   ])
 });
 
@@ -613,9 +625,10 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam', required: INVENTARIO_TAB_PERMISSIONS_MAP.insumos },
     { key: 'productos', label: 'Productos', icon: 'bi bi-basket', required: INVENTARIO_TAB_PERMISSIONS_MAP.productos },
     { key: 'almacenes', label: 'Almacenes', icon: 'bi bi-building', required: INVENTARIO_TAB_PERMISSIONS_MAP.almacenes },
-    { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: INVENTARIO_TAB_PERMISSIONS_MAP.alertas },
     // AM: acceso visual al submodulo de ordenes de compra.
-    { key: 'ordenes_compra', label: 'Ordenes compra', icon: 'bi bi-bag-check', required: INVENTARIO_TAB_PERMISSIONS_MAP.ordenes_compra }
+    { key: 'ordenes_compra', label: 'Ordenes compra', icon: 'bi bi-bag-check', required: INVENTARIO_TAB_PERMISSIONS_MAP.ordenes_compra },
+    // AM: acceso visual al submodulo de mobiliario.
+    { key: 'mobiliario', label: 'Mobiliario', icon: 'bi bi-archive', required: INVENTARIO_TAB_PERMISSIONS_MAP.mobiliario }
   ],
   personas: [
     { key: 'personas', label: 'Personas', icon: 'bi bi-person', required: PERSONAS_TAB_PERMISSIONS_MAP.personas },

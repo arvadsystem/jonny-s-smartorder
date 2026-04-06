@@ -2242,9 +2242,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const renderKpiCard = (key, label, value, className = '') => {
     const series = kpiSeries[key] || [];
     const points = buildSparklinePoints(series);
+    const iconByKey = {
+      total: 'bi-grid-1x2',
+      activas: 'bi-check-circle',
+      inactivas: 'bi-slash-circle',
+      conStock: 'bi-box-seam',
+      stockBajo: 'bi-exclamation-triangle',
+      sinStock: 'bi-x-circle'
+    };
 
     return (
-      <div className={`inv-prod-kpi ${className}`.trim()}>
+      <div className={`inv-prod-kpi inv-invstat-card ${className}`.trim()}>
+        <div className="inv-invstat-icon" aria-hidden="true">
+          <i className={`bi ${iconByKey[key] || 'bi-bar-chart'}`} />
+        </div>
         {points ? (
           <svg className="inv-prod-kpi-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
             <polyline points={points} />
