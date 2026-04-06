@@ -146,7 +146,7 @@ const Login = () => {
               <input
                 id="login-identifier"
                 type="text"
-                placeholder="vcarbajal o tucorreo@email.com"
+                placeholder="usuario123 o ejemplo@correo.com"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 autoComplete="username"

@@ -1426,6 +1426,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       <th scope="col">Documento</th>
                       <th scope="col">Telefono</th>
                       <th scope="col">Correo</th>
+                      <th scope="col">Puntos</th>
                       <th scope="col">Fecha registro</th>
                       <th scope="col">Estado</th>
                       <th scope="col">Codigo</th>
@@ -1449,12 +1450,23 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                               >
                                 {toDisplayValue(cliente?.origen_label, "Cliente Persona")}
                               </span>
+                              {cliente?.direccion && cliente?.direccion !== "No registrada" && (
+                                <div className="text-muted small mt-1">
+                                  <i className="bi bi-geo-alt me-1" />
+                                  {cliente.direccion}
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td>{toDisplayValue(cliente?.nombre_empresa)}</td>
                           <td>{toDisplayValue(cliente?.documento_valor, "N/D")}</td>
                           <td>{toDisplayValue(cliente?.telefono, "Sin telefono")}</td>
                           <td>{toDisplayValue(cliente?.correo, "Sin correo")}</td>
+                          <td>
+                            <span className="badge bg-secondary rounded-pill">
+                              {cliente?.puntos ?? 0} pts
+                            </span>
+                          </td>
                           <td>{formatDateLabel(cliente?.fecha_ingreso)}</td>
                           <td>
                             <span className={`inv-ins-card__badge ${isActive ? "is-ok" : "is-inactive"}`}>
