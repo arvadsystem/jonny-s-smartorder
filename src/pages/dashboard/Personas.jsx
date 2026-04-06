@@ -8,7 +8,6 @@ import sucursalesService from "../../services/sucursalesService";
 import PersonasTab from "./personas/PersonasTab";
 import EmpresasTab from "./personas/EmpresasTab";
 import EmpleadosTab from "./personas/EmpleadosTab";
-import PlanillasTab from "./personas/PlanillasTab";
 import UsuariosTab from "./personas/UsuariosTab";
 import ClientesTab from "./personas/ClientesTab";
 import RolesPermisosTab from "./personas/components/RolesPermisosTab";
@@ -17,7 +16,6 @@ const PERSONAS_TAB_KEYS = [
   "personas",
   "empresas",
   "empleados",
-  "planillas",
   "usuarios",
   "clientes",
   "roles",
@@ -120,7 +118,7 @@ export default function Personas() {
   }, []);
 
   useEffect(() => {
-    if (sucursalesLoading || selectedSucursalId || activeTab === "planillas") return;
+    if (sucursalesLoading || selectedSucursalId) return;
     const firstSucursalId = parsePositiveInt(sucursales[0]?.id_sucursal);
     if (!firstSucursalId) return;
     applySucursalContext(firstSucursalId);
@@ -164,14 +162,6 @@ export default function Personas() {
         return <EmpleadosTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "usuarios":
         return <UsuariosTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
-      case "planillas":
-        return (
-          <PlanillasTab
-            openToast={openToast}
-            selectedSucursalId={selectedSucursalId}
-            onSelectedSucursalChange={applySucursalContext}
-          />
-        );
       case "roles":
         return <RolesPermisosTab openToast={openToast} />;
       case "clientes":

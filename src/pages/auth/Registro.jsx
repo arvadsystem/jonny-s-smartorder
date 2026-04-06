@@ -27,8 +27,9 @@ const Registro = () => {
     setError('');
     setSuccessMsg('');
 
-    if (!nombre.trim() || !apellido.trim() || !nombreUsuario.trim() || !email.trim() || !password.trim()) {
-      setError('Todos los campos son obligatorios (Nombre, Apellido, Usuario, Correo y Contraseña).');
+    // El nombre de usuario se genera automáticamente en el backend
+    if (!nombre.trim() || !apellido.trim() || !email.trim() || !password.trim()) {
+      setError('Todos los campos son obligatorios (Nombre, Apellido, Correo y Contraseña).');
       return;
     }
 
@@ -37,20 +38,26 @@ const Registro = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
+    if (password.length < 10) {
+      setError('La contraseña debe tener al menos 10 caracteres.');
+      return;
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      setError('La contraseña debe incluir al menos una letra mayúscula.');
+      return;
+    }
+
+    if (!/[0-9]/.test(password)) {
+      setError('La contraseña debe incluir al menos un número.');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await clientePublicoService.register({ 
-        email, 
         clave: password, 
         nombre, 
-        apellido, 
-        nombreUsuario 
-      });
+        apellido
 
       if (response?.requiresVerification) {
         setSuccessMsg(`Te hemos enviado un correo de verificación a ${email}. Revisa tu bandeja de entrada para activar tu cuenta.`);
@@ -159,20 +166,7 @@ const Registro = () => {
               </div>
             </div>
 
-            <div className="field">
-              <label>NOMBRE DE USUARIO</label>
-              <div className="input-wrap">
-                <FiUser className="field-icon" />
-                <input
-                  id="register-username"
-                  type="text"
-                  placeholder="Tu usuario"
-                  value={nombreUsuario}
-                  onChange={(e) => setNombreUsuario(e.target.value)}
-                  autoComplete="username"
-                />
-              </div>
-            </div>
+            {/* El nombre de usuario se genera automáticamente */}
 
             <div className="field">
               <label>CORREO ELECTRÓNICO</label>
@@ -196,7 +190,7 @@ const Registro = () => {
                 <input
                   id="register-password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mín. 10 chars, Mayúscula y Número"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"

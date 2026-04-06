@@ -11,6 +11,15 @@ const buildProxyTarget = () => ({
   // Publicacion de menu puede enviar muchos items y tardar mas de 15s.
   timeout: 60000,
   proxyTimeout: 60000,
+  bypass: (req) => {
+    // Si la peticion acepta HTML (navegacion directa/refresco)
+    // O si la ruta es parte del modulo de menu publico,
+    // NO debemos proxearla al backend para que el SPA fallback funcione.
+    if (req.headers.accept?.includes('text/html') || req.url.startsWith('/menu-publico')) {
+      return req.url;
+    }
+    return null;
+  },
   configure: (proxy) => {
     proxy.on('error', (error, req) => {
       const method = req?.method || 'UNKNOWN';
@@ -47,7 +56,18 @@ const proxiedPaths = [
   '/parametros',
   '/movimientos',
   '/perfil',
-  '/archivos'
+  '/archivos',
+  '/mobiliario',
+  '/orden_compras',
+  '/detalle_orden_compras',
+  '/compras',
+  '/detalle_compras',
+  '/tipo_departamento',
+  '/movimientos_inventario',
+  '/kardex',
+  '/correos',
+  '/telefonos',
+  '/direcciones'
 ];
 
 const proxy = Object.fromEntries(proxiedPaths.map((path) => [path, buildProxyTarget()]));
