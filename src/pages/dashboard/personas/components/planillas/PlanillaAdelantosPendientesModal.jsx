@@ -12,6 +12,7 @@ const toText = (value, fallback = '-') => {
 export default function PlanillaAdelantosPendientesModal({
   open,
   loading = false,
+  loadingAction = false,
   items = [],
   hasPlanillaSeleccionada = false,
   onClose,
@@ -26,7 +27,7 @@ export default function PlanillaAdelantosPendientesModal({
           <div>
             <h5>Adelantos pendientes por sucursal</h5>
             <p>
-              Selecciona un empleado para abrir el flujo de aplicacion en la planilla actual.
+              Selecciona un adelanto pendiente para aplicarlo directamente en la planilla actual.
             </p>
           </div>
           <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>
@@ -76,11 +77,11 @@ export default function PlanillaAdelantosPendientesModal({
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-primary"
-                          disabled={!hasPlanillaSeleccionada}
+                          disabled={!hasPlanillaSeleccionada || loadingAction}
                           onClick={() => onApplyForEmpleado?.(adelanto)}
                         >
                           <i className="bi bi-wallet2 me-1" />
-                          Aplicar
+                          {loadingAction ? 'Aplicando...' : 'Aplicar'}
                         </button>
                       </td>
                     </tr>

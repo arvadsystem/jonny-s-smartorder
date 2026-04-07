@@ -27,6 +27,337 @@
   line-height: 1.35;
 }
 
+.personas-page.personas-page--planillas .planillas-insight--bonos-deducciones .planillas-insight__row--bono {
+  border-color: rgba(18, 132, 99, 0.38);
+  background: linear-gradient(135deg, rgba(233, 248, 242, 0.96), rgba(245, 253, 249, 0.96));
+}
+
+.personas-page.personas-page--planillas .planillas-insight--bonos-deducciones .planillas-insight__row--deduccion {
+  border-color: rgba(164, 107, 49, 0.4);
+  background: linear-gradient(135deg, rgba(255, 247, 236, 0.96), rgba(255, 252, 246, 0.96));
+}
+
+.personas-page.personas-page--planillas .planillas-insight__status-chip--bono {
+  border-color: rgba(18, 132, 99, 0.34);
+  background: rgba(222, 244, 236, 0.92);
+  color: #0a7d5f;
+}
+
+.personas-page.personas-page--planillas .planillas-insight__status-chip--deduccion {
+  border-color: rgba(164, 107, 49, 0.36);
+  background: rgba(255, 241, 224, 0.92);
+  color: #91531d;
+}
+
+.personas-page.personas-page--planillas .planillas-insight__bd-amount {
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: #2f1a10;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal {
+  width: min(100%, 1040px);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(183, 141, 106, 0.28);
+  box-shadow: 0 24px 56px rgba(62, 39, 25, 0.24);
+  background: linear-gradient(180deg, #fffdfb 0%, #fcf8f3 100%);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__head {
+  align-items: center;
+  background: linear-gradient(145deg, #f4e6d5, #ecd8c2);
+  color: #3a2214;
+  border-bottom: 1px solid rgba(168, 122, 88, 0.24);
+  padding: 1.15rem 1.4rem 0.95rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__head h5 {
+  color: #2f1a10;
+  font-size: clamp(1.55rem, 2.45vw, 2rem);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__head p {
+  color: rgba(75, 47, 32, 0.86);
+  font-size: 1.02rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #d37a42, #c46332);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__close {
+  border-color: rgba(148, 106, 75, 0.3);
+  background: rgba(255, 255, 255, 0.74);
+  color: rgba(90, 57, 39, 0.9);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__close:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(148, 106, 75, 0.45);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.72rem;
+  background: linear-gradient(180deg, #f8ede0 0%, #fcf8f3 100%);
+  border-bottom: 1px solid rgba(173, 129, 94, 0.18);
+  padding: 0 1.4rem 1.02rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stat {
+  border: 1px solid rgba(176, 135, 101, 0.26);
+  background: rgba(255, 255, 255, 0.92);
+  color: #43281a;
+  box-shadow: 0 9px 18px rgba(91, 61, 41, 0.08);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stat span {
+  color: rgba(86, 55, 40, 0.82);
+  font-size: 0.93rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stat strong {
+  font-size: clamp(1.62rem, 2.8vw, 1.98rem);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stat strong.is-success {
+  color: #15845f;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stat strong.is-warning {
+  color: #a56b13;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stat strong.is-danger {
+  color: #b14720;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__body {
+  background: #fcfbf8;
+  padding-top: 0.92rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal__filters-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.78rem;
+  margin-bottom: 0.8rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal__filter-section {
+  border: 1px solid rgba(179, 136, 101, 0.24);
+  border-radius: 14px;
+  padding: 0.58rem 0.64rem 0.16rem;
+  background: #fff;
+  box-shadow: 0 7px 15px rgba(97, 66, 45, 0.06);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal__filter-label {
+  margin: 0 0 0.42rem 0.16rem;
+  color: rgba(96, 62, 44, 0.8);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__filters {
+  margin-bottom: 0.5rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__filter-chip {
+  border-color: rgba(158, 123, 93, 0.34);
+  background: #fff8f0;
+  color: rgba(70, 42, 29, 0.95);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__filter-chip strong {
+  background: rgba(157, 118, 87, 0.15);
+  color: #6c4931;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__filter-chip:hover:not(:disabled) {
+  background: #fff3e7;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__filter-chip.is-active {
+  box-shadow: 0 6px 14px rgba(96, 64, 43, 0.12);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__filter-chip[data-filter='all'].is-active {
+  border-color: rgba(76, 112, 180, 0.5);
+  background: rgba(82, 122, 191, 0.16);
+  color: #2c5798;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__filter-chip[data-filter='all'].is-active strong {
+  background: rgba(81, 121, 190, 0.24);
+  color: #24508d;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__rows {
+  gap: 0.9rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal__row {
+  position: relative;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__row {
+  border: 1px solid rgba(177, 136, 101, 0.28);
+  border-radius: 16px;
+  padding: 0.92rem 0.98rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 250, 244, 0.96));
+  box-shadow: 0 10px 20px rgba(88, 59, 40, 0.08);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__row.is-compensated {
+  border-left: 4px solid rgba(21, 144, 102, 0.84);
+  background: linear-gradient(180deg, rgba(247, 254, 251, 0.98), rgba(234, 249, 242, 0.95));
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__row.is-pending {
+  border-left: 4px solid rgba(186, 124, 52, 0.84);
+  background: linear-gradient(180deg, rgba(255, 252, 244, 0.98), rgba(255, 246, 229, 0.95));
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__row.is-removed {
+  border-left: 4px solid rgba(190, 88, 49, 0.84);
+  background: linear-gradient(180deg, rgba(255, 250, 247, 0.98), rgba(252, 238, 232, 0.95));
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__employee {
+  color: #345d93;
+  font-size: 1.1rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__employee i {
+  color: rgba(68, 104, 153, 0.95);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__date {
+  font-size: 1.03rem;
+  color: #22140e;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal__concept-line {
+  margin: 0.16rem 0 0;
+  color: rgba(76, 46, 32, 0.9);
+  font-size: 1.03rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal__concept-line strong {
+  color: #2f1a10;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal__row .planillas-he-modal__row-actions {
+  align-items: center;
+  gap: 0.52rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__badge {
+  border: 1px solid transparent;
+  padding: 0.24rem 0.62rem;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-bd-modal__type-badge.is-compensated {
+  border-color: rgba(20, 149, 106, 0.3);
+  background: rgba(20, 149, 106, 0.15);
+  color: #0f7c58;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-bd-modal__type-badge.is-removed {
+  border-color: rgba(194, 92, 56, 0.3);
+  background: rgba(194, 92, 56, 0.15);
+  color: #973816;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-bd-modal__status-badge.is-removed {
+  border-color: rgba(194, 92, 56, 0.32);
+  background: rgba(194, 92, 56, 0.17);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__btn-delete {
+  min-width: 102px;
+  border-color: rgba(185, 83, 84, 0.46);
+  background: rgba(202, 98, 101, 0.14);
+  color: #982d33;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__btn-delete:hover:not(:disabled) {
+  background: rgba(202, 98, 101, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__note.is-readonly {
+  margin-top: 0.72rem;
+  border-color: rgba(168, 128, 96, 0.25);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__note.is-readonly label {
+  color: rgba(89, 56, 40, 0.82);
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__note.is-readonly > div {
+  color: #0e7d5a;
+  font-size: 1.06rem;
+  font-weight: 700;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__note.is-readonly.is-removed > div {
+  color: #9a3816;
+}
+
+.personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__empty-filter {
+  border: 1px dashed rgba(169, 129, 95, 0.36);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  padding-block: 1.2rem;
+}
+
+@media (max-width: 1199px) {
+  .personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 992px) {
+  .personas-page.personas-page--planillas .planillas-bd-modal {
+    width: min(100%, 960px);
+    border-radius: 16px;
+  }
+
+  .personas-page.personas-page--planillas .planillas-bd-modal__filters-group {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__head h5 {
+    font-size: 1.32rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-bd-modal .planillas-he-modal__head p {
+    font-size: 0.9rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-bd-modal__filter-section {
+    padding: 0.52rem 0.5rem 0.1rem;
+  }
+}
+
 .personas-branch-context--planillas .personas-branch-context__row {
   display: grid;
   grid-template-columns: auto minmax(280px, 420px);
@@ -830,6 +1161,64 @@
   margin-bottom: 0.8rem;
 }
 
+.personas-page.personas-page--planillas .planillas-toolbar--sucursal {
+  grid-template-columns: minmax(260px, 1fr) minmax(300px, 560px);
+  align-items: center;
+  gap: 0.95rem;
+  padding: 0.98rem 1.08rem;
+  margin-bottom: 1rem;
+  border-color: rgba(203, 180, 156, 0.72);
+  background: linear-gradient(145deg, rgba(255, 248, 239, 0.92), rgba(251, 242, 230, 0.88));
+  box-shadow: 0 10px 20px rgba(66, 43, 30, 0.08);
+}
+
+.personas-page.personas-page--planillas .planillas-toolbar__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.personas-page.personas-page--planillas .planillas-toolbar__title-icon {
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  color: #fff;
+  background: linear-gradient(145deg, #c1703a, #a85a2a);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 6px 14px rgba(80, 42, 18, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-toolbar__title {
+  font-size: clamp(1.48rem, 2.6vw, 2.02rem);
+  line-height: 1.08;
+  font-weight: 900;
+  letter-spacing: -0.015em;
+  color: var(--planillas-ink);
+}
+
+.personas-page.personas-page--planillas .planillas-toolbar__subtitle {
+  margin: 0.2rem 0 0;
+  color: rgba(88, 60, 43, 0.8);
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.personas-page.personas-page--planillas .planillas-toolbar--sucursal .planillas-toolbar__field label {
+  display: none;
+}
+
+.personas-page.personas-page--planillas .planillas-toolbar__field--sucursal {
+  min-width: 0;
+}
+
+.personas-page.personas-page--planillas .planillas-sucursal-select {
+  min-width: 0;
+}
+
 .personas-page.personas-page--planillas .planillas-toolbar__audit {
   display: flex;
   align-items: stretch;
@@ -955,9 +1344,16 @@
 }
 
 .personas-page.personas-page--planillas .planillas-insight__head-actions {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.45rem;
+  margin-left: auto;
+}
+
+.personas-page.personas-page--planillas .planillas-insight__head-actions--adelantos {
+  max-width: min(100%, 560px);
 }
 
 .personas-page.personas-page--planillas .planillas-insight__close {
@@ -2140,6 +2536,71 @@
   color: #ffb38f;
 }
 
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__head {
+  background: linear-gradient(145deg, #f6e8da, #efd8c2);
+  color: #321d12;
+  border-bottom: 1px solid rgba(155, 101, 65, 0.28);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__head h5 {
+  color: #2f1a10;
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__head p {
+  color: rgba(67, 41, 27, 0.88);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__icon {
+  background: linear-gradient(145deg, #d57c4e, #c96636);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__close {
+  border-color: rgba(150, 95, 60, 0.28);
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(86, 54, 36, 0.88);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__close:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(150, 95, 60, 0.45);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__stats {
+  background: linear-gradient(180deg, #f8ecdf 0%, #fbf4ec 100%);
+  border-bottom: 1px solid rgba(173, 126, 95, 0.18);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__stat {
+  border: 1px solid rgba(179, 130, 95, 0.26);
+  background: #fff;
+  box-shadow: 0 8px 16px rgba(87, 58, 40, 0.08);
+  color: #42261a;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__stat span {
+  color: rgba(91, 57, 40, 0.82);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__stat strong {
+  font-size: clamp(1.65rem, 3vw, 2rem);
+  color: #5b3a28;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__stat strong.is-success {
+  color: #177a57;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__stat strong.is-warning {
+  color: #9a6507;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__stat strong.is-danger {
+  color: #b0461f;
+}
+
 .personas-page.personas-page--planillas .planillas-he-modal__body {
   padding: 1rem 1.4rem;
 }
@@ -2446,6 +2907,92 @@
   background: #fff;
 }
 
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__row {
+  position: relative;
+  border: 1px solid rgba(173, 133, 103, 0.3);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 248, 240, 0.95));
+  border-radius: 16px;
+  box-shadow: 0 9px 20px rgba(91, 60, 41, 0.09);
+  padding: 0.9rem 0.98rem;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__row.is-pending {
+  border-left: 4px solid rgba(211, 153, 29, 0.86);
+  background: linear-gradient(180deg, rgba(255, 252, 242, 0.98), rgba(255, 247, 228, 0.94));
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__row.is-applied {
+  border-left: 4px solid rgba(23, 137, 97, 0.88);
+  background: linear-gradient(180deg, rgba(244, 252, 249, 0.98), rgba(232, 248, 241, 0.95));
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__row.is-removed {
+  border-left: 4px solid rgba(192, 87, 52, 0.86);
+  background: linear-gradient(180deg, rgba(255, 249, 246, 0.98), rgba(252, 239, 234, 0.95));
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__row-top p {
+  color: rgba(77, 47, 33, 0.92);
+  font-size: 1.01rem;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__date {
+  font-size: 1.02rem;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__row-actions {
+  gap: 0.5rem;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-edit,
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-delete,
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-save,
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-cancel {
+  min-width: 110px;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-edit {
+  border-color: rgba(61, 100, 171, 0.42);
+  background: rgba(82, 125, 206, 0.16);
+  color: #2456ad;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-edit:hover:not(:disabled) {
+  background: rgba(82, 125, 206, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-delete {
+  border-color: rgba(190, 86, 85, 0.46);
+  background: rgba(208, 107, 108, 0.14);
+  color: #9c3030;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-delete:hover:not(:disabled) {
+  background: rgba(208, 107, 108, 0.22);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-save {
+  border-color: rgba(22, 129, 92, 0.42);
+  background: rgba(22, 129, 92, 0.16);
+  color: #0f704d;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-save:hover:not(:disabled) {
+  background: rgba(22, 129, 92, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-edit:disabled,
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-delete:disabled,
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-save:disabled,
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__btn-cancel:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.personas-page.personas-page--planillas .planillas-adelantos-modal .planillas-he-modal__note.is-readonly {
+  background: rgba(255, 255, 255, 0.82);
+}
+
 .personas-page.personas-page--planillas .planillas-he-modal__edit-grid {
   margin-top: 0.65rem;
   display: grid;
@@ -2665,6 +3212,10 @@
 
 .personas-page.personas-page--planillas .planillas-summary-card--warning {
   background: linear-gradient(145deg, #fbf4ec, #f6ecdd);
+}
+
+.personas-page.personas-page--planillas .planillas-summary-card--danger {
+  background: linear-gradient(145deg, #fff2ed, #f8e6dd);
 }
 
 .personas-page.personas-page--planillas .planillas-summary-card.is-net {
@@ -3167,6 +3718,25 @@
     grid-template-columns: 1fr;
   }
 
+  .personas-page.personas-page--planillas .planillas-toolbar__title {
+    font-size: 1.55rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-toolbar__subtitle {
+    font-size: 0.86rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-toolbar__title-icon {
+    width: 2.3rem;
+    height: 2.3rem;
+    border-radius: 0.72rem;
+    font-size: 1.02rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-toolbar--sucursal {
+    gap: 0.62rem;
+  }
+
   .personas-page.personas-page--planillas .planillas-header__actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3205,6 +3775,14 @@
   .personas-page.personas-page--planillas .planillas-header__controls,
   .personas-page.personas-page--planillas .planillas-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .personas-page.personas-page--planillas .planillas-toolbar__title {
+    font-size: 1.35rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-toolbar__subtitle {
+    font-size: 0.82rem;
   }
 
   .personas-page.personas-page--planillas .planillas-header__actions {
@@ -3432,6 +4010,11 @@
   .personas-page.personas-page--planillas .planillas-insight__head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .personas-page.personas-page--planillas .planillas-insight__head-actions {
+    margin-left: 0;
+    justify-content: flex-start;
   }
 
   .personas-page.personas-page--planillas .planillas-insight__title-wrap h4 {

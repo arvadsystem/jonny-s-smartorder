@@ -249,6 +249,7 @@ const Navbar = () => {
   const canViewProfile = canAny([PERMISSIONS.PERFIL_VER]);
 
   const moduleKey = useMemo(() => {
+    if (location.pathname.startsWith('/dashboard/planillas')) return 'planillas';
     if (isPlanillasContext(location.pathname, location.search)) return 'planillas';
     if (location.pathname.startsWith('/dashboard/inventario')) return 'inventario';
     if (location.pathname.startsWith('/dashboard/seguridad')) return 'seguridad';
@@ -324,9 +325,9 @@ const Navbar = () => {
       onGoTab: (key) => {
         if (moduleKey === 'planillas') {
           const next = new URLSearchParams(location.search || '');
-          next.set('tab', PLANILLAS_PARENT_TAB_KEY);
+          next.delete('tab');
           next.set(PLANILLAS_NAV_QUERY_PARAM, key);
-          navigate(`/dashboard/personas?${next.toString()}`);
+          navigate(`/dashboard/planillas?${next.toString()}`);
           return;
         }
 

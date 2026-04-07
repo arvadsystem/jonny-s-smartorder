@@ -4,7 +4,8 @@ export const PLANILLAS_NAV_QUERY_PARAM = 'planillasTab';
 export const PLANILLAS_NAV_TAB_KEYS = Object.freeze({
   pagoPlanilla: 'pago-planilla',
   horasExtras: 'horas-extras',
-  adelantosSalario: 'adelantos-salario'
+  adelantosSalario: 'adelantos-salario',
+  bonosDeducciones: 'bonos-deducciones'
 });
 
 export const PLANILLAS_NAV_TABS = Object.freeze([
@@ -14,14 +15,19 @@ export const PLANILLAS_NAV_TABS = Object.freeze([
     icon: 'bi bi-cash-stack'
   },
   {
-    key: PLANILLAS_NAV_TAB_KEYS.horasExtras,
-    label: 'Horas extras',
-    icon: 'bi bi-clock-history'
+    key: PLANILLAS_NAV_TAB_KEYS.bonosDeducciones,
+    label: 'Bonos y deducciones',
+    icon: 'bi bi-receipt'
   },
   {
     key: PLANILLAS_NAV_TAB_KEYS.adelantosSalario,
     label: 'Adelantos de salario',
     icon: 'bi bi-wallet2'
+  },
+  {
+    key: PLANILLAS_NAV_TAB_KEYS.horasExtras,
+    label: 'Horas extras',
+    icon: 'bi bi-clock-history'
   }
 ]);
 

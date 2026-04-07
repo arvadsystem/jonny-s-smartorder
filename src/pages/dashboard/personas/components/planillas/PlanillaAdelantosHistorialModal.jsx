@@ -39,6 +39,7 @@ const normalizeStatus = (row = {}) => {
 export default function PlanillaAdelantosHistorialModal({
   open,
   loading = false,
+  loadingAction = false,
   rows = [],
   empleadoLabel = '',
   updatingId = null,
@@ -260,21 +261,27 @@ export default function PlanillaAdelantosHistorialModal({
                 </div>
               ) : (
                 <div className="planillas-he-modal__rows">
-                  {filteredRows.map((row) => {
-                    const rowId = row?.id;
+                  {filteredRows.map((row, index) => {
+                    const rowId = row?.id || row?.id_movimiento || `ad-row-${index}`;
                     const status = normalizeStatus(row);
                     const isPending = status === STATUS_FILTERS.pending;
                     const isApplied = status === STATUS_FILTERS.applied;
                     const isRemoved = status === STATUS_FILTERS.removed;
                     const isEditing = String(editingRowId || '') === String(rowId || '');
-                    const isUpdating = String(updatingId || '') === String(row?.id_movimiento || '') && isApplied;
-                    const isDeleting = String(deletingId || '') === String(row?.id_movimiento || '') && isApplied;
+                    const currentUpdatingId = String(updatingId ?? '');
+                    const currentDeletingId = String(deletingId ?? '');
+                    const isUpdating = currentUpdatingId !== '' && currentUpdatingId === String(rowId);
+                    const isDeleting = currentDeletingId !== '' && currentDeletingId === String(rowId);
                     const isBusy = isUpdating || isDeleting;
                     const draft = editDraftsByRow[rowId] || {};
                     const montoDraft = safeNumber(draft?.monto_aplicar, Number.NaN);
-                    const canSaveEdit = !isBusy && Number.isFinite(montoDraft) && montoDraft > 0 && row?.id_adelanto;
-                    const canEditRow = Boolean(row?.editable && canEditar);
-                    const hasReusableSource = Boolean(row?.id_adelanto);
+                    const canEditRow = Boolean(canEditar && isPending && safeNumber(row?.id_adelanto, 0) > 0);
+                    const canDeleteRow = Boolean(
+                      canEliminar &&
+                        ((isPending && safeNumber(row?.id_adelanto, 0) > 0) ||
+                          (isApplied && safeNumber(row?.id_movimiento, 0) > 0))
+                    );
+                    const canSaveEdit = !isBusy && canEditRow && Number.isFinite(montoDraft) && montoDraft > 0;
 
                     return (
                       <article
@@ -298,17 +305,6 @@ export default function PlanillaAdelantosHistorialModal({
 
                           {isPending ? (
                             <div className="planillas-he-modal__row-actions">
-                              <button
-                                type="button"
-                                className="btn planillas-he-modal__btn-compensar"
-                                disabled={!hasPlanillaSeleccionada}
-                                onClick={() => onAplicarPendiente?.(row)}
-                              >
-                                Aplicar
-                              </button>
-                            </div>
-                          ) : isApplied ? (
-                            <div className="planillas-he-modal__row-actions">
                               {isEditing ? (
                                 <>
                                   <button
@@ -330,16 +326,19 @@ export default function PlanillaAdelantosHistorialModal({
                                 </>
                               ) : (
                                 <>
+                                  <button
+                                    type="button"
+                                    className="btn planillas-he-modal__btn-compensar"
+                                    disabled={!hasPlanillaSeleccionada || loadingAction}
+                                    onClick={() => onAplicarPendiente?.(row)}
+                                  >
+                                    {loadingAction ? 'Aplicando...' : 'Aplicar'}
+                                  </button>
                                   {canEditar ? (
                                     <button
                                       type="button"
                                       className="btn planillas-he-modal__btn-edit"
                                       disabled={!canEditRow || isBusy}
-                                      title={
-                                        hasReusableSource
-                                          ? ''
-                                          : 'No se puede editar porque este movimiento no conserva id_adelanto de origen.'
-                                      }
                                       onClick={() => startEdit(row)}
                                     >
                                       Editar
@@ -349,7 +348,7 @@ export default function PlanillaAdelantosHistorialModal({
                                     <button
                                       type="button"
                                       className="btn planillas-he-modal__btn-delete"
-                                      disabled={isBusy}
+                                      disabled={!canDeleteRow || isBusy}
                                       onClick={() => onEliminar?.(row)}
                                     >
                                       {isDeleting ? 'Eliminando...' : 'Eliminar'}
@@ -358,94 +357,90 @@ export default function PlanillaAdelantosHistorialModal({
                                 </>
                               )}
                             </div>
+                          ) : isApplied ? (
+                            <span className="planillas-he-modal__badge is-compensated">
+                              <i className="bi bi-check2-circle me-1" />
+                              Adelanto aplicado
+                            </span>
                           ) : (
                             <span className="planillas-he-modal__badge is-removed">
                               <i className="bi bi-trash3-fill me-1" />
-                              Eliminada
+                              Adelanto eliminado
                             </span>
                           )}
                         </div>
 
-                        {isApplied ? (
-                          isEditing ? (
-                            <>
-                              <div className="planillas-he-modal__edit-grid planillas-adelantos-modal__edit-grid">
-                                <div>
-                                  <label htmlFor={`ad-edit-monto-${rowId}`}>Monto a aplicar</label>
-                                  <input
-                                    id={`ad-edit-monto-${rowId}`}
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    className="form-control"
-                                    value={draft?.monto_aplicar ?? ''}
-                                    onChange={(event) =>
-                                      setEditDraftsByRow((previous) => ({
-                                        ...previous,
-                                        [rowId]: {
-                                          ...previous[rowId],
-                                          monto_aplicar: event.target.value
-                                        }
-                                      }))
-                                    }
-                                    disabled={isBusy}
-                                  />
-                                </div>
-                              </div>
-                              <div className="planillas-he-modal__note planillas-he-modal__edit-note">
-                                <label htmlFor={`ad-edit-note-${rowId}`}>Observacion (opcional)</label>
-                                <textarea
-                                  id={`ad-edit-note-${rowId}`}
-                                  rows={2}
-                                  maxLength={255}
-                                  placeholder="Motivo del ajuste..."
-                                  value={draft?.observacion || ''}
+                        {isPending && isEditing ? (
+                          <>
+                            <div className="planillas-he-modal__edit-grid planillas-adelantos-modal__edit-grid">
+                              <div>
+                                <label htmlFor={`ad-edit-monto-${rowId}`}>Monto pendiente</label>
+                                <input
+                                  id={`ad-edit-monto-${rowId}`}
+                                  type="number"
+                                  min="0.01"
+                                  step="0.01"
+                                  className="form-control"
+                                  value={draft?.monto_aplicar ?? ''}
                                   onChange={(event) =>
                                     setEditDraftsByRow((previous) => ({
                                       ...previous,
                                       [rowId]: {
                                         ...previous[rowId],
-                                        observacion: event.target.value
+                                        monto_aplicar: event.target.value
                                       }
                                     }))
                                   }
                                   disabled={isBusy}
                                 />
                               </div>
-                              {!hasReusableSource ? (
-                                <small className="planillas-adelantos-modal__hint">
-                                  Este movimiento no conserva referencia al adelanto original, por eso no puede
-                                  editarse.
-                                </small>
-                              ) : null}
-                            </>
-                          ) : (
-                            <div className="planillas-he-modal__note is-readonly">
-                              <div>
-                                <i className="bi bi-calendar-check me-1" />
-                                Aplicado el {formatDate(row?.fecha)}
-                              </div>
-                              <small>{toText(row?.observacion, 'Aplicado sin observacion adicional.')}</small>
-                              {!hasReusableSource ? (
-                                <small className="planillas-adelantos-modal__hint">
-                                  Edicion deshabilitada: este movimiento no tiene id_adelanto reutilizable.
-                                </small>
-                              ) : null}
                             </div>
-                          )
+                            <div className="planillas-he-modal__note planillas-he-modal__edit-note">
+                              <label htmlFor={`ad-edit-note-${rowId}`}>Observacion (opcional)</label>
+                              <textarea
+                                id={`ad-edit-note-${rowId}`}
+                                rows={2}
+                                maxLength={255}
+                                placeholder="Motivo del ajuste..."
+                                value={draft?.observacion || ''}
+                                onChange={(event) =>
+                                  setEditDraftsByRow((previous) => ({
+                                    ...previous,
+                                    [rowId]: {
+                                      ...previous[rowId],
+                                      observacion: event.target.value
+                                    }
+                                  }))
+                                }
+                                disabled={isBusy}
+                              />
+                            </div>
+                          </>
                         ) : (
                           <div className={`planillas-he-modal__note is-readonly ${isRemoved ? 'is-removed' : ''}`}>
                             <div>
-                              <i className={`bi ${isRemoved ? 'bi-trash3 me-1' : 'bi-hourglass-split me-1'}`} />
+                              <i
+                                className={`bi ${
+                                  isRemoved
+                                    ? 'bi-trash3 me-1'
+                                    : isApplied
+                                      ? 'bi-check2-circle me-1'
+                                      : 'bi-hourglass-split me-1'
+                                }`}
+                              />
                               {isRemoved
-                                ? `Eliminada el ${formatDate(row?.fecha)}`
-                                : `Pendiente desde ${formatDate(row?.fecha)}`}
+                                ? `Adelanto eliminado el ${formatDate(row?.fecha)}`
+                                : isApplied
+                                  ? `Adelanto aplicado el ${formatDate(row?.fecha)}`
+                                  : `Pendiente desde ${formatDate(row?.fecha)}`}
                             </div>
                             <small>
                               {toText(
                                 row?.observacion,
                                 isRemoved
                                   ? 'Registro eliminado del calculo de planilla.'
+                                  : isApplied
+                                    ? 'Aplicado automaticamente al detalle de planilla.'
                                   : 'Disponible para aplicar en esta planilla.'
                               )}
                             </small>

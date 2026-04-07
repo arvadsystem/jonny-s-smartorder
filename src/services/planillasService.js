@@ -171,6 +171,20 @@ const planillasService = {
       pickAllowedFields(payload, ['id_adelanto', 'id_adelanto_salario', 'monto_aplicar', 'monto', 'id_sucursal'])
     ),
 
+  actualizarAdelantoPlanilla: (idPlanilla, idAdelanto, payload = {}) =>
+    apiFetch(
+      `/planillas/${idPlanilla}/adelantos/${idAdelanto}/actualizar`,
+      'POST',
+      pickAllowedFields(payload, ['id_empleado', 'fecha', 'monto', 'observacion', 'motivo', 'id_sucursal'])
+    ),
+
+  anularAdelantoPlanilla: (idPlanilla, idAdelanto, payload = {}) =>
+    apiFetch(
+      `/planillas/${idPlanilla}/adelantos/${idAdelanto}/anular`,
+      'POST',
+      pickAllowedFields(payload, ['motivo', 'observacion', 'id_sucursal'])
+    ),
+
   registrarMovimientoPlanilla: (idPlanilla, payload = {}) =>
     apiFetch(
       `/planillas/${idPlanilla}/movimientos`,

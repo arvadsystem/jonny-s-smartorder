@@ -15,11 +15,8 @@ export default function EmployeeRow({
   onOpenDetalle,
   onOpenMovimientos,
   onOpenHorasExtra,
-  onOpenBono,
-  onOpenDeduccion,
   onOpenAdelanto,
   onRecalcularDetalle,
-  canRegistrarMovimiento = false,
   canAplicarAdelanto = false,
   canRecalcular = false
 }) {
@@ -90,27 +87,6 @@ export default function EmployeeRow({
           >
             <i className="bi bi-list-ul" />
           </button>
-
-          {canRegistrarMovimiento ? (
-            <>
-              <button
-                type="button"
-                className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--bono payroll-row__action-strong"
-                onClick={() => onOpenBono?.(item)}
-                title="Registrar bono"
-              >
-                <i className="bi bi-plus-lg" />
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--deduccion payroll-row__action-strong"
-                onClick={() => onOpenDeduccion?.(item)}
-                title="Registrar deduccion"
-              >
-                <i className="bi bi-dash-lg" />
-              </button>
-            </>
-          ) : null}
 
           {canAplicarAdelanto ? (
             <button
