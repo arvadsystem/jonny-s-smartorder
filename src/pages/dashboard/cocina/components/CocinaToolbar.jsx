@@ -4,7 +4,8 @@ export default function CocinaToolbar({
   onRefresh,
   refreshing,
   canRefresh,
-  canSearch
+  canSearch,
+  isRealtimeConnected
 }) {
   return (
     <div className="inv-prod-header inv-cat-v2__header">
@@ -27,6 +28,11 @@ export default function CocinaToolbar({
             onChange={(event) => onSearchChange(event.target.value)}
           />
         </label>
+        
+        <div className={`cocina-toolbar__realtime ${isRealtimeConnected ? 'is-connected' : ''}`}>
+          <span className="cocina-toolbar__dot" />
+          <span>{isRealtimeConnected ? 'En tiempo real' : 'Reconectando...'}</span>
+        </div>
 
         <button
           type="button"

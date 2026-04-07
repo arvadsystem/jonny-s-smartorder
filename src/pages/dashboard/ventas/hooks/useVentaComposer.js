@@ -20,6 +20,7 @@ const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = 
   selectedSucursal: isSuperAdmin ? '' : String(defaultSucursalId || ''),
   selectedClient: 'cf',
   clientPickerOpen: false,
+  sucursalPickerOpen: false,
   paymentPickerOpen: false,
   descuentoPickerOpen: false,
   paymentMethod: 'efectivo',
@@ -507,6 +508,8 @@ export const useVentaComposer = ({
     setPaymentPickerOpen: (value) => setPartialState({ paymentPickerOpen: value }),
     setDescuentoPickerOpen: (value) => setPartialState({ descuentoPickerOpen: value }),
     setClientPickerOpen: (value) => setPartialState({ clientPickerOpen: value }),
+    sucursalPickerOpen: state.sucursalPickerOpen,
+    setSucursalPickerOpen: (value) => setPartialState({ sucursalPickerOpen: value }),
     setSelectedSucursal: (value) =>
       setPartialState({
         selectedSucursal: value,

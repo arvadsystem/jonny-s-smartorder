@@ -3,6 +3,7 @@ import CocinaColumn from './CocinaColumn';
 
 export default function CocinaBoard({
   canAdvancePedido,
+  isSuperAdmin = false,
   canOpenDetail,
   groupedPedidos,
   now,
@@ -19,6 +20,7 @@ export default function CocinaBoard({
           pedidos={groupedPedidos[column.key] || []}
           now={now}
           mutatingIds={mutatingIds}
+          isSuperAdmin={isSuperAdmin}
           canAdvancePedido={canAdvancePedido}
           canOpenDetail={canOpenDetail}
           onOpenDetail={onOpenDetail}

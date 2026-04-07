@@ -1,4 +1,4 @@
-﻿.ventas-page .ventas-page__top-controls {
+.ventas-page .ventas-page__top-controls {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 12px;
@@ -1601,6 +1601,41 @@
   flex-shrink: 0;
 }
 
+.ventas-summary__sucursal-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ventas-summary__sucursal-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #2f1a10;
+  font-size: 0.88rem;
+  text-align: left;
+  min-height: 42px;
+  transition: border-color 160ms ease;
+}
+
+.ventas-summary__sucursal-btn:hover {
+  border-color: rgba(154, 83, 25, 0.38);
+}
+
+.ventas-summary__sucursal-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
 .ventas-summary__payment-btn {
   display: inline-flex;
   align-items: center;
@@ -2038,11 +2073,6 @@
   min-width: 120px;
 }
 
-.ventas-page .ventas-page__table-pill.is-soft-muted {
-  background: rgba(157, 150, 112, 0.14);
-  color: rgba(82, 44, 34, 0.76);
-}
-. v e n t a s - s u m m a r y _ _ s t a t i c - f i e l d   {   w i d t h :   1 0 0 % ;   p a d d i n g :   8 p x   1 2 p x ;   b a c k g r o u n d :   r g b a ( 2 4 4 ,   2 3 8 ,   2 3 2 ,   0 . 4 5 ) ;   b o r d e r :   1 p x   d a s h e d   r g b a ( 1 5 7 ,   1 5 0 ,   1 1 2 ,   0 . 4 ) ;   b o r d e r - r a d i u s :   1 2 p x ;   c o l o r :   # 2 f 1 a 1 0 ;   f o n t - s i z e :   0 . 8 8 r e m ;   f o n t - w e i g h t :   7 0 0 ;   w h i t e - s p a c e :   n o w r a p ;   o v e r f l o w :   h i d d e n ;   t e x t - o v e r f l o w :   e l l i p s i s ;   m i n - h e i g h t :   4 2 p x ;   d i s p l a y :   f l e x ;   a l i g n - i t e m s :   c e n t e r ;   } 
 
 .ventas-summary__static-field {
   width: 100%;
