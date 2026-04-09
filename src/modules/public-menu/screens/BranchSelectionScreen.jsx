@@ -83,6 +83,30 @@ const BranchSelectionScreen = () => {
     state.selectedBranch?.id
   ]);
 
+  useEffect(() => {
+    // Mantiene sincronizada la sucursal guardada en snapshot con la data fresca de BD.
+    // Evita que en menu publico siga saliendo un nombre viejo despues de editar sucursales.
+    if (loading || error) return;
+    if (!state.selectedBranch?.id) return;
+    if (!Array.isArray(branches) || branches.length === 0) return;
+
+    const freshBranch = branches.find(
+      (branch) => Number(branch?.id) === Number(state.selectedBranch?.id)
+    );
+
+    if (!freshBranch) return;
+
+    const changed =
+      String(freshBranch?.name || '') !== String(state.selectedBranch?.name || '') ||
+      String(freshBranch?.displayName || '') !== String(state.selectedBranch?.displayName || '') ||
+      String(freshBranch?.slug || '') !== String(state.selectedBranch?.slug || '') ||
+      String(freshBranch?.imageUrl || '') !== String(state.selectedBranch?.imageUrl || '');
+
+    if (changed) {
+      actions.selectBranch(freshBranch);
+    }
+  }, [actions, branches, error, loading, state.selectedBranch]);
+
   const handleSelectBranch = (branch) => {
     const isBranchChange = Number(state.selectedBranch?.id) !== Number(branch?.id);
     setIgnoreQueryPrefill(true);

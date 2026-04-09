@@ -1,6 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 
+const CATALOG_SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+
+const buildSnapshotKey = ({ branchId, orderType }) =>
+  `pm_catalog_snapshot::${Number(branchId) || 0}::${String(orderType || 'na').trim().toLowerCase()}`;
+
+const readCatalogSnapshot = (key) => {
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.savedAt || !parsed?.payload) return null;
+    if (Date.now() - Number(parsed.savedAt) > CATALOG_SNAPSHOT_TTL_MS) return null;
+    return parsed.payload;
+  } catch {
+    return null;
+  }
+};
+
+const writeCatalogSnapshot = (key, payload) => {
+  try {
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        savedAt: Date.now(),
+        payload
+      })
+    );
+  } catch {
+    // Si sessionStorage falla (quota/politicas), no bloqueamos el flujo de menu.
+  }
+};
+
 // Normaliza texto para comparaciones de busqueda sin acentos.
 const normalizeText = (value) =>
   String(value || '')
@@ -44,8 +76,19 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
       return;
     }
 
+    const snapshotKey = buildSnapshotKey({ branchId, orderType });
+    const snapshot = readCatalogSnapshot(snapshotKey);
+    const hasSnapshot = Boolean(snapshot && Array.isArray(snapshot.items));
+
     try {
-      setLoading(true);
+      // Si hay snapshot reciente, lo pintamos al instante para evitar espera percibida.
+      if (hasSnapshot) {
+        setProducts(snapshot.items || []);
+        setMenuSummary(snapshot.menu || null);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       setError('');
 
       const response = await publicMenuBootstrapService.getCatalog({
@@ -55,12 +98,17 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
 
       setProducts(Array.isArray(response?.items) ? response.items : []);
       setMenuSummary(response?.menu || null);
+      writeCatalogSnapshot(snapshotKey, response);
     } catch (err) {
-      setProducts([]);
-      setMenuSummary(null);
-      setError(err?.message || 'No pudimos cargar el catalogo.');
+      // Si ya mostramos snapshot, evitamos tumbar la pantalla por un error puntual de red.
+      if (!hasSnapshot) {
+        setProducts([]);
+        setMenuSummary(null);
+        setError(err?.message || 'No pudimos cargar el catalogo.');
+      }
     } finally {
-      setLoading(false);
+      // Si hubo snapshot, la UI ya se mantenia visible; evitamos overlay de carga tardio.
+      if (!hasSnapshot) setLoading(false);
     }
   }, [branchId, orderType]);
 

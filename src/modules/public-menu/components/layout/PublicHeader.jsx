@@ -1,5 +1,5 @@
 // Shared top header for the public menu flow.
-const PublicHeader = ({ title, subtitle, onBack, branchName }) => (
+const PublicHeader = ({ title, subtitle, onBack, branchName, actions }) => (
   <header className="pm-header">
     <div className="pm-header__row">
       {onBack ? (
@@ -20,9 +20,10 @@ const PublicHeader = ({ title, subtitle, onBack, branchName }) => (
         {subtitle ? <p className="pm-header__subtitle">{subtitle}</p> : null}
         {branchName ? <small className="pm-header__meta">Sucursal: {branchName}</small> : null}
       </div>
+
+      {actions ? <div className="pm-header__actions">{actions}</div> : null}
     </div>
   </header>
 );
 
 export default PublicHeader;
-
