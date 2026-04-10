@@ -10,6 +10,29 @@ const toDateInputValue = (value = new Date()) => {
   return `${y}-${m}-${d}`;
 };
 
+const sanitizeHoursInputValue = (value) => {
+  const raw = String(value ?? '');
+  if (!raw) return '';
+  const normalized = raw.replace(/,/g, '.').replace(/[^\d.]/g, '');
+  if (!normalized) return '';
+  const firstDotIndex = normalized.indexOf('.');
+  if (firstDotIndex < 0) return normalized;
+  const integerPart = normalized.slice(0, firstDotIndex);
+  const decimalPart = normalized
+    .slice(firstDotIndex + 1)
+    .replace(/\./g, '')
+    .slice(0, 2);
+  return `${integerPart}.${decimalPart}`;
+};
+
+const parseHoursInputValue = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return Number.NaN;
+  const normalized = text.replace(/,/g, '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
 const buildHorasExtraEmpleadoSelectStyles = () => ({
   control: (base, state) => ({
     ...base,
@@ -108,6 +131,7 @@ export default function PlanillaHorasExtraRegistroModal({
     horas: '',
     observacion: ''
   }));
+  const today = useMemo(() => toDateInputValue(), []);
 
   const empleadoOptions = useMemo(
     () =>
@@ -136,12 +160,14 @@ export default function PlanillaHorasExtraRegistroModal({
     return haystack.includes(needle);
   }, []);
 
-  const horasValue = Number(form.horas);
+  const horasValue = parseHoursInputValue(form.horas);
+  const isFutureFecha = Boolean(form.fecha) && form.fecha > today;
   const canSubmit =
     canRegister &&
     Number.isFinite(horasValue) &&
     horasValue > 0 &&
     horasValue <= 24 &&
+    !isFutureFecha &&
     String(form.id_empleado || '').trim() !== '';
 
   if (!open) return null;
@@ -217,8 +243,9 @@ export default function PlanillaHorasExtraRegistroModal({
                 <label className="form-label">Fecha</label>
                 <input
                   type="date"
-                  className="form-control planillas-he-modal__field-control"
+                  className={`form-control planillas-he-modal__field-control ${isFutureFecha ? 'is-invalid' : ''}`}
                   value={form.fecha}
+                  max={today}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
@@ -227,22 +254,29 @@ export default function PlanillaHorasExtraRegistroModal({
                   }
                   disabled={registering}
                 />
+                {isFutureFecha ? (
+                  <div className="invalid-feedback d-block">La fecha no puede ser mayor al dia actual.</div>
+                ) : null}
               </div>
 
               <div>
                 <label className="form-label">Horas</label>
                 <input
-                  type="number"
-                  min="0.25"
-                  max="24"
-                  step="0.25"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="^\\d*(\\.\\d{0,2})?$"
                   className="form-control planillas-he-modal__field-control"
                   placeholder="0.00"
                   value={form.horas}
+                  onKeyDown={(event) => {
+                    if (['e', 'E', '+', '-'].includes(event.key)) {
+                      event.preventDefault();
+                    }
+                  }}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
-                      horas: event.target.value
+                      horas: sanitizeHoursInputValue(event.target.value)
                     }))
                   }
                   disabled={registering}

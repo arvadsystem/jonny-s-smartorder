@@ -14,7 +14,8 @@ const todayInput = () => {
 };
 
 const parsePositiveMoney = (value) => {
-  const parsed = Number(value);
+  const normalized = String(value ?? '').replace(/,/g, '').trim();
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
@@ -123,6 +124,7 @@ export default function PlanillaAdelantoRegistroGlobalModal({
 }) {
   const [form, setForm] = useState(() => buildInitialForm());
   const [submitted, setSubmitted] = useState(false);
+  const today = useMemo(() => todayInput(), []);
 
   const empleadoOptions = useMemo(
     () =>
@@ -139,7 +141,8 @@ export default function PlanillaAdelantoRegistroGlobalModal({
   const montoValue = parsePositiveMoney(form.monto);
   const empleadoId = Number(form.id_empleado);
   const hasEmpleado = Number.isFinite(empleadoId) && empleadoId > 0;
-  const canSubmit = canRegister && hasEmpleado && Boolean(montoValue);
+  const isFutureFecha = Boolean(form.fecha) && form.fecha > today;
+  const canSubmit = canRegister && hasEmpleado && Boolean(montoValue) && !isFutureFecha;
 
   const selectedEmpleadoOption = useMemo(() => {
     const current = String(form.id_empleado || '').trim();
@@ -149,6 +152,7 @@ export default function PlanillaAdelantoRegistroGlobalModal({
 
   const empleadoError = submitted && !hasEmpleado ? 'Selecciona un empleado.' : '';
   const montoError = submitted && !montoValue ? 'Ingresa un monto valido mayor que 0.' : '';
+  const fechaError = submitted && isFutureFecha ? 'La fecha no puede ser mayor al dia actual.' : '';
   const empleadoSelectStyles = useMemo(
     () => buildAdelantoEmpleadoSelectStyles({ hasError: Boolean(empleadoError) }),
     [empleadoError]
@@ -241,17 +245,19 @@ export default function PlanillaAdelantoRegistroGlobalModal({
               placeholder="Ingrese el monto"
               error={Boolean(montoError)}
               disabled={registering}
+              allowThousandsSeparators
             />
           </PlanillasModalField>
         </div>
 
         <div className="planillas-modal-grid mt-2">
-          <PlanillasModalField id="adelanto-global-fecha" label="Fecha (opcional)">
+          <PlanillasModalField id="adelanto-global-fecha" label="Fecha (opcional)" error={fechaError}>
             <input
               id="adelanto-global-fecha"
               type="date"
               className="form-control planillas-modal-input"
               value={form.fecha}
+              max={today}
               onChange={(event) =>
                 setForm((previous) => ({
                   ...previous,

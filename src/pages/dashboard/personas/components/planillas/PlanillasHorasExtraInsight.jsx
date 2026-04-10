@@ -1,7 +1,6 @@
 export default function PlanillasHorasExtraInsight({
   totalPendientesLabel = '0h',
   empleadosConHoras = 0,
-  hasPlanillaSeleccionada = false,
   canRegistrar = false,
   onOpenDetalle,
   onOpenRegistro
@@ -26,7 +25,7 @@ export default function PlanillasHorasExtraInsight({
             type="button"
             className="planillas-insight__primary"
             onClick={onOpenRegistro}
-            disabled={!hasPlanillaSeleccionada || !canRegistrar}
+            disabled={!canRegistrar}
           >
             <i className="bi bi-plus-circle me-1" />
             Registrar hora extra
@@ -35,7 +34,6 @@ export default function PlanillasHorasExtraInsight({
             type="button"
             className="planillas-insight__ghost"
             onClick={onOpenDetalle}
-            disabled={!hasPlanillaSeleccionada}
           >
             Ver detalle
           </button>

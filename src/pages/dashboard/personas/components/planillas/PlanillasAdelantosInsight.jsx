@@ -28,7 +28,6 @@ export default function PlanillasAdelantosInsight({
   items = [],
   loadingAction = false,
   canAplicarAdelantos = false,
-  hasPlanillaSeleccionada = false,
   onApplyItem,
   onApplyAll,
   onOpenRegister,
@@ -51,7 +50,7 @@ export default function PlanillasAdelantosInsight({
           </span>
           <div>
             <h4>Adelantos de salario</h4>
-            <p>{summaryText || 'Consulta y aplica adelantos pendientes de la planilla seleccionada.'}</p>
+            <p>{summaryText || 'Consulta y aplica adelantos pendientes del contexto seleccionado.'}</p>
           </div>
         </div>
         <div className="planillas-insight__head-actions planillas-insight__head-actions--adelantos">
@@ -63,8 +62,7 @@ export default function PlanillasAdelantosInsight({
               loadingAction ||
               loading ||
               pendingRows.length === 0 ||
-              !canAplicarAdelantos ||
-              !hasPlanillaSeleccionada
+              !canAplicarAdelantos
             }
           >
             <i className="bi bi-check2 me-1" />
@@ -74,7 +72,7 @@ export default function PlanillasAdelantosInsight({
             type="button"
             className="planillas-insight__ghost"
             onClick={onOpenRegister}
-            disabled={loadingAction || loading || !canAplicarAdelantos || !hasPlanillaSeleccionada}
+            disabled={loadingAction || loading || !canAplicarAdelantos}
           >
             <i className="bi bi-plus-circle me-1" />
             Registrar adelanto
@@ -83,7 +81,7 @@ export default function PlanillasAdelantosInsight({
             type="button"
             className="planillas-insight__ghost"
             onClick={() => onOpenDetail?.()}
-            disabled={loading || !hasPlanillaSeleccionada}
+            disabled={loading}
           >
             <i className="bi bi-clock-history me-1" />
             Ver detalle
@@ -125,7 +123,7 @@ export default function PlanillasAdelantosInsight({
                     <button
                       type="button"
                       className="planillas-insight__apply-btn"
-                      disabled={loadingAction || !hasPlanillaSeleccionada || !canAplicarAdelantos}
+                      disabled={loadingAction || !canAplicarAdelantos}
                       onClick={() => onApplyItem?.(item)}
                     >
                       Aplicar

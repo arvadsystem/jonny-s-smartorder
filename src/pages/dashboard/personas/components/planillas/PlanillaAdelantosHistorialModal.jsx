@@ -36,6 +36,37 @@ const normalizeStatus = (row = {}) => {
   return STATUS_FILTERS.all;
 };
 
+const sanitizeMoneyInputValue = (value) => {
+  const raw = String(value ?? '');
+  if (!raw) return '';
+
+  const normalized = raw.replace(/[^\d,.]/g, '');
+  if (!normalized) return '';
+
+  const firstDotIndex = normalized.indexOf('.');
+  const compact =
+    firstDotIndex >= 0
+      ? `${normalized.slice(0, firstDotIndex + 1)}${normalized.slice(firstDotIndex + 1).replace(/\./g, '')}`
+      : normalized;
+
+  const dotIndex = compact.indexOf('.');
+  if (dotIndex < 0) return normalized;
+  const integerPart = compact.slice(0, dotIndex);
+  const decimalPart = normalized
+    .slice(dotIndex + 1)
+    .replace(/[^\d]/g, '')
+    .slice(0, 2);
+  return `${integerPart}.${decimalPart}`;
+};
+
+const parseMoneyInputValue = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return Number.NaN;
+  const normalized = text.replace(/,/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
 export default function PlanillaAdelantosHistorialModal({
   open,
   loading = false,
@@ -173,7 +204,7 @@ export default function PlanillaAdelantosHistorialModal({
 
   const submitEdit = async (row, rowId) => {
     const draft = editDraftsByRow[rowId] || {};
-    const montoAplicar = safeNumber(draft?.monto_aplicar, Number.NaN);
+    const montoAplicar = parseMoneyInputValue(draft?.monto_aplicar);
     if (!Number.isFinite(montoAplicar) || montoAplicar <= 0) return;
 
     try {
@@ -274,7 +305,7 @@ export default function PlanillaAdelantosHistorialModal({
                     const isDeleting = currentDeletingId !== '' && currentDeletingId === String(rowId);
                     const isBusy = isUpdating || isDeleting;
                     const draft = editDraftsByRow[rowId] || {};
-                    const montoDraft = safeNumber(draft?.monto_aplicar, Number.NaN);
+                    const montoDraft = parseMoneyInputValue(draft?.monto_aplicar);
                     const canEditRow = Boolean(canEditar && isPending && safeNumber(row?.id_adelanto, 0) > 0);
                     const canDeleteRow = Boolean(
                       canEliminar &&
@@ -377,17 +408,22 @@ export default function PlanillaAdelantosHistorialModal({
                                 <label htmlFor={`ad-edit-monto-${rowId}`}>Monto pendiente</label>
                                 <input
                                   id={`ad-edit-monto-${rowId}`}
-                                  type="number"
-                                  min="0.01"
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
+                                  pattern="^[0-9,]*(\\.[0-9]{0,2})?$"
                                   className="form-control"
                                   value={draft?.monto_aplicar ?? ''}
+                                  onKeyDown={(event) => {
+                                    if (['e', 'E', '+', '-'].includes(event.key)) {
+                                      event.preventDefault();
+                                    }
+                                  }}
                                   onChange={(event) =>
                                     setEditDraftsByRow((previous) => ({
                                       ...previous,
                                       [rowId]: {
                                         ...previous[rowId],
-                                        monto_aplicar: event.target.value
+                                        monto_aplicar: sanitizeMoneyInputValue(event.target.value)
                                       }
                                     }))
                                   }

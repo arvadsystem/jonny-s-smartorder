@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Select from 'react-select';
 import { usePermisos } from '../../../context/PermisosContext';
@@ -158,6 +158,30 @@ const normalizeListResponse = (response) => {
     page: Number(response?.page ?? 1) || 1,
     limit: Number(response?.limit ?? Math.max(items.length, 1)) || Math.max(items.length, 1)
   };
+};
+
+const collectPaginatedApiRows = async (fetchPage, { pageSize = 100, maxPages = 80 } = {}) => {
+  const safePageSize = Math.min(100, Math.max(1, Number.parseInt(String(pageSize), 10) || 100));
+  const safeMaxPages = Math.max(1, Number.parseInt(String(maxPages), 10) || 80);
+  const rows = [];
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (page <= safeMaxPages && rows.length < total) {
+    const response = await fetchPage({ page, limit: safePageSize });
+    const parsed = normalizeListResponse(response);
+    const chunk = Array.isArray(parsed.items) ? parsed.items : [];
+    const parsedTotal = Number(parsed.total);
+    if (Number.isFinite(parsedTotal) && parsedTotal >= 0) {
+      total = parsedTotal;
+    }
+
+    rows.push(...chunk);
+    if (chunk.length < safePageSize) break;
+    page += 1;
+  }
+
+  return rows;
 };
 
 const normalizeResumen = (response) => {
@@ -382,6 +406,100 @@ const stripAdelantoStatusMarkers = (value = '') =>
 const resolveMovimientoPlanillaId = (row = {}) =>
   safeNumber(row?.id_movimiento_planilla ?? row?.id_movimiento ?? row?.id_movimiento_detalle ?? row?.id, 0);
 
+const resolveAdelantoPeriodo = (row = {}) => {
+  const periodCandidates = [
+    row?.periodo,
+    row?.periodo_planilla,
+    row?.periodo_nomina,
+    row?.periodo_pago,
+    row?.mes_periodo,
+    row?.mes_planilla,
+    row?.periodo_movimiento,
+    row?.periodo_referencia
+  ];
+  for (const value of periodCandidates) {
+    const normalized = normalizePeriodoMonth(value);
+    if (normalized) return normalized;
+  }
+
+  const dateCandidates = [
+    row?.fecha_periodo,
+    row?.fecha_inicio_periodo,
+    row?.fecha_inicio,
+    row?.fecha_aplicacion,
+    row?.fecha_registro,
+    row?.fecha,
+    row?.created_at
+  ];
+  for (const value of dateCandidates) {
+    const normalized = normalizePeriodoMonth(value);
+    if (normalized) return normalized;
+  }
+
+  return '';
+};
+
+const resolveMovimientoPlanillaOwnerId = (row = {}) =>
+  safeNumber(
+    row?.id_planilla ??
+      row?.id_planilla_nomina ??
+      row?.id_planilla_detalle ??
+      row?.id_planilla_movimiento ??
+      row?.id_planilla_origen ??
+      row?.planilla_id ??
+      row?.planillaId,
+    0
+  );
+
+const scopeMovimientosToPlanillaContext = ({
+  movimientos = [],
+  detalleRows = [],
+  idPlanilla = 0,
+  periodoScope = ''
+} = {}) => {
+  const rows = Array.isArray(movimientos) ? movimientos : [];
+  const detailIds = new Set(
+    (Array.isArray(detalleRows) ? detalleRows : [])
+      .map((row) => safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0))
+      .filter((id) => id > 0)
+      .map((id) => String(id))
+  );
+  const targetPlanillaId = safeNumber(idPlanilla, 0);
+  const targetPeriodo = normalizePeriodoMonth(periodoScope);
+
+  if (detailIds.size === 0 && targetPlanillaId <= 0) {
+    return rows;
+  }
+
+  return rows.filter((row) => {
+    const rowPlanillaId = resolveMovimientoPlanillaOwnerId(row);
+    if (targetPlanillaId > 0 && rowPlanillaId > 0 && rowPlanillaId !== targetPlanillaId) {
+      return false;
+    }
+
+    const rowDetailId = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+    const hasDetailMatch = rowDetailId > 0 && detailIds.has(String(rowDetailId));
+    const hasPlanillaMatch = rowPlanillaId > 0 && targetPlanillaId > 0 && rowPlanillaId === targetPlanillaId;
+
+    // If we have context identifiers, require at least one strong match.
+    if (targetPlanillaId > 0 || detailIds.size > 0) {
+      const canUseDetailFallback = rowPlanillaId <= 0 && hasDetailMatch;
+      if (!hasPlanillaMatch && !canUseDetailFallback) {
+        return false;
+      }
+    }
+
+    if (targetPeriodo) {
+      const rowPeriodo = resolveAdelantoPeriodo(row);
+      if (!rowPeriodo || rowPeriodo !== targetPeriodo) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+};
+
 const resolveAdelantoOrigenId = (row = {}) =>
   safeNumber(
     row?.id_adelanto_salario ??
@@ -450,8 +568,17 @@ const normalizeAdelantosDataset = ({
   pendientes = [],
   movimientos = [],
   detalleRows = [],
-  onlyEmpleadoId = 0
+  onlyEmpleadoId = 0,
+  periodoScope = ''
 } = {}) => {
+  const normalizedPeriodoScope = normalizePeriodoMonth(periodoScope);
+  const matchesPeriodoScope = (row = {}) => {
+    if (!normalizedPeriodoScope) return true;
+    const rowPeriodo = resolveAdelantoPeriodo(row);
+    if (!rowPeriodo) return false;
+    return rowPeriodo === normalizedPeriodoScope;
+  };
+
   const detalleByDetalleId = new Map();
   const detalleByEmpleadoId = new Map();
 
@@ -498,7 +625,8 @@ const normalizeAdelantosDataset = ({
     .filter((item) => {
       if (onlyEmpleadoId > 0) return safeNumber(item?.id_empleado, 0) === onlyEmpleadoId;
       return true;
-    });
+    })
+    .filter((item) => matchesPeriodoScope(item?.raw || item));
 
   const movimientoRows = (Array.isArray(movimientos) ? movimientos : [])
     .filter((row) => isMovimientoAdelanto(row))
@@ -539,7 +667,8 @@ const normalizeAdelantosDataset = ({
     .filter((item) => {
       if (onlyEmpleadoId > 0) return safeNumber(item?.id_empleado, 0) === onlyEmpleadoId;
       return true;
-    });
+    })
+    .filter((item) => matchesPeriodoScope(item?.raw || item));
 
   const merged = [...pendingRows, ...movimientoRows];
   merged.sort(sortByDateDesc);
@@ -724,6 +853,112 @@ const normalizePlanillaCompleta = (response) => {
   const resumen = normalizeResumen(base.resumen || base.summary || base.encabezado || {});
 
   return { detalle, resumen };
+};
+
+const normalizePeriodoMonth = (value = '') => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+
+  const yearMonthMatch = text.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (yearMonthMatch) {
+    const year = Number.parseInt(yearMonthMatch[1], 10);
+    const month = Number.parseInt(yearMonthMatch[2], 10);
+    if (Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12) {
+      return `${year}-${String(month).padStart(2, '0')}`;
+    }
+  }
+
+  const yearMonthDayMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (yearMonthDayMatch) {
+    const year = Number.parseInt(yearMonthDayMatch[1], 10);
+    const month = Number.parseInt(yearMonthDayMatch[2], 10);
+    if (Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12) {
+      return `${year}-${String(month).padStart(2, '0')}`;
+    }
+  }
+
+  const isoPrefixMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if (isoPrefixMatch) {
+    const year = Number.parseInt(isoPrefixMatch[1], 10);
+    const month = Number.parseInt(isoPrefixMatch[2], 10);
+    if (Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12) {
+      return `${year}-${String(month).padStart(2, '0')}`;
+    }
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+const resolvePlanillaId = (planilla = {}) => safeNumber(planilla?.id_planilla, 0);
+
+const resolvePlanillaPeriodo = (planilla = {}) => {
+  const directPeriodo = toText(
+    planilla?.periodo ||
+      planilla?.periodo_planilla ||
+      planilla?.periodo_nomina ||
+      planilla?.periodo_pago ||
+      planilla?.mes_periodo ||
+      planilla?.mes_planilla,
+    ''
+  );
+  if (directPeriodo) {
+    const normalized = normalizePeriodoMonth(directPeriodo);
+    if (normalized) return normalized;
+  }
+
+  const anio = safeNumber(planilla?.anio ?? planilla?.ano ?? planilla?.year, 0);
+  const mes = safeNumber(planilla?.mes ?? planilla?.mes_numero ?? planilla?.month, 0);
+  if (anio > 0 && mes >= 1 && mes <= 12) {
+    return `${anio}-${String(mes).padStart(2, '0')}`;
+  }
+
+  return normalizePeriodoMonth(
+    planilla?.fecha_inicio_periodo ||
+      planilla?.fecha_inicio ||
+      planilla?.fecha_planilla ||
+      planilla?.fecha_pago ||
+      planilla?.created_at ||
+      ''
+  );
+};
+
+const scopePlanillasByPeriodo = (items = [], periodoTarget = '') => {
+  const rows = Array.isArray(items) ? items : [];
+  const normalizedTarget = normalizePeriodoMonth(periodoTarget);
+  if (!normalizedTarget) return rows;
+
+  const rowsWithPeriodo = rows.map((row) => ({
+    row,
+    periodo: resolvePlanillaPeriodo(row)
+  }));
+  const hasAtLeastOnePeriodo = rowsWithPeriodo.some((entry) => Boolean(entry.periodo));
+  if (!hasAtLeastOnePeriodo) return rows;
+
+  return rowsWithPeriodo
+    .filter((entry) => entry.periodo === normalizedTarget)
+    .map((entry) => entry.row);
+};
+
+const pickContextPlanilla = (items = [], periodoTarget = '') =>
+  scopePlanillasByPeriodo(items, periodoTarget).find((planilla) => resolvePlanillaId(planilla) > 0) || null;
+
+const buildEmpleadoOption = (item = {}) => {
+  const idEmpleado = safeNumber(item?.id_empleado ?? item?.id_empleado_planilla ?? item?.id_persona_empleado, 0);
+  if (!(idEmpleado > 0)) return null;
+
+  const label = extractEmpleadoNombre(item);
+  const searchText = [label, item?.dni, item?.cargo, item?.id_empleado]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+
+  return {
+    value: String(idEmpleado),
+    label,
+    searchText
+  };
 };
 
 const openPrintWindow = (html) => {
@@ -927,8 +1162,14 @@ export default function Planillas({
   const [planillas, setPlanillas] = useState([]);
   const [planillasTotal, setPlanillasTotal] = useState(0);
   const [selectedPlanillaId, setSelectedPlanillaId] = useState('');
+  const [planillaPeriodoLookup, setPlanillaPeriodoLookup] = useState({
+    loading: false,
+    hasPlanilla: false,
+    idPlanilla: 0
+  });
 
   const [resumen, setResumen] = useState({});
+  const [empleadosActivosSucursal, setEmpleadosActivosSucursal] = useState([]);
   const [adelantosPendientes, setAdelantosPendientes] = useState([]);
   const [adelantosHistorialMovimientos, setAdelantosHistorialMovimientos] = useState([]);
   const [bonosDeduccionesHistorial, setBonosDeduccionesHistorial] = useState([]);
@@ -939,6 +1180,7 @@ export default function Planillas({
   const [loadingSucursales, setLoadingSucursales] = useState(true);
   const [loadingPlanillas, setLoadingPlanillas] = useState(false);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
+  const [loadingEmpleadosActivos, setLoadingEmpleadosActivos] = useState(false);
   const [loadingAdelantosPendientes, setLoadingAdelantosPendientes] = useState(false);
   const [loadingAdelantosHistorial, setLoadingAdelantosHistorial] = useState(false);
   const [loadingBonosDeduccionesHistorial, setLoadingBonosDeduccionesHistorial] = useState(false);
@@ -1016,6 +1258,9 @@ export default function Planillas({
   });
   const [adelantosPendientesModalOpen, setAdelantosPendientesModalOpen] = useState(false);
   const [confirmModal, setConfirmModal] = useState(buildInitialConfirmModal);
+  const planillasRequestRef = useRef(0);
+  const detalleRequestRef = useRef(0);
+  const adelantosHistorialRequestRef = useRef(0);
 
   const externalSucursalId = useMemo(
     () => normalizeSucursalId(selectedSucursalId),
@@ -1123,50 +1368,56 @@ export default function Planillas({
     const start = (detallePage - 1) * DETAIL_LIMIT;
     return filteredDetalle.slice(start, start + DETAIL_LIMIT);
   }, [detallePage, filteredDetalle]);
-  const horasExtraEmpleados = useMemo(
-    () =>
-      detalle
-        .map((row) => ({
-          value: String(row.id_empleado || ''),
-          label: extractEmpleadoNombre(row),
-          searchText: [
-            extractEmpleadoNombre(row),
-            row?.dni,
-            row?.cargo,
-            row?.id_empleado
-          ]
-            .map((value) => String(value ?? '').trim().toLowerCase())
-            .filter(Boolean)
-            .join(' ')
-        }))
-        .filter((empleado) => empleado.value),
+  const detalleEmpleadoOptions = useMemo(
+    () => (Array.isArray(detalle) ? detalle : []).map((row) => buildEmpleadoOption(row)).filter(Boolean),
     [detalle]
   );
-  const movimientoEmpleadoOptions = useMemo(
+  const empleadosActivosOptions = useMemo(
     () =>
-      detalle
-        .map((row) => ({
-          value: String(row.id_empleado || ''),
-          label: extractEmpleadoNombre(row),
-          searchText: [extractEmpleadoNombre(row), row?.dni, row?.cargo, row?.id_empleado]
-            .map((value) => String(value ?? '').trim().toLowerCase())
-            .filter(Boolean)
-            .join(' ')
-        }))
-        .filter((employee) => employee.value),
-    [detalle]
+      (Array.isArray(empleadosActivosSucursal) ? empleadosActivosSucursal : [])
+        .map((row) => buildEmpleadoOption(row))
+        .filter(Boolean),
+    [empleadosActivosSucursal]
   );
+  const empleadosRegistroOptions = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    [empleadosActivosOptions, detalleEmpleadoOptions].forEach((source) => {
+      source.forEach((employee) => {
+        const key = String(employee?.value || '').trim();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        merged.push(employee);
+      });
+    });
+    return merged;
+  }, [detalleEmpleadoOptions, empleadosActivosOptions]);
 
-  const canExportPlanilla = Boolean(canViewDetalle && selectedPlanilla?.id_planilla && isPlanillaPagada);
   const hasSucursalSelected = Boolean(normalizeSucursalId(selectedSucursal));
+  const hasPlanillaForPeriodo = Boolean(planillaPeriodoLookup.hasPlanilla);
+  const canGenerarForPeriodo = Boolean(
+    canGenerar && hasSucursalSelected && !planillaPeriodoLookup.loading && !hasPlanillaForPeriodo
+  );
+  const canExportPlanilla = Boolean(canViewDetalle && selectedPlanilla?.id_planilla && isPlanillaPagada);
+  const adelantosHistorialMovimientosScoped = useMemo(
+    () =>
+      scopeMovimientosToPlanillaContext({
+        movimientos: adelantosHistorialMovimientos,
+        detalleRows: detalle,
+        idPlanilla: selectedPlanilla?.id_planilla,
+        periodoScope: periodo
+      }),
+    [adelantosHistorialMovimientos, detalle, periodo, selectedPlanilla?.id_planilla]
+  );
   const adelantosDataset = useMemo(
     () =>
       normalizeAdelantosDataset({
         pendientes: adelantosPendientes,
-        movimientos: adelantosHistorialMovimientos,
-        detalleRows: detalle
+        movimientos: adelantosHistorialMovimientosScoped,
+        detalleRows: detalle,
+        periodoScope: periodo
       }),
-    [adelantosHistorialMovimientos, adelantosPendientes, detalle]
+    [adelantosHistorialMovimientosScoped, adelantosPendientes, detalle, periodo]
   );
   const adelantosStatusTotals = useMemo(
     () =>
@@ -1379,11 +1630,54 @@ export default function Planillas({
     setSearchParams(next, { replace: true });
   }, [searchParams, selectedSucursal, setSearchParams]);
 
+  const loadPlanillasByContext = useCallback(
+    async ({ idSucursal, periodoTarget } = {}) => {
+      const normalizedSucursal = normalizeSucursalId(idSucursal ?? selectedSucursal);
+      const normalizedPeriodo = toText(periodoTarget ?? periodo, '');
+      if (!normalizedSucursal || !normalizedPeriodo) return [];
+
+      const response = await planillasService.listarPlanillas({
+        page: 1,
+        limit: DETAIL_FETCH_LIMIT,
+        id_sucursal: normalizedSucursal,
+        periodo: normalizedPeriodo
+      });
+      return scopePlanillasByPeriodo(normalizeListResponse(response).items, normalizedPeriodo);
+    },
+    [periodo, selectedSucursal]
+  );
+
+  const loadEmpleadosActivos = useCallback(async () => {
+    if (!selectedSucursal || !canView) {
+      setEmpleadosActivosSucursal([]);
+      setLoadingEmpleadosActivos(false);
+      return;
+    }
+
+    setLoadingEmpleadosActivos(true);
+    try {
+      const response = await planillasService.listarEmpleadosActivosSucursal(selectedSucursal, {
+        page: 1,
+        limit: DETAIL_FETCH_LIMIT
+      });
+      setEmpleadosActivosSucursal(normalizeListResponse(response).items);
+    } catch {
+      setEmpleadosActivosSucursal([]);
+    } finally {
+      setLoadingEmpleadosActivos(false);
+    }
+  }, [canView, selectedSucursal]);
+
   const loadPlanillas = useCallback(async () => {
+    const requestId = planillasRequestRef.current + 1;
+    planillasRequestRef.current = requestId;
+
     if (!canView || !selectedSucursal) {
-      setPlanillas([]);
-      setPlanillasTotal(0);
-      setSelectedPlanillaId('');
+      if (requestId === planillasRequestRef.current) {
+        setPlanillas([]);
+        setPlanillasTotal(0);
+        setSelectedPlanillaId('');
+      }
       return;
     }
 
@@ -1400,36 +1694,46 @@ export default function Planillas({
       });
 
       const parsed = normalizeListResponse(response);
-      setPlanillas(parsed.items);
-      setPlanillasTotal(parsed.total);
+      if (requestId !== planillasRequestRef.current) return;
+      const scopedItems = scopePlanillasByPeriodo(parsed.items, periodo);
+      setPlanillas(scopedItems);
+      setPlanillasTotal(scopedItems.length !== parsed.items.length ? scopedItems.length : parsed.total);
 
-      if (parsed.items.length === 0) {
+      if (scopedItems.length === 0) {
         setSelectedPlanillaId('');
         return;
       }
 
-      const stillExists = parsed.items.some(
+      const stillExists = scopedItems.some(
         (planilla) => String(planilla.id_planilla ?? '') === String(selectedPlanillaId)
       );
 
       if (!selectedPlanillaId || !stillExists) {
-        setSelectedPlanillaId(String(parsed.items[0].id_planilla ?? ''));
+        setSelectedPlanillaId(String(scopedItems[0].id_planilla ?? ''));
       }
     } catch (error) {
+      if (requestId !== planillasRequestRef.current) return;
       setListError(error.message || 'No se pudo cargar planillas');
       setPlanillas([]);
       setPlanillasTotal(0);
       setSelectedPlanillaId('');
     } finally {
-      setLoadingPlanillas(false);
+      if (requestId === planillasRequestRef.current) {
+        setLoadingPlanillas(false);
+      }
     }
   }, [canView, estadoFiltro, listPage, periodo, selectedPlanillaId, selectedSucursal]);
 
   const loadDetalleAndResumen = useCallback(async () => {
+    const requestId = detalleRequestRef.current + 1;
+    detalleRequestRef.current = requestId;
+
     if (!selectedPlanilla?.id_planilla || !canViewDetalle || !activePlanillaSucursalId) {
-      setDetalle([]);
-      setResumen({});
-      setDetalleTotal(0);
+      if (requestId === detalleRequestRef.current) {
+        setDetalle([]);
+        setResumen({});
+        setDetalleTotal(0);
+      }
       return;
     }
 
@@ -1438,36 +1742,48 @@ export default function Planillas({
     );
     const currentSucursalId = normalizeSucursalId(activePlanillaSucursalId);
     if (planillaSucursalId && currentSucursalId && planillaSucursalId !== currentSucursalId) {
-      setDetalle([]);
-      setResumen({});
-      setDetalleTotal(0);
+      if (requestId === detalleRequestRef.current) {
+        setDetalle([]);
+        setResumen({});
+        setDetalleTotal(0);
+      }
       return;
     }
 
     setLoadingDetalle(true);
     try {
-      const [resumenResp, detalleResp] = await Promise.all([
+      const [resumenResp, detalleItems] = await Promise.all([
         planillasService.obtenerResumenPlanilla(selectedPlanilla.id_planilla, {
           id_sucursal: activePlanillaSucursalId || undefined
         }),
-        planillasService.listarDetallePlanilla(selectedPlanilla.id_planilla, {
-          page: 1,
-          limit: DETAIL_FETCH_LIMIT,
-          id_sucursal: activePlanillaSucursalId || undefined
-        })
+        collectPaginatedApiRows(
+          ({ page, limit }) =>
+            planillasService.listarDetallePlanilla(selectedPlanilla.id_planilla, {
+              page,
+              limit,
+              id_sucursal: activePlanillaSucursalId || undefined
+            }),
+          { pageSize: 100, maxPages: 80 }
+        )
       ]);
 
+      if (requestId !== detalleRequestRef.current) return;
       setResumen(normalizeResumenForDisplay(normalizeResumen(resumenResp)));
-      const parsedDetalle = normalizeListResponse(detalleResp);
-      setDetalle(parsedDetalle.items.map((row) => normalizeDetalleRowForDisplay(row)));
-      setDetalleTotal(parsedDetalle.total || parsedDetalle.items.length);
+      const normalizedDetalle = (Array.isArray(detalleItems) ? detalleItems : []).map((row) =>
+        normalizeDetalleRowForDisplay(row)
+      );
+      setDetalle(normalizedDetalle);
+      setDetalleTotal(normalizedDetalle.length);
     } catch (error) {
+      if (requestId !== detalleRequestRef.current) return;
       safeToast('ERROR', error.message || 'No se pudo cargar el detalle de planilla', 'danger');
       setDetalle([]);
       setDetalleTotal(0);
       setResumen({});
     } finally {
-      setLoadingDetalle(false);
+      if (requestId === detalleRequestRef.current) {
+        setLoadingDetalle(false);
+      }
     }
   }, [
     activePlanillaSucursalId,
@@ -1478,6 +1794,30 @@ export default function Planillas({
     selectedPlanilla?.id_sucursal_planilla
   ]);
 
+  const fetchPlanillaMovimientos = useCallback(async ({ idPlanilla, idSucursal, idDetalle = 0 } = {}) => {
+    const safePlanillaId = safeNumber(idPlanilla, 0);
+    if (!(safePlanillaId > 0)) return [];
+
+    const safeDetalleId = safeNumber(idDetalle, 0);
+    return collectPaginatedApiRows(
+      ({ page, limit }) => {
+        if (safeDetalleId > 0) {
+          return planillasService.listarMovimientosPlanillaDetalle(safePlanillaId, safeDetalleId, {
+            page,
+            limit,
+            id_sucursal: idSucursal || undefined
+          });
+        }
+        return planillasService.listarMovimientosPlanilla(safePlanillaId, {
+          page,
+          limit,
+          id_sucursal: idSucursal || undefined
+        });
+      },
+      { pageSize: 100, maxPages: 80 }
+    );
+  }, []);
+
   const loadAdelantosPendientes = useCallback(async () => {
     if (!selectedSucursal || !canViewDetalle) {
       setAdelantosPendientes([]);
@@ -1487,12 +1827,16 @@ export default function Planillas({
 
     setLoadingAdelantosPendientes(true);
     try {
-      const response = await planillasService.listarAdelantosPendientesSucursal(selectedSucursal, {
-        page: 1,
-        limit: DETAIL_FETCH_LIMIT,
-        periodo
-      });
-      setAdelantosPendientes(normalizeListResponse(response).items);
+      const rows = await collectPaginatedApiRows(
+        ({ page, limit }) =>
+          planillasService.listarAdelantosPendientesSucursal(selectedSucursal, {
+            page,
+            limit,
+            periodo
+          }),
+        { pageSize: 100, maxPages: 80 }
+      );
+      setAdelantosPendientes(rows);
     } catch {
       setAdelantosPendientes([]);
     } finally {
@@ -1501,9 +1845,14 @@ export default function Planillas({
   }, [canViewDetalle, periodo, selectedSucursal]);
 
   const loadAdelantosHistorial = useCallback(async () => {
+    const requestId = adelantosHistorialRequestRef.current + 1;
+    adelantosHistorialRequestRef.current = requestId;
+
     if (!selectedPlanilla?.id_planilla || !canViewDetalle || !activePlanillaSucursalId) {
-      setAdelantosHistorialMovimientos([]);
-      setLoadingAdelantosHistorial(false);
+      if (requestId === adelantosHistorialRequestRef.current) {
+        setAdelantosHistorialMovimientos([]);
+        setLoadingAdelantosHistorial(false);
+      }
       return;
     }
 
@@ -1512,27 +1861,41 @@ export default function Planillas({
     );
     const currentSucursalId = normalizeSucursalId(activePlanillaSucursalId);
     if (planillaSucursalId && currentSucursalId && planillaSucursalId !== currentSucursalId) {
-      setAdelantosHistorialMovimientos([]);
-      setLoadingAdelantosHistorial(false);
+      if (requestId === adelantosHistorialRequestRef.current) {
+        setAdelantosHistorialMovimientos([]);
+        setLoadingAdelantosHistorial(false);
+      }
       return;
     }
 
     setLoadingAdelantosHistorial(true);
     try {
-      const response = await planillasService.listarMovimientosPlanilla(selectedPlanilla.id_planilla, {
-        page: 1,
-        limit: DETAIL_FETCH_LIMIT,
-        id_sucursal: activePlanillaSucursalId || undefined
+      const movimientosRows = await fetchPlanillaMovimientos({
+        idPlanilla: selectedPlanilla.id_planilla,
+        idSucursal: activePlanillaSucursalId || undefined
       });
-      setAdelantosHistorialMovimientos(normalizeListResponse(response).items);
+      if (requestId !== adelantosHistorialRequestRef.current) return;
+      const scopedItems = scopeMovimientosToPlanillaContext({
+        movimientos: movimientosRows,
+        detalleRows: detalle,
+        idPlanilla: selectedPlanilla?.id_planilla,
+        periodoScope: periodo
+      });
+      setAdelantosHistorialMovimientos(scopedItems);
     } catch {
+      if (requestId !== adelantosHistorialRequestRef.current) return;
       setAdelantosHistorialMovimientos([]);
     } finally {
-      setLoadingAdelantosHistorial(false);
+      if (requestId === adelantosHistorialRequestRef.current) {
+        setLoadingAdelantosHistorial(false);
+      }
     }
   }, [
     activePlanillaSucursalId,
     canViewDetalle,
+    detalle,
+    fetchPlanillaMovimientos,
+    periodo,
     selectedPlanilla?.id_planilla,
     selectedPlanilla?.id_sucursal,
     selectedPlanilla?.id_sucursal_planilla
@@ -1557,12 +1920,10 @@ export default function Planillas({
 
     setLoadingBonosDeduccionesHistorial(true);
     try {
-      const response = await planillasService.listarMovimientosPlanilla(selectedPlanilla.id_planilla, {
-        page: 1,
-        limit: DETAIL_FETCH_LIMIT,
-        id_sucursal: activePlanillaSucursalId || undefined
+      const items = await fetchPlanillaMovimientos({
+        idPlanilla: selectedPlanilla.id_planilla,
+        idSucursal: activePlanillaSucursalId || undefined
       });
-      const items = normalizeListResponse(response).items;
       const filtered = items.filter((row) => {
         const tipo = normalizeBonoDeduccionTipo(row);
         return tipo === MOVIMIENTO_TIPO.bono || tipo === MOVIMIENTO_TIPO.deduccion;
@@ -1576,10 +1937,43 @@ export default function Planillas({
   }, [
     activePlanillaSucursalId,
     canViewDetalle,
+    fetchPlanillaMovimientos,
     selectedPlanilla?.id_planilla,
     selectedPlanilla?.id_sucursal,
     selectedPlanilla?.id_sucursal_planilla
   ]);
+
+  const refreshPlanillaPeriodoLookup = useCallback(async () => {
+    if (!canView || !selectedSucursal || !toText(periodo, '')) {
+      setPlanillaPeriodoLookup({
+        loading: false,
+        hasPlanilla: false,
+        idPlanilla: 0
+      });
+      return;
+    }
+
+    setPlanillaPeriodoLookup((previous) => ({ ...previous, loading: true }));
+    try {
+      const items = await loadPlanillasByContext({
+        idSucursal: selectedSucursal,
+        periodoTarget: periodo
+      });
+      const planilla = pickContextPlanilla(items, periodo);
+      const idPlanilla = resolvePlanillaId(planilla);
+      setPlanillaPeriodoLookup({
+        loading: false,
+        hasPlanilla: idPlanilla > 0,
+        idPlanilla
+      });
+    } catch {
+      setPlanillaPeriodoLookup({
+        loading: false,
+        hasPlanilla: false,
+        idPlanilla: 0
+      });
+    }
+  }, [canView, loadPlanillasByContext, periodo, selectedSucursal]);
 
   useEffect(() => {
     loadSucursales();
@@ -1588,6 +1982,17 @@ export default function Planillas({
   useEffect(() => {
     setListPage(1);
   }, [selectedSucursal, periodo, estadoFiltro]);
+
+  useEffect(() => {
+    if (!selectedSucursal) return;
+    setSelectedPlanillaId('');
+    setDetalle([]);
+    setResumen({});
+    setDetalleTotal(0);
+    setDetallePage(1);
+    setAdelantosHistorialMovimientos([]);
+    setBonosDeduccionesHistorial([]);
+  }, [periodo, selectedSucursal]);
 
   useEffect(() => {
     setSelectedPlanillaId('');
@@ -1602,12 +2007,20 @@ export default function Planillas({
   }, [loadPlanillas]);
 
   useEffect(() => {
+    void refreshPlanillaPeriodoLookup();
+  }, [refreshPlanillaPeriodoLookup]);
+
+  useEffect(() => {
     setDetallePage(1);
   }, [selectedPlanillaId, filters.search, filters.sucursal, filters.cargo, filters.salarioMin, filters.salarioMax]);
 
   useEffect(() => {
     loadDetalleAndResumen();
   }, [loadDetalleAndResumen]);
+
+  useEffect(() => {
+    loadEmpleadosActivos();
+  }, [loadEmpleadosActivos]);
 
   useEffect(() => {
     loadAdelantosPendientes();
@@ -1629,6 +2042,7 @@ export default function Planillas({
 
   useEffect(() => {
     if (hasSucursalSelected) return;
+    setEmpleadosActivosSucursal([]);
     setAdelantosPendientesModalOpen(false);
     setAdelantosHistorialModal({
       open: false,
@@ -1677,17 +2091,134 @@ export default function Planillas({
     });
   }, [hasSucursalSelected]);
 
+  const ensurePlanillaForRegistro = useCallback(
+    async ({ notifyOnCreate = true } = {}) => {
+      const idSucursal = safeNumber(selectedSucursal, 0);
+      const periodoValue = toText(periodo, '');
+
+      if (!(idSucursal > 0)) {
+        safeToast('ERROR', 'Selecciona una sucursal valida antes de registrar movimientos.', 'warning');
+        return null;
+      }
+
+      if (!periodoValue) {
+        safeToast('ERROR', 'Selecciona un periodo valido antes de registrar movimientos.', 'warning');
+        return null;
+      }
+
+      const resolveExistingPlanilla = async () => {
+        const items = await loadPlanillasByContext({ idSucursal, periodoTarget: periodoValue });
+        const planilla = pickContextPlanilla(items, periodoValue);
+        return {
+          planilla,
+          idPlanilla: resolvePlanillaId(planilla)
+        };
+      };
+
+      try {
+        let { planilla, idPlanilla } = await resolveExistingPlanilla();
+
+        if (!(idPlanilla > 0)) {
+          let generatedNow = false;
+          try {
+            await planillasService.generarPlanilla({
+              id_sucursal: idSucursal,
+              periodo: periodoValue
+            });
+            generatedNow = true;
+          } catch (error) {
+            const message = toText(error?.message, '').toLowerCase();
+            const canRetryLookup =
+              message.includes('exist') || message.includes('ya existe') || message.includes('duplic');
+            if (!canRetryLookup) throw error;
+          }
+
+          const refreshed = await resolveExistingPlanilla();
+          planilla = refreshed.planilla;
+          idPlanilla = refreshed.idPlanilla;
+
+          if (!(idPlanilla > 0)) {
+            throw new Error('No se pudo preparar una planilla valida para la sucursal y periodo seleccionados.');
+          }
+
+          if (generatedNow && notifyOnCreate) {
+            safeToast('OK', 'Se creo una planilla en borrador para continuar con el registro.', 'success');
+          }
+        }
+
+        setSelectedPlanillaId(String(idPlanilla));
+        setPlanillaPeriodoLookup({
+          loading: false,
+          hasPlanilla: true,
+          idPlanilla
+        });
+
+        const idSucursalPlanilla =
+          safeNumber(planilla?.id_sucursal ?? planilla?.id_sucursal_planilla, 0) || idSucursal;
+
+        return {
+          idPlanilla,
+          idSucursal: idSucursalPlanilla,
+          planilla
+        };
+      } catch (error) {
+        safeToast('ERROR', error.message || 'No se pudo preparar la planilla para este contexto.', 'danger');
+        return null;
+      }
+    },
+    [loadPlanillasByContext, periodo, safeToast, selectedSucursal]
+  );
+
+  const resolveDetalleIdForEmpleado = useCallback(
+    async ({ idPlanilla, idEmpleado, idSucursal } = {}) => {
+      if (!(safeNumber(idPlanilla, 0) > 0) || !(safeNumber(idEmpleado, 0) > 0)) return 0;
+
+      const localDetalle = (Array.isArray(detalle) ? detalle : []).find(
+        (row) => safeNumber(row?.id_empleado, 0) === safeNumber(idEmpleado, 0)
+      );
+      const localId = safeNumber(localDetalle?.id_detalle_planilla ?? localDetalle?.id_detalle, 0);
+      if (localId > 0) return localId;
+
+      const rows = (await collectPaginatedApiRows(
+        ({ page, limit }) =>
+          planillasService.listarDetallePlanilla(idPlanilla, {
+            page,
+            limit,
+            id_sucursal: idSucursal || undefined
+          }),
+        { pageSize: 100, maxPages: 80 }
+      )).map((row) => normalizeDetalleRowForDisplay(row));
+
+      setDetalle(rows);
+      setDetalleTotal(rows.length);
+
+      const remoteDetalle = rows.find((row) => safeNumber(row?.id_empleado, 0) === safeNumber(idEmpleado, 0));
+      return safeNumber(remoteDetalle?.id_detalle_planilla ?? remoteDetalle?.id_detalle, 0);
+    },
+    [detalle]
+  );
+
   const refreshPlanillaData = useCallback(
     async () => {
       await Promise.all([
         loadPlanillas(),
+        refreshPlanillaPeriodoLookup(),
+        loadEmpleadosActivos(),
         loadDetalleAndResumen(),
         loadAdelantosPendientes(),
         loadAdelantosHistorial(),
         loadBonosDeduccionesHistorial()
       ]);
     },
-    [loadAdelantosHistorial, loadAdelantosPendientes, loadBonosDeduccionesHistorial, loadDetalleAndResumen, loadPlanillas]
+    [
+      loadAdelantosHistorial,
+      loadAdelantosPendientes,
+      loadBonosDeduccionesHistorial,
+      loadDetalleAndResumen,
+      loadEmpleadosActivos,
+      loadPlanillas,
+      refreshPlanillaPeriodoLookup
+    ]
   );
 
   const withAction = useCallback(
@@ -1934,6 +2465,15 @@ export default function Planillas({
   }, [buildCsvContent, periodo, resolveExportDataset, safeToast, selectedPlanilla?.id_planilla, selectedPlanillaLabel]);
 
   const handleGenerar = () => {
+    if (!selectedSucursal || !periodo) {
+      safeToast('ERROR', 'Selecciona sucursal y periodo antes de generar planilla.', 'warning');
+      return;
+    }
+    if (hasPlanillaForPeriodo) {
+      safeToast('AVISO', 'Ya existe una planilla para el periodo seleccionado.', 'warning');
+      return;
+    }
+
     openConfirmModal({
       actionType: 'generar_planilla',
       title: 'CONFIRMAR GENERACION',
@@ -2060,11 +2600,9 @@ export default function Planillas({
     [activePlanillaSucursalId, safeToast, selectedPlanilla?.id_planilla]
   );
 
-  const openBonosDeduccionesRegistroGlobal = useCallback(() => {
-    if (!selectedPlanilla?.id_planilla) {
-      safeToast('ERROR', 'Selecciona una planilla para registrar movimientos.', 'warning');
-      return;
-    }
+  const openBonosDeduccionesRegistroGlobal = useCallback(async () => {
+    const context = await ensurePlanillaForRegistro();
+    if (!context) return;
 
     setMovimientoFormModal({
       open: true,
@@ -2074,13 +2612,11 @@ export default function Planillas({
       selectedEmpleadoId: '',
       loading: false
     });
-  }, [safeToast, selectedPlanilla?.id_planilla]);
+  }, [ensurePlanillaForRegistro]);
 
   const openBonosDeduccionesHistorial = useCallback(async () => {
-    if (!selectedPlanilla?.id_planilla) {
-      safeToast('ERROR', 'Selecciona una planilla para consultar movimientos.', 'warning');
-      return;
-    }
+    const context = await ensurePlanillaForRegistro();
+    if (!context) return;
 
     setBonosDeduccionesHistorialModal({
       open: true,
@@ -2090,10 +2626,10 @@ export default function Planillas({
     });
 
     try {
-      const response = await planillasService.listarMovimientosPlanilla(selectedPlanilla.id_planilla, {
+      const response = await planillasService.listarMovimientosPlanilla(context.idPlanilla, {
         page: 1,
         limit: DETAIL_FETCH_LIMIT,
-        id_sucursal: activePlanillaSucursalId || undefined
+        id_sucursal: context.idSucursal || undefined
       });
       const items = normalizeListResponse(response).items;
       const filtered = items.filter((row) => {
@@ -2119,12 +2655,13 @@ export default function Planillas({
       });
       safeToast('ERROR', error.message || 'No se pudo cargar el historial de movimientos.', 'danger');
     }
-  }, [activePlanillaSucursalId, detalle, safeToast, selectedPlanilla?.id_planilla]);
+  }, [detalle, ensurePlanillaForRegistro, safeToast]);
 
   const handleAnularBonoDeduccion = useCallback(
-    (row) => {
+    async (row) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
       const idMovimiento = safeNumber(row?.id_movimiento, 0);
-      if (!(idMovimiento > 0) || !selectedPlanilla?.id_planilla) {
+      if (!(idMovimiento > 0) || !context?.idPlanilla) {
         safeToast('ERROR', 'No se pudo identificar el movimiento a anular.', 'danger');
         return;
       }
@@ -2144,32 +2681,31 @@ export default function Planillas({
         payload: {
           rowId: row?.id || null,
           idMovimiento,
-          idPlanilla: selectedPlanilla.id_planilla,
-          idSucursal: activePlanillaSucursalId || undefined
+          idPlanilla: context.idPlanilla,
+          idSucursal: context.idSucursal || undefined
         }
       });
     },
-    [activePlanillaSucursalId, openConfirmModal, safeToast, selectedPlanilla?.id_planilla]
+    [ensurePlanillaForRegistro, openConfirmModal, safeToast]
   );
 
-  const openAdelantoRegistroGlobal = useCallback(() => {
-    if (!selectedPlanilla?.id_planilla) {
-      safeToast('ERROR', 'Selecciona una planilla para registrar adelantos.', 'warning');
-      return;
-    }
+  const openAdelantoRegistroGlobal = useCallback(async () => {
+    const context = await ensurePlanillaForRegistro();
+    if (!context) return;
     setAdelantoRegistroGlobalModal({ open: true, registering: false });
-  }, [safeToast, selectedPlanilla?.id_planilla]);
+  }, [ensurePlanillaForRegistro]);
 
   const openAdelantos = useCallback(
     async (item) => {
-      if (!selectedPlanilla?.id_planilla || !item) return;
+      const context = await ensurePlanillaForRegistro();
+      if (!context || !item) return;
       setAdelantosModal({ open: true, item, loading: true, applying: false, registering: false, items: [] });
       try {
-        const response = await planillasService.listarAdelantosAplicablesPlanilla(selectedPlanilla.id_planilla, {
+        const response = await planillasService.listarAdelantosAplicablesPlanilla(context.idPlanilla, {
           page: 1,
           limit: 50,
           id_detalle: item.id_detalle_planilla || item.id_detalle,
-          id_sucursal: activePlanillaSucursalId || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         setAdelantosModal({
           open: true,
@@ -2184,15 +2720,13 @@ export default function Planillas({
         safeToast('ERROR', error.message || 'No se pudieron cargar adelantos', 'danger');
       }
     },
-    [activePlanillaSucursalId, safeToast, selectedPlanilla?.id_planilla]
+    [ensurePlanillaForRegistro, safeToast]
   );
 
   const openAdelantosHistorial = useCallback(
     async (item = null) => {
-      if (!selectedPlanilla?.id_planilla) {
-        safeToast('ERROR', 'Selecciona una planilla para consultar adelantos.', 'warning');
-        return;
-      }
+      const context = await ensurePlanillaForRegistro();
+      if (!context) return;
 
       const onlyEmpleadoId = safeNumber(item?.id_empleado, 0);
       const empleadoLabel = onlyEmpleadoId > 0 ? extractEmpleadoNombre(item) : '';
@@ -2209,62 +2743,43 @@ export default function Planillas({
 
       try {
         const idDetalle = safeNumber(item?.id_detalle_planilla ?? item?.id_detalle, 0);
-        let movimientos = [];
-        let usedDetalleEndpoint = false;
+        const movimientosRows = await fetchPlanillaMovimientos({
+          idPlanilla: context.idPlanilla,
+          idSucursal: context.idSucursal || undefined
+        });
+        const scopedBaseRows = scopeMovimientosToPlanillaContext({
+          movimientos: movimientosRows,
+          detalleRows: detalle,
+          idPlanilla: context.idPlanilla,
+          periodoScope: periodo
+        });
+        setAdelantosHistorialMovimientos(scopedBaseRows);
 
+        const detalleByDetalleId = new Map(
+          (Array.isArray(detalle) ? detalle : [])
+            .map((row) => [String(safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0)), row])
+            .filter(([id]) => id !== '0')
+        );
+
+        let movimientos = scopedBaseRows;
         if (idDetalle > 0) {
-          try {
-            const detalleResponse = await planillasService.listarMovimientosPlanillaDetalle(
-              selectedPlanilla.id_planilla,
-              idDetalle,
-              {
-                page: 1,
-                limit: DETAIL_FETCH_LIMIT,
-                id_sucursal: activePlanillaSucursalId || undefined
-              }
-            );
-            movimientos = normalizeListResponse(detalleResponse).items;
-            usedDetalleEndpoint = true;
-          } catch {
-            movimientos = [];
-          }
-        }
-
-        if (!usedDetalleEndpoint || movimientos.length === 0) {
-          const response = await planillasService.listarMovimientosPlanilla(selectedPlanilla.id_planilla, {
-            page: 1,
-            limit: DETAIL_FETCH_LIMIT,
-            id_sucursal: activePlanillaSucursalId || undefined
+          movimientos = scopedBaseRows.filter((row) => {
+            const rowDetalleId = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+            const rowEmpleadoId = resolveAdelantoEmpleadoId(row, detalleByDetalleId);
+            return rowDetalleId === idDetalle || (onlyEmpleadoId > 0 && rowEmpleadoId === onlyEmpleadoId);
           });
-          const fallbackRows = normalizeListResponse(response).items;
-          const detalleByDetalleId = new Map(
-            (Array.isArray(detalle) ? detalle : [])
-              .map((row) => [
-                String(safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0)),
-                row
-              ])
-              .filter(([id]) => id !== '0')
+        } else if (onlyEmpleadoId > 0) {
+          movimientos = scopedBaseRows.filter(
+            (row) => resolveAdelantoEmpleadoId(row, detalleByDetalleId) === onlyEmpleadoId
           );
-          if (idDetalle > 0) {
-            movimientos = fallbackRows.filter((row) => {
-              const rowDetalleId = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
-              const rowEmpleadoId = resolveAdelantoEmpleadoId(row, detalleByDetalleId);
-              return rowDetalleId === idDetalle || (onlyEmpleadoId > 0 && rowEmpleadoId === onlyEmpleadoId);
-            });
-          } else if (onlyEmpleadoId > 0) {
-            movimientos = fallbackRows.filter(
-              (row) => resolveAdelantoEmpleadoId(row, detalleByDetalleId) === onlyEmpleadoId
-            );
-          } else {
-            movimientos = fallbackRows;
-          }
         }
 
         const dataset = normalizeAdelantosDataset({
           pendientes: adelantosPendientes,
           movimientos,
           detalleRows: detalle,
-          onlyEmpleadoId
+          onlyEmpleadoId,
+          periodoScope: periodo
         });
 
         setAdelantosHistorialModal({
@@ -2279,9 +2794,10 @@ export default function Planillas({
       } catch (error) {
         const fallbackDataset = normalizeAdelantosDataset({
           pendientes: adelantosPendientes,
-          movimientos: adelantosHistorialMovimientos,
+          movimientos: adelantosHistorialMovimientosScoped,
           detalleRows: detalle,
-          onlyEmpleadoId
+          onlyEmpleadoId,
+          periodoScope: periodo
         });
         setAdelantosHistorialModal({
           open: true,
@@ -2292,25 +2808,24 @@ export default function Planillas({
           updatingId: null,
           deletingId: null
         });
-        safeToast('ERROR', error.message || 'No se pudo cargar el historial de adelantos.', 'danger');
+      safeToast('ERROR', error.message || 'No se pudo cargar el historial de adelantos.', 'danger');
       }
     },
     [
-      adelantosHistorialMovimientos,
+      adelantosHistorialMovimientosScoped,
       adelantosPendientes,
       detalle,
+      ensurePlanillaForRegistro,
+      fetchPlanillaMovimientos,
+      periodo,
       safeToast,
-      activePlanillaSucursalId,
-      selectedPlanilla?.id_planilla,
     ]
   );
 
   const openHorasExtra = useCallback(
     async (item = null) => {
-      if (!selectedPlanilla?.id_planilla) {
-        safeToast('ERROR', 'Selecciona una planilla para consultar horas extra.', 'warning');
-        return;
-      }
+      const context = await ensurePlanillaForRegistro();
+      if (!context) return;
 
       const idEmpleado = safeNumber(item?.id_empleado, 0) || null;
       const empleadoLabel = idEmpleado ? extractEmpleadoNombre(item) : '';
@@ -2328,11 +2843,11 @@ export default function Planillas({
       });
 
       try {
-        const response = await planillasService.listarHorasExtraPlanilla(selectedPlanilla.id_planilla, {
+        const response = await planillasService.listarHorasExtraPlanilla(context.idPlanilla, {
           page: 1,
           limit: 200,
           id_empleado: idEmpleado || undefined,
-          id_sucursal: activePlanillaSucursalId || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         const parsed = normalizeHorasExtraResponse(response);
         setHorasExtraModal((previous) => ({
@@ -2359,15 +2874,13 @@ export default function Planillas({
         safeToast('ERROR', error.message || 'No se pudieron cargar horas extra.', 'danger');
       }
     },
-    [activePlanillaSucursalId, safeToast, selectedPlanilla?.id_planilla]
+    [ensurePlanillaForRegistro, safeToast]
   );
 
   const openHorasExtraRegistro = useCallback(
-    (item = null) => {
-      if (!selectedPlanilla?.id_planilla) {
-        safeToast('ERROR', 'Selecciona una planilla para registrar horas extra.', 'warning');
-        return;
-      }
+    async (item = null) => {
+      const context = await ensurePlanillaForRegistro();
+      if (!context) return;
       const idEmpleado = safeNumber(item?.id_empleado, 0) || null;
       setHorasExtraRegistroModal({
         open: true,
@@ -2375,12 +2888,13 @@ export default function Planillas({
         defaultEmpleadoId: idEmpleado ? String(idEmpleado) : ''
       });
     },
-    [safeToast, selectedPlanilla?.id_planilla]
+    [ensurePlanillaForRegistro]
   );
 
   const handleCompensarHoraExtra = useCallback(
     async (horaExtraItem, observacion = '') => {
-      if (!selectedPlanilla?.id_planilla) return;
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
 
       const idHoraExtra = resolveHoraExtraId(horaExtraItem);
       if (!idHoraExtra) return;
@@ -2388,9 +2902,9 @@ export default function Planillas({
       setHorasExtraModal((previous) => ({ ...previous, compensatingId: idHoraExtra }));
 
       try {
-        await planillasService.compensarHoraExtraPlanilla(selectedPlanilla.id_planilla, idHoraExtra, {
+        await planillasService.compensarHoraExtraPlanilla(context.idPlanilla, idHoraExtra, {
           observacion,
-          id_sucursal: activePlanillaSucursalId || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         safeToast('OK', 'Hora extra compensada correctamente.', 'success');
         await Promise.all([loadPlanillas(), loadDetalleAndResumen()]);
@@ -2406,15 +2920,15 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openHorasExtra,
+      ensurePlanillaForRegistro,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      activePlanillaSucursalId
     ]
   );
 
   const handleActualizarHoraExtra = useCallback(
     async (horaExtraItem, payload = {}) => {
-      if (!selectedPlanilla?.id_planilla) return;
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
 
       const idHoraExtra = resolveHoraExtraId(horaExtraItem);
       if (!idHoraExtra) return;
@@ -2422,7 +2936,7 @@ export default function Planillas({
       setHorasExtraModal((previous) => ({ ...previous, updatingId: idHoraExtra }));
 
       try {
-        const idSucursal = activePlanillaSucursalId || undefined;
+        const idSucursal = context.idSucursal || undefined;
         const idEmpleado = safeNumber(payload?.id_empleado, 0) || resolveHoraExtraEmpleadoId(horaExtraItem);
         const fecha = toText(payload?.fecha || horaExtraItem?.fecha, '');
         const horas = safeNumber(payload?.horas, Number.NaN);
@@ -2432,12 +2946,12 @@ export default function Planillas({
           throw new Error('Datos incompletos para actualizar la hora extra.');
         }
 
-        await planillasService.compensarHoraExtraPlanilla(selectedPlanilla.id_planilla, idHoraExtra, {
+        await planillasService.compensarHoraExtraPlanilla(context.idPlanilla, idHoraExtra, {
           observacion: '[CORREGIDA_HE] Registro anterior compensado automaticamente por correccion de hora extra.',
           id_sucursal: idSucursal
         });
 
-        await planillasService.registrarHoraExtraPlanilla(selectedPlanilla.id_planilla, {
+        await planillasService.registrarHoraExtraPlanilla(context.idPlanilla, {
           id_empleado: idEmpleado,
           fecha,
           horas,
@@ -2460,15 +2974,15 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openHorasExtra,
+      ensurePlanillaForRegistro,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      activePlanillaSucursalId
     ]
   );
 
   const handleEliminarHoraExtra = useCallback(
-    (horaExtraItem) => {
-      if (!selectedPlanilla?.id_planilla) return;
+    async (horaExtraItem) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
       const idHoraExtra = resolveHoraExtraId(horaExtraItem);
       if (!idHoraExtra) return;
 
@@ -2486,24 +3000,25 @@ export default function Planillas({
         requireReason: true,
         payload: {
           idHoraExtra,
-          idPlanilla: selectedPlanilla.id_planilla,
-          idSucursal: activePlanillaSucursalId || undefined
+          idPlanilla: context.idPlanilla,
+          idSucursal: context.idSucursal || undefined
         }
       });
     },
-    [activePlanillaSucursalId, openConfirmModal, selectedPlanilla?.id_planilla]
+    [ensurePlanillaForRegistro, openConfirmModal]
   );
 
   const handleRegistrarHoraExtra = useCallback(
     async (payload) => {
-      if (!selectedPlanilla?.id_planilla) return;
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
 
       setHorasExtraRegistroModal((previous) => ({ ...previous, registering: true }));
 
       try {
-        await planillasService.registrarHoraExtraPlanilla(selectedPlanilla.id_planilla, {
+        await planillasService.registrarHoraExtraPlanilla(context.idPlanilla, {
           ...payload,
-          id_sucursal: activePlanillaSucursalId || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         safeToast('OK', 'Hora extra registrada correctamente.', 'success');
         await Promise.all([loadPlanillas(), loadDetalleAndResumen()]);
@@ -2526,21 +3041,21 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openHorasExtra,
+      ensurePlanillaForRegistro,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      activePlanillaSucursalId
     ]
   );
 
   const handleRegistrarAdelanto = useCallback(
     async (payload) => {
-      if (!selectedPlanilla?.id_planilla || !adelantosModal.item) return;
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla || !adelantosModal.item) return;
 
       setAdelantosModal((previous) => ({ ...previous, registering: true }));
       try {
-        await planillasService.registrarAdelantoPlanilla(selectedPlanilla.id_planilla, {
+        await planillasService.registrarAdelantoPlanilla(context.idPlanilla, {
           ...payload,
-          id_sucursal: activePlanillaSucursalId || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         safeToast('OK', 'Adelanto registrado correctamente.', 'success');
         await Promise.all([
@@ -2563,18 +3078,15 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openAdelantos,
+      ensurePlanillaForRegistro,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      activePlanillaSucursalId
     ]
   );
 
   const requestApplyAdelantoDirecto = useCallback(
-    (adelantoPendiente) => {
-      if (!selectedPlanilla?.id_planilla) {
-        safeToast('ERROR', 'Selecciona una planilla para aplicar adelantos.', 'warning');
-        return;
-      }
+    async (adelantoPendiente) => {
+      const context = await ensurePlanillaForRegistro();
+      if (!context) return;
 
       const source = adelantoPendiente && typeof adelantoPendiente === 'object' ? adelantoPendiente : {};
       const raw =
@@ -2613,7 +3125,7 @@ export default function Planillas({
         return;
       }
 
-      const idSucursal = activePlanillaSucursalId || undefined;
+      const idSucursal = context.idSucursal || undefined;
       if (!idSucursal) {
         safeToast('ERROR', 'Selecciona una sucursal valida para aplicar adelantos.', 'warning');
         return;
@@ -2641,7 +3153,7 @@ export default function Planillas({
         confirmText: 'Aplicar adelanto',
         confirmIconClass: 'bi bi-check2-circle',
         payload: {
-          idPlanilla: selectedPlanilla.id_planilla,
+          idPlanilla: context.idPlanilla,
           idSucursal,
           idAdelanto,
           montoAplicar
@@ -2649,17 +3161,16 @@ export default function Planillas({
       });
     },
     [
+      ensurePlanillaForRegistro,
       openConfirmModal,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      activePlanillaSucursalId
     ]
   );
 
   const handleApplyFromPendientes = useCallback(
     (adelantoPendiente) => {
       setAdelantosPendientesModalOpen(false);
-      requestApplyAdelantoDirecto(adelantoPendiente);
+      void requestApplyAdelantoDirecto(adelantoPendiente);
     },
     [requestApplyAdelantoDirecto]
   );
@@ -2673,14 +3184,15 @@ export default function Planillas({
         updatingId: null,
         deletingId: null
       }));
-      requestApplyAdelantoDirecto(adelantoItem);
+      void requestApplyAdelantoDirecto(adelantoItem);
     },
     [requestApplyAdelantoDirecto]
   );
 
   const handleActualizarAdelantoAplicado = useCallback(
     async (adelantoItem, payload = {}) => {
-      if (!selectedPlanilla?.id_planilla) return;
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
 
       const estadoAdelanto = toText(adelantoItem?.estado, '').toLowerCase();
       const isPendiente = estadoAdelanto === ADELANTO_STATUS.pendiente;
@@ -2690,7 +3202,7 @@ export default function Planillas({
       const rowTrackingId = String(adelantoItem?.id || idMovimiento || `ad-${idAdelanto || 'na'}`);
       const montoAplicar = safeNumber(payload?.monto_aplicar, Number.NaN);
       const observacion = toText(payload?.observacion, '');
-      const idSucursal = activePlanillaSucursalId || undefined;
+      const idSucursal = context.idSucursal || undefined;
 
       if (!Number.isFinite(montoAplicar) || montoAplicar <= 0) {
         throw new Error('Ingresa un monto valido mayor que 0.');
@@ -2703,7 +3215,7 @@ export default function Planillas({
             throw new Error('No se pudo identificar el adelanto pendiente para editarlo.');
           }
 
-          await planillasService.actualizarAdelantoPlanilla(selectedPlanilla.id_planilla, idAdelanto, {
+          await planillasService.actualizarAdelantoPlanilla(context.idPlanilla, idAdelanto, {
             id_empleado: safeNumber(adelantoItem?.id_empleado, 0) || undefined,
             monto: montoAplicar,
             fecha: toText(adelantoItem?.fecha, '') || undefined,
@@ -2739,12 +3251,12 @@ export default function Planillas({
         const markerBase = observacion || 'Ajuste de adelanto aplicado desde historial.';
         await planillasService.anularMovimientoPlanilla(idMovimiento, {
           motivo: `[CORREGIDO_AD] ${markerBase}`,
-          id_planilla: selectedPlanilla.id_planilla,
+          id_planilla: context.idPlanilla,
           id_sucursal: idSucursal
         });
 
         if (idAdelanto > 0) {
-          await planillasService.aplicarAdelantoPlanilla(selectedPlanilla.id_planilla, {
+          await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
             id_adelanto_salario: idAdelanto,
             monto_aplicar: montoAplicar,
             id_sucursal: idSucursal
@@ -2753,7 +3265,7 @@ export default function Planillas({
           if (!(idDetalle > 0)) {
             throw new Error('No se pudo determinar el detalle para recrear el ajuste de adelanto.');
           }
-          await planillasService.registrarMovimientoPlanilla(selectedPlanilla.id_planilla, {
+          await planillasService.registrarMovimientoPlanilla(context.idPlanilla, {
             id_detalle: idDetalle,
             tipo: 'DEDUCCION',
             tipo_movimiento: 'DEDUCCION',
@@ -2791,18 +3303,19 @@ export default function Planillas({
         setAdelantosHistorialModal((previous) => ({ ...previous, updatingId: null }));
       }
     },
-    [refreshPlanillaData, safeToast, selectedPlanilla?.id_planilla, activePlanillaSucursalId]
+    [ensurePlanillaForRegistro, refreshPlanillaData, safeToast]
   );
 
   const handleRegistrarAdelantoGlobal = useCallback(
     async (payload) => {
-      if (!selectedPlanilla?.id_planilla) return;
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
 
       setAdelantoRegistroGlobalModal({ open: true, registering: true });
       try {
-        await planillasService.registrarAdelantoPlanilla(selectedPlanilla.id_planilla, {
+        await planillasService.registrarAdelantoPlanilla(context.idPlanilla, {
           ...payload,
-          id_sucursal: activePlanillaSucursalId || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         safeToast('OK', 'Adelanto registrado correctamente.', 'success');
         await Promise.all([
@@ -2828,15 +3341,15 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openAdelantosHistorial,
+      ensurePlanillaForRegistro,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      activePlanillaSucursalId
     ]
   );
 
   const handleEliminarAdelantoAplicado = useCallback(
-    (adelantoItem) => {
-      if (!selectedPlanilla?.id_planilla) return;
+    async (adelantoItem) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
 
       const estadoAdelanto = toText(adelantoItem?.estado, '').toLowerCase();
       const isPendiente = estadoAdelanto === ADELANTO_STATUS.pendiente;
@@ -2876,23 +3389,38 @@ export default function Planillas({
           rowId: rowTrackingId,
           idAdelanto: idAdelanto > 0 ? idAdelanto : undefined,
           idMovimiento,
-          idPlanilla: selectedPlanilla.id_planilla,
-          idSucursal: activePlanillaSucursalId || undefined
+          idPlanilla: context.idPlanilla,
+          idSucursal: context.idSucursal || undefined
         }
       });
     },
-    [activePlanillaSucursalId, openConfirmModal, safeToast, selectedPlanilla?.id_planilla]
+    [ensurePlanillaForRegistro, openConfirmModal, safeToast]
   );
 
-  const handleApplyAllPendientes = useCallback(() => {
-    if (!selectedPlanilla?.id_planilla) {
-      safeToast('ERROR', 'Selecciona una planilla para aplicar adelantos pendientes.', 'warning');
-      return;
+  const handleApplyAllPendientes = useCallback(async () => {
+    const context = await ensurePlanillaForRegistro();
+    if (!context) return;
+
+    let detalleRows = Array.isArray(detalle) ? detalle : [];
+    if (detalleRows.length === 0) {
+      try {
+        const detalleResponse = await planillasService.listarDetallePlanilla(context.idPlanilla, {
+          page: 1,
+          limit: DETAIL_FETCH_LIMIT,
+          id_sucursal: context.idSucursal || undefined
+        });
+        const parsed = normalizeListResponse(detalleResponse);
+        detalleRows = parsed.items.map((row) => normalizeDetalleRowForDisplay(row));
+        setDetalle(detalleRows);
+        setDetalleTotal(parsed.total || detalleRows.length);
+      } catch {
+        detalleRows = [];
+      }
     }
 
     const itemsAplicables = adelantosPendientes.filter((item) => {
       const idEmpleado = safeNumber(item?.id_empleado, 0);
-      return detalle.some((row) => safeNumber(row?.id_empleado, 0) === idEmpleado);
+      return detalleRows.some((row) => safeNumber(row?.id_empleado, 0) === idEmpleado);
     });
 
     if (itemsAplicables.length === 0) {
@@ -2900,20 +3428,20 @@ export default function Planillas({
       return;
     }
 
-    withAction(
+    void withAction(
       async () => {
         for (const item of itemsAplicables) {
           const idAdelanto = item?.id_adelanto_salario || item?.id_adelanto;
           if (!idAdelanto) continue;
-          await planillasService.aplicarAdelantoPlanilla(selectedPlanilla.id_planilla, {
+          await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
             id_adelanto_salario: idAdelanto,
-            id_sucursal: activePlanillaSucursalId || undefined
+            id_sucursal: context.idSucursal || undefined
           });
         }
       },
       `Se aplicaron ${itemsAplicables.length} adelanto(s) pendientes.`
     );
-  }, [adelantosPendientes, detalle, activePlanillaSucursalId, safeToast, selectedPlanilla?.id_planilla, withAction]);
+  }, [adelantosPendientes, detalle, ensurePlanillaForRegistro, safeToast, withAction]);
 
   const openAuditoria = async () => {
     if (!selectedPlanilla?.id_planilla) return;
@@ -3236,10 +3764,9 @@ export default function Planillas({
               <span className="planillas-toolbar__title-icon" aria-hidden="true">
                 <i className="bi bi-buildings" />
               </span>
-              <div>
-                <div className="planillas-toolbar__title">Seleccionar sucursal</div>
-                <p className="planillas-toolbar__subtitle">Define el contexto operativo de planillas.</p>
-              </div>
+                <div>
+                  <div className="planillas-toolbar__title">Seleccionar sucursal</div>
+                </div>
             </div>
             <div className="planillas-toolbar__field planillas-toolbar__field--sucursal">
               <label htmlFor="planillas-sucursal-context">Sucursal</label>
@@ -3278,7 +3805,7 @@ export default function Planillas({
             onPagar={() => handleChangeEstado('pagada')}
             onAnular={handleAnular}
             onExport={() => setExportModalOpen(true)}
-            canGenerar={showPlanillaActions && canGenerar}
+            canGenerar={showPlanillaActions && canGenerarForPeriodo}
             canRecalcular={showPlanillaActions && canRecalcular}
             canCerrar={showPlanillaActions && canCerrar}
             canPagar={showPlanillaActions && canPagar}
@@ -3381,7 +3908,6 @@ export default function Planillas({
                 items={adelantosDataset}
                 loadingAction={loadingAction}
                 canAplicarAdelantos={canAplicarAdelantos}
-                hasPlanillaSeleccionada={Boolean(selectedPlanilla?.id_planilla)}
                 onApplyItem={handleApplyFromAdelantosHistorial}
                 onApplyAll={handleApplyAllPendientes}
                 onOpenRegister={openAdelantoRegistroGlobal}
@@ -3398,7 +3924,6 @@ export default function Planillas({
                 items={bonosDeduccionesDataset}
                 loadingAction={loadingAction}
                 canRegistrarMovimiento={canRegistrarMovimiento}
-                hasPlanillaSeleccionada={Boolean(selectedPlanilla?.id_planilla)}
                 onOpenRegister={openBonosDeduccionesRegistroGlobal}
                 onOpenDetail={openBonosDeduccionesHistorial}
                 formatFriendlyDate={formatFriendlyDate}
@@ -3410,8 +3935,7 @@ export default function Planillas({
               <PlanillasHorasExtraInsight
                 totalPendientesLabel={formatHoursLabel(horasExtraStats.totalPendientes)}
                 empleadosConHoras={safeNumber(horasExtraStats.empleadosConHoras, 0)}
-                hasPlanillaSeleccionada={Boolean(selectedPlanilla?.id_planilla)}
-                canRegistrar={canRecalcular}
+                canRegistrar={canRecalcular && !loadingEmpleadosActivos}
                 onOpenDetalle={() => openHorasExtra()}
                 onOpenRegistro={() => openHorasExtraRegistro()}
               />
@@ -3440,7 +3964,7 @@ export default function Planillas({
           ) : listError ? (
             <PlanillasErrorState message={listError} onRetry={loadPlanillas} />
           ) : hasNoData ? (
-            <PlanillasEmptyState onGenerar={handleGenerar} canGenerar={canGenerar} />
+            <PlanillasEmptyState onGenerar={handleGenerar} canGenerar={canGenerarForPeriodo} />
           ) : loadingDetalle ? (
             <PlanillasLoadingState message="Cargando detalle de planilla..." />
           ) : (
@@ -3514,7 +4038,18 @@ export default function Planillas({
         </div>
       </div>
 
-      <PlanillaDetallePanel open={Boolean(detailItem)} item={detailItem} onClose={() => setDetailItem(null)} />
+      <PlanillaDetallePanel
+        open={Boolean(detailItem)}
+        item={detailItem}
+        planillaEstado={
+          selectedPlanilla?.estado_descripcion ||
+          selectedPlanilla?.estado_planilla ||
+          selectedPlanilla?.estado ||
+          selectedPlanilla?.descripcion_estado ||
+          ''
+        }
+        onClose={() => setDetailItem(null)}
+      />
 
       <PlanillaMovimientosModal
         open={movimientosModal.open}
@@ -3554,7 +4089,7 @@ export default function Planillas({
         item={movimientoFormModal.item}
         tipo={movimientoFormModal.tipo}
         allowEmployeeSelect={movimientoFormModal.mode === 'global'}
-        employees={movimientoEmpleadoOptions}
+        employees={empleadosRegistroOptions}
         selectedEmpleadoId={movimientoFormModal.selectedEmpleadoId}
         loading={movimientoFormModal.loading}
         onClose={() =>
@@ -3568,49 +4103,64 @@ export default function Planillas({
           })
         }
         onSubmit={(payload) => {
-          if (!selectedPlanilla?.id_planilla) return;
-          withAction(
+          void withAction(
             async () => {
               setMovimientoFormModal((state) => ({ ...state, loading: true }));
-              const isGlobal = movimientoFormModal.mode === 'global';
-              const idEmpleadoPayload = safeNumber(payload?.id_empleado, 0);
-              let idDetalle = safeNumber(
-                movimientoFormModal.item?.id_detalle_planilla || movimientoFormModal.item?.id_detalle,
-                0
-              );
+              try {
+                const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+                if (!context?.idPlanilla) {
+                  throw new Error('No se pudo preparar la planilla para registrar el movimiento.');
+                }
 
-              if (isGlobal) {
-                const detalleRow = detalle.find(
-                  (row) => safeNumber(row?.id_empleado, 0) === safeNumber(idEmpleadoPayload, 0)
+                const isGlobal = movimientoFormModal.mode === 'global';
+                const idEmpleadoPayload = safeNumber(payload?.id_empleado, 0);
+                let idDetalle = safeNumber(
+                  movimientoFormModal.item?.id_detalle_planilla || movimientoFormModal.item?.id_detalle,
+                  0
                 );
-                idDetalle = safeNumber(detalleRow?.id_detalle_planilla ?? detalleRow?.id_detalle, 0);
-              }
 
-              if (!(idDetalle > 0)) {
-                throw new Error('No se pudo ubicar el detalle de planilla del empleado seleccionado.');
-              }
+                if (isGlobal) {
+                  idDetalle = await resolveDetalleIdForEmpleado({
+                    idPlanilla: context.idPlanilla,
+                    idEmpleado: idEmpleadoPayload,
+                    idSucursal: context.idSucursal
+                  });
+                }
 
-              const { id_empleado: _unusedIdEmpleado, ...payloadSinEmpleado } = payload;
-              await planillasService.registrarMovimientoPlanilla(selectedPlanilla.id_planilla, {
-                id_detalle: idDetalle,
-                id_sucursal: activePlanillaSucursalId || undefined,
-                ...payloadSinEmpleado
-              });
-              setMovimientoFormModal({
-                open: false,
-                tipo: 'bono',
-                item: null,
-                mode: 'detalle',
-                selectedEmpleadoId: '',
-                loading: false
-              });
+                if (!(idDetalle > 0)) {
+                  throw new Error('No se pudo ubicar el detalle de planilla del empleado seleccionado.');
+                }
+
+                const { id_empleado: _unusedIdEmpleado, ...payloadSinEmpleado } = payload;
+                await planillasService.registrarMovimientoPlanilla(context.idPlanilla, {
+                  id_detalle: idDetalle,
+                  id_sucursal: context.idSucursal || undefined,
+                  ...payloadSinEmpleado
+                });
+                setMovimientoFormModal({
+                  open: false,
+                  tipo: 'bono',
+                  item: null,
+                  mode: 'detalle',
+                  selectedEmpleadoId: '',
+                  loading: false
+                });
+              } finally {
+                setMovimientoFormModal((state) => ({ ...state, loading: false }));
+              }
             },
-            'Movimiento registrado correctamente'
+            {
+              successMessage: 'Movimiento registrado correctamente',
+              onError: () => {
+                setMovimientoFormModal((state) => ({ ...state, loading: false }));
+              }
+            }
           );
         }}
       />
 
       <PlanillaAdelantosModal
+        key={`ad-apply-${adelantosModal.open ? 'open' : 'closed'}-${safeNumber(adelantosModal.item?.id_empleado, 0)}`}
         open={adelantosModal.open}
         item={adelantosModal.item}
         adelantos={adelantosModal.items}
@@ -3629,12 +4179,16 @@ export default function Planillas({
           })
         }
         onApply={(payload) => {
-          if (!adelantosModal.item || !selectedPlanilla?.id_planilla) return;
-          withAction(
+          if (!adelantosModal.item) return;
+          void withAction(
             async () => {
+              const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+              if (!context?.idPlanilla) {
+                throw new Error('No se pudo preparar la planilla para aplicar el adelanto.');
+              }
               setAdelantosModal((state) => ({ ...state, applying: true }));
-              await planillasService.aplicarAdelantoPlanilla(selectedPlanilla.id_planilla, {
-                id_sucursal: activePlanillaSucursalId || undefined,
+              await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
+                id_sucursal: context.idSucursal || undefined,
                 ...payload
               });
               setAdelantosModal({
@@ -3646,7 +4200,12 @@ export default function Planillas({
                 items: []
               });
             },
-            'Adelanto aplicado correctamente'
+            {
+              successMessage: 'Adelanto aplicado correctamente',
+              onError: () => {
+                setAdelantosModal((state) => ({ ...state, applying: false }));
+              }
+            }
           );
         }}
         onRegister={handleRegistrarAdelanto}
@@ -3658,8 +4217,8 @@ export default function Planillas({
         }`}
         open={adelantoRegistroGlobalModal.open}
         registering={adelantoRegistroGlobalModal.registering}
-        canRegister={canAplicarAdelantos}
-        empleados={horasExtraEmpleados}
+        canRegister={canAplicarAdelantos && !loadingEmpleadosActivos}
+        empleados={empleadosRegistroOptions}
         onClose={() => setAdelantoRegistroGlobalModal({ open: false, registering: false })}
         onSubmit={handleRegistrarAdelantoGlobal}
       />
@@ -3677,7 +4236,7 @@ export default function Planillas({
         deletingId={adelantosHistorialModal.deletingId}
         canEditar={canAplicarAdelantos}
         canEliminar={canAplicarAdelantos}
-        hasPlanillaSeleccionada={Boolean(selectedPlanilla?.id_planilla)}
+        hasPlanillaSeleccionada={hasSucursalSelected && Boolean(toText(periodo, ''))}
         onClose={() =>
           setAdelantosHistorialModal({
             open: false,
@@ -3699,7 +4258,7 @@ export default function Planillas({
         loading={loadingAdelantosPendientes}
         loadingAction={loadingAction}
         items={adelantosPendientes}
-        hasPlanillaSeleccionada={Boolean(selectedPlanilla?.id_planilla)}
+        hasPlanillaSeleccionada={hasSucursalSelected && Boolean(toText(periodo, ''))}
         onClose={() => setAdelantosPendientesModalOpen(false)}
         onApplyForEmpleado={handleApplyFromPendientes}
       />
@@ -3742,8 +4301,8 @@ export default function Planillas({
         }-${selectedPlanilla?.id_planilla || 'na'}`}
         open={horasExtraRegistroModal.open}
         registering={horasExtraRegistroModal.registering}
-        canRegister={canRecalcular}
-        empleados={horasExtraEmpleados}
+        canRegister={canRecalcular && !loadingEmpleadosActivos}
+        empleados={empleadosRegistroOptions}
         defaultEmpleadoId={horasExtraRegistroModal.defaultEmpleadoId}
         onClose={() =>
           setHorasExtraRegistroModal({
@@ -3763,6 +4322,7 @@ export default function Planillas({
       />
 
       <ExportModal
+        key={`export-${exportModalOpen ? 'open' : 'closed'}-${safeNumber(selectedPlanilla?.id_planilla, 0)}`}
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         onSubmit={handleExportSubmit}

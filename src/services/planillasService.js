@@ -23,7 +23,9 @@ const planillasService = {
   listarPlanillas: ({ page = 1, limit = 10, id_sucursal, periodo, search, estado } = {}) =>
     apiFetch(
       `/planillas${buildQuery({ page, limit, id_sucursal, periodo, search, estado })}`,
-      'GET'
+      'GET',
+      null,
+      { noCache: true }
     ),
 
   generarPlanilla: (payload = {}) =>
@@ -49,11 +51,18 @@ const planillasService = {
   listarDetallePlanilla: (idPlanilla, { page = 1, limit = 10, search, id_sucursal } = {}) =>
     apiFetch(
       `/planillas/${idPlanilla}/detalle${buildQuery({ page, limit, search, id_sucursal })}`,
-      'GET'
+      'GET',
+      null,
+      { noCache: true }
     ),
 
   obtenerResumenPlanilla: (idPlanilla, { id_sucursal } = {}) =>
-    apiFetch(`/planillas/${idPlanilla}/resumen${buildQuery({ id_sucursal })}`, 'GET'),
+    apiFetch(
+      `/planillas/${idPlanilla}/resumen${buildQuery({ id_sucursal })}`,
+      'GET',
+      null,
+      { noCache: true }
+    ),
 
   obtenerPlanillaCompleta: (idPlanilla, { id_sucursal } = {}) =>
     apiFetch(`/planillas/${idPlanilla}/completa${buildQuery({ id_sucursal })}`, 'GET'),

@@ -21,7 +21,6 @@ export default function PlanillasBonosDeduccionesInsight({
   items = [],
   loadingAction = false,
   canRegistrarMovimiento = false,
-  hasPlanillaSeleccionada = false,
   onOpenRegister,
   onOpenDetail,
   formatFriendlyDate,
@@ -42,7 +41,7 @@ export default function PlanillasBonosDeduccionesInsight({
           </span>
           <div>
             <h4>Bonos y deducciones</h4>
-            <p>{summaryText || 'Gestiona movimientos de bonos y deducciones de la planilla seleccionada.'}</p>
+            <p>{summaryText || 'Gestiona movimientos de bonos y deducciones del contexto seleccionado.'}</p>
           </div>
         </div>
         <div className="planillas-insight__head-actions planillas-insight__head-actions--bonos-deducciones">
@@ -50,7 +49,7 @@ export default function PlanillasBonosDeduccionesInsight({
             type="button"
             className="planillas-insight__ghost"
             onClick={onOpenRegister}
-            disabled={loading || loadingAction || !canRegistrarMovimiento || !hasPlanillaSeleccionada}
+            disabled={loading || loadingAction || !canRegistrarMovimiento}
           >
             <i className="bi bi-plus-circle me-1" />
             Registrar movimiento
@@ -59,7 +58,7 @@ export default function PlanillasBonosDeduccionesInsight({
             type="button"
             className="planillas-insight__ghost"
             onClick={() => onOpenDetail?.()}
-            disabled={loading || !hasPlanillaSeleccionada}
+            disabled={loading}
           >
             <i className="bi bi-clock-history me-1" />
             Ver detalle
@@ -116,4 +115,3 @@ export default function PlanillasBonosDeduccionesInsight({
     </section>
   );
 }
-

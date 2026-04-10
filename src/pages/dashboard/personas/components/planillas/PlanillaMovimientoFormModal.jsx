@@ -150,11 +150,26 @@ export default function PlanillaMovimientoFormModal({
     [employees]
   );
 
+  const conceptoOptions = useMemo(
+    () =>
+      (Array.isArray(conceptos) ? conceptos : []).map((concepto) => ({
+        value: String(concepto ?? ''),
+        label: String(concepto ?? '')
+      })),
+    [conceptos]
+  );
+
   const selectedEmployee = useMemo(() => {
     const current = String(form.id_empleado || '').trim();
     if (!current) return null;
     return employeeOptions.find((option) => option.value === current) || null;
   }, [employeeOptions, form.id_empleado]);
+
+  const selectedConcepto = useMemo(() => {
+    const current = String(form.concepto || '').trim();
+    if (!current) return null;
+    return conceptoOptions.find((option) => option.value === current) || null;
+  }, [conceptoOptions, form.concepto]);
 
   const selectedEmployeeName = selectedEmployee?.label || '';
 
@@ -177,6 +192,7 @@ export default function PlanillaMovimientoFormModal({
   };
   const canSubmit = Boolean((!allowEmployeeSelect || hasEmpleado) && conceptoFinal && montoValido);
   const empleadoSelectStyles = buildEmpleadoSelectStyles({ hasError: Boolean(errors.empleado) });
+  const conceptoSelectStyles = buildEmpleadoSelectStyles({ hasError: Boolean(errors.concepto) });
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -215,6 +231,22 @@ export default function PlanillaMovimientoFormModal({
     >
       <form id="planilla-mov-form" className="planillas-modal-form" onSubmit={handleSubmit}>
         <section className="planillas-modal-section">
+          <PlanillasModalField label="Tipo de Movimiento" required>
+            <PlanillasSegmentedToggle
+              options={MOVIMIENTO_TIPO_OPTIONS}
+              value={form.tipo}
+              onChange={(newTipo) =>
+                setForm((previous) => ({
+                  ...previous,
+                  tipo: newTipo,
+                  concepto: '',
+                  conceptoOtro: ''
+                }))
+              }
+              disabled={loading}
+            />
+          </PlanillasModalField>
+
           {allowEmployeeSelect ? (
             <PlanillasModalField label="Empleado" required error={errors.empleado}>
               <Select
@@ -248,36 +280,30 @@ export default function PlanillaMovimientoFormModal({
             </PlanillasModalField>
           ) : null}
 
-          <PlanillasModalField label="Tipo de Movimiento" required>
-            <PlanillasSegmentedToggle
-              options={MOVIMIENTO_TIPO_OPTIONS}
-              value={form.tipo}
-              onChange={(newTipo) =>
+          <PlanillasModalField id="movimiento-concepto" label="Concepto" required error={errors.concepto}>
+            <Select
+              inputId="movimiento-concepto"
+              classNamePrefix="planillas-movimiento-rs"
+              value={selectedConcepto}
+              onChange={(option) =>
                 setForm((previous) => ({
                   ...previous,
-                  tipo: newTipo,
-                  concepto: '',
-                  conceptoOtro: ''
+                  concepto: option?.value ? String(option.value) : ''
                 }))
               }
-              disabled={loading}
+              options={conceptoOptions}
+              placeholder="Seleccione..."
+              noOptionsMessage={({ inputValue }) =>
+                String(inputValue || '').trim() ? 'Sin coincidencias' : 'No hay conceptos disponibles'
+              }
+              isClearable
+              isSearchable
+              isDisabled={loading || conceptoOptions.length === 0}
+              styles={conceptoSelectStyles}
+              menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+              menuPosition="fixed"
+              maxMenuHeight={280}
             />
-          </PlanillasModalField>
-
-          <PlanillasModalField id="movimiento-concepto" label="Concepto" required error={errors.concepto}>
-            <select
-              id="movimiento-concepto"
-              className={`form-select planillas-modal-select ${errors.concepto ? 'is-invalid' : ''}`}
-              value={form.concepto}
-              onChange={(event) => setForm((previous) => ({ ...previous, concepto: event.target.value }))}
-            >
-              <option value="">Seleccione...</option>
-              {conceptos.map((concepto) => (
-                <option key={`${form.tipo}-${concepto}`} value={concepto}>
-                  {concepto}
-                </option>
-              ))}
-            </select>
           </PlanillasModalField>
 
           {form.concepto === 'Otro' ? (

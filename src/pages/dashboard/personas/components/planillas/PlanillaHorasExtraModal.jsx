@@ -76,6 +76,29 @@ const toDateInputValue = (value = new Date()) => {
   return `${y}-${m}-${d}`;
 };
 
+const sanitizeHoursInputValue = (value) => {
+  const raw = String(value ?? '');
+  if (!raw) return '';
+  const normalized = raw.replace(/,/g, '.').replace(/[^\d.]/g, '');
+  if (!normalized) return '';
+  const firstDotIndex = normalized.indexOf('.');
+  if (firstDotIndex < 0) return normalized;
+  const integerPart = normalized.slice(0, firstDotIndex);
+  const decimalPart = normalized
+    .slice(firstDotIndex + 1)
+    .replace(/\./g, '')
+    .slice(0, 2);
+  return `${integerPart}.${decimalPart}`;
+};
+
+const parseHoursInputValue = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return Number.NaN;
+  const normalized = text.replace(/,/g, '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
 export default function PlanillaHorasExtraModal({
   open,
   loading = false,
@@ -96,6 +119,7 @@ export default function PlanillaHorasExtraModal({
   const [editingRowId, setEditingRowId] = useState(null);
   const [editDraftsByRow, setEditDraftsByRow] = useState({});
   const [statusFilter, setStatusFilter] = useState(STATUS_FILTERS.all);
+  const today = useMemo(() => toDateInputValue(), []);
 
   const summary = useMemo(() => {
     const totalHoras = safeNumber(resumen.total_horas, null);
@@ -216,7 +240,7 @@ export default function PlanillaHorasExtraModal({
 
   const submitEditRow = async (row, rowId) => {
     const draft = editDraftsByRow[rowId] || {};
-    const horas = Number(draft?.horas);
+    const horas = parseHoursInputValue(draft?.horas);
     const payload = {
       fecha: draft?.fecha || null,
       horas,
@@ -313,10 +337,12 @@ export default function PlanillaHorasExtraModal({
                 const isDeleting = String(deletingId || '') === String(rowId || '');
                 const isBusy = isCompensating || isUpdating || isDeleting;
                 const rowNote = stripStatusMarkers(String(row.observacion || '').trim());
-                const horasDraftValue = Number(editDraft?.horas);
+                const horasDraftValue = parseHoursInputValue(editDraft?.horas);
+                const isFutureEditDate = Boolean(editDraft?.fecha) && editDraft.fecha > today;
                 const canSaveEdit =
                   !isBusy &&
                   Boolean(editDraft?.fecha) &&
+                  !isFutureEditDate &&
                   Number.isFinite(horasDraftValue) &&
                   horasDraftValue > 0 &&
                   horasDraftValue <= 24;
@@ -419,8 +445,9 @@ export default function PlanillaHorasExtraModal({
                             <input
                               id={`he-edit-date-${rowId}`}
                               type="date"
-                              className="form-control"
+                              className={`form-control ${isFutureEditDate ? 'is-invalid' : ''}`}
                               value={editDraft?.fecha || ''}
+                              max={today}
                               onChange={(event) =>
                                 setEditDraftsByRow((previous) => ({
                                   ...previous,
@@ -432,23 +459,30 @@ export default function PlanillaHorasExtraModal({
                               }
                               disabled={isBusy}
                             />
+                            {isFutureEditDate ? (
+                              <div className="invalid-feedback d-block">La fecha no puede ser mayor al dia actual.</div>
+                            ) : null}
                           </div>
                           <div>
                             <label htmlFor={`he-edit-hours-${rowId}`}>Horas</label>
                             <input
                               id={`he-edit-hours-${rowId}`}
-                              type="number"
-                              min="0.25"
-                              max="24"
-                              step="0.25"
+                              type="text"
+                              inputMode="decimal"
+                              pattern="^\\d*(\\.\\d{0,2})?$"
                               className="form-control"
                               value={editDraft?.horas ?? ''}
+                              onKeyDown={(event) => {
+                                if (['e', 'E', '+', '-'].includes(event.key)) {
+                                  event.preventDefault();
+                                }
+                              }}
                               onChange={(event) =>
                                 setEditDraftsByRow((previous) => ({
                                   ...previous,
                                   [rowId]: {
                                     ...previous[rowId],
-                                    horas: event.target.value
+                                    horas: sanitizeHoursInputValue(event.target.value)
                                   }
                                 }))
                               }

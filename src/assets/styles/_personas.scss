@@ -1716,7 +1716,7 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  z-index: 1060;
+  z-index: 2400;
 }
 
 .personas-page.personas-page--planillas .planillas-modal {
@@ -2143,7 +2143,131 @@
 
 .personas-page.personas-page--planillas .planillas-detail-panel {
   display: grid;
-  gap: 0.86rem;
+  gap: 0.9rem;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero {
+  border: 1px solid rgba(124, 95, 73, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fffdfa, #fff7ed);
+  padding: 0.78rem 0.86rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.72rem;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__avatar {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.98rem;
+  font-weight: 900;
+  color: #5b3727;
+  background: linear-gradient(145deg, #efe7d5, #e4d5bc);
+  border: 1px solid rgba(124, 95, 73, 0.28);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.16rem;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero-eyebrow {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: rgba(84, 56, 39, 0.72);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero-name {
+  font-size: 1rem;
+  color: #2f180f;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero-meta {
+  font-size: 0.8rem;
+  color: rgba(84, 56, 39, 0.82);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__estado-badge {
+  border-radius: 999px;
+  border: 1px solid rgba(124, 95, 73, 0.28);
+  padding: 0.22rem 0.56rem;
+  font-size: 0.68rem;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 900;
+  background: rgba(95, 66, 49, 0.1);
+  color: #5a3a28;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__estado-badge.is-borrador {
+  border-color: rgba(146, 105, 42, 0.4);
+  background: rgba(236, 196, 123, 0.2);
+  color: #7b4d13;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__estado-badge.is-calculada {
+  border-color: rgba(41, 112, 176, 0.4);
+  background: rgba(146, 199, 245, 0.24);
+  color: #1d5b90;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__estado-badge.is-pagada {
+  border-color: rgba(18, 124, 89, 0.4);
+  background: rgba(140, 228, 196, 0.24);
+  color: #0e6a4c;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__estado-badge.is-anulada {
+  border-color: rgba(171, 73, 73, 0.4);
+  background: rgba(245, 175, 175, 0.24);
+  color: #8a2f2f;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero-neto {
+  border: 1px solid rgba(20, 120, 92, 0.3);
+  border-radius: 12px;
+  padding: 0.46rem 0.62rem;
+  background: linear-gradient(145deg, #ecf9f3, #e0f1e8);
+  display: grid;
+  gap: 0.08rem;
+  text-align: right;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero-neto-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(16, 89, 67, 0.76);
+  font-weight: 800;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__hero-neto strong {
+  font-size: 1rem;
+  color: #0f5a43;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
 }
 
 .personas-page.personas-page--planillas .planillas-detail-panel__section {
@@ -2170,9 +2294,30 @@
   border: 1px solid rgba(124, 95, 73, 0.16);
   border-radius: 12px;
   background: #fff;
-  padding: 0.58rem 0.65rem;
+  padding: 0.58rem 0.7rem;
   display: grid;
   gap: 0.14rem;
+  min-height: 72px;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__card.is-salario {
+  background: linear-gradient(145deg, #f7f4ff, #eee8ff);
+  border-color: rgba(82, 58, 148, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__card.is-bonos {
+  background: linear-gradient(145deg, #f1faf5, #e6f4ec);
+  border-color: rgba(20, 122, 90, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__card.is-deducciones {
+  background: linear-gradient(145deg, #fff7f2, #ffece1);
+  border-color: rgba(170, 86, 44, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__card.is-adelantos {
+  background: linear-gradient(145deg, #fff9eb, #fff0cb);
+  border-color: rgba(176, 125, 15, 0.24);
 }
 
 .personas-page.personas-page--planillas .planillas-detail-panel__card.is-neto {
@@ -2186,9 +2331,71 @@
 }
 
 .personas-page.personas-page--planillas .planillas-detail-panel__value {
-  font-size: 0.96rem;
+  font-size: 1.02rem;
   color: #2f180f;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula {
+  border: 1px solid rgba(124, 95, 73, 0.16);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff, #fffbf6);
+  padding: 0.82rem;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.56rem;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item {
+  border: 1px solid rgba(124, 95, 73, 0.16);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.52rem 0.56rem;
+  display: grid;
+  gap: 0.14rem;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item span {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 800;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item strong {
+  font-size: 0.92rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item.is-positive {
+  border-color: rgba(17, 122, 89, 0.22);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item.is-positive span {
+  color: rgba(12, 101, 73, 0.82);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item.is-negative {
+  border-color: rgba(170, 86, 44, 0.24);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item.is-negative span {
+  color: rgba(127, 57, 22, 0.84);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item.is-result {
+  border-color: rgba(18, 124, 89, 0.28);
+  background: linear-gradient(145deg, #ecf8f2, #e4f0e8);
+}
+
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item.is-result span,
+.personas-page.personas-page--planillas .planillas-detail-panel__formula-item.is-result strong {
+  color: #0f5a43;
 }
 
 .personas-page.personas-page--planillas .planillas-modal-empty {
@@ -3949,8 +4156,19 @@
 
   .personas-page.personas-page--planillas .planillas-modal-grid,
   .personas-page.personas-page--planillas .planillas-adelanto-summary,
-  .personas-page.personas-page--planillas .planillas-detail-panel__grid {
+  .personas-page.personas-page--planillas .planillas-detail-panel__grid,
+  .personas-page.personas-page--planillas .planillas-detail-panel__formula-grid {
     grid-template-columns: 1fr;
+  }
+
+  .personas-page.personas-page--planillas .planillas-detail-panel__hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .personas-page.personas-page--planillas .planillas-detail-panel__hero-neto {
+    grid-column: 1 / -1;
+    text-align: left;
   }
 
   .personas-page.personas-page--planillas .planillas-segmented-toggle {
