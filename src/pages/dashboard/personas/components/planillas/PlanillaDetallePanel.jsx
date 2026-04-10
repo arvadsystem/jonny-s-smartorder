@@ -17,8 +17,22 @@ const moneyNumber = (value) => {
   return Number.isFinite(amount) ? amount : 0;
 };
 
+const resolveDni = (item = {}) =>
+  toText(
+    item?.dni ||
+      item?.persona_dni ||
+      item?.dni_persona ||
+      item?.numero_dni ||
+      item?.identidad ||
+      item?.no_identidad ||
+      item?.documento_identidad ||
+      item?.documento ||
+      item?.cedula,
+    'Sin DNI'
+  );
+
 const buildEmpleadoMeta = (item = {}) => {
-  const dni = toText(item?.dni, 'Sin DNI');
+  const dni = resolveDni(item);
   const cargo = toText(item?.cargo, 'Sin cargo');
   return `${cargo} - ${dni}`;
 };
@@ -50,7 +64,7 @@ const buildDetailSections = (item) => [
   {
     title: 'Datos del empleado',
     fields: [
-      { label: 'DNI', value: toText(item.dni, 'Sin DNI') },
+      { label: 'DNI', value: resolveDni(item) },
       { label: 'Cargo', value: toText(item.cargo, 'Sin cargo') },
       { label: 'Salario base', value: money(item.salario_base), tone: 'salario' },
       { label: 'Horas extra tiempo', value: toText(item.he_tiempo ?? item.horas_extra_tiempo, '0') }

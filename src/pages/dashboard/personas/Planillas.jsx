@@ -214,6 +214,19 @@ const safeNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const resolveDniValue = (row = {}) =>
+  toText(
+    row?.dni ||
+      row?.persona_dni ||
+      row?.dni_persona ||
+      row?.numero_dni ||
+      row?.identidad ||
+      row?.no_identidad ||
+      row?.documento_identidad ||
+      row?.documento ||
+      row?.cedula
+  );
+
 const resolveDeduccionesSinAdelantos = ({
   salarioBase = 0,
   bonos = 0,
@@ -277,6 +290,7 @@ const normalizeDetalleRowForDisplay = (row = {}) => {
 
   return {
     ...row,
+    dni: resolveDniValue(row),
     total_deducciones_raw: deduccionesRaw,
     total_deducciones: deducciones,
     deducciones,
