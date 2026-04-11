@@ -187,6 +187,11 @@ export const inventarioService = {
   // ===== CATEGORIAS PRODUCTOS =====
   getCategorias: (options) => apiFetch(withInactivosParam('/categorias_productos', options), 'GET'),
   crearCategoria: (data) => apiFetch('/categorias_productos', 'POST', data),
+  actualizarCategoriaCompleta: (id, data) =>
+    apiFetch('/categorias_productos/edicion', 'PUT', {
+      id_categoria_producto: id,
+      ...data
+    }),
   actualizarCategoriaCampo: (id, campo, valor) =>
     apiFetch('/categorias_productos', 'PUT', {
       campo,
@@ -205,6 +210,11 @@ export const inventarioService = {
   // IMPACT: agrega endpoints nuevos retrocompatibles; no cambia llamadas actuales.
   getCategoriasInsumos: (options) => apiFetch(withInactivosParam('/categorias_insumos', options), 'GET'),
   crearCategoriaInsumo: (data) => apiFetch('/categorias_insumos', 'POST', data),
+  actualizarCategoriaInsumoCompleta: (id, data) =>
+    apiFetch('/categorias_insumos/edicion', 'PUT', {
+      id_categoria_insumo: id,
+      ...data
+    }),
   actualizarCategoriaInsumoCampo: (id, campo, valor) =>
     apiFetch('/categorias_insumos', 'PUT', {
       campo,
@@ -263,6 +273,11 @@ export const inventarioService = {
   reactivarProveedor: (id) => apiFetch(`/proveedores/${id}/reactivar`, 'PATCH', {}),
   eliminarProveedor: (id) => apiFetch(`/proveedores/${id}`, 'DELETE'),
   crearInsumo: (data) => apiFetch('/insumos', 'POST', data),
+  actualizarInsumoCompleto: (id, data = {}) =>
+    apiFetch('/insumos/edicion', 'PUT', {
+      id_insumo: id,
+      ...data
+    }),
   actualizarInsumoCampo: (id, campo, valor) =>
     apiFetch('/insumos', 'PUT', {
       campo,
@@ -270,11 +285,10 @@ export const inventarioService = {
       id_campo: 'id_insumo',
       id_valor: id
     }),
-  // AM: edicion completa de insumo sincronizando uno o varios almacenes en una sola operacion.
-  actualizarInsumoMultiAlmacen: (id, data = {}) =>
-    apiFetch('/insumos/multi-almacen', 'PUT', {
+  actualizarEstadoInsumo: (id, estado) =>
+    apiFetch('/insumos/estado', 'PATCH', {
       id_insumo: id,
-      ...data
+      estado
     }),
   eliminarInsumo: (id) =>
     apiFetch('/insumos', 'DELETE', {
@@ -361,6 +375,10 @@ export const inventarioService = {
   // AM: contexto de creacion con sucursal/almacenes permitidos segun usuario autenticado.
   getOrdenCompraWorkflowContextoCreacion: () => apiFetch('/orden_compras/workflow/contexto_creacion', 'GET'),
   getOrdenCompraWorkflowById: (idOrdenCompra) => apiFetch(`/orden_compras/workflow/${idOrdenCompra}`, 'GET'),
+  getOrdenCompraWorkflowEvidenciaFactura: (idOrdenCompra) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/evidencias/factura`, 'GET'),
+  getOrdenCompraWorkflowEvidenciaTransferencia: (idOrdenCompra) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/evidencias/transferencia`, 'GET'),
   crearOrdenCompraWorkflow: (data) => apiFetch('/orden_compras/workflow', 'POST', data),
   aprobarOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/aprobar`, 'POST', data),

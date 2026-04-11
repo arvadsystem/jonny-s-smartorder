@@ -6,6 +6,8 @@ import { toUpperSafe } from '../../../utils/toUpperSafe';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
+  INVENTARIO_IMAGE_CONTEXT,
+  optimizeInventarioImageForUpload,
   resolveInventarioImageUrl
 } from '../../../utils/inventarioImagenes';
 
@@ -883,7 +885,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       return;
     }
 
-    const fileError = getInventarioImageFileError(file);
+    const fileError = getInventarioImageFileError(file, INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS);
     if (fileError) {
       setCreateImage((prev) => ({
         ...prev,
@@ -942,8 +944,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, [imageErrorMap]);
 
   const uploadProductoImageFile = useCallback(async (file) => {
-    const payload = await buildInventarioImageUploadPayload(file);
-    return inventarioService.crearArchivoImagen(payload);
+    const optimizedFile = await optimizeInventarioImageForUpload(
+      file,
+      INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS
+    );
+    const optimizedFileError = getInventarioImageFileError(
+      optimizedFile,
+      INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS
+    );
+    if (optimizedFileError) throw new Error(optimizedFileError);
+
+    const payload = await buildInventarioImageUploadPayload(optimizedFile);
+    return inventarioService.crearArchivoImagen({
+      ...payload,
+      bucket: 'jonnys-assets'
+    });
   }, []);
 
   // ==============================
@@ -1333,7 +1348,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       return;
     }
 
-    const fileError = getInventarioImageFileError(file);
+    const fileError = getInventarioImageFileError(file, INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS);
     if (fileError) {
       setDrawerImageAction({ loading: false, error: fileError });
       if (input) input.value = '';

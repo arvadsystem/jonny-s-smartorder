@@ -6,6 +6,9 @@ import { PERMISSIONS } from '../../../utils/permissions';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
+  INVENTARIO_IMAGE_CONTEXT,
+  optimizeInventarioImageForUpload,
+  resolveInventarioEvidenceKind,
   resolveInventarioImageUrl
 } from '../../../utils/inventarioImagenes';
 
@@ -273,6 +276,8 @@ const formatEvidenceOriginLabel = (origen) => {
   return normalizeText(origen, 80) || 'Origen no disponible';
 };
 
+const resolveEvidenceKindFromPayload = (mimeType, rawUrl) => resolveInventarioEvidenceKind(mimeType, rawUrl);
+
 // AM: mensaje de negocio uniforme para incoherencia item-vs-almacen destino devuelta por backend (409).
 const getWarehouseMismatchMessage = (error) => {
   const backendCode = String(error?.data?.code || '')
@@ -397,8 +402,11 @@ const emptyConvertPanel = () => ({
   isv_pct: '0',
   detalles: [],
   factura_recepcion_url: '',
+  factura_recepcion_mime_type: '',
   transferencia_url_actual: '',
+  transferencia_mime_type: '',
   transferencia_file: null,
+  transferencia_file_mime_type: '',
   transferencia_preview_url: '',
   transferencia_error: ''
 });
@@ -431,6 +439,7 @@ const emptyRecepcionModal = () => ({
   loading: false,
   error: '',
   factura_file: null,
+  factura_file_mime_type: '',
   factura_preview_url: '',
   factura_error: ''
 });
@@ -574,7 +583,13 @@ const OrdenesCompraTab = ({ openToast }) => {
 
   const [detalleActual, setDetalleActual] = useState({ loading: false, error: '', data: null });
   // AM: visor inline de evidencias dentro del modal de detalle para no abrir pestanas externas.
-  const [detailEvidencePreview, setDetailEvidencePreview] = useState({ url: '', title: '' });
+  const [detailEvidencePreview, setDetailEvidencePreview] = useState({
+    url: '',
+    title: '',
+    kind: 'image',
+    loading: false,
+    error: ''
+  });
   const [convertPanel, setConvertPanel] = useState(emptyConvertPanel);
   const [reviewModal, setReviewModal] = useState(emptyReviewModal);
   const [supplyModal, setSupplyModal] = useState(emptySupplyModal);
@@ -1292,15 +1307,29 @@ const flowDotItems = useMemo(() => {
     }
   };
 
-  const uploadInventarioImage = async (file) => {
-    const fileError = getInventarioImageFileError(file);
+  const uploadInventarioImage = async (file, options = {}) => {
+    const bucket = String(options?.bucket || 'admin-docs').trim() || 'admin-docs';
+    const fileValidationContext =
+      options?.validationContext || INVENTARIO_IMAGE_CONTEXT.OC_EVIDENCIAS_PRIVADAS;
+    const fileError = getInventarioImageFileError(file, fileValidationContext);
     if (fileError) {
       throw new Error(fileError);
     }
 
-    // AM: reutiliza infraestructura existente de /archivos para evidencias de OC.
-    const payload = await buildInventarioImageUploadPayload(file);
-    const response = await inventarioService.crearArchivoImagen(payload);
+    let fileToUpload = file;
+    if (resolveEvidenceKindFromPayload(file?.type, '') === 'image') {
+      fileToUpload = await optimizeInventarioImageForUpload(file, fileValidationContext);
+      const optimizedFileError = getInventarioImageFileError(fileToUpload, fileValidationContext);
+      if (optimizedFileError) {
+        throw new Error(optimizedFileError);
+      }
+    }
+
+    const payload = await buildInventarioImageUploadPayload(fileToUpload);
+    const response = await inventarioService.crearArchivoImagen({
+      ...payload,
+      bucket
+    });
     const idArchivo = parsePositiveInt(response?.id_archivo);
     if (!idArchivo) {
       throw new Error('No se pudo obtener id_archivo para la evidencia.');
@@ -1308,9 +1337,50 @@ const flowDotItems = useMemo(() => {
 
     return {
       id_archivo: idArchivo,
-      url_publica: resolveInventarioImageUrl(response?.url_publica || '')
+      url_publica: resolveInventarioImageUrl(response?.url_publica || ''),
+      mime_type: String(fileToUpload?.type || '').trim().toLowerCase()
     };
   };
+
+  const resolveOrderEvidenceAccess = useCallback(
+    async (idOrden, evidenceType, fallbackRawUrl = '') => {
+      const idOrdenCompra = parsePositiveInt(idOrden);
+      const fallbackUrl = resolveInventarioImageUrl(fallbackRawUrl);
+      const fallbackKind = resolveEvidenceKindFromPayload('', fallbackUrl);
+      if (!idOrdenCompra) {
+        return {
+          url: fallbackUrl,
+          mime_type: '',
+          kind: fallbackKind
+        };
+      }
+
+      try {
+        const response =
+          evidenceType === 'transferencia'
+            ? await inventarioService.getOrdenCompraWorkflowEvidenciaTransferencia(idOrdenCompra)
+            : await inventarioService.getOrdenCompraWorkflowEvidenciaFactura(idOrdenCompra);
+        const secureUrl = resolveInventarioImageUrl(response?.data?.url || response?.url || '') || fallbackUrl;
+        const mimeType = String(response?.data?.mime_type || '').trim().toLowerCase();
+        return {
+          url: secureUrl,
+          mime_type: mimeType,
+          kind: resolveEvidenceKindFromPayload(mimeType, secureUrl)
+        };
+      } catch (error) {
+        const status = Number(error?.status || 0);
+        if (status === 403 || status === 404) {
+          return {
+            url: fallbackUrl,
+            mime_type: '',
+            kind: fallbackKind
+          };
+        }
+        throw error;
+      }
+    },
+    []
+  );
 
   const setBusy = (idOrden, value) => setRowBusy((prev) => ({ ...prev, [idOrden]: value }));
 
@@ -1661,6 +1731,7 @@ const flowDotItems = useMemo(() => {
     }
 
     const nombre = normalizeText(quickCreateItemModal?.nombre, 160);
+    const nombreInsumo = normalizeText(nombre, 80);
     const descripcion = normalizeText(quickCreateItemModal?.descripcion, 500) || '';
     const cantidad = parsePositiveInt(quickCreateItemModal?.cantidad);
     const precio = parseNonNegativeNumber(quickCreateItemModal?.precio);
@@ -1711,7 +1782,7 @@ const flowDotItems = useMemo(() => {
         }
         const idUnidadMedida = parseOptionalPositiveInt(quickCreateItemModal?.id_unidad_medida);
         const payloadInsumo = {
-          nombre_insumo: nombre,
+          nombre_insumo: nombreInsumo,
           precio,
           cantidad,
           stock_minimo: Math.trunc(stockMinimo),
@@ -1753,7 +1824,7 @@ const flowDotItems = useMemo(() => {
   const verDetalle = async (orden) => {
     const idOrden = parsePositiveInt(orden?.id_orden_compra);
     if (!idOrden) return;
-    setDetailEvidencePreview({ url: '', title: '' });
+    setDetailEvidencePreview({ url: '', title: '', kind: 'image', loading: false, error: '' });
     setDetalleActual({ loading: true, error: '', data: null });
     try {
       const response = await inventarioService.getOrdenCompraWorkflowById(idOrden);
@@ -1769,8 +1840,63 @@ const flowDotItems = useMemo(() => {
 
   const closeDetalleModal = () => {
     setDetalleActual({ loading: false, error: '', data: null });
-    setDetailEvidencePreview({ url: '', title: '' });
+    setDetailEvidencePreview({ url: '', title: '', kind: 'image', loading: false, error: '' });
   };
+
+  const openDetailEvidencePreview = useCallback(
+    async (idOrden, row) => {
+      const idOrdenCompra = parsePositiveInt(idOrden);
+      const evidenceType = String(row?.tipo_evidencia || '')
+        .trim()
+        .toUpperCase();
+      const previewTitle = formatEvidenceTypeLabel(row?.tipo_evidencia);
+
+      setDetailEvidencePreview({
+        url: '',
+        title: previewTitle,
+        kind: 'image',
+        loading: true,
+        error: ''
+      });
+      try {
+        let evidenceAccess = { url: '', kind: 'unknown' };
+        if (evidenceType === 'DEPOSITO_TRANSFERENCIA') {
+          evidenceAccess = await resolveOrderEvidenceAccess(
+            idOrdenCompra,
+            'transferencia',
+            row?.evidencia_url_publica
+          );
+        } else {
+          evidenceAccess = await resolveOrderEvidenceAccess(
+            idOrdenCompra,
+            'factura',
+            row?.evidencia_url_publica
+          );
+        }
+
+        if (!evidenceAccess?.url) {
+          throw new Error('Archivo no disponible.');
+        }
+
+        setDetailEvidencePreview({
+          url: evidenceAccess.url,
+          title: previewTitle,
+          kind: evidenceAccess.kind || resolveEvidenceKindFromPayload('', evidenceAccess.url),
+          loading: false,
+          error: ''
+        });
+      } catch (error) {
+        setDetailEvidencePreview({
+          url: '',
+          title: previewTitle,
+          kind: 'image',
+          loading: false,
+          error: error?.message || 'No se pudo abrir la evidencia.'
+        });
+      }
+    },
+    [resolveOrderEvidenceAccess]
+  );
 
   const openConvert = async (orden) => {
     const idOrden = parsePositiveInt(orden?.id_orden_compra);
@@ -1814,6 +1940,10 @@ const flowDotItems = useMemo(() => {
           descuento: String(descuentoLinea)
         };
       });
+      const [facturaRecepcionAccess, transferenciaAccess] = await Promise.all([
+        resolveOrderEvidenceAccess(idOrden, 'factura', orderData?.factura_recepcion_url_publica),
+        resolveOrderEvidenceAccess(idOrden, 'transferencia', compraActual?.transferencia_url_publica)
+      ]);
       // AM: modal administrativo minimo para guardar datos y luego abastecer.
       setConvertPanel({
         open: true,
@@ -1833,9 +1963,12 @@ const flowDotItems = useMemo(() => {
         descuento_valor: String(round2(descuentoValorActual ?? 0)),
         isv_pct: String(round2(isvPctActual)),
         detalles: detallesAdmin,
-        factura_recepcion_url: resolveInventarioImageUrl(orderData?.factura_recepcion_url_publica),
-        transferencia_url_actual: resolveInventarioImageUrl(compraActual?.transferencia_url_publica),
+        factura_recepcion_url: facturaRecepcionAccess?.url || '',
+        factura_recepcion_mime_type: facturaRecepcionAccess?.mime_type || '',
+        transferencia_url_actual: transferenciaAccess?.url || '',
+        transferencia_mime_type: transferenciaAccess?.mime_type || '',
         transferencia_file: null,
+        transferencia_file_mime_type: '',
         transferencia_preview_url: '',
         transferencia_error: ''
       });
@@ -2072,7 +2205,10 @@ const flowDotItems = useMemo(() => {
     try {
       let idArchivoTransferencia = null;
       if (convertPanel.transferencia_file) {
-        const transferUpload = await uploadInventarioImage(convertPanel.transferencia_file);
+        const transferUpload = await uploadInventarioImage(convertPanel.transferencia_file, {
+          bucket: 'admin-docs',
+          validationContext: INVENTARIO_IMAGE_CONTEXT.OC_EVIDENCIAS_PRIVADAS
+        });
         idArchivoTransferencia = transferUpload.id_archivo;
       }
 
@@ -2192,6 +2328,7 @@ const flowDotItems = useMemo(() => {
       loading: false,
       error: '',
       factura_file: null,
+      factura_file_mime_type: '',
       factura_preview_url: '',
       factura_error: ''
     });
@@ -2210,7 +2347,10 @@ const flowDotItems = useMemo(() => {
     try {
       let idArchivoFactura = null;
       if (recepcionModal.factura_file) {
-        const facturaUpload = await uploadInventarioImage(recepcionModal.factura_file);
+        const facturaUpload = await uploadInventarioImage(recepcionModal.factura_file, {
+          bucket: 'admin-docs',
+          validationContext: INVENTARIO_IMAGE_CONTEXT.OC_EVIDENCIAS_PRIVADAS
+        });
         idArchivoFactura = facturaUpload.id_archivo;
       }
 
@@ -3222,17 +3362,42 @@ const flowDotItems = useMemo(() => {
                                     <button
                                       type="button"
                                       className="btn btn-sm btn-outline-secondary"
-                                      onClick={() => setDetailEvidencePreview({ url: '', title: '' })}
+                                      onClick={() =>
+                                        setDetailEvidencePreview({
+                                          url: '',
+                                          title: '',
+                                          kind: 'image',
+                                          loading: false,
+                                          error: ''
+                                        })
+                                      }
                                     >
-                                      Cerrar imagen
+                                      Cerrar vista
                                     </button>
                                   </div>
-                                  <img
-                                    src={detailEvidencePreview.url}
-                                    alt={detailEvidencePreview.title || 'Evidencia de orden de compra'}
-                                    className="img-fluid rounded border"
-                                  />
+                                  {detailEvidencePreview.kind !== 'image' ? (
+                                    <a
+                                      href={detailEvidencePreview.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="btn btn-outline-primary btn-sm"
+                                    >
+                                      Abrir documento
+                                    </a>
+                                  ) : (
+                                    <img
+                                      src={detailEvidencePreview.url}
+                                      alt={detailEvidencePreview.title || 'Evidencia de orden de compra'}
+                                      className="img-fluid rounded border"
+                                    />
+                                  )}
                                 </div>
+                              ) : null}
+                              {detailEvidencePreview.loading ? (
+                                <div className="text-muted small">Cargando evidencia...</div>
+                              ) : null}
+                              {detailEvidencePreview.error ? (
+                                <div className="alert alert-warning py-2 mb-0">{detailEvidencePreview.error}</div>
                               ) : null}
 
                               {evidenciasHistorial.length === 0 ? (
@@ -3243,7 +3408,10 @@ const flowDotItems = useMemo(() => {
                               ) : (
                                 <div className="d-flex flex-column gap-2">
                                   {evidenciasHistorial.map((row) => {
-                                    const evidenciaUrl = resolveInventarioImageUrl(row?.evidencia_url_publica);
+                                    const hasEvidenceRef = Boolean(
+                                      parsePositiveInt(row?.id_archivo) ||
+                                        resolveInventarioImageUrl(row?.evidencia_url_publica)
+                                    );
                                     return (
                                       <article
                                         key={`evidencia-historial-${row?.id_historial_evidencia || `${row?.tipo_evidencia}-${row?.id_archivo}-${row?.fecha_registro}`}`}
@@ -3262,16 +3430,16 @@ const flowDotItems = useMemo(() => {
                                         {parsePositiveInt(row?.id_compra) && (
                                           <small className="text-muted">Compra relacionada: #{row.id_compra}</small>
                                         )}
-                                        {evidenciaUrl ? (
+                                        {hasEvidenceRef ? (
                                           <button
                                             type="button"
                                             className="btn btn-sm btn-outline-primary align-self-start"
                                             title="Ver Factura"
                                             onClick={() =>
-                                              setDetailEvidencePreview({
-                                                url: evidenciaUrl,
-                                                title: formatEvidenceTypeLabel(row?.tipo_evidencia)
-                                              })
+                                              openDetailEvidencePreview(
+                                                orden?.id_orden_compra,
+                                                row
+                                              )
                                             }
                                           >
                                             Ver Factura
@@ -4172,14 +4340,32 @@ const flowDotItems = useMemo(() => {
                 <input
                   className={`form-control ${recepcionModal.factura_error ? 'is-invalid' : ''}`}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
                   onChange={(e) => {
                     const file = e.target.files?.[0] || null;
-                    const validationError = getInventarioImageFileError(file);
+                    const previousPreview = String(recepcionModal.factura_preview_url || '');
+                    if (previousPreview.startsWith('blob:')) {
+                      URL.revokeObjectURL(previousPreview);
+                    }
+                    if (!file) {
+                      setRecepcionModal((prev) => ({
+                        ...prev,
+                        factura_file: null,
+                        factura_file_mime_type: '',
+                        factura_preview_url: '',
+                        factura_error: ''
+                      }));
+                      return;
+                    }
+                    const validationError = getInventarioImageFileError(
+                      file,
+                      INVENTARIO_IMAGE_CONTEXT.OC_EVIDENCIAS_PRIVADAS
+                    );
                     if (validationError) {
                       setRecepcionModal((prev) => ({
                         ...prev,
                         factura_file: null,
+                        factura_file_mime_type: '',
                         factura_preview_url: '',
                         factura_error: validationError
                       }));
@@ -4188,6 +4374,7 @@ const flowDotItems = useMemo(() => {
                     setRecepcionModal((prev) => ({
                       ...prev,
                       factura_file: file,
+                      factura_file_mime_type: String(file?.type || '').trim().toLowerCase(),
                       factura_preview_url: URL.createObjectURL(file),
                       factura_error: ''
                     }));
@@ -4196,6 +4383,29 @@ const flowDotItems = useMemo(() => {
                 {recepcionModal.factura_error && (
                   <div className="invalid-feedback d-block">{recepcionModal.factura_error}</div>
                 )}
+                {recepcionModal.factura_preview_url ? (
+                  resolveEvidenceKindFromPayload(
+                    recepcionModal.factura_file_mime_type,
+                    recepcionModal.factura_preview_url
+                  ) === 'pdf' ? (
+                    <div className="mt-2">
+                      <a
+                        href={recepcionModal.factura_preview_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-sm btn-outline-primary"
+                      >
+                        Abrir PDF seleccionado
+                      </a>
+                    </div>
+                  ) : (
+                    <img
+                      src={recepcionModal.factura_preview_url}
+                      alt="Factura de recepcion seleccionada"
+                      className="img-fluid rounded border mt-2"
+                    />
+                  )
+                ) : null}
                 <label className="form-label mb-1 mt-2">Observacion (opcional)</label>
                 <textarea
                   className="form-control"
@@ -4478,12 +4688,24 @@ const flowDotItems = useMemo(() => {
                   <article className="inv-oc-evidence-card">
                     <span>Factura subida por sucursal</span>
                     {convertPanel.factura_recepcion_url ? (
-                      <>
-                        <a href={convertPanel.factura_recepcion_url} target="_blank" rel="noreferrer">
-                          Ver imagen
-                        </a>
-                        <img src={convertPanel.factura_recepcion_url} alt="Factura de recepcion en sucursal" />
-                      </>
+                      (() => {
+                        const facturaKind = resolveEvidenceKindFromPayload(
+                          convertPanel.factura_recepcion_mime_type,
+                          convertPanel.factura_recepcion_url
+                        );
+                        return (
+                          <>
+                            <a href={convertPanel.factura_recepcion_url} target="_blank" rel="noreferrer">
+                              {facturaKind === 'pdf' ? 'Abrir PDF' : 'Ver imagen'}
+                            </a>
+                            {facturaKind === 'image' ? (
+                              <img src={convertPanel.factura_recepcion_url} alt="Factura de recepcion en sucursal" />
+                            ) : (
+                              <small className="text-muted">Documento PDF disponible de forma segura.</small>
+                            )}
+                          </>
+                        );
+                      })()
                     ) : (
                       <small className="text-muted">No hay factura adjunta en esta recepcion.</small>
                     )}
@@ -4493,7 +4715,7 @@ const flowDotItems = useMemo(() => {
                     <input
                       className={`form-control ${convertPanel.transferencia_error ? 'is-invalid' : ''}`}
                       type="file"
-                      accept="image/jpeg,image/png,image/webp"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
                       onChange={(e) => {
                         const file = e.target.files?.[0] || null;
                         // AM: libera preview anterior para evitar fugas al cambiar de archivo.
@@ -4501,11 +4723,26 @@ const flowDotItems = useMemo(() => {
                         if (previousPreview.startsWith('blob:')) {
                           URL.revokeObjectURL(previousPreview);
                         }
-                        const validationError = getInventarioImageFileError(file);
+                        if (!file) {
+                          setConvertPanel((prev) => ({
+                            ...prev,
+                            transferencia_file: null,
+                            transferencia_file_mime_type: '',
+                            transferencia_preview_url: '',
+                            transferencia_error: '',
+                            error: ''
+                          }));
+                          return;
+                        }
+                        const validationError = getInventarioImageFileError(
+                          file,
+                          INVENTARIO_IMAGE_CONTEXT.OC_EVIDENCIAS_PRIVADAS
+                        );
                         if (validationError) {
                           setConvertPanel((prev) => ({
                             ...prev,
                             transferencia_file: null,
+                            transferencia_file_mime_type: '',
                             transferencia_preview_url: '',
                             transferencia_error: validationError
                           }));
@@ -4514,6 +4751,7 @@ const flowDotItems = useMemo(() => {
                         setConvertPanel((prev) => ({
                           ...prev,
                           transferencia_file: file,
+                          transferencia_file_mime_type: String(file?.type || '').trim().toLowerCase(),
                           transferencia_preview_url: file ? URL.createObjectURL(file) : '',
                           transferencia_error: '',
                           error: ''
@@ -4523,25 +4761,30 @@ const flowDotItems = useMemo(() => {
                     {convertPanel.transferencia_error && (
                       <div className="invalid-feedback d-block">{convertPanel.transferencia_error}</div>
                     )}
-                    {(convertPanel.transferencia_preview_url || convertPanel.transferencia_url_actual) && (
-                      <>
-                        <a
-                          href={resolveInventarioImageUrl(
-                            convertPanel.transferencia_preview_url || convertPanel.transferencia_url_actual
-                          )}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Ver imagen actual
-                        </a>
-                        <img
-                          src={resolveInventarioImageUrl(
-                            convertPanel.transferencia_preview_url || convertPanel.transferencia_url_actual
-                          )}
-                          alt="Comprobante de deposito o transferencia"
-                        />
-                      </>
-                    )}
+                    {(convertPanel.transferencia_preview_url || convertPanel.transferencia_url_actual) &&
+                      (() => {
+                        const transferenciaUrl = resolveInventarioImageUrl(
+                          convertPanel.transferencia_preview_url || convertPanel.transferencia_url_actual
+                        );
+                        const transferenciaKind = resolveEvidenceKindFromPayload(
+                          convertPanel.transferencia_preview_url
+                            ? convertPanel.transferencia_file_mime_type
+                            : convertPanel.transferencia_mime_type,
+                          transferenciaUrl
+                        );
+                        return (
+                          <>
+                            <a href={transferenciaUrl} target="_blank" rel="noreferrer">
+                              {transferenciaKind === 'pdf' ? 'Abrir PDF actual' : 'Ver imagen actual'}
+                            </a>
+                            {transferenciaKind === 'image' ? (
+                              <img src={transferenciaUrl} alt="Comprobante de deposito o transferencia" />
+                            ) : (
+                              <small className="text-muted">Documento PDF disponible de forma segura.</small>
+                            )}
+                          </>
+                        );
+                      })()}
                   </article>
                 </div>
                 <p className="form-text mt-2 mb-0">
