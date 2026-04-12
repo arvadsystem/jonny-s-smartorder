@@ -342,6 +342,14 @@ const getNombreReferencia = (empleado) =>
 const getTelefonoReferencia = (empleado) =>
   getFirstNonEmptyField(empleado, ["telefono_referencia", "referencia_telefono", "telefono_contacto_referencia"]);
 const SUGGESTION_LIMIT = 8;
+const MAX_EMPLEADOS_PAGE_CACHE = 24;
+
+const isAbortError = (error) =>
+  Boolean(error) && (
+    error.name === "AbortError" ||
+    error.code === "ABORT_ERR" ||
+    String(error.message || "").toLowerCase().includes("aborted")
+  );
 
 const EMPLOYEE_IMAGES_STORAGE_KEY = "empleado_images";
 const IMAGE_ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -491,6 +499,9 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const listAbortRef = useRef(null);
+  const listPrefetchAbortRef = useRef(null);
+  const empleadosListCacheRef = useRef(new Map());
   const catalogosCargadosRef = useRef(false);
   const panelRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -733,6 +744,88 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     [resolvePersonaId, resolveSucursalId]
   );
 
+  const buildEmpleadosCacheKey = useCallback(
+    (targetPage) =>
+      JSON.stringify({
+        page: Number(targetPage) || 1,
+        limit,
+        search: normalizeSearchText(debouncedSearch),
+        sucursal: toEmpleadoId(selectedSucursalId) || null,
+      }),
+    [limit, debouncedSearch, selectedSucursalId]
+  );
+
+  const setEmpleadosCacheEntry = useCallback((cacheKey, data) => {
+    if (!cacheKey) return;
+    const cache = empleadosListCacheRef.current;
+    cache.delete(cacheKey);
+    cache.set(cacheKey, {
+      items: Array.isArray(data?.items) ? data.items : [],
+      total: Math.max(0, Number(data?.total) || 0),
+      cachedAt: Date.now(),
+    });
+
+    while (cache.size > MAX_EMPLEADOS_PAGE_CACHE) {
+      const oldestKey = cache.keys().next().value;
+      if (!oldestKey) break;
+      cache.delete(oldestKey);
+    }
+  }, []);
+
+  const clearEmpleadosListCache = useCallback(() => {
+    empleadosListCacheRef.current.clear();
+    listPrefetchAbortRef.current?.abort();
+    listPrefetchAbortRef.current = null;
+  }, []);
+
+  const prefetchEmpleadosPage = useCallback(
+    async (targetPage, totalKnown = null) => {
+      const nextPage = Number(targetPage);
+      if (!Number.isFinite(nextPage) || nextPage < 1) return;
+
+      const totalValue = Number.isFinite(Number(totalKnown)) ? Number(totalKnown) : null;
+      if (totalValue !== null) {
+        const totalPages = Math.max(1, Math.ceil(totalValue / limit));
+        if (nextPage > totalPages) return;
+      }
+
+      const cacheKey = buildEmpleadosCacheKey(nextPage);
+      if (empleadosListCacheRef.current.has(cacheKey)) return;
+
+      listPrefetchAbortRef.current?.abort();
+      const controller = new AbortController();
+      listPrefetchAbortRef.current = controller;
+
+      try {
+        const normalizedSucursalId = toEmpleadoId(selectedSucursalId);
+        const resp = await personaService.getEmpleados({
+          page: nextPage,
+          limit,
+          nombre: debouncedSearch || undefined,
+          id_sucursal: normalizedSucursalId || undefined,
+          signal: controller.signal,
+        });
+
+        if (!mountedRef.current || controller.signal.aborted) return;
+        const { items, total: totalResp } = normalizeListResponse(resp);
+        setEmpleadosCacheEntry(cacheKey, { items, total: totalResp });
+      } catch (error) {
+        if (isAbortError(error)) return;
+      } finally {
+        if (listPrefetchAbortRef.current === controller) {
+          listPrefetchAbortRef.current = null;
+        }
+      }
+    },
+    [
+      buildEmpleadosCacheKey,
+      debouncedSearch,
+      limit,
+      selectedSucursalId,
+      setEmpleadosCacheEntry,
+    ]
+  );
+
   const cargarCatalogos = useCallback(async () => {
     if (catalogosCargadosRef.current) return;
 
@@ -752,23 +845,49 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     }
   }, [safeToast]);
 
-  const cargarEmpleados = useCallback(async () => {
-    setLoading(true);
+  const cargarEmpleados = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
+    const force = Boolean(options?.force);
+    const requestedPage = Number(options?.page);
+    const targetPage = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : page;
+
+    listAbortRef.current?.abort();
+    listAbortRef.current = null;
+
+    const cacheKey = buildEmpleadosCacheKey(targetPage);
+    if (!force) {
+      const cached = empleadosListCacheRef.current.get(cacheKey);
+      if (cached) {
+        setEmpleados(Array.isArray(cached.items) ? cached.items : []);
+        setTotal(Math.max(0, Number(cached.total) || 0));
+        setLoading(false);
+        prefetchEmpleadosPage(targetPage + 1, cached.total);
+        return;
+      }
+    }
+
+    setLoading(true);
+    const controller = new AbortController();
+    listAbortRef.current = controller;
 
     try {
+      const normalizedSucursalId = toEmpleadoId(selectedSucursalId);
       const resp = await personaService.getEmpleados({
-        page,
+        page: targetPage,
         limit,
         nombre: debouncedSearch || undefined,
-        id_sucursal: selectedSucursalId || undefined,
+        id_sucursal: normalizedSucursalId || undefined,
+        signal: controller.signal,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
       const { items, total: totalResp } = normalizeListResponse(resp);
       setEmpleados(items);
       setTotal(totalResp);
+      setEmpleadosCacheEntry(cacheKey, { items, total: totalResp });
+      prefetchEmpleadosPage(targetPage + 1, totalResp);
     } catch (error) {
+      if (isAbortError(error)) return;
       if (!mountedRef.current) return;
       safeToast("ERROR", error.message || "No se pudo cargar empleados", "danger");
       setEmpleados([]);
@@ -778,7 +897,16 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         setLoading(false);
       }
     }
-  }, [page, limit, debouncedSearch, safeToast, selectedSucursalId]);
+  }, [
+    buildEmpleadosCacheKey,
+    page,
+    limit,
+    debouncedSearch,
+    safeToast,
+    selectedSucursalId,
+    setEmpleadosCacheEntry,
+    prefetchEmpleadosPage,
+  ]);
 
   const fetchNewestEmpleadoId = useCallback(async () => {
     try {
@@ -804,12 +932,17 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      listAbortRef.current?.abort();
+      listAbortRef.current = null;
+      listPrefetchAbortRef.current?.abort();
+      listPrefetchAbortRef.current = null;
     };
   }, []);
 
   useEffect(() => {
+    if (!showModal) return;
     cargarCatalogos();
-  }, [cargarCatalogos]);
+  }, [showModal, cargarCatalogos]);
 
   useEffect(() => {
     cargarEmpleados();
@@ -1033,19 +1166,21 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     const payload = sanitizeForm();
 
     if (!useInlinePersonaCreate && !form.id_persona) {
-      currentErrors.id_persona = "Seleccione";
+      currentErrors.id_persona = "Selecciona una persona o crea una nueva";
     }
 
     if (useInlinePersonaCreate) {
       const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
       if (Object.keys(personaValidationErrors).length > 0) {
-        currentErrors.id_persona = "Completa los datos de la persona nueva";
+        currentErrors.id_persona = "Completa los datos de la persona nueva antes de continuar";
       }
     }
 
-    if (!form.id_sucursal) currentErrors.id_sucursal = "Seleccione";
-    if (!form.fecha_ingreso || form.fecha_ingreso > today) currentErrors.fecha_ingreso = "Fecha invalida";
-    if (form.salario_base === "") currentErrors.salario_base = "Requerido";
+    if (!form.id_sucursal) currentErrors.id_sucursal = "Selecciona una sucursal";
+    if (!form.fecha_ingreso || form.fecha_ingreso > today) {
+      currentErrors.fecha_ingreso = "Ingresa una fecha valida (hoy o anterior)";
+    }
+    if (form.salario_base === "") currentErrors.salario_base = "Ingresa el salario base";
     if (Number.isNaN(payload.salario_base) || payload.salario_base < 0) {
       currentErrors.salario_base = "Debe ser un numero valido";
     }
@@ -1131,7 +1266,8 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         const empleadoOriginal = empleados.find((item) => String(item.id_empleado) === String(editId));
         if (!empleadoOriginal) {
           safeToast("ERROR", "No se encontro el registro a editar", "danger");
-          await cargarEmpleados();
+          clearEmpleadosListCache();
+          await cargarEmpleados({ force: true });
           return;
         }
 
@@ -1182,7 +1318,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       setUseInlinePersonaCreate(false);
       setInlinePersonaForm(emptyInlinePersonaForm);
       clearFormImageDraft();
-      await cargarEmpleados();
+      clearEmpleadosListCache();
+      if (!editId && page !== 1) {
+        setPage(1);
+        await cargarEmpleados({ page: 1, force: true });
+      } else {
+        await cargarEmpleados({ force: true });
+      }
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo guardar", "danger");
     } finally {
@@ -1258,16 +1400,19 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
       const quedaVaciaPagina = empleados.length === 1 && page > 1;
       if (quedaVaciaPagina) {
+        clearEmpleadosListCache();
         setPage((prev) => Math.max(1, prev - 1));
       } else {
-        await cargarEmpleados();
+        clearEmpleadosListCache();
+        await cargarEmpleados({ force: true });
       }
 
       safeToast("OK", "Empleado eliminado");
       closeConfirmDelete();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo eliminar", "danger");
-      await cargarEmpleados();
+      clearEmpleadosListCache();
+      await cargarEmpleados({ force: true });
     } finally {
       if (mountedRef.current) setDeletingId(null);
     }
@@ -1418,6 +1563,17 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
   const drawerMode = editId ? "edit" : "create";
+  const todayDate = new Date().toISOString().split("T")[0];
+  const isInlinePersonaFlow = drawerMode === "create" && useInlinePersonaCreate;
+  const drawerSubtitle =
+    drawerMode === "create"
+      ? isInlinePersonaFlow
+        ? "Paso 1 de 2: completa la persona. Luego define los datos del empleado y guarda."
+        : "Paso 1: selecciona o crea la persona. Paso 2: completa la informacion laboral."
+      : "Actualiza los campos necesarios y guarda los cambios.";
+  const datosEmpleadoCopy = isInlinePersonaFlow
+    ? "Persona base en proceso. Al terminar, completa la informacion laboral."
+    : "Selecciona la persona base y completa la informacion laboral.";
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -1704,7 +1860,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         <div className="inv-prod-drawer-head crud-modal__header">
           <div className="crud-modal__header-copy">
             <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo empleado" : "Editar empleado"}</div>
-            <div className="inv-prod-drawer-sub crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
+            <div className="inv-prod-drawer-sub crud-modal__subtitle">{drawerSubtitle}</div>
           </div>
           <button
             type="button"
@@ -1720,12 +1876,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
           <section className="crud-modal__section empleados-modal__section">
             <header className="crud-modal__section-head">
               <h4>Datos del empleado</h4>
-              <p>Selecciona la persona base y completa la informacion laboral.</p>
+              <p>{datosEmpleadoCopy}</p>
             </header>
 
             <div className="row g-3 crud-modal__grid">
               <div className="col-12">
                 <SmartSelectEntity
+                  className="empleados-modal__entity-block"
                   label="Persona"
                   showToggle={drawerMode === "create"}
                   isInlineCreate={drawerMode === "create" && useInlinePersonaCreate}
@@ -1743,7 +1900,8 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                     });
                     setErrors((state) => ({ ...state, id_persona: undefined }));
                   }}
-                  toggleCreateLabel="+ Crear persona nueva"
+                  toggleVariant="dual"
+                  toggleCreateLabel="Crear persona nueva"
                   toggleExistingLabel="Usar persona existente"
                   toggleDisabled={actionLoading || Boolean(deletingId)}
                   selector={
@@ -1752,7 +1910,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                         inputId="empleado-persona-select"
                         className={`empleados-select ${errors.id_persona ? "is-invalid" : ""}`}
                         classNamePrefix="empleados-select"
-                        placeholder="Seleccione"
+                        placeholder="Buscar y seleccionar persona"
                         isSearchable
                         isClearable
                         options={personaSelectOptions}
@@ -1786,30 +1944,30 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                   }
                   error={errors.id_persona}
                   inlineContent={
-                    <div className="smart-select-entity__summary">
-                      <div className="small text-muted mb-2">
+                    <div className="smart-select-entity__summary empleados-inline-summary">
+                      <div className="empleados-inline-summary__text">
                         {String(inlinePersonaForm.nombre ?? "").trim()
-                          ? "Persona nueva lista para guardar."
-                          : "Completa los datos de la persona nueva para continuar."}
+                          ? "Persona lista. Ahora completa sucursal, fecha de ingreso y salario base."
+                          : "Primero completa los datos de la persona para continuar."}
                       </div>
-                      <div className="d-flex flex-wrap gap-2 align-items-center">
-                        <span className="badge text-bg-light border">
+                      <div className="empleados-inline-summary__chips">
+                        <span className="empleados-inline-summary__chip">
                           {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
                           {String(inlinePersonaForm.apellido ?? "").trim()}
                         </span>
-                        <span className="badge text-bg-light border">
+                        <span className="empleados-inline-summary__chip">
                           DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
                         </span>
                       </div>
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline-secondary mt-2"
+                        className="btn btn-sm empleados-inline-summary__action"
                         onClick={() => setShowPersonaCreateModal(true)}
                         disabled={actionLoading || Boolean(deletingId)}
                       >
                         {String(inlinePersonaForm.nombre ?? "").trim()
-                          ? "Editar datos de persona"
-                          : "Completar datos de persona"}
+                          ? "Revisar persona creada"
+                          : "Abrir formulario de persona"}
                       </button>
                     </div>
                   }
@@ -1836,7 +1994,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                     inputId="empleado-sucursal-select"
                     className={`empleados-select ${errors.id_sucursal ? "is-invalid" : ""}`}
                     classNamePrefix="empleados-select"
-                    placeholder="Seleccione"
+                    placeholder="Selecciona una sucursal"
                     isSearchable
                     isClearable
                     options={sucursalSelectOptions}
@@ -1917,12 +2075,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
               </div>
 
               <div className="col-12 col-md-6">
-                <label className="form-label text-light text-opacity-75">Fecha ingreso</label>
+                <label className="form-label text-light text-opacity-75">Fecha de ingreso</label>
                 <input
                   type="date"
                   className={`form-control ${errors.fecha_ingreso ? "is-invalid" : ""}`}
                   value={form.fecha_ingreso}
                   onChange={(event) => setForm((state) => ({ ...state, fecha_ingreso: event.target.value }))}
+                  max={todayDate}
                 />
                 {errors.fecha_ingreso && <div className="invalid-feedback d-block">{errors.fecha_ingreso}</div>}
               </div>
@@ -2030,7 +2189,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
               className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
               disabled={actionLoading || !!deletingId}
             >
-              {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}
+              {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear empleado" : "Guardar cambios"}
             </button>
           </div>
         </form>
