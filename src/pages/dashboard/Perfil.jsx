@@ -223,7 +223,7 @@ const Perfil = () => {
               <div className="card-body">
                 <div className="perfil-panel__header">
                   <div>
-                    <h5 className="mb-1">Informacion personal</h5>
+                    <h5 className="mb-1">Información personal</h5>
                     <p className="text-muted mb-0 small">
                       Actualice sus datos de contacto y dirección para mantener la cuenta al día.
                     </p>
@@ -254,7 +254,7 @@ const Perfil = () => {
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label">Telefono</label>
+                    <label className="form-label">Teléfono</label>
                     <input
                       className="form-control"
                       value={form.telefono}
@@ -276,7 +276,7 @@ const Perfil = () => {
                   </div>
 
                   <div className="col-12">
-                    <label className="form-label">Direccion</label>
+                    <label className="form-label">Dirección</label>
                     <input
                       className="form-control"
                       value={form.direccion}
@@ -306,11 +306,11 @@ const Perfil = () => {
 
                   <div className="perfil-side__rows mt-3">
                     <div className="perfil-side__row">
-                      <span>Telefono</span>
+                      <span>Teléfono</span>
                       <strong>{perfilVisible.telefono?.trim() || "-"}</strong>
                     </div>
                     <div className="perfil-side__row">
-                      <span>Direccion</span>
+                      <span>Dirección</span>
                       <strong>{perfilVisible.direccion?.trim() || "-"}</strong>
                     </div>
                   </div>
@@ -333,7 +333,7 @@ const Perfil = () => {
 
               <div className="card shadow-sm perfil-panel perfil-panel--warn">
                 <div className="card-body">
-                  <h6 className="perfil-side__title">Sesion actual</h6>
+                  <h6 className="perfil-side__title">Sesión actual</h6>
                   {ultimo ? (
                     <ul className="list-unstyled mb-0 small perfil-side__access-list">
                       <li>
@@ -358,7 +358,7 @@ const Perfil = () => {
                       </li>
                     </ul>
                   ) : (
-                    <div className="text-muted small">No hay registros de acceso aun.</div>
+                    <div className="text-muted small">No hay registros de acceso aún.</div>
                   )}
                 </div>
               </div>

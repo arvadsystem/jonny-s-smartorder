@@ -276,9 +276,10 @@
 }
 
 .perfil-page__role-badge {
-  background: rgba(45, 107, 102, 0.14) !important;
-  border: 1px solid rgba(45, 107, 102, 0.34);
-  color: #1f5a56;
+  --bs-badge-color: #174542;
+  background: rgba(45, 107, 102, 0.22) !important;
+  border: 1px solid rgba(45, 107, 102, 0.45);
+  color: #174542 !important;
   font-weight: 700;
 }
 

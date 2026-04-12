@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { perfilService } from "../../services/perfilService";
 import usePasswordPolicies from "../../hooks/usePasswordPolicies";
+import { useAuth } from "../../hooks/useAuth";
 import { validatePassword } from "../../utils/passwordValidator";
 import SecurityConfirmAction from "./seguridad/components/SecurityConfirmAction";
 import "./cambio-contrasena.css";
@@ -54,6 +55,7 @@ const sideCardWarnStyle = {
 };
 
 const CambioContrasena = () => {
+  const { user } = useAuth();
   const [pw, setPw] = useState({
     actual: "",
     nueva: "",
@@ -111,6 +113,11 @@ const CambioContrasena = () => {
       : lastPasswordChangeDays <= 0
         ? "Hoy"
         : `Hace ${lastPasswordChangeDays} ${lastPasswordChangeDays === 1 ? "d\u00eda" : "d\u00edas"}`;
+  const showRecommendation =
+    !Boolean(user?.password_policy_excluded) &&
+    (lastPasswordChangeDays !== null
+      ? lastPasswordChangeDays >= 30
+      : Boolean(user?.password_recommend_change));
 
   const updatePwField = (field) => (event) => {
     const value = event.target.value;
@@ -212,7 +219,7 @@ const CambioContrasena = () => {
             <div className="password-page__last-change" aria-label="\u00daltimo cambio">
               <span>&Uacute;ltimo cambio</span>
               <strong>{lastPasswordChangeText}</strong>
-              <small>Se recomienda actualizar</small>
+              {showRecommendation ? <small>Se recomienda actualizar</small> : null}
             </div>
           </div>
         </div>
@@ -334,9 +341,9 @@ const CambioContrasena = () => {
                       ? "Completa y cumple las pol\u00edticas para habilitar"
                       : "Cambiar contrase\u00f1a"
                   }
-                  title="CONFIRMAR CAMBIO DE CONTRASE\u00d1A"
-                  subtitle="Se actualizar\u00e1 la contrase\u00f1a de tu cuenta."
-                  question="\u00bfDeseas actualizar la contrase\u00f1a?"
+                  title={"CONFIRMAR CAMBIO DE CONTRASEÑA"}
+                  subtitle={"Se actualizará la contraseña de tu cuenta."}
+                  question={"¿Deseas actualizar la contraseña?"}
                   confirmLabel="Confirmar"
                   cancelLabel="Cancelar"
                   onConfirm={onChangePassword}

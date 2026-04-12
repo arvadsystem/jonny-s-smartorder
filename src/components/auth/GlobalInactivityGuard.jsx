@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useInactivityTimer from '../../hooks/useInactivityTimer';
 import { useAuth } from '../../hooks/useAuth';
+import authService from '../../services/authService';
 import '../layout/inactivity-timeout-modal.css';
 
 const INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000;
@@ -15,6 +16,7 @@ const GlobalInactivityGuard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const [isKeepingAlive, setKeepingAlive] = useState(false);
 
   const enabled = Boolean(user) && isProtectedPath(location.pathname);
 
@@ -30,6 +32,20 @@ const GlobalInactivityGuard = () => {
     warningMs: WARNING_BEFORE_MS,
     onTimeout: closeSessionLocally
   });
+
+  const handleKeepAlive = useCallback(async () => {
+    if (isKeepingAlive) return;
+
+    setKeepingAlive(true);
+    try {
+      await authService.me({ noCache: true, timeoutMs: 8000 });
+      inactivity.keepAlive();
+    } catch {
+      closeSessionLocally();
+    } finally {
+      setKeepingAlive(false);
+    }
+  }, [closeSessionLocally, inactivity, isKeepingAlive]);
 
   useEffect(() => {
     if (!enabled || inactivity.isWarningVisible) return;
@@ -87,7 +103,8 @@ const GlobalInactivityGuard = () => {
           <button
             type="button"
             className="btn inactivity-confirm-btn"
-            onClick={inactivity.keepAlive}
+            onClick={handleKeepAlive}
+            disabled={isKeepingAlive}
           >
             Seguir conectado
           </button>
