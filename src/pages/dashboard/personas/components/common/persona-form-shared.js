@@ -178,7 +178,7 @@ export const validatePersonaField = (fieldName, value) => {
     }
     case "id_correo":
       if (trimmedValue && !EMAIL_WITH_DOMAIN_REGEX.test(trimmedValue)) {
-        return "Ingrese un correo válido con dominio (ej: usuario@dominio.com)";
+        return "Ingrese un correo valido con dominio (ej: usuario@dominio.com)";
       }
       return "";
     default:

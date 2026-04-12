@@ -140,20 +140,26 @@ const fetchGetWithSignal = async (endpoint, signal) => {
   });
 
   const payload = await readResponseBody(response);
+  const buildHttpError = (fallbackMessage) => {
+    const error = new Error(getErrorMessage(payload, fallbackMessage));
+    error.status = response.status;
+    error.payload = payload;
+    return error;
+  };
 
   if (response.status === 401) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }
-    throw new Error(getErrorMessage(payload, 'No autorizado'));
+    throw buildHttpError('No autorizado');
   }
 
   if (response.status === 403) {
-    throw new Error(getErrorMessage(payload, 'Acceso denegado'));
+    throw buildHttpError('Acceso denegado');
   }
 
   if (!response.ok) {
-    throw new Error(getErrorMessage(payload, `Error HTTP: ${response.status}`));
+    throw buildHttpError(`Error HTTP: ${response.status}`);
   }
 
   if (response.status === 204) return null;
@@ -314,7 +320,7 @@ export const personaService = {
   // ==============================
   // EMPLEADOS (SUBMODULO PERSONAS)
   // ==============================
-  getEmpleados: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal } = {}) => {
+  getEmpleados: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal, signal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -329,12 +335,16 @@ export const personaService = {
       params.set('id_sucursal', String(id_sucursal).trim());
     }
     const query = params.toString();
+    const requestGet = (endpoint) =>
+      signal
+        ? fetchGetWithSignal(endpoint, signal)
+        : apiFetch(endpoint, 'GET');
 
     try {
-      return await apiFetch(`/empleados?${query}`, 'GET');
+      return await requestGet(`/empleados?${query}`);
     } catch (error) {
       if (error?.status === 404) {
-        return apiFetch(`/empleados-detalle?${query}`, 'GET');
+        return requestGet(`/empleados-detalle?${query}`);
       }
       throw error;
     }
@@ -396,7 +406,7 @@ export const personaService = {
   // ==============================
   // CLIENTES (SUBMODULO PERSONAS)
   // ==============================
-  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal } = {}) => {
+  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal, signal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -411,33 +421,72 @@ export const personaService = {
       params.set('id_sucursal', String(id_sucursal).trim());
     }
     const query = params.toString();
+    const requestGet = (endpoint) =>
+      signal
+        ? fetchGetWithSignal(endpoint, signal)
+        : apiFetch(endpoint, 'GET', null, { noCache: true });
 
     try {
-      return await apiFetch(`/clientes?${query}`, 'GET');
+      return await requestGet(`/clientes?${query}`);
     } catch (error) {
       if (error?.status === 404) {
-        return apiFetch(`/clientes-detalle?${query}`, 'GET');
+        return requestGet(`/clientes-detalle?${query}`);
       }
       throw error;
     }
   },
 
-  createCliente: (data) =>
-    apiFetch('/clientes', 'POST', pickAllowedFields(data, [
+  createCliente: (data) => {
+    const payload = pickAllowedFields(data, [
       'fecha_ingreso',
       'puntos',
       'id_tipo_cliente',
       'id_persona',
+      'id_empresa_cliente',
       'id_empresa',
       'id_sucursal',
       'estado'
-    ])),
+    ]);
+    if (
+      payload.id_empresa_cliente === undefined
+      && payload.id_empresa !== undefined
+      && payload.id_empresa !== null
+      && String(payload.id_empresa).trim() !== ''
+    ) {
+      payload.id_empresa_cliente = payload.id_empresa;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'id_empresa')) {
+      delete payload.id_empresa;
+    }
+    return apiFetch('/clientes', 'POST', payload);
+  },
 
-  createClienteAtomico: (payload = {}) =>
-    apiFetch('/clientes/atomico', 'POST', {
-      ...(isPlainObject(payload) ? payload : {}),
+  createClienteAtomico: (payload = {}) => {
+    const requestPayload = isPlainObject(payload) ? { ...payload } : {};
+    const clientePayload = isPlainObject(requestPayload.cliente)
+      ? { ...requestPayload.cliente }
+      : null;
+
+    if (clientePayload) {
+      if (
+        clientePayload.id_empresa_cliente === undefined
+        && clientePayload.id_empresa !== undefined
+        && clientePayload.id_empresa !== null
+        && String(clientePayload.id_empresa).trim() !== ''
+      ) {
+        clientePayload.id_empresa_cliente = clientePayload.id_empresa;
+      }
+      if (Object.prototype.hasOwnProperty.call(clientePayload, 'id_empresa')) {
+        delete clientePayload.id_empresa;
+      }
+      requestPayload.cliente = clientePayload;
+    }
+
+    return apiFetch('/clientes/atomico', 'POST', {
+      ...requestPayload,
       rbac_context: 'clientes'
-    }),
+    });
+  },
 
   updateCliente: async (id, updates = {}) => {
     if (isPlainObject(updates) && Object.prototype.hasOwnProperty.call(updates, 'campo')) {
@@ -454,6 +503,14 @@ export const personaService = {
     const payload = Object.fromEntries(
       Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined)
     );
+    if (
+      payload.id_empresa_cliente === undefined
+      && payload.id_empresa !== undefined
+      && payload.id_empresa !== null
+      && String(payload.id_empresa).trim() !== ''
+    ) {
+      payload.id_empresa_cliente = payload.id_empresa;
+    }
     if (!Object.keys(payload).length) return { error: false, message: 'Sin cambios para actualizar' };
 
     return apiFetch(`/clientes/${id}`, 'PUT', payload);

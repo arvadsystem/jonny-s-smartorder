@@ -396,6 +396,135 @@
   cursor: not-allowed;
 }
 
+.personas-branch-context--enhanced {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 680px);
+  align-items: center;
+  gap: 1rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(189, 154, 124, 0.42);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 251, 244, 0.96) 0%, rgba(249, 244, 235, 0.92) 100%);
+}
+
+.personas-branch-context--enhanced .personas-branch-context__title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.78rem;
+  min-width: 0;
+}
+
+.personas-branch-context--enhanced .personas-branch-context__title-icon {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  color: #fff;
+  background: linear-gradient(145deg, #9f581c, #c77931);
+  box-shadow: 0 12px 24px rgba(159, 88, 28, 0.28);
+}
+
+.personas-branch-context--enhanced .personas-branch-context__title {
+  color: var(--c-text, #2f1a10);
+  font-size: clamp(1.18rem, 1vw + 1rem, 2.1rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: 0.01em;
+}
+
+.personas-branch-context--enhanced .personas-branch-context__field--enhanced {
+  min-width: 0;
+}
+
+.personas-branch-context--enhanced .personas-branch-context__rs {
+  width: 100%;
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__control {
+  min-height: 64px;
+  border-radius: 17px;
+  border: 1px solid rgba(188, 154, 125, 0.56);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__control--is-focused {
+  border-color: rgba(163, 103, 63, 0.76);
+  box-shadow: 0 0 0 0.22rem rgba(170, 118, 82, 0.2);
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__control:hover {
+  border-color: rgba(163, 103, 63, 0.76);
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__value-container {
+  padding: 0.5rem 0.8rem;
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__single-value,
+.personas-branch-context--enhanced .personas-sucursal-rs__placeholder {
+  font-size: 1.06rem;
+  font-weight: 700;
+  color: #2f1a10;
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__placeholder {
+  color: rgba(74, 52, 41, 0.58);
+  font-weight: 600;
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__indicator-separator {
+  background: rgba(172, 145, 124, 0.52);
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__clear-indicator,
+.personas-branch-context--enhanced .personas-sucursal-rs__dropdown-indicator {
+  color: rgba(138, 104, 79, 0.88);
+  padding: 0 10px;
+}
+
+.personas-branch-context--enhanced .personas-sucursal-rs__clear-indicator:hover,
+.personas-branch-context--enhanced .personas-sucursal-rs__dropdown-indicator:hover {
+  color: rgba(112, 78, 55, 0.95);
+}
+
+.personas-sucursal-rs__menu-portal {
+  z-index: 3200 !important;
+}
+
+.personas-sucursal-rs__menu {
+  border-radius: 12px;
+  border: 1px solid rgba(199, 175, 156, 0.6);
+  box-shadow: 0 14px 30px rgba(54, 32, 19, 0.2);
+}
+
+.personas-sucursal-rs__option {
+  font-size: 1rem;
+  color: #2f1a10;
+  padding: 11px 14px;
+}
+
+.personas-sucursal-rs__option--is-selected {
+  background: rgba(236, 218, 198, 0.96) !important;
+  color: #2f1a10 !important;
+  font-weight: 700;
+}
+
+.personas-sucursal-rs__option--is-focused {
+  background: rgba(245, 235, 221, 0.95) !important;
+  color: #2f1a10 !important;
+}
+
+.personas-sucursal-rs__option--is-selected.personas-sucursal-rs__option--is-focused {
+  background: rgba(236, 218, 198, 0.96) !important;
+  color: #2f1a10 !important;
+}
+
 .personas-page .personas-page__toolbar {
   align-items: flex-start;
 }
@@ -412,6 +541,25 @@
 
   .personas-branch-context--planillas .personas-branch-context__select {
     width: 100%;
+  }
+
+  .personas-branch-context--enhanced {
+    grid-template-columns: 1fr;
+    gap: 0.72rem;
+  }
+
+  .personas-branch-context--enhanced .personas-branch-context__title {
+    font-size: 1.72rem;
+  }
+
+  .personas-branch-context--enhanced .personas-sucursal-rs__control {
+    min-height: 56px;
+    border-radius: 15px;
+  }
+
+  .personas-branch-context--enhanced .personas-sucursal-rs__single-value,
+  .personas-branch-context--enhanced .personas-sucursal-rs__placeholder {
+    font-size: 0.98rem;
   }
 }
 
@@ -549,16 +697,119 @@
 }
 
 .personas-page .personas-page__pagination {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 0.62rem;
+  border-radius: 18px;
+  border: 1px solid rgba(194, 156, 129, 0.34);
+  background:
+    radial-gradient(circle at top right, rgba(255, 244, 225, 0.58), transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(252, 248, 241, 0.95));
+  box-shadow:
+    0 12px 24px rgba(86, 58, 38, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
-.personas-page .personas-page__pagination span {
-  color: rgba(82, 44, 34, 0.78);
+.personas-page .personas-page__pagination::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(196, 146, 103, 0.08), rgba(201, 162, 130, 0.02), rgba(196, 146, 103, 0.08));
+}
+
+.personas-page .personas-page__pagination > span {
+  position: relative;
+  z-index: 1;
+  margin: 0 auto;
+  padding: 0.52rem 1.25rem;
+  min-width: clamp(170px, 24vw, 230px);
+  border-radius: 999px;
+  border: 1px solid rgba(186, 147, 115, 0.42);
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(249, 241, 230, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 6px 16px rgba(103, 70, 46, 0.1);
+  color: rgba(77, 45, 32, 0.88);
+  text-align: center;
+  font-size: clamp(0.97rem, 1.15vw, 1.06rem);
+  font-weight: 800;
+  letter-spacing: 0.012em;
+}
+
+.personas-page .personas-page__pagination .btn {
+  position: relative;
+  z-index: 1;
+  min-width: clamp(132px, 16vw, 158px);
+  min-height: 48px;
+  padding: 0.56rem 1.08rem;
+  border-radius: 14px;
+  border: 1px solid rgba(174, 136, 107, 0.5) !important;
+  background: linear-gradient(180deg, #fffdfb, #f6eee1);
+  color: #5a3725;
   font-weight: 700;
+  font-size: 1.02rem;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  box-shadow:
+    0 7px 16px rgba(93, 62, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.personas-page .personas-page__pagination .btn i {
+  font-size: 0.95rem;
+  opacity: 0.88;
+  transition: transform 180ms ease;
+}
+
+.personas-page .personas-page__pagination .btn:hover:not(:disabled) {
+  border-color: rgba(164, 116, 79, 0.72) !important;
+  background: linear-gradient(180deg, #fff7ec, #f2e2cc);
+  color: #4a2818;
+  box-shadow:
+    0 11px 22px rgba(92, 58, 35, 0.17),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+
+.personas-page .personas-page__pagination .btn:hover:not(:disabled) .bi-chevron-left {
+  transform: translateX(-2px);
+}
+
+.personas-page .personas-page__pagination .btn:hover:not(:disabled) .bi-chevron-right {
+  transform: translateX(2px);
+}
+
+.personas-page .personas-page__pagination .btn:focus-visible {
+  outline: none;
+  border-color: rgba(134, 88, 57, 0.9) !important;
+  box-shadow:
+    0 0 0 3px rgba(193, 148, 110, 0.28),
+    0 10px 20px rgba(92, 58, 35, 0.15);
+}
+
+.personas-page .personas-page__pagination .btn:disabled {
+  opacity: 1;
+  color: rgba(143, 126, 113, 0.88);
+  border-color: rgba(201, 181, 163, 0.56) !important;
+  background: linear-gradient(180deg, #f8f6f2, #f1ede6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transform: none;
+  cursor: not-allowed;
 }
 
 .personas-page .personas-page__table-card {
@@ -657,9 +908,16 @@
   .personas-page .personas-page__pagination {
     flex-direction: column;
     align-items: stretch;
+    padding: 0.66rem;
   }
 
   .personas-page .personas-page__pagination .btn {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .personas-page .personas-page__pagination > span {
+    min-width: 0;
     width: 100%;
   }
 }
