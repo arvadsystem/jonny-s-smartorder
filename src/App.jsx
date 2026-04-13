@@ -31,7 +31,6 @@ const Planillas = lazy(() => import('./pages/dashboard/personas/Planillas'));
 const Fidelizacion = lazy(() => import('./pages/dashboard/Fidelizacion'));
 const Menu = lazy(() => import('./pages/dashboard/menu/Menu'));
 
-const Carrito = lazy(() => import('./pages/public/Carrito'));
 const PublicMenuRoutes = lazy(() =>
   import('./modules/public-menu').then((module) => ({ default: module.PublicMenuRoutes }))
 );
@@ -70,10 +69,8 @@ function App() {
         <Route path="/" element={<Navigate to="/menu-publico" replace />} />
         <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
 
-        {/* Mundo publico (sin auth requerida) */}
-        <Route element={<PublicLayout />}>
-          <Route path="/carrito" element={<Carrito />} />
-        </Route>
+        {/* Compatibilidad de enlace legado: carrito antiguo redirige al flujo nuevo de menu publico. */}
+        <Route path="/carrito" element={<Navigate to="/menu-publico/menu" replace />} />
 
         {/* Rutas protegidas staff */}
         <Route element={<ProtectedRoute />}>

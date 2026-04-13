@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import SoldOutBadge from './SoldOutBadge';
 import { requiresItemConfiguration } from '../../utils/publicMenuItemConfig';
+import { isPublicMenuForceAvailableDemoEnabled } from '../../utils/publicMenuDemoFlags';
 
 const currencyFormatter = new Intl.NumberFormat('es-HN', {
   style: 'currency',
@@ -10,8 +11,10 @@ const currencyFormatter = new Intl.NumberFormat('es-HN', {
 
 // Tarjeta de item del catalogo publico con control directo de carrito.
 const ProductCard = ({ product, cartQuantity = 0, onAdd, onIncrease, onDecrease }) => {
+  // Modo demo visual: evita pintar "agotado" aunque backend lo reporte.
+  const forceAvailableDemo = isPublicMenuForceAvailableDemoEnabled();
   const finalPrice = product?.precio?.final;
-  const isSoldOut = !product?.disponibilidad?.available;
+  const isSoldOut = !forceAvailableDemo && !product?.disponibilidad?.available;
   const idDetalleMenu = Number(product?.id_detalle_menu || 0);
   const quantity = Number(cartQuantity || 0);
   const hasInCart = quantity > 0;

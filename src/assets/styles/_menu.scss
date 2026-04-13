@@ -1371,6 +1371,22 @@
   color: rgba(82, 44, 34, 0.84);
 }
 
+.menu-pub-admin__shared-impact {
+  border: 1px solid rgba(217, 148, 51, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 244, 224, 0.75);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.menu-pub-admin__shared-impact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
 
 .menu-pub-admin__table-wrap {
   border: 1px solid rgba(157, 150, 112, 0.3);

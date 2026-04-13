@@ -17,13 +17,38 @@ const toPositiveInt = (value, fallback = 1) => {
   return Math.floor(parsed);
 };
 
+const CART_SNAPSHOT_SCHEMA_VERSION = 2;
+
+const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const isValidCartLine = (line) => {
+  if (!isPlainObject(line)) return false;
+
+  const idDetalle = Number(line?.id_detalle_menu || 0);
+  const cantidad = Number(line?.cantidad || 0);
+  const precioUnitario = Number(line?.precio_unitario);
+  const subtotal = Number(line?.subtotal);
+  const lineKey = String(line?.line_key || '').trim();
+
+  if (!idDetalle || !lineKey) return false;
+  if (!Number.isInteger(cantidad) || cantidad <= 0) return false;
+  if (!Number.isFinite(precioUnitario) || precioUnitario < 0) return false;
+  if (!Number.isFinite(subtotal) || subtotal < 0) return false;
+  if (!Array.isArray(line?.extras)) return false;
+  if (!Array.isArray(line?.salsas_por_unidad)) return false;
+
+  return true;
+};
+
 const getStorageSnapshot = () => {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(PUBLIC_MENU_CART_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : null;
+    if (!isPlainObject(parsed)) return null;
+    if (Number(parsed?.schemaVersion || 0) !== CART_SNAPSHOT_SCHEMA_VERSION) return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -154,13 +179,14 @@ export const usePublicMenuCart = ({ branch }) => {
       return;
     }
 
-    const safeItems = Array.isArray(snapshot.items) ? snapshot.items : [];
+    const safeItems = (Array.isArray(snapshot.items) ? snapshot.items : []).filter(isValidCartLine);
     setItems(safeItems);
   }, [branchId]);
 
   useEffect(() => {
     if (!branchId) return;
     persistSnapshot({
+      schemaVersion: CART_SNAPSHOT_SCHEMA_VERSION,
       branchId,
       branchSlug,
       items

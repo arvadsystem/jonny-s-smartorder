@@ -102,7 +102,7 @@ const PublicMenuFlowShell = () => {
               <button
                 type="button"
                 className="pm-shell__header-btn"
-                onClick={() => navigate('/auth/login')}
+                onClick={() => navigate('/auth/login?from=public-menu')}
               >
                 <i className="bi bi-person-fill" aria-hidden="true" />
                 <span>Iniciar sesion</span>

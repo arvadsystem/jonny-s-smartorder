@@ -130,6 +130,11 @@
   color: rgba(255, 240, 224, 0.84);
   font-size: 0.84rem;
   line-height: 1.25;
+  /* Evita que subtitulos largos rompan el layout del header en moviles. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .pm-header__meta {
@@ -501,6 +506,85 @@
 .pm-state-block--warning {
   border-color: #e2c58f;
   background: #fff8eb;
+}
+
+.pm-skeleton {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pm-skeleton__hero,
+.pm-skeleton__toolbar {
+  border-radius: 18px;
+  border: 1px solid #eadcca;
+  background: linear-gradient(90deg, #fff7eb 25%, #fff1df 38%, #fff7eb 55%);
+  background-size: 220% 100%;
+  animation: pmSkeletonShimmer 1.2s linear infinite;
+}
+
+.pm-skeleton__hero {
+  min-height: 180px;
+}
+
+.pm-skeleton__toolbar {
+  min-height: 62px;
+}
+
+.pm-skeleton__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.7rem;
+}
+
+.pm-skeleton-card {
+  border-radius: 18px;
+  border: 1px solid #eadcca;
+  padding: 0.7rem;
+  background: #fffdf8;
+  box-shadow: 0 12px 24px rgba(32, 17, 8, 0.08);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pm-skeleton-card__media,
+.pm-skeleton-card__line,
+.pm-skeleton-card__button {
+  border-radius: 12px;
+  background: linear-gradient(90deg, #fff3e2 25%, #ffe9cf 38%, #fff3e2 55%);
+  background-size: 220% 100%;
+  animation: pmSkeletonShimmer 1.2s linear infinite;
+}
+
+.pm-skeleton-card__media {
+  height: 150px;
+}
+
+.pm-skeleton-card__line {
+  height: 12px;
+}
+
+.pm-skeleton-card__line.is-title {
+  height: 16px;
+  width: 74%;
+}
+
+.pm-skeleton-card__line.is-short {
+  width: 56%;
+}
+
+.pm-skeleton-card__button {
+  height: 40px;
+  border-radius: 999px;
+  margin-top: 0.2rem;
+}
+
+@keyframes pmSkeletonShimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
 }
 
 .pm-catalog-screen {
@@ -953,6 +1037,9 @@
 .pm-product-card__meta {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
   margin-top: 0.55rem;
   margin-bottom: 0.65rem;
   color: #4a3d33;
@@ -964,6 +1051,11 @@
 
 .pm-product-card__time {
   font-size: 0.8rem;
+  /* Evita recorte del tipo (COMBO/RECETA) en el borde derecho. */
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding-right: 0.12rem;
 }
 
 .pm-product-card__cta {
@@ -1556,33 +1648,61 @@
 
 @media (max-width: 767.98px) {
   .pm-shell__content {
-    padding: 0.9rem 0.85rem 1.4rem;
+    /* Layout mobile casi full-bleed para evitar sensacion de columna angosta. */
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0.68rem 0.35rem 1.35rem;
   }
 
   .pm-header__row {
     align-items: flex-start;
     flex-wrap: wrap;
+    gap: 0.55rem;
   }
 
   .pm-header__actions {
     width: 100%;
     margin-left: 0;
-    margin-top: 0.45rem;
+    margin-top: 0.4rem;
   }
 
   .pm-shell__header-actions {
     width: 100%;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.45rem;
+    gap: 0.5rem;
   }
 
   .pm-shell__header-btn {
     width: 100%;
-    min-height: 36px;
-    padding: 0.38rem 0.5rem;
-    font-size: 0.8rem;
-    justify-content: flex-start;
+    min-height: 38px;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.82rem;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .pm-header__title {
+    font-size: 1.08rem;
+  }
+
+  .pm-header__subtitle {
+    font-size: 0.86rem;
+    line-height: 1.32;
+  }
+
+  .pm-header__meta {
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+  }
+
+  /* En movil el carrito ya no invade el bloque de titulo/subtitulo. */
+  .pm-cart-fab {
+    top: auto;
+    bottom: calc(0.9rem + env(safe-area-inset-bottom, 0px));
+    right: 0.85rem;
+    z-index: 45;
   }
 
   .pm-branch-banner,
@@ -1591,23 +1711,47 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .pm-category-splash,
+  .pm-category-splash__ring,
+  .pm-category-splash__logo,
+  .pm-category-content,
+  .pm-skeleton__hero,
+  .pm-skeleton__toolbar,
+  .pm-skeleton-card__media,
+  .pm-skeleton-card__line,
+  .pm-skeleton-card__button {
+    animation: none !important;
+  }
+}
+
 @media (max-width: 575.98px) {
+  .pm-shell__content {
+    /* Margen horizontal minimo en telefono. */
+    padding: 0.58rem 0.22rem 1.25rem;
+  }
+
   .pm-header__row {
     padding: 0.75rem 0.82rem;
   }
 
   .pm-header__title {
-    font-size: 1rem;
+    font-size: 1.04rem;
   }
 
   .pm-header__subtitle {
-    font-size: 0.8rem;
+    font-size: 0.84rem;
   }
 
   .pm-shell__header-btn {
-    min-height: 34px;
-    font-size: 0.76rem;
+    min-height: 35px;
+    font-size: 0.78rem;
     padding: 0.34rem 0.45rem;
+  }
+
+  /* Reducimos ruido visual ocultando meta larga de sucursal en moviles pequenos. */
+  .pm-header__meta {
+    display: none;
   }
 
   .pm-screen__title {
@@ -1632,13 +1776,13 @@
   .pm-cart-fab {
     right: 0.7rem;
     left: auto;
-    padding: 0.5rem 0.78rem;
+    padding: 0.52rem 0.8rem;
     min-height: 46px;
-    gap: 0.42rem;
+    gap: 0.4rem;
   }
 
   .pm-cart-fab span {
-    font-size: 0.9rem;
+    font-size: 0.88rem;
   }
 
   .pm-cart-sheet__item {
@@ -1655,6 +1799,36 @@
 }
 
 @media (max-width: 420px) {
+  .pm-shell__content {
+    padding: 0.52rem 0.14rem 1.2rem;
+  }
+
+  /* Boton de carrito compacto para no tapar contenido en anchos ultra estrechos. */
+  .pm-cart-fab {
+    width: 50px;
+    min-width: 50px;
+    height: 50px;
+    min-height: 50px;
+    border-radius: 999px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .pm-cart-fab span {
+    display: none;
+  }
+
+  .pm-cart-fab__count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    font-size: 0.66rem;
+    padding: 0 0.2rem;
+  }
+
   .pm-sticky-bar__actions {
     grid-template-columns: 1fr;
   }
@@ -1669,6 +1843,10 @@
 }
 
 @media (min-width: 768px) {
+  .pm-skeleton__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .pm-branch-order-selector__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1712,6 +1890,10 @@
   }
 
   .pm-product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-skeleton__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
