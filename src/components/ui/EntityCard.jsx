@@ -28,7 +28,7 @@ export default function EntityCard({
       <div className="inv-catpro-item-top">
         <div className="inv-cat-card__title-wrap">
           <span className={`inv-cat-card__icon ${titleIconClassName}`.trim()} aria-hidden="true">
-            {titleIconNode ?? <i className={titleIconClass} />}
+            {titleIconNode ? titleIconNode : <i className={titleIconClass} />}
           </span>
           <div>
             <div className="fw-bold">{title}</div>
