@@ -1,3 +1,7 @@
+/**
+ * CocinaToolbar — Barra superior del KDS
+ * Usa clases propias del módulo (kds-*) en lugar de clases de inventario.
+ */
 export default function CocinaToolbar({
   search,
   onSearchChange,
@@ -5,45 +9,59 @@ export default function CocinaToolbar({
   refreshing,
   canRefresh,
   canSearch,
-  isRealtimeConnected
+  isRealtimeConnected,
+  isFullscreen,
+  onToggleFullscreen
 }) {
   return (
-    <div className="inv-prod-header inv-cat-v2__header">
-      <div className="inv-prod-title-wrap">
-        <div className="inv-prod-title-row">
-          <i className="bi bi-display inv-prod-title-icon" />
-          <span className="inv-prod-title">Cocina</span>
+    <header className="kds-toolbar">
+      <div className="kds-toolbar__brand">
+        <div className="kds-toolbar__icon" aria-hidden="true">
+          <i className="bi bi-display" />
         </div>
-        <div className="inv-prod-subtitle">Kitchen Display System</div>
+        <div>
+          <div className="kds-toolbar__title">Kitchen Display</div>
+          <div className="kds-toolbar__subtitle">KDS · Jonny's SmartOrder</div>
+        </div>
       </div>
 
-      <div className="inv-prod-header-actions inv-ins-header-actions inv-cat-v2__actions">
-        <label className="inv-ins-search" aria-label="Buscar pedido de cocina">
-          <i className="bi bi-search" />
+      <div className="kds-toolbar__actions">
+        <label className="kds-search" aria-label="Buscar pedido de cocina">
+          <i className="bi bi-search" style={{ fontSize: '0.85rem' }} />
           <input
             type="search"
-            placeholder="Buscar por ticket, cliente o item..."
+            placeholder="Ticket, cliente, ítem..."
             value={search}
             disabled={!canSearch}
             onChange={(event) => onSearchChange(event.target.value)}
           />
         </label>
-        
-        <div className={`cocina-toolbar__realtime ${isRealtimeConnected ? 'is-connected' : ''}`}>
-          <span className="cocina-toolbar__dot" />
+
+        <div className={`kds-realtime ${isRealtimeConnected ? 'is-connected' : ''}`}>
+          <span className="kds-realtime__dot" />
           <span>{isRealtimeConnected ? 'En tiempo real' : 'Reconectando...'}</span>
         </div>
 
         <button
           type="button"
-          className={`inv-prod-toolbar-btn ${refreshing ? 'is-on' : ''}`}
-          disabled={!canRefresh}
+          className={`kds-btn ${refreshing ? 'is-spinning' : ''}`}
+          disabled={!canRefresh || refreshing}
           onClick={onRefresh}
+          title="Actualizar tablero"
         >
-          <i className={`bi ${refreshing ? 'bi-arrow-repeat' : 'bi-arrow-clockwise'}`} />
+          <i className="bi bi-arrow-clockwise" />
           <span>{refreshing ? 'Actualizando' : 'Actualizar'}</span>
         </button>
+
+        <button
+          type="button"
+          className="kds-btn is-fullscreen"
+          onClick={onToggleFullscreen}
+          title={isFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+        >
+          <i className={`bi ${isFullscreen ? 'bi-fullscreen-exit' : 'bi-fullscreen'}`} />
+        </button>
       </div>
-    </div>
+    </header>
   );
 }

@@ -5,19 +5,19 @@ export const BOARD_COLUMNS = Object.freeze([
     title: 'Pendientes',
     actionLabel: 'Empezar',
     actionStatus: 'EN_PREPARACION',
-    buttonClass: 'is-brown',
+    buttonClass: 'is-start',
     badgeClass: 'is-pending',
-    icon: 'bi bi-play'
+    icon: 'bi bi-play-fill'
   },
   {
     key: 'EN_PREPARACION',
     statusCode: 'EN_PREPARACION',
-    title: 'En preparacion',
+    title: 'En preparación',
     actionLabel: 'Listo',
     actionStatus: 'LISTO_PARA_ENTREGA',
-    buttonClass: 'is-green',
+    buttonClass: 'is-ready',
     badgeClass: 'is-prep',
-    icon: 'bi bi-check-circle'
+    icon: 'bi bi-check-circle-fill'
   },
   {
     key: 'LISTOS_PARA_ENTREGA',
@@ -25,9 +25,9 @@ export const BOARD_COLUMNS = Object.freeze([
     title: 'Listos para entrega',
     actionLabel: 'Entregar',
     actionStatus: 'COMPLETADO',
-    buttonClass: 'is-blue',
+    buttonClass: 'is-deliver',
     badgeClass: 'is-ready',
-    icon: 'bi bi-box-seam'
+    icon: 'bi bi-box-seam-fill'
   }
 ]);
 
@@ -158,8 +158,11 @@ export const normalizeKitchenOrder = (row) => {
     estado_codigo: estadoCodigo,
     columna_kds: columnaKds,
     tipo_servicio: String(row?.tipo_servicio ?? 'LOCAL'),
-    descripcion_pedido: String(row?.descripcion_pedido ?? ''),
-    descripcion_envio: String(row?.descripcion_envio ?? ''),
+    descripcion_pedido: row?.descripcion_pedido || null,
+    descripcion_envio: row?.descripcion_envio || null,
+    // Campos de expiración provenientes del backend
+    minutos_en_espera: row?.minutos_en_espera != null ? Number(row.minutos_en_espera) : null,
+    esta_proximo_a_expirar: Boolean(row?.esta_proximo_a_expirar),
     items: (Array.isArray(row?.items) ? row.items : []).map((item) => ({
       ...item,
       id_detalle: Number(item?.id_detalle ?? 0) || null,
@@ -167,8 +170,8 @@ export const normalizeKitchenOrder = (row) => {
       id_combo: Number(item?.id_combo ?? 0) || null,
       id_receta: Number(item?.id_receta ?? 0) || null,
       cantidad: Number(item?.cantidad ?? 0) || 0,
-      nombre_item: String(item?.nombre_item ?? 'Item'),
-      observacion: String(item?.observacion ?? '').trim(),
+      nombre_item: String(item?.nombre_item ?? 'Item de cocina'),
+      observacion: String(item?.observacion ?? '').trim() || null,
       modificaciones: inferModifications(item, row?.descripcion_pedido)
     }))
   };

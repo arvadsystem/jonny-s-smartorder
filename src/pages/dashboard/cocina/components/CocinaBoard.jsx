@@ -5,6 +5,7 @@ export default function CocinaBoard({
   canAdvancePedido,
   isSuperAdmin = false,
   canOpenDetail,
+  canDeliverPedido = false,
   groupedPedidos,
   now,
   mutatingIds,
@@ -12,7 +13,7 @@ export default function CocinaBoard({
   onOpenConfirm
 }) {
   return (
-    <div className="cocina-board">
+    <div className="kds-board">
       {BOARD_COLUMNS.map((column) => (
         <CocinaColumn
           key={column.key}
@@ -23,6 +24,7 @@ export default function CocinaBoard({
           isSuperAdmin={isSuperAdmin}
           canAdvancePedido={canAdvancePedido}
           canOpenDetail={canOpenDetail}
+          canDeliverPedido={canDeliverPedido}
           onOpenDetail={onOpenDetail}
           onOpenConfirm={onOpenConfirm}
         />

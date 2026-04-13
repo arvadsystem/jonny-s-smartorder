@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import logo from '../../assets/images/logo-sin-fondo.png';
 import bgImage from '../../assets/images/imagen-fondo.png';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiLock, FiEye, FiEyeOff, FiCheck } from 'react-icons/fi';
 import './Login.scss';
+
+const _MOTION = motion;
 
 /**
  * ResetPassword — Formulario para establecer nueva contraseña
@@ -13,7 +15,6 @@ import './Login.scss';
  */
 const ResetPassword = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

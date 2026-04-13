@@ -9,6 +9,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import './Login.scss';
 
+const _MOTION = motion;
+
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

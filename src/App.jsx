@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/auth/Login';
 import Registro from './pages/auth/Registro';
 import RecuperarPassword from './pages/auth/RecuperarPassword';
@@ -17,6 +17,7 @@ import CambioContrasena from './pages/dashboard/CambioContrasena';
 import Personas from './pages/dashboard/Personas';
 import Sucursales from './pages/dashboard/Sucursales';
 import Ventas from './pages/dashboard/Ventas';
+import CierresCaja from './pages/dashboard/CierresCaja';
 import Cocina from './pages/dashboard/Cocina';
 import Planillas from './pages/dashboard/personas/Planillas';
 import Fidelizacion from './pages/dashboard/Fidelizacion';
@@ -24,9 +25,25 @@ import Menu from './pages/dashboard/menu/Menu';
 import RequirePerm from './routes/RequirePerm';
 import { PublicMenuRoutes } from './modules/public-menu';
 import Carrito from './pages/public/Carrito';
+import { resolveCierresCajaTab } from './utils/cierresCajaRouting';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
+
+const CierresCajaLegacyRedirect = () => {
+  const location = useLocation();
+  const suffix = String(location.pathname || '')
+    .replace(/^\/dashboard\/(?:ventas\/)?(?:cierre-caja|cierres-caja|cierres)\/?/i, '');
+  const firstPathSegment = suffix.split('/').filter(Boolean)[0] || '';
+
+  const nextParams = new URLSearchParams(location.search || '');
+  const tabFromQuery = resolveCierresCajaTab(nextParams.get('tab'), '');
+  const tabFromPath = resolveCierresCajaTab(firstPathSegment, '');
+  const resolvedTab = tabFromQuery || tabFromPath || 'operacion';
+
+  nextParams.set('tab', resolvedTab);
+  return <Navigate to={`/dashboard/cierres-caja?${nextParams.toString()}`} replace />;
+};
 
 const PaginaEnConstruccion = ({ titulo }) => {
   return (
@@ -69,6 +86,13 @@ function App() {
           <Route path="sucursales" element={<RequirePerm moduleKey="sucursales"><Sucursales /></RequirePerm>} />
           <Route path="inventario" element={<RequirePerm moduleKey="inventario"><Inventario /></RequirePerm>} />
           <Route path="ventas" element={<RequirePerm moduleKey="ventas"><Ventas /></RequirePerm>} />
+          <Route path="cierres-caja" element={<RequirePerm moduleKey="cierres-caja"><CierresCaja /></RequirePerm>} />
+          <Route path="cierres-caja/*" element={<CierresCajaLegacyRedirect />} />
+          <Route path="cierre-caja/*" element={<CierresCajaLegacyRedirect />} />
+          <Route path="cierres/*" element={<CierresCajaLegacyRedirect />} />
+          <Route path="ventas/cierres-caja/*" element={<CierresCajaLegacyRedirect />} />
+          <Route path="ventas/cierre-caja/*" element={<CierresCajaLegacyRedirect />} />
+          <Route path="ventas/cierres/*" element={<CierresCajaLegacyRedirect />} />
           <Route path="cocina" element={<RequirePerm moduleKey="cocina"><Cocina /></RequirePerm>} />
           <Route path="planillas" element={<RequirePerm moduleKey="planillas"><Planillas /></RequirePerm>} />
           <Route path="fidelizacion" element={<RequirePerm moduleKey="fidelizacion"><Fidelizacion /></RequirePerm>} />

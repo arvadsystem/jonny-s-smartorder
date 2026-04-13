@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
 import { useAuth } from '../../../hooks/useAuth';
+import { normalizeCierresCajaTab } from '../../../utils/cierresCajaRouting';
 import CajaView from './components/CajaView';
 import DescuentosView from './components/DescuentosView';
 import PedidosView from './components/PedidosView';
@@ -18,7 +19,10 @@ import {
 } from '../../../utils/permissions';
 import './styles/ventas.css';
 
+const VENTAS_TABS = new Set(['ventas', 'caja', 'pedidos', 'descuentos']);
+
 export default function VentasPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
   const {
@@ -69,6 +73,22 @@ export default function VentasPage() {
     const tab = String(searchParams.get('tab') || fallbackTab).toLowerCase();
     return allowedTabs.includes(tab) ? tab : fallbackTab;
   }, [allowedTabs, fallbackTab, searchParams]);
+
+  useEffect(() => {
+    const rawTab = String(searchParams.get('tab') || '');
+    const normalizedRawTab = rawTab
+      .trim()
+      .toLowerCase()
+      .replace(/[_\s]+/g, '-');
+    if (!normalizedRawTab || VENTAS_TABS.has(normalizedRawTab)) return;
+
+    const cierresTab = normalizeCierresCajaTab(normalizedRawTab);
+    if (!cierresTab) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', cierresTab);
+    navigate(`/dashboard/cierres-caja?${nextParams.toString()}`, { replace: true });
+  }, [navigate, searchParams]);
 
   useEffect(() => {
     if (permisosLoading || !fallbackTab) return;

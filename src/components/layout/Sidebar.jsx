@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import logo from '../../assets/images/sinFondo.jpeg';
+import logo from '../../assets/images/Logo-jonnys-sinFondo.jpeg';
 import { usePermisos } from '../../context/PermisosContext';
 import { getVisibleModuleItems } from '../../utils/permissions';
 

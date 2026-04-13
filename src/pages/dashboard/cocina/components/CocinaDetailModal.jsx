@@ -6,105 +6,143 @@ import {
   formatTimerLabel
 } from '../utils/cocinaHelpers';
 
+const _MOTION = motion;
+
 export default function CocinaDetailModal({ open, pedido, now, onClose }) {
   return (
     <AnimatePresence>
       {open && pedido ? (
         <motion.div
-          className="cocina-modal-backdrop"
+          className="kds-backdrop"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
         >
           <motion.section
-            className="cocina-modal"
+            className="kds-modal"
             role="dialog"
             aria-modal="true"
-            initial={{ opacity: 0, y: 22 }}
+            aria-labelledby="kds-modal-ticket"
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
+            exit={{ opacity: 0, y: 14 }}
             transition={{ duration: 0.18 }}
             onClick={(event) => event.stopPropagation()}
           >
-            <header className="cocina-modal__header">
+            {/* Header */}
+            <header className="kds-modal__header">
               <div>
-                <h3>{pedido.numero_ticket}</h3>
-                <p>{pedido.nombre_sucursal}</p>
+                <div id="kds-modal-ticket" className="kds-modal__ticket">
+                  {pedido.numero_ticket}
+                </div>
+                <div className="kds-modal__sucursal">
+                  <i className="bi bi-geo-alt" /> {pedido.nombre_sucursal}
+                </div>
               </div>
-              <button type="button" className="cocina-modal__close" onClick={onClose}>
+              <button
+                type="button"
+                className="kds-modal__close"
+                onClick={onClose}
+                aria-label="Cerrar detalle de pedido"
+              >
                 <i className="bi bi-x-lg" />
               </button>
             </header>
 
-            <div className="cocina-modal__body">
-              <div className="cocina-modal__meta">
-                <div className="cocina-modal__meta-card">
-                  <span>Cliente</span>
-                  <strong>{pedido.cliente_nombre || 'Consumidor final'}</strong>
+            {/* Body */}
+            <div className="kds-modal__body">
+              {/* Meta cards */}
+              <div className="kds-modal__meta">
+                <div className="kds-meta-card">
+                  <div className="kds-meta-card__label">Cliente</div>
+                  <div className="kds-meta-card__value">
+                    {pedido.cliente_nombre || 'Consumidor final'}
+                  </div>
                 </div>
-                <div className="cocina-modal__meta-card">
-                  <span>Servicio</span>
-                  <strong>{formatServiceLabel(pedido.tipo_servicio)}</strong>
+                <div className="kds-meta-card">
+                  <div className="kds-meta-card__label">Tipo de servicio</div>
+                  <div className="kds-meta-card__value">
+                    {formatServiceLabel(pedido.tipo_servicio)}
+                  </div>
                 </div>
-                <div className="cocina-modal__meta-card">
-                  <span>Timer</span>
-                  <strong>{formatTimerLabel(pedido.fecha_hora_facturacion || pedido.fecha_hora_pedido, now)}</strong>
+                <div className="kds-meta-card">
+                  <div className="kds-meta-card__label">Tiempo en espera</div>
+                  <div className="kds-meta-card__value">
+                    {formatTimerLabel(
+                      pedido.fecha_hora_facturacion || pedido.fecha_hora_pedido,
+                      now
+                    )}
+                  </div>
                 </div>
-                <div className="cocina-modal__meta-card">
-                  <span>Creado</span>
-                  <strong>{formatDateTimeLabel(pedido.fecha_hora_pedido)}</strong>
+                <div className="kds-meta-card">
+                  <div className="kds-meta-card__label">Creado</div>
+                  <div className="kds-meta-card__value">
+                    {formatDateTimeLabel(pedido.fecha_hora_pedido)}
+                  </div>
                 </div>
               </div>
 
-              <div className="cocina-modal__section">
-                <div className="cocina-modal__section-title">Items</div>
-                <div className="cocina-modal__items">
-                  {pedido.items.map((item) => (
-                    <article key={item.id_detalle || `${item.tipo_item}-${item.nombre_item}`} className="cocina-modal__item">
-                      <div className="cocina-modal__item-head">
-                        <span className="cocina-modal__qty">{item.cantidad}</span>
-                        <strong>{item.nombre_item}</strong>
-                        <span className="cocina-chip is-outline">{item.tipo_item}</span>
+              {/* Items */}
+              <div>
+                <div className="kds-modal__section-title">
+                  Ítems del pedido ({pedido.total_items})
+                </div>
+                <div className="kds-modal__items">
+                  {(Array.isArray(pedido.items) ? pedido.items : []).map((item) => (
+                    <article
+                      key={item.id_detalle || `${item.tipo_item}-${item.nombre_item}`}
+                      className="kds-modal__item"
+                    >
+                      <div className="kds-qty">{item.cantidad}</div>
+                      <div>
+                        <div className="kds-modal__item-name">{item.nombre_item}</div>
+                        {item.modificaciones?.length > 0 ? (
+                          <div className="kds-card__item-mods" style={{ marginTop: '0.4rem' }}>
+                            {item.modificaciones.map((mod) => (
+                              <span key={mod} className="kds-mod">{mod}</span>
+                            ))}
+                          </div>
+                        ) : null}
+                        {item.observacion ? (
+                          <div style={{
+                            marginTop: '0.4rem',
+                            fontSize: '0.78rem',
+                            color: 'var(--kds-text-3)',
+                            lineHeight: 1.4
+                          }}>
+                            <strong style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                              Nota:
+                            </strong>{' '}
+                            {item.observacion}
+                          </div>
+                        ) : null}
                       </div>
-                      {item.modificaciones?.length ? (
-                        <div className="cocina-order-card__tags">
-                          {item.modificaciones.map((tag) => (
-                            <span key={`${item.id_detalle}-${tag}`} className="cocina-tag is-alert">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                      {item.observacion ? (
-                        <div className="cocina-modal__item-note">
-                          <span>Nota</span>
-                          <p>{item.observacion}</p>
-                        </div>
-                      ) : null}
                     </article>
                   ))}
                 </div>
               </div>
 
+              {/* Observaciones generales */}
               {pedido.descripcion_pedido ? (
-                <div className="cocina-modal__section">
-                  <div className="cocina-modal__section-title">Observaciones</div>
-                  <div className="cocina-modal__note">{pedido.descripcion_pedido}</div>
+                <div>
+                  <div className="kds-modal__section-title">Observaciones</div>
+                  <div className="kds-modal__note">{pedido.descripcion_pedido}</div>
                 </div>
               ) : null}
-
-              <footer className="cocina-modal__footer">
-                <div>
-                  <span>Total del pedido</span>
-                  <strong>{formatCurrency(pedido.total)}</strong>
-                </div>
-                <div>
-                  <span>Total de items</span>
-                  <strong>{pedido.total_items}</strong>
-                </div>
-              </footer>
             </div>
+
+            {/* Footer */}
+            <footer className="kds-modal__footer">
+              <div>
+                <div className="kds-modal__total-label">Total del pedido</div>
+                <div className="kds-modal__total-value">{formatCurrency(pedido.total)}</div>
+              </div>
+              <div>
+                <div className="kds-modal__total-label">Total de ítems</div>
+                <div className="kds-modal__total-value">{pedido.total_items}</div>
+              </div>
+            </footer>
           </motion.section>
         </motion.div>
       ) : null}
