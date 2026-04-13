@@ -14,7 +14,8 @@ import {
 
 const ORDER_LIMIT = 20;
 const ESTADOS = ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'EN_COMPRA', 'ABASTECIDA', 'CANCELADA'];
-const POLLING_MS = 2500;
+// AM: polling conservador para flujo de OC; prioriza estabilidad sobre "tiempo real".
+const ORDERS_POLLING_MS = 15000;
 // AM: ajusta Nueva Solicitud a 8 cards por pagina para mostrar 4x2 en desktop.
 const CATALOG_CARDS_PER_PAGE = 8;
 // AM: Flujo reutiliza el mismo tamano de pagina visual del carrusel de Nueva Solicitud.
@@ -532,6 +533,8 @@ const OrdenesCompraTab = ({ openToast }) => {
         )
         .includes('SUPER_ADMIN')
     : false;
+  // AM: cancelacion administrativa reservada para Admin/Super Admin.
+  const canCancelarOrden = canVerTodas || isSuperAdmin;
   const toast = useCallback(
     (title, message, variant = 'success') => {
       if (typeof openToast === 'function') openToast(title, message, variant);
@@ -571,7 +574,7 @@ const OrdenesCompraTab = ({ openToast }) => {
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  const [scope, setScope] = useState('mine');
+  const [scope, setScope] = useState('branch');
   const [scopeInitialized, setScopeInitialized] = useState(false);
   const [estadoFiltro, setEstadoFiltro] = useState('');
   const [search, setSearch] = useState('');
@@ -580,6 +583,7 @@ const OrdenesCompraTab = ({ openToast }) => {
   const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 });
   const [loadingOrdenes, setLoadingOrdenes] = useState(false);
   const [rowBusy, setRowBusy] = useState({});
+  const hasBusyRows = useMemo(() => Object.values(rowBusy || {}).some(Boolean), [rowBusy]);
 
   const [detalleActual, setDetalleActual] = useState({ loading: false, error: '', data: null });
   // AM: visor inline de evidencias dentro del modal de detalle para no abrir pestanas externas.
@@ -603,14 +607,14 @@ const OrdenesCompraTab = ({ openToast }) => {
     isSucursalOperativeActor && Boolean(workflowCreateContext?.restringido_a_sucursal_usuario);
 
   useEffect(() => {
-    // AM: inicializa el scope por defecto segun permisos (super admin = all).
+    // AM: visibilidad del listado definida por rol (admins=global, operativos=sucursal).
     if (permisosLoading) return;
     if (!scopeInitialized) {
-      setScope(canVerTodas ? 'all' : 'mine');
+      setScope(canVerTodas ? 'all' : 'branch');
       setScopeInitialized(true);
       return;
     }
-    if (!canVerTodas && scope === 'all') setScope('mine');
+    if (!canVerTodas && scope === 'all') setScope('branch');
   }, [canVerTodas, permisosLoading, scope, scopeInitialized]);
 
   useEffect(() => {
@@ -1072,18 +1076,6 @@ const flowDotItems = useMemo(() => {
     void loadCatalogs();
   }, [loadCatalogs, permisosLoading]);
 
-  useEffect(() => {
-    if (permisosLoading || !(canCrear || canConvertir || canGestionar)) return undefined;
-
-    // AM: refresco automatico de catalogo para reflejar cambios de stock sin recarga manual.
-    const intervalId = window.setInterval(() => {
-      if (document?.visibilityState === 'hidden') return;
-      void loadCatalogs({ silent: true });
-    }, POLLING_MS);
-
-    return () => window.clearInterval(intervalId);
-  }, [canConvertir, canCrear, canGestionar, loadCatalogs, permisosLoading]);
-
   const loadOrdenes = useCallback(async (options = {}) => {
     if (!canVer) return;
     if (!options?.silent) setLoadingOrdenes(true);
@@ -1118,13 +1110,13 @@ const flowDotItems = useMemo(() => {
 
   useEffect(() => {
     if (permisosLoading || !canVer) return undefined;
-    // AM: polling configurable para reflejar cambios del flujo OC sin recarga manual.
+    // AM: polling moderado del flujo para reflejar cambios externos sin sobrecargar UI/API.
     const intervalId = window.setInterval(() => {
-      if (document?.visibilityState === 'hidden') return;
+      if (document?.visibilityState === 'hidden' || hasBusyRows) return;
       void loadOrdenes({ silent: true });
-    }, POLLING_MS);
+    }, ORDERS_POLLING_MS);
     return () => window.clearInterval(intervalId);
-  }, [canVer, loadOrdenes, permisosLoading]);
+  }, [canVer, hasBusyRows, loadOrdenes, permisosLoading]);
 
   const addToDraft = (item) => {
     setDraft((prev) => {
@@ -1398,9 +1390,28 @@ const flowDotItems = useMemo(() => {
 
   const submitReviewModal = async () => {
     const idOrden = parsePositiveInt(reviewModal?.orden?.id_orden_compra);
+    const accionRevision = String(reviewModal?.mode || '')
+      .trim()
+      .toLowerCase();
+    const estadoOrdenActual = resolveEstado(reviewModal?.orden);
     const comentario = normalizeText(reviewModal.comentario, 1000);
-    if (!idOrden) return;
-    if (reviewModal.mode === 'rechazar' && !comentario) {
+    if (!idOrden) {
+      setReviewModal((prev) => ({ ...prev, error: 'No se pudo identificar la orden. Cierra y vuelve a intentar.' }));
+      return;
+    }
+    if (!['aprobar', 'rechazar'].includes(accionRevision)) {
+      setReviewModal((prev) => ({ ...prev, error: 'Accion invalida. Recarga y vuelve a intentar.' }));
+      return;
+    }
+    if (reviewModal.loading || rowBusy[idOrden]) return;
+    if (estadoOrdenActual !== 'PENDIENTE') {
+      setReviewModal((prev) => ({
+        ...prev,
+        error: 'La orden ya no esta en estado PENDIENTE. Recarga el detalle antes de continuar.'
+      }));
+      return;
+    }
+    if (accionRevision === 'rechazar' && !comentario) {
       setReviewModal((prev) => ({ ...prev, error: 'El motivo de rechazo es obligatorio.' }));
       return;
     }
@@ -1408,7 +1419,7 @@ const flowDotItems = useMemo(() => {
     setReviewModal((prev) => ({ ...prev, loading: true, error: '' }));
     setBusy(idOrden, true);
     try {
-      if (reviewModal.mode === 'rechazar') {
+      if (accionRevision === 'rechazar') {
         await inventarioService.rechazarOrdenCompraWorkflow(idOrden, { comentario });
       } else {
         await inventarioService.aprobarOrdenCompraWorkflow(idOrden, { comentario });
@@ -1416,12 +1427,15 @@ const flowDotItems = useMemo(() => {
       toast(
         'ORDEN ACTUALIZADA',
         `Orden #${formatVisibleOrderNumber(reviewModal?.orden)} ${
-          reviewModal.mode === 'rechazar' ? 'rechazada' : 'aprobada'
+          accionRevision === 'rechazar' ? 'rechazada' : 'aprobada'
         }.`,
-        reviewModal.mode === 'rechazar' ? 'warning' : 'success'
+        accionRevision === 'rechazar' ? 'warning' : 'success'
       );
       setReviewModal(emptyReviewModal());
       await loadOrdenes();
+      if (detalleActual?.data?.orden?.id_orden_compra === idOrden) {
+        await verDetalle({ id_orden_compra: idOrden });
+      }
     } catch (error) {
       setReviewModal((prev) => ({
         ...prev,
@@ -1630,8 +1644,42 @@ const flowDotItems = useMemo(() => {
     const idOrden = parsePositiveInt(itemRequestDecisionModal?.orden?.id_orden_compra);
     const idSolicitud = parsePositiveInt(itemRequestDecisionModal?.solicitud?.id_solicitud_item);
     const accion = String(itemRequestDecisionModal?.accion || '').trim().toLowerCase();
+    const estadoOrdenActual = resolveEstado(itemRequestDecisionModal?.orden);
+    const estadoSolicitudActual = parseItemRequestState(itemRequestDecisionModal?.solicitud?.estado);
     const comentario = normalizeText(itemRequestDecisionModal?.comentario, 1000);
-    if (!idOrden || !idSolicitud || !['aprobar', 'rechazar'].includes(accion)) return;
+    if (!idOrden || !idSolicitud) {
+      setItemRequestDecisionModal((prev) => ({
+        ...prev,
+        error: 'No se pudo identificar la solicitud. Cierra y vuelve a intentar.'
+      }));
+      return;
+    }
+    if (!['aprobar', 'rechazar'].includes(accion)) {
+      setItemRequestDecisionModal((prev) => ({
+        ...prev,
+        error: 'Accion invalida para la solicitud de item.'
+      }));
+      return;
+    }
+    if (itemRequestDecisionModal.loading || rowBusy[idOrden]) return;
+    if (estadoOrdenActual !== 'PENDIENTE') {
+      setItemRequestDecisionModal((prev) => ({
+        ...prev,
+        error: 'La orden ya no esta en estado PENDIENTE. Recarga el detalle antes de continuar.'
+      }));
+      return;
+    }
+    const canReviewByState =
+      accion === 'aprobar'
+        ? estadoSolicitudActual === ITEM_REQUEST_STATE_PENDIENTE
+        : [ITEM_REQUEST_STATE_PENDIENTE, ITEM_REQUEST_STATE_EN_REVISION].includes(estadoSolicitudActual);
+    if (!canReviewByState) {
+      setItemRequestDecisionModal((prev) => ({
+        ...prev,
+        error: 'La solicitud ya no admite esta accion. Recarga el detalle antes de continuar.'
+      }));
+      return;
+    }
     if (accion === 'rechazar' && !comentario) {
       setItemRequestDecisionModal((prev) => ({
         ...prev,
@@ -2127,6 +2175,13 @@ const flowDotItems = useMemo(() => {
     };
   }, [convertPanel?.descuento_tipo, convertPanel?.descuento_valor, convertPanel?.detalles, convertPanel?.isv_pct]);
 
+  // AM: blinda acciones del modal administrativo segun estado real del detalle abierto.
+  const convertPanelEstadoActual = resolveEstado(convertPanel?.orden);
+  const convertPanelRecepcionRegistrada = hasReceptionRegistered(convertPanel?.orden);
+  const canConvertPanelSave =
+    canConvertir && convertPanelEstadoActual === 'EN_COMPRA' && convertPanelRecepcionRegistrada;
+  const canConvertPanelSaveAndSupply = canConvertPanelSave && canAbastecer;
+
   // AM: soporta guardado administrativo parcial y accion final de guardar + abastecer.
   const doConvert = async (accion = 'guardar') => {
     if (!['guardar', 'guardar_y_abastecer'].includes(String(accion))) return;
@@ -2138,6 +2193,16 @@ const flowDotItems = useMemo(() => {
     const descuentoTipo = resolveDiscountType(convertPanel?.descuento_tipo);
     const descuentoValor = parseNonNegativeNumber(convertPanel?.descuento_valor);
     const isvPct = parseNonNegativeNumber(convertPanel?.isv_pct);
+    const estadoOrdenActual = resolveEstado(convertPanel?.orden);
+    const recepcionRegistradaActual = hasReceptionRegistered(convertPanel?.orden);
+    if (estadoOrdenActual !== 'EN_COMPRA' || !recepcionRegistradaActual) {
+      setConvertPanel((prev) => ({
+        ...prev,
+        error: 'La orden ya no se puede convertir en este estado. Recarga el detalle.',
+        submit_action: ''
+      }));
+      return;
+    }
     // AM: envia detalle financiero por linea para persistir costo unitario y descuento real por item.
     const detallesPayload = (Array.isArray(convertPanel?.detalles) ? convertPanel.detalles : []).map((row) => ({
       id_detalle_orden: parsePositiveInt(row?.id_detalle_orden),
@@ -2293,6 +2358,16 @@ const flowDotItems = useMemo(() => {
   const doAbastecer = async () => {
     const idOrden = parsePositiveInt(supplyModal?.orden?.id_orden_compra);
     if (!idOrden) return;
+    if (supplyModal.loading || rowBusy[idOrden]) return;
+    const estadoOrdenActual = resolveEstado(supplyModal?.orden);
+    const recepcionRegistradaActual = hasReceptionRegistered(supplyModal?.orden);
+    if (estadoOrdenActual !== 'EN_COMPRA' || !recepcionRegistradaActual) {
+      setSupplyModal((prev) => ({
+        ...prev,
+        error: 'La orden ya no se puede abastecer en su estado actual. Recarga el detalle.'
+      }));
+      return;
+    }
     setSupplyModal((prev) => ({ ...prev, loading: true, error: '' }));
     setBusy(idOrden, true);
     try {
@@ -2302,6 +2377,9 @@ const flowDotItems = useMemo(() => {
       toast('ABASTECIDA', `Orden #${formatVisibleOrderNumber(supplyModal?.orden)} abastecida correctamente.`, 'success');
       setSupplyModal(emptySupplyModal());
       await loadOrdenes();
+      if (detalleActual?.data?.orden?.id_orden_compra === idOrden) {
+        await verDetalle({ id_orden_compra: idOrden });
+      }
     } catch (error) {
       const mismatchMessage = getWarehouseMismatchMessage(error);
       setSupplyModal((prev) => ({
@@ -2339,6 +2417,17 @@ const flowDotItems = useMemo(() => {
     if (!idOrden) return;
     if (recepcionModal.loading || rowBusy[idOrden]) {
       // AM: evita doble envio por doble click o polling concurrente.
+      return;
+    }
+    const estadoOrdenActual = resolveEstado(recepcionModal?.orden);
+    const recepcionRegistradaActual = hasReceptionRegistered(recepcionModal?.orden);
+    const canReportarRecepcion =
+      estadoOrdenActual === 'APROBADA' || (estadoOrdenActual === 'EN_COMPRA' && !recepcionRegistradaActual);
+    if (!canReportarRecepcion) {
+      setRecepcionModal((prev) => ({
+        ...prev,
+        error: 'La recepcion ya no se puede registrar para esta orden. Recarga el detalle.'
+      }));
       return;
     }
 
@@ -2381,9 +2470,47 @@ const flowDotItems = useMemo(() => {
     }
   };
 
+  const doCancelarOrden = async (row) => {
+    const idOrden = parsePositiveInt(row?.id_orden_compra);
+    if (!idOrden || rowBusy[idOrden]) return;
+    const estadoActual = resolveEstado(row);
+    const recepcionRegistradaParaCancelacion =
+      Boolean(parsePositiveInt(row?.id_usuario_recepcion)) && Boolean(hasValue(row?.fecha_recepcion_reportada));
+    const canCancelByState =
+      estadoActual === 'PENDIENTE' ||
+      estadoActual === 'APROBADA' ||
+      (estadoActual === 'EN_COMPRA' && !recepcionRegistradaParaCancelacion);
+    if (!canCancelarOrden || !canCancelByState) {
+      toast('VALIDACION', 'La orden ya no se puede cancelar en su estado actual.', 'warning');
+      return;
+    }
+
+    const confirmado = window.confirm(
+      `Cancelar la orden #${formatVisibleOrderNumber(row)}? Esta accion no se puede deshacer.`
+    );
+    if (!confirmado) return;
+
+    setBusy(idOrden, true);
+    try {
+      await inventarioService.cancelarOrdenCompraWorkflow(idOrden);
+      toast('CANCELADA', `Orden #${formatVisibleOrderNumber(row)} cancelada correctamente.`, 'warning');
+      await loadOrdenes();
+      if (detalleActual?.data?.orden?.id_orden_compra === idOrden) {
+        await verDetalle({ id_orden_compra: idOrden });
+      }
+    } catch (error) {
+      toast('ERROR', error?.message || 'No se pudo cancelar la orden.', 'danger');
+    } finally {
+      setBusy(idOrden, false);
+    }
+  };
+
   const renderActions = (row, compact = false) => {
     const estado = resolveEstado(row);
     const recepcionRegistrada = hasReceptionRegistered(row);
+    // AM: criterio canonico de bloqueo de cancelacion: usuario + fecha de recepcion.
+    const recepcionRegistradaParaCancelacion =
+      Boolean(parsePositiveInt(row?.id_usuario_recepcion)) && Boolean(hasValue(row?.fecha_recepcion_reportada));
     const isItemRequestOnlyCard =
       Number(row?.total_items || 0) <= 0 && Number(row?.total_solicitudes_item || 0) > 0;
     const hasOpenItemRequests =
@@ -2391,6 +2518,16 @@ const flowDotItems = useMemo(() => {
       Number(row?.total_solicitudes_item_en_revision || 0) > 0;
     const busy = Boolean(rowBusy[row.id_orden_compra]);
     const actionClass = compact ? 'inv-oc-action-btn is-compact' : 'inv-oc-action-btn';
+    const canShowApproveAction = estado === 'PENDIENTE' && canGestionar;
+    const canShowRejectAction = canShowApproveAction;
+    const canShowRegisterReceptionAction =
+      isSucursalOperativeActor && (estado === 'APROBADA' || (estado === 'EN_COMPRA' && !recepcionRegistrada));
+    const canShowConvertAction = estado === 'EN_COMPRA' && isAdminFlowActor && canConvertir && recepcionRegistrada;
+    const canShowCancelAction =
+      canCancelarOrden &&
+      (estado === 'PENDIENTE' ||
+        estado === 'APROBADA' ||
+        (estado === 'EN_COMPRA' && !recepcionRegistradaParaCancelacion));
 
     return (
       <div className="inv-oc-actions">
@@ -2398,7 +2535,7 @@ const flowDotItems = useMemo(() => {
           <i className="bi bi-eye" aria-hidden="true" />
           <span>Ver</span>
         </button>
-        {estado === 'PENDIENTE' && canGestionar && (
+        {canShowApproveAction && (
           <>
             {!isItemRequestOnlyCard && (
               <button
@@ -2423,33 +2560,35 @@ const flowDotItems = useMemo(() => {
               <i className="bi bi-check2-circle" aria-hidden="true" />
               <span>Aprobar</span>
             </button>
-            <button
-              className={`${actionClass} is-danger`}
-              onClick={() => openReviewModal(row, 'rechazar')}
-              disabled={busy}
-            >
-              <i className="bi bi-x-circle" aria-hidden="true" />
-              <span>Rechazar</span>
-            </button>
+            {canShowRejectAction && (
+              <button
+                className={`${actionClass} is-danger`}
+                onClick={() => openReviewModal(row, 'rechazar')}
+                disabled={busy}
+              >
+                <i className="bi bi-x-circle" aria-hidden="true" />
+                <span>Rechazar</span>
+              </button>
+            )}
           </>
         )}
-        {estado === 'APROBADA' && isSucursalOperativeActor && (
-          <button className={`${actionClass} is-primary`} onClick={() => openRecepcionModal(row)} disabled={busy}>
-            <i className="bi bi-receipt-cutoff" aria-hidden="true" />
-            <span>Convertir</span>
-          </button>
-        )}
-        {estado === 'EN_COMPRA' && isSucursalOperativeActor && !recepcionRegistrada && (
+        {canShowRegisterReceptionAction && (
           <button className={`${actionClass} is-neutral`} onClick={() => openRecepcionModal(row)} disabled={busy}>
             <i className="bi bi-receipt" aria-hidden="true" />
-            <span>Actualizar recepcion</span>
+            <span>Registrar recepcion</span>
           </button>
         )}
         {/* AM: al completar recepcion en sucursal, admin continua en modal de gestion/abastecimiento. */}
-        {estado === 'EN_COMPRA' && isAdminFlowActor && canConvertir && recepcionRegistrada && (
+        {canShowConvertAction && (
           <button className={`${actionClass} is-success`} onClick={() => openConvert(row)} disabled={busy}>
             <i className="bi bi-arrow-repeat" aria-hidden="true" />
             <span>Convertir</span>
+          </button>
+        )}
+        {canShowCancelAction && (
+          <button className={`${actionClass} is-danger`} onClick={() => doCancelarOrden(row)} disabled={busy}>
+            <i className="bi bi-slash-circle" aria-hidden="true" />
+            <span>Cancelar</span>
           </button>
         )}
       </div>
@@ -2782,8 +2921,11 @@ const flowDotItems = useMemo(() => {
                             setScope(e.target.value);
                           }}
                         >
-                          <option value="mine">Mis solicitudes</option>
-                          {canVerTodas && <option value="all">Todas</option>}
+                          {canVerTodas ? (
+                            <option value="all">Todas las sucursales</option>
+                          ) : (
+                            <option value="branch">Mi sucursal</option>
+                          )}
                         </select>
                       </div>
                       <div className="col-12 col-md-4">
@@ -3628,7 +3770,7 @@ const flowDotItems = useMemo(() => {
                 <button
                   className={`btn ${reviewModal.mode === 'rechazar' ? 'btn-danger' : 'btn-primary'}`}
                   onClick={submitReviewModal}
-                  disabled={reviewModal.loading}
+                  disabled={reviewModal.loading || (reviewModal.mode === 'rechazar' && !normalizeText(reviewModal.comentario, 1000))}
                 >
                   {reviewModal.loading ? (
                     <>
@@ -3794,7 +3936,11 @@ const flowDotItems = useMemo(() => {
                 <button
                   className={`btn ${itemRequestDecisionModal.accion === 'rechazar' ? 'btn-danger' : 'btn-primary'}`}
                   onClick={submitItemRequestDecision}
-                  disabled={itemRequestDecisionModal.loading}
+                  disabled={
+                    itemRequestDecisionModal.loading ||
+                    (itemRequestDecisionModal.accion === 'rechazar' &&
+                      !normalizeText(itemRequestDecisionModal.comentario, 1000))
+                  }
                 >
                   {itemRequestDecisionModal.loading ? 'Guardando...' : 'Confirmar'}
                 </button>
@@ -4800,7 +4946,7 @@ const flowDotItems = useMemo(() => {
                 >
                   Cancelar
                 </button>
-                {canConvertir && (
+                {canConvertPanelSave && (
                   <button
                     className="btn btn-primary"
                     onClick={() => doConvert('guardar')}
@@ -4816,7 +4962,7 @@ const flowDotItems = useMemo(() => {
                     )}
                   </button>
                 )}
-                {canConvertir && canAbastecer && (
+                {canConvertPanelSaveAndSupply && (
                   <button
                     className="btn btn-success"
                     onClick={() => doConvert('guardar_y_abastecer')}

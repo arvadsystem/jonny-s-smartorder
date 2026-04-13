@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
 import sucursalesService from '../../../services/sucursalesService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
+import { useAuth } from '../../../hooks/useAuth';
 import MovimientosTab from './MovimientosTab.jsx';
 import CompactHeaderSwitch from './CompactHeaderSwitch.jsx';
 import ProveedoresTab from './ProveedoresTab.jsx';
@@ -17,6 +21,36 @@ const parseBooleanEstado = (value) => {
 
 const parseSucursalEstado = (value) => parseBooleanEstado(value);
 const parseAlmacenEstado = (value) => parseBooleanEstado(value);
+const ALMACENES_NO_DELETE_MESSAGE =
+  'Los almacenes no se eliminan; se inactivan para preservar la trazabilidad del inventario.';
+const ALMACENES_INACTIVATION_POLICY_MESSAGE =
+  'La inactivacion solo es posible cuando no compromete stock ni operacion.';
+const ALMACENES_SUCURSAL_CHANGE_CONFLICT_MESSAGE =
+  'No se puede cambiar la sucursal de este almacen porque ya tiene historial operativo. Para preservar la trazabilidad, crea un nuevo almacen en la sucursal correcta.';
+const ALMACENES_SUCURSAL_CHANGE_POLICY_MESSAGE =
+  'La sucursal solo puede cambiarse cuando el almacen no tiene historial operativo.';
+const ALMACENES_CONCURRENCY_CONFLICT_MESSAGE =
+  'El almacen fue modificado por otro usuario. Recarga la informacion antes de guardar.';
+const ALMACENES_SCOPE_BLOCKED_MESSAGE =
+  'No tienes acceso al recurso solicitado dentro de tu alcance de sucursal.';
+const ALMACENES_SCOPE_NOT_FOUND_MESSAGE =
+  'El almacen solicitado no esta disponible en tu alcance actual o no existe.';
+
+const resolveAlmacenesRequestMessage = (error, fallbackMessage) => {
+  const status = Number(error?.status ?? 0);
+  const code = String(error?.code ?? error?.data?.code ?? '').trim().toUpperCase();
+  const apiMessage = String(error?.message ?? '').trim();
+
+  if (status === 403 || code === 'FORBIDDEN') {
+    return apiMessage || ALMACENES_SCOPE_BLOCKED_MESSAGE;
+  }
+
+  if (status === 404 && /almacen no encontrado/i.test(apiMessage)) {
+    return ALMACENES_SCOPE_NOT_FOUND_MESSAGE;
+  }
+
+  return apiMessage || fallbackMessage;
+};
 
 const formatSucursalOptionLabel = (sucursal, id) => {
   const safeId = String(id ?? sucursal?.id_sucursal ?? '').trim();
@@ -91,13 +125,6 @@ const formatMetricValue = (value) => {
 
 const getAlmacenActionMeta = (almacen) => {
   const isActivo = parseAlmacenEstado(almacen?.estado);
-  const movimientosCount = Number(almacen?.movimientos_count ?? 0);
-  const productosCount = Number(almacen?.productos_count ?? 0);
-  const insumosCount = Number(almacen?.insumos_count ?? 0);
-  const canDelete =
-    typeof almacen?.can_delete === 'boolean'
-      ? almacen.can_delete
-      : movimientosCount === 0 && productosCount === 0 && insumosCount === 0;
 
   if (!isActivo) {
     return {
@@ -106,16 +133,6 @@ const getAlmacenActionMeta = (almacen) => {
       icon: 'bi bi-arrow-clockwise',
       buttonClass: 'btn inv-prod-btn-subtle inv-warehouse-card__action',
       title: 'Reactivar almacen'
-    };
-  }
-
-  if (canDelete) {
-    return {
-      action: 'eliminar',
-      label: 'Eliminar',
-      icon: 'bi bi-trash',
-      buttonClass: 'btn inv-prod-btn-danger-lite inv-warehouse-card__action',
-      title: 'Eliminar'
     };
   }
 
@@ -133,7 +150,7 @@ const getConfirmCopyByAction = (action) => {
     return {
       title: 'Confirmar inactivacion',
       subtitle: 'El almacen dejara de estar disponible en listas activas.',
-      note: 'No se puede eliminar porque tiene historial o items asociados.',
+      note: `${ALMACENES_NO_DELETE_MESSAGE} ${ALMACENES_INACTIVATION_POLICY_MESSAGE}`,
       question: 'Deseas inactivar este almacen?',
       actionLabel: 'Inactivar',
       actionBusyLabel: 'Inactivando...',
@@ -154,19 +171,182 @@ const getConfirmCopyByAction = (action) => {
   }
 
   return {
-    title: 'Confirmar eliminacion',
-    subtitle: 'Esta accion NO se puede deshacer.',
-    note: 'Solo se permite eliminar cuando no hay movimientos, productos ni insumos asociados.',
-    question: 'Deseas eliminar este almacen?',
-    actionLabel: 'Eliminar',
-    actionBusyLabel: 'Eliminando...',
-    actionIcon: 'bi-trash3'
+    title: 'Confirmar inactivacion',
+    subtitle: 'El almacen dejara de estar disponible en listas activas.',
+    note: `${ALMACENES_NO_DELETE_MESSAGE} ${ALMACENES_INACTIVATION_POLICY_MESSAGE}`,
+    question: 'Deseas inactivar este almacen?',
+    actionLabel: 'Inactivar',
+    actionBusyLabel: 'Inactivando...',
+    actionIcon: 'bi-slash-circle'
+  };
+};
+
+const toFiniteNonNegativeNumber = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return numeric;
+};
+
+const normalizeAlmacenDependencies = (payload) => {
+  const countsRaw = payload?.counts && typeof payload.counts === 'object' ? payload.counts : {};
+  const stockRaw = payload?.stock && typeof payload.stock === 'object' ? payload.stock : {};
+  const normalizedReasons = Array.isArray(payload?.blockingReasons)
+    ? payload.blockingReasons
+        .map((reason) => String(reason ?? '').trim())
+        .filter(Boolean)
+    : [];
+  const normalizedSucursalChangeReasons = Array.isArray(payload?.sucursalChangeBlockingReasons)
+    ? payload.sucursalChangeBlockingReasons
+        .map((reason) => String(reason ?? '').trim())
+        .filter(Boolean)
+    : [];
+
+  const counts = {
+    movimientos: toFiniteNonNegativeNumber(countsRaw.movimientos),
+    movimientos_recientes: toFiniteNonNegativeNumber(countsRaw.movimientos_recientes),
+    productos: toFiniteNonNegativeNumber(countsRaw.productos),
+    productos_activos: toFiniteNonNegativeNumber(countsRaw.productos_activos),
+    insumos: toFiniteNonNegativeNumber(countsRaw.insumos),
+    insumos_activos: toFiniteNonNegativeNumber(countsRaw.insumos_activos),
+    ordenes_compra_abiertas: toFiniteNonNegativeNumber(countsRaw.ordenes_compra_abiertas)
+  };
+
+  const stock = {
+    productos: toFiniteNonNegativeNumber(stockRaw.productos),
+    insumos: toFiniteNonNegativeNumber(stockRaw.insumos)
+  };
+  stock.total =
+    toFiniteNonNegativeNumber(stockRaw.total) || stock.productos + stock.insumos;
+
+  const hasStock = payload?.hasStock === true || stock.total > 0;
+  const hasActiveOperationalDependencies =
+    payload?.hasActiveOperationalDependencies === true ||
+    counts.movimientos_recientes > 0 ||
+    counts.productos_activos > 0 ||
+    counts.insumos_activos > 0 ||
+    counts.ordenes_compra_abiertas > 0;
+  const hasOperationalHistory =
+    payload?.hasOperationalHistory === true ||
+    counts.movimientos > 0 ||
+    stock.total > 0 ||
+    counts.productos > 0 ||
+    counts.insumos > 0 ||
+    counts.ordenes_compra_abiertas > 0;
+
+  let canDeactivate;
+  if (payload?.canDeactivate === true || payload?.canInactivate === true) {
+    canDeactivate = true;
+  } else if (payload?.canDeactivate === false || payload?.canInactivate === false) {
+    canDeactivate = false;
+  } else {
+    canDeactivate = !(hasStock || hasActiveOperationalDependencies || normalizedReasons.length > 0);
+  }
+
+  const fallbackReason = hasStock
+    ? 'No se puede inactivar el almacen porque tiene stock disponible.'
+    : counts.movimientos_recientes > 0
+    ? 'No se puede inactivar el almacen porque tiene movimientos recientes.'
+    : counts.productos_activos > 0 || counts.insumos_activos > 0
+    ? 'No se puede inactivar el almacen porque mantiene dependencias operativas activas.'
+    : counts.ordenes_compra_abiertas > 0
+    ? 'No se puede inactivar el almacen porque tiene ordenes de compra en curso asociadas.'
+    : 'No se puede inactivar el almacen porque mantiene dependencias operativas activas.';
+
+  const blockingReasons = normalizedReasons.length
+    ? normalizedReasons
+    : canDeactivate
+    ? []
+    : [fallbackReason];
+
+  let canChangeSucursal;
+  if (
+    payload?.canChangeSucursal === true ||
+    payload?.canChangeBranch === true ||
+    payload?.canUpdateSucursal === true
+  ) {
+    canChangeSucursal = true;
+  } else if (
+    payload?.canChangeSucursal === false ||
+    payload?.canChangeBranch === false ||
+    payload?.canUpdateSucursal === false
+  ) {
+    canChangeSucursal = false;
+  } else {
+    canChangeSucursal = !hasOperationalHistory;
+  }
+
+  const fallbackSucursalChangeReason = counts.movimientos > 0
+    ? 'No se puede cambiar la sucursal de este almacen porque ya registra movimientos de inventario.'
+    : hasStock
+    ? 'No se puede cambiar la sucursal de este almacen porque tiene stock disponible.'
+    : counts.ordenes_compra_abiertas > 0
+    ? 'No se puede cambiar la sucursal de este almacen porque tiene ordenes de compra en curso asociadas.'
+    : counts.productos > 0 || counts.insumos > 0
+    ? 'No se puede cambiar la sucursal de este almacen porque mantiene productos o insumos vinculados.'
+    : ALMACENES_SUCURSAL_CHANGE_CONFLICT_MESSAGE;
+
+  const sucursalChangeBlockingReasons = normalizedSucursalChangeReasons.length
+    ? normalizedSucursalChangeReasons
+    : canChangeSucursal
+    ? []
+    : [fallbackSucursalChangeReason];
+
+  return {
+    counts,
+    stock,
+    hasStock,
+    hasActiveOperationalDependencies,
+    hasOperationalHistory,
+    canDeactivate,
+    canInactivate: canDeactivate,
+    blockingReasons,
+    primaryBlockingReason: blockingReasons[0] || '',
+    canChangeSucursal,
+    canChangeBranch: canChangeSucursal,
+    canUpdateSucursal: canChangeSucursal,
+    sucursalChangeBlockingReasons,
+    sucursalChangePrimaryReason: sucursalChangeBlockingReasons[0] || ''
   };
 };
 
 const AlmacenesTab = ({ openToast }) => {
+  const { user } = useAuth();
+  const { can, canAny, loading: permisosLoading } = usePermisos();
+  const canVerAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_VER);
+  const canCrearAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_CREAR);
+  const canEditarAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_EDITAR);
+  const canCambiarEstadoAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_ESTADO_CAMBIAR);
+  const canVerProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_VER);
+  const canAccessAlmacenesTab = canAny([
+    PERMISSIONS.INVENTARIO_ALMACENES_VER,
+    PERMISSIONS.INVENTARIO_ALMACENES_CREAR,
+    PERMISSIONS.INVENTARIO_ALMACENES_EDITAR,
+    PERMISSIONS.INVENTARIO_ALMACENES_ELIMINAR,
+    PERMISSIONS.INVENTARIO_ALMACENES_ESTADO_CAMBIAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_ELIMINAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_ESTADO_CAMBIAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_EDITAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_ELIMINAR
+  ]);
+
+  const canRunAlmacenAction = (action) => {
+    if (action === 'inactivar' || action === 'reactivar') return canCambiarEstadoAlmacenes;
+    return false;
+  };
+
+  const resolveDefaultScope = () => {
+    if (canVerAlmacenes) return 'almacenes';
+    if (canVerProveedores) return 'proveedores';
+    return 'almacenes';
+  };
+
   // AM: switch principal del submodulo para alternar entre Almacenes y Proveedores.
-  const [catalogScope, setCatalogScope] = useState('almacenes');
+  const [catalogScope, setCatalogScope] = useState(resolveDefaultScope);
   const [almacenes, setAlmacenes] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -192,14 +372,21 @@ const AlmacenesTab = ({ openToast }) => {
     show: false,
     idToDelete: null,
     nombre: '',
-    action: 'eliminar',
-    counts: null
+    action: 'inactivar',
+    counts: null,
+    dependency: null
   });
   const [deletingConfirm, setDeletingConfirm] = useState(false);
   const [resolvingActionId, setResolvingActionId] = useState(null);
   const [confirmDeleteError, setConfirmDeleteError] = useState('');
+  const [inactivationRulesByAlmacenId, setInactivationRulesByAlmacenId] = useState({});
+  const [loadingEditDependencies, setLoadingEditDependencies] = useState(false);
 
   const movimientosRef = useRef(null);
+  const catalogRequestIdRef = useRef(0);
+  const almacenesRequestIdRef = useRef(0);
+  const dependenciasRequestIdRef = useRef(0);
+  const editDependenciasRequestIdRef = useRef(0);
   const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
   const showEditModal = Boolean(editForm && editId !== null);
 
@@ -207,21 +394,93 @@ const AlmacenesTab = ({ openToast }) => {
     if (typeof openToast === 'function') openToast(title, message, variant);
   };
 
+  const isSuperAdminUser = useMemo(
+    () =>
+      Array.isArray(user?.roles) &&
+      user.roles.some((role) => String(role ?? '').trim().toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN'),
+    [user?.roles]
+  );
+
+  const userSucursalId = useMemo(() => {
+    const parsed = Number.parseInt(String(user?.id_sucursal ?? '').trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [user?.id_sucursal]);
+
+  const sucursalesVisibles = useMemo(() => {
+    const source = Array.isArray(sucursales) ? sucursales : [];
+    if (isSuperAdminUser) return source;
+
+    const allowedIds = new Set();
+    for (const almacen of Array.isArray(almacenes) ? almacenes : []) {
+      const idSucursal = String(almacen?.id_sucursal ?? '').trim();
+      if (idSucursal) allowedIds.add(idSucursal);
+    }
+    if (userSucursalId) {
+      allowedIds.add(String(userSucursalId));
+    }
+
+    if (allowedIds.size === 0) return [];
+    return source.filter((sucursal) => allowedIds.has(String(sucursal?.id_sucursal ?? '').trim()));
+  }, [almacenes, isSuperAdminUser, sucursales, userSucursalId]);
+
+  const rememberInactivationRule = (idAlmacen, dependencyPayload) => {
+    const id = Number(idAlmacen ?? 0);
+    if (!id) return null;
+
+    const normalized = normalizeAlmacenDependencies(dependencyPayload);
+    setInactivationRulesByAlmacenId((current) => ({
+      ...current,
+      [String(id)]: normalized
+    }));
+    return normalized;
+  };
+
+  const loadEditDependencyRule = async (idAlmacen, { notifyError = false } = {}) => {
+    const id = Number(idAlmacen ?? 0);
+    if (!id) return null;
+
+    const cachedRule = inactivationRulesByAlmacenId[String(id)];
+    if (cachedRule) return cachedRule;
+
+    const requestId = ++editDependenciasRequestIdRef.current;
+    setLoadingEditDependencies(true);
+
+    try {
+      const deps = await inventarioService.getAlmacenDependencias(id);
+      if (requestId !== editDependenciasRequestIdRef.current) return null;
+      return rememberInactivationRule(id, deps);
+    } catch (requestError) {
+      if (requestId !== editDependenciasRequestIdRef.current) return null;
+      if (notifyError) {
+        const message = resolveAlmacenesRequestMessage(
+          requestError,
+          'No se pudieron consultar las dependencias operativas del almacen.'
+        );
+        safeToast('AVISO', message, 'warning');
+      }
+      return null;
+    } finally {
+      if (requestId === editDependenciasRequestIdRef.current) {
+        setLoadingEditDependencies(false);
+      }
+    }
+  };
+
   const sucursalesMap = useMemo(() => {
     const map = new Map();
-    for (const sucursal of Array.isArray(sucursales) ? sucursales : []) {
+    for (const sucursal of Array.isArray(sucursalesVisibles) ? sucursalesVisibles : []) {
       const key = String(sucursal?.id_sucursal ?? '').trim();
       if (!key) continue;
       map.set(key, sucursal);
     }
     return map;
-  }, [sucursales]);
+  }, [sucursalesVisibles]);
 
   const sucursalesActivas = useMemo(() => {
-    return (Array.isArray(sucursales) ? [...sucursales] : [])
+    return (Array.isArray(sucursalesVisibles) ? [...sucursalesVisibles] : [])
       .filter((sucursal) => parseSucursalEstado(sucursal?.estado))
       .sort((left, right) => Number(left?.id_sucursal ?? 0) - Number(right?.id_sucursal ?? 0));
-  }, [sucursales]);
+  }, [sucursalesVisibles]);
 
   const createSucursalOptions = useMemo(
     () =>
@@ -289,6 +548,7 @@ const AlmacenesTab = ({ openToast }) => {
   };
 
   const cargarCatalogos = async (includeInactivos = showInactivos) => {
+    const requestId = ++catalogRequestIdRef.current;
     setLoading(true);
     setLoadingSucursales(true);
     setError('');
@@ -299,38 +559,95 @@ const AlmacenesTab = ({ openToast }) => {
         sucursalesService.getAll()
       ]);
 
+      if (requestId !== catalogRequestIdRef.current) return;
       setAlmacenes(Array.isArray(almacenesData) ? almacenesData : []);
       setSucursales(Array.isArray(sucursalesData) ? sucursalesData : []);
     } catch (fetchError) {
-      const message = fetchError?.message || 'ERROR CARGANDO ALMACENES';
+      if (requestId !== catalogRequestIdRef.current) return;
+      const message = resolveAlmacenesRequestMessage(fetchError, 'ERROR CARGANDO ALMACENES');
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
-      setLoading(false);
-      setLoadingSucursales(false);
+      if (requestId === catalogRequestIdRef.current) {
+        setLoading(false);
+        setLoadingSucursales(false);
+      }
     }
   };
 
   const cargarAlmacenes = async (includeInactivos = showInactivos) => {
+    const requestId = ++almacenesRequestIdRef.current;
     setLoading(true);
     setError('');
 
     try {
       const data = await inventarioService.getAlmacenes({ include_inactivos: includeInactivos });
+      if (requestId !== almacenesRequestIdRef.current) return;
       setAlmacenes(Array.isArray(data) ? data : []);
     } catch (fetchError) {
-      const message = fetchError?.message || 'ERROR CARGANDO ALMACENES';
+      if (requestId !== almacenesRequestIdRef.current) return;
+      const message = resolveAlmacenesRequestMessage(fetchError, 'ERROR CARGANDO ALMACENES');
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
-      setLoading(false);
+      if (requestId === almacenesRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    if (permisosLoading) return;
+
+    if (catalogScope === 'proveedores' && !canVerProveedores) {
+      setCatalogScope('almacenes');
+      return;
+    }
+
+    if (catalogScope === 'almacenes' && !canVerAlmacenes && canVerProveedores) {
+      setCatalogScope('proveedores');
+    }
+  }, [canVerAlmacenes, canVerProveedores, catalogScope, permisosLoading]);
+
+  useEffect(() => {
+    if (!canVerAlmacenes) {
+      catalogRequestIdRef.current += 1;
+      almacenesRequestIdRef.current += 1;
+      dependenciasRequestIdRef.current += 1;
+      editDependenciasRequestIdRef.current += 1;
+      setAlmacenes([]);
+      setSucursales([]);
+      setLoading(false);
+      setLoadingSucursales(false);
+      setLoadingEditDependencies(false);
+      setShowCreateModal(false);
+      setDetailId(null);
+      setEditId(null);
+      setEditForm(null);
+      setConfirmModal({
+        show: false,
+        idToDelete: null,
+        nombre: '',
+        action: 'inactivar',
+        counts: null,
+        dependency: null
+      });
+      setDeletingConfirm(false);
+      setConfirmDeleteError('');
+      setResolvingActionId(null);
+      return;
+    }
+
     cargarCatalogos(showInactivos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showInactivos]);
+  }, [canVerAlmacenes, showInactivos]);
+
+  useEffect(() => () => {
+    catalogRequestIdRef.current += 1;
+    almacenesRequestIdRef.current += 1;
+    dependenciasRequestIdRef.current += 1;
+    editDependenciasRequestIdRef.current += 1;
+  }, []);
 
   useEffect(() => {
     // NEW: bloquea el scroll del body mientras un modal premium de Almacenes esta abierto.
@@ -355,6 +672,10 @@ const AlmacenesTab = ({ openToast }) => {
   };
 
   const openCreate = () => {
+    if (!canCrearAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear almacenes.', 'warning');
+      return;
+    }
     resetCreateForm();
     setShowCreateModal(true);
   };
@@ -367,6 +688,10 @@ const AlmacenesTab = ({ openToast }) => {
 
   const onCrear = async (event) => {
     event.preventDefault();
+    if (!canCrearAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear almacenes.', 'warning');
+      return;
+    }
     if (savingCreate) return;
     setError('');
 
@@ -385,7 +710,7 @@ const AlmacenesTab = ({ openToast }) => {
       await cargarAlmacenes();
       safeToast('CREADO', 'EL ALMACEN SE CREO CORRECTAMENTE.', 'success');
     } catch (requestError) {
-      const message = requestError?.message || 'ERROR CREANDO ALMACEN';
+      const message = resolveAlmacenesRequestMessage(requestError, 'ERROR CREANDO ALMACEN');
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
@@ -394,17 +719,30 @@ const AlmacenesTab = ({ openToast }) => {
   };
 
   const iniciarEdicion = (almacen) => {
+    if (!canEditarAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para editar almacenes.', 'warning');
+      return;
+    }
+    const idAlmacen = Number(almacen?.id_almacen ?? 0);
+    editDependenciasRequestIdRef.current += 1;
+    setLoadingEditDependencies(false);
     setDetailId(null);
     setEditErrors({});
-    setEditId(almacen?.id_almacen ?? null);
+    setEditId(idAlmacen || null);
     setEditForm({
       nombre: almacen?.nombre ?? '',
-      id_sucursal: String(almacen?.id_sucursal ?? '')
+      id_sucursal: String(almacen?.id_sucursal ?? ''),
+      concurrency_token: String(almacen?.concurrency_token ?? '')
     });
+    if (idAlmacen) {
+      void loadEditDependencyRule(idAlmacen);
+    }
   };
 
   const cancelarEdicion = (force = false) => {
     if (savingEdit && !force) return;
+    editDependenciasRequestIdRef.current += 1;
+    setLoadingEditDependencies(false);
     setEditId(null);
     setEditForm(null);
     setEditErrors({});
@@ -412,6 +750,10 @@ const AlmacenesTab = ({ openToast }) => {
 
   const guardarEdicion = async (event) => {
     event.preventDefault();
+    if (!canEditarAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para editar almacenes.', 'warning');
+      return;
+    }
     if (savingEdit || editId === null || !editForm) return;
 
     const actual = almacenes.find((item) => Number(item?.id_almacen ?? 0) === Number(editId ?? 0));
@@ -424,6 +766,15 @@ const AlmacenesTab = ({ openToast }) => {
     const validation = validarAlmacen(editForm, { allowLegacyId: actual?.id_sucursal });
     setEditErrors(validation.errors);
     if (!validation.ok) return;
+    const concurrencyToken = String(
+      editForm?.concurrency_token ?? actual?.concurrency_token ?? ''
+    ).trim();
+    if (!concurrencyToken) {
+      const message = 'No se pudo validar la version actual del almacen. Recarga la informacion e intenta nuevamente.';
+      setEditErrors((current) => ({ ...current, _concurrency: message }));
+      safeToast('ALMACENES', message, 'warning');
+      return;
+    }
 
     try {
       const payload = {};
@@ -435,11 +786,24 @@ const AlmacenesTab = ({ openToast }) => {
         payload.id_sucursal = validation.cleaned.id_sucursal;
       }
 
+      if (Object.prototype.hasOwnProperty.call(payload, 'id_sucursal')) {
+        const dependencyRule =
+          inactivationRulesByAlmacenId[String(editId)] || (await loadEditDependencyRule(editId));
+        if (dependencyRule?.canChangeSucursal === false) {
+          const message =
+            dependencyRule?.sucursalChangePrimaryReason || ALMACENES_SUCURSAL_CHANGE_CONFLICT_MESSAGE;
+          setEditErrors((current) => ({ ...current, id_sucursal: message }));
+          safeToast('CAMBIO BLOQUEADO', message, 'warning');
+          return;
+        }
+      }
+
       if (!Object.keys(payload).length) {
         safeToast('SIN CAMBIOS', 'NO HAY CAMBIOS PARA GUARDAR.', 'info');
         cancelarEdicion();
         return;
       }
+      payload.concurrency_token = concurrencyToken;
 
       // FIX IMPORTANTE: usa actualizacion atomica para evitar estados parciales por multiples PUT.
       setSavingEdit(true);
@@ -449,7 +813,27 @@ const AlmacenesTab = ({ openToast }) => {
       await cargarAlmacenes();
       safeToast('ACTUALIZADO', 'EL ALMACEN SE ACTUALIZO CORRECTAMENTE.', 'success');
     } catch (requestError) {
-      const message = requestError?.message || 'ERROR ACTUALIZANDO ALMACEN';
+      const isConcurrencyConflict =
+        requestError?.status === 409 &&
+        String(requestError?.data?.conflict_type || '').toUpperCase() === 'CONCURRENCY';
+      if (isConcurrencyConflict) {
+        const message = requestError?.message || ALMACENES_CONCURRENCY_CONFLICT_MESSAGE;
+        setEditErrors((current) => ({ ...current, _concurrency: message }));
+        setError(message);
+        safeToast('CONFLICTO DE EDICION', message, 'warning');
+        return;
+      }
+
+      const normalizedConflict =
+        requestError?.status === 409
+          ? rememberInactivationRule(editId, requestError?.data || {})
+          : null;
+      const message =
+        normalizedConflict?.sucursalChangePrimaryReason ||
+        resolveAlmacenesRequestMessage(requestError, 'ERROR ACTUALIZANDO ALMACEN');
+      if (requestError?.status === 409) {
+        setEditErrors((current) => ({ ...current, id_sucursal: message }));
+      }
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
@@ -460,93 +844,152 @@ const AlmacenesTab = ({ openToast }) => {
   const openConfirmDelete = async (almacen, preferredAction = 'auto') => {
     const id = Number(almacen?.id_almacen ?? 0);
     if (!id || deletingConfirm) return;
+    if (!canVerAlmacenes) {
+      safeToast('SIN PERMISO', 'No tienes permiso para consultar almacenes.', 'warning');
+      return;
+    }
 
     setConfirmDeleteError('');
+    const wasDeleteRequest = preferredAction === 'eliminar';
+    const isActivo = parseAlmacenEstado(almacen?.estado);
+    let action =
+      preferredAction === 'auto'
+        ? isActivo
+          ? 'inactivar'
+          : 'reactivar'
+        : preferredAction;
 
-    if (preferredAction === 'reactivar') {
+    if (action === 'eliminar') {
+      action = isActivo ? 'inactivar' : 'reactivar';
+    }
+
+    if (wasDeleteRequest) {
+      safeToast(
+        'AVISO',
+        ALMACENES_NO_DELETE_MESSAGE,
+        'info'
+      );
+    }
+
+    if (!canRunAlmacenAction(action)) {
+      safeToast('SIN PERMISO', 'No tienes permiso para realizar esta accion sobre almacenes.', 'warning');
+      return;
+    }
+
+    if (action === 'reactivar') {
       setConfirmModal({
         show: true,
         idToDelete: id,
         nombre: almacen?.nombre || '',
-        action: 'reactivar',
-        counts: null
+        action,
+        counts: null,
+        dependency: null
       });
       return;
     }
 
+    const requestId = ++dependenciasRequestIdRef.current;
     setResolvingActionId(id);
     try {
       const deps = await inventarioService.getAlmacenDependencias(id);
-      const canDelete = Boolean(deps?.canDelete);
-      const counts = deps?.counts || { movimientos: 0, productos: 0, insumos: 0 };
+      if (requestId !== dependenciasRequestIdRef.current) return;
+      const normalizedDeps = rememberInactivationRule(id, deps);
+      const counts = normalizedDeps?.counts || { movimientos: 0, productos: 0, insumos: 0 };
 
-      let action = preferredAction;
-      if (action === 'auto') action = canDelete ? 'eliminar' : 'inactivar';
-
-      if (action === 'eliminar' && !canDelete) {
-        safeToast('AVISO', 'Este almacen tiene movimientos o items. Debes inactivarlo.', 'warning');
-        action = 'inactivar';
+      if (!normalizedDeps?.canDeactivate) {
+        safeToast(
+          'INACTIVACION BLOQUEADA',
+          normalizedDeps.primaryBlockingReason || 'No se puede inactivar el almacen por dependencias operativas.',
+          'warning'
+        );
+        return;
       }
 
       setConfirmModal({
         show: true,
         idToDelete: id,
         nombre: almacen?.nombre || '',
-        action,
-        counts
+        action: 'inactivar',
+        counts,
+        dependency: normalizedDeps
       });
     } catch (requestError) {
-      const message = requestError?.message || 'ERROR VALIDANDO DEPENDENCIAS DEL ALMACEN';
+      if (requestId !== dependenciasRequestIdRef.current) return;
+      const message = resolveAlmacenesRequestMessage(
+        requestError,
+        'ERROR VALIDANDO DEPENDENCIAS DEL ALMACEN'
+      );
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
-      setResolvingActionId(null);
+      if (requestId === dependenciasRequestIdRef.current) {
+        setResolvingActionId(null);
+      }
     }
   };
 
   const closeConfirmDelete = () => {
     if (deletingConfirm) return;
     setConfirmDeleteError('');
-    setConfirmModal({ show: false, idToDelete: null, nombre: '', action: 'eliminar', counts: null });
+    setConfirmModal({
+      show: false,
+      idToDelete: null,
+      nombre: '',
+      action: 'inactivar',
+      counts: null,
+      dependency: null
+    });
   };
 
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
     if (!id || deletingConfirm) return;
 
+    if (!canRunAlmacenAction(confirmModal.action)) {
+      safeToast('SIN PERMISO', 'No tienes permiso para realizar esta accion sobre almacenes.', 'warning');
+      return;
+    }
+
     setDeletingConfirm(true);
     setConfirmDeleteError('');
 
     try {
-      if (confirmModal.action === 'inactivar') {
-        await inventarioService.inactivarAlmacen(id);
-      } else if (confirmModal.action === 'reactivar') {
+      if (confirmModal.action === 'reactivar') {
         await inventarioService.reactivarAlmacen(id);
       } else {
-        await inventarioService.eliminarAlmacen(id);
+        await inventarioService.inactivarAlmacen(id);
       }
 
       if (Number(detailId ?? 0) === Number(id)) setDetailId(null);
       if (Number(editId ?? 0) === Number(id)) cancelarEdicion();
       await cargarAlmacenes();
       setDeletingConfirm(false);
-      setConfirmModal({ show: false, idToDelete: null, nombre: '', action: 'eliminar', counts: null });
+      setConfirmModal({
+        show: false,
+        idToDelete: null,
+        nombre: '',
+        action: 'inactivar',
+        counts: null,
+        dependency: null
+      });
 
-      if (confirmModal.action === 'inactivar') {
-        safeToast('INACTIVADO', 'EL ALMACEN SE INACTIVO CORRECTAMENTE.', 'success');
-      } else if (confirmModal.action === 'reactivar') {
+      if (confirmModal.action === 'reactivar') {
         safeToast('REACTIVADO', 'EL ALMACEN SE REACTIVO CORRECTAMENTE.', 'success');
       } else {
-        safeToast('ELIMINADO', 'EL ALMACEN SE ELIMINO CORRECTAMENTE.', 'success');
+        safeToast('INACTIVADO', 'EL ALMACEN SE INACTIVO CORRECTAMENTE.', 'success');
       }
     } catch (requestError) {
       const fallbackMessage =
-        confirmModal.action === 'inactivar'
-          ? 'ERROR INACTIVANDO ALMACEN'
-          : confirmModal.action === 'reactivar'
+        confirmModal.action === 'reactivar'
           ? 'ERROR REACTIVANDO ALMACEN'
-          : 'ERROR ELIMINANDO ALMACEN';
-      const message = requestError?.message || fallbackMessage;
+          : 'ERROR INACTIVANDO ALMACEN';
+      const normalizedConflict =
+        confirmModal.action === 'inactivar' && requestError?.status === 409
+          ? rememberInactivationRule(id, requestError?.data || {})
+          : null;
+      const message =
+        normalizedConflict?.primaryBlockingReason ||
+        resolveAlmacenesRequestMessage(requestError, fallbackMessage);
       setDeletingConfirm(false);
       setConfirmDeleteError(message);
       setError(message);
@@ -624,6 +1067,22 @@ const AlmacenesTab = ({ openToast }) => {
     () => (detailAlmacen ? getAlmacenActionMeta(detailAlmacen) : null),
     [detailAlmacen]
   );
+  const detailInactivationRule = useMemo(() => {
+    const id = Number(detailAlmacen?.id_almacen ?? 0);
+    if (!id) return null;
+    return inactivationRulesByAlmacenId[String(id)] || null;
+  }, [detailAlmacen, inactivationRulesByAlmacenId]);
+  const detailInactivationBlocked =
+    detailActionMeta?.action === 'inactivar' && detailInactivationRule?.canDeactivate === false;
+  const editDependencyRule = useMemo(() => {
+    const id = Number(editId ?? 0);
+    if (!id) return null;
+    return inactivationRulesByAlmacenId[String(id)] || null;
+  }, [editId, inactivationRulesByAlmacenId]);
+  const editSucursalLockedByHistory =
+    editDependencyRule?.canChangeSucursal === false;
+  const editSucursalBlockingReason =
+    editDependencyRule?.sucursalChangePrimaryReason || ALMACENES_SUCURSAL_CHANGE_CONFLICT_MESSAGE;
 
   const detailMetrics = useMemo(() => {
     if (!detailAlmacen) return [];
@@ -661,7 +1120,9 @@ const AlmacenesTab = ({ openToast }) => {
   const centeredGridClass =
     !loading && almacenesFiltrados.length > 0 && almacenesFiltrados.length < 3 ? 'is-centered' : '';
 
-  const cardsContent = loading ? (
+  const cardsContent = !canVerAlmacenes ? (
+    <div className="alert alert-info mb-0">No tienes permiso para ver almacenes.</div>
+  ) : loading ? (
     <div className={`inv-warehouse-grid ${centeredGridClass}`.trim()}>
       {[1, 2, 3].map((skeleton) => (
         <div key={skeleton} className="inv-warehouse-card inv-warehouse-card--skeleton" aria-hidden="true" />
@@ -680,6 +1141,14 @@ const AlmacenesTab = ({ openToast }) => {
         const isInactivo = !parseAlmacenEstado(almacen?.estado);
         const isResolvingAction = Number(resolvingActionId ?? 0) === Number(almacen?.id_almacen ?? 0);
         const isSelected = String(selectedAlmacenId ?? '') === String(almacen?.id_almacen ?? '');
+        const knownInactivationRule =
+          inactivationRulesByAlmacenId[String(almacen?.id_almacen ?? '')] || null;
+        const isInactivationBlocked =
+          actionMeta.action === 'inactivar' && knownInactivationRule?.canDeactivate === false;
+        const actionLabel = isInactivationBlocked ? 'Bloqueada' : actionMeta.label;
+        const actionTitle = isInactivationBlocked
+          ? knownInactivationRule?.primaryBlockingReason || 'Inactivacion bloqueada por dependencias operativas.'
+          : actionMeta.title;
         const highlights = [
           {
             key: 'items',
@@ -788,33 +1257,37 @@ const AlmacenesTab = ({ openToast }) => {
 
             <div className="inv-warehouse-card__footer">
               <div className="inv-warehouse-card__actions">
-                <button
-                  type="button"
-                  className="btn inv-prod-btn-subtle inv-warehouse-card__action"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    iniciarEdicion(almacen);
-                  }}
-                  title="Editar"
-                  disabled={deletingConfirm}
-                >
-                  <i className="bi bi-pencil-square" />
-                  <span>Editar</span>
-                </button>
+                {canEditarAlmacenes ? (
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle inv-warehouse-card__action"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      iniciarEdicion(almacen);
+                    }}
+                    title="Editar"
+                    disabled={deletingConfirm}
+                  >
+                    <i className="bi bi-pencil-square" />
+                    <span>Editar</span>
+                  </button>
+                ) : null}
 
-                <button
-                  type="button"
-                  className={actionMeta.buttonClass}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openConfirmDelete(almacen, actionMeta.action);
-                  }}
-                  title={actionMeta.title}
-                  disabled={deletingConfirm || isResolvingAction}
-                >
-                  <i className={`bi ${isResolvingAction ? 'bi-hourglass-split' : actionMeta.icon}`} />
-                  <span>{isResolvingAction ? 'Validando...' : actionMeta.label}</span>
-                </button>
+                {canRunAlmacenAction(actionMeta.action) ? (
+                  <button
+                    type="button"
+                    className={actionMeta.buttonClass}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openConfirmDelete(almacen, actionMeta.action);
+                    }}
+                    title={actionTitle}
+                    disabled={deletingConfirm || isResolvingAction || isInactivationBlocked}
+                  >
+                    <i className={`bi ${isResolvingAction ? 'bi-hourglass-split' : actionMeta.icon}`} />
+                    <span>{isResolvingAction ? 'Validando...' : actionLabel}</span>
+                  </button>
+                ) : null}
               </div>
             </div>
           </article>
@@ -823,12 +1296,21 @@ const AlmacenesTab = ({ openToast }) => {
     </div>
   );
 
+  if (permisosLoading) return null;
+
+  if (!canAccessAlmacenesTab) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_ALMACENES_VER} />;
+  }
+
   if (catalogScope === 'proveedores') {
+    if (!canVerProveedores) {
+      return <SinPermiso permiso={PERMISSIONS.INVENTARIO_PROVEEDORES_VER} />;
+    }
     return <ProveedoresTab openToast={openToast} onScopeChange={setCatalogScope} />;
   }
 
   const createModal =
-    modalPortalTarget && showCreateModal
+    canCrearAlmacenes && modalPortalTarget && showCreateModal
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showCreateModal}>
             <div className="inv-prod-pmodal__overlay" onClick={closeCreate} />
@@ -950,7 +1432,7 @@ const AlmacenesTab = ({ openToast }) => {
         )
       : null;
 
-  const detailModal = detailAlmacen ? (
+  const detailModal = canVerAlmacenes && detailAlmacen ? (
     <div
       className="modal fade show"
       style={{ display: 'block', backgroundColor: 'rgba(17, 8, 10, 0.55)', zIndex: 2600 }}
@@ -986,6 +1468,12 @@ const AlmacenesTab = ({ openToast }) => {
                 </div>
               ))}
             </div>
+            {detailInactivationBlocked ? (
+              <div className="alert alert-warning mt-3 mb-0" role="status">
+                {detailInactivationRule?.primaryBlockingReason ||
+                  'No se puede inactivar este almacen por dependencias operativas.'}
+              </div>
+            ) : null}
           </div>
 
           <div className="modal-footer inv-warehouse-detail-modal__footer">
@@ -1000,24 +1488,33 @@ const AlmacenesTab = ({ openToast }) => {
             >
               Ver Kardex
             </button>
-            <button type="button" className="btn btn-light" onClick={() => iniciarEdicion(detailAlmacen)}>
-              Editar
-            </button>
-            {detailActionMeta ? (
+            {canEditarAlmacenes ? (
+              <button type="button" className="btn btn-light" onClick={() => iniciarEdicion(detailAlmacen)}>
+                Editar
+              </button>
+            ) : null}
+            {detailActionMeta && canRunAlmacenAction(detailActionMeta.action) ? (
               <button
                 type="button"
                 className={`btn ${
-                  detailActionMeta.action === 'eliminar'
-                    ? 'btn-outline-danger'
-                    : detailActionMeta.action === 'inactivar'
-                    ? 'btn-outline-secondary'
-                    : 'btn-outline-success'
+                  detailActionMeta.action === 'inactivar' ? 'btn-outline-secondary' : 'btn-outline-success'
                 }`}
                 onClick={() => openConfirmDelete(detailAlmacen, detailActionMeta.action)}
-                disabled={Number(resolvingActionId ?? 0) === Number(detailAlmacen?.id_almacen ?? 0)}
+                disabled={
+                  Number(resolvingActionId ?? 0) === Number(detailAlmacen?.id_almacen ?? 0) ||
+                  detailInactivationBlocked
+                }
+                title={
+                  detailInactivationBlocked
+                    ? detailInactivationRule?.primaryBlockingReason ||
+                      'Inactivacion bloqueada por dependencias operativas.'
+                    : detailActionMeta.title
+                }
               >
                 {Number(resolvingActionId ?? 0) === Number(detailAlmacen?.id_almacen ?? 0)
                   ? 'Validando...'
+                  : detailInactivationBlocked
+                  ? 'Inactivacion bloqueada'
                   : detailActionMeta.label}
               </button>
             ) : null}
@@ -1031,7 +1528,7 @@ const AlmacenesTab = ({ openToast }) => {
   ) : null;
 
   const editModal =
-    modalPortalTarget && showEditModal
+    canEditarAlmacenes && modalPortalTarget && showEditModal
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showEditModal}>
             <div className="inv-prod-pmodal__overlay" onClick={cancelarEdicion} />
@@ -1082,9 +1579,16 @@ const AlmacenesTab = ({ openToast }) => {
                         <div className="inv-prod-pmodal__section-head">
                           <div className="inv-prod-pmodal__section-title">Datos principales</div>
                           <div className="inv-prod-pmodal__section-sub">
-                            Ajusta nombre y sucursal respetando el catalogo operativo actual.
+                            {editSucursalLockedByHistory
+                              ? 'Este almacen tiene historial operativo: puedes editar el nombre, pero no cambiar su sucursal.'
+                              : 'Ajusta nombre y sucursal respetando el catalogo operativo actual.'}
                           </div>
                         </div>
+                        {editErrors._concurrency ? (
+                          <div className="alert alert-warning py-2 mb-3" role="alert">
+                            {editErrors._concurrency}
+                          </div>
+                        ) : null}
 
                         <div className="row g-3">
                           <div className="col-12">
@@ -1113,7 +1617,7 @@ const AlmacenesTab = ({ openToast }) => {
                               onChange={(event) =>
                                 setEditForm((current) => ({ ...current, id_sucursal: event.target.value }))
                               }
-                              disabled={!canEditWithCatalog || savingEdit}
+                              disabled={!canEditWithCatalog || savingEdit || loadingEditDependencies || editSucursalLockedByHistory}
                             >
                               <option value="">
                                 {loadingSucursales ? 'Cargando sucursales...' : 'Seleccione una sucursal'}
@@ -1125,6 +1629,14 @@ const AlmacenesTab = ({ openToast }) => {
                               ))}
                             </select>
                             {editErrors.id_sucursal ? <div className="invalid-feedback">{editErrors.id_sucursal}</div> : null}
+                            {loadingEditDependencies ? (
+                              <div className="form-text">Validando dependencias operativas del almacen...</div>
+                            ) : null}
+                            {editSucursalLockedByHistory ? (
+                              <div className="form-text text-warning">
+                                {`${editSucursalBlockingReason} ${ALMACENES_SUCURSAL_CHANGE_POLICY_MESSAGE}`}
+                              </div>
+                            ) : null}
                             {editHasLegacySelected ? (
                               <div className="form-text">
                                 La sucursal actual esta fuera del catalogo activo, pero puede conservarse.
@@ -1152,12 +1664,9 @@ const AlmacenesTab = ({ openToast }) => {
         )
       : null;
 
-  const confirmDeleteModal = confirmModal.show ? (
+  const confirmDeleteModal = confirmModal.show && canRunAlmacenAction(confirmModal.action) ? (
     <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
-      <div
-        className={`inv-pro-confirm-panel ${confirmModal.action === 'eliminar' ? 'inv-pro-confirm-panel--danger' : ''}`.trim()}
-        onClick={(event) => event.stopPropagation()}
-      >
+      <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
         <div className="inv-pro-confirm-glow" aria-hidden="true" />
 
         <div className="inv-pro-confirm-head">
@@ -1218,11 +1727,7 @@ const AlmacenesTab = ({ openToast }) => {
           <button
             type="button"
             className={`btn ${
-              confirmModal.action === 'eliminar'
-                ? 'inv-pro-btn-danger'
-                : confirmModal.action === 'reactivar'
-                ? 'btn-success'
-                : 'btn-warning'
+              confirmModal.action === 'reactivar' ? 'btn-success' : 'btn-warning'
             }`}
             onClick={eliminarConfirmado}
             disabled={deletingConfirm}
@@ -1253,7 +1758,13 @@ const AlmacenesTab = ({ openToast }) => {
             <div className="inv-cat-v3__switch-slot">
               <CompactHeaderSwitch
                 value={catalogScope}
-                onChange={setCatalogScope}
+                onChange={(nextScope) => {
+                  if (nextScope === 'proveedores' && !canVerProveedores) {
+                    safeToast('SIN PERMISO', 'No tienes permiso para ver proveedores.', 'warning');
+                    return;
+                  }
+                  setCatalogScope(nextScope);
+                }}
                 leftValue="almacenes"
                 rightValue="proveedores"
                 leftLabel="ALMACENES"
@@ -1287,10 +1798,17 @@ const AlmacenesTab = ({ openToast }) => {
                   Mostrar inactivos
                 </label>
               </div>
-              <button type="button" className="inv-prod-toolbar-btn inv-cat-v3__new-btn" onClick={openCreate} disabled={!canCreateWithCatalog}>
-                <i className="bi bi-plus-circle" aria-hidden="true" />
-                <span>Nuevo almacen</span>
-              </button>
+              {canCrearAlmacenes ? (
+                <button
+                  type="button"
+                  className="inv-prod-toolbar-btn inv-cat-v3__new-btn"
+                  onClick={openCreate}
+                  disabled={!canCreateWithCatalog}
+                >
+                  <i className="bi bi-plus-circle" aria-hidden="true" />
+                  <span>Nuevo almacen</span>
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1302,6 +1820,10 @@ const AlmacenesTab = ({ openToast }) => {
               <span>{error}</span>
             </div>
           ) : null}
+
+          <div className="alert alert-info mt-3 mb-2" role="note">
+            {`${ALMACENES_NO_DELETE_MESSAGE} ${ALMACENES_INACTIVATION_POLICY_MESSAGE} ${ALMACENES_SUCURSAL_CHANGE_POLICY_MESSAGE}`}
+          </div>
 
           <div className="inv-warehouse-results-meta">
             Total Almacenes: <strong>{almacenes.length}</strong>
