@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import Select from "react-select";
 import { personaService } from "../../../services/personasService";
 import sucursalesService from "../../../services/sucursalesService";
+import { API_URL } from "../../../utils/constants";
 import EntityTable from "../../../components/ui/EntityTable";
 import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
@@ -351,9 +352,55 @@ const isAbortError = (error) =>
     String(error.message || "").toLowerCase().includes("aborted")
   );
 
-const EMPLOYEE_IMAGES_STORAGE_KEY = "empleado_images";
 const IMAGE_ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+const EMPLOYEE_IMAGE_PROCESSING_MESSAGE = "Procesando imagen... espere un momento.";
+const EMPLOYEE_IMAGE_UPLOAD_ERROR_MESSAGE = "No se pudo guardar la imagen del empleado.";
+const EMPLOYEE_IMAGE_REQUIRES_USER_MESSAGE = "No se pudo sincronizar la imagen del empleado en el servidor.";
+const EMPLOYEE_IMAGES_STORAGE_KEY = "empleado_images";
+const DATA_IMAGE_RE = /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/i;
+const ABSOLUTE_URL_RE = /^https?:\/\//i;
+const UPLOADS_PATH_RE = /^\/uploads(?:\/|$)/i;
+const EMPLEADO_IMAGE_VALUE_FIELDS = [
+  "foto_perfil",
+  "foto",
+  "imagen",
+  "imagen_perfil",
+  "url_imagen",
+  "foto_url",
+  "photo_url",
+  "avatar_url",
+];
+const EMPLEADO_SIGNED_URL_FIELDS = [
+  "foto_perfil_url_firmada",
+  "foto_perfil_signed_url",
+  "foto_signed_url",
+  "imagen_url_firmada",
+  "imagen_signed_url",
+  "signed_url",
+  "signedUrl",
+  "url_firmada",
+];
+const EMPLEADO_STORAGE_PATH_FIELDS = [
+  "foto_storage_path",
+  "foto_perfil_path",
+  "foto_path",
+  "imagen_storage_path",
+  "imagen_path",
+  "storage_path",
+  "path",
+];
+const EMPLEADO_NESTED_IMAGE_KEYS = ["foto", "imagen", "photo", "avatar", "usuario", "empleado"];
+const EMPLEADO_SIGNED_RESPONSE_ID_FIELDS = ["id_empleado", "empleado_id", "id"];
+const EMPLEADO_SIGNED_RESPONSE_URL_FIELDS = [
+  ...EMPLEADO_SIGNED_URL_FIELDS,
+  ...EMPLEADO_IMAGE_VALUE_FIELDS,
+  "url",
+  "value",
+  "src",
+];
+const EMPLEADO_USER_LOOKUP_LIMIT = 100;
+const EMPLEADO_USER_LOOKUP_MAX_PAGES = 12;
 
 const createImageDraftState = (previewUrl = "") => ({
   previewUrl: String(previewUrl || ""),
@@ -365,11 +412,6 @@ const toImageValue = (value) => {
   if (value === null || value === undefined) return "";
   const text = String(value).trim();
   return text || "";
-};
-
-const toEmpleadoId = (value) => {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
 const loadEmployeeImages = () => {
@@ -385,47 +427,267 @@ const loadEmployeeImages = () => {
   }
 };
 
-const saveEmployeeImage = (id, dataUrl) => {
+const saveEmployeeImage = (id, value, current = null) => {
   const empleadoId = toEmpleadoId(id);
-  const safeDataUrl = toImageValue(dataUrl);
-  if (!empleadoId || !safeDataUrl || typeof window === "undefined") return loadEmployeeImages();
+  const imageValue = toImageValue(value);
+  if (!empleadoId || !imageValue || typeof window === "undefined") {
+    return current && typeof current === "object" ? current : loadEmployeeImages();
+  }
 
-  const images = loadEmployeeImages();
-  const next = { ...images, [String(empleadoId)]: safeDataUrl };
+  const source = current && typeof current === "object" ? current : loadEmployeeImages();
+  const next = { ...source, [String(empleadoId)]: imageValue };
 
   try {
     window.localStorage.setItem(EMPLOYEE_IMAGES_STORAGE_KEY, JSON.stringify(next));
   } catch {
-    // Keep app stable even if storage is unavailable.
+    // Ignorar errores de quota/storage para no bloquear el guardado del empleado.
   }
 
   return next;
 };
 
-const removeEmployeeImage = (id) => {
+const removeEmployeeImage = (id, current = null) => {
   const empleadoId = toEmpleadoId(id);
-  if (!empleadoId || typeof window === "undefined") return loadEmployeeImages();
+  if (!empleadoId || typeof window === "undefined") {
+    return current && typeof current === "object" ? current : loadEmployeeImages();
+  }
 
-  const images = loadEmployeeImages();
-  if (!Object.prototype.hasOwnProperty.call(images, String(empleadoId))) return images;
-
-  const next = { ...images };
+  const source = current && typeof current === "object" ? current : loadEmployeeImages();
+  if (!Object.prototype.hasOwnProperty.call(source, String(empleadoId))) return source;
+  const next = { ...source };
   delete next[String(empleadoId)];
 
   try {
     window.localStorage.setItem(EMPLOYEE_IMAGES_STORAGE_KEY, JSON.stringify(next));
   } catch {
-    // Keep app stable even if storage is unavailable.
+    // Ignorar errores de storage para mantener estable la UI.
   }
 
   return next;
 };
 
-const getEmployeeImage = (id, images = null) => {
-  const empleadoId = toEmpleadoId(id);
-  if (!empleadoId) return "";
-  const source = images && typeof images === "object" ? images : loadEmployeeImages();
-  return toImageValue(source[String(empleadoId)]);
+const toEmpleadoId = (value) => {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const getFirstPositiveInteger = (values = []) => {
+  if (!Array.isArray(values)) return null;
+  for (const value of values) {
+    const parsed = toEmpleadoId(value);
+    if (parsed) return parsed;
+  }
+  return null;
+};
+
+const extractEmpleadoUsuarioId = (empleado) =>
+  getFirstPositiveInteger([
+    empleado?.id_usuario,
+    empleado?.usuario_id,
+    empleado?.usuario?.id_usuario,
+    empleado?.usuario?.id,
+  ]);
+
+const extractUsuarioEmpleadoId = (usuario) =>
+  getFirstPositiveInteger([
+    usuario?.id_empleado,
+    usuario?.empleado_id,
+    usuario?.empleado?.id_empleado,
+    usuario?.empleado?.id,
+  ]);
+
+const extractUsuarioId = (usuario) =>
+  getFirstPositiveInteger([
+    usuario?.id_usuario,
+    usuario?.usuario_id,
+    usuario?.id,
+    usuario?.usuario?.id_usuario,
+    usuario?.usuario?.id,
+  ]);
+
+const isAbsoluteUrl = (value) => ABSOLUTE_URL_RE.test(toImageValue(value));
+const isDataImageUrl = (value) => DATA_IMAGE_RE.test(toImageValue(value));
+const isUploadsPath = (value) => UPLOADS_PATH_RE.test(toImageValue(value));
+
+const resolveAgainstApiBase = (rawPath) => {
+  try {
+    return new URL(rawPath, API_URL).toString();
+  } catch {
+    return rawPath;
+  }
+};
+
+const resolveRenderableImageSrc = (value) => {
+  const normalized = toImageValue(value);
+  if (!normalized) return "";
+  if (isAbsoluteUrl(normalized) || isDataImageUrl(normalized)) return normalized;
+  if (isUploadsPath(normalized)) return resolveAgainstApiBase(normalized);
+  return "";
+};
+
+const getFirstImageFieldValue = (record, keys = []) => {
+  if (!record || typeof record !== "object") return "";
+  for (const key of keys) {
+    const value = toImageValue(record[key]);
+    if (value) return value;
+  }
+  return "";
+};
+
+const getNestedImageFieldValue = (record, nestedKeys = [], fieldKeys = []) => {
+  if (!record || typeof record !== "object") return "";
+  for (const nestedKey of nestedKeys) {
+    const nested = record[nestedKey];
+    if (!nested || typeof nested !== "object") continue;
+    const value = getFirstImageFieldValue(nested, fieldKeys);
+    if (value) return value;
+  }
+  return "";
+};
+
+const extractEmpleadoImageStoragePath = (empleado) => {
+  const sources = [
+    getFirstImageFieldValue(empleado, EMPLEADO_STORAGE_PATH_FIELDS),
+    getNestedImageFieldValue(empleado, EMPLEADO_NESTED_IMAGE_KEYS, EMPLEADO_STORAGE_PATH_FIELDS),
+    getFirstImageFieldValue(empleado?.persona, EMPLEADO_STORAGE_PATH_FIELDS),
+    getNestedImageFieldValue(empleado?.persona, EMPLEADO_NESTED_IMAGE_KEYS, EMPLEADO_STORAGE_PATH_FIELDS),
+  ];
+
+  return getFirstNonEmptyValue(sources);
+};
+
+const extractEmpleadoImageRawValue = (empleado) => {
+  const sources = [
+    getFirstImageFieldValue(empleado, EMPLEADO_SIGNED_URL_FIELDS),
+    getFirstImageFieldValue(empleado, EMPLEADO_IMAGE_VALUE_FIELDS),
+    getNestedImageFieldValue(empleado, EMPLEADO_NESTED_IMAGE_KEYS, EMPLEADO_SIGNED_URL_FIELDS),
+    getNestedImageFieldValue(empleado, EMPLEADO_NESTED_IMAGE_KEYS, EMPLEADO_IMAGE_VALUE_FIELDS),
+    getFirstImageFieldValue(empleado?.persona, EMPLEADO_SIGNED_URL_FIELDS),
+    getFirstImageFieldValue(empleado?.persona, EMPLEADO_IMAGE_VALUE_FIELDS),
+    getNestedImageFieldValue(empleado?.persona, EMPLEADO_NESTED_IMAGE_KEYS, EMPLEADO_SIGNED_URL_FIELDS),
+    getNestedImageFieldValue(empleado?.persona, EMPLEADO_NESTED_IMAGE_KEYS, EMPLEADO_IMAGE_VALUE_FIELDS),
+  ];
+
+  return getFirstNonEmptyValue(sources);
+};
+
+const resolveEmpleadoImageFromSources = (empleado, signedImageMap = {}, userImageMap = {}, localImageMap = {}) => {
+  const empleadoId = toEmpleadoId(empleado?.id_empleado);
+  if (empleadoId) {
+    const cachedValue = toImageValue(signedImageMap[String(empleadoId)]);
+    const cachedSrc = resolveRenderableImageSrc(cachedValue);
+    if (cachedSrc) return cachedSrc;
+
+    const userCachedValue = toImageValue(userImageMap[String(empleadoId)]);
+    const userCachedSrc = resolveRenderableImageSrc(userCachedValue);
+    if (userCachedSrc) return userCachedSrc;
+
+    const localCachedValue = toImageValue(localImageMap[String(empleadoId)]);
+    const localCachedSrc = resolveRenderableImageSrc(localCachedValue);
+    if (localCachedSrc) return localCachedSrc;
+  }
+
+  const rawValue = extractEmpleadoImageRawValue(empleado);
+  const resolvedSrc = resolveRenderableImageSrc(rawValue);
+  if (resolvedSrc) return resolvedSrc;
+  return "";
+};
+
+const extractUsuarioPhotoSrc = (usuario) => {
+  const sources = [
+    getFirstImageFieldValue(usuario, EMPLEADO_SIGNED_URL_FIELDS),
+    getFirstImageFieldValue(usuario, EMPLEADO_IMAGE_VALUE_FIELDS),
+    getNestedImageFieldValue(usuario, EMPLEADO_NESTED_IMAGE_KEYS, EMPLEADO_SIGNED_URL_FIELDS),
+    getNestedImageFieldValue(usuario, EMPLEADO_NESTED_IMAGE_KEYS, EMPLEADO_IMAGE_VALUE_FIELDS),
+  ];
+  const rawValue = getFirstNonEmptyValue(sources);
+  return resolveRenderableImageSrc(rawValue);
+};
+
+const extractSignedUrlValue = (payload) => {
+  if (!payload) return "";
+  if (typeof payload === "string") return resolveRenderableImageSrc(payload);
+  if (typeof payload !== "object" || Array.isArray(payload)) return "";
+
+  const candidate = getFirstImageFieldValue(payload, EMPLEADO_SIGNED_RESPONSE_URL_FIELDS);
+  return resolveRenderableImageSrc(candidate);
+};
+
+const normalizeSignedImageMapResponse = (response, requestedRows = []) => {
+  const map = {};
+  const requestedIds = requestedRows
+    .map((row) => toEmpleadoId(row?.id_empleado ?? row?.id ?? row?.empleado_id))
+    .filter(Boolean);
+
+  const assign = (rawId, rawValue) => {
+    const id = toEmpleadoId(rawId);
+    const value = extractSignedUrlValue(rawValue);
+    if (!id || !value) return;
+    map[String(id)] = value;
+  };
+
+  if (typeof response === "string") {
+    if (requestedIds.length === 1) {
+      assign(requestedIds[0], response);
+    }
+    return map;
+  }
+
+  if (!response || typeof response !== "object") return map;
+
+  const rootCandidate = extractSignedUrlValue(response);
+  if (rootCandidate && requestedIds.length === 1) {
+    map[String(requestedIds[0])] = rootCandidate;
+  }
+
+  const objectBuckets = [
+    response.urls,
+    response.signed_urls,
+    response.signedUrls,
+    response.data?.urls,
+    response.data?.signed_urls,
+    response.data?.signedUrls,
+  ];
+
+  objectBuckets.forEach((bucket) => {
+    if (!bucket || typeof bucket !== "object" || Array.isArray(bucket)) return;
+    Object.entries(bucket).forEach(([rawId, value]) => assign(rawId, value));
+  });
+
+  const arrayBuckets = [
+    response.items,
+    response.data,
+    response.rows,
+    response.resultados,
+    response.empleados,
+    response.urls,
+    response.signed_urls,
+    response.signedUrls,
+  ];
+
+  arrayBuckets.forEach((bucket) => {
+    if (!Array.isArray(bucket)) return;
+    bucket.forEach((entry) => {
+      if (typeof entry === "string") {
+        if (requestedIds.length === 1) assign(requestedIds[0], entry);
+        return;
+      }
+      if (!entry || typeof entry !== "object") return;
+      const entryId = getFirstNonEmptyValue(
+        EMPLEADO_SIGNED_RESPONSE_ID_FIELDS.map((field) => entry[field])
+      );
+      assign(entryId, entry);
+    });
+  });
+
+  if (!Object.keys(map).length && response.data && typeof response.data === "object" && !Array.isArray(response.data)) {
+    const nestedCandidate = extractSignedUrlValue(response.data);
+    if (nestedCandidate && requestedIds.length === 1) {
+      map[String(requestedIds[0])] = nestedCandidate;
+    }
+  }
+
+  return map;
 };
 
 const readFileAsDataUrl = (file) =>
@@ -484,7 +746,11 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const [showPersonaCreateModal, setShowPersonaCreateModal] = useState(false);
   const [detailEmpleado, setDetailEmpleado] = useState(null);
   const [formImage, setFormImage] = useState(() => createImageDraftState());
-  const [employeeImages, setEmployeeImages] = useState(() => loadEmployeeImages());
+  const [employeeSignedImages, setEmployeeSignedImages] = useState({});
+  const [employeeUserImages, setEmployeeUserImages] = useState({});
+  const [employeeUserIds, setEmployeeUserIds] = useState({});
+  const [employeeLocalImages, setEmployeeLocalImages] = useState(() => loadEmployeeImages());
+  const [imageDirty, setImageDirty] = useState(false);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -623,19 +889,248 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   );
 
   const resolveEmpleadoImage = useCallback(
-    (empleado) => getEmployeeImage(empleado?.id_empleado, employeeImages),
-    [employeeImages]
+    (empleado) => resolveEmpleadoImageFromSources(empleado, employeeSignedImages, employeeUserImages, employeeLocalImages),
+    [employeeSignedImages, employeeUserImages, employeeLocalImages]
   );
 
-  const persistEmployeeImage = useCallback((id, dataUrl) => {
-    const next = saveEmployeeImage(id, dataUrl);
-    setEmployeeImages(next);
+  const mergeSignedImageMap = useCallback((incoming = {}) => {
+    const entries = Object.entries(incoming || {});
+    if (!entries.length) return;
+    setEmployeeSignedImages((prev) => ({ ...prev, ...incoming }));
   }, []);
 
-  const clearPersistedEmployeeImage = useCallback((id) => {
-    const next = removeEmployeeImage(id);
-    setEmployeeImages(next);
+  const mergeEmployeeUserImageMap = useCallback((incoming = {}) => {
+    const entries = Object.entries(incoming || {});
+    if (!entries.length) return;
+    setEmployeeUserImages((prev) => ({ ...prev, ...incoming }));
   }, []);
+
+  const mergeEmployeeUserIdMap = useCallback((incoming = {}) => {
+    const entries = Object.entries(incoming || {});
+    if (!entries.length) return;
+    setEmployeeUserIds((prev) => ({ ...prev, ...incoming }));
+  }, []);
+
+  const findUsuariosByEmpleadoIds = useCallback(async (ids = []) => {
+    const targetKeys = new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map((value) => toEmpleadoId(value))
+        .filter(Boolean)
+        .map((value) => String(value))
+    );
+    if (!targetKeys.size) {
+      return { userIdsByEmployee: {}, userImagesByEmployee: {} };
+    }
+
+    const userIdsByEmployee = {};
+    const userImagesByEmployee = {};
+    let page = 1;
+    let totalPages = EMPLEADO_USER_LOOKUP_MAX_PAGES;
+
+    while (targetKeys.size && page <= totalPages && page <= EMPLEADO_USER_LOOKUP_MAX_PAGES) {
+      const response = await personaService.getUsuariosV2({
+        page,
+        limit: EMPLEADO_USER_LOOKUP_LIMIT,
+        q: "",
+      });
+      const { items, total: totalItems } = normalizeListResponse(response);
+      if (!Array.isArray(items) || !items.length) break;
+
+      if (page === 1) {
+        const parsedTotal = Number(totalItems) || items.length;
+        const pagesFromTotal = Math.max(1, Math.ceil(parsedTotal / EMPLEADO_USER_LOOKUP_LIMIT));
+        totalPages = Math.min(pagesFromTotal, EMPLEADO_USER_LOOKUP_MAX_PAGES);
+      }
+
+      items.forEach((usuario) => {
+        const empleadoId = extractUsuarioEmpleadoId(usuario);
+        if (!empleadoId) return;
+
+        const employeeKey = String(empleadoId);
+        if (!targetKeys.has(employeeKey)) return;
+
+        const usuarioId = extractUsuarioId(usuario);
+        if (usuarioId) userIdsByEmployee[employeeKey] = usuarioId;
+
+        const usuarioPhoto = extractUsuarioPhotoSrc(usuario);
+        if (usuarioPhoto) userImagesByEmployee[employeeKey] = usuarioPhoto;
+
+        targetKeys.delete(employeeKey);
+      });
+
+      if (items.length < EMPLEADO_USER_LOOKUP_LIMIT) break;
+      page += 1;
+    }
+
+    return { userIdsByEmployee, userImagesByEmployee };
+  }, []);
+
+  const fetchLinkedUsuarioImagesForRows = useCallback(
+    async (rows = []) => {
+      const missingEmployeeIds = new Set();
+      const directUserIds = {};
+
+      (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const empleadoId = toEmpleadoId(row?.id_empleado ?? row?.id ?? row?.empleado_id);
+        if (!empleadoId) return;
+        const employeeKey = String(empleadoId);
+
+        const directUserId = extractEmpleadoUsuarioId(row);
+        if (directUserId) {
+          directUserIds[employeeKey] = directUserId;
+          return;
+        }
+
+        if (employeeUserIds[employeeKey] || employeeUserImages[employeeKey]) return;
+        missingEmployeeIds.add(empleadoId);
+      });
+
+      if (Object.keys(directUserIds).length) {
+        mergeEmployeeUserIdMap(directUserIds);
+      }
+
+      if (!missingEmployeeIds.size) return;
+
+      try {
+        const lookupResult = await findUsuariosByEmpleadoIds([...missingEmployeeIds]);
+        if (!mountedRef.current) return;
+        mergeEmployeeUserIdMap(lookupResult.userIdsByEmployee);
+        mergeEmployeeUserImageMap(lookupResult.userImagesByEmployee);
+      } catch {
+        // El listado de empleados debe seguir funcionando aunque no haya permiso para consultar usuarios.
+      }
+    },
+    [
+      employeeUserIds,
+      employeeUserImages,
+      findUsuariosByEmpleadoIds,
+      mergeEmployeeUserIdMap,
+      mergeEmployeeUserImageMap,
+    ]
+  );
+
+  const resolveLinkedUsuarioIdForEmpleado = useCallback(
+    async (empleadoId, empleadoSnapshot = null) => {
+      const parsedEmpleadoId = toEmpleadoId(empleadoId);
+      if (!parsedEmpleadoId) return null;
+      const employeeKey = String(parsedEmpleadoId);
+
+      const fromSnapshot = extractEmpleadoUsuarioId(empleadoSnapshot);
+      if (fromSnapshot) {
+        mergeEmployeeUserIdMap({ [employeeKey]: fromSnapshot });
+        return fromSnapshot;
+      }
+
+      const fromState = toEmpleadoId(employeeUserIds[employeeKey]);
+      if (fromState) return fromState;
+
+      const lookupResult = await findUsuariosByEmpleadoIds([parsedEmpleadoId]);
+      if (!mountedRef.current) return null;
+
+      mergeEmployeeUserIdMap(lookupResult.userIdsByEmployee);
+      mergeEmployeeUserImageMap(lookupResult.userImagesByEmployee);
+
+      return toEmpleadoId(lookupResult.userIdsByEmployee[employeeKey]);
+    },
+    [employeeUserIds, findUsuariosByEmpleadoIds, mergeEmployeeUserIdMap, mergeEmployeeUserImageMap]
+  );
+
+  const persistEmployeeImageViaUsuario = useCallback(
+    async (empleadoId, imageValue, empleadoSnapshot = null) => {
+      const parsedEmpleadoId = toEmpleadoId(empleadoId);
+      if (!parsedEmpleadoId) throw new Error("Id de empleado invalido");
+
+      const employeeKey = String(parsedEmpleadoId);
+      const normalizedPhoto = toImageValue(imageValue) || null;
+      const linkedUsuarioId = await resolveLinkedUsuarioIdForEmpleado(parsedEmpleadoId, empleadoSnapshot);
+      if (!linkedUsuarioId) {
+        const nextLocalMap = normalizedPhoto
+          ? saveEmployeeImage(parsedEmpleadoId, normalizedPhoto, employeeLocalImages)
+          : removeEmployeeImage(parsedEmpleadoId, employeeLocalImages);
+        setEmployeeLocalImages(nextLocalMap);
+        return { local_only: true };
+      }
+
+      const response = await personaService.updateUsuarioFotoV2(linkedUsuarioId, {
+        foto_perfil: normalizedPhoto,
+      });
+
+      const responseImage = extractSignedUrlValue(response);
+      const localImage = resolveRenderableImageSrc(normalizedPhoto);
+      const nextImage = responseImage || localImage;
+
+      setEmployeeUserIds((prev) => ({ ...prev, [employeeKey]: linkedUsuarioId }));
+      setEmployeeUserImages((prev) => {
+        const next = { ...prev };
+        if (nextImage) next[employeeKey] = nextImage;
+        else delete next[employeeKey];
+        return next;
+      });
+      setEmployeeLocalImages((prev) => removeEmployeeImage(parsedEmpleadoId, prev));
+
+      return response;
+    },
+    [employeeLocalImages, resolveLinkedUsuarioIdForEmpleado]
+  );
+
+  const fetchSignedImagesForRows = useCallback(
+    async (rows = []) => {
+      const deduped = new Map();
+
+      (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const empleadoId = toEmpleadoId(row?.id_empleado ?? row?.id ?? row?.empleado_id);
+        if (!empleadoId) return;
+        if (toImageValue(employeeSignedImages[String(empleadoId)])) return;
+
+        const directRenderable = resolveRenderableImageSrc(extractEmpleadoImageRawValue(row));
+        if (directRenderable) return;
+
+        const storagePath = extractEmpleadoImageStoragePath(row);
+        if (!storagePath) return;
+        deduped.set(String(empleadoId), { id_empleado: empleadoId, storage_path: storagePath });
+      });
+
+      const pending = [...deduped.values()];
+      if (!pending.length) return;
+
+      let resolvedBatchMap = {};
+      try {
+        const batchResponse = await personaService.getEmpleadosFotosFirmadasV2({ empleados: pending });
+        if (!mountedRef.current) return;
+        resolvedBatchMap = normalizeSignedImageMapResponse(batchResponse, pending);
+        mergeSignedImageMap(resolvedBatchMap);
+      } catch {
+        resolvedBatchMap = {};
+      }
+
+      const unresolved = pending.filter(
+        (row) => !toImageValue(resolvedBatchMap[String(row.id_empleado)])
+      );
+      if (!unresolved.length) return;
+
+      const results = await Promise.allSettled(
+        unresolved.map((row) =>
+          personaService.getEmpleadoFotoFirmadaV2(row.id_empleado, {
+            storage_path: row.storage_path,
+          })
+        )
+      );
+      if (!mountedRef.current) return;
+
+      const fallbackMap = {};
+      results.forEach((result, index) => {
+        if (result.status !== "fulfilled") return;
+        const row = unresolved[index];
+        if (!row?.id_empleado) return;
+        const signedValue = extractSignedUrlValue(result.value);
+        if (!signedValue) return;
+        fallbackMap[String(row.id_empleado)] = signedValue;
+      });
+
+      mergeSignedImageMap(fallbackMap);
+    },
+    [employeeSignedImages, mergeSignedImageMap]
+  );
 
   const clearImagePicker = useCallback(() => {
     if (imageInputRef.current) imageInputRef.current.value = "";
@@ -644,14 +1139,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const clearFormImageDraft = useCallback(() => {
     clearImagePicker();
     setFormImage(createImageDraftState());
+    setImageDirty(false);
   }, [clearImagePicker]);
 
   const removeFormImage = useCallback(() => {
     clearFormImageDraft();
-    if (editId) {
-      clearPersistedEmployeeImage(editId);
-    }
-  }, [clearFormImageDraft, clearPersistedEmployeeImage, editId]);
+    setImageDirty(true);
+  }, [clearFormImageDraft]);
 
   const openDetailModal = useCallback((empleado) => {
     setDetailEmpleado(empleado || null);
@@ -949,6 +1443,16 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   }, [cargarEmpleados]);
 
   useEffect(() => {
+    if (!Array.isArray(empleados) || !empleados.length) return;
+    void fetchSignedImagesForRows(empleados);
+  }, [empleados, fetchSignedImagesForRows]);
+
+  useEffect(() => {
+    if (!Array.isArray(empleados) || !empleados.length) return;
+    void fetchLinkedUsuarioImagesForRows(empleados);
+  }, [empleados, fetchLinkedUsuarioImagesForRows]);
+
+  useEffect(() => {
     const timerId = window.setTimeout(() => {
       const nextSearch = normalizeSearchText(search);
       setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
@@ -986,11 +1490,11 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       return next;
     });
     setFormImage((prev) => {
-      if (prev.previewUrl || prev.loading) return prev;
+      if (prev.previewUrl || prev.loading || imageDirty) return prev;
       const previewUrl = resolveEmpleadoImage(empleadoActual);
       return previewUrl ? createImageDraftState(previewUrl) : prev;
     });
-  }, [showModal, editId, empleados, buildFormFromEmpleado, resolveEmpleadoImage]);
+  }, [showModal, editId, empleados, buildFormFromEmpleado, resolveEmpleadoImage, imageDirty]);
 
   useLayoutEffect(() => {
     if (telefonoReferenciaCaretRef.current === null) return;
@@ -1202,7 +1706,6 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     const input = event.target;
     const file = input?.files?.[0];
     if (!file) return;
-    const editingEmpleadoId = toEmpleadoId(editId);
 
     if (!IMAGE_ALLOWED_TYPES.has(file.type)) {
       setFormImage({
@@ -1210,6 +1713,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         loading: false,
         error: "Solo se permiten imagenes JPG, PNG o WEBP.",
       });
+      setImageDirty(true);
       if (input) input.value = "";
       return;
     }
@@ -1220,6 +1724,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         loading: false,
         error: "La imagen supera el limite de 6 MB.",
       });
+      setImageDirty(true);
       if (input) input.value = "";
       return;
     }
@@ -1230,19 +1735,18 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       const previewUrl = await readFileAsDataUrl(file);
       if (!previewUrl) throw new Error("EMPTY_IMAGE_PREVIEW");
       setFormImage(createImageDraftState(previewUrl));
-      if (editingEmpleadoId) {
-        persistEmployeeImage(editingEmpleadoId, previewUrl);
-      }
+      setImageDirty(true);
     } catch {
       setFormImage({
         previewUrl: "",
         loading: false,
         error: "No se pudo procesar la imagen seleccionada.",
       });
+      setImageDirty(true);
     } finally {
       if (input) input.value = "";
     }
-  }, [editId, persistEmployeeImage]);
+  }, []);
 
   const resolveCreatedEmpleadoId = useCallback(
     async (createResponse) => {
@@ -1253,12 +1757,41 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     [fetchNewestEmpleadoId]
   );
 
+  const buildImageChangePlan = useCallback(
+    (originalEmpleado = null) => {
+      if (formImage.loading) {
+        return { ok: false, message: EMPLOYEE_IMAGE_PROCESSING_MESSAGE };
+      }
+
+      if (formImage.error) {
+        return { ok: false, message: formImage.error };
+      }
+
+      if (!imageDirty) {
+        return { ok: true, shouldSend: false, value: null };
+      }
+
+      const currentValue = originalEmpleado ? toImageValue(resolveEmpleadoImage(originalEmpleado)) : "";
+      const nextValue = toImageValue(formImage.previewUrl);
+
+      if (!nextValue && !currentValue) {
+        return { ok: true, shouldSend: false, value: null };
+      }
+
+      if (nextValue && nextValue === currentValue) {
+        return { ok: true, shouldSend: false, value: null };
+      }
+
+      return { ok: true, shouldSend: true, value: nextValue || null };
+    },
+    [formImage.loading, formImage.error, formImage.previewUrl, imageDirty, resolveEmpleadoImage]
+  );
+
   const guardar = async (event) => {
     event.preventDefault();
     if (!validar() || actionLoading) return;
 
     const payloadLimpio = sanitizeForm();
-    const createImagePreview = !editId ? toImageValue(formImage.previewUrl) : "";
     setActionLoading(true);
 
     try {
@@ -1271,45 +1804,111 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
           return;
         }
 
+        const imagePlan = buildImageChangePlan(empleadoOriginal);
+        if (!imagePlan.ok) {
+          setFormImage((prev) => ({ ...prev, loading: false, error: imagePlan.message }));
+          safeToast("ERROR", imagePlan.message, "danger");
+          return;
+        }
+
         const originalForm = buildFormFromEmpleado(empleadoOriginal);
         const changedKeys = Object.keys(emptyForm).filter((key) => {
           if (key === "estado") return Boolean(form.estado) !== Boolean(originalForm.estado);
           return String(form[key] ?? "") !== String(originalForm[key] ?? "");
         });
 
-        if (!changedKeys.length) {
+        if (!changedKeys.length && !imagePlan.shouldSend) {
           safeToast("INFO", "No hay cambios para guardar", "info");
         } else {
-          const updatePayload = {};
-          const estadoField = detectEstadoField(empleadoOriginal) || "estado";
+          let imageWarning = "";
 
-          changedKeys.forEach((key) => {
-            if (key === "estado") {
-              updatePayload[estadoField] = payloadLimpio.estado;
-              return;
+          if (changedKeys.length) {
+            const updatePayload = {};
+            const estadoField = detectEstadoField(empleadoOriginal) || "estado";
+
+            changedKeys.forEach((key) => {
+              if (key === "estado") {
+                updatePayload[estadoField] = payloadLimpio.estado;
+                return;
+              }
+              updatePayload[key] = payloadLimpio[key];
+            });
+            await personaService.updateEmpleado(editId, updatePayload);
+          }
+
+          if (imagePlan.shouldSend) {
+            try {
+              await persistEmployeeImageViaUsuario(editId, imagePlan.value, empleadoOriginal);
+              setEmployeeSignedImages((prev) => {
+                const next = { ...prev };
+                delete next[String(editId)];
+                return next;
+              });
+              setFormImage((prev) => ({ ...prev, loading: false, error: "" }));
+            } catch (photoError) {
+              if (String(photoError?.code || "").toUpperCase() === "EMPLEADO_USUARIO_REQUERIDO_PARA_FOTO") {
+                imageWarning = EMPLOYEE_IMAGE_REQUIRES_USER_MESSAGE;
+                setFormImage((prev) => ({ ...prev, loading: false, error: imageWarning }));
+              } else {
+                throw photoError;
+              }
             }
-            updatePayload[key] = payloadLimpio[key];
-          });
+          }
 
-          await personaService.updateEmpleado(editId, updatePayload);
-          safeToast("OK", "Empleado actualizado");
+          if (imageWarning) {
+            const toastMessage = changedKeys.length
+              ? `Empleado actualizado. ${imageWarning}`
+              : imageWarning;
+            safeToast("INFO", toastMessage, "info");
+          } else {
+            safeToast("OK", "Empleado actualizado");
+          }
         }
       } else {
+        const imagePlan = buildImageChangePlan();
+        if (!imagePlan.ok) {
+          setFormImage((prev) => ({ ...prev, loading: false, error: imagePlan.message }));
+          safeToast("ERROR", imagePlan.message, "danger");
+          return;
+        }
+
         const createResp = useInlinePersonaCreate
           ? await personaService.createEmpleadoAtomico({
               persona: buildPersonaPayloadFromForm(inlinePersonaForm),
               empleado: payloadLimpio,
             })
           : await personaService.createEmpleado(payloadLimpio);
-        if (createImagePreview) {
+
+        let imageWarning = "";
+        if (imagePlan.shouldSend) {
           const createdEmpleadoId = await resolveCreatedEmpleadoId(createResp);
           if (createdEmpleadoId) {
-            persistEmployeeImage(createdEmpleadoId, createImagePreview);
+            try {
+              await persistEmployeeImageViaUsuario(createdEmpleadoId, imagePlan.value);
+              setEmployeeSignedImages((prev) => {
+                const next = { ...prev };
+                delete next[String(createdEmpleadoId)];
+                return next;
+              });
+              setFormImage((prev) => ({ ...prev, loading: false, error: "" }));
+            } catch (photoError) {
+              if (String(photoError?.code || "").toUpperCase() === "EMPLEADO_USUARIO_REQUERIDO_PARA_FOTO") {
+                imageWarning = EMPLOYEE_IMAGE_REQUIRES_USER_MESSAGE;
+                setFormImage((prev) => ({ ...prev, loading: false, error: imageWarning }));
+              } else {
+                throw photoError;
+              }
+            }
           } else {
-            safeToast("INFO", "Empleado creado. No se pudo asociar la imagen local automaticamente.", "info");
+            imageWarning =
+              "Empleado creado. No se pudo asociar la imagen automaticamente porque no se encontro el ID del registro.";
+            setFormImage((prev) => ({ ...prev, loading: false, error: imageWarning }));
           }
         }
         safeToast("OK", "Empleado creado");
+        if (imageWarning) {
+          safeToast("INFO", imageWarning, "info");
+        }
       }
 
       closeFormDrawer();
@@ -1326,7 +1925,28 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         await cargarEmpleados({ force: true });
       }
     } catch (error) {
-      safeToast("ERROR", error.message || "No se pudo guardar", "danger");
+      const errorMessage = String(error?.message || "No se pudo guardar").trim();
+      const statusCode = Number(error?.status);
+      if (String(error?.code || "").toUpperCase() === "EMPLEADO_USUARIO_REQUERIDO_PARA_FOTO") {
+        const targetMessage = EMPLOYEE_IMAGE_REQUIRES_USER_MESSAGE;
+        setFormImage((prev) => ({ ...prev, loading: false, error: targetMessage }));
+        safeToast("INFO", targetMessage, "info");
+        return;
+      }
+
+      const isPhotoError =
+        /imagen|foto|photo|supabase|storage/i.test(errorMessage) ||
+        statusCode === 413;
+
+      if (isPhotoError) {
+        const targetMessage = statusCode === 413
+          ? "La imagen supera el limite permitido por el servidor."
+          : (errorMessage || EMPLOYEE_IMAGE_UPLOAD_ERROR_MESSAGE);
+        setFormImage((prev) => ({ ...prev, loading: false, error: targetMessage }));
+        safeToast("ERROR", targetMessage, "danger");
+      } else {
+        safeToast("ERROR", errorMessage || "No se pudo guardar", "danger");
+      }
     } finally {
       if (mountedRef.current) setActionLoading(false);
     }
@@ -1342,6 +1962,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     setShowPersonaCreateModal(false);
     setForm(buildFormFromEmpleado(empleado));
     setFormImage(createImageDraftState(resolveEmpleadoImage(empleado)));
+    setImageDirty(false);
     clearImagePicker();
     setShowModal(true);
   };
@@ -1385,7 +2006,22 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     setDeletingId(id);
     try {
       await personaService.deleteEmpleado(id);
-      clearPersistedEmployeeImage(id);
+      setEmployeeSignedImages((prev) => {
+        const next = { ...prev };
+        delete next[String(id)];
+        return next;
+      });
+      setEmployeeUserImages((prev) => {
+        const next = { ...prev };
+        delete next[String(id)];
+        return next;
+      });
+      setEmployeeUserIds((prev) => {
+        const next = { ...prev };
+        delete next[String(id)];
+        return next;
+      });
+      setEmployeeLocalImages((prev) => removeEmployeeImage(id, prev));
 
       if (String(editId) === String(id)) {
         closeFormDrawer();

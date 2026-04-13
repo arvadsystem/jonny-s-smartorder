@@ -166,6 +166,116 @@ const fetchGetWithSignal = async (endpoint, signal) => {
   return payload;
 };
 
+const PHOTO_ROUTE_RETRYABLE_STATUS = new Set([404, 405, 415]);
+const PHOTO_CONTRACT_RETRYABLE_STATUS = new Set([400, 404, 405, 415, 422]);
+
+const isRetryablePhotoRouteError = (error) =>
+  PHOTO_ROUTE_RETRYABLE_STATUS.has(Number(error?.status));
+
+const isRetryablePhotoContractError = (error) =>
+  PHOTO_CONTRACT_RETRYABLE_STATUS.has(Number(error?.status));
+
+const buildEmployeePhotoEndpointMissingError = (baseError = null) => {
+  const error = new Error(
+    'No se encontro un endpoint backend para foto de empleados. Configure /empleados/v2/photo/:id o equivalente.'
+  );
+  error.code = 'EMPLEADOS_FOTO_ENDPOINT_MISSING';
+  if (baseError?.status) error.status = baseError.status;
+  if (baseError?.data) error.data = baseError.data;
+  return error;
+};
+
+const runEndpointFallbacks = async (attempts = [], canRetry = isRetryablePhotoRouteError) => {
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    if (!attempt || !attempt.endpoint) continue;
+    const method = String(attempt.method || 'GET').toUpperCase();
+
+    try {
+      if (Object.prototype.hasOwnProperty.call(attempt, 'body')) {
+        return await apiFetch(attempt.endpoint, method, attempt.body);
+      }
+      return await apiFetch(attempt.endpoint, method);
+    } catch (error) {
+      if (!canRetry(error)) throw error;
+      lastError = error;
+    }
+  }
+
+  if (lastError) throw lastError;
+  throw new Error('No se encontro un endpoint disponible para la operacion solicitada.');
+};
+
+const toPositiveInteger = (value) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeOptionalImageValue = (value) => {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text || null;
+};
+
+const resolveImagePayloadValue = (payload = {}) => {
+  if (!isPlainObject(payload)) return null;
+  if (Object.prototype.hasOwnProperty.call(payload, 'foto_perfil')) {
+    return normalizeOptionalImageValue(payload.foto_perfil);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'foto')) {
+    return normalizeOptionalImageValue(payload.foto);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'imagen')) {
+    return normalizeOptionalImageValue(payload.imagen);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'imagen_perfil')) {
+    return normalizeOptionalImageValue(payload.imagen_perfil);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'url_imagen')) {
+    return normalizeOptionalImageValue(payload.url_imagen);
+  }
+  return null;
+};
+
+const resolveEmpleadosBatchRequest = (payload = {}) => {
+  if (!isPlainObject(payload)) return { empleados: [], ids: [] };
+
+  const sourceRows = Array.isArray(payload.empleados)
+    ? payload.empleados
+    : (Array.isArray(payload.items) ? payload.items : []);
+
+  const empleados = sourceRows
+    .map((row) => {
+      if (!isPlainObject(row)) return null;
+      const id = toPositiveInteger(row.id_empleado ?? row.id ?? row.empleado_id);
+      if (!id) return null;
+
+      const storagePath = normalizeOptionalImageValue(
+        row.storage_path
+        ?? row.path
+        ?? row.foto_storage_path
+        ?? row.imagen_storage_path
+      );
+
+      return storagePath ? { id_empleado: id, storage_path: storagePath } : { id_empleado: id };
+    })
+    .filter(Boolean);
+
+  const directIdsSource = Array.isArray(payload.ids_empleado)
+    ? payload.ids_empleado
+    : (Array.isArray(payload.ids) ? payload.ids : []);
+
+  const idsFromPayload = directIdsSource
+    .map((item) => toPositiveInteger(item))
+    .filter(Boolean);
+
+  const idsFromRows = empleados.map((row) => row.id_empleado);
+  const ids = [...new Set([...idsFromRows, ...idsFromPayload])];
+
+  return { empleados, ids };
+};
+
 export const personaService = {
 
   // ==============================
@@ -402,6 +512,135 @@ export const personaService = {
 
   deleteEmpleado: (id) =>
     apiFetch(`/empleados/${id}`, 'DELETE'),
+
+  updateEmpleadoFotoV2: async (id, payload = {}) => {
+    const empleadoId = toPositiveInteger(id);
+    if (!empleadoId) throw new Error('Id de empleado invalido');
+
+    const imageValue = resolveImagePayloadValue(payload);
+
+    const attempts = [
+      {
+        endpoint: `/empleados/v2/photo/${empleadoId}`,
+        method: 'PUT',
+        body: { foto_perfil: imageValue }
+      },
+      {
+        endpoint: `/empleados/photo/${empleadoId}`,
+        method: 'PUT',
+        body: { foto_perfil: imageValue }
+      },
+      {
+        endpoint: `/empleados/${empleadoId}/photo`,
+        method: 'PUT',
+        body: { foto_perfil: imageValue }
+      },
+      {
+        endpoint: `/empleados/${empleadoId}/foto`,
+        method: 'PUT',
+        body: { foto: imageValue }
+      },
+      {
+        endpoint: `/empleados/${empleadoId}/imagen`,
+        method: 'PUT',
+        body: { imagen: imageValue }
+      },
+      {
+        endpoint: `/empleados/v2/foto/${empleadoId}`,
+        method: 'PUT',
+        body: { foto: imageValue }
+      }
+    ];
+
+    try {
+      return await runEndpointFallbacks(attempts, isRetryablePhotoRouteError);
+    } catch (error) {
+      if (isRetryablePhotoRouteError(error)) {
+        throw buildEmployeePhotoEndpointMissingError(error);
+      }
+      throw error;
+    }
+  },
+
+  deleteEmpleadoFotoV2: async (id) => {
+    const empleadoId = toPositiveInteger(id);
+    if (!empleadoId) throw new Error('Id de empleado invalido');
+
+    const attempts = [
+      { endpoint: `/empleados/v2/photo/${empleadoId}`, method: 'DELETE' },
+      { endpoint: `/empleados/photo/${empleadoId}`, method: 'DELETE' },
+      { endpoint: `/empleados/${empleadoId}/photo`, method: 'DELETE' },
+      { endpoint: `/empleados/${empleadoId}/foto`, method: 'DELETE' },
+      { endpoint: `/empleados/${empleadoId}/imagen`, method: 'DELETE' },
+      { endpoint: `/empleados/v2/foto/${empleadoId}`, method: 'DELETE' }
+    ];
+
+    try {
+      return await runEndpointFallbacks(attempts, isRetryablePhotoRouteError);
+    } catch (error) {
+      if (isRetryablePhotoRouteError(error)) {
+        throw buildEmployeePhotoEndpointMissingError(error);
+      }
+      throw error;
+    }
+  },
+
+  getEmpleadoFotoFirmadaV2: async (id, options = {}) => {
+    const empleadoId = toPositiveInteger(id);
+    if (!empleadoId) throw new Error('Id de empleado invalido');
+
+    const storagePath = normalizeOptionalImageValue(
+      options?.storage_path
+      ?? options?.path
+      ?? options?.foto_storage_path
+      ?? options?.imagen_storage_path
+    );
+
+    const postBody = storagePath
+      ? { id_empleado: empleadoId, storage_path: storagePath }
+      : { id_empleado: empleadoId };
+
+    const attempts = [
+      { endpoint: `/empleados/v2/photo/${empleadoId}/signed-url`, method: 'GET' },
+      { endpoint: `/empleados/${empleadoId}/photo/signed-url`, method: 'GET' },
+      { endpoint: `/empleados/${empleadoId}/foto/signed-url`, method: 'GET' },
+      { endpoint: `/empleados/${empleadoId}/imagen/signed-url`, method: 'GET' },
+      { endpoint: '/empleados/v2/photo/signed-url', method: 'POST', body: postBody },
+      { endpoint: '/empleados/photo/signed-url', method: 'POST', body: postBody },
+      { endpoint: '/empleados/foto/signed-url', method: 'POST', body: postBody },
+      { endpoint: '/empleados/imagen/signed-url', method: 'POST', body: postBody }
+    ];
+
+    return runEndpointFallbacks(attempts, isRetryablePhotoContractError);
+  },
+
+  getEmpleadosFotosFirmadasV2: async (payload = {}) => {
+    const { empleados, ids } = resolveEmpleadosBatchRequest(payload);
+
+    if (!empleados.length && !ids.length) return {};
+
+    const bodyCandidates = [];
+    if (empleados.length) bodyCandidates.push({ empleados });
+    if (ids.length) bodyCandidates.push({ ids_empleado: ids });
+    if (ids.length) bodyCandidates.push({ ids });
+
+    const endpointCandidates = [
+      '/empleados/v2/photo/signed-urls',
+      '/empleados/photo/signed-urls',
+      '/empleados/fotos/signed-urls',
+      '/empleados/imagenes/signed-urls',
+      '/empleados/v2/fotos/signed-urls'
+    ];
+
+    const attempts = [];
+    endpointCandidates.forEach((endpoint) => {
+      bodyCandidates.forEach((body) => {
+        attempts.push({ endpoint, method: 'POST', body });
+      });
+    });
+
+    return runEndpointFallbacks(attempts, isRetryablePhotoContractError);
+  },
 
   // ==============================
   // CLIENTES (SUBMODULO PERSONAS)
