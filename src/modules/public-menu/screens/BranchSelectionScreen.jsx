@@ -162,7 +162,7 @@ const BranchSelectionScreen = () => {
           <span className="pm-screen__eyebrow">Paso 1 de 3</span>
           <h2 className="pm-screen__title">Selecciona tu sucursal</h2>
           <p className="pm-screen__subtitle">
-            Tu menu se ajusta a la sede y al tipo de pedido que elijas.
+            El menu se ajusta a la sede y al tipo de pedido que elijas.
           </p>
         </div>
       </div>

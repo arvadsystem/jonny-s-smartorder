@@ -166,7 +166,8 @@ const normalizeCatalogItem = (raw) => ({
           id_salsa: Number(sauce?.id_salsa || 0) || null,
           nombre: String(sauce?.nombre || 'Salsa'),
           nivel_picante: Number(sauce?.nivel_picante || 0),
-          orden: Number(sauce?.orden || 0)
+          orden: Number(sauce?.orden || 0),
+          disponible: Boolean(sauce?.disponible ?? true)
         }))
         : [],
       reglas: Array.isArray(component?.reglas)
@@ -187,7 +188,8 @@ const normalizeCatalogItem = (raw) => ({
       id_salsa: Number(sauce?.id_salsa || 0) || null,
       nombre: String(sauce?.nombre || 'Salsa'),
       nivel_picante: Number(sauce?.nivel_picante || 0),
-      orden: Number(sauce?.orden || 0)
+      orden: Number(sauce?.orden || 0),
+      disponible: Boolean(sauce?.disponible ?? true)
     }))
     : [],
   salsas_requiere_seleccion: Boolean(raw?.salsas_requiere_seleccion),

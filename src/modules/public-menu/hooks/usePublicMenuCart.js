@@ -17,6 +17,12 @@ const toPositiveInt = (value, fallback = 1) => {
   return Math.floor(parsed);
 };
 
+const normalizeLineNote = (value, maxLength = 100) =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, maxLength);
+
 const CART_SNAPSHOT_SCHEMA_VERSION = 2;
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -36,6 +42,7 @@ const isValidCartLine = (line) => {
   if (!Number.isFinite(subtotal) || subtotal < 0) return false;
   if (!Array.isArray(line?.extras)) return false;
   if (!Array.isArray(line?.salsas_por_unidad)) return false;
+  if (line?.nota !== undefined && typeof line.nota !== 'string') return false;
 
   return true;
 };
@@ -95,7 +102,7 @@ const normalizeSelectedExtras = (product, extras = []) => {
     }));
 };
 
-const buildConfigSignature = ({ extras = [], salsasPorUnidad = [] }) => {
+const buildConfigSignature = ({ extras = [], salsasPorUnidad = [], nota = '' }) => {
   const extrasToken = (Array.isArray(extras) ? extras : [])
     .map((entry) => String(entry?.id_extra || '').trim())
     .filter(Boolean)
@@ -106,15 +113,18 @@ const buildConfigSignature = ({ extras = [], salsasPorUnidad = [] }) => {
     .map((entry) => `${entry.id_salsa}:${entry.cantidad}`)
     .join('|');
 
-  return `${extrasToken}::${saucesToken}`;
+  // Incluye nota para no mezclar lineas distintas cuando el cliente deja instrucciones.
+  const noteToken = normalizeLineNote(nota, 100);
+  return `${extrasToken}::${saucesToken}::${noteToken}`;
 };
 
 const buildLineKey = ({ idDetalleMenu, configSignature }) =>
   `${Number(idDetalleMenu || 0)}::${String(configSignature || '')}`;
 
-const buildCartLine = ({ product, quantity = 1, extras = [], salsasPorUnidad = [] }) => {
+const buildCartLine = ({ product, quantity = 1, extras = [], salsasPorUnidad = [], nota = '' }) => {
   const idDetalleMenu = Number(product?.id_detalle_menu || 0);
   const safeQuantity = toPositiveInt(quantity, 1);
+  const normalizedNote = normalizeLineNote(nota, 100);
   const normalizedExtras = normalizeSelectedExtras(product, extras);
   const normalizedSauces = normalizeSelectedSauces(salsasPorUnidad);
   const extrasAmountPerUnit = normalizedExtras.reduce(
@@ -126,7 +136,8 @@ const buildCartLine = ({ product, quantity = 1, extras = [], salsasPorUnidad = [
   const subtotal = toMoney(precioUnitario * safeQuantity);
   const configSignature = buildConfigSignature({
     extras: normalizedExtras,
-    salsasPorUnidad: normalizedSauces
+    salsasPorUnidad: normalizedSauces,
+    nota: normalizedNote
   });
 
   return {
@@ -139,7 +150,8 @@ const buildCartLine = ({ product, quantity = 1, extras = [], salsasPorUnidad = [
     precio_unitario: precioUnitario,
     subtotal,
     extras: normalizedExtras,
-    salsas_por_unidad: normalizedSauces
+    salsas_por_unidad: normalizedSauces,
+    nota: normalizedNote
   };
 };
 
@@ -198,7 +210,8 @@ export const usePublicMenuCart = ({ branch }) => {
       product,
       quantity: configuration?.cantidad || 1,
       extras: configuration?.extras,
-      salsasPorUnidad: configuration?.salsasPorUnidad
+      salsasPorUnidad: configuration?.salsasPorUnidad,
+      nota: configuration?.nota
     });
 
     if (!nextLine.id_detalle_menu) return;
@@ -322,7 +335,8 @@ export const usePublicMenuCart = ({ branch }) => {
       extras: (Array.isArray(item.extras) ? item.extras : []).map((extra) => ({
         id_extra: String(extra?.id_extra || '').trim()
       })),
-      salsas_por_unidad: normalizeSelectedSauces(item.salsas_por_unidad)
+      salsas_por_unidad: normalizeSelectedSauces(item.salsas_por_unidad),
+      nota: normalizeLineNote(item?.nota, 100)
     })),
     total
   });

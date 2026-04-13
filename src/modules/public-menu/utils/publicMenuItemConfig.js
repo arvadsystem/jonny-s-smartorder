@@ -82,7 +82,8 @@ export const getItemAllowedSauces = (item) =>
       id_salsa: toPositiveInt(sauce?.id_salsa, 0),
       nombre: String(sauce?.nombre || 'Salsa').trim(),
       nivel_picante: Number(sauce?.nivel_picante || 0),
-      orden: Number(sauce?.orden || 0)
+      orden: Number(sauce?.orden || 0),
+      disponible: Boolean(sauce?.disponible ?? true)
     }))
     .filter((sauce) => sauce.id_salsa > 0)
     .sort((left, right) => {

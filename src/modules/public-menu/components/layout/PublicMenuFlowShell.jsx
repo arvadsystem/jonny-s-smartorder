@@ -14,8 +14,8 @@ import {
 
 const STEP_COPY = {
   [PUBLIC_MENU_STEPS.BRANCH]: {
-    title: 'Menu publico',
-    subtitle: 'Primero elige la sucursal donde deseas pedir.'
+    title: 'Menu',
+    subtitle: 'Elije la sucursal donde deseas pedir.'
   },
   [PUBLIC_MENU_STEPS.ORDER_TYPE]: {
     title: 'Tipo de pedido',

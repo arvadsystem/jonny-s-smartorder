@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import CatalogHeader from '../components/catalog/CatalogHeader';
 import CatalogSkeleton from '../components/catalog/CatalogSkeleton';
 import CartSheet from '../components/catalog/CartSheet';
 import CartFab from '../components/catalog/CartFab';
@@ -18,7 +17,6 @@ import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { getPublicMenuPathByStep } from '../routes/flowSteps';
 import { PUBLIC_MENU_ORDER_TYPE_OPTIONS, PUBLIC_MENU_STEPS } from '../types/publicMenuTypes';
 import { isPublicMenuAuthError, toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
-import { isPublicMenuForceAvailableDemoEnabled } from '../utils/publicMenuDemoFlags';
 import { requiresItemConfiguration } from '../utils/publicMenuItemConfig';
 
 const getOrderTypeLabel = (orderTypeId) =>
@@ -57,7 +55,6 @@ const CatalogScreen = () => {
   const confirmLockRef = useRef(false);
   const authRedirectRef = useRef(false);
   const prefersReducedMotion = usePrefersReducedMotion();
-  const forceAvailableDemo = isPublicMenuForceAvailableDemoEnabled();
 
   const {
     items: cartItems,
@@ -251,8 +248,7 @@ const CatalogScreen = () => {
       >
         <div className="pm-catalog-hero__overlay" aria-hidden="true" />
         <div className="pm-catalog-hero__content">
-          <span className="pm-catalog-hero__eyebrow">Menu publico</span>
-          <h1 className="pm-catalog-hero__title">{menuSummary?.nombreMenu || 'Catalogo'}</h1>
+          <h1 className="pm-catalog-hero__title">Menú</h1>
           <p className="pm-catalog-hero__subtitle">
             {state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal'} - {getOrderTypeLabel(orderType)}
           </p>
@@ -274,14 +270,6 @@ const CatalogScreen = () => {
           </button>
         </div>
       </div>
-
-      <CatalogHeader
-        branchName={state.selectedBranch?.name || 'Sucursal'}
-        orderTypeLabel={getOrderTypeLabel(orderType)}
-        menuName={menuSummary?.nombreMenu || 'Catalogo'}
-        totalProducts={stats.total}
-        availableProducts={stats.available}
-      />
 
       <SearchInput
         value={searchTerm}
@@ -320,7 +308,7 @@ const CatalogScreen = () => {
       ) : null}
 
       <div key={contentTransitionKey} className="pm-category-content">
-        {!forceAvailableDemo && stats.allFilteredSoldOut ? (
+        {stats.allFilteredSoldOut ? (
           <StateBlock
             variant="warning"
             title="Todo agotado por ahora"
