@@ -1,36 +1,131 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-const initialForm = Object.freeze({
+const initialOpenForm = Object.freeze({
+  id_sucursal: '',
   id_caja: '',
   monto_apertura: '',
   observacion_apertura: ''
 });
 
+const buildInitialCreateForm = (defaultSucursalId = '') => ({
+  id_sucursal: defaultSucursalId || '',
+  codigo_caja: '',
+  nombre_caja: '',
+  observacion: '',
+  id_usuario: '',
+  puede_responsable: true,
+  puede_auxiliar: true
+});
+
 export default function CierreCajaAbrirModal({
   open,
+  mode,
   cajasDisponibles,
+  loadingCajas,
   saving,
+  canSelectSucursal,
+  selectedSucursalId,
+  sucursales,
+  usuariosDisponibles,
+  loadingUsuarios,
+  onRequestCajas,
+  onRequestUsuarios,
   onClose,
-  onSubmit
+  onSubmitOpenSesion,
+  onSubmitCreateCaja
 }) {
-  const [form, setForm] = useState(() => initialForm);
+  const [openForm, setOpenForm] = useState(() => ({
+    ...initialOpenForm,
+    id_sucursal: selectedSucursalId || ''
+  }));
+  const [createForm, setCreateForm] = useState(() => buildInitialCreateForm(selectedSucursalId));
+  const lastRequestedSucursalRef = useRef(null);
+  const lastRequestedCajasRef = useRef(null);
 
-  const isValid = useMemo(() => {
-    const monto = Number(form.monto_apertura);
-    return Boolean(form.id_caja) && Number.isFinite(monto) && monto >= 0;
-  }, [form.id_caja, form.monto_apertura]);
+  useEffect(() => {
+    if (!open || mode !== 'existente') return;
+    const idSucursalTarget = Number.parseInt(String(openForm.id_sucursal || ''), 10);
+    if (!Number.isInteger(idSucursalTarget) || idSucursalTarget <= 0) return;
+    if (lastRequestedCajasRef.current === idSucursalTarget) return;
+    lastRequestedCajasRef.current = idSucursalTarget;
+    if (typeof onRequestCajas === 'function') {
+      void Promise.resolve(onRequestCajas(idSucursalTarget)).catch(() => {});
+    }
+  }, [mode, onRequestCajas, open, openForm.id_sucursal]);
+
+  useEffect(() => {
+    if (!open || mode !== 'nueva') return;
+    const idSucursalTarget = Number.parseInt(String(createForm.id_sucursal || ''), 10);
+    if (!Number.isInteger(idSucursalTarget) || idSucursalTarget <= 0) return;
+    if (lastRequestedSucursalRef.current === idSucursalTarget) return;
+    lastRequestedSucursalRef.current = idSucursalTarget;
+    if (typeof onRequestUsuarios === 'function') {
+      void Promise.resolve(onRequestUsuarios(idSucursalTarget)).catch(() => {});
+    }
+  }, [createForm.id_sucursal, mode, onRequestUsuarios, open]);
+
+  useEffect(() => {
+    if (open) return;
+    lastRequestedSucursalRef.current = null;
+    lastRequestedCajasRef.current = null;
+  }, [open]);
+
+  const isOpenValid = useMemo(() => {
+    const monto = Number(openForm.monto_apertura);
+    const hasSucursal =
+      !canSelectSucursal || Number.parseInt(String(openForm.id_sucursal || ''), 10) > 0;
+    return hasSucursal && Boolean(openForm.id_caja) && Number.isFinite(monto) && monto >= 0;
+  }, [canSelectSucursal, openForm.id_caja, openForm.id_sucursal, openForm.monto_apertura]);
+
+  const isCreateValid = useMemo(() => {
+    const hasNombre = String(createForm.nombre_caja || '').trim().length > 0;
+    const hasUsuario = Number.parseInt(String(createForm.id_usuario || ''), 10) > 0;
+    const hasRole = Boolean(createForm.puede_responsable || createForm.puede_auxiliar);
+    const hasSucursal = !canSelectSucursal || Number.parseInt(String(createForm.id_sucursal || ''), 10) > 0;
+    return hasNombre && hasUsuario && hasRole && hasSucursal;
+  }, [canSelectSucursal, createForm]);
 
   if (!open) return null;
 
-  const handleSubmit = async (event) => {
+  const submitExisting = async (event) => {
     event.preventDefault();
-    if (!isValid || saving) return;
+    if (!isOpenValid || saving) return;
 
-    await onSubmit({
-      id_caja: Number(form.id_caja),
-      monto_apertura: Number(form.monto_apertura),
-      observacion_apertura: form.observacion_apertura.trim() || null
-    });
+    try {
+      await onSubmitOpenSesion({
+        id_sucursal: Number.parseInt(String(openForm.id_sucursal || ''), 10) || null,
+        id_caja: Number(openForm.id_caja),
+        monto_apertura: Number(openForm.monto_apertura),
+        observacion_apertura: openForm.observacion_apertura.trim() || null
+      });
+    } catch {
+      // El hook ya muestra toast; evitamos uncaught promise.
+    }
+  };
+
+  const submitNewCaja = async (event) => {
+    event.preventDefault();
+    if (!isCreateValid || saving) return;
+
+    const idSucursal = Number.parseInt(String(createForm.id_sucursal || ''), 10) || null;
+    const idUsuario = Number.parseInt(String(createForm.id_usuario || ''), 10) || null;
+
+    try {
+      await onSubmitCreateCaja({
+        id_sucursal: idSucursal,
+        codigo_caja: createForm.codigo_caja.trim() || null,
+        nombre_caja: createForm.nombre_caja.trim(),
+        observacion: createForm.observacion.trim() || null,
+        asignacion_inicial: {
+          id_usuario: idUsuario,
+          puede_responsable: Boolean(createForm.puede_responsable),
+          puede_auxiliar: Boolean(createForm.puede_auxiliar),
+          observacion: 'Asignacion inicial desde nueva caja'
+        }
+      });
+    } catch {
+      // El hook ya muestra toast; evitamos uncaught promise.
+    }
   };
 
   return (
@@ -47,8 +142,12 @@ export default function CierreCajaAbrirModal({
               <i className="bi bi-safe2-fill" />
             </span>
             <div>
-              <h3>Nueva caja operativa</h3>
-              <p>Abre sesion sobre una caja existente.</p>
+              <h3>{mode === 'nueva' ? 'Nueva caja' : 'Abrir sesion'}</h3>
+              <p>
+                {mode === 'nueva'
+                  ? 'Crea una caja nueva y deja su asignacion operativa configurada.'
+                  : 'Abre una sesion sobre una caja existente.'}
+              </p>
             </div>
           </div>
           <button type="button" className="ventas-modal__close-btn" onClick={onClose} aria-label="Cerrar">
@@ -56,71 +155,214 @@ export default function CierreCajaAbrirModal({
           </button>
         </header>
 
-        <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={handleSubmit}>
-          <div className="cierres-caja-open-note">
-            <i className="bi bi-info-circle" />
-            <span>
-              El backend actual no expone alta de entidad <code>caja</code>. Esta accion abre una sesion para una
-              caja ya registrada en catalogo.
-            </span>
-          </div>
+        {mode === 'existente' ? (
+          <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={submitExisting}>
+            {canSelectSucursal ? (
+              <label className="ventas-create-modal__field">
+                <span>Sucursal</span>
+                <select
+                  className="ventas-create-modal__select"
+                  value={openForm.id_sucursal}
+                  onChange={(event) =>
+                    setOpenForm((current) => ({
+                      ...current,
+                      id_sucursal: event.target.value,
+                      id_caja: ''
+                    }))
+                  }
+                >
+                  <option value="">Selecciona una sucursal</option>
+                  {sucursales.map((sucursal) => (
+                    <option key={sucursal.id_sucursal} value={sucursal.id_sucursal}>
+                      {sucursal.nombre_sucursal}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
-          <label className="ventas-create-modal__field">
-            <span>Caja existente</span>
-            <select
-              className="ventas-create-modal__select"
-              value={form.id_caja}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, id_caja: event.target.value }))
-              }
-            >
-              <option value="">Selecciona una caja</option>
-              {cajasDisponibles.map((caja) => (
-                <option key={caja.id_caja} value={caja.id_caja}>
-                  {caja.nombre_caja} ({caja.codigo_caja || 'Sin codigo'})
+            <label className="ventas-create-modal__field">
+              <span>Caja existente</span>
+              <select
+                className="ventas-create-modal__select"
+                value={openForm.id_caja}
+                onChange={(event) =>
+                  setOpenForm((current) => ({ ...current, id_caja: event.target.value }))
+                }
+                disabled={loadingCajas}
+              >
+                <option value="">
+                  {loadingCajas ? 'Cargando cajas...' : 'Selecciona una caja'}
                 </option>
-              ))}
-            </select>
-          </label>
+                {cajasDisponibles.map((caja) => (
+                  <option key={caja.id_caja} value={caja.id_caja}>
+                    {caja.nombre_caja} ({caja.codigo_caja || 'Sin codigo'})
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="ventas-create-modal__field">
-            <span>Monto de apertura</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.monto_apertura}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, monto_apertura: event.target.value }))
-              }
-              placeholder="0.00"
-            />
-          </label>
+            <label className="ventas-create-modal__field">
+              <span>Monto de apertura</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={openForm.monto_apertura}
+                onChange={(event) =>
+                  setOpenForm((current) => ({ ...current, monto_apertura: event.target.value }))
+                }
+                placeholder="0.00"
+              />
+            </label>
 
-          <label className="ventas-create-modal__field">
-            <span>Observacion de apertura</span>
-            <textarea
-              className="ventas-create-modal__note-input"
-              rows="4"
-              value={form.observacion_apertura}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, observacion_apertura: event.target.value }))
-              }
-              placeholder="Detalle operativo opcional..."
-            />
-          </label>
+            <label className="ventas-create-modal__field">
+              <span>Observacion de apertura</span>
+              <textarea
+                className="ventas-create-modal__note-input"
+                rows="3"
+                value={openForm.observacion_apertura}
+                onChange={(event) =>
+                  setOpenForm((current) => ({ ...current, observacion_apertura: event.target.value }))
+                }
+                placeholder="Detalle operativo opcional..."
+              />
+            </label>
 
-          <footer className="ventas-detail-modal__footer">
-            <div className="ventas-detail-modal__footer-actions">
-              <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>
-                Cancelar
-              </button>
-              <button type="submit" className="btn btn-danger" disabled={!isValid || saving}>
-                {saving ? 'Guardando...' : 'Abrir sesion'}
-              </button>
+            <footer className="ventas-detail-modal__footer">
+              <div className="ventas-detail-modal__footer-actions">
+                <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-danger" disabled={!isOpenValid || saving}>
+                  {saving ? 'Guardando...' : 'Abrir sesion'}
+                </button>
+              </div>
+            </footer>
+          </form>
+        ) : (
+          <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={submitNewCaja}>
+            <div className="cierres-caja-action-modal__grid">
+              {canSelectSucursal ? (
+                <label className="ventas-create-modal__field">
+                  <span>Sucursal</span>
+                  <select
+                    className="ventas-create-modal__select"
+                    value={createForm.id_sucursal}
+                    onChange={(event) =>
+                      setCreateForm((current) => ({
+                        ...current,
+                        id_sucursal: event.target.value,
+                        id_usuario: ''
+                      }))
+                    }
+                  >
+                    <option value="">Selecciona una sucursal</option>
+                    {sucursales.map((sucursal) => (
+                      <option key={sucursal.id_sucursal} value={sucursal.id_sucursal}>
+                        {sucursal.nombre_sucursal}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              <label className="ventas-create-modal__field">
+                <span>Nombre de caja</span>
+                <input
+                  type="text"
+                  value={createForm.nombre_caja}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, nombre_caja: event.target.value }))
+                  }
+                  placeholder="Caja principal"
+                />
+              </label>
+
+              <label className="ventas-create-modal__field">
+                <span>Codigo de caja</span>
+                <input
+                  type="text"
+                  value={createForm.codigo_caja}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, codigo_caja: event.target.value }))
+                  }
+                  placeholder="CAJA-01"
+                />
+              </label>
+
+              <label className="ventas-create-modal__field">
+                <span>Usuario asignado</span>
+                <select
+                  className="ventas-create-modal__select"
+                  value={createForm.id_usuario}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, id_usuario: event.target.value }))
+                  }
+                  disabled={loadingUsuarios}
+                >
+                  <option value="">
+                    {loadingUsuarios ? 'Cargando usuarios...' : 'Selecciona un usuario'}
+                  </option>
+                  {usuariosDisponibles.map((usuario) => (
+                    <option key={usuario.id_usuario} value={usuario.id_usuario}>
+                      {usuario.nombre_completo || usuario.nombre_usuario}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-          </footer>
-        </form>
+
+            <label className="ventas-create-modal__field">
+              <span>Observacion de caja</span>
+              <textarea
+                className="ventas-create-modal__note-input"
+                rows="2"
+                value={createForm.observacion}
+                onChange={(event) =>
+                  setCreateForm((current) => ({ ...current, observacion: event.target.value }))
+                }
+                placeholder="Notas administrativas opcionales..."
+              />
+            </label>
+
+            <div className="d-flex flex-wrap gap-3">
+              <label className="form-check">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={createForm.puede_responsable}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, puede_responsable: event.target.checked }))
+                  }
+                />
+                <span className="form-check-label">Permitir como responsable</span>
+              </label>
+              <label className="form-check">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={createForm.puede_auxiliar}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({ ...current, puede_auxiliar: event.target.checked }))
+                  }
+                />
+                <span className="form-check-label">Permitir como auxiliar</span>
+              </label>
+            </div>
+
+            <footer className="ventas-detail-modal__footer">
+              <div className="ventas-detail-modal__footer-actions">
+                <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-danger" disabled={!isCreateValid || saving}>
+                  {saving ? 'Guardando...' : 'Crear caja'}
+                </button>
+              </div>
+            </footer>
+          </form>
+        )}
       </section>
     </div>
   );

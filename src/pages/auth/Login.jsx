@@ -64,7 +64,7 @@ const Login = () => {
 
       if (isEmail(identifier)) {
         // Flujo cliente → Supabase
-        response = await clientePublicoService.loginCliente({ email: identifier, clave: password });
+        response = await clientePublicoService.loginCliente({ identifier, clave: password });
       } else {
         // Flujo empleado → Legacy
         response = await authService.login({ nombre_usuario: identifier, clave: password });

@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../../../hooks/useAuth';
 import { usePermisos } from '../../../../context/PermisosContext';
 import sucursalesService from '../../../../services/sucursalesService';
@@ -6,14 +6,14 @@ import cajasService from '../../../../services/cajasService';
 import VentasToast from '../../ventas/components/VentasToast';
 import CierreCajaDetalleModal from '../../ventas/components/cierres/CierreCajaDetalleModal';
 import CierresCajaFiltersDrawer from './CierresCajaFiltersDrawer';
+import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
 import {
   extractCajasApiMessage,
   formatCajaCurrency,
   formatCajaDateTime,
   matchesCajaClosure,
   normalizeCierreReporte,
-  resolveClosureStateBadge,
-  resolveDifferenceBadge
+  resolveClosureStateBadge
 } from '../../ventas/utils/cajasHelpers';
 import { useCierresCaja } from '../../ventas/hooks/useCierresCaja';
 import { PERMISSIONS } from '../../../../utils/permissions';
@@ -26,8 +26,8 @@ const buildScopeQuery = (value) => {
 const isTruthyState = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
-const countActiveFilters = ({ estado = '', desde = '', hasta = '' }) =>
-  [estado, desde, hasta].filter((value) => String(value || '').trim() !== '').length;
+const countActiveFilters = ({ estado = '', desde = '', hasta = '', sucursal = '' }) =>
+  [estado, desde, hasta, sucursal].filter((value) => String(value || '').trim() !== '').length;
 
 const withinDateRange = (value, from, to) => {
   if (!value) return false;
@@ -47,7 +47,6 @@ export default function CierresCajaHistorialView() {
     toast,
     openToast,
     closeToast,
-    loadCatalogos,
     getSesionDetalle
   } = useCierresCaja();
 
@@ -65,6 +64,7 @@ export default function CierresCajaHistorialView() {
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filtersDraft, setFiltersDraft] = useState({
+    sucursal: '',
     fecha_desde: '',
     fecha_hasta: '',
     estado: ''
@@ -72,6 +72,7 @@ export default function CierresCajaHistorialView() {
   const [cierres, setCierres] = useState([]);
   const [selectedDetalle, setSelectedDetalle] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const historyRequestIdRef = useRef(0);
 
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
   const canSelectSucursal =
@@ -88,9 +89,10 @@ export default function CierresCajaHistorialView() {
       countActiveFilters({
         estado: filters.estado,
         desde: filters.fecha_desde,
-        hasta: filters.fecha_hasta
+        hasta: filters.fecha_hasta,
+        sucursal: canSelectSucursal ? selectedSucursalId : ''
       }),
-    [filters.estado, filters.fecha_desde, filters.fecha_hasta]
+    [canSelectSucursal, filters.estado, filters.fecha_desde, filters.fecha_hasta, selectedSucursalId]
   );
 
   useEffect(() => {
@@ -104,11 +106,12 @@ export default function CierresCajaHistorialView() {
   useEffect(() => {
     if (filtersOpen) return;
     setFiltersDraft({
+      sucursal: selectedSucursalId || '',
       fecha_desde: filters.fecha_desde || '',
       fecha_hasta: filters.fecha_hasta || '',
       estado: filters.estado || ''
     });
-  }, [filters.estado, filters.fecha_desde, filters.fecha_hasta, filtersOpen]);
+  }, [filters.estado, filters.fecha_desde, filters.fecha_hasta, filtersOpen, selectedSucursalId]);
 
   useEffect(() => {
     if (!canSelectSucursal) return undefined;
@@ -158,18 +161,17 @@ export default function CierresCajaHistorialView() {
     };
   }, [detailOpen]);
 
-  useEffect(() => {
-    if (!scopeInitialized) return;
-    void loadCatalogos(scopeQuery);
-  }, [loadCatalogos, scopeInitialized, scopeQuery]);
-
   const loadHistory = useCallback(async () => {
+    const requestId = historyRequestIdRef.current + 1;
+    historyRequestIdRef.current = requestId;
     setLoading(true);
     setError('');
     try {
       const response = await cajasService.getReporteCierres(scopeQuery);
+      if (historyRequestIdRef.current !== requestId) return;
       setCierres((Array.isArray(response) ? response : []).map(normalizeCierreReporte));
     } catch (errorResponse) {
+      if (historyRequestIdRef.current !== requestId) return;
       const message = extractCajasApiMessage(
         errorResponse,
         'No se pudo cargar el historial de cierres.'
@@ -178,7 +180,9 @@ export default function CierresCajaHistorialView() {
       setError(message);
       openToast('ERROR', message, 'danger');
     } finally {
-      setLoading(false);
+      if (historyRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, [openToast, scopeQuery]);
 
@@ -186,6 +190,13 @@ export default function CierresCajaHistorialView() {
     if (!scopeInitialized) return;
     void loadHistory();
   }, [loadHistory, scopeInitialized]);
+
+  useEffect(
+    () => () => {
+      historyRequestIdRef.current += 1;
+    },
+    []
+  );
 
   const visibleCierres = useMemo(() => {
     return cierres.filter((closure) => {
@@ -249,6 +260,7 @@ export default function CierresCajaHistorialView() {
 
   const openFiltersDrawer = () => {
     setFiltersDraft({
+      sucursal: selectedSucursalId || '',
       fecha_desde: filters.fecha_desde || '',
       fecha_hasta: filters.fecha_hasta || '',
       estado: filters.estado || ''
@@ -258,6 +270,7 @@ export default function CierresCajaHistorialView() {
 
   const clearFiltersDrawer = () => {
     setFiltersDraft({
+      sucursal: '',
       fecha_desde: '',
       fecha_hasta: '',
       estado: ''
@@ -270,6 +283,9 @@ export default function CierresCajaHistorialView() {
       fecha_hasta: filtersDraft.fecha_hasta,
       estado: filtersDraft.estado
     });
+    if (canSelectSucursal) {
+      setSelectedSucursalId(filtersDraft.sucursal);
+    }
     setFiltersOpen(false);
   };
 
@@ -295,35 +311,13 @@ export default function CierresCajaHistorialView() {
             </div>
 
             <div className="inv-prod-header-actions inv-ins-header-actions ventas-page__toolbar-actions fidelizacion-toolbar cierres-caja-toolbar">
-              <input
-                type="search"
-                className="form-control fidelizacion-toolbar__search-input cierres-caja-toolbar__search-input"
-                placeholder="Buscar por caja, responsable, usuario de cierre o resolucion..."
+              <CollapsibleSearchInput
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onValueChange={setSearch}
+                onSubmit={(value) => setSearch(String(value || '').trim())}
+                placeholder="Buscar por caja, responsable, usuario de cierre o resolucion..."
+                ariaLabel="Buscar cierres de caja"
               />
-
-              {canSelectSucursal ? (
-                <div className="cierres-caja-toolbar__scope-inline" aria-label="Sucursal visible">
-                  <i className="bi bi-shop" aria-hidden="true" />
-                  <span className="cierres-caja-toolbar__scope-inline-label">Sucursal visible</span>
-                  <select
-                    className="form-select cierres-caja-toolbar__scope-inline-select"
-                    value={selectedSucursalId}
-                    onChange={(event) => setSelectedSucursalId(event.target.value)}
-                    disabled={loadingSucursales}
-                  >
-                    <option value="">
-                      {loadingSucursales ? 'Cargando sucursales...' : 'Resumen multisucursal'}
-                    </option>
-                    {sucursales.map((sucursal) => (
-                      <option key={sucursal.id_sucursal} value={sucursal.id_sucursal}>
-                        {sucursal.nombre_sucursal}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
 
               <button
                 type="button"
@@ -452,7 +446,6 @@ export default function CierresCajaHistorialView() {
                 ) : (
                   visibleCierres.map((closure) => {
                     const closureBadge = resolveClosureStateBadge(closure);
-                    const differenceBadge = resolveDifferenceBadge(closure.diferencia);
 
                     return (
                       <tr
@@ -489,9 +482,11 @@ export default function CierresCajaHistorialView() {
                             <span className={`ventas-page__table-pill ${closureBadge.className}`}>
                               {closureBadge.label}
                             </span>
-                            <span className={`ventas-page__table-pill ${differenceBadge.className}`}>
-                              {differenceBadge.label}
-                            </span>
+                            <small className="text-muted fw-semibold">
+                              {closure.diferencia === null || closure.diferencia === undefined
+                                ? '-'
+                                : `L. ${formatCajaCurrency(closure.diferencia)}`}
+                            </small>
                           </div>
                         </td>
                         <td className="align-middle text-muted small fw-semibold">
@@ -542,7 +537,6 @@ export default function CierresCajaHistorialView() {
             ) : (
               visibleCierres.map((closure) => {
                 const closureBadge = resolveClosureStateBadge(closure);
-                const differenceBadge = resolveDifferenceBadge(closure.diferencia);
                 return (
                   <article key={closure.id_cierre_caja} className="cierres-caja-mobile-card">
                     <div className="cierres-caja-mobile-card__head">
@@ -576,8 +570,10 @@ export default function CierresCajaHistorialView() {
 
                     <div className="cierres-caja-mobile-card__meta">
                       <span>{formatCajaDateTime(closure.fecha_cierre)}</span>
-                      <span className={`ventas-page__table-pill ${differenceBadge.className}`}>
-                        {differenceBadge.label}
+                      <span className="text-muted fw-semibold">
+                        {closure.diferencia === null || closure.diferencia === undefined
+                          ? '-'
+                          : `L. ${formatCajaCurrency(closure.diferencia)}`}
                       </span>
                     </div>
 
@@ -608,6 +604,29 @@ export default function CierresCajaHistorialView() {
         onClear={clearFiltersDrawer}
         onApply={applyFiltersDrawer}
       >
+        {canSelectSucursal ? (
+          <div className="inv-prod-drawer-section inv-cat-filter-card">
+            <div className="inv-prod-drawer-section-title">Sucursal</div>
+            <select
+              className="form-select"
+              value={filtersDraft.sucursal}
+              onChange={(event) =>
+                setFiltersDraft((current) => ({ ...current, sucursal: event.target.value }))
+              }
+              disabled={loadingSucursales}
+            >
+              <option value="">
+                {loadingSucursales ? 'Cargando sucursales...' : 'Resumen multisucursal'}
+              </option>
+              {sucursales.map((sucursal) => (
+                <option key={sucursal.id_sucursal} value={sucursal.id_sucursal}>
+                  {sucursal.nombre_sucursal}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
         <div className="inv-prod-drawer-section inv-cat-filter-card">
           <div className="inv-prod-drawer-section-title">Estado del cierre</div>
           <select

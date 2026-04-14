@@ -1,5 +1,7 @@
-import { useRef } from 'react';
+import { useState } from 'react';
 import { formatFechaHora, formatPoints } from '../utils/fidelizacionHelpers';
+import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
+import ToolbarSucursalSelect from '../../../../components/common/ToolbarSucursalSelect';
 
 const Pagination = ({ meta, loading, onPageChange }) => {
   const totalPages = Math.max(1, Math.ceil((meta?.total || 0) / (meta?.limit || 20)));
@@ -57,7 +59,7 @@ export default function FidelizacionOverview({
   onSucursalChange,
   onRefresh
 }) {
-  const searchInputRef = useRef(null);
+  const [searchTerm, setSearchTerm] = useState(currentSearch || '');
 
   const isViewingAllSucursales = canSelectSucursal && !selectedSucursalId;
   const configuracionBadge = isViewingAllSucursales
@@ -78,9 +80,8 @@ export default function FidelizacionOverview({
         className: 'bg-warning border-warning text-dark'
       };
 
-  const handleSearch = (event) => {
-    event.preventDefault();
-    onSearch(String(searchInputRef.current?.value || '').trim());
+  const handleSearch = (value) => {
+    onSearch(String(value || '').trim());
   };
 
   const renderClienteContacto = (cliente) => {
@@ -104,39 +105,21 @@ export default function FidelizacionOverview({
           </div>
 
           <div className="inv-prod-header-actions inv-ins-header-actions ventas-page__toolbar-actions fidelizacion-toolbar">
-            <form onSubmit={handleSearch} className="inv-ins-search fidelizacion-toolbar__search">
-              <i className="bi bi-search" />
-              <input
-                key={currentSearch || 'search-empty'}
-                ref={searchInputRef}
-                type="search"
-                placeholder="Buscar por nombre, correo, telefono o documento..."
-                defaultValue={currentSearch || ''}
-              />
-            </form>
+            <CollapsibleSearchInput
+              value={searchTerm}
+              onValueChange={setSearchTerm}
+              onSubmit={handleSearch}
+              placeholder="Buscar por nombre, correo, telefono o documento..."
+              ariaLabel="Buscar clientes de fidelizacion"
+            />
 
             {canSelectSucursal ? (
-              <label className="fidelizacion-toolbar__scope-card" aria-label="Sucursal visible">
-                <span className="fidelizacion-toolbar__scope-label">Sucursal visible</span>
-                <span className="fidelizacion-toolbar__scope-control">
-                  <i className="bi bi-shop" aria-hidden="true" />
-                  <select
-                    className="form-select fidelizacion-toolbar__select fidelizacion-toolbar__scope-select"
-                    value={selectedSucursalId}
-                    onChange={(event) => onSucursalChange(event.target.value)}
-                    disabled={loadingSucursales}
-                  >
-                    <option value="">
-                      {loadingSucursales ? 'Cargando sucursales...' : 'Resumen multisucursal'}
-                    </option>
-                    {sucursales.map((sucursal) => (
-                      <option key={sucursal.id_sucursal} value={sucursal.id_sucursal}>
-                        {sucursal.nombre_sucursal}
-                      </option>
-                    ))}
-                  </select>
-                </span>
-              </label>
+              <ToolbarSucursalSelect
+                value={selectedSucursalId}
+                onChange={onSucursalChange}
+                options={sucursales}
+                loading={loadingSucursales}
+              />
             ) : null}
 
             <button

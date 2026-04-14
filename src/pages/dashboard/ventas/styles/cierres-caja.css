@@ -18,65 +18,12 @@
   min-height: 42px;
 }
 
-.cierres-caja-toolbar__search {
-  min-width: min(380px, 100%);
-}
-
-.cierres-caja-toolbar__search-input {
-  min-width: 260px;
+.cierres-caja-toolbar .collapsible-search.is-expanded .collapsible-search__field {
+  width: clamp(240px, 30vw, 420px);
 }
 
 .cierres-caja-toolbar__cta {
   border-color: rgba(154, 83, 25, 0.25) !important;
-}
-
-.cierres-caja-toolbar__scope-inline {
-  min-height: 42px;
-  min-width: 270px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(157, 150, 112, 0.18);
-  background: #fff;
-  box-shadow: 0 8px 18px rgba(18, 7, 3, 0.05);
-}
-
-.cierres-caja-toolbar__scope-inline > i {
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(184, 104, 33, 0.12);
-  color: #9a5319;
-  font-size: 0.9rem;
-}
-
-.cierres-caja-toolbar__scope-inline-label {
-  color: rgba(82, 44, 34, 0.74);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.cierres-caja-toolbar__scope-inline-select {
-  border: 0;
-  box-shadow: none;
-  background: transparent;
-  min-width: 0;
-  height: 28px;
-  padding: 0 24px 0 0;
-  color: rgba(82, 44, 34, 0.9);
-  font-weight: 700;
-}
-
-.cierres-caja-toolbar__scope-inline-select:focus {
-  box-shadow: none;
 }
 
 .cierres-caja-filters-drawer__grid {
@@ -219,7 +166,7 @@
     flex-wrap: nowrap;
   }
 
-  .cierres-caja-toolbar__search {
+  .cierres-caja-toolbar .collapsible-search {
     flex: 1 1 420px;
   }
 }
@@ -230,7 +177,7 @@
     row-gap: 8px;
   }
 
-  .cierres-caja-toolbar__search {
+  .cierres-caja-toolbar .collapsible-search {
     flex: 1 1 360px;
   }
 }
@@ -308,14 +255,14 @@
 }
 
 @media (max-width: 991.98px) {
-  .cierres-caja-toolbar__search,
-  .cierres-caja-toolbar__search-input,
-  .cierres-caja-toolbar__scope-inline {
+  .cierres-caja-toolbar .collapsible-search,
+  .cierres-caja-toolbar .collapsible-search.is-expanded .collapsible-search__field,
+  .cierres-caja-toolbar .toolbar-scope-inline {
     min-width: 100%;
     width: 100%;
   }
 
-  .cierres-caja-toolbar__scope-inline {
+  .cierres-caja-toolbar .toolbar-scope-inline {
     justify-content: flex-start;
   }
 

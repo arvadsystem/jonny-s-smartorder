@@ -4,9 +4,10 @@ import {
   resolveDifferenceBadge
 } from '../../utils/cajasHelpers';
 import CierresCajaFiltersDrawer from '../../../cierres-caja/components/CierresCajaFiltersDrawer';
+import CollapsibleSearchInput from '../../../../../components/common/CollapsibleSearchInput';
 
-const countActiveFilters = ({ estado = '', desde = '', hasta = '' }) =>
-  [estado, desde, hasta].filter((value) => String(value || '').trim() !== '').length;
+const countActiveFilters = ({ estado = '', desde = '', hasta = '', sucursal = '' }) =>
+  [estado, desde, hasta, sucursal].filter((value) => String(value || '').trim() !== '').length;
 
 export default function CierresCajaOverview({
   stats,
@@ -23,11 +24,13 @@ export default function CierresCajaOverview({
   onRefresh,
   canOpenSession,
   supportsCajaCatalogCreate,
+  onOpenAbrirSesion,
   onOpenNuevaCaja
 }) {
   const [searchTerm, setSearchTerm] = useState(() => filters.search || '');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filtersDraft, setFiltersDraft] = useState({
+    sucursal: selectedSucursalId || '',
     estado: filters.id_estado_sesion_caja || '',
     desde: filters.fecha_desde || '',
     hasta: filters.fecha_hasta || ''
@@ -39,13 +42,13 @@ export default function CierresCajaOverview({
       countActiveFilters({
         estado: filters.id_estado_sesion_caja,
         desde: filters.fecha_desde,
-        hasta: filters.fecha_hasta
+        hasta: filters.fecha_hasta,
+        sucursal: canSelectSucursal ? selectedSucursalId : ''
       }),
-    [filters.fecha_desde, filters.fecha_hasta, filters.id_estado_sesion_caja]
+    [canSelectSucursal, filters.fecha_desde, filters.fecha_hasta, filters.id_estado_sesion_caja, selectedSucursalId]
   );
 
-  const handleSearch = (event) => {
-    event.preventDefault();
+  const handleSearch = () => {
     onFiltersChange((current) => ({
       ...current,
       search: searchTerm.trim()
@@ -54,6 +57,7 @@ export default function CierresCajaOverview({
 
   const openFiltersDrawer = () => {
     setFiltersDraft({
+      sucursal: selectedSucursalId || '',
       estado: filters.id_estado_sesion_caja || '',
       desde: filters.fecha_desde || '',
       hasta: filters.fecha_hasta || ''
@@ -63,6 +67,7 @@ export default function CierresCajaOverview({
 
   const clearFiltersDrawer = () => {
     setFiltersDraft({
+      sucursal: '',
       estado: '',
       desde: '',
       hasta: ''
@@ -76,6 +81,9 @@ export default function CierresCajaOverview({
       fecha_desde: filtersDraft.desde,
       fecha_hasta: filtersDraft.hasta
     }));
+    if (canSelectSucursal) {
+      onSucursalChange(filtersDraft.sucursal);
+    }
     setFiltersOpen(false);
   };
 
@@ -100,37 +108,13 @@ export default function CierresCajaOverview({
           </div>
 
           <div className="inv-prod-header-actions inv-ins-header-actions ventas-page__toolbar-actions fidelizacion-toolbar cierres-caja-toolbar">
-            <form onSubmit={handleSearch} className="inv-ins-search fidelizacion-toolbar__search cierres-caja-toolbar__search">
-              <i className="bi bi-search" />
-              <input
-                type="search"
-                placeholder="Buscar por sesion, caja, responsable o sucursal..."
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-              />
-            </form>
-
-            {canSelectSucursal ? (
-              <div className="cierres-caja-toolbar__scope-inline" aria-label="Sucursal visible">
-                <i className="bi bi-shop" aria-hidden="true" />
-                <span className="cierres-caja-toolbar__scope-inline-label">Sucursal visible</span>
-                <select
-                  className="form-select cierres-caja-toolbar__scope-inline-select"
-                  value={selectedSucursalId}
-                  onChange={(event) => onSucursalChange(event.target.value)}
-                  disabled={loadingSucursales}
-                >
-                  <option value="">
-                    {loadingSucursales ? 'Cargando sucursales...' : 'Resumen multisucursal'}
-                  </option>
-                  {sucursales.map((sucursal) => (
-                    <option key={sucursal.id_sucursal} value={sucursal.id_sucursal}>
-                      {sucursal.nombre_sucursal}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
+            <CollapsibleSearchInput
+              value={searchTerm}
+              onValueChange={setSearchTerm}
+              onSubmit={handleSearch}
+              placeholder="Buscar por sesion, caja, responsable o sucursal..."
+              ariaLabel="Buscar sesiones de caja"
+            />
 
             <button
               type="button"
@@ -159,12 +143,21 @@ export default function CierresCajaOverview({
               <button
                 type="button"
                 className="inv-prod-toolbar-btn bg-white border cierres-caja-toolbar__cta"
+                onClick={onOpenAbrirSesion}
+                title="Abrir sesion sobre una caja existente"
+                style={{ color: 'rgba(154, 83, 25, 0.9)' }}
+              >
+                <i className="bi bi-box-arrow-in-right" />
+                <span>Abrir sesion</span>
+              </button>
+            ) : null}
+
+            {supportsCajaCatalogCreate ? (
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn bg-white border cierres-caja-toolbar__cta"
                 onClick={onOpenNuevaCaja}
-                title={
-                  supportsCajaCatalogCreate
-                    ? 'Crear y abrir caja'
-                    : 'Abre una sesion sobre una caja ya existente'
-                }
+                title="Crear una nueva caja"
                 style={{ color: 'rgba(154, 83, 25, 0.9)' }}
               >
                 <i className="bi bi-plus-circle" />
@@ -240,6 +233,29 @@ export default function CierresCajaOverview({
         onClear={clearFiltersDrawer}
         onApply={applyFiltersDrawer}
       >
+        {canSelectSucursal ? (
+          <div className="inv-prod-drawer-section inv-cat-filter-card">
+            <div className="inv-prod-drawer-section-title">Sucursal</div>
+            <select
+              className="form-select"
+              value={filtersDraft.sucursal}
+              onChange={(event) =>
+                setFiltersDraft((current) => ({ ...current, sucursal: event.target.value }))
+              }
+              disabled={loadingSucursales}
+            >
+              <option value="">
+                {loadingSucursales ? 'Cargando sucursales...' : 'Resumen multisucursal'}
+              </option>
+              {sucursales.map((sucursal) => (
+                <option key={sucursal.id_sucursal} value={sucursal.id_sucursal}>
+                  {sucursal.nombre_sucursal}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
         <div className="inv-prod-drawer-section inv-cat-filter-card">
           <div className="inv-prod-drawer-section-title">Estado de sesion</div>
           <select

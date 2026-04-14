@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatFechaHora, formatPoints } from '../utils/fidelizacionHelpers';
+import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
+import ToolbarSucursalSelect from '../../../../components/common/ToolbarSucursalSelect';
 
 const Pagination = ({ meta, loading, onPageChange }) => {
   const totalPages = Math.max(1, Math.ceil((meta?.total || 0) / (meta?.limit || 20)));
@@ -157,13 +159,22 @@ export default function FidelizacionCanjesList({
           </div>
 
           <div className="inv-prod-header-actions inv-ins-header-actions ventas-page__toolbar-actions fidelizacion-toolbar">
-            <input
-              type="search"
-              className="form-control fidelizacion-toolbar__search-input"
-              placeholder="Filtrar en pantalla..."
+            <CollapsibleSearchInput
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onValueChange={setSearchTerm}
+              onSubmit={(value) => setSearchTerm(String(value || '').trim())}
+              placeholder="Filtrar en pantalla..."
+              ariaLabel="Buscar canjes de fidelizacion"
             />
+
+            {canSelectSucursal ? (
+              <ToolbarSucursalSelect
+                value={selectedSucursalId}
+                onChange={onSucursalChange}
+                options={sucursales}
+                loading={loadingSucursales}
+              />
+            ) : null}
 
             <button
               type="button"

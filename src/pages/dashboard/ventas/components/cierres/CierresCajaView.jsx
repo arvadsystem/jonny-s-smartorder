@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../../../../hooks/useAuth';
 import { usePermisos } from '../../../../../context/PermisosContext';
 import sucursalesService from '../../../../../services/sucursalesService';
@@ -43,8 +43,11 @@ export default function CierresCajaView() {
     loadSesiones,
     getSesionDetalle,
     openSesion,
+    createCajaCatalogo,
     closeSesion,
-    createArqueo
+    createArqueo,
+    listUsuariosOperativos,
+    listCajaCatalogo
   } = useCierresCaja();
 
   const [selectedSucursalId, setSelectedSucursalId] = useState('');
@@ -61,8 +64,17 @@ export default function CierresCajaView() {
   const [selectedDetalle, setSelectedDetalle] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [openCajaOpen, setOpenCajaOpen] = useState(false);
+  const [openCajaMode, setOpenCajaMode] = useState('existente');
   const [arqueoOpen, setArqueoOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [usuariosOperativos, setUsuariosOperativos] = useState([]);
+  const [loadingUsuariosOperativos, setLoadingUsuariosOperativos] = useState(false);
+  const [cajasOperativas, setCajasOperativas] = useState([]);
+  const [loadingCajasOperativas, setLoadingCajasOperativas] = useState(false);
+  const usuariosRequestIdRef = useRef(0);
+  const cajasRequestIdRef = useRef(0);
+  const usuariosBySucursalRef = useRef(new Map());
+  const cajasBySucursalRef = useRef(new Map());
 
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
   const roleSet = useMemo(() => new Set(normalizeRoles(user?.roles)), [user?.roles]);
@@ -76,9 +88,12 @@ export default function CierresCajaView() {
   const canCloseSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_CERRAR]);
   const canRegisterArqueo = canAny([PERMISSIONS.VENTAS_CAJAS_ARQUEO_REGISTRAR]);
   const canOpenSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_ABRIR]);
+  const canCreateCajaCatalog =
+    canAny([PERMISSIONS.VENTAS_CAJAS_PARTICIPANTES_GESTIONAR])
+    && (isSuperAdmin || roleSet.has('ADMIN') || roleSet.has('ADMINISTRADOR') || roleSet.has('SUPER_ADMIN'));
   const canResolveDifference = canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
   const canUseCloseFlow =
-    isSuperAdmin || roleSet.has('ADMIN') || roleSet.has('SUPER_ADMIN');
+    isSuperAdmin || roleSet.has('ADMIN') || roleSet.has('ADMINISTRADOR') || roleSet.has('SUPER_ADMIN');
 
   const deferredSearch = useDeferredValue(filters.search);
   const scopeQuery = useMemo(() => buildScopeQuery(selectedSucursalId), [selectedSucursalId]);
@@ -247,10 +262,107 @@ export default function CierresCajaView() {
   };
 
   const handleSubmitOpenSession = async (payload) => {
-    await openSesion(payload);
-    await refreshCurrentScope();
-    setOpenCajaOpen(false);
+    try {
+      await openSesion(payload);
+      await refreshCurrentScope();
+      setOpenCajaOpen(false);
+    } catch {
+      // El hook muestra toast; evitamos uncaught promise en el modal.
+    }
   };
+
+  const handleSubmitCreateCaja = async (payload) => {
+    try {
+      await createCajaCatalogo(payload);
+      await Promise.all([
+        loadCatalogos(scopeQuery),
+        refreshCurrentScope()
+      ]);
+      setOpenCajaOpen(false);
+    } catch {
+      // El hook muestra toast; evitamos uncaught promise en el modal.
+    }
+  };
+
+  const handleRequestUsuarios = useCallback(async (idSucursal) => {
+    const idSucursalParsed = Number.parseInt(String(idSucursal || ''), 10);
+    if (!Number.isInteger(idSucursalParsed) || idSucursalParsed <= 0) {
+      setUsuariosOperativos([]);
+      setLoadingUsuariosOperativos(false);
+      return;
+    }
+
+    const cached = usuariosBySucursalRef.current.get(idSucursalParsed);
+    if (cached) {
+      setUsuariosOperativos(cached);
+      setLoadingUsuariosOperativos(false);
+      return;
+    }
+
+    const requestId = usuariosRequestIdRef.current + 1;
+    usuariosRequestIdRef.current = requestId;
+    setLoadingUsuariosOperativos(true);
+    try {
+      const response = await listUsuariosOperativos({ id_sucursal: idSucursalParsed });
+      if (usuariosRequestIdRef.current !== requestId) return;
+      const rows = Array.isArray(response) ? response : [];
+      usuariosBySucursalRef.current.set(idSucursalParsed, rows);
+      setUsuariosOperativos(rows);
+    } catch {
+      if (usuariosRequestIdRef.current !== requestId) return;
+      setUsuariosOperativos([]);
+    } finally {
+      if (usuariosRequestIdRef.current === requestId) {
+        setLoadingUsuariosOperativos(false);
+      }
+    }
+  }, [listUsuariosOperativos]);
+
+  const handleRequestCajas = useCallback(async (idSucursal) => {
+    const idSucursalParsed = Number.parseInt(String(idSucursal || ''), 10);
+    if (!Number.isInteger(idSucursalParsed) || idSucursalParsed <= 0) {
+      setCajasOperativas([]);
+      setLoadingCajasOperativas(false);
+      return;
+    }
+
+    const cached = cajasBySucursalRef.current.get(idSucursalParsed);
+    if (cached) {
+      setCajasOperativas(cached);
+      setLoadingCajasOperativas(false);
+      return;
+    }
+
+    const requestId = cajasRequestIdRef.current + 1;
+    cajasRequestIdRef.current = requestId;
+    setLoadingCajasOperativas(true);
+    try {
+      const response = await listCajaCatalogo({ id_sucursal: idSucursalParsed });
+      if (cajasRequestIdRef.current !== requestId) return;
+      const rows = (Array.isArray(response) ? response : []).filter(
+        (row) => row && row.id_caja && row.estado !== false
+      );
+      cajasBySucursalRef.current.set(idSucursalParsed, rows);
+      setCajasOperativas(rows);
+    } catch {
+      if (cajasRequestIdRef.current !== requestId) return;
+      setCajasOperativas([]);
+    } finally {
+      if (cajasRequestIdRef.current === requestId) {
+        setLoadingCajasOperativas(false);
+      }
+    }
+  }, [listCajaCatalogo]);
+
+  useEffect(() => {
+    if (openCajaOpen) return;
+    usuariosRequestIdRef.current += 1;
+    cajasRequestIdRef.current += 1;
+    setLoadingUsuariosOperativos(false);
+    setLoadingCajasOperativas(false);
+    setUsuariosOperativos([]);
+    setCajasOperativas([]);
+  }, [openCajaOpen]);
 
   return (
     <>
@@ -269,8 +381,15 @@ export default function CierresCajaView() {
           onSucursalChange={setSelectedSucursalId}
           onRefresh={refreshCurrentScope}
           canOpenSession={canOpenSession}
-          supportsCajaCatalogCreate={false}
-          onOpenNuevaCaja={() => setOpenCajaOpen(true)}
+          supportsCajaCatalogCreate={canCreateCajaCatalog}
+          onOpenAbrirSesion={() => {
+            setOpenCajaMode('existente');
+            setOpenCajaOpen(true);
+          }}
+          onOpenNuevaCaja={() => {
+            setOpenCajaMode('nueva');
+            setOpenCajaOpen(true);
+          }}
         />
 
         <CierresCajaList
@@ -306,10 +425,20 @@ export default function CierresCajaView() {
       <CierreCajaAbrirModal
         key={openCajaOpen ? 'abrir-caja-open' : 'abrir-caja-closed'}
         open={openCajaOpen}
-        cajasDisponibles={catalogos.cajas}
+        mode={openCajaMode}
+        cajasDisponibles={cajasOperativas}
+        loadingCajas={loadingCajasOperativas}
         saving={saving}
+        canSelectSucursal={canSelectSucursal}
+        selectedSucursalId={selectedSucursalId}
+        sucursales={sucursales}
+        usuariosDisponibles={usuariosOperativos}
+        loadingUsuarios={loadingUsuariosOperativos}
+        onRequestCajas={handleRequestCajas}
+        onRequestUsuarios={handleRequestUsuarios}
         onClose={() => setOpenCajaOpen(false)}
-        onSubmit={handleSubmitOpenSession}
+        onSubmitOpenSesion={handleSubmitOpenSession}
+        onSubmitCreateCaja={handleSubmitCreateCaja}
       />
 
       <CierreCajaArqueoModal

@@ -151,6 +151,154 @@ export function useCierresCaja() {
     [openToast]
   );
 
+  const listUsuariosOperativos = useCallback(
+    async (params = {}) => {
+      try {
+        return await cajasService.listUsuariosOperativos(params);
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo cargar el listado de usuarios operativos.'),
+          'danger'
+        );
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const listCajaCatalogo = useCallback(
+    async (params = {}) => {
+      try {
+        return await cajasService.listCajaCatalogo(params);
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo cargar el catalogo de cajas.'),
+          'danger'
+        );
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const listCajaAsignaciones = useCallback(
+    async (params = {}) => {
+      try {
+        return await cajasService.listAsignaciones(params);
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo cargar las asignaciones de cajas.'),
+          'danger'
+        );
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const createCajaCatalogo = useCallback(
+    async (payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.createCajaCatalogo(payload);
+        openToast(
+          'CAJA CREADA',
+          response?.message || 'La caja se creo correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo crear la caja.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const createCajaAsignacion = useCallback(
+    async (payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.createAsignacion(payload);
+        openToast(
+          'ASIGNACION CREADA',
+          response?.message || 'La asignacion se registro correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo registrar la asignacion.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const updateCajaAsignacion = useCallback(
+    async (idAsignacion, payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.updateAsignacion(idAsignacion, payload);
+        openToast(
+          'ASIGNACION ACTUALIZADA',
+          response?.message || 'La asignacion se actualizo correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo actualizar la asignacion.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
+  const inactivateCajaAsignacion = useCallback(
+    async (idAsignacion) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.inactivateAsignacion(idAsignacion);
+        openToast(
+          'ASIGNACION INACTIVADA',
+          response?.message || 'La asignacion se inactivo correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo inactivar la asignacion.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
   const closeSesion = useCallback(
     async (idSesionCaja, payload) => {
       setSaving(true);
@@ -222,8 +370,15 @@ export function useCierresCaja() {
     loadCatalogos,
     loadSesionActiva,
     loadSesiones,
+    listUsuariosOperativos,
+    listCajaCatalogo,
+    listCajaAsignaciones,
     getSesionDetalle,
     openSesion,
+    createCajaCatalogo,
+    createCajaAsignacion,
+    updateCajaAsignacion,
+    inactivateCajaAsignacion,
     closeSesion,
     createArqueo
   };

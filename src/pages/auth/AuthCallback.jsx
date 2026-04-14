@@ -45,9 +45,9 @@ const AuthCallback = () => {
           try {
             // Llamar al backend con el access_token para activar el usuario local
             await clientePublicoService.verifyEmail({ access_token: accessToken });
-          } catch (verifyErr) {
+          } catch {
             // Si el backend falla pero Supabase ya verificó, seguimos igual
-            console.warn('[AuthCallback] verify-email warning:', verifyErr.message);
+            // Si el backend falla pero Supabase ya verifico, seguimos igual.
           }
 
           setIsSuccess(true);
@@ -88,8 +88,8 @@ const AuthCallback = () => {
           // Para signup via query param
           try {
             await clientePublicoService.verifyEmail({ token_hash: tokenHash, type: queryType });
-          } catch (verifyErr) {
-            console.warn('[AuthCallback] verify-email (query) warning:', verifyErr.message);
+          } catch {
+            // Si el backend falla pero Supabase ya verifico, seguimos igual.
           }
 
           setIsSuccess(true);
@@ -103,14 +103,13 @@ const AuthCallback = () => {
         setTimeout(() => navigate('/', { replace: true }), 3000);
 
       } catch (err) {
-        console.error('[AuthCallback] Error:', err);
         setError(err.message || 'Error al procesar la autenticación');
         setTimeout(() => navigate('/', { replace: true }), 3000);
       }
     };
 
-    processCallback();
-  }, []);
+    void processCallback();
+  }, [login, navigate, searchParams]);
 
   return (
     <div className="login-root" style={{ justifyContent: 'center', alignItems: 'center' }}>
