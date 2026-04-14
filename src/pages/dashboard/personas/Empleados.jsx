@@ -2494,9 +2494,23 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         aria-hidden={!showModal}
       >
         <div className="inv-prod-drawer-head crud-modal__header">
-          <div className="crud-modal__header-copy">
-            <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo empleado" : "Editar empleado"}</div>
-            <div className="inv-prod-drawer-sub crud-modal__subtitle">{drawerSubtitle}</div>
+          <div className="crud-modal__header-copy crud-modal__header-copy--insumo">
+            <div className="crud-modal__hero-icon" aria-hidden="true">
+              <i className="bi bi-person-workspace" />
+            </div>
+            <div className="crud-modal__hero-main">
+              <div className="crud-modal__hero-kicker">{drawerMode === "create" ? "Nuevo registro" : "Edicion activa"}</div>
+              <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo empleado" : "Editar empleado"}</div>
+              <div className="inv-prod-drawer-sub crud-modal__subtitle">{drawerSubtitle}</div>
+            </div>
+            <div className="crud-modal__hero-chips">
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-briefcase" /> Datos laborales
+              </span>
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-shield-check" /> Registro seguro
+              </span>
+            </div>
           </div>
           <button
             type="button"

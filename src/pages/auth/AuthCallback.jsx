@@ -29,14 +29,37 @@ const AuthCallback = () => {
   useEffect(() => {
     const processCallback = async () => {
       try {
+        const rawSearch = typeof window !== 'undefined' ? window.location.search || '' : '';
+        const directSearchParams = new URLSearchParams(rawSearch);
+
+        const getParam = (...keys) => {
+          for (const key of keys) {
+            const fromHook = searchParams.get(key);
+            if (fromHook) return fromHook;
+            const fromDirect = directSearchParams.get(key);
+            if (fromDirect) return fromDirect;
+          }
+          return '';
+        };
+
         // Leer parámetros del hash fragment (#access_token=...&type=signup&...)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         const accessToken = hashParams.get('access_token');
         const hashType = hashParams.get('type'); // 'signup' para verificación de email
 
+        const verifyToken = getParam('verify_token', 'verifyToken');
+
         // También puede venir token_hash como query param (flujo manual)
-        const tokenHash = searchParams.get('token_hash') || searchParams.get('token');
-        const queryType = searchParams.get('type');
+        const tokenHash = getParam('token_hash', 'token');
+        const queryType = getParam('type');
+        if (verifyToken) {
+          setStatus('Verificando tu cuenta...');
+          await clientePublicoService.verifyEmail({ token: verifyToken });
+          setIsSuccess(true);
+          setStatus('Cuenta verificada exitosamente');
+          setTimeout(() => navigate('/?verified=1', { replace: true }), 2500);
+          return;
+        }
 
         // ── CASO 1: Verificación de email (type=signup en el hash) ──────────
         if (accessToken && hashType === 'signup') {

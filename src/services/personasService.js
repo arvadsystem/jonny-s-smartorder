@@ -677,9 +677,6 @@ export const personaService = {
 
   createCliente: (data) => {
     const payload = pickAllowedFields(data, [
-      'fecha_ingreso',
-      'puntos',
-      'id_tipo_cliente',
       'id_persona',
       'id_empresa_cliente',
       'id_empresa',
@@ -707,6 +704,9 @@ export const personaService = {
       : null;
 
     if (clientePayload) {
+      delete clientePayload.id_tipo_cliente;
+      delete clientePayload.puntos;
+      delete clientePayload.fecha_ingreso;
       if (
         clientePayload.id_empresa_cliente === undefined
         && clientePayload.id_empresa !== undefined

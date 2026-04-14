@@ -10,6 +10,7 @@ import useSearchSuggestionsDropdown, {
   MIN_CHARS_FOR_SUGGESTIONS,
   normalizeSearchText,
 } from "./components/common/useSearchSuggestionsDropdown";
+import "./components/common/crud-modal-theme.css";
 import "./components/empresas/empresas-modal.css";
 
 const emptyForm = {
@@ -1123,7 +1124,7 @@ export default function Empresas({ openToast }) {
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer empresas-modal ${showModal ? "show" : ""} ${
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal empresas-modal ${showModal ? "show" : ""} ${
           drawerMode === "create" ? "is-create" : "is-edit"
         }`}
         id="emp-form-drawer"
@@ -1131,18 +1132,32 @@ export default function Empresas({ openToast }) {
         aria-modal="true"
         aria-hidden={!showModal}
       >
-        <div className="inv-prod-drawer-head empresas-modal__header">
-          <div className="empresas-modal__header-copy">
-            <div className="inv-prod-drawer-title empresas-modal__title">
-              {drawerMode === "create" ? "Nueva empresa" : "Editar empresa"}
+        <div className="inv-prod-drawer-head empresas-modal__header crud-modal__header">
+          <div className="empresas-modal__header-copy crud-modal__header-copy crud-modal__header-copy--insumo">
+            <div className="crud-modal__hero-icon" aria-hidden="true">
+              <i className="bi bi-buildings" />
             </div>
-            <div className="inv-prod-drawer-sub empresas-modal__subtitle">
-              Completa los campos y guarda los cambios.
+            <div className="crud-modal__hero-main">
+              <div className="crud-modal__hero-kicker">{drawerMode === "create" ? "Nuevo registro" : "Edicion activa"}</div>
+              <div className="inv-prod-drawer-title empresas-modal__title crud-modal__title">
+                {drawerMode === "create" ? "Nueva empresa" : "Editar empresa"}
+              </div>
+              <div className="inv-prod-drawer-sub empresas-modal__subtitle crud-modal__subtitle">
+                Completa los campos y guarda los cambios.
+              </div>
+            </div>
+            <div className="crud-modal__hero-chips">
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-building-check" /> Perfil empresarial
+              </span>
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-shield-check" /> Datos validados
+              </span>
             </div>
           </div>
           <button
             type="button"
-            className="inv-prod-drawer-close empresas-modal__close"
+            className="inv-prod-drawer-close empresas-modal__close crud-modal__close"
             onClick={closeFormDrawer}
             title="Cerrar"
           >
@@ -1150,8 +1165,8 @@ export default function Empresas({ openToast }) {
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite empresas-modal__body" onSubmit={guardar}>
-          <div className="row g-3 empresas-modal__grid">
+        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite empresas-modal__body crud-modal__body" onSubmit={guardar}>
+          <div className="row g-3 empresas-modal__grid crud-modal__grid">
             <div className="col-12 col-md-6 empresas-modal__field">
               <label className="form-label empresas-modal__label empresas-modal__field-label">
                 <span>RTN</span>
@@ -1269,10 +1284,10 @@ export default function Empresas({ openToast }) {
             </div>
           </div>
 
-          <div className="d-flex gap-2 mt-4 empresas-modal__footer">
+          <div className="d-flex gap-2 mt-4 empresas-modal__footer crud-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-subtle flex-fill empresas-modal__btn"
+              className="btn inv-prod-btn-subtle flex-fill empresas-modal__btn crud-modal__btn"
               onClick={closeFormDrawer}
               disabled={actionLoading || !!deletingId}
             >
@@ -1280,7 +1295,7 @@ export default function Empresas({ openToast }) {
             </button>
             <button
               type="submit"
-              className="btn inv-prod-btn-primary flex-fill empresas-modal__btn"
+              className="btn inv-prod-btn-primary flex-fill empresas-modal__btn crud-modal__btn"
               disabled={actionLoading || !!deletingId}
             >
               {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}

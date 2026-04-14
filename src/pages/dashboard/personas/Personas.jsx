@@ -2271,9 +2271,23 @@ export default function Personas({ openToast }) {
         aria-hidden={!showModal}
       >
         <div className="inv-prod-drawer-head crud-modal__header">
-          <div className="crud-modal__header-copy">
-            <div className="inv-prod-drawer-title crud-modal__title">{editId ? "Editar persona" : "Nueva persona"}</div>
-            <div className="inv-prod-drawer-sub crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
+          <div className="crud-modal__header-copy crud-modal__header-copy--insumo">
+            <div className="crud-modal__hero-icon" aria-hidden="true">
+              <i className="bi bi-person-vcard" />
+            </div>
+            <div className="crud-modal__hero-main">
+              <div className="crud-modal__hero-kicker">{editId ? "Edicion activa" : "Nuevo registro"}</div>
+              <div className="inv-prod-drawer-title crud-modal__title">{editId ? "Editar persona" : "Nueva persona"}</div>
+              <div className="inv-prod-drawer-sub crud-modal__subtitle">Completa los campos y guarda los cambios.</div>
+            </div>
+            <div className="crud-modal__hero-chips">
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-person-badge" /> Perfil base
+              </span>
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-shield-check" /> Registro seguro
+              </span>
+            </div>
           </div>
           <button
             type="button"

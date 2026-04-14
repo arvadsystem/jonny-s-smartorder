@@ -22,7 +22,9 @@ import {
 } from './components/usuarios/imageSourcePolicy';
 
 const emptyForm = {
+  tipo_objetivo: 'EMPLEADO',
   id_empleado: '',
+  id_cliente: '',
   id_rol: '',
   id_roles: [],
   estado: true,
@@ -194,6 +196,7 @@ export default function UsuariosTab({ openToast }) {
 
   const [usuarios, setUsuarios] = useState([]);
   const [empleadosCatalogo, setEmpleadosCatalogo] = useState([]);
+  const [clientesCatalogo, setClientesCatalogo] = useState([]);
   const [rolesCatalogo, setRolesCatalogo] = useState([]);
 
   const [loading, setLoading] = useState(true);
@@ -258,12 +261,12 @@ export default function UsuariosTab({ openToast }) {
   const imageInputRef = useRef(null);
 
   const getNombreCompleto = useCallback((u) =>
-    normalizeText(u?.empleado?.nombre_completo || u?.nombre_completo || `${u?.nombre || ''} ${u?.apellido || ''}`) || 'No registrado',
+    normalizeText(u?.nombre_completo || u?.empleado?.nombre_completo || u?.cliente?.nombre_completo || `${u?.nombre || ''} ${u?.apellido || ''}`) || 'No registrado',
   []);
   const getSucursalNombre = useCallback((u) => normalizeText(u?.empleado?.sucursal_nombre || u?.sucursal_nombre) || 'No registrado', []);
-  const getDni = useCallback((u) => normalizeText(u?.empleado?.dni || u?.dni), []);
-  const getTelefono = useCallback((u) => normalizeText(u?.empleado?.telefono || u?.telefono), []);
-  const getCorreo = useCallback((u) => normalizeText(u?.empleado?.correo || u?.correo), []);
+  const getDni = useCallback((u) => normalizeText(u?.dni || u?.empleado?.dni || u?.cliente?.dni), []);
+  const getTelefono = useCallback((u) => normalizeText(u?.telefono || u?.empleado?.telefono || u?.cliente?.telefono), []);
+  const getCorreo = useCallback((u) => normalizeText(u?.correo || u?.empleado?.correo || u?.cliente?.correo), []);
   const getRolNombre = useCallback((u) => {
     const roles = getUsuarioRoles(u);
     if (roles.length > 0) {
@@ -284,6 +287,14 @@ export default function UsuariosTab({ openToast }) {
     });
     return ids;
   }, [usuarios]);
+  const clientesConUsuario = useMemo(() => {
+    const ids = new Set();
+    usuarios.forEach((u) => {
+      const idCli = String(u?.id_cliente || u?.cliente?.id_cliente || '');
+      if (idCli) ids.add(idCli);
+    });
+    return ids;
+  }, [usuarios]);
 
   const usernamesInUse = useMemo(() => {
     const set = new Set();
@@ -298,13 +309,24 @@ export default function UsuariosTab({ openToast }) {
     () => empleadosCatalogo.find((e) => e.id === String(form.id_empleado)) || null,
     [empleadosCatalogo, form.id_empleado]
   );
+  const selectedCliente = useMemo(
+    () => clientesCatalogo.find((c) => c.id === String(form.id_cliente)) || null,
+    [clientesCatalogo, form.id_cliente]
+  );
+  const targetType = String(form?.tipo_objetivo || 'EMPLEADO').toUpperCase() === 'CLIENTE' ? 'CLIENTE' : 'EMPLEADO';
 
   const generatedUsernamePreview = useMemo(() => {
-    if (drawerMode !== 'create' || !selectedEmpleado) return '';
+    if (drawerMode !== 'create') return '';
+    if (targetType === 'CLIENTE') {
+      if (!selectedCliente) return '';
+      return buildUsernamePreview(selectedCliente, usernamesInUse);
+    }
+    if (!selectedEmpleado) return '';
     return buildUsernamePreview(selectedEmpleado, usernamesInUse);
-  }, [drawerMode, selectedEmpleado, usernamesInUse]);
+  }, [drawerMode, targetType, selectedCliente, selectedEmpleado, usernamesInUse]);
 
   const filteredEmpleadoOptions = useMemo(() => empleadosCatalogo, [empleadosCatalogo]);
+  const filteredClienteOptions = useMemo(() => clientesCatalogo, [clientesCatalogo]);
 
   const sortedRoles = useMemo(
     () =>
@@ -316,15 +338,16 @@ export default function UsuariosTab({ openToast }) {
     if (imageInputRef.current) imageInputRef.current.value = '';
   }, []);
 
-  const cargarCatalogos = useCallback(async () => {
-    if (catalogLoadedRef.current) return;
+  const cargarCatalogos = useCallback(async ({ force = false } = {}) => {
+    if (catalogLoadedRef.current && !force) return;
 
     setCatalogLoading(true);
     setRolesLoading(true);
     try {
-      const [empleadosResp, personasResp] = await Promise.all([
+      const [empleadosResp, personasResp, clientesResp] = await Promise.all([
         personaService.getEmpleados({ page: 1, limit: 100 }),
-        personaService.getPersonasDetalle({ page: 1, limit: 100 })
+        personaService.getPersonasDetalle({ page: 1, limit: 100 }),
+        personaService.getClientes({ page: 1, limit: 200 })
       ]);
 
       let rolesItems = [];
@@ -342,6 +365,7 @@ export default function UsuariosTab({ openToast }) {
       if (!mountedRef.current) return;
 
       const empleados = normalizeListResponse(empleadosResp).items;
+      const clientes = normalizeListResponse(clientesResp).items;
       const personas = normalizeListResponse(personasResp).items;
       const personaMap = new Map(personas.map((p) => [String(p?.id_persona ?? ''), p]));
 
@@ -374,6 +398,25 @@ export default function UsuariosTab({ openToast }) {
         .filter((role) => role.id_rol && role.nombre);
 
       setEmpleadosCatalogo(options);
+      setClientesCatalogo(
+        clientes.map((c) => {
+          const nombreCompleto = normalizeText(
+            c?.nombre_completo
+            || c?.persona_nombre_completo
+            || c?.nombre_principal
+            || `${c?.persona_nombre || ''} ${c?.persona_apellido || ''}`
+          ) || `Cliente #${c?.id_cliente ?? 'N/D'}`;
+          return {
+            id: String(c?.id_cliente ?? ''),
+            nombre_completo: nombreCompleto,
+            nombre: normalizeText(c?.persona_nombre || c?.nombre),
+            apellido: normalizeText(c?.persona_apellido || c?.apellido),
+            dni: normalizeText(c?.dni || c?.persona_dni || c?.documento_valor),
+            correo: normalizeText(c?.correo || c?.direccion_correo || c?.email),
+            telefono: normalizeText(c?.telefono),
+          };
+        }).filter((row) => row.id)
+      );
       setRolesCatalogo(parsedRoles);
       catalogLoadedRef.current = true;
     } catch (error) {
@@ -464,7 +507,9 @@ export default function UsuariosTab({ openToast }) {
     const currentRoles = getUsuarioRoles(current).map((role) => role.id_rol);
 
     setForm({
+      tipo_objetivo: String(current?.id_cliente || current?.cliente?.id_cliente || '').trim() ? 'CLIENTE' : 'EMPLEADO',
       id_empleado: String(current?.id_empleado || current?.empleado?.id_empleado || ''),
+      id_cliente: String(current?.id_cliente || current?.cliente?.id_cliente || ''),
       id_rol: currentRoles[0] || '',
       id_roles: currentRoles,
       estado: parseBooleanField(current),
@@ -492,15 +537,22 @@ export default function UsuariosTab({ openToast }) {
 
   const validateCreate = useCallback(() => {
     const currentErrors = {};
-    if (!form.id_empleado) currentErrors.id_empleado = 'Seleccione un empleado';
-    if (normalizeRoleIds(form.id_roles).length === 0) currentErrors.id_roles = 'Seleccione al menos un rol';
-    if (selectedEmpleado && empleadosConUsuario.has(selectedEmpleado.id)) {
-      currentErrors.id_empleado = 'Empleado ya tiene usuario';
+    if (targetType === 'CLIENTE') {
+      if (!form.id_cliente) currentErrors.id_cliente = 'Seleccione un cliente';
+      if (selectedCliente && clientesConUsuario.has(selectedCliente.id)) {
+        currentErrors.id_cliente = 'Cliente ya tiene usuario';
+      }
+    } else {
+      if (!form.id_empleado) currentErrors.id_empleado = 'Seleccione un empleado';
+      if (normalizeRoleIds(form.id_roles).length === 0) currentErrors.id_roles = 'Seleccione al menos un rol';
+      if (selectedEmpleado && empleadosConUsuario.has(selectedEmpleado.id)) {
+        currentErrors.id_empleado = 'Empleado ya tiene usuario';
+      }
     }
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
-  }, [form.id_empleado, form.id_roles, selectedEmpleado, empleadosConUsuario]);
+  }, [targetType, form.id_cliente, form.id_empleado, form.id_roles, selectedCliente, selectedEmpleado, clientesConUsuario, empleadosConUsuario]);
 
   const onFormImageChange = useCallback(async (event) => {
     if (!canEditFotoUsuario) return;
@@ -679,8 +731,12 @@ export default function UsuariosTab({ openToast }) {
         }
 
         const response = await personaService.generateUsuarioCredencialesV2({
-          id_empleado: Number.parseInt(String(form.id_empleado), 10),
-          id_roles: normalizeRoleIds(form.id_roles).map((value) => Number.parseInt(value, 10)),
+          tipo_objetivo: targetType,
+          id_empleado: targetType === 'EMPLEADO' ? Number.parseInt(String(form.id_empleado), 10) : undefined,
+          id_cliente: targetType === 'CLIENTE' ? Number.parseInt(String(form.id_cliente), 10) : undefined,
+          id_roles: targetType === 'CLIENTE'
+            ? undefined
+            : normalizeRoleIds(form.id_roles).map((value) => Number.parseInt(value, 10)),
         });
 
         if (photoPlan.shouldSend && response?.usuario?.id_usuario) {
@@ -729,7 +785,7 @@ export default function UsuariosTab({ openToast }) {
           updatePayload.estado = Boolean(form.estado);
         }
 
-        if (!sameRoleSelection(nextRoleIds, currentRoleIds)) {
+        if (targetType !== 'CLIENTE' && !sameRoleSelection(nextRoleIds, currentRoleIds)) {
           updatePayload.id_roles = nextRoleIds.map((value) => Number.parseInt(value, 10));
         }
 
@@ -829,6 +885,23 @@ export default function UsuariosTab({ openToast }) {
     resetFormState();
     setShowModal(true);
   };
+
+  const openCreateEmpleadoForm = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.open('/dashboard/personas?tab=empleados&create=1', '_blank', 'noopener,noreferrer');
+    }
+  }, []);
+
+  const openCreateClienteForm = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.open('/dashboard/personas?tab=clientes&create=1', '_blank', 'noopener,noreferrer');
+    }
+  }, []);
+
+  const refreshUsuariosCatalogs = useCallback(async () => {
+    catalogLoadedRef.current = false;
+    await cargarCatalogos({ force: true });
+  }, [cargarCatalogos]);
 
   const openConfirmDelete = (usuario) => {
     if (!canDeleteUsuario) return;
@@ -1109,6 +1182,17 @@ export default function UsuariosTab({ openToast }) {
         errors={errors}
         onFieldChange={(field, value) => {
           setForm((prev) => {
+            if (field === 'tipo_objetivo') {
+              const nextType = String(value || 'EMPLEADO').toUpperCase() === 'CLIENTE' ? 'CLIENTE' : 'EMPLEADO';
+              return {
+                ...prev,
+                tipo_objetivo: nextType,
+                id_empleado: nextType === 'CLIENTE' ? '' : prev.id_empleado,
+                id_cliente: nextType === 'EMPLEADO' ? '' : prev.id_cliente,
+                id_roles: nextType === 'CLIENTE' ? [] : prev.id_roles,
+                id_rol: nextType === 'CLIENTE' ? '' : prev.id_rol
+              };
+            }
             if (field === 'id_roles') {
               const nextRoleIds = normalizeRoleIds(value);
               return { ...prev, id_roles: nextRoleIds, id_rol: nextRoleIds[0] || '' };
@@ -1119,14 +1203,23 @@ export default function UsuariosTab({ openToast }) {
               return { ...prev, id_rol: nextRoleIds[0] || '', id_roles: nextRoleIds };
             }
 
+            if (field === 'id_empleado') {
+              return { ...prev, id_empleado: value, id_cliente: '' };
+            }
+            if (field === 'id_cliente') {
+              return { ...prev, id_cliente: value, id_empleado: '' };
+            }
+
             return { ...prev, [field]: value };
           });
           setErrors((prev) => ({
             ...prev,
             [field]: undefined,
-            id_roles: field === 'id_roles' || field === 'id_rol' ? undefined : prev.id_roles
+            id_roles: field === 'id_roles' || field === 'id_rol' || field === 'tipo_objetivo' ? undefined : prev.id_roles,
+            id_empleado: field === 'tipo_objetivo' || field === 'id_cliente' ? undefined : prev.id_empleado,
+            id_cliente: field === 'tipo_objetivo' || field === 'id_empleado' ? undefined : prev.id_cliente
           }));
-          if (drawerMode === 'create' && (field === 'id_empleado' || field === 'id_rol' || field === 'id_roles')) {
+          if (drawerMode === 'create' && (field === 'tipo_objetivo' || field === 'id_empleado' || field === 'id_cliente' || field === 'id_rol' || field === 'id_roles')) {
             setCreateCredentialsResult(null);
             setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false });
           }
@@ -1141,9 +1234,13 @@ export default function UsuariosTab({ openToast }) {
         catalogLoading={catalogLoading}
         rolesLoading={rolesLoading}
         filteredEmpleadoOptions={filteredEmpleadoOptions}
+        filteredClienteOptions={filteredClienteOptions}
         empleadosConUsuario={empleadosConUsuario}
+        clientesConUsuario={clientesConUsuario}
+        targetType={targetType}
         generatedUsernamePreview={generatedUsernamePreview}
         empleadoDisplayName={toDisplayValue(selectedEmpleado?.nombre_completo || getNombreCompleto(selectedUser), 'No registrado')}
+        clienteDisplayName={toDisplayValue(selectedCliente?.nombre_completo || getNombreCompleto(selectedUser), 'No registrado')}
         usernameDisplay={toDisplayValue(selectedUser?.nombre_usuario, 'Sin usuario')}
         sortedRoles={sortedRoles}
         formImage={formImage}
@@ -1156,6 +1253,9 @@ export default function UsuariosTab({ openToast }) {
         canEdit={canEditUsuario}
         canResetPassword={canResetPassword}
         canEditPhoto={canEditFotoUsuario}
+        onOpenCreateEmpleado={openCreateEmpleadoForm}
+        onOpenCreateCliente={openCreateClienteForm}
+        onRefreshCatalogs={refreshUsuariosCatalogs}
       />
 
       <UsuarioDetailModal open={Boolean(detailUsuario)} usuario={detailUsuario} onClose={() => setDetailUsuario(null)} />

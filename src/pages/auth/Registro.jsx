@@ -12,6 +12,7 @@ const Registro = () => {
 
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
+  const [genero, setGenero] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -28,8 +29,8 @@ const Registro = () => {
     setSuccessMsg('');
     setRequiresVerification(false);
 
-    if (!nombre.trim() || !apellido.trim() || !email.trim() || !password.trim()) {
-      setError('Todos los campos son obligatorios (Nombre, Apellido, Correo y Contraseña).');
+    if (!nombre.trim() || !apellido.trim() || !genero.trim() || !email.trim() || !password.trim()) {
+      setError('Todos los campos son obligatorios (Nombre, Apellido, Genero, Correo y Contrasena).');
       return;
     }
 
@@ -59,7 +60,8 @@ const Registro = () => {
         email: email.trim().toLowerCase(),
         clave: password,
         nombre: nombre.trim(),
-        apellido: apellido.trim()
+        apellido: apellido.trim(),
+        genero: genero.trim()
       };
 
       const response = await clientePublicoService.register(payload);
@@ -178,6 +180,23 @@ const Registro = () => {
                     onChange={(e) => setApellido(e.target.value)}
                   />
                 </div>
+              </div>
+            </div>
+
+            <div className="field">
+              <label>GENERO</label>
+              <div className="input-wrap">
+                <FiUser className="field-icon" />
+                <select
+                  id="register-genero"
+                  value={genero}
+                  onChange={(e) => setGenero(e.target.value)}
+                >
+                  <option value="">Selecciona genero</option>
+                  <option value="MASCULINO">Masculino</option>
+                  <option value="FEMENINO">Femenino</option>
+                  <option value="OTRO">Otro</option>
+                </select>
               </div>
             </div>
 
