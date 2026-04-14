@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FiMail, FiArrowLeft } from 'react-icons/fi';
 import './Login.scss';
 
+const _MOTION = motion;
+
 const RecuperarPassword = () => {
   const navigate = useNavigate();
 

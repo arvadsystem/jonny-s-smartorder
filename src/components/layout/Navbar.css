@@ -147,7 +147,7 @@
 /* ==============================
    ✅ RESPONSIVE: AQUI SI HAY SCROLL (SOLO MOVIL/TABLET)
    ============================== */
-@media (max-width: 768px) {
+@media (max-width: 991.98px) {
   /* ✅ RESPONSIVE: SE PERMITE SCROLL SOLO AQUI */
   .inventory-tabs-bar {
     overflow-x: auto;

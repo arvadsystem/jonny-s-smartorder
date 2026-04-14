@@ -2,10 +2,19 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { getColumnMeta } from '../utils/cocinaHelpers';
 import CocinaOrderCard from './CocinaOrderCard';
 
+const _MOTION = motion;
+
+const COLUMN_CSS_CLASS = {
+  PENDIENTES: 'is-pending',
+  EN_PREPARACION: 'is-prep',
+  LISTOS_PARA_ENTREGA: 'is-ready'
+};
+
 export default function CocinaColumn({
   canAdvancePedido,
   isSuperAdmin = false,
   canOpenDetail,
+  canDeliverPedido = false,
   columnKey,
   pedidos,
   now,
@@ -14,18 +23,19 @@ export default function CocinaColumn({
   onOpenConfirm
 }) {
   const column = getColumnMeta(columnKey);
+  const cssClass = COLUMN_CSS_CLASS[columnKey] || 'is-pending';
 
   return (
-    <section className={`cocina-column ${column.badgeClass}`}>
-      <header className="cocina-column__header">
-        <div className="cocina-column__title">
-          <span className="cocina-column__dot" />
+    <section className={`kds-column ${cssClass}`}>
+      <header className="kds-column__header">
+        <div className="kds-column__title">
+          <span className="kds-column__dot" aria-hidden="true" />
           <strong>{column.title}</strong>
         </div>
-        <span className="cocina-column__count">{pedidos.length}</span>
+        <span className="kds-column__count">{pedidos.length}</span>
       </header>
 
-      <motion.div layout className="cocina-column__body">
+      <motion.div layout className="kds-column__body">
         <AnimatePresence initial={false}>
           {pedidos.map((pedido) => (
             <CocinaOrderCard
@@ -35,6 +45,7 @@ export default function CocinaColumn({
               canAdvance={canAdvancePedido(pedido)}
               isSuperAdmin={isSuperAdmin}
               canOpenDetail={canOpenDetail}
+              canDeliverPedido={canDeliverPedido}
               disabled={mutatingIds.includes(pedido.id_pedido)}
               onOpenDetail={onOpenDetail}
               onOpenConfirm={onOpenConfirm}
@@ -43,7 +54,10 @@ export default function CocinaColumn({
         </AnimatePresence>
 
         {pedidos.length === 0 ? (
-          <div className="cocina-column__empty">No hay pedidos en esta columna.</div>
+          <div className="kds-column__empty">
+            <i className="bi bi-inbox" aria-hidden="true" />
+            <span>Sin pedidos</span>
+          </div>
         ) : null}
       </motion.div>
     </section>

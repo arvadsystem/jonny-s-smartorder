@@ -30,6 +30,10 @@ const clientePublicoService = {
     return await apiFetch('/api/public/forgot-password', 'POST', data);
   },
 
+  resetPassword: async (data) => {
+    return await apiFetch('/api/public/reset-password', 'POST', data);
+  },
+
   /**
    * Obtener el menú público completo.
    */

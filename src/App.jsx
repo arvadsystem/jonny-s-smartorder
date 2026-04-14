@@ -1,8 +1,9 @@
 import { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import ProtectedRoute from './routes/ProtectedRoute';
 import ClienteRoute from './routes/ClienteRoute';
 import RequirePerm from './routes/RequirePerm';
+import { resolveCierresCajaTab } from './utils/cierresCajaRouting';
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
@@ -28,6 +29,7 @@ const CambioContrasena = lazy(() => import('./pages/dashboard/CambioContrasena')
 const Personas = lazy(() => import('./pages/dashboard/Personas'));
 const Sucursales = lazy(() => import('./pages/dashboard/Sucursales'));
 const Ventas = lazy(() => import('./pages/dashboard/Ventas'));
+const CierresCaja = lazy(() => import('./pages/dashboard/CierresCaja'));
 const Cocina = lazy(() => import('./pages/dashboard/Cocina'));
 const Planillas = lazy(() => import('./pages/dashboard/personas/Planillas'));
 const Fidelizacion = lazy(() => import('./pages/dashboard/Fidelizacion'));
@@ -41,8 +43,27 @@ const PublicMenuRoutes = lazy(() =>
   }))
 );
 
-// Ajusta esta ruta si tu componente Carrito está en otra carpeta
 const Carrito = lazy(() => import('./pages/public/Carrito'));
+
+const CierresCajaLegacyRedirect = () => {
+  const location = useLocation();
+
+  const suffix = String(location.pathname || '').replace(
+    /^\/dashboard\/(?:ventas\/)?(?:cierre-caja|cierres-caja|cierres)\/?/i,
+    ''
+  );
+
+  const firstPathSegment = suffix.split('/').filter(Boolean)[0] || '';
+
+  const nextParams = new URLSearchParams(location.search || '');
+  const tabFromQuery = resolveCierresCajaTab(nextParams.get('tab'), '');
+  const tabFromPath = resolveCierresCajaTab(firstPathSegment, '');
+  const resolvedTab = tabFromQuery || tabFromPath || 'operacion';
+
+  nextParams.set('tab', resolvedTab);
+
+  return <Navigate to={`/dashboard/cierres-caja?${nextParams.toString()}`} replace />;
+};
 
 const PaginaEnConstruccion = ({ titulo }) => {
   return (
@@ -126,6 +147,20 @@ function App() {
                 </RequirePerm>
               }
             />
+            <Route
+              path="cierres-caja"
+              element={
+                <RequirePerm moduleKey="cierres-caja">
+                  <CierresCaja />
+                </RequirePerm>
+              }
+            />
+            <Route path="cierres-caja/*" element={<CierresCajaLegacyRedirect />} />
+            <Route path="cierre-caja/*" element={<CierresCajaLegacyRedirect />} />
+            <Route path="cierres/*" element={<CierresCajaLegacyRedirect />} />
+            <Route path="ventas/cierres-caja/*" element={<CierresCajaLegacyRedirect />} />
+            <Route path="ventas/cierre-caja/*" element={<CierresCajaLegacyRedirect />} />
+            <Route path="ventas/cierres/*" element={<CierresCajaLegacyRedirect />} />
             <Route
               path="cocina"
               element={

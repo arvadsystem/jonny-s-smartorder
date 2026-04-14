@@ -1,37 +1,39 @@
-import {
-  buildCocinaSeries,
-  buildSparklinePoints
-} from '../utils/cocinaHelpers';
-
-function KpiCard({ label, value, className = '', points }) {
-  return (
-    <div className={`inv-prod-kpi ${className}`.trim()}>
-      {points ? (
-        <svg className="inv-prod-kpi-spark" viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
-          <polyline points={points} />
-        </svg>
-      ) : null}
-      <div className="inv-prod-kpi-content">
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-    </div>
-  );
-}
-
+/**
+ * CocinaStats — KPIs del tablero KDS
+ * Muestra contadores de pedidos por columna con iconos y colores semánticos.
+ */
 export default function CocinaStats({ stats }) {
-  const series = buildCocinaSeries(stats);
-
   return (
-    <div className="inv-prod-kpis inv-cat-v2__kpis" aria-label="Resumen del tablero de cocina">
-      <KpiCard label="Pendientes" value={stats.pendientes} points={buildSparklinePoints(series.pendientes)} />
-      <KpiCard
-        label="En preparacion"
-        value={stats.enPreparacion}
-        className="is-low"
-        points={buildSparklinePoints(series.enPreparacion)}
-      />
-      <KpiCard label="Listos" value={stats.listos} className="is-ok" points={buildSparklinePoints(series.listos)} />
+    <div className="kds-stats" aria-label="Resumen de pedidos">
+      <div className="kds-kpi is-pending">
+        <div className="kds-kpi__icon" aria-hidden="true">
+          <i className="bi bi-hourglass-split" />
+        </div>
+        <div>
+          <div className="kds-kpi__label">Pendientes</div>
+          <div className="kds-kpi__value">{stats.pendientes}</div>
+        </div>
+      </div>
+
+      <div className="kds-kpi is-cooking">
+        <div className="kds-kpi__icon" aria-hidden="true">
+          <i className="bi bi-fire" />
+        </div>
+        <div>
+          <div className="kds-kpi__label">En preparación</div>
+          <div className="kds-kpi__value">{stats.enPreparacion}</div>
+        </div>
+      </div>
+
+      <div className="kds-kpi is-ready">
+        <div className="kds-kpi__icon" aria-hidden="true">
+          <i className="bi bi-check2-circle" />
+        </div>
+        <div>
+          <div className="kds-kpi__label">Listos</div>
+          <div className="kds-kpi__value">{stats.listos}</div>
+        </div>
+      </div>
     </div>
   );
 }

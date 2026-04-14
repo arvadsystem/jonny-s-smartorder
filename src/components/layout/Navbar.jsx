@@ -128,10 +128,6 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
   }, [updateSlider]);
 
   useEffect(() => {
-    closeMore();
-  }, [activeKey, closeMore]);
-
-  useEffect(() => {
     if (!moreOpen) return undefined;
 
     const handlePointerDown = (event) => {
@@ -237,11 +233,9 @@ const Navbar = () => {
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
   const userName = user?.nombre_usuario || 'Invitado';
-  const userRole = useMemo(() => {
-    const roleRows = Array.isArray(user?.roles) ? user.roles : [];
-    if (roleRows.length === 0) return 'Usuario';
-    return roleRows.join(', ');
-  }, [user?.roles]);
+  const userRole = Array.isArray(user?.roles) && user.roles.length > 0
+    ? user.roles.join(', ')
+    : 'Usuario';
   const userPhotoSrc = useMemo(() => resolveProfilePhotoSrc(user?.foto_perfil), [user?.foto_perfil]);
   const userInitials = useMemo(() => getUserInitials(userName), [userName]);
   const showUserPhoto = Boolean(userPhotoSrc) && failedPhotoSrc !== userPhotoSrc;
@@ -259,7 +253,9 @@ const Navbar = () => {
     if (location.pathname.startsWith('/dashboard/seguridad')) return 'seguridad';
     if (location.pathname.startsWith('/dashboard/personas')) return 'personas';
     if (location.pathname.startsWith('/dashboard/ventas')) return 'ventas';
+    if (location.pathname.startsWith('/dashboard/cierres-caja')) return 'cierres-caja';
     if (location.pathname.startsWith('/dashboard/menu')) return 'menu';
+    if (location.pathname.startsWith('/dashboard/fidelizacion')) return 'fidelizacion';
     return null;
   }, [location.pathname, location.search]);
 
@@ -345,11 +341,6 @@ const Navbar = () => {
       }
     };
   }, [activeModuleTab, location.search, moduleKey, moduleTabs, navigate, permisosLoading]);
-
-  useEffect(() => {
-    closeProfileDropdown();
-    closeGearDropdown();
-  }, [closeGearDropdown, closeProfileDropdown, location.pathname, location.search]);
 
   useEffect(() => {
     if (!isOpen && !isGearMenuOpen) return undefined;

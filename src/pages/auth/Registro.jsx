@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import clientePublicoService from '../../services/clientePublicoService';
 import logo from '../../assets/images/logo-sin-fondo.png';
 import bgImage from '../../assets/images/imagen-fondo.png';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion as Motion } from 'framer-motion';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiCheck } from 'react-icons/fi';
 import './Login.scss';
 
@@ -12,7 +12,6 @@ const Registro = () => {
 
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
-  const [nombreUsuario, setNombreUsuario] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,14 +19,15 @@ const Registro = () => {
 
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [requiresVerification, setRequiresVerification] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
+    setRequiresVerification(false);
 
-    // El nombre de usuario se genera automáticamente en el backend
     if (!nombre.trim() || !apellido.trim() || !email.trim() || !password.trim()) {
       setError('Todos los campos son obligatorios (Nombre, Apellido, Correo y Contraseña).');
       return;
@@ -55,17 +55,35 @@ const Registro = () => {
 
     setLoading(true);
     try {
-        clave: password, 
-        nombre, 
-        apellido
+      const payload = {
+        email: email.trim().toLowerCase(),
+        clave: password,
+        nombre: nombre.trim(),
+        apellido: apellido.trim()
+      };
 
-      if (response?.requiresVerification) {
-        setSuccessMsg(`Te hemos enviado un correo de verificación a ${email}. Revisa tu bandeja de entrada para activar tu cuenta.`);
+      const response = await clientePublicoService.register(payload);
+      const verificationRequired = Boolean(
+        response?.requiresVerification ?? response?.data?.requiresVerification
+      );
+      const backendMessage = response?.message || response?.data?.message || '';
+
+      setRequiresVerification(verificationRequired);
+
+      if (verificationRequired) {
+        setSuccessMsg(
+          `Te hemos enviado un correo de verificación a ${payload.email}. Revisa tu bandeja de entrada para activar tu cuenta.`
+        );
       } else {
-        setSuccessMsg(response?.message || 'Registro exitoso.');
+        setSuccessMsg(backendMessage || 'Registro exitoso.');
       }
     } catch (err) {
-      setError(err.message || 'Error al crear la cuenta');
+      const apiMessage =
+        err?.message ||
+        err?.data?.message ||
+        err?.data?.error ||
+        'Error al crear la cuenta';
+      setError(apiMessage);
     } finally {
       setLoading(false);
     }
@@ -73,8 +91,6 @@ const Registro = () => {
 
   return (
     <div className="login-root">
-
-      {/* ── PANEL IZQUIERDO (reutilizado) ──────────────────────── */}
       <div className="panel-left">
         <img src={bgImage} alt="" className="bg-food" />
         <div className="vignette" />
@@ -100,8 +116,7 @@ const Registro = () => {
         </div>
       </div>
 
-      {/* ── PANEL DERECHO ───────────────────────────────────────── */}
-      <motion.aside
+      <Motion.aside
         className="panel-right"
         initial={{ opacity: 0, x: 24 }}
         animate={{ opacity: 1, x: 0 }}
@@ -113,7 +128,7 @@ const Registro = () => {
         </div>
 
         {successMsg ? (
-          <motion.div
+          <Motion.div
             className="verification-sent"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -122,9 +137,9 @@ const Registro = () => {
             <div className="verification-icon">
               <FiCheck size={32} />
             </div>
-            <h3>¡Revisa tu correo!</h3>
+            <h3>{requiresVerification ? '¡Revisa tu correo!' : '¡Cuenta creada!'}</h3>
             <p>{successMsg}</p>
-            <motion.button
+            <Motion.button
               type="button"
               className="btn-cta"
               onClick={() => navigate('/auth/login')}
@@ -133,8 +148,8 @@ const Registro = () => {
               style={{ marginTop: '1.5rem' }}
             >
               IR AL LOGIN  →
-            </motion.button>
-          </motion.div>
+            </Motion.button>
+          </Motion.div>
         ) : (
           <form onSubmit={handleSubmit} className="login-form">
             <div className="fields-row">
@@ -166,8 +181,6 @@ const Registro = () => {
               </div>
             </div>
 
-            {/* El nombre de usuario se genera automáticamente */}
-
             <div className="field">
               <label>CORREO ELECTRÓNICO</label>
               <div className="input-wrap">
@@ -195,7 +208,12 @@ const Registro = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
                 />
-                <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
+                <button
+                  type="button"
+                  className="eye-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                >
                   {showPassword ? <FiEyeOff /> : <FiEye />}
                 </button>
               </div>
@@ -218,15 +236,32 @@ const Registro = () => {
 
             <AnimatePresence>
               {error && (
-                <motion.div className="error-msg" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <Motion.div
+                  className="error-msg"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                >
                   {error}
-                </motion.div>
+                </Motion.div>
               )}
             </AnimatePresence>
 
-            <motion.button type="submit" className="btn-cta" disabled={loading} whileHover={!loading ? { y: -1 } : {}} whileTap={!loading ? { scale: 0.98 } : {}}>
-              {loading ? <span className="loading-inner"><span className="spin" /> Creando cuenta...</span> : 'CREAR CUENTA  →'}
-            </motion.button>
+            <Motion.button
+              type="submit"
+              className="btn-cta"
+              disabled={loading}
+              whileHover={!loading ? { y: -1 } : {}}
+              whileTap={!loading ? { scale: 0.98 } : {}}
+            >
+              {loading ? (
+                <span className="loading-inner">
+                  <span className="spin" /> Creando cuenta...
+                </span>
+              ) : (
+                'CREAR CUENTA  →'
+              )}
+            </Motion.button>
 
             <p className="login-switch">
               ¿Ya tienes cuenta?{' '}
@@ -236,7 +271,7 @@ const Registro = () => {
             </p>
           </form>
         )}
-      </motion.aside>
+      </Motion.aside>
     </div>
   );
 };

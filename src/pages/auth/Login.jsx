@@ -25,6 +25,8 @@ const isClienteUser = (authUser) => {
   return roles.map(normalizeRoleName).includes('CLIENTE');
 };
 
+const _MOTION = motion;
+
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -92,7 +94,7 @@ const Login = () => {
 
       if (isEmail(identifier)) {
         // Flujo cliente → Supabase
-        response = await clientePublicoService.loginCliente({ email: identifier, clave: password });
+        response = await clientePublicoService.loginCliente({ identifier, clave: password });
       } else {
         // Flujo empleado → Legacy
         response = await authService.login({ nombre_usuario: identifier, clave: password });

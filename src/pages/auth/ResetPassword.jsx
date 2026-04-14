@@ -1,19 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
+import { FiLock, FiEye, FiEyeOff, FiCheck } from 'react-icons/fi';
+import clientePublicoService from '../../services/clientePublicoService';
 import logo from '../../assets/images/logo-sin-fondo.png';
 import bgImage from '../../assets/images/imagen-fondo.png';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FiLock, FiEye, FiEyeOff, FiCheck } from 'react-icons/fi';
 import './Login.scss';
 
-/**
- * ResetPassword — Formulario para establecer nueva contraseña
- * El usuario llega aquí desde el link del correo de recuperación.
- * Supabase redirige con access_token en el hash fragment.
- */
 const ResetPassword = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -21,8 +16,6 @@ const ResetPassword = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Extraer access_token del hash fragment (Supabase lo pone ahí en recovery)
   const [accessToken, setAccessToken] = useState('');
 
   useEffect(() => {
@@ -30,9 +23,9 @@ const ResetPassword = () => {
     const token = hashParams.get('access_token');
     if (token) {
       setAccessToken(token);
-    } else {
-      setError('No se encontró un token de recuperación válido. Solicita un nuevo enlace.');
+      return;
     }
+    setError('No se encontró un token de recuperación válido. Solicita un nuevo enlace.');
   }, []);
 
   const handleSubmit = async (e) => {
@@ -44,38 +37,35 @@ const ResetPassword = () => {
       return;
     }
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
-
     if (password !== confirmPassword) {
       setError('Las contraseñas no coinciden.');
       return;
     }
 
+    if (password.length < 10) {
+      setError('La contraseña debe tener al menos 10 caracteres.');
+      return;
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      setError('La contraseña debe incluir al menos una letra mayúscula.');
+      return;
+    }
+
+    if (!/[0-9]/.test(password)) {
+      setError('La contraseña debe incluir al menos un número.');
+      return;
+    }
+
     setLoading(true);
     try {
-      // Actualizar contraseña vía Supabase API con el access_token
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: anonKey,
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({ password })
+      await clientePublicoService.resetPassword({
+        access_token: accessToken,
+        nueva_clave: password
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || data?.msg || 'Error al actualizar contraseña');
-
       setSuccess(true);
     } catch (err) {
-      setError(err.message || 'Error al restablecer la contraseña');
+      setError(err?.message || 'Error al restablecer la contraseña.');
     } finally {
       setLoading(false);
     }
@@ -83,8 +73,6 @@ const ResetPassword = () => {
 
   return (
     <div className="login-root">
-
-      {/* ── PANEL IZQUIERDO ─────────────────────────────────────── */}
       <div className="panel-left">
         <img src={bgImage} alt="" className="bg-food" />
         <div className="vignette" />
@@ -110,8 +98,7 @@ const ResetPassword = () => {
         </div>
       </div>
 
-      {/* ── PANEL DERECHO ───────────────────────────────────────── */}
-      <motion.aside
+      <Motion.aside
         className="panel-right"
         initial={{ opacity: 0, x: 24 }}
         animate={{ opacity: 1, x: 0 }}
@@ -123,7 +110,7 @@ const ResetPassword = () => {
         </div>
 
         {success ? (
-          <motion.div
+          <Motion.div
             className="verification-sent"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -133,8 +120,8 @@ const ResetPassword = () => {
               <FiCheck size={32} />
             </div>
             <h3>¡Contraseña actualizada!</h3>
-            <p>Tu contraseña ha sido restablecida exitosamente. Ya puedes iniciar sesión con tu nueva contraseña.</p>
-            <motion.button
+            <p>Ya puedes iniciar sesión con tu nueva contraseña.</p>
+            <Motion.button
               type="button"
               className="btn-cta"
               onClick={() => navigate('/auth/login')}
@@ -143,8 +130,8 @@ const ResetPassword = () => {
               style={{ marginTop: '1.5rem' }}
             >
               IR AL LOGIN  →
-            </motion.button>
-          </motion.div>
+            </Motion.button>
+          </Motion.div>
         ) : (
           <form onSubmit={handleSubmit} className="login-form">
             <div className="field">
@@ -154,13 +141,18 @@ const ResetPassword = () => {
                 <input
                   id="reset-password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 10 caracteres, 1 mayúscula y 1 número"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
                   disabled={!accessToken}
                 />
-                <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
+                <button
+                  type="button"
+                  className="eye-btn"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  tabIndex={-1}
+                >
                   {showPassword ? <FiEyeOff /> : <FiEye />}
                 </button>
               </div>
@@ -184,15 +176,32 @@ const ResetPassword = () => {
 
             <AnimatePresence>
               {error && (
-                <motion.div className="error-msg" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <Motion.div
+                  className="error-msg"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                >
                   {error}
-                </motion.div>
+                </Motion.div>
               )}
             </AnimatePresence>
 
-            <motion.button type="submit" className="btn-cta" disabled={loading || !accessToken} whileHover={!loading ? { y: -1 } : {}} whileTap={!loading ? { scale: 0.98 } : {}}>
-              {loading ? <span className="loading-inner"><span className="spin" /> Actualizando...</span> : 'RESTABLECER CONTRASEÑA  →'}
-            </motion.button>
+            <Motion.button
+              type="submit"
+              className="btn-cta"
+              disabled={loading || !accessToken}
+              whileHover={!loading ? { y: -1 } : {}}
+              whileTap={!loading ? { scale: 0.98 } : {}}
+            >
+              {loading ? (
+                <span className="loading-inner">
+                  <span className="spin" /> Actualizando...
+                </span>
+              ) : (
+                'RESTABLECER CONTRASEÑA  →'
+              )}
+            </Motion.button>
 
             <p className="login-switch">
               <button type="button" className="link-btn" onClick={() => navigate('/auth/login')}>
@@ -201,7 +210,7 @@ const ResetPassword = () => {
             </p>
           </form>
         )}
-      </motion.aside>
+      </Motion.aside>
     </div>
   );
 };

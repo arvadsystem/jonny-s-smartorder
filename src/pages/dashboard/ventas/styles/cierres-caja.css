@@ -1,0 +1,323 @@
+.cierres-caja-page,
+.cierres-caja-module {
+  padding: 0;
+}
+
+.cierres-caja-toolbar {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cierres-caja-page .inv-prod-header {
+  padding-top: 0;
+  padding-bottom: 10px !important;
+}
+
+.cierres-caja-toolbar .inv-prod-toolbar-btn {
+  min-height: 42px;
+}
+
+.cierres-caja-toolbar .collapsible-search.is-expanded .collapsible-search__field {
+  width: clamp(240px, 30vw, 420px);
+}
+
+.cierres-caja-toolbar__cta {
+  border-color: rgba(154, 83, 25, 0.25) !important;
+}
+
+.cierres-caja-filters-drawer__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.cierres-caja-assignment__notice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.97), rgba(249, 246, 241, 0.93));
+  box-shadow: 0 10px 24px rgba(82, 44, 34, 0.06);
+}
+
+.cierres-caja-assignment__notice-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(220, 53, 69, 0.1);
+  color: rgb(220, 53, 69);
+  font-size: 1.1rem;
+}
+
+.cierres-caja-assignment__notice strong {
+  display: block;
+  color: rgba(82, 44, 34, 0.94);
+  font-size: 0.92rem;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.cierres-caja-assignment__notice p {
+  margin: 0;
+  color: rgba(117, 85, 61, 0.88);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.cierres-caja-open-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  background: rgba(248, 244, 238, 0.84);
+  color: rgba(82, 44, 34, 0.86);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.cierres-caja-open-note i {
+  color: #9a5319;
+  font-size: 0.95rem;
+}
+
+.cierres-caja-mobile-list {
+  display: none;
+}
+
+.cierres-caja-mobile-card {
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 22px rgba(18, 7, 3, 0.06);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.cierres-caja-mobile-card__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.cierres-caja-mobile-card__head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.cierres-caja-mobile-card__head small {
+  color: rgba(82, 44, 34, 0.72);
+  font-weight: 600;
+}
+
+.cierres-caja-mobile-card__body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cierres-caja-mobile-card__body > div {
+  display: grid;
+  gap: 4px;
+}
+
+.cierres-caja-mobile-card__body span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(82, 44, 34, 0.62);
+  font-weight: 800;
+}
+
+.cierres-caja-mobile-card__body strong {
+  font-size: 0.88rem;
+  color: rgba(82, 44, 34, 0.92);
+}
+
+.cierres-caja-mobile-card__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.cierres-caja-mobile-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (min-width: 1200px) {
+  .cierres-caja-toolbar {
+    flex-wrap: nowrap;
+  }
+
+  .cierres-caja-toolbar .collapsible-search {
+    flex: 1 1 420px;
+  }
+}
+
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .cierres-caja-toolbar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .cierres-caja-toolbar .collapsible-search {
+    flex: 1 1 360px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 991.98px) {
+  .cierres-caja-page .inv-prod-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.cierres-caja-detail-modal {
+  width: min(1240px, 100%);
+}
+
+.cierres-caja-detail__info-card--accent {
+  background: rgba(243, 233, 216, 0.9);
+}
+
+.cierres-caja-detail__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cierres-caja-detail__two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.cierres-caja-detail__team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cierres-caja-detail__team-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.cierres-caja-detail__team-label {
+  color: rgba(117, 85, 61, 0.88);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cierres-caja-detail__team-list {
+  display: grid;
+  gap: 4px;
+  color: rgba(82, 44, 34, 0.8);
+  font-weight: 700;
+}
+
+.cierres-caja-action-modal {
+  width: min(760px, 100%);
+}
+
+.cierres-caja-action-modal__body {
+  display: grid;
+  gap: 18px;
+  padding: 18px 22px 22px;
+}
+
+.cierres-caja-action-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 991.98px) {
+  .cierres-caja-toolbar .collapsible-search,
+  .cierres-caja-toolbar .collapsible-search.is-expanded .collapsible-search__field,
+  .cierres-caja-toolbar .toolbar-scope-inline {
+    min-width: 100%;
+    width: 100%;
+  }
+
+  .cierres-caja-toolbar .toolbar-scope-inline {
+    justify-content: flex-start;
+  }
+
+  .cierres-caja-table-desktop {
+    display: none;
+  }
+
+  .cierres-caja-mobile-list {
+    display: grid;
+    gap: 12px;
+    padding: 10px 10px 12px;
+  }
+
+  .cierres-caja-page .inv-prod-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cierres-caja-detail__two-column,
+  .cierres-caja-detail__team-grid,
+  .cierres-caja-action-modal__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cierres-caja-assignment__notice {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .cierres-caja-page .inv-prod-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .cierres-caja-mobile-card__body {
+    grid-template-columns: 1fr;
+  }
+
+  .cierres-caja-action-modal__body {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .cierres-caja-toolbar .inv-prod-toolbar-btn {
+    min-height: 40px;
+    padding-inline: 10px;
+  }
+
+  .cierres-caja-mobile-card {
+    border-radius: 14px;
+    padding: 10px;
+  }
+
+  .cierres-caja-detail-modal,
+  .cierres-caja-action-modal {
+    width: calc(100% - 14px);
+  }
+}

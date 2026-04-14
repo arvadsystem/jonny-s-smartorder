@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
 import CocinaBoard from './components/CocinaBoard';
@@ -22,11 +22,11 @@ export default function CocinaPage() {
   const [search, setSearch] = useState('');
   const [selectedSucursalId, setSelectedSucursalId] = useState(null);
   const [selectedPedido, setSelectedPedido] = useState(null);
-  const [confirmState, setConfirmState] = useState({
-    pedido: null,
-    action: null
-  });
+  const [confirmState, setConfirmState] = useState({ pedido: null, action: null });
   const [now, setNow] = useState(() => Date.now());
+  const pageRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const canSearch = canAny([PERMISSIONS.COCINA_BUSCAR]);
   const canRefresh = canAny([PERMISSIONS.COCINA_ACTUALIZAR_TABLERO]);
   const canViewDetail = canAny([PERMISSIONS.COCINA_DETALLE_VER]);
@@ -53,25 +53,61 @@ export default function CocinaPage() {
     includeSucursalesCatalog: canFilterSucursal || isSuperAdmin
   });
 
+  // Timer para mostrar temporizadores en vivo (1s)
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
+  // Sincronizar permisos: si pierde permiso de filtrado, resetear sucursal
   useEffect(() => {
-    if (!canFilterSucursal && selectedSucursalId !== null) {
+    if (!canFilterSucursal && !isSuperAdmin && selectedSucursalId !== null) {
       setSelectedSucursalId(null);
     }
-  }, [canFilterSucursal, selectedSucursalId]);
+  }, [canFilterSucursal, isSuperAdmin, selectedSucursalId]);
+
+  // Limpiar búsqueda si pierde permiso
+  useEffect(() => {
+    if (!canSearch && search) setSearch('');
+  }, [canSearch, search]);
+
+  // Notificación sonora cuando llegan pedidos nuevos
+  const prevPedidosCountRef = useRef(pedidos.length);
+  useEffect(() => {
+    if (pedidos.length > prevPedidosCountRef.current) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.35);
+      } catch { /* sin audio: no pasa nada */ }
+    }
+    prevPedidosCountRef.current = pedidos.length;
+  }, [pedidos.length]);
+
+  // Fullscreen toggle
+  const toggleFullscreen = useCallback(async () => {
+    if (!document.fullscreenElement) {
+      await pageRef.current?.requestFullscreen?.();
+      setIsFullscreen(true);
+    } else {
+      await document.exitFullscreen?.();
+      setIsFullscreen(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!canSearch && search) {
-      setSearch('');
-    }
-  }, [canSearch, search]);
+    const handleFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
 
   const filteredPedidos = useMemo(
     () => pedidos.filter((pedido) => matchesKitchenOrder(pedido, canSearch ? search : '')),
@@ -80,35 +116,27 @@ export default function CocinaPage() {
   const groupedPedidos = useMemo(() => groupOrdersByColumn(filteredPedidos), [filteredPedidos]);
   const stats = useMemo(() => buildCocinaStats(filteredPedidos), [filteredPedidos]);
 
-  // Lógica robusta para determinar si se pueden avanzar los pedidos
-  const canAdvancePedido = (pedido) => {
-    // Si somos Super Admin, siempre tenemos permiso
-    if (isSuperAdmin) return true;
+  const canAdvancePedido = useCallback(
+    (pedido) => {
+      if (isSuperAdmin) return true;
+      const columnKey = resolveOrderColumnKey(pedido);
+      if (columnKey === 'PENDIENTES') return canStartPedido;
+      if (columnKey === 'EN_PREPARACION') return canMarkReady;
+      if (columnKey === 'LISTOS_PARA_ENTREGA') return canDeliverPedido;
+      return false;
+    },
+    [isSuperAdmin, canStartPedido, canMarkReady, canDeliverPedido]
+  );
 
-    const columnKey = resolveOrderColumnKey(pedido);
-    
-    // Verificamos permisos específicos según la columna
-    switch (columnKey) {
-      case 'PENDIENTES':
-        return canStartPedido;
-      case 'EN_PREPARACION':
-        return canMarkReady;
-      case 'LISTOS_PARA_ENTREGA':
-        return canDeliverPedido;
-      default:
-        return false;
-    }
-  };
-
-  const handleConfirmAction = async () => {
+  const handleConfirmAction = useCallback(async () => {
     if (!confirmState.pedido || !confirmState.action) return;
-    if (!canAdvancePedido(confirmState.pedido)) return;
+    if (!canAdvancePedido(confirmState.pedido) && confirmState.action.nextStatus !== 'NO_ENTREGADO') return;
 
     try {
       await advancePedido(confirmState.pedido, confirmState.action.nextStatus);
       setConfirmState({ pedido: null, action: null });
       if (selectedPedido?.id_pedido === confirmState.pedido.id_pedido) {
-        if (confirmState.action.nextStatus === 'COMPLETADO') {
+        if (['COMPLETADO', 'NO_ENTREGADO'].includes(confirmState.action.nextStatus)) {
           setSelectedPedido(null);
         } else {
           setSelectedPedido((current) =>
@@ -125,70 +153,69 @@ export default function CocinaPage() {
           );
         }
       }
-    } catch {
-      // El hook ya gestiona el feedback visual.
-    }
-  };
+    } catch { /* el hook ya gestiona el feedback */ }
+  }, [advancePedido, canAdvancePedido, confirmState, selectedPedido]);
 
   return (
-    <div className="cocina-page">
-      <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
+    <div className="cocina-page" ref={pageRef}>
+      <div className="kds-root">
         <CocinaToolbar
           search={search}
           onSearchChange={setSearch}
           canRefresh={canRefresh}
           canSearch={canSearch}
           isRealtimeConnected={isRealtimeConnected}
+          isFullscreen={isFullscreen}
           onRefresh={() => {
             if (!canRefresh) return;
             refreshBoard({ silent: true }).catch(() => {});
           }}
+          onToggleFullscreen={toggleFullscreen}
           refreshing={refreshing}
         />
 
         <CocinaStats stats={stats} />
 
-        <div className="inv-catpro-body inv-prod-body p-3">
-          {error ? (
-            <div className="alert alert-danger mb-3" role="alert">
-              {error}
-            </div>
-          ) : null}
+        {error ? (
+          <div className="kds-error" role="alert">
+            <i className="bi bi-exclamation-triangle-fill" />
+            {error}
+          </div>
+        ) : null}
 
-          <CocinaSucursalTabs
-            sucursales={sucursales}
-            selectedSucursalId={selectedSucursalId}
-            disabled={!canFilterSucursal}
-            onSelectSucursal={(value) => {
-              if (!canFilterSucursal) return;
-              setSelectedSucursalId(value);
+        <CocinaSucursalTabs
+          sucursales={sucursales}
+          selectedSucursalId={selectedSucursalId}
+          canFilter={canFilterSucursal || isSuperAdmin}
+          onSelectSucursal={(value) => {
+            if (!canFilterSucursal && !isSuperAdmin) return;
+            setSelectedSucursalId(value);
+          }}
+        />
+
+        {loading ? (
+          <div className="kds-loading" role="status" aria-live="polite">
+            <div className="kds-spinner" aria-hidden="true" />
+            <span>Cargando tablero de cocina...</span>
+          </div>
+        ) : (
+          <CocinaBoard
+            canAdvancePedido={canAdvancePedido}
+            isSuperAdmin={isSuperAdmin}
+            canOpenDetail={canViewDetail}
+            canDeliverPedido={canDeliverPedido}
+            groupedPedidos={groupedPedidos}
+            now={now}
+            mutatingIds={mutatingIds}
+            onOpenDetail={(pedido) => {
+              if (!canViewDetail) return;
+              setSelectedPedido(pedido);
+            }}
+            onOpenConfirm={(pedido, action) => {
+              setConfirmState({ pedido, action });
             }}
           />
-
-          {loading ? (
-            <div className="inv-catpro-loading" role="status" aria-live="polite">
-              <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-              <span>Cargando pedidos de cocina...</span>
-            </div>
-          ) : (
-            <CocinaBoard
-              canAdvancePedido={canAdvancePedido}
-              isSuperAdmin={isSuperAdmin}
-              canOpenDetail={canViewDetail}
-              groupedPedidos={groupedPedidos}
-              now={now}
-              mutatingIds={mutatingIds}
-              onOpenDetail={(pedido) => {
-                if (!canViewDetail) return;
-                setSelectedPedido(pedido);
-              }}
-              onOpenConfirm={(pedido, action) => {
-                if (!canAdvancePedido(pedido)) return;
-                setConfirmState({ pedido, action });
-              }}
-            />
-          )}
-        </div>
+        )}
       </div>
 
       <CocinaDetailModal
