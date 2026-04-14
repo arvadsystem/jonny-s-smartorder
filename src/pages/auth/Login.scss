@@ -189,17 +189,18 @@ $input-border: rgba(255, 255, 255, 0.14);
   // PANEL DERECHO
   // ────────────────────────────────────────────────────────────
   .panel-right {
-    width: 450px;
+    width: 550px;
     flex-shrink: 0;
     background-color: $dark;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 3.5rem 3rem;
+    padding: 3.5rem 3.6rem 3.5rem 2.6rem;
     z-index: 20;
 
     .form-header {
       margin-bottom: 2.25rem;
+      text-align: center;
 
       h2 {
         font-size: 1.75rem;

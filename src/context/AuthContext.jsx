@@ -218,6 +218,18 @@ export const AuthProvider = ({ children }) => {
     void runBootstrap({ force: true });
   }, [runBootstrap]);
 
+  const updateCurrentUser = useCallback((patch) => {
+    if (!patch || typeof patch !== 'object') return;
+
+    setUser((current) => {
+      if (!current || typeof current !== 'object') return current;
+      return {
+        ...current,
+        ...patch
+      };
+    });
+  }, []);
+
   const login = (authPayload) => {
     const baseUser = normalizeAuthPayloadUser(authPayload);
     setUser(baseUser);
@@ -260,6 +272,7 @@ export const AuthProvider = ({ children }) => {
         user,
         login,
         logout,
+        updateCurrentUser,
         loading,
         bootstrapState,
         bootstrapError,

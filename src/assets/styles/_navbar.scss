@@ -246,6 +246,12 @@
   color: #543421;
 }
 
+.dashboard-shell .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'] {
+  background: var(--shell-pill-bg);
+  border-color: rgba(159, 110, 67, 0.1);
+  color: #543421;
+}
+
 .dashboard-shell .navbar-icon-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--shell-focus);
@@ -303,21 +309,26 @@
 .dashboard-shell .user-avatar-frame {
   width: 36px;
   height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  aspect-ratio: 1 / 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: 50%;
+  overflow: hidden;
   padding: 2px;
   background: linear-gradient(135deg, #d8a874, #b86f34);
   box-shadow: 0 8px 16px rgba(177, 108, 57, 0.2);
 }
 
-.dashboard-shell .user-profile img {
+.dashboard-shell .user-avatar-frame img {
   width: 100%;
   height: 100%;
-  border-radius: 999px;
+  border-radius: 50%;
   object-fit: cover;
   background: #fff;
+  display: block;
 }
 
 .dashboard-shell .user-avatar-fallback {
@@ -385,9 +396,9 @@
 }
 
 .dashboard-shell .gear-dropdown-menu {
-  top: calc(100% + 12px);
+  top: calc(100% + 4px);
   right: -8px;
-  min-width: 232px;
+  min-width: 248px;
   padding: 10px;
   border-radius: 16px;
   gap: 6px;
@@ -396,7 +407,7 @@
 .dashboard-shell .gear-dropdown-menu::before {
   content: "";
   position: absolute;
-  top: -7px;
+  top: -8px;
   right: 20px;
   width: 14px;
   height: 14px;
@@ -410,6 +421,7 @@
   min-height: 46px;
   padding: 11px 14px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .dashboard-shell .gear-dropdown-item i {
