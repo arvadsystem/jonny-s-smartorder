@@ -21,6 +21,7 @@ import Cocina from './pages/dashboard/Cocina';
 import Planillas from './pages/dashboard/personas/Planillas';
 import Fidelizacion from './pages/dashboard/Fidelizacion';
 import Menu from './pages/dashboard/menu/Menu';
+import EmailCampaignsPage from './pages/dashboard/configuracion/EmailCampaignsPage';
 import RequirePerm from './routes/RequirePerm';
 import { PublicMenuRoutes } from './modules/public-menu';
 import Carrito from './pages/public/Carrito';
@@ -77,6 +78,7 @@ function App() {
           <Route path="perfil" element={<RequirePerm moduleKey="perfil"><Perfil /></RequirePerm>} />
           <Route path="perfil/cambiar-contrasena" element={<CambioContrasena />} />
           <Route path="configuracion" element={<RequirePerm moduleKey="configuracion"><PaginaEnConstruccion titulo="Configuracion" /></RequirePerm>} />
+          <Route path="configuracion/campanas-correo" element={<RequirePerm moduleKey="configuracion"><EmailCampaignsPage /></RequirePerm>} />
         </Route>
       </Route>
 

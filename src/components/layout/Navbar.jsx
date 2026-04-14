@@ -241,6 +241,10 @@ const Navbar = () => {
   const showUserPhoto = Boolean(userPhotoSrc) && failedPhotoSrc !== userPhotoSrc;
   const isDashboard = location.pathname === '/dashboard' || location.pathname === '/dashboard/';
   const canViewProfile = canAny([PERMISSIONS.PERFIL_VER]);
+  const canViewEmailCampaigns = canAny([
+    PERMISSIONS.CONFIGURACION_EMAIL_CAMPAIGNS_VER,
+    PERMISSIONS.CONFIGURACION_EMAIL_CAMPAIGNS_GESTIONAR
+  ]);
 
   const moduleKey = useMemo(() => {
     if (location.pathname.startsWith('/dashboard/inventario')) return 'inventario';
@@ -302,6 +306,12 @@ const Navbar = () => {
     closeGearDropdown();
     closeProfileDropdown();
     navigate('/dashboard/perfil/cambiar-contrasena');
+  };
+
+  const handleGoEmailCampaigns = () => {
+    closeGearDropdown();
+    closeProfileDropdown();
+    navigate('/dashboard/configuracion/campanas-correo');
   };
 
   const moduleTabsConfig = useMemo(() => {
@@ -386,6 +396,17 @@ const Navbar = () => {
 
             {isGearMenuOpen && (
               <div className="dropdown-menu-custom gear-dropdown-menu" role="menu" aria-label="Menu de configuracion">
+                {canViewEmailCampaigns ? (
+                  <button
+                    type="button"
+                    className="dropdown-menu-item gear-dropdown-item"
+                    role="menuitem"
+                    onClick={handleGoEmailCampaigns}
+                  >
+                    <i className="bi bi-envelope-paper" />
+                    Campanas de correo
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="dropdown-menu-item gear-dropdown-item"
