@@ -37,8 +37,15 @@ const ventasService = {
 
   // Pedidos menú público
   getPedidosMenu: () => apiFetch('/ventas/pedidos-menu', 'GET'),
-  updatePedidoEstado: (id, id_estado_pedido) =>
-    apiFetch(`/ventas/pedidos-menu/${id}/estado`, 'PUT', { id_estado_pedido })
+  confirmarPagoPedido: (id) =>
+    apiFetch(`/ventas/pedidos-menu/${id}/confirmar-pago`, 'POST', {}),
+  updatePedidoEstado: (id, estadoDestinoOrId) => {
+    const numericState = Number.parseInt(String(estadoDestinoOrId ?? ''), 10);
+    if (Number.isInteger(numericState) && numericState > 0) {
+      return apiFetch(`/ventas/pedidos-menu/${id}/estado`, 'PUT', { id_estado_pedido: numericState });
+    }
+    return apiFetch(`/ventas/pedidos-menu/${id}/estado`, 'PUT', { estado_destino: estadoDestinoOrId });
+  }
 };
 
 export default ventasService;

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import cajasService from '../../../../services/cajasService';
 import {
   buildCierresStats,
@@ -16,9 +16,7 @@ const initialCatalogos = Object.freeze({
   tipos_movimiento: [],
   metodos_pago: [],
   resoluciones_cierre: [],
-  tipos_arqueo: [],
-  incidencias_tipos: [],
-  incidencias_estados: []
+  tipos_arqueo: []
 });
 
 export function useCierresCaja() {
@@ -44,6 +42,14 @@ export function useCierresCaja() {
   const closeToast = useCallback(() => {
     setToast((current) => ({ ...current, show: false }));
   }, []);
+
+  useEffect(() => {
+    if (!toast.show) return undefined;
+    const timer = setTimeout(() => {
+      setToast((current) => ({ ...current, show: false }));
+    }, 3200);
+    return () => clearTimeout(timer);
+  }, [toast.show]);
 
   const loadCatalogos = useCallback(
     async (params = {}) => {
@@ -324,6 +330,31 @@ export function useCierresCaja() {
     [openToast]
   );
 
+  const editCierre = useCallback(
+    async (idCierreCaja, payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.editCierre(idCierreCaja, payload);
+        openToast(
+          'CIERRE ACTUALIZADO',
+          response?.message || 'El cierre de caja se actualizo correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo editar el cierre de caja.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
   const createArqueo = useCallback(
     async (idSesionCaja, payload) => {
       setSaving(true);
@@ -380,6 +411,7 @@ export function useCierresCaja() {
     updateCajaAsignacion,
     inactivateCajaAsignacion,
     closeSesion,
+    editCierre,
     createArqueo
   };
 }

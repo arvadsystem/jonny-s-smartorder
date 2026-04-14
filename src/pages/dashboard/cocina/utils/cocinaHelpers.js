@@ -160,6 +160,7 @@ export const normalizeKitchenOrder = (row) => {
     tipo_servicio: String(row?.tipo_servicio ?? 'LOCAL'),
     descripcion_pedido: row?.descripcion_pedido || null,
     descripcion_envio: row?.descripcion_envio || null,
+    visible_en_cocina_at: row?.visible_en_cocina_at || row?.fecha_hora_facturacion || row?.fecha_hora_pedido || null,
     // Campos de expiración provenientes del backend
     minutos_en_espera: row?.minutos_en_espera != null ? Number(row.minutos_en_espera) : null,
     esta_proximo_a_expirar: Boolean(row?.esta_proximo_a_expirar),

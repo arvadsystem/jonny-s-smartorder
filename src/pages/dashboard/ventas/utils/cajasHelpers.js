@@ -48,9 +48,7 @@ export const normalizeCajaCatalogos = (payload = {}) => ({
   tipos_movimiento: Array.isArray(payload.tipos_movimiento) ? payload.tipos_movimiento : [],
   metodos_pago: Array.isArray(payload.metodos_pago) ? payload.metodos_pago : [],
   resoluciones_cierre: Array.isArray(payload.resoluciones_cierre) ? payload.resoluciones_cierre : [],
-  tipos_arqueo: Array.isArray(payload.tipos_arqueo) ? payload.tipos_arqueo : [],
-  incidencias_tipos: Array.isArray(payload.incidencias_tipos) ? payload.incidencias_tipos : [],
-  incidencias_estados: Array.isArray(payload.incidencias_estados) ? payload.incidencias_estados : []
+  tipos_arqueo: Array.isArray(payload.tipos_arqueo) ? payload.tipos_arqueo : []
 });
 
 export const normalizeSesionActiva = (payload = {}) => {
@@ -108,6 +106,8 @@ export const normalizeCierreReporte = (row = {}) => ({
   monto_declarado_cierre: toNumber(row.monto_declarado_cierre, 0),
   diferencia: toNumber(row.diferencia, 0),
   fecha_cierre: row.fecha_cierre ?? null,
+  editable_hasta: row.editable_hasta ?? null,
+  editable_en_ventana: truthy(row.editable_en_ventana),
   resolucion_codigo: String(row.resolucion_codigo ?? '').trim().toUpperCase(),
   resolucion_nombre: String(row.resolucion_nombre ?? '').trim(),
   usuario_cierre: String(row.usuario_cierre ?? '').trim(),
@@ -119,7 +119,6 @@ export const normalizeSesionDetalle = (payload = {}) => {
   const cobrosPorUsuario = Array.isArray(payload.cobros_por_usuario) ? payload.cobros_por_usuario : [];
   const arqueos = Array.isArray(payload.arqueos) ? payload.arqueos : [];
   const movimientos = Array.isArray(payload.movimientos) ? payload.movimientos : [];
-  const incidencias = Array.isArray(payload.incidencias) ? payload.incidencias : [];
   const resumen = payload.resumen_operativo ?? {};
 
   return {
@@ -163,6 +162,14 @@ export const normalizeSesionDetalle = (payload = {}) => {
       diferencia_cierre: resumen.diferencia_cierre === null || resumen.diferencia_cierre === undefined
         ? null
         : toNumber(resumen.diferencia_cierre, 0),
+      ultimo_arqueo_cierre: resumen.ultimo_arqueo_cierre
+        ? {
+            id_arqueo_caja: toNumber(resumen.ultimo_arqueo_cierre.id_arqueo_caja, 0) || null,
+            monto_contado: toNumber(resumen.ultimo_arqueo_cierre.monto_contado, 0),
+            diferencia: toNumber(resumen.ultimo_arqueo_cierre.diferencia, 0),
+            fecha_arqueo: resumen.ultimo_arqueo_cierre.fecha_arqueo ?? null
+          }
+        : null,
       total_responsable: toNumber(resumen.total_responsable, 0),
       total_auxiliares: toNumber(resumen.total_auxiliares, 0),
       responsabilidad_final_id_usuario: toNumber(resumen.responsabilidad_final_id_usuario, 0) || null
@@ -183,15 +190,7 @@ export const normalizeSesionDetalle = (payload = {}) => {
       tipo_codigo: String(row.tipo_codigo ?? '').trim().toUpperCase(),
       tipo_nombre: String(row.tipo_nombre ?? '').trim()
     })),
-    incidencias: incidencias.map((row) => ({
-      ...row,
-      id_incidencia_caja: toNumber(row.id_incidencia_caja, 0) || null,
-      monto_relacionado: toNumber(row.monto_relacionado, 0),
-      tipo_codigo: String(row.tipo_codigo ?? '').trim().toUpperCase(),
-      tipo_nombre: String(row.tipo_nombre ?? '').trim(),
-      estado_codigo: String(row.estado_codigo ?? '').trim().toUpperCase(),
-      estado_nombre: String(row.estado_nombre ?? '').trim()
-    })),
+    incidencias: [],
     cierre: payload.cierre
       ? {
           ...payload.cierre,

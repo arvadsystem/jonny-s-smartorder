@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { formatCajaCurrency } from '../../utils/cajasHelpers';
 
-const initialForm = Object.freeze({
-  monto_declarado_cierre: '',
+const buildInitialForm = (montoPrefill = '') => ({
+  monto_declarado_cierre: montoPrefill,
   id_resolucion_cierre_caja: '',
   observacion_cierre: ''
 });
@@ -17,8 +17,15 @@ export default function CierreCajaCerrarModal({
   onClose,
   onSubmit
 }) {
-  const [form, setForm] = useState(() => initialForm);
+  const ultimoArqueoCierre = detalle?.resumen_operativo?.ultimo_arqueo_cierre || null;
   const montoTeorico = detalle?.resumen_operativo?.efectivo_teorico ?? sesion?.efectivo_teorico ?? 0;
+  const [form, setForm] = useState(() => {
+    const montoPrefill =
+      ultimoArqueoCierre?.monto_contado !== undefined && ultimoArqueoCierre?.monto_contado !== null
+        ? String(ultimoArqueoCierre.monto_contado)
+        : '';
+    return buildInitialForm(montoPrefill);
+  });
 
   const previewDifference = useMemo(() => {
     const monto = Number(form.monto_declarado_cierre);
@@ -37,6 +44,10 @@ export default function CierreCajaCerrarModal({
 
   if (!open) return null;
 
+  const resolucionesManuales = Array.isArray(resoluciones)
+    ? resoluciones.filter((item) => String(item?.codigo || '').trim().toUpperCase() !== 'CAJA_CUADRA')
+    : [];
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!isValid || saving) return;
@@ -46,6 +57,7 @@ export default function CierreCajaCerrarModal({
       id_resolucion_cierre_caja: form.id_resolucion_cierre_caja
         ? Number(form.id_resolucion_cierre_caja)
         : null,
+      id_arqueo_final: ultimoArqueoCierre?.id_arqueo_caja ? Number(ultimoArqueoCierre.id_arqueo_caja) : null,
       observacion_cierre: form.observacion_cierre.trim() || null
     });
   };
@@ -113,6 +125,11 @@ export default function CierreCajaCerrarModal({
                 setForm((current) => ({ ...current, monto_declarado_cierre: event.target.value }))
               }
             />
+            {ultimoArqueoCierre?.id_arqueo_caja ? (
+              <small className="text-muted fw-semibold">
+                Precargado desde arqueo de cierre #{String(ultimoArqueoCierre.id_arqueo_caja).padStart(5, '0')}.
+              </small>
+            ) : null}
           </label>
 
           <label className="ventas-create-modal__field">
@@ -126,7 +143,7 @@ export default function CierreCajaCerrarModal({
               disabled={!requiresResolution}
             >
               <option value="">{requiresResolution ? 'Selecciona una resolucion' : 'No requerida si cuadra'}</option>
-              {resoluciones.map((resolucion) => (
+              {resolucionesManuales.map((resolucion) => (
                 <option key={resolucion.id_resolucion_cierre_caja} value={resolucion.id_resolucion_cierre_caja}>
                   {resolucion.nombre}
                 </option>

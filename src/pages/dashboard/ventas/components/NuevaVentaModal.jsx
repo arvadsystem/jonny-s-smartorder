@@ -41,9 +41,9 @@ export default function NuevaVentaModal({
   if (!open) return null;
 
   return (
-    <div className="ventas-modal-backdrop" role="presentation" onClick={!saving ? onClose : undefined}>
+    <div className="ventas-modal-backdrop inv-prod-pmodal show" role="presentation" onClick={!saving ? onClose : undefined}>
       <section
-        className="ventas-modal ventas-create-modal"
+        className="ventas-modal ventas-create-modal inv-prod-pmodal__panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="ventas-create-title"

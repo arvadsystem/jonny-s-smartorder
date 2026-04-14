@@ -9,6 +9,7 @@ import SucursalesToolbar from './components/SucursalesToolbar';
 import { useSucursales } from './hooks/useSucursales';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
+import { inventarioService } from '../../../services/inventarioService';
 import './styles/sucursales.css';
 import {
   extractApiMessage,
@@ -60,6 +61,7 @@ export default function SucursalesPage() {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ ...initialSucursalForm });
   const [formErrors, setFormErrors] = useState({});
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const [confirmDelete, setConfirmDelete] = useState({
     show: false,
@@ -189,6 +191,10 @@ export default function SucursalesPage() {
       texto_telefono: String(sucursal?.texto_telefono ?? ''),
       texto_correo: String(sucursal?.texto_correo ?? ''),
       fecha_inauguracion: normalizeDateForInput(sucursal?.fecha_inauguracion),
+      hora_inicio: String(sucursal?.hora_inicio || ''),
+      hora_final: String(sucursal?.hora_final || ''),
+      id_archivo_imagen: Number(sucursal?.id_archivo_imagen ?? 0) || null,
+      imagen_url_publica: String(sucursal?.imagen_url_publica || ''),
       estado: parseEstado(sucursal?.estado)
     });
     setDrawerOpen(true);
@@ -200,12 +206,6 @@ export default function SucursalesPage() {
   };
 
   const closeFiltersDrawer = () => setFiltersOpen(false);
-
-  const closeAnyDrawer = () => {
-    if (saving) return;
-    setDrawerOpen(false);
-    setFiltersOpen(false);
-  };
 
   const openFiltersDrawer = () => {
     if (saving) return;
@@ -237,6 +237,39 @@ export default function SucursalesPage() {
     setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     if (name) {
       setFormErrors((prev) => (prev[name] ? { ...prev, [name]: '' } : prev));
+    }
+  };
+
+  const onImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingImage(true);
+      const toDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+        reader.readAsDataURL(file);
+      });
+
+      const response = await inventarioService.crearArchivoImagen({
+        bucket: 'jonnys-assets',
+        contexto: 'sucursales',
+        data_url: toDataUrl,
+        nombre_original: file.name
+      });
+
+      setForm((prev) => ({
+        ...prev,
+        id_archivo_imagen: Number(response?.id_archivo ?? 0) || null,
+        imagen_url_publica: String(response?.url_publica || '')
+      }));
+    } catch (err) {
+      const msg = extractApiMessage(err, 'NO SE PUDO SUBIR LA IMAGEN');
+      openToast('ERROR', msg, 'danger');
+    } finally {
+      setUploadingImage(false);
+      event.target.value = '';
     }
   };
 
@@ -376,9 +409,9 @@ export default function SucursalesPage() {
       </button>
 
       <div
-        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? 'show' : ''}`}
-        onClick={closeAnyDrawer}
-        aria-hidden={!isAnyDrawerOpen}
+        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${filtersOpen ? 'show' : ''}`}
+        onClick={closeFiltersDrawer}
+        aria-hidden={!filtersOpen}
       />
 
       <SucursalesFiltersDrawer
@@ -398,6 +431,8 @@ export default function SucursalesPage() {
         onClose={closeDrawer}
         onSubmit={onSave}
         onFieldChange={onFieldChange}
+        onImageUpload={onImageUpload}
+        uploadingImage={uploadingImage}
         fieldErrors={formErrors}
         duplicateErrors={duplicateErrors}
         disableSubmit={hasLiveDuplicates}

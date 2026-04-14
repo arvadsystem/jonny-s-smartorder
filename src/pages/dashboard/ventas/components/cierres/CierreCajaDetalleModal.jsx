@@ -220,83 +220,44 @@ export default function CierreCajaDetalleModal({
                 </div>
               </section>
 
-              <div className="cierres-caja-detail__two-column">
-                <section className="ventas-page__table-card">
-                  <div className="p-3 pb-0">
-                    <div className="inv-prod-title-row mb-2">
-                      <i className="bi bi-calculator text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
-                      <span className="inv-prod-title">Arqueos</span>
-                    </div>
+              <section className="ventas-page__table-card">
+                <div className="p-3 pb-0">
+                  <div className="inv-prod-title-row mb-2">
+                    <i className="bi bi-calculator text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
+                    <span className="inv-prod-title">Arqueos</span>
                   </div>
-                  <div className="ventas-page__table-wrap">
-                    <table className="table ventas-page__table">
-                      <thead>
+                </div>
+                <div className="ventas-page__table-wrap">
+                  <table className="table ventas-page__table">
+                    <thead>
+                      <tr>
+                        <th>Tipo</th>
+                        <th>Fecha</th>
+                        <th className="text-end">Contado</th>
+                        <th className="text-end">Diferencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detalle.arqueos.length === 0 ? (
                         <tr>
-                          <th>Tipo</th>
-                          <th>Fecha</th>
-                          <th className="text-end">Contado</th>
-                          <th className="text-end">Diferencia</th>
+                          <td colSpan="4" className="text-center py-4 text-muted">
+                            No hay arqueos registrados.
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {detalle.arqueos.length === 0 ? (
-                          <tr>
-                            <td colSpan="4" className="text-center py-4 text-muted">
-                              No hay arqueos registrados.
-                            </td>
+                      ) : (
+                        detalle.arqueos.map((arqueo) => (
+                          <tr key={arqueo.id_arqueo_caja}>
+                            <td>{arqueo.tipo_nombre || arqueo.tipo_codigo}</td>
+                            <td>{formatCajaDateTime(arqueo.fecha_arqueo)}</td>
+                            <td className="text-end">L. {formatCajaCurrency(arqueo.monto_contado)}</td>
+                            <td className="text-end">L. {formatCajaCurrency(arqueo.diferencia)}</td>
                           </tr>
-                        ) : (
-                          detalle.arqueos.map((arqueo) => (
-                            <tr key={arqueo.id_arqueo_caja}>
-                              <td>{arqueo.tipo_nombre || arqueo.tipo_codigo}</td>
-                              <td>{formatCajaDateTime(arqueo.fecha_arqueo)}</td>
-                              <td className="text-end">L. {formatCajaCurrency(arqueo.monto_contado)}</td>
-                              <td className="text-end">L. {formatCajaCurrency(arqueo.diferencia)}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-
-                <section className="ventas-page__table-card">
-                  <div className="p-3 pb-0">
-                    <div className="inv-prod-title-row mb-2">
-                      <i className="bi bi-exclamation-diamond text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
-                      <span className="inv-prod-title">Incidencias</span>
-                    </div>
-                  </div>
-                  <div className="ventas-page__table-wrap">
-                    <table className="table ventas-page__table">
-                      <thead>
-                        <tr>
-                          <th>Tipo</th>
-                          <th>Estado</th>
-                          <th>Fecha</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detalle.incidencias.length === 0 ? (
-                          <tr>
-                            <td colSpan="3" className="text-center py-4 text-muted">
-                              No hay incidencias registradas.
-                            </td>
-                          </tr>
-                        ) : (
-                          detalle.incidencias.map((incidencia) => (
-                            <tr key={incidencia.id_incidencia_caja}>
-                              <td>{incidencia.tipo_nombre || incidencia.tipo_codigo}</td>
-                              <td>{incidencia.estado_nombre || incidencia.estado_codigo}</td>
-                              <td>{formatCajaDateTime(incidencia.fecha_incidencia)}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              </div>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
               {cierre?.observacion ? (
                 <section className="ventas-page__table-card p-3">
