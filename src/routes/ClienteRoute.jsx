@@ -6,6 +6,7 @@
  */
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import GlobalInactivityGuard from '../components/auth/GlobalInactivityGuard';
 
 const ClienteRoute = () => {
   const { user, bootstrapState } = useAuth();
@@ -21,7 +22,12 @@ const ClienteRoute = () => {
   // Si es empleado/admin, lo mandamos al dashboard
   if (!isCliente) return <Navigate to="/dashboard" replace />;
 
-  return <Outlet />;
+  return (
+    <>
+      <GlobalInactivityGuard />
+      <Outlet />
+    </>
+  );
 };
 
 export default ClienteRoute;

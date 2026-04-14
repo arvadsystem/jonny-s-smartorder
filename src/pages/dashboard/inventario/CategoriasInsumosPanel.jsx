@@ -143,6 +143,13 @@ const CategoriasInsumosPanel = ({
   // WHY: prevenir multiples requests mientras se actualiza estado por campo.
   // IMPACT: solo controla UX local; usa el mismo endpoint existente.
   const [quickTogglingEstadoId, setQuickTogglingEstadoId] = useState(null);
+  // NEW: flags + locks para evitar doble envio en acciones criticas (guardar/inactivar).
+  // WHY: bloquear reentradas por doble click o taps rapidos en produccion.
+  // IMPACT: solo afecta disponibilidad de botones durante requests en curso.
+  const [isSaving, setIsSaving] = useState(false);
+  const saveLockRef = useRef(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deleteLockRef = useRef(false);
 
   const [form, setForm] = useState(buildInputCategoryForm);
 
@@ -622,6 +629,7 @@ const CategoriasInsumosPanel = ({
   // ==============================
   const onSave = async (e) => {
     e?.preventDefault?.();
+    if (saveLockRef.current || isSaving) return;
     safeSetError('');
 
     const v = validarCategoria(form);
@@ -633,24 +641,23 @@ const CategoriasInsumosPanel = ({
     setFormErrors(mergedErrors);
     if (!v.ok || hasLiveDuplicates) return;
 
+    saveLockRef.current = true;
+    setIsSaving(true);
     try {
       if (drawerMode === 'create') {
         await inventarioService.crearCategoriaInsumo(v.cleaned);
         safeToast('CREADO', 'LA CATEGORIA DE INSUMO SE CREO CORRECTAMENTE.', 'success');
       } else {
         if (!editId) return;
-
-        // FUNCIONALIDAD: BACKEND ACTUALIZA POR CAMPO
-        const updates = [
-          ['nombre_categoria', v.cleaned.nombre_categoria],
-          ['codigo_categoria', v.cleaned.codigo_categoria],
-          ['descripcion', v.cleaned.descripcion ?? ''],
-          ['estado', v.cleaned.estado]
-        ];
-
-        for (const [campo, valor] of updates) {
-          await inventarioService.actualizarCategoriaInsumoCampo(editId, campo, valor);
-        }
+        // NEW: edicion atomica con un solo request para evitar estados parciales.
+        // WHY: el flujo por updates de campo puede dejar cambios incompletos si falla una llamada intermedia.
+        // IMPACT: solo aplica en editar categoria de insumo; create/inactivar mantienen su flujo actual.
+        await inventarioService.actualizarCategoriaInsumoCompleta(editId, {
+          nombre_categoria: v.cleaned.nombre_categoria,
+          codigo_categoria: v.cleaned.codigo_categoria,
+          descripcion: v.cleaned.descripcion ?? '',
+          estado: v.cleaned.estado
+        });
 
         // NEW: parche local/compartido del registro editado para evitar refetch visible de toda la grilla.
         // WHY: mejorar UX en desktop y mobile/tablet manteniendo el card estable tras guardar.
@@ -689,6 +696,9 @@ const CategoriasInsumosPanel = ({
       const msg = err?.message || 'ERROR GUARDANDO CATEGORIA DE INSUMO';
       safeSetError(msg);
       safeToast('ERROR', msg, 'danger');
+    } finally {
+      saveLockRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -732,8 +742,10 @@ const CategoriasInsumosPanel = ({
   // ==============================
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
-    if (!id) return;
+    if (!id || deleteLockRef.current || isDeleting) return;
 
+    deleteLockRef.current = true;
+    setIsDeleting(true);
     safeSetError('');
     try {
       const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_insumo ?? 0) === Number(id ?? 0));
@@ -779,6 +791,9 @@ const CategoriasInsumosPanel = ({
         safeSetError(msg);
         safeToast('ERROR', msg, 'danger');
       }
+    } finally {
+      deleteLockRef.current = false;
+      setIsDeleting(false);
     }
   };
 
@@ -1387,8 +1402,8 @@ const CategoriasInsumosPanel = ({
             <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={closeDrawer}>
               Cancelar
             </button>
-            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={loading || hasLiveDuplicates}>
-              {loading ? 'Cargando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}
+            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={loading || isSaving || hasLiveDuplicates}>
+              {isSaving ? (drawerMode === 'create' ? 'Creando...' : 'Guardando...') : loading ? 'Cargando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}
             </button>
           </div>
         </form>
@@ -1442,9 +1457,9 @@ const CategoriasInsumosPanel = ({
               <button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>
                 Cancelar
               </button>
-              <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
+              <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado} disabled={isDeleting}>
                 <i className={INACTIVATE_CONFIRM_COPY.iconClass} />
-                <span>Inactivar</span>
+                <span>{isDeleting ? 'Inactivando...' : 'Inactivar'}</span>
               </button>
             </div>
           </div>

@@ -163,6 +163,13 @@ const CategoriasTab = ({
   // WHY: prevenir multiples requests mientras se actualiza estado por campo.
   // IMPACT: solo controla UX local; usa el mismo endpoint existente.
   const [quickTogglingEstadoId, setQuickTogglingEstadoId] = useState(null);
+  // NEW: flags + locks para evitar doble envio en acciones criticas (guardar/inactivar).
+  // WHY: bloquear reentradas por doble click o taps rapidos en produccion.
+  // IMPACT: solo afecta disponibilidad de botones durante requests en curso.
+  const [isSaving, setIsSaving] = useState(false);
+  const saveLockRef = useRef(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deleteLockRef = useRef(false);
 
   const [form, setForm] = useState(buildProductCategoryForm);
 
@@ -391,7 +398,7 @@ const CategoriasTab = ({
     if (codigo.length > 10) errors.codigo_categoria = 'MAXIMO 10 CARACTERES';
     if (!/^[A-Z0-9_-]+$/.test(codigo)) errors.codigo_categoria = 'SOLO MAYUSCULAS, NUMEROS, - O _ (SIN ESPACIOS)';
 
-    if (descripcion.length > 150) errors.descripcion = 'MAXIMO 150 CARACTERES';
+    if (descripcion.length > 50) errors.descripcion = 'MAXIMO 50 CARACTERES';
 
     const cleaned = { nombre_categoria: nombre, codigo_categoria: codigo, estado };
     // FUNCIONALIDAD: NO ENVIAR NULL, SOLO SI HAY TEXTO
@@ -638,6 +645,7 @@ const CategoriasTab = ({
   // ==============================
   const onSave = async (e) => {
     e?.preventDefault?.();
+    if (saveLockRef.current || isSaving) return;
     safeSetError('');
 
     const v = validarCategoria(form);
@@ -649,24 +657,23 @@ const CategoriasTab = ({
     setFormErrors(mergedErrors);
     if (!v.ok || hasLiveDuplicates) return;
 
+    saveLockRef.current = true;
+    setIsSaving(true);
     try {
       if (drawerMode === 'create') {
         await inventarioService.crearCategoria(v.cleaned);
         safeToast('CREADO', 'LA CATEGORIA SE CREO CORRECTAMENTE.', 'success');
       } else {
         if (!editId) return;
-
-        // FUNCIONALIDAD: BACKEND ACTUALIZA POR CAMPO
-        const updates = [
-          ['nombre_categoria', v.cleaned.nombre_categoria],
-          ['codigo_categoria', v.cleaned.codigo_categoria],
-          ['descripcion', v.cleaned.descripcion ?? ''],
-          ['estado', v.cleaned.estado]
-        ];
-
-        for (const [campo, valor] of updates) {
-          await inventarioService.actualizarCategoriaCampo(editId, campo, valor);
-        }
+        // NEW: edicion atomica con un solo request para evitar estados parciales.
+        // WHY: el flujo anterior hacia updates por campo podia dejar cambios incompletos ante fallos intermedios.
+        // IMPACT: solo aplica a la edicion de categorias de productos; create/inactivar siguen igual.
+        await inventarioService.actualizarCategoriaCompleta(editId, {
+          nombre_categoria: v.cleaned.nombre_categoria,
+          codigo_categoria: v.cleaned.codigo_categoria,
+          descripcion: v.cleaned.descripcion ?? '',
+          estado: v.cleaned.estado
+        });
 
         // NEW: parche local/compartido del registro editado para evitar refetch visible de toda la grilla.
         // WHY: mejorar UX en desktop y mobile/tablet manteniendo el card estable tras guardar.
@@ -705,6 +712,9 @@ const CategoriasTab = ({
       const msg = err?.message || 'ERROR GUARDANDO CATEGORIA';
       safeSetError(msg);
       safeToast('ERROR', msg, 'danger');
+    } finally {
+      saveLockRef.current = false;
+      setIsSaving(false);
     }
   };
 
@@ -748,8 +758,10 @@ const CategoriasTab = ({
   // ==============================
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
-    if (!id) return;
+    if (!id || deleteLockRef.current || isDeleting) return;
 
+    deleteLockRef.current = true;
+    setIsDeleting(true);
     safeSetError('');
     try {
       const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_producto ?? 0) === Number(id ?? 0));
@@ -795,6 +807,9 @@ const CategoriasTab = ({
         safeSetError(msg);
         safeToast('ERROR', msg, 'danger');
       }
+    } finally {
+      deleteLockRef.current = false;
+      setIsDeleting(false);
     }
   };
 
@@ -1433,8 +1448,8 @@ const CategoriasTab = ({
             <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={closeDrawer}>
               Cancelar
             </button>
-            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={loading || hasLiveDuplicates}>
-              {loading ? 'Cargando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}
+            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={loading || isSaving || hasLiveDuplicates}>
+              {isSaving ? (drawerMode === 'create' ? 'Creando...' : 'Guardando...') : loading ? 'Cargando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}
             </button>
           </div>
         </form>
@@ -1488,9 +1503,9 @@ const CategoriasTab = ({
               <button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>
                 Cancelar
               </button>
-              <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
+              <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado} disabled={isDeleting}>
                 <i className={INACTIVATE_CONFIRM_COPY.iconClass} />
-                <span>Inactivar</span>
+                <span>{isDeleting ? 'Inactivando...' : 'Inactivar'}</span>
               </button>
             </div>
           </div>

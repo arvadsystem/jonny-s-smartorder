@@ -29,6 +29,33 @@ const parseDateUi = (value) => {
   return `${dd}/${mm}/${yy}`;
 };
 
+const getConfirmCopyByAction = (action) => {
+  const safeAction = String(action ?? 'inactivar').trim().toLowerCase();
+  if (safeAction === 'reactivar') {
+    return {
+      title: 'CONFIRMAR REACTIVACION',
+      subtitle: 'El registro volvera al listado de activos.',
+      note: 'El bien de mobiliario volvera a estar disponible para operaciones.',
+      question: 'Deseas confirmar la reactivacion de este bien?',
+      actionLabel: 'Reactivar',
+      actionBusyLabel: 'Reactivando...',
+      actionIcon: 'bi-arrow-clockwise',
+      actionButtonClass: 'btn-success'
+    };
+  }
+
+  return {
+    title: 'CONFIRMAR INACTIVACION',
+    subtitle: 'Este registro quedara marcado como inactivo.',
+    note: 'Podras reactivar este bien de mobiliario mas adelante.',
+    question: 'Deseas confirmar la inactivacion de este bien?',
+    actionLabel: 'Inactivar',
+    actionBusyLabel: 'Inactivando...',
+    actionIcon: 'bi-slash-circle',
+    actionButtonClass: 'btn-warning'
+  };
+};
+
 const MobiliarioTab = ({ openToast }) => {
   const { can, loading: permisosLoading } = usePermisos();
   const canVer = can(PERMISSIONS.INVENTARIO_MOBILIARIO_VER);
@@ -53,10 +80,18 @@ const MobiliarioTab = ({ openToast }) => {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(buildEmptyForm);
   const [formErrors, setFormErrors] = useState({});
+  const [empleadoSearch, setEmpleadoSearch] = useState('');
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === 'undefined' ? 6 : resolveCardsPerPage(window.innerWidth)
   );
   const [carouselPageIndex, setCarouselPageIndex] = useState(0);
+  const [confirmModal, setConfirmModal] = useState({
+    show: false,
+    idToChange: null,
+    nombre: '',
+    action: 'inactivar'
+  });
+  const [changingEstado, setChangingEstado] = useState(false);
 
   const empleadosMap = useMemo(() => {
     const map = new Map();
@@ -68,7 +103,62 @@ const MobiliarioTab = ({ openToast }) => {
     return map;
   }, [empleados]);
 
+  const empleadosCatalog = useMemo(() => {
+    const source = Array.isArray(empleados) ? empleados : [];
+    return source
+      .map((row) => {
+        const id = Number.parseInt(String(row?.id_empleado ?? ''), 10);
+        if (!Number.isInteger(id) || id <= 0) return null;
+
+        const nombre = String(row?.empleado_nombre ?? '').trim() || `Empleado #${id}`;
+        const identidad = String(
+          row?.identidad ?? row?.numero_identidad ?? row?.dni ?? row?.identificacion ?? ''
+        ).trim();
+        const codigo = String(row?.codigo_empleado ?? row?.codigo ?? '').trim();
+        const detailParts = [];
+        if (identidad) detailParts.push(`ID: ${identidad}`);
+        if (codigo && codigo !== identidad) detailParts.push(`Cod: ${codigo}`);
+
+        const searchStack = [
+          nombre,
+          identidad,
+          codigo,
+          row?.correo_electronico,
+          row?.correo,
+          row?.email,
+          row?.id_empleado
+        ]
+          .filter(hasValue)
+          .join(' ')
+          .toLowerCase();
+
+        return {
+          id,
+          nombre,
+          detail: detailParts.join(' | '),
+          searchStack
+        };
+      })
+      .filter(Boolean);
+  }, [empleados]);
+
+  const empleadosSelectOptions = useMemo(() => {
+    const query = String(empleadoSearch ?? '').trim().toLowerCase();
+    const selectedId = Number.parseInt(String(form?.id_empleado ?? ''), 10);
+    let filtered = query
+      ? empleadosCatalog.filter((row) => row.searchStack.includes(query))
+      : empleadosCatalog;
+
+    if (Number.isInteger(selectedId) && selectedId > 0 && !filtered.some((row) => row.id === selectedId)) {
+      const selectedRow = empleadosCatalog.find((row) => row.id === selectedId);
+      if (selectedRow) filtered = [selectedRow, ...filtered];
+    }
+
+    return filtered;
+  }, [empleadoSearch, empleadosCatalog, form?.id_empleado]);
+
   const drawerTitle = modalMode === 'edit' ? 'Editar bien' : 'Nuevo bien';
+  const confirmCopy = useMemo(() => getConfirmCopyByAction(confirmModal.action), [confirmModal.action]);
 
   const loadRows = async () => {
     if (!canVer) return;
@@ -82,7 +172,7 @@ const MobiliarioTab = ({ openToast }) => {
       const safeRows = Array.isArray(data) ? data : [];
       setRowsAll(safeRows);
     } catch (err) {
-      const message = err?.message || 'No se pudo cargar mobiliario.';
+      const message = err?.message || 'No se pudo cargar el mobiliario.';
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
@@ -132,6 +222,7 @@ const MobiliarioTab = ({ openToast }) => {
     setEditingId(null);
     setForm(buildEmptyForm());
     setFormErrors({});
+    setEmpleadoSearch('');
     setShowModal(false);
   };
 
@@ -154,6 +245,7 @@ const MobiliarioTab = ({ openToast }) => {
     setEditingId(null);
     setForm(buildEmptyForm());
     setFormErrors({});
+    setEmpleadoSearch('');
     setShowModal(true);
   };
 
@@ -166,6 +258,7 @@ const MobiliarioTab = ({ openToast }) => {
       fecha_asignacion: String(row?.fecha_asignacion ?? '').slice(0, 10)
     });
     setFormErrors({});
+    setEmpleadoSearch(String(row?.empleado_nombre ?? '').trim());
     setShowModal(true);
   };
 
@@ -183,10 +276,10 @@ const MobiliarioTab = ({ openToast }) => {
     try {
       if (modalMode === 'edit' && editingId) {
         await inventarioService.actualizarMobiliario(editingId, payload);
-        safeToast('EXITO', 'Bien actualizado correctamente.');
+        safeToast('EXITO', 'Bien de mobiliario actualizado correctamente.');
       } else {
         await inventarioService.crearMobiliario(payload);
-        safeToast('EXITO', 'Bien registrado correctamente.');
+        safeToast('EXITO', 'Bien de mobiliario registrado correctamente.');
       }
       resetModal();
       await loadRows();
@@ -198,19 +291,46 @@ const MobiliarioTab = ({ openToast }) => {
     }
   };
 
-  const toggleEstado = async (row) => {
+  const toggleEstado = (row) => {
     if (!canCambiarEstado) return;
     const idMobiliario = Number.parseInt(String(row?.id_mobiliario ?? ''), 10);
     if (!Number.isInteger(idMobiliario) || idMobiliario <= 0) return;
 
-    const nextEstado = !Boolean(row?.activo);
+    const action = row?.activo ? 'inactivar' : 'reactivar';
+    setConfirmModal({
+      show: true,
+      idToChange: idMobiliario,
+      nombre: String(row?.nombre_bien ?? '').trim(),
+      action
+    });
+  };
+
+  const closeConfirmEstadoModal = (force = false) => {
+    if (changingEstado && !force) return;
+    setConfirmModal({ show: false, idToChange: null, nombre: '', action: 'inactivar' });
+  };
+
+  const confirmEstadoChange = async () => {
+    if (!canCambiarEstado || changingEstado) return;
+    const idMobiliario = Number.parseInt(String(confirmModal.idToChange ?? ''), 10);
+    if (!Number.isInteger(idMobiliario) || idMobiliario <= 0) {
+      closeConfirmEstadoModal();
+      return;
+    }
+
+    const nextEstado = confirmModal.action === 'reactivar';
+    setChangingEstado(true);
     try {
       await inventarioService.cambiarEstadoMobiliario(idMobiliario, nextEstado);
-      safeToast('EXITO', nextEstado ? 'Bien reactivado correctamente.' : 'Bien desactivado correctamente.');
+      safeToast('EXITO', nextEstado ? 'Bien reactivado correctamente.' : 'Bien inactivado correctamente.');
+      closeConfirmEstadoModal(true);
       await loadRows();
     } catch (err) {
       const message = err?.message || 'No se pudo cambiar el estado del bien.';
       safeToast('ERROR', message, 'danger');
+      closeConfirmEstadoModal(true);
+    } finally {
+      setChangingEstado(false);
     }
   };
 
@@ -232,9 +352,10 @@ const MobiliarioTab = ({ openToast }) => {
     });
   }, [rowsAll, search, showInactivos]);
 
+  const baseRows = Array.isArray(rowsAll) ? rowsAll : [];
   const rowsTotal = Array.isArray(rows) ? rows.length : 0;
-  const activosCount = rows.filter((row) => Boolean(row?.activo)).length;
-  const inactivosCount = rowsTotal - activosCount;
+  const activosCount = baseRows.filter((row) => Boolean(row?.activo)).length;
+  const inactivosCount = Math.max(0, baseRows.length - activosCount);
   const pageCount = Math.max(1, Math.ceil(rowsTotal / cardsPerPage));
   const safePageIndex = Math.min(carouselPageIndex, pageCount - 1);
   const pageStart = safePageIndex * cardsPerPage;
@@ -261,7 +382,7 @@ const MobiliarioTab = ({ openToast }) => {
                   <i className="bi bi-archive inv-prod-title-icon" />
                   <span className="inv-prod-title">Mobiliario</span>
                 </div>
-                <div className="inv-prod-subtitle">Registro de bienes asignados a empleados</div>
+                <div className="inv-prod-subtitle">Registro de bienes asignados al personal</div>
               </div>
             </div>
 
@@ -269,7 +390,7 @@ const MobiliarioTab = ({ openToast }) => {
               <i className="bi bi-search" />
               <input
                 type="search"
-                placeholder="Buscar por bien o empleado..."
+                placeholder="Buscar por bien o empleado responsable..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
@@ -283,7 +404,7 @@ const MobiliarioTab = ({ openToast }) => {
                   checked={showInactivos}
                   onChange={(event) => setShowInactivos(event.target.checked)}
                 />
-                <span className="form-check-label">Ver inactivos</span>
+                <span className="form-check-label">Solo inactivos</span>
               </label>
 
               {canCrear && (
@@ -307,7 +428,7 @@ const MobiliarioTab = ({ openToast }) => {
             </div>
             <div className="inv-prod-kpi-content">
               <span>Total</span>
-              <strong>{rowsTotal}</strong>
+              <strong>{baseRows.length}</strong>
             </div>
           </article>
           <article className="inv-prod-kpi inv-invstat-card is-ok">
@@ -355,7 +476,7 @@ const MobiliarioTab = ({ openToast }) => {
                 </div>
                 <div className="inv-catpro-empty-title">No hay bienes para mostrar</div>
                 <div className="inv-catpro-empty-sub">
-                  {showInactivos ? 'No hay registros en mobiliario.' : 'Crea tu primer bien en mobiliario.'}
+                  {showInactivos ? 'No hay bienes inactivos para mostrar.' : 'Registra tu primer bien de mobiliario.'}
                 </div>
                 {canCrear ? (
                   <div className="d-flex justify-content-center">
@@ -499,57 +620,78 @@ const MobiliarioTab = ({ openToast }) => {
               <i className="bi bi-lamp" aria-hidden="true" />
             </div>
             <div className="inv-cat-create-hero__copy">
-              <div className="inv-cat-create-hero__kicker">Inventario De Mobiliario</div>
+              <div className="inv-cat-create-hero__kicker">Inventario de mobiliario</div>
               <div className="inv-cat-create-hero__title">{drawerTitle}</div>
             </div>
             <div className="inv-cat-create-hero__chips">
               <span className="inv-cat-create-hero__chip">
-                <i className="bi bi-person-badge" aria-hidden="true" /> {hasValue(form.id_empleado) ? 'Empleado Seleccionado' : 'Sin Empleado'}
+                <i className="bi bi-person-badge" aria-hidden="true" /> {hasValue(form.id_empleado) ? 'Empleado seleccionado' : 'Sin empleado'}
               </span>
               <span className="inv-cat-create-hero__chip">
-                <i className="bi bi-calendar-event" aria-hidden="true" /> {hasValue(form.fecha_asignacion) ? parseDateUi(form.fecha_asignacion) : 'Sin Fecha'}
+                <i className="bi bi-calendar-event" aria-hidden="true" /> {hasValue(form.fecha_asignacion) ? parseDateUi(form.fecha_asignacion) : 'Sin fecha'}
               </span>
             </div>
           </div>
 
           <div className={`inv-cat-create-grid ${modalMode === 'create' ? 'is-create' : 'is-edit'}`}>
             <div className="mb-2">
-              <label className="form-label">Nombre Del Bien</label>
+              <label className="form-label">Nombre del bien</label>
               <input
                 className={`form-control ${formErrors.nombre_bien ? 'is-invalid' : ''}`}
                 value={form.nombre_bien}
                 onChange={(event) => setForm((prev) => ({ ...prev, nombre_bien: event.target.value }))}
                 maxLength={160}
-                placeholder="Ej: Escritorio ejecutivo"
+                placeholder="Ejemplo: Escritorio ejecutivo"
               />
               {formErrors.nombre_bien ? <div className="invalid-feedback d-block">{formErrors.nombre_bien}</div> : null}
             </div>
 
             <div className="mb-2">
               <label className="form-label">Empleado</label>
+              <input
+                className="form-control mb-2"
+                value={empleadoSearch}
+                onChange={(event) => setEmpleadoSearch(event.target.value)}
+                placeholder="Buscar por nombre, identidad o codigo de empleado..."
+                disabled={loadingEmpleados}
+              />
               <select
                 className={`form-select ${formErrors.id_empleado ? 'is-invalid' : ''}`}
                 value={form.id_empleado}
-                onChange={(event) => setForm((prev) => ({ ...prev, id_empleado: event.target.value }))}
+                onChange={(event) => {
+                  const nextId = String(event.target.value ?? '');
+                  const selected = empleadosCatalog.find((row) => String(row.id) === nextId);
+                  setForm((prev) => ({ ...prev, id_empleado: nextId }));
+                  if (selected) setEmpleadoSearch(selected.nombre);
+                }}
                 disabled={loadingEmpleados}
               >
-                <option value="">Selecciona un empleado</option>
-                {(Array.isArray(empleados) ? empleados : []).map((empleado) => {
-                  const idEmpleado = Number.parseInt(String(empleado?.id_empleado ?? ''), 10);
-                  if (!Number.isInteger(idEmpleado) || idEmpleado <= 0) return null;
+                <option value="">
+                  {loadingEmpleados
+                    ? 'Cargando empleados...'
+                    : empleadosSelectOptions.length > 0
+                      ? 'Selecciona al empleado responsable'
+                      : 'Sin coincidencias'}
+                </option>
+                {empleadosSelectOptions.map((empleado) => {
                   return (
-                    <option key={idEmpleado} value={idEmpleado}>
-                      {empleado?.empleado_nombre || `Empleado #${idEmpleado}`}
+                    <option key={empleado.id} value={empleado.id}>
+                      {empleado.detail ? `${empleado.nombre} (${empleado.detail})` : empleado.nombre}
                     </option>
                   );
                 })}
               </select>
+              <div className="form-text">
+                {empleadoSearch
+                  ? `${empleadosSelectOptions.length} coincidencia(s) para "${empleadoSearch}".`
+                  : `${empleadosCatalog.length} empleado(s) disponibles.`}
+              </div>
               {formErrors.id_empleado ? <div className="invalid-feedback d-block">{formErrors.id_empleado}</div> : null}
             </div>
           </div>
 
           <div className="mb-2">
-            <label className="form-label">Fecha De Asignacion</label>
+            <label className="form-label">Fecha de asignacion</label>
             <input
               type="date"
               className={`form-control ${formErrors.fecha_asignacion ? 'is-invalid' : ''}`}
@@ -569,8 +711,76 @@ const MobiliarioTab = ({ openToast }) => {
           </div>
         </form>
       </aside>
+
+      {confirmModal.show ? (
+        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmEstadoModal}>
+          <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="inv-pro-confirm-glow" aria-hidden="true" />
+
+            <div className="inv-pro-confirm-head">
+              <div className="inv-pro-confirm-head-main">
+                <div className="inv-pro-confirm-head-icon">
+                  <i className={`bi ${confirmCopy.actionIcon}`} aria-hidden="true" />
+                </div>
+                <div className="inv-pro-confirm-head-copy">
+                  <div className="inv-pro-confirm-kicker">Mobiliario</div>
+                  <div className="inv-pro-confirm-title">{confirmCopy.title}</div>
+                  <div className="inv-pro-confirm-sub">{confirmCopy.subtitle}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="inv-pro-confirm-close"
+                onClick={closeConfirmEstadoModal}
+                aria-label="Cerrar"
+                disabled={changingEstado}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <div className="inv-pro-confirm-body">
+              <div className="inv-pro-confirm-note">
+                <i className="bi bi-shield-exclamation" aria-hidden="true" />
+                <span>{confirmCopy.note}</span>
+              </div>
+
+              <div className="inv-pro-confirm-question">{confirmCopy.question}</div>
+
+              <div className="inv-pro-confirm-name">
+                <div className="inv-pro-confirm-name-label">Bien seleccionado</div>
+                <div className="inv-pro-confirm-name-value">
+                  <i className="bi bi-lamp" aria-hidden="true" />
+                  <span>{confirmModal.nombre || 'Bien seleccionado'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="inv-pro-confirm-footer">
+              <button
+                type="button"
+                className="btn inv-pro-btn-cancel"
+                onClick={closeConfirmEstadoModal}
+                disabled={changingEstado}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className={`btn ${confirmCopy.actionButtonClass}`}
+                onClick={confirmEstadoChange}
+                disabled={changingEstado}
+              >
+                <i className={`bi ${changingEstado ? 'bi-hourglass-split' : confirmCopy.actionIcon}`} aria-hidden="true" />
+                <span>{changingEstado ? confirmCopy.actionBusyLabel : confirmCopy.actionLabel}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 };
 
 export default MobiliarioTab;
+

@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import GlobalInactivityGuard from '../components/auth/GlobalInactivityGuard';
 
 const MUST_CHANGE_ROUTE = '/cambiar-password';
 
@@ -67,7 +68,12 @@ const ProtectedRoute = () => {
     return <Navigate to="/dashboard" replace />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <GlobalInactivityGuard />
+      <Outlet />
+    </>
+  );
 };
 
 export default ProtectedRoute;
