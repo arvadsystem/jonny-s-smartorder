@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { perfilService } from "../../services/perfilService";
+import { useAuth } from "../../hooks/useAuth";
 import { API_URL } from "../../utils/constants";
 import { fmtHN } from "../../utils/dateTime";
 import "./perfil-page.css";
@@ -43,6 +44,7 @@ const readFileAsDataUrl = (file) =>
   });
 
 const Perfil = () => {
+  const { updateCurrentUser } = useAuth();
   const imageInputRef = useRef(null);
   const [roles, setRoles] = useState([]);
   const [ultimo, setUltimo] = useState(null);
@@ -92,6 +94,7 @@ const Perfil = () => {
         p.estado === undefined || p.estado === null ? true : Boolean(p.estado)
       );
       setFotoPerfil(p.foto_perfil || "");
+      updateCurrentUser?.({ foto_perfil: p.foto_perfil || "" });
       setPerfilVisible({
         nombre: p.nombre || "",
         apellido: p.apellido || "",
@@ -192,6 +195,7 @@ const Perfil = () => {
       const nextPhoto = normalizeText(fotoPerfilDraft);
       await perfilService.updatePerfil({ foto_perfil: nextPhoto });
       setFotoPerfil(nextPhoto);
+      updateCurrentUser?.({ foto_perfil: nextPhoto });
       setShowAvatarModal(false);
       setFotoPerfilDraft("");
       setFotoPerfilDirty(false);

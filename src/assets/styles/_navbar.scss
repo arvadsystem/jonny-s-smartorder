@@ -309,21 +309,26 @@
 .dashboard-shell .user-avatar-frame {
   width: 36px;
   height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  aspect-ratio: 1 / 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: 50%;
+  overflow: hidden;
   padding: 2px;
   background: linear-gradient(135deg, #d8a874, #b86f34);
   box-shadow: 0 8px 16px rgba(177, 108, 57, 0.2);
 }
 
-.dashboard-shell .user-profile img {
+.dashboard-shell .user-avatar-frame img {
   width: 100%;
   height: 100%;
-  border-radius: 999px;
+  border-radius: 50%;
   object-fit: cover;
   background: #fff;
+  display: block;
 }
 
 .dashboard-shell .user-avatar-fallback {

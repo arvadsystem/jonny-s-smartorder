@@ -11,7 +11,7 @@ import {
 } from '../../modules/planillas/navigation';
 
 const MAX_VISIBLE_TABS = 3;
-const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/)/i;
+const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/|data:image\/)/i;
 
 const getTabFromSearch = (search, tabs, fallbackKey, options = {}) => {
   const sp = new URLSearchParams(search || '');
@@ -50,6 +50,7 @@ const resolveProfilePhotoSrc = (value) => {
   const photo = normalizeText(value);
   if (!photo || !PHOTO_URL_RE.test(photo)) return '';
 
+  if (/^data:image\//i.test(photo)) return photo;
   if (/^https?:\/\//i.test(photo)) return photo;
 
   if (/^\/uploads\//i.test(photo)) {
