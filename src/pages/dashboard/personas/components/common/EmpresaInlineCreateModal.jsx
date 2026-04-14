@@ -38,6 +38,7 @@ export default function EmpresaInlineCreateModal({
   const [telefonos, setTelefonos] = useState([]);
   const [direcciones, setDirecciones] = useState([]);
   const [correos, setCorreos] = useState([]);
+  const drawerRef = useRef(null);
 
   const mountedRef = useRef(false);
   const catalogosCargadosRef = useRef(false);
@@ -60,6 +61,20 @@ export default function EmpresaInlineCreateModal({
     rtnCaretRef.current = null;
     telefonoCaretRef.current = null;
   }, [show, initialForm]);
+
+  const releaseDrawerFocus = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const activeElement = document.activeElement;
+    const drawerNode = drawerRef.current;
+    if (!(activeElement instanceof HTMLElement)) return;
+    if (!drawerNode || !drawerNode.contains(activeElement)) return;
+    activeElement.blur();
+  }, []);
+
+  useEffect(() => {
+    if (show) return;
+    releaseDrawerFocus();
+  }, [show, releaseDrawerFocus]);
 
   const cargarCatalogos = useCallback(async () => {
     if (catalogosCargadosRef.current) return;
@@ -183,17 +198,24 @@ export default function EmpresaInlineCreateModal({
     if (Object.keys(currentErrors).length > 0) return;
 
     const payload = buildEmpresaPayloadFromForm(form);
+    releaseDrawerFocus();
     await onSave?.(payload, form);
   };
+
+  const handleRequestClose = useCallback(() => {
+    releaseDrawerFocus();
+    onClose?.();
+  }, [onClose, releaseDrawerFocus]);
 
   return (
     <>
       <div
         className={`inv-prod-drawer-backdrop empresa-inline-create-modal__backdrop ${show ? "show" : ""}`}
-        onClick={saving ? undefined : onClose}
+        onClick={saving ? undefined : handleRequestClose}
       />
 
       <aside
+        ref={drawerRef}
         className={`inv-prod-drawer inv-cat-v2__drawer empresas-modal empresa-inline-create-modal ${show ? "show" : ""}`}
         role="dialog"
         aria-modal="true"
@@ -207,7 +229,7 @@ export default function EmpresaInlineCreateModal({
           <button
             type="button"
             className="inv-prod-drawer-close empresas-modal__close"
-            onClick={onClose}
+            onClick={handleRequestClose}
             title="Cerrar"
             disabled={saving}
           >
@@ -218,7 +240,10 @@ export default function EmpresaInlineCreateModal({
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite empresas-modal__body" onSubmit={handleSave}>
           <div className="row g-3 empresas-modal__grid">
             <div className="col-12 col-md-6 empresas-modal__field">
-              <label className="form-label empresas-modal__label">RTN</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>RTN</span>
+                <span className="empresas-modal__field-meta is-required">Oblig.</span>
+              </label>
               <input
                 ref={rtnInputRef}
                 type="text"
@@ -235,7 +260,10 @@ export default function EmpresaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6 empresas-modal__field">
-              <label className="form-label empresas-modal__label">Nombre empresa</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>Nombre Empresa</span>
+                <span className="empresas-modal__field-meta is-required">Oblig.</span>
+              </label>
               <input
                 className={`form-control empresas-modal__input ${errors.nombre_empresa ? "is-invalid" : ""}`}
                 placeholder="Ej: Inversiones La Esperanza"
@@ -247,7 +275,10 @@ export default function EmpresaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6 empresas-modal__field">
-              <label className="form-label empresas-modal__label">Telefono</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>Telefono</span>
+                <span className="empresas-modal__field-meta is-optional">Opc.</span>
+              </label>
               <input
                 ref={telefonoInputRef}
                 type="text"
@@ -270,7 +301,10 @@ export default function EmpresaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6 empresas-modal__field">
-              <label className="form-label empresas-modal__label">Direccion</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>Direccion</span>
+                <span className="empresas-modal__field-meta is-optional">Opc.</span>
+              </label>
               <input
                 type="text"
                 list="empresa-inline-direcciones-sugeridas"
@@ -289,7 +323,10 @@ export default function EmpresaInlineCreateModal({
             </div>
 
             <div className="col-12 empresas-modal__field">
-              <label className="form-label empresas-modal__label">Correo</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>Correo</span>
+                <span className="empresas-modal__field-meta is-optional">Opc.</span>
+              </label>
               <input
                 type="email"
                 list="empresa-inline-correos-sugeridos"
@@ -328,7 +365,7 @@ export default function EmpresaInlineCreateModal({
             <button
               type="button"
               className="btn inv-prod-btn-subtle flex-fill empresas-modal__btn"
-              onClick={onClose}
+              onClick={handleRequestClose}
               disabled={saving}
             >
               Cancelar

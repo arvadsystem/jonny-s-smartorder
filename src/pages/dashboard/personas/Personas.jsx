@@ -50,6 +50,9 @@ const EMAIL_WITH_DOMAIN_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const isAbortError = (error) => error?.name === "AbortError";
 const MIN_CHARS_FOR_SUGGESTIONS = 2;
 const MAX_RECENT_SEARCHES = 8;
+const TABLE_PAGE_SIZE = 10;
+const CARDS_PAGE_SIZE = 9;
+const MAX_PERSONAS_PAGE_CACHE = 24;
 const SEARCH_DROPDOWN_ANIMATION_MS = 220;
 const PERSONAS_RECENT_SEARCHES_KEY = "personasRecentSearchesV1";
 const SEARCH_INPUT_SELECTOR = '.personas-page .inv-ins-search input[type="search"]';
@@ -619,7 +622,7 @@ const buildStatsFromPersonas = (records, totalOverride = null) => {
   };
 };
 
-export default function Personas({ openToast, selectedSucursalId = "" }) {
+export default function Personas({ openToast }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -645,7 +648,7 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = viewMode === "table" ? TABLE_PAGE_SIZE : CARDS_PAGE_SIZE;
   const [total, setTotal] = useState(0);
   const [globalStats, setGlobalStats] = useState({
     total: 0,
@@ -682,6 +685,8 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
   const listAbortRef = useRef(null);
   const globalKpiAbortRef = useRef(null);
   const suggestionsAbortRef = useRef(null);
+  const listPrefetchAbortRef = useRef(null);
+  const personasListCacheRef = useRef(new Map());
   const searchDropdownRef = useRef(null);
   const panelRef = useRef(null);
   const dniInputRef = useRef(null);
@@ -697,11 +702,6 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
   });
   const [isSearchDropdownMounted, setIsSearchDropdownMounted] = useState(false);
   const [isSearchDropdownVisible, setIsSearchDropdownVisible] = useState(false);
-  const normalizedSucursalContext = useMemo(() => {
-    const parsed = Number.parseInt(String(selectedSucursalId ?? ""), 10);
-    return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : "";
-  }, [selectedSucursalId]);
-
   const backendTotalPages = Math.max(1, Math.ceil(total / pageSize));
   const isAnyDrawerOpen = showModal || filtersOpen;
 
@@ -742,11 +742,111 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
     });
   }, []);
 
-  const cargarPersonas = useCallback(async () => {
-    setLoading(true);
+  const buildPersonasCacheKey = useCallback(
+    (targetPage) =>
+      JSON.stringify({
+        page: Number(targetPage) || 1,
+        limit: pageSize,
+        search: normalizeSearchText(debouncedSearch),
+        sort: sortBy || "recientes",
+        genero: generoFiltro || "todos",
+      }),
+    [pageSize, debouncedSearch, sortBy, generoFiltro]
+  );
+
+  const setPersonasCacheEntry = useCallback((cacheKey, data) => {
+    if (!cacheKey) return;
+    const list = Array.isArray(data?.items) ? data.items : [];
+    const totalValue = Math.max(0, Number(data?.total) || 0);
+    const cache = personasListCacheRef.current;
+    cache.delete(cacheKey);
+    cache.set(cacheKey, {
+      items: list,
+      total: totalValue,
+      cachedAt: Date.now(),
+    });
+
+    while (cache.size > MAX_PERSONAS_PAGE_CACHE) {
+      const oldestKey = cache.keys().next().value;
+      if (!oldestKey) break;
+      cache.delete(oldestKey);
+    }
+  }, []);
+
+  const clearPersonasListCache = useCallback(() => {
+    personasListCacheRef.current.clear();
+    listPrefetchAbortRef.current?.abort();
+    listPrefetchAbortRef.current = null;
+  }, []);
+
+  const prefetchPersonasPage = useCallback(
+    async (targetPage, totalKnown = null) => {
+      const nextPage = Number(targetPage);
+      if (!Number.isFinite(nextPage) || nextPage < 1) return;
+
+      const totalValue = toNumberOrNull(totalKnown);
+      if (totalValue !== null) {
+        const totalPages = Math.max(1, Math.ceil(totalValue / pageSize));
+        if (nextPage > totalPages) return;
+      }
+
+      const cacheKey = buildPersonasCacheKey(nextPage);
+      if (personasListCacheRef.current.has(cacheKey)) return;
+
+      listPrefetchAbortRef.current?.abort();
+      const controller = new AbortController();
+      listPrefetchAbortRef.current = controller;
+
+      try {
+        const response = await personaService.getPersonas({
+          page: nextPage,
+          limit: pageSize,
+          search: debouncedSearch,
+          sort: sortBy,
+          genero: generoFiltro,
+          signal: controller.signal,
+        });
+
+        if (!mountedRef.current || controller.signal.aborted) return;
+        const normalized = normalizeListResponse(response);
+        setPersonasCacheEntry(cacheKey, normalized);
+      } catch (error) {
+        if (isAbortError(error)) return;
+      } finally {
+        if (listPrefetchAbortRef.current === controller) {
+          listPrefetchAbortRef.current = null;
+        }
+      }
+    },
+    [
+      buildPersonasCacheKey,
+      debouncedSearch,
+      generoFiltro,
+      pageSize,
+      setPersonasCacheEntry,
+      sortBy,
+    ]
+  );
+
+  const cargarPersonas = useCallback(async ({ force = false } = {}) => {
     setListError("");
     const requestId = ++requestIdRef.current;
     listAbortRef.current?.abort();
+    listAbortRef.current = null;
+
+    const cacheKey = buildPersonasCacheKey(page);
+    if (!force) {
+      const cached = personasListCacheRef.current.get(cacheKey);
+      if (cached) {
+        setPersonas(Array.isArray(cached.items) ? cached.items : []);
+        setTotal(Math.max(0, Number(cached.total) || 0));
+        setLoading(false);
+        prefetchPersonasPage(page + 1, cached.total);
+        return;
+      }
+    }
+
+    setLoading(true);
     const controller = new AbortController();
     listAbortRef.current = controller;
 
@@ -765,6 +865,8 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
       setPersonas(items);
       setTotal(totalResp);
       setListError("");
+      setPersonasCacheEntry(cacheKey, { items, total: totalResp });
+      prefetchPersonasPage(page + 1, totalResp);
     } catch (error) {
       if (isAbortError(error)) return;
       if (!mountedRef.current) return;
@@ -777,7 +879,17 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
         setLoading(false);
       }
     }
-  }, [page, pageSize, debouncedSearch, generoFiltro, sortBy, safeToast]);
+  }, [
+    buildPersonasCacheKey,
+    page,
+    pageSize,
+    debouncedSearch,
+    generoFiltro,
+    sortBy,
+    safeToast,
+    setPersonasCacheEntry,
+    prefetchPersonasPage,
+  ]);
 
   const cargarKpiGlobales = useCallback(async () => {
     const requestId = ++globalKpiRequestIdRef.current;
@@ -837,6 +949,7 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
       listAbortRef.current?.abort();
       globalKpiAbortRef.current?.abort();
       suggestionsAbortRef.current?.abort();
+      listPrefetchAbortRef.current?.abort();
       if (searchDropdownCloseTimerRef.current) {
         window.clearTimeout(searchDropdownCloseTimerRef.current);
         searchDropdownCloseTimerRef.current = null;
@@ -1529,7 +1642,8 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
         const personaOriginal = personas.find((item) => String(item.id_persona) === String(editId));
         if (!personaOriginal) {
           safeToast("ERROR", "No se encontro el registro a editar", "danger");
-          await cargarPersonas();
+          clearPersonasListCache();
+          await cargarPersonas({ force: true });
           return;
         }
 
@@ -1555,7 +1669,8 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
       setEditId(null);
       setForm(emptyForm);
       setTouched(createInitialTouched());
-      await cargarPersonas();
+      clearPersonasListCache();
+      await cargarPersonas({ force: true });
       await cargarKpiGlobales();
     } catch (error) {
       if (isUniqueConstraintError(error)) {
@@ -1616,11 +1731,12 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
         setForm(emptyForm);
       }
 
+      clearPersonasListCache();
       const quedaVaciaPagina = personas.length === 1 && page > 1;
       if (quedaVaciaPagina) {
         setPage((prev) => Math.max(1, prev - 1));
       } else {
-        await cargarPersonas();
+        await cargarPersonas({ force: true });
       }
       await cargarKpiGlobales();
 
@@ -1628,12 +1744,14 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
       closeConfirmDelete();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo eliminar", "danger");
-      await cargarPersonas();
+      clearPersonasListCache();
+      await cargarPersonas({ force: true });
     } finally {
       if (mountedRef.current) setDeletingId(null);
     }
   }, [
     actionLoading,
+    clearPersonasListCache,
     cargarKpiGlobales,
     cargarPersonas,
     closeConfirmDelete,
@@ -1758,8 +1876,9 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
   }, [actionLoading, blurFocusedElementInside, closeFormDrawer]);
 
   const retryListLoad = useCallback(() => {
-    cargarPersonas();
-  }, [cargarPersonas]);
+    clearPersonasListCache();
+    cargarPersonas({ force: true });
+  }, [cargarPersonas, clearPersonasListCache]);
 
   return (
     <div className="personas-page personas-page--personas">
@@ -1862,12 +1981,6 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
           </div>
         ) : null}
 
-        {normalizedSucursalContext ? (
-          <div className="personas-page__scope-note" role="status" aria-live="polite">
-            Personas se muestra en modo global para la sucursal seleccionada. El modelo actual no segmenta personas por sucursal.
-          </div>
-        ) : null}
-
         <StatsCardsRow cards={statsCards} ariaLabel="Resumen de personas" />
 
         <div className="inv-catpro-body inv-prod-body p-3">
@@ -1935,7 +2048,7 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
                       const dotClass = isActive ? "ok" : "off";
                       const idPersona = persona?.id_persona;
                       const deleting = deletingId === idPersona;
-                      const tableIndex = idx;
+                      const tableIndex = (page - 1) * pageSize + idx;
                       const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
                       const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
                       const direccion = persona?.direccion ?? persona?.direccion_detalle;
@@ -1999,7 +2112,7 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
                   const dotClass = isActive ? "ok" : "off";
                   const idPersona = persona?.id_persona;
                   const deleting = deletingId === idPersona;
-                  const cardIndex = idx;
+                  const cardIndex = (page - 1) * pageSize + idx;
                   const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim() || "Persona sin nombre";
                   const telefono = persona?.telefono ?? persona?.telefono_numero ?? persona?.numero_telefono;
                   const direccion = persona?.direccion ?? persona?.direccion_detalle;
@@ -2177,7 +2290,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
           <div className="row g-3 crud-modal__grid">
             <div className="col-12 col-md-6">
-              <label className="form-label" style={{ color: "#000" }}>Nombre</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>Nombre</span>
+                <span className="persona-field-label__meta is-required">Oblig.</span>
+              </label>
               <input
                 className={`form-control ${touched.nombre && errors.nombre ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
@@ -2192,7 +2308,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label" style={{ color: "#000" }}>Apellido</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>Apellido</span>
+                <span className="persona-field-label__meta is-required">Oblig.</span>
+              </label>
               <input
                 className={`form-control ${touched.apellido && errors.apellido ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
@@ -2207,7 +2326,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label" style={{ color: "#000" }}>DNI</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>DNI</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 ref={dniInputRef}
                 type="text"
@@ -2228,7 +2350,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label" style={{ color: "#000" }}>RTN</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>RTN</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 className={`form-control ${touched.rtn && errors.rtn ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
@@ -2247,7 +2372,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label" style={{ color: "#000" }}>Genero</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>Genero</span>
+                <span className="persona-field-label__meta is-required">Oblig.</span>
+              </label>
               <select
                 className={`form-select ${touched.genero && errors.genero ? "is-invalid" : ""}`}
                 style={{ color: "#000" }}
@@ -2263,7 +2391,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label" style={{ color: "#000" }}>Fecha nacimiento</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>Fecha Nacimiento</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 type="date"
                 className={`form-control ${touched.fechaNacimiento && errors.fecha_nacimiento ? "is-invalid" : ""}`}
@@ -2276,7 +2407,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label" style={{ color: "#000" }}>Telefono</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>Telefono</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 ref={telefonoInputRef}
                 type="text"
@@ -2297,7 +2431,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label" style={{ color: "#000" }}>Direccion</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>Direccion</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 type="text"
                 className={`form-control ${errors.id_direccion ? "is-invalid" : ""}`}
@@ -2310,7 +2447,10 @@ export default function Personas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12">
-              <label className="form-label" style={{ color: "#000" }}>Correo</label>
+              <label className="form-label persona-field-label" style={{ color: "#000" }}>
+                <span>Correo</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 type="text"
                 className={`form-control ${touched.correo && errors.id_correo ? "is-invalid" : ""}`}

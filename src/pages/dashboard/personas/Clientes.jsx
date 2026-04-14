@@ -149,6 +149,14 @@ const normalizeSearchKey = (value) => String(value ?? "").trim().toLowerCase();
 const ASYNC_SELECT_LIMIT = 80;
 const ASYNC_SELECT_DEBOUNCE_MS = 300;
 const SUGGESTION_LIMIT = 8;
+const MAX_CLIENTES_PAGE_CACHE = 24;
+
+const isAbortError = (error) =>
+  Boolean(error) && (
+    error.name === "AbortError" ||
+    error.code === "ABORT_ERR" ||
+    String(error.message || "").toLowerCase().includes("aborted")
+  );
 
 const filterAsyncOptions = (options, needle, limit = ASYNC_SELECT_LIMIT) => {
   const normalizedNeedle = normalizeSearchKey(needle);
@@ -217,6 +225,8 @@ const firstNonEmptyValue = (...values) => {
 
 const resolveClienteOrigen = (cliente) => {
   const explicitOrigen = normalizeValue(cliente?.origen_cliente);
+  if (explicitOrigen === "empresa" || explicitOrigen === "persona") return explicitOrigen;
+
   const hasPersona = Boolean(
     firstNonEmptyValue(
       cliente?.id_persona,
@@ -229,6 +239,7 @@ const resolveClienteOrigen = (cliente) => {
   );
   const hasEmpresa = Boolean(
     firstNonEmptyValue(
+      cliente?.id_empresa_cliente,
       cliente?.id_empresa,
       cliente?.nombre_empresa,
       cliente?.empresa_rtn,
@@ -243,7 +254,6 @@ const resolveClienteOrigen = (cliente) => {
     return cliente?.id_persona ? "persona" : "empresa";
   }
 
-  if (explicitOrigen === "empresa") return "empresa";
   return "persona";
 };
 
@@ -274,7 +284,11 @@ const normalizeClienteForView = (cliente) => {
     origen_label: origen === "empresa" ? "Cliente Empresa" : "Cliente Persona",
     nombre_principal: nombrePrincipal || null,
     subtitulo_principal: firstNonEmptyValue(cliente?.subtitulo_principal),
-    tipo_cliente: tipoCliente || null,
+    tipo_cliente: firstNonEmptyValue(
+      tipoCliente,
+      cliente?.tipo_cliente_nombre,
+      cliente?.nombre_tipo_cliente
+    ) || null,
     telefono: telefono || null,
     correo: correo || null,
     fecha_ingreso: fechaIngreso || null,
@@ -295,15 +309,53 @@ const parsePositiveInteger = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const resolveClienteSucursalId = (cliente) =>
-  parsePositiveInteger(
-    firstNonEmptyValue(
-      cliente?.id_sucursal,
-      cliente?.sucursal_id,
-      cliente?.persona_id_sucursal,
-      cliente?.empresa_id_sucursal
-    )
-  );
+const extractPositiveIdFromAny = (payload, candidateKeys = []) => {
+  const queue = [payload];
+  const seen = new Set();
+
+  while (queue.length) {
+    const node = queue.shift();
+    if (node === null || node === undefined) continue;
+
+    const direct = parsePositiveInteger(node);
+    if (direct) return direct;
+
+    if (typeof node === "string") {
+      const text = node.trim();
+      if (!text) continue;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed !== node) queue.push(parsed);
+      } catch {
+        // ignore parse errors
+      }
+      continue;
+    }
+
+    if (typeof node !== "object") continue;
+    if (seen.has(node)) continue;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      node.forEach((item) => queue.push(item));
+      continue;
+    }
+
+    candidateKeys.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(node, key)) {
+        queue.push(node[key]);
+      }
+    });
+
+    Object.entries(node).forEach(([key, value]) => {
+      if (/^id$|^id_|_id$/i.test(String(key))) queue.push(value);
+    });
+
+    Object.values(node).forEach((value) => queue.push(value));
+  }
+
+  return null;
+};
 
 const detectEstadoField = (record) => {
   if (Object.prototype.hasOwnProperty.call(record || {}, "estado")) return "estado";
@@ -370,6 +422,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const listAbortRef = useRef(null);
+  const listPrefetchAbortRef = useRef(null);
+  const clientesListCacheRef = useRef(new Map());
   const catalogosCargadosRef = useRef(false);
   const panelRef = useRef(null);
   const empresaSearchCacheRef = useRef(new Map());
@@ -606,8 +661,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
             );
 
       const resolvedEmpresa =
-        cliente?.id_empresa
-          ? String(cliente.id_empresa)
+        firstNonEmptyValue(cliente?.id_empresa_cliente, cliente?.id_empresa)
+          ? String(firstNonEmptyValue(cliente?.id_empresa_cliente, cliente?.id_empresa))
           : resolveIdFromLabel(
               cliente?.nombre_empresa || cliente?.empresa_nombre || cliente?.empresa,
               empresaOptions
@@ -775,6 +830,110 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     [tipoClienteSelectOptions]
   );
 
+  const buildClientesCacheKey = useCallback(
+    (targetPage) =>
+      JSON.stringify({
+        page: Number(targetPage) || 1,
+        limit,
+        search: normalizeSearchText(debouncedSearch),
+        sucursal: parsePositiveInteger(selectedSucursalId) || null,
+      }),
+    [limit, debouncedSearch, selectedSucursalId]
+  );
+
+  const normalizeClientesPage = useCallback(
+    (items = []) =>
+      (Array.isArray(items) ? items : []).map((item) => {
+        const normalized = normalizeClienteForView(item);
+        if (normalized?.tipo_cliente) return normalized;
+
+        const tipoId = String(normalized?.id_tipo_cliente ?? "").trim();
+        const tipoOption = tipoId ? tipoClienteSelectOptionsById.get(tipoId) : null;
+        if (tipoOption?.label) {
+          return {
+            ...normalized,
+            tipo_cliente: String(tipoOption.label).trim(),
+          };
+        }
+
+        return normalized;
+      }),
+    [tipoClienteSelectOptionsById]
+  );
+
+  const setClientesCacheEntry = useCallback((cacheKey, data) => {
+    if (!cacheKey) return;
+    const cache = clientesListCacheRef.current;
+    cache.delete(cacheKey);
+    cache.set(cacheKey, {
+      items: Array.isArray(data?.items) ? data.items : [],
+      total: Math.max(0, Number(data?.total) || 0),
+      cachedAt: Date.now(),
+    });
+
+    while (cache.size > MAX_CLIENTES_PAGE_CACHE) {
+      const oldestKey = cache.keys().next().value;
+      if (!oldestKey) break;
+      cache.delete(oldestKey);
+    }
+  }, []);
+
+  const clearClientesListCache = useCallback(() => {
+    clientesListCacheRef.current.clear();
+    listPrefetchAbortRef.current?.abort();
+    listPrefetchAbortRef.current = null;
+  }, []);
+
+  const prefetchClientesPage = useCallback(
+    async (targetPage, totalKnown = null) => {
+      const nextPage = Number(targetPage);
+      if (!Number.isFinite(nextPage) || nextPage < 1) return;
+
+      const totalValue = Number.isFinite(Number(totalKnown)) ? Number(totalKnown) : null;
+      if (totalValue !== null) {
+        const totalPages = Math.max(1, Math.ceil(totalValue / limit));
+        if (nextPage > totalPages) return;
+      }
+
+      const cacheKey = buildClientesCacheKey(nextPage);
+      if (clientesListCacheRef.current.has(cacheKey)) return;
+
+      listPrefetchAbortRef.current?.abort();
+      const controller = new AbortController();
+      listPrefetchAbortRef.current = controller;
+
+      try {
+        const normalizedSucursalId = parsePositiveInteger(selectedSucursalId);
+        const resp = await personaService.getClientes({
+          page: nextPage,
+          limit,
+          nombre: debouncedSearch || undefined,
+          id_sucursal: normalizedSucursalId || undefined,
+          signal: controller.signal,
+        });
+
+        if (!mountedRef.current || controller.signal.aborted) return;
+        const { items, total: totalResp } = normalizeListResponse(resp);
+        const normalizedItems = normalizeClientesPage(items);
+        setClientesCacheEntry(cacheKey, { items: normalizedItems, total: totalResp });
+      } catch (error) {
+        if (isAbortError(error)) return;
+      } finally {
+        if (listPrefetchAbortRef.current === controller) {
+          listPrefetchAbortRef.current = null;
+        }
+      }
+    },
+    [
+      buildClientesCacheKey,
+      debouncedSearch,
+      limit,
+      normalizeClientesPage,
+      selectedSucursalId,
+      setClientesCacheEntry,
+    ]
+  );
+
   const cargarCatalogos = useCallback(async () => {
     if (catalogosCargadosRef.current) return;
 
@@ -796,55 +955,66 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     }
   }, [safeToast]);
 
-  const cargarClientes = useCallback(async () => {
-    setLoading(true);
+  const cargarClientes = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
     const normalizedSucursalId = parsePositiveInteger(selectedSucursalId);
+    const requestedPage = parsePositiveInteger(options?.page);
+    const targetPage = requestedPage || page;
+    const force = Boolean(options?.force);
+
+    listAbortRef.current?.abort();
+    listAbortRef.current = null;
+
+    const cacheKey = buildClientesCacheKey(targetPage);
+    if (!force) {
+      const cached = clientesListCacheRef.current.get(cacheKey);
+      if (cached) {
+        setClientes(Array.isArray(cached.items) ? cached.items : []);
+        setTotal(Math.max(0, Number(cached.total) || 0));
+        setLoading(false);
+        prefetchClientesPage(targetPage + 1, cached.total);
+        return;
+      }
+    }
+
+    setLoading(true);
+    const controller = new AbortController();
+    listAbortRef.current = controller;
 
     try {
       const resp = await personaService.getClientes({
-        page,
+        page: targetPage,
         limit,
         nombre: debouncedSearch || undefined,
         id_sucursal: normalizedSucursalId || undefined,
+        signal: controller.signal,
       });
 
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
-      const scopeMode = String(resp?.scope_info?.mode ?? '').trim().toLowerCase();
-      if (normalizedSucursalId && scopeMode === 'global_fallback') {
+      const scopeMode = String(resp?.scope_info?.mode ?? "").trim().toLowerCase();
+      if (normalizedSucursalId && scopeMode === "unsupported") {
         const marker = String(normalizedSucursalId);
         if (sucursalFallbackNoticeRef.current !== marker) {
           sucursalFallbackNoticeRef.current = marker;
           safeToast(
-            'INFO',
-            'Clientes se muestra en modo global: el modelo actual no permite filtrar por sucursal en backend.',
-            'info'
+            "INFO",
+            "El filtro estricto por sucursal requiere la tabla clientes_sucursales en backend.",
+            "info"
           );
         }
-      } else if (scopeMode !== 'global_fallback') {
-        sucursalFallbackNoticeRef.current = '';
+      } else if (scopeMode !== "unsupported") {
+        sucursalFallbackNoticeRef.current = "";
       }
 
       const { items, total: totalResp } = normalizeListResponse(resp);
-      const normalizedItems = (Array.isArray(items) ? items : []).map(normalizeClienteForView);
-      const hasSucursalMetadata = normalizedItems.some((item) => resolveClienteSucursalId(item) !== null);
-      const filteredItems =
-        normalizedSucursalId && hasSucursalMetadata
-          ? normalizedItems.filter((item) => {
-              const itemSucursalId = resolveClienteSucursalId(item);
-              if (!itemSucursalId) return true;
-              return itemSucursalId === normalizedSucursalId;
-            })
-          : normalizedItems;
-
-      setClientes(filteredItems);
-      setTotal(
-        normalizedSucursalId && hasSucursalMetadata
-          ? filteredItems.length
-          : totalResp
-      );
+      const normalizedItems = normalizeClientesPage(items);
+      setClientes(normalizedItems);
+      setTotal(totalResp);
+      setClientesCacheEntry(cacheKey, { items: normalizedItems, total: totalResp });
+      prefetchClientesPage(targetPage + 1, totalResp);
     } catch (error) {
+      if (isAbortError(error)) return;
       if (!mountedRef.current) return;
       safeToast("ERROR", error.message || "No se pudo cargar clientes", "danger");
       setClientes([]);
@@ -854,12 +1024,26 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         setLoading(false);
       }
     }
-  }, [page, limit, debouncedSearch, safeToast, selectedSucursalId]);
+  }, [
+    buildClientesCacheKey,
+    page,
+    limit,
+    debouncedSearch,
+    safeToast,
+    selectedSucursalId,
+    normalizeClientesPage,
+    setClientesCacheEntry,
+    prefetchClientesPage,
+  ]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      listAbortRef.current?.abort();
+      listAbortRef.current = null;
+      listPrefetchAbortRef.current?.abort();
+      listPrefetchAbortRef.current = null;
       if (empresaDebounceTimerRef.current) {
         clearTimeout(empresaDebounceTimerRef.current);
       }
@@ -873,8 +1057,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   }, []);
 
   useEffect(() => {
+    if (!showModal) return;
     cargarCatalogos();
-  }, [cargarCatalogos]);
+  }, [showModal, cargarCatalogos]);
 
   useEffect(() => {
     cargarClientes();
@@ -929,6 +1114,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     return {
       id_persona: personaId ? parseIntegerValue(personaId) : null,
       id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
+      id_empresa_cliente: empresaId ? parseIntegerValue(empresaId) : null,
       id_tipo_cliente: tipoClienteId ? parseIntegerValue(tipoClienteId) : null,
       id_sucursal: contextSucursalId || null,
       fecha_ingreso: form.fecha_ingreso,
@@ -947,33 +1133,35 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     const usingInlineEmpresa = clienteOriginType === "empresa" && useInlineEmpresaCreate;
 
     if (hasPersona && hasEmpresa) {
-      currentErrors.id_persona = "Solo puede seleccionar una opcion";
-      currentErrors.id_empresa = "Solo puede seleccionar una opcion";
+      currentErrors.id_persona = "Solo puedes seleccionar una opcion";
+      currentErrors.id_empresa = "Solo puedes seleccionar una opcion";
     } else if (clienteOriginType === "persona") {
-      if (!hasPersona && !usingInlinePersona) currentErrors.id_persona = "Seleccione una persona";
-      if (hasEmpresa) currentErrors.id_empresa = "No aplica para Cliente Persona";
+      if (!hasPersona && !usingInlinePersona) currentErrors.id_persona = "Selecciona una persona o crea una nueva";
+      if (hasEmpresa) currentErrors.id_empresa = "Este campo no aplica para Cliente Persona";
     } else if (clienteOriginType === "empresa") {
-      if (!hasEmpresa && !usingInlineEmpresa) currentErrors.id_empresa = "Seleccione una empresa";
-      if (hasPersona) currentErrors.id_persona = "No aplica para Cliente Empresa";
+      if (!hasEmpresa && !usingInlineEmpresa) currentErrors.id_empresa = "Selecciona una empresa o crea una nueva";
+      if (hasPersona) currentErrors.id_persona = "Este campo no aplica para Cliente Empresa";
     }
 
     if (usingInlinePersona) {
       const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
       if (Object.keys(personaValidationErrors).length > 0) {
-        currentErrors.id_persona = "Completa los datos de la persona nueva";
+        currentErrors.id_persona = "Completa los datos de la persona nueva antes de continuar";
       }
     }
 
     if (usingInlineEmpresa) {
       const empresaValidationErrors = validateEmpresaForm(inlineEmpresaForm);
       if (Object.keys(empresaValidationErrors).length > 0) {
-        currentErrors.id_empresa = "Completa los datos de la empresa nueva";
+        currentErrors.id_empresa = "Completa los datos de la empresa nueva antes de continuar";
       }
     }
 
-    if (!form.id_tipo_cliente) currentErrors.id_tipo_cliente = "Seleccione";
-    if (!form.fecha_ingreso || form.fecha_ingreso > today) currentErrors.fecha_ingreso = "Fecha invalida";
-    if (form.puntos === "") currentErrors.puntos = "Requerido";
+    if (!form.id_tipo_cliente) currentErrors.id_tipo_cliente = "Selecciona un tipo de cliente";
+    if (!form.fecha_ingreso || form.fecha_ingreso > today) {
+      currentErrors.fecha_ingreso = "Ingresa una fecha valida (hoy o anterior)";
+    }
+    if (form.puntos === "") currentErrors.puntos = "Ingresa los puntos iniciales";
     if (Number.isNaN(payload.puntos) || payload.puntos < 0) currentErrors.puntos = "Debe ser entero mayor o igual a 0";
 
     setErrors(currentErrors);
@@ -997,7 +1185,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         const clienteOriginal = clientes.find((item) => String(item.id_cliente) === String(editId));
         if (!clienteOriginal) {
           safeToast("ERROR", "No se encontro el registro a editar", "danger");
-          await cargarClientes();
+          clearClientesListCache();
+          await cargarClientes({ force: true });
           return;
         }
 
@@ -1018,6 +1207,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               updatePayload[estadoField] = payloadLimpio.estado;
               return;
             }
+            if (key === "id_empresa") {
+              updatePayload.id_empresa_cliente = payloadLimpio.id_empresa_cliente;
+            }
             updatePayload[key] = payloadLimpio[key];
           });
 
@@ -1025,22 +1217,86 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           safeToast("OK", "Cliente actualizado");
         }
       } else {
+        let createResult = null;
         if (clienteOriginType === "persona" && useInlinePersonaCreate) {
-          await personaService.createClienteAtomico({
-            origen: "persona",
-            persona: buildPersonaPayloadFromForm(inlinePersonaForm),
-            cliente: payloadLimpio,
-          });
+          try {
+            createResult = await personaService.createClienteAtomico({
+              origen: "persona",
+              persona: buildPersonaPayloadFromForm(inlinePersonaForm),
+              cliente: payloadLimpio,
+            });
+          } catch (atomicError) {
+            if (Number(atomicError?.status) !== 500) throw atomicError;
+
+            const personaCreada = await personaService.createPersona(
+              buildPersonaPayloadFromForm(inlinePersonaForm),
+              { context: "clientes" }
+            );
+            const idPersonaFallback = extractPositiveIdFromAny(personaCreada, [
+              "id_persona",
+              "persona_id",
+              "id",
+            ]);
+            if (!idPersonaFallback) throw atomicError;
+
+            createResult = await personaService.createCliente({
+              ...payloadLimpio,
+              id_persona: idPersonaFallback,
+              id_empresa: null,
+              id_empresa_cliente: null,
+            });
+            createResult = {
+              ...(createResult || {}),
+              message:
+                createResult?.message ||
+                "Cliente creado con ruta de respaldo.",
+            };
+          }
         } else if (clienteOriginType === "empresa" && useInlineEmpresaCreate) {
-          await personaService.createClienteAtomico({
-            origen: "empresa",
-            empresa: buildEmpresaPayloadFromForm(inlineEmpresaForm),
-            cliente: payloadLimpio,
-          });
+          try {
+            createResult = await personaService.createClienteAtomico({
+              origen: "empresa",
+              empresa: buildEmpresaPayloadFromForm(inlineEmpresaForm),
+              cliente: payloadLimpio,
+            });
+          } catch (atomicError) {
+            if (Number(atomicError?.status) !== 500) throw atomicError;
+
+            const empresaCreada = await personaService.createEmpresa(
+              buildEmpresaPayloadFromForm(inlineEmpresaForm),
+              { context: "clientes" }
+            );
+            const idEmpresaFallback = extractPositiveIdFromAny(empresaCreada, [
+              "id_empresa",
+              "empresa_id",
+              "id",
+            ]);
+            if (!idEmpresaFallback) throw atomicError;
+
+            createResult = await personaService.createCliente({
+              ...payloadLimpio,
+              id_empresa: idEmpresaFallback,
+              id_empresa_cliente: idEmpresaFallback,
+              id_persona: null,
+            });
+            createResult = {
+              ...(createResult || {}),
+              message:
+                createResult?.message ||
+                "Cliente creado con ruta de respaldo.",
+            };
+          }
         } else {
-          await personaService.createCliente(payloadLimpio);
+          createResult = await personaService.createCliente(payloadLimpio);
         }
-        safeToast("OK", "Cliente creado");
+        const backendMessage = String(
+          createResult?.message || createResult?.data?.message || ""
+        ).trim();
+        if (createResult?.vinculado) {
+          safeToast("INFO", backendMessage || "Cliente existente vinculado a la sucursal", "info");
+        } else {
+          safeToast("OK", backendMessage || "Cliente creado");
+        }
       }
 
       closeFormDrawer();
@@ -1052,7 +1308,13 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       setInlineEmpresaForm(emptyInlineEmpresaForm);
       setShowPersonaCreateModal(false);
       setShowEmpresaCreateModal(false);
-      await cargarClientes();
+      clearClientesListCache();
+      if (!editId && page !== 1) {
+        setPage(1);
+        await cargarClientes({ page: 1, force: true });
+      } else {
+        await cargarClientes({ force: true });
+      }
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo guardar", "danger");
     } finally {
@@ -1154,14 +1416,16 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       if (quedaVaciaPagina) {
         setPage((prev) => Math.max(1, prev - 1));
       } else {
-        await cargarClientes();
+        clearClientesListCache();
+        await cargarClientes({ force: true });
       }
 
       safeToast("OK", "Cliente eliminado");
       closeConfirmDelete();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo eliminar", "danger");
-      await cargarClientes();
+      clearClientesListCache();
+      await cargarClientes({ force: true });
     } finally {
       if (mountedRef.current) setDeletingId(null);
     }
@@ -1289,7 +1553,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     committedSearch: debouncedSearch,
     onSearchUpdate: handleSearchUpdate,
     predictiveSuggestions,
-    recentStorageKey: "clientesRecentSearchesV1",
+    recentStorageKey: `clientesRecentSearchesV1::sucursal:${parsePositiveInteger(selectedSucursalId) || "none"}`,
   });
 
   const stats = useMemo(() => {
@@ -1308,6 +1572,14 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const personaDisabled = actionLoading || clienteOriginType === "empresa";
   const empresaDisabled = actionLoading || clienteOriginType === "persona";
   const formOriginLabel = clienteOriginType === "empresa" ? "Cliente Empresa" : "Cliente Persona";
+  const todayDate = new Date().toISOString().split("T")[0];
+  const isInlinePersonaFlow = drawerMode === "create" && clienteOriginType === "persona" && useInlinePersonaCreate;
+  const isInlineEmpresaFlow = drawerMode === "create" && clienteOriginType === "empresa" && useInlineEmpresaCreate;
+  const createSubtitle = isInlinePersonaFlow
+    ? "Paso 1 de 2: completa la persona. Luego define los datos del cliente y guarda."
+    : isInlineEmpresaFlow
+      ? "Paso 1 de 2: completa la empresa. Luego define los datos del cliente y guarda."
+      : "Paso 1: elige Persona o Empresa. Paso 2: selecciona o crea el registro base y completa el cliente.";
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -1600,7 +1872,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           <div className="crud-modal__header-copy">
             <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo cliente" : "Editar cliente"}</div>
             <div className="inv-prod-drawer-sub crud-modal__subtitle">
-              Completa los campos y guarda los cambios.
+              {drawerMode === "create" ? createSubtitle : "Actualiza los campos necesarios y guarda los cambios."}
             </div>
           </div>
           <button
@@ -1649,11 +1921,11 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                 {formOriginLabel}
               </span>
               <span className="clientes-modal__origin-caption">
-                {drawerMode === "edit" ? "Origen actual del cliente" : "Define el origen del cliente"}
+                {drawerMode === "edit" ? "Origen actual del cliente" : "Paso 1: define el origen del cliente"}
               </span>
             </div>
             <p className="clientes-modal__origin-text">
-              Seleccione una persona o una empresa. Solo puede elegir una opcion.
+              Solo puedes trabajar con una opcion: Cliente Persona o Cliente Empresa.
             </p>
           </div>
 
@@ -1661,6 +1933,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
             {clienteOriginType === "persona" ? (
               <div className="col-12">
                 <SmartSelectEntity
+                  className="clientes-modal__entity-block"
                   label="Persona"
                   showToggle={drawerMode === "create"}
                   isInlineCreate={drawerMode === "create" && useInlinePersonaCreate}
@@ -1678,7 +1951,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                     });
                     setErrors((state) => ({ ...state, id_persona: undefined }));
                   }}
-                  toggleCreateLabel="+ Crear persona nueva"
+                  toggleVariant="dual"
+                  toggleCreateLabel="Crear persona nueva"
                   toggleExistingLabel="Usar persona existente"
                   toggleDisabled={actionLoading}
                   selector={
@@ -1686,7 +1960,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       inputId="cliente-persona-select"
                       className={`clientes-persona-select ${errors.id_persona ? "is-invalid" : ""}`}
                       classNamePrefix="clientes-persona-select"
-                      placeholder="Seleccione"
+                      placeholder="Buscar y seleccionar persona"
                       isSearchable
                       isClearable
                       options={personaSelectOptions}
@@ -1707,32 +1981,32 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                     />
                   }
                   error={errors.id_persona}
-                  helperText='Para cambiar a empresa, selecciona primero el tipo "Cliente Empresa".'
+                  helperText='Si necesitas registrar una empresa, cambia arriba a "Cliente Empresa".'
                   inlineContent={
-                    <div className="smart-select-entity__summary">
-                      <div className="small text-muted mb-2">
+                    <div className="smart-select-entity__summary clientes-inline-summary">
+                      <div className="clientes-inline-summary__text">
                         {String(inlinePersonaForm.nombre ?? "").trim()
-                          ? "Persona nueva lista para guardar."
-                          : "Completa los datos de la persona nueva para continuar."}
+                          ? "Persona lista. Ahora completa tipo de cliente, fecha de ingreso y puntos."
+                          : "Primero completa los datos de la persona para continuar."}
                       </div>
-                      <div className="d-flex flex-wrap gap-2 align-items-center">
-                        <span className="badge text-bg-light border">
+                      <div className="clientes-inline-summary__chips">
+                        <span className="clientes-inline-summary__chip">
                           {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
                           {String(inlinePersonaForm.apellido ?? "").trim()}
                         </span>
-                        <span className="badge text-bg-light border">
+                        <span className="clientes-inline-summary__chip">
                           DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
                         </span>
                       </div>
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline-secondary mt-2"
+                        className="btn btn-sm clientes-inline-summary__action"
                         onClick={() => setShowPersonaCreateModal(true)}
                         disabled={actionLoading}
                       >
                         {String(inlinePersonaForm.nombre ?? "").trim()
-                          ? "Editar datos de persona"
-                          : "Completar datos de persona"}
+                          ? "Revisar persona creada"
+                          : "Abrir formulario de persona"}
                       </button>
                     </div>
                   }
@@ -1741,6 +2015,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
             ) : (
               <div className="col-12">
                 <SmartSelectEntity
+                  className="clientes-modal__entity-block"
                   label="Empresa"
                   showToggle={drawerMode === "create"}
                   isInlineCreate={drawerMode === "create" && useInlineEmpresaCreate}
@@ -1758,7 +2033,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                     });
                     setErrors((state) => ({ ...state, id_empresa: undefined }));
                   }}
-                  toggleCreateLabel="+ Crear empresa nueva"
+                  toggleVariant="dual"
+                  toggleCreateLabel="Crear empresa nueva"
                   toggleExistingLabel="Usar empresa existente"
                   toggleDisabled={actionLoading}
                   selector={
@@ -1766,7 +2042,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       inputId="cliente-empresa-select"
                       className={`clientes-persona-select ${errors.id_empresa ? "is-invalid" : ""}`}
                       classNamePrefix="clientes-persona-select"
-                      placeholder="Seleccione"
+                      placeholder="Buscar y seleccionar empresa"
                       cacheOptions
                       defaultOptions={empresaDefaultOptions}
                       loadOptions={loadEmpresaOptions}
@@ -1790,31 +2066,31 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                     />
                   }
                   error={errors.id_empresa}
-                  helperText='Para cambiar a persona, selecciona primero el tipo "Cliente Persona".'
+                  helperText='Si necesitas registrar una persona, cambia arriba a "Cliente Persona".'
                   inlineContent={
-                    <div className="smart-select-entity__summary">
-                      <div className="small text-muted mb-2">
+                    <div className="smart-select-entity__summary clientes-inline-summary">
+                      <div className="clientes-inline-summary__text">
                         {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
-                          ? "Empresa nueva lista para guardar."
-                          : "Completa los datos de la empresa nueva para continuar."}
+                          ? "Empresa lista. Ahora completa tipo de cliente, fecha de ingreso y puntos."
+                          : "Primero completa los datos de la empresa para continuar."}
                       </div>
-                      <div className="d-flex flex-wrap gap-2 align-items-center">
-                        <span className="badge text-bg-light border">
+                      <div className="clientes-inline-summary__chips">
+                        <span className="clientes-inline-summary__chip">
                           {String(inlineEmpresaForm.nombre_empresa ?? "").trim() || "Sin nombre de empresa"}
                         </span>
-                        <span className="badge text-bg-light border">
+                        <span className="clientes-inline-summary__chip">
                           RTN: {toDisplayValue(inlineEmpresaForm.rtn, "N/D")}
                         </span>
                       </div>
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline-secondary mt-2"
+                        className="btn btn-sm clientes-inline-summary__action"
                         onClick={() => setShowEmpresaCreateModal(true)}
                         disabled={actionLoading}
                       >
                         {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
-                          ? "Editar datos de empresa"
-                          : "Completar datos de empresa"}
+                          ? "Revisar empresa creada"
+                          : "Abrir formulario de empresa"}
                       </button>
                     </div>
                   }
@@ -1823,12 +2099,12 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
             )}
 
             <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Tipo cliente</label>
+              <label className="form-label text-light text-opacity-75">Tipo de cliente</label>
               <AsyncSelect
                 inputId="cliente-tipo-select"
                 className={`clientes-persona-select ${errors.id_tipo_cliente ? "is-invalid" : ""}`}
                 classNamePrefix="clientes-persona-select"
-                placeholder="Seleccione"
+                placeholder="Selecciona el tipo de cliente"
                 cacheOptions
                 defaultOptions={tipoClienteDefaultOptions}
                 loadOptions={loadTipoClienteOptions}
@@ -1850,12 +2126,13 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Fecha ingreso</label>
+              <label className="form-label text-light text-opacity-75">Fecha de ingreso</label>
               <input
                 type="date"
                 className={`form-control ${errors.fecha_ingreso ? "is-invalid" : ""}`}
                 value={form.fecha_ingreso}
                 onChange={(event) => setForm((state) => ({ ...state, fecha_ingreso: event.target.value }))}
+                max={todayDate}
               />
               {errors.fecha_ingreso && <div className="invalid-feedback d-block">{errors.fecha_ingreso}</div>}
             </div>
@@ -1903,7 +2180,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
               disabled={actionLoading || !!deletingId}
             >
-              {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear" : "Guardar"}
+              {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear cliente" : "Guardar cambios"}
             </button>
           </div>
         </form>
@@ -1931,6 +2208,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           showEmpresaCreateModal
         }
         initialForm={inlineEmpresaForm}
+        title="Crear empresa para este cliente"
+        subtitle="Completa este paso y luego regresa para terminar el registro del cliente."
         onClose={() => setShowEmpresaCreateModal(false)}
         onSave={handleInlineEmpresaModalSave}
       />

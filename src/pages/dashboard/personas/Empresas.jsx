@@ -33,6 +33,14 @@ const PHONE_DIGITS_LENGTH = 8;
 const PHONE_DISPLAY_MAX_LENGTH = 9;
 const RTN_FORMAT_ERROR = "El RTN debe contener 14 digitos numericos.";
 const SUGGESTION_LIMIT = 8;
+const MAX_EMPRESAS_PAGE_CACHE = 24;
+
+const isAbortError = (error) =>
+  Boolean(error) && (
+    error.name === "AbortError" ||
+    error.code === "ABORT_ERR" ||
+    String(error.message || "").toLowerCase().includes("aborted")
+  );
 
 const normalizeText = (value) => String(value ?? "").trim();
 const toSearchableText = (value) => normalizeText(value).toLowerCase();
@@ -130,7 +138,7 @@ const isEmpresaActiva = (empresa) => {
   return false;
 };
 
-export default function Empresas({ openToast, selectedSucursalId = "" }) {
+export default function Empresas({ openToast }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -172,6 +180,9 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const listAbortRef = useRef(null);
+  const listPrefetchAbortRef = useRef(null);
+  const empresasListCacheRef = useRef(new Map());
   const catalogosCargadosRef = useRef(false);
   const panelRef = useRef(null);
   const rtnInputRef = useRef(null);
@@ -181,11 +192,6 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
   );
-  const normalizedSucursalContext = useMemo(() => {
-    const parsed = Number.parseInt(String(selectedSucursalId ?? ""), 10);
-    return Number.isInteger(parsed) && parsed > 0 ? String(parsed) : "";
-  }, [selectedSucursalId]);
-
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
 
@@ -272,6 +278,79 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
     []
   );
 
+  const buildEmpresasCacheKey = useCallback(
+    (targetPage) =>
+      JSON.stringify({
+        page: Number(targetPage) || 1,
+        limit,
+        search: normalizeSearchText(debouncedSearch),
+      }),
+    [limit, debouncedSearch]
+  );
+
+  const setEmpresasCacheEntry = useCallback((cacheKey, data) => {
+    if (!cacheKey) return;
+    const cache = empresasListCacheRef.current;
+    cache.delete(cacheKey);
+    cache.set(cacheKey, {
+      items: Array.isArray(data?.items) ? data.items : [],
+      total: Math.max(0, Number(data?.total) || 0),
+      cachedAt: Date.now(),
+    });
+
+    while (cache.size > MAX_EMPRESAS_PAGE_CACHE) {
+      const oldestKey = cache.keys().next().value;
+      if (!oldestKey) break;
+      cache.delete(oldestKey);
+    }
+  }, []);
+
+  const clearEmpresasListCache = useCallback(() => {
+    empresasListCacheRef.current.clear();
+    listPrefetchAbortRef.current?.abort();
+    listPrefetchAbortRef.current = null;
+  }, []);
+
+  const prefetchEmpresasPage = useCallback(
+    async (targetPage, totalKnown = null) => {
+      const nextPage = Number(targetPage);
+      if (!Number.isFinite(nextPage) || nextPage < 1) return;
+
+      const totalValue = Number.isFinite(Number(totalKnown)) ? Number(totalKnown) : null;
+      if (totalValue !== null) {
+        const totalPages = Math.max(1, Math.ceil(totalValue / limit));
+        if (nextPage > totalPages) return;
+      }
+
+      const cacheKey = buildEmpresasCacheKey(nextPage);
+      if (empresasListCacheRef.current.has(cacheKey)) return;
+
+      listPrefetchAbortRef.current?.abort();
+      const controller = new AbortController();
+      listPrefetchAbortRef.current = controller;
+
+      try {
+        const resp = await personaService.getEmpresas({
+          page: nextPage,
+          limit,
+          nombre: debouncedSearch || undefined,
+          signal: controller.signal,
+        });
+        if (!mountedRef.current || controller.signal.aborted) return;
+
+        const { data, total: totalResp } = normalizeListResponse(resp);
+        setEmpresasCacheEntry(cacheKey, { items: data, total: totalResp });
+      } catch (error) {
+        if (isAbortError(error)) return;
+      } finally {
+        if (listPrefetchAbortRef.current === controller) {
+          listPrefetchAbortRef.current = null;
+        }
+      }
+    },
+    [buildEmpresasCacheKey, debouncedSearch, limit, setEmpresasCacheEntry]
+  );
+
   const cargarCatalogos = useCallback(async () => {
     if (catalogosCargadosRef.current) return;
 
@@ -293,22 +372,47 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
     }
   }, [safeToast]);
 
-  const cargarEmpresas = useCallback(async () => {
-    setLoading(true);
+  const cargarEmpresas = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
+    const force = Boolean(options?.force);
+    const requestedPage = Number(options?.page);
+    const targetPage = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : page;
+
+    listAbortRef.current?.abort();
+    listAbortRef.current = null;
+
+    const cacheKey = buildEmpresasCacheKey(targetPage);
+    if (!force) {
+      const cached = empresasListCacheRef.current.get(cacheKey);
+      if (cached) {
+        setEmpresas(Array.isArray(cached.items) ? cached.items : []);
+        setTotal(Math.max(0, Number(cached.total) || 0));
+        setLoading(false);
+        prefetchEmpresasPage(targetPage + 1, cached.total);
+        return;
+      }
+    }
+
+    setLoading(true);
+    const controller = new AbortController();
+    listAbortRef.current = controller;
 
     try {
       const resp = await personaService.getEmpresas({
-        page,
+        page: targetPage,
         limit,
         nombre: debouncedSearch || undefined,
+        signal: controller.signal,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
       const { data, total: totalResp } = normalizeListResponse(resp);
       setEmpresas(data);
       setTotal(totalResp);
+      setEmpresasCacheEntry(cacheKey, { items: data, total: totalResp });
+      prefetchEmpresasPage(targetPage + 1, totalResp);
     } catch (error) {
+      if (isAbortError(error)) return;
       if (!mountedRef.current) return;
       safeToast("ERROR", error.message || "No se pudo cargar empresas", "danger");
       setEmpresas([]);
@@ -318,18 +422,31 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
         setLoading(false);
       }
     }
-  }, [page, limit, debouncedSearch, safeToast]);
+  }, [
+    buildEmpresasCacheKey,
+    page,
+    limit,
+    debouncedSearch,
+    safeToast,
+    setEmpresasCacheEntry,
+    prefetchEmpresasPage,
+  ]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      listAbortRef.current?.abort();
+      listAbortRef.current = null;
+      listPrefetchAbortRef.current?.abort();
+      listPrefetchAbortRef.current = null;
     };
   }, []);
 
   useEffect(() => {
+    if (!showModal) return;
     cargarCatalogos();
-  }, [cargarCatalogos]);
+  }, [showModal, cargarCatalogos]);
 
   useEffect(() => {
     cargarEmpresas();
@@ -498,7 +615,8 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
         const empresaOriginal = empresas.find((item) => String(item.id_empresa) === String(editId));
         if (!empresaOriginal) {
           safeToast("ERROR", "No se encontro la empresa a editar", "danger");
-          await cargarEmpresas();
+          clearEmpresasListCache();
+          await cargarEmpresas({ force: true });
           return;
         }
 
@@ -527,7 +645,8 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
-      await cargarEmpresas();
+      clearEmpresasListCache();
+      await cargarEmpresas({ force: true });
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo guardar", "danger");
     } finally {
@@ -581,14 +700,16 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
       if (quedaVaciaPagina) {
         setPage((prev) => Math.max(1, prev - 1));
       } else {
-        await cargarEmpresas();
+        clearEmpresasListCache();
+        await cargarEmpresas({ force: true });
       }
 
       safeToast("OK", "Empresa eliminada");
       closeConfirmDelete();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo eliminar", "danger");
-      await cargarEmpresas();
+      clearEmpresasListCache();
+      await cargarEmpresas({ force: true });
     } finally {
       if (mountedRef.current) setDeletingId(null);
     }
@@ -813,12 +934,6 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
           onClearRecent={clearRecentSearches}
         />
 
-        {normalizedSucursalContext ? (
-          <div className="personas-page__scope-note" role="status" aria-live="polite">
-            Empresas se muestra en modo global para la sucursal seleccionada. El modelo actual no segmenta empresas por sucursal.
-          </div>
-        ) : null}
-
         <ModuleKPICards stats={stats} totalLabel="Total de empresas" />
 
         <div className="inv-catpro-body inv-prod-body p-3">
@@ -1038,7 +1153,10 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite empresas-modal__body" onSubmit={guardar}>
           <div className="row g-3 empresas-modal__grid">
             <div className="col-12 col-md-6 empresas-modal__field">
-              <label className="form-label empresas-modal__label">RTN</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>RTN</span>
+                <span className="empresas-modal__field-meta is-required">Oblig.</span>
+              </label>
               <input
                 ref={rtnInputRef}
                 type="text"
@@ -1054,7 +1172,10 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6 empresas-modal__field">
-              <label className="form-label empresas-modal__label">Nombre empresa</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>Nombre Empresa</span>
+                <span className="empresas-modal__field-meta is-required">Oblig.</span>
+              </label>
               <input
                 className={`form-control empresas-modal__input ${errors.nombre_empresa ? "is-invalid" : ""}`}
                 placeholder="Ej: Inversiones La Esperanza"
@@ -1065,7 +1186,10 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6 empresas-modal__field">
-              <label className="form-label empresas-modal__label">Telefono</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>Telefono</span>
+                <span className="empresas-modal__field-meta is-optional">Opc.</span>
+              </label>
               <input
                 ref={telefonoInputRef}
                 type="text"
@@ -1087,7 +1211,10 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 col-md-6 empresas-modal__field">
-              <label className="form-label empresas-modal__label">Direccion</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>Direccion</span>
+                <span className="empresas-modal__field-meta is-optional">Opc.</span>
+              </label>
               <input
                 type="text"
                 list="emp-direcciones-sugeridas"
@@ -1105,7 +1232,10 @@ export default function Empresas({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="col-12 empresas-modal__field">
-              <label className="form-label empresas-modal__label">Correo</label>
+              <label className="form-label empresas-modal__label empresas-modal__field-label">
+                <span>Correo</span>
+                <span className="empresas-modal__field-meta is-optional">Opc.</span>
+              </label>
               <input
                 type="email"
                 list="emp-correos-sugeridos"

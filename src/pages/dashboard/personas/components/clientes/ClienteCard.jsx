@@ -55,7 +55,10 @@ export default function ClienteCard({
     origenTipo === "empresa" ? "RTN" : "DNI"
   );
   const documentoValor = toDisplayValue(cliente?.documento_valor, "N/D");
-  const tipoClienteLabel = toDisplayValue(cliente?.tipo_cliente, "Sin tipo");
+  const tipoClienteLabel = toDisplayValue(
+    cliente?.tipo_cliente ?? cliente?.tipo_cliente_nombre ?? cliente?.nombre_tipo_cliente,
+    "Sin tipo"
+  );
   const telefonoValue = toDisplayValue(cliente?.telefono, "Sin telefono");
   const correoValue = toDisplayValue(cliente?.correo, "Sin correo");
   const fechaIngresoLabel = formatDateLabel(cliente?.fecha_ingreso);

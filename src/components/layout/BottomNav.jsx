@@ -15,6 +15,7 @@ const BottomNav = () => {
   const [showInventarioSheet, setShowInventarioSheet] = useState(false);
 
   const isInInventario = location.pathname.startsWith('/dashboard/inventario');
+  const currentTab = String(new URLSearchParams(location.search || '').get('tab') || '').toLowerCase();
 
   const visibleMenuItems = useMemo(
     () => getVisibleModuleItems(permisos, { isSuperAdmin }),
@@ -34,6 +35,18 @@ const BottomNav = () => {
   const goInventario = (tab) => {
     setShowInventarioSheet(false);
     navigate(`/dashboard/inventario?tab=${tab}`);
+  };
+
+  const resolveIsActive = (item, isActive) => {
+    if (item.key === 'planillas') {
+      return location.pathname === '/dashboard/personas' && currentTab === 'planillas';
+    }
+
+    if (item.key === 'personas' && location.pathname === '/dashboard/personas' && currentTab === 'planillas') {
+      return false;
+    }
+
+    return isActive;
   };
 
   return (
@@ -69,7 +82,7 @@ const BottomNav = () => {
                   key={item.path}
                   to={item.path}
                   end={item.path === '/dashboard'}
-                  className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
+                  className={({ isActive }) => `bottom-nav-item ${resolveIsActive(item, isActive) ? 'active' : ''}`}
                   title={item.name}
                 >
                   <i className={`bi ${item.icon}`} />
@@ -142,3 +155,4 @@ const BottomNav = () => {
 };
 
 export default BottomNav;
+

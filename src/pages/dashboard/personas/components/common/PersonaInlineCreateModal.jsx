@@ -36,7 +36,7 @@ const buildTouchedAllTrue = () => ({
 export default function PersonaInlineCreateModal({
   show,
   title = "Nueva persona",
-  subtitle = "Completa los campos para crear la persona dentro del flujo actual.",
+  subtitle = "Completa los campos y guarda los cambios.",
   initialForm = null,
   onClose,
   onSave,
@@ -45,6 +45,7 @@ export default function PersonaInlineCreateModal({
   const [form, setForm] = useState(() => createInitialPersonaForm());
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState(() => createInitialPersonaTouched());
+  const drawerRef = useRef(null);
 
   const dniInputRef = useRef(null);
   const telefonoInputRef = useRef(null);
@@ -59,6 +60,20 @@ export default function PersonaInlineCreateModal({
     dniCaretRef.current = null;
     telefonoCaretRef.current = null;
   }, [show, initialForm]);
+
+  const releaseDrawerFocus = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const activeElement = document.activeElement;
+    const drawerNode = drawerRef.current;
+    if (!(activeElement instanceof HTMLElement)) return;
+    if (!drawerNode || !drawerNode.contains(activeElement)) return;
+    activeElement.blur();
+  }, []);
+
+  useEffect(() => {
+    if (show) return;
+    releaseDrawerFocus();
+  }, [show, releaseDrawerFocus]);
 
   useLayoutEffect(() => {
     if (dniCaretRef.current === null) return;
@@ -307,17 +322,24 @@ export default function PersonaInlineCreateModal({
     if (Object.keys(currentErrors).length > 0) return;
 
     const payload = buildPersonaPayloadFromForm(form);
+    releaseDrawerFocus();
     await onSave?.(payload, form);
   };
+
+  const handleRequestClose = useCallback(() => {
+    releaseDrawerFocus();
+    onClose?.();
+  }, [onClose, releaseDrawerFocus]);
 
   return (
     <>
       <div
         className={`inv-prod-drawer-backdrop persona-inline-create-modal__backdrop ${show ? "show" : ""}`}
-        onClick={saving ? undefined : onClose}
+        onClick={saving ? undefined : handleRequestClose}
       />
 
       <aside
+        ref={drawerRef}
         className={`inv-prod-drawer inv-cat-v2__drawer crud-modal personas-modal persona-inline-create-modal ${
           show ? "show" : ""
         }`}
@@ -333,7 +355,7 @@ export default function PersonaInlineCreateModal({
           <button
             type="button"
             className="inv-prod-drawer-close crud-modal__close"
-            onClick={onClose}
+            onClick={handleRequestClose}
             title="Cerrar"
             disabled={saving}
           >
@@ -344,10 +366,14 @@ export default function PersonaInlineCreateModal({
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={handleSave}>
           <div className="row g-2 crud-modal__grid mt-1">
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Nombre</label>
+              <label className="form-label persona-field-label">
+                <span>Nombre</span>
+                <span className="persona-field-label__meta is-required">Oblig.</span>
+              </label>
               <input
                 type="text"
                 className={`form-control ${touched.nombre && errors.nombre ? "is-invalid" : ""}`}
+                placeholder="Ej: Maria"
                 value={form.nombre}
                 onChange={handleLettersFieldChange("nombre")}
                 onBeforeInput={blockInvalidLettersBeforeInput}
@@ -359,10 +385,14 @@ export default function PersonaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Apellido</label>
+              <label className="form-label persona-field-label">
+                <span>Apellido</span>
+                <span className="persona-field-label__meta is-required">Oblig.</span>
+              </label>
               <input
                 type="text"
                 className={`form-control ${touched.apellido && errors.apellido ? "is-invalid" : ""}`}
+                placeholder="Ej: Rodriguez"
                 value={form.apellido}
                 onChange={handleLettersFieldChange("apellido")}
                 onBeforeInput={blockInvalidLettersBeforeInput}
@@ -376,7 +406,10 @@ export default function PersonaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">DNI</label>
+              <label className="form-label persona-field-label">
+                <span>DNI</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 ref={dniInputRef}
                 type="text"
@@ -397,13 +430,17 @@ export default function PersonaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">RTN</label>
+              <label className="form-label persona-field-label">
+                <span>RTN</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 type="text"
                 className={`form-control ${touched.rtn && errors.rtn ? "is-invalid" : ""}`}
                 inputMode="numeric"
                 autoComplete="off"
                 maxLength={1}
+                placeholder="9"
                 value={form.rtn}
                 onChange={handleRtnChange}
                 onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "rtn", 1)}
@@ -416,7 +453,10 @@ export default function PersonaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Genero</label>
+              <label className="form-label persona-field-label">
+                <span>Genero</span>
+                <span className="persona-field-label__meta is-required">Oblig.</span>
+              </label>
               <select
                 className={`form-select ${touched.genero && errors.genero ? "is-invalid" : ""}`}
                 value={form.genero}
@@ -432,7 +472,10 @@ export default function PersonaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Fecha nacimiento</label>
+              <label className="form-label persona-field-label">
+                <span>Fecha Nacimiento</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 type="date"
                 className={`form-control ${touched.fechaNacimiento && errors.fecha_nacimiento ? "is-invalid" : ""}`}
@@ -447,7 +490,10 @@ export default function PersonaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Telefono</label>
+              <label className="form-label persona-field-label">
+                <span>Telefono</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 ref={telefonoInputRef}
                 type="text"
@@ -470,10 +516,14 @@ export default function PersonaInlineCreateModal({
             </div>
 
             <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Direccion</label>
+              <label className="form-label persona-field-label">
+                <span>Direccion</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
                 type="text"
                 className={`form-control ${errors.id_direccion ? "is-invalid" : ""}`}
+                placeholder="Ej: Lomas de Santa Lucia"
                 value={form.id_direccion}
                 onChange={(event) => updateFieldValue("id_direccion", event.target.value)}
                 disabled={saving}
@@ -482,9 +532,12 @@ export default function PersonaInlineCreateModal({
             </div>
 
             <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Correo</label>
+              <label className="form-label persona-field-label">
+                <span>Correo</span>
+                <span className="persona-field-label__meta is-optional">Opc.</span>
+              </label>
               <input
-                type="email"
+                type="text"
                 className={`form-control ${touched.correo && errors.id_correo ? "is-invalid" : ""}`}
                 placeholder="ejemplo@correo.com"
                 value={form.id_correo}
@@ -499,8 +552,8 @@ export default function PersonaInlineCreateModal({
           <div className="d-flex mt-3 crud-modal__footer">
             <button
               type="button"
-              className="btn inv-prod-btn-secondary flex-fill crud-modal__btn"
-              onClick={onClose}
+              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+              onClick={handleRequestClose}
               disabled={saving}
             >
               Cancelar
@@ -512,7 +565,7 @@ export default function PersonaInlineCreateModal({
                   Guardando...
                 </>
               ) : (
-                "Guardar persona"
+                "Crear"
               )}
             </button>
           </div>
@@ -521,4 +574,3 @@ export default function PersonaInlineCreateModal({
     </>
   );
 }
-

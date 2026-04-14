@@ -8,9 +8,6 @@
 };
 
 export default function PlanillasHeader({
-  sucursalOptions = [],
-  sucursalId = '',
-  onSucursalChange,
   periodo = '',
   onPeriodoChange,
   selectedPlanilla = null,
@@ -49,11 +46,15 @@ export default function PlanillasHeader({
     selectedPlanilla?.codigo_planilla ||
     selectedPlanilla?.correlativo ||
     (selectedPlanilla?.id_planilla ? `PLA-${selectedPlanilla.id_planilla}` : 'Sin planilla');
+  const hasActionButtons = Boolean(
+    canExport || canGenerar || canRecalcular || canCerrar || canPagar || canAnular
+  );
 
   return (
     <div className="planillas-header">
       <div className="planillas-header__top">
-        <div>
+        <div className="planillas-header__identity">
+          <span className="planillas-header__eyebrow">Gestion de planilla</span>
           <h3 className="planillas-header__title">{planillaCode}</h3>
           <p className="planillas-header__sub">
             {selectedPlanilla?.nombre_sucursal ||
@@ -68,109 +69,101 @@ export default function PlanillasHeader({
 
       <div className="planillas-header__controls">
         <div className="planillas-header__field">
-          <label htmlFor="planillas-sucursal">Sucursal</label>
-          <select
-            id="planillas-sucursal"
-            className="form-select"
-            value={sucursalId}
-            onChange={(event) => onSucursalChange?.(event.target.value)}
-            disabled={loadingAction}
-          >
-            <option value="">Seleccione sucursal</option>
-            {sucursalOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="planillas-header__field">
           <label htmlFor="planillas-periodo">Periodo</label>
-          <input
-            id="planillas-periodo"
-            type="month"
-            className="form-control"
-            value={periodo}
-            onChange={(event) => onPeriodoChange?.(event.target.value)}
-            disabled={loadingAction}
-          />
+          <div className="planillas-header__period-wrap">
+            <i className="bi bi-calendar3" aria-hidden="true" />
+            <input
+              id="planillas-periodo"
+              type="month"
+              className="form-control planillas-header__period-input"
+              value={periodo}
+              onChange={(event) => onPeriodoChange?.(event.target.value)}
+              disabled={loadingAction}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="planillas-header__actions">
-        {canExport ? (
-          <button
-            type="button"
-            className="btn btn-outline-dark"
-            onClick={onExport}
-            disabled={loadingAction || exportLoading || !selectedPlanilla?.id_planilla}
-            title="Exportar planilla"
-          >
-            {exportLoading ? (
-              <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />
-            ) : (
-              <i className="bi bi-download me-1" />
-            )}
-            Exportar
-          </button>
-        ) : null}
+      {hasActionButtons ? (
+        <div className="planillas-header__actions">
+          {canGenerar ? (
+            <button
+              type="button"
+              className="btn planillas-header__btn planillas-header__btn--primary"
+              onClick={onGenerar}
+              disabled={loadingAction || !periodo}
+            >
+              <i className="bi bi-plus-circle me-1" />
+              Generar
+            </button>
+          ) : null}
 
-        {canGenerar ? (
-          <button type="button" className="btn btn-primary" onClick={onGenerar} disabled={loadingAction || !sucursalId || !periodo}>
-            <i className="bi bi-plus-circle me-1" />
-            Generar
-          </button>
-        ) : null}
+          {canRecalcular ? (
+            <button
+              type="button"
+              className="btn planillas-header__btn planillas-header__btn--secondary"
+              onClick={onRecalcular}
+              disabled={loadingAction || !selectedPlanilla?.id_planilla}
+            >
+              <i className="bi bi-arrow-repeat me-1" />
+              Recalcular
+            </button>
+          ) : null}
 
-        {canRecalcular ? (
-          <button
-            type="button"
-            className="btn btn-outline-secondary"
-            onClick={onRecalcular}
-            disabled={loadingAction || !selectedPlanilla?.id_planilla}
-          >
-            <i className="bi bi-arrow-repeat me-1" />
-            Recalcular
-          </button>
-        ) : null}
+          {canCerrar ? (
+            <button
+              type="button"
+              className="btn planillas-header__btn planillas-header__btn--warning"
+              onClick={onCerrar}
+              disabled={loadingAction || !selectedPlanilla?.id_planilla}
+            >
+              <i className="bi bi-lock me-1" />
+              Cerrar
+            </button>
+          ) : null}
 
-        {canCerrar ? (
-          <button
-            type="button"
-            className="btn btn-outline-warning"
-            onClick={onCerrar}
-            disabled={loadingAction || !selectedPlanilla?.id_planilla}
-          >
-            <i className="bi bi-lock me-1" />
-            Cerrar
-          </button>
-        ) : null}
+          {canPagar ? (
+            <button
+              type="button"
+              className="btn planillas-header__btn planillas-header__btn--success"
+              onClick={onPagar}
+              disabled={loadingAction || !selectedPlanilla?.id_planilla}
+            >
+              <i className="bi bi-cash-coin me-1" />
+              Pagar
+            </button>
+          ) : null}
 
-        {canPagar ? (
-          <button
-            type="button"
-            className="btn btn-outline-success"
-            onClick={onPagar}
-            disabled={loadingAction || !selectedPlanilla?.id_planilla}
-          >
-            <i className="bi bi-cash-coin me-1" />
-            Pagar
-          </button>
-        ) : null}
+          {canExport ? (
+            <button
+              type="button"
+              className="btn planillas-header__btn planillas-header__btn--secondary"
+              onClick={onExport}
+              disabled={loadingAction || exportLoading || !selectedPlanilla?.id_planilla}
+              title="Exportar planilla"
+            >
+              {exportLoading ? (
+                <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />
+              ) : (
+                <i className="bi bi-download me-1" />
+              )}
+              Exportar
+            </button>
+          ) : null}
 
-        {canAnular ? (
-          <button
-            type="button"
-            className="btn btn-outline-danger"
-            onClick={onAnular}
-            disabled={loadingAction || !selectedPlanilla?.id_planilla}
-          >
-            <i className="bi bi-x-octagon me-1" />
-            Anular
-          </button>
-        ) : null}
-      </div>
+          {canAnular ? (
+            <button
+              type="button"
+              className="btn planillas-header__btn planillas-header__btn--danger"
+              onClick={onAnular}
+              disabled={loadingAction || !selectedPlanilla?.id_planilla}
+            >
+              <i className="bi bi-x-octagon me-1" />
+              Anular
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
