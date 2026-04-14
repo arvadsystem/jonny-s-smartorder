@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const INACTIVITY_EVENTS = Object.freeze(['mousemove', 'keydown', 'scroll', 'touchstart']);
+const INACTIVITY_EVENTS = Object.freeze(['mousemove', 'click', 'keydown', 'scroll', 'touchstart']);
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
 const DEFAULT_WARNING_MS = 2 * 60 * 1000;
 

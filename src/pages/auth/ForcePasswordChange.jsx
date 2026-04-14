@@ -1,41 +1,53 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { personaService } from '../../services/personasService';
+import { perfilService } from '../../services/perfilService';
+import usePasswordPolicies from '../../hooks/usePasswordPolicies';
+import { validatePassword } from '../../utils/passwordValidator';
 import './ForcePasswordChange.scss';
 
-const MIN_LENGTH = 8;
-const UPPERCASE_RE = /[A-Z]/;
-const NUMBER_RE = /[0-9]/;
-const SYMBOL_RE = /[^A-Za-z0-9]/;
+const parsePolicyBool = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
 
-const buildPasswordChecks = (value) => {
-  const password = String(value || '');
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return ['true', '1', 'si', 'sí', 'yes', 'y', 'on'].includes(normalized);
+};
+
+const resolvePasswordPolicyConfig = (policies) => {
+  const minLenRaw = Number(policies?.password_min_length);
+  const minLength = Number.isFinite(minLenRaw) && minLenRaw > 0 ? minLenRaw : 8;
+
   return {
-    minLength: password.length >= MIN_LENGTH,
-    hasUppercase: UPPERCASE_RE.test(password),
-    hasNumber: NUMBER_RE.test(password),
-    hasSymbol: SYMBOL_RE.test(password),
+    minLength,
+    requireUpper: parsePolicyBool(policies?.password_require_upper ?? true),
+    requireNumber: parsePolicyBool(policies?.password_require_number ?? true),
+    requireSymbol: parsePolicyBool(policies?.password_require_symbol ?? false),
   };
 };
 
-const getStrengthData = (checks) => {
-  const score = Object.values(checks).filter(Boolean).length;
-
-  if (score <= 1) {
-    return { label: 'Debil', level: 'weak', percent: 33 };
+const getStrengthData = ({ password = '', passed = 0, total = 1 }) => {
+  const safePassword = String(password || '');
+  if (!safePassword) {
+    return { label: '', level: 'idle', percent: 0 };
   }
 
-  if (score <= 3) {
-    return { label: 'Media', level: 'medium', percent: 66 };
+  const scorePercent = Math.round((passed / Math.max(total, 1)) * 100);
+  if (scorePercent < 40) {
+    return { label: 'Débil', level: 'weak', percent: Math.max(12, scorePercent) };
   }
 
-  return { label: 'Fuerte', level: 'strong', percent: 100 };
+  if (scorePercent < 80) {
+    return { label: 'Media', level: 'medium', percent: scorePercent };
+  }
+
+  return { label: 'Fuerte', level: 'strong', percent: Math.max(90, scorePercent) };
 };
 
-const ForcePasswordChange = () => {
+const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
   const navigate = useNavigate();
-  const { user, login, logout } = useAuth();
+  const { logout } = useAuth();
+  const { policies } = usePasswordPolicies();
 
   const [form, setForm] = useState({
     actual: '',
@@ -50,8 +62,48 @@ const ForcePasswordChange = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const passwordChecks = useMemo(() => buildPasswordChecks(form.nueva), [form.nueva]);
-  const strength = useMemo(() => getStrengthData(passwordChecks), [passwordChecks]);
+  const normalizedPolicies = useMemo(() => {
+    const minLenRaw = Number(policies?.password_min_length);
+    return {
+      ...(policies || {}),
+      password_min_length: Number.isFinite(minLenRaw) && minLenRaw > 0 ? minLenRaw : 8,
+      password_require_upper: policies?.password_require_upper ?? true,
+      password_require_number: policies?.password_require_number ?? true,
+      password_require_symbol: policies?.password_require_symbol ?? false,
+    };
+  }, [policies]);
+
+  const policyConfig = useMemo(() => resolvePasswordPolicyConfig(normalizedPolicies), [normalizedPolicies]);
+  const passwordCheck = useMemo(
+    () => validatePassword(String(form.nueva || ''), normalizedPolicies),
+    [form.nueva, normalizedPolicies]
+  );
+
+  const ruleOkByKey = useMemo(
+    () =>
+      Object.fromEntries(
+        (Array.isArray(passwordCheck?.rules) ? passwordCheck.rules : []).map((rule) => [rule.key, Boolean(rule.ok)])
+      ),
+    [passwordCheck]
+  );
+
+  const requirementRules = useMemo(() => {
+    const rows = [{ key: 'min', label: `${policyConfig.minLength} caracteres mínimo` }];
+    if (policyConfig.requireUpper) rows.push({ key: 'upper', label: '1 mayúscula' });
+    if (policyConfig.requireNumber) rows.push({ key: 'number', label: '1 número' });
+    if (policyConfig.requireSymbol) rows.push({ key: 'symbol', label: '1 símbolo' });
+    return rows;
+  }, [policyConfig]);
+
+  const strength = useMemo(() => {
+    const totalRules = Math.max(passwordCheck?.rules?.length || 0, 1);
+    const passedRules = (passwordCheck?.rules || []).filter((rule) => Boolean(rule.ok)).length;
+    return getStrengthData({
+      password: form.nueva,
+      passed: passedRules,
+      total: totalRules,
+    });
+  }, [form.nueva, passwordCheck]);
 
   const confirmationMatches =
     String(form.confirmacion || '').length > 0 && form.nueva === form.confirmacion;
@@ -61,9 +113,7 @@ const ForcePasswordChange = () => {
     String(form.actual || '').trim().length > 0 &&
     String(form.nueva || '').trim().length > 0 &&
     confirmationMatches &&
-    passwordChecks.minLength &&
-    passwordChecks.hasUppercase &&
-    passwordChecks.hasNumber;
+    Boolean(passwordCheck?.allOk);
 
   const onChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -87,13 +137,13 @@ const ForcePasswordChange = () => {
       return;
     }
 
-    if (!passwordChecks.minLength || !passwordChecks.hasUppercase || !passwordChecks.hasNumber) {
-      setError('La nueva contraseña no cumple los requisitos minimos.');
+    if (!passwordCheck?.allOk) {
+      setError('La nueva contraseña no cumple los requisitos mínimos.');
       return;
     }
 
     if (nueva !== confirmacion) {
-      setError('La nueva contraseña y la confirmacion no coinciden.');
+      setError('La nueva contraseña y la confirmación no coinciden.');
       return;
     }
 
@@ -104,17 +154,18 @@ const ForcePasswordChange = () => {
 
     setSaving(true);
     try {
-      await personaService.changePasswordUsuarioV2({
-        password_actual: actual,
-        password_nueva: nueva,
+      await perfilService.changePassword({
+        clave_actual: actual,
+        clave_nueva: nueva,
       });
 
-      login({
-        ...(user || {}),
-        must_change_password: false,
-      });
+      if (typeof onCompleted === 'function') {
+        await onCompleted();
+        return;
+      }
 
-      navigate('/dashboard', { replace: true });
+      await logout();
+      navigate('/auth/login', { replace: true });
     } catch (err) {
       setError(err?.message || 'No se pudo cambiar la contraseña.');
     } finally {
@@ -126,16 +177,16 @@ const ForcePasswordChange = () => {
     try {
       await logout();
     } finally {
-      navigate('/', { replace: true });
+      navigate('/auth/login', { replace: true });
     }
   };
 
   return (
-    <div className="force-password-page">
+    <div className={asModal ? 'force-password-page is-modal' : 'force-password-page'}>
       <div className="force-password-card">
         <div className="force-password-card__topbar">
           <i className="bi bi-lock-fill" aria-hidden="true"></i>
-          <span>Accion requerida</span>
+          <span>Acción requerida</span>
         </div>
 
         <div className="force-password-card__body">
@@ -145,7 +196,7 @@ const ForcePasswordChange = () => {
             </div>
             <h1>Cambio de contraseña obligatorio</h1>
             <p>
-              Por seguridad, debes cambiar tu contraseña temporal antes de continuar.
+              {'Por seguridad, debe cambiar su contraseña antes de continuar, esta ya venció.'}
             </p>
           </div>
 
@@ -191,6 +242,7 @@ const ForcePasswordChange = () => {
                   type={showPassword.nueva ? 'text' : 'password'}
                   value={form.nueva}
                   onChange={(e) => onChange('nueva', e.target.value)}
+                  onInput={(e) => onChange('nueva', e.target.value)}
                   autoComplete="new-password"
                   required
                 />
@@ -206,7 +258,7 @@ const ForcePasswordChange = () => {
 
               <div className="force-password-strength">
                 <div className="force-password-strength__meta">
-                  <span>Fortaleza:</span>
+                  <span>Fortaleza de contraseña nueva:</span>
                   <strong className={`is-${strength.level}`}>{strength.label}</strong>
                 </div>
                 <div className="force-password-strength__bar" role="presentation">
@@ -228,6 +280,7 @@ const ForcePasswordChange = () => {
                   type={showPassword.confirmacion ? 'text' : 'password'}
                   value={form.confirmacion}
                   onChange={(e) => onChange('confirmacion', e.target.value)}
+                  onInput={(e) => onChange('confirmacion', e.target.value)}
                   autoComplete="new-password"
                   required
                 />
@@ -235,7 +288,7 @@ const ForcePasswordChange = () => {
                   type="button"
                   className="force-password-field__toggle"
                   onClick={() => toggleField('confirmacion')}
-                  aria-label={showPassword.confirmacion ? 'Ocultar confirmacion' : 'Mostrar confirmacion'}
+                  aria-label={showPassword.confirmacion ? 'Ocultar confirmación' : 'Mostrar confirmación'}
                 >
                   <i className={`bi ${showPassword.confirmacion ? 'bi-eye-slash-fill' : 'bi-eye-fill'}`}></i>
                 </button>
@@ -243,26 +296,23 @@ const ForcePasswordChange = () => {
 
               {String(form.confirmacion || '').length > 0 && !confirmationMatches ? (
                 <div className="force-password-help force-password-help--error">
-                  La confirmacion no coincide con la nueva contraseña.
+                  La confirmación no coincide con la nueva contraseña.
                 </div>
               ) : null}
             </div>
 
             <div className="force-password-rules">
-              <p>Requisitos minimos:</p>
+              <p>Requisitos mínimos:</p>
               <ul>
-                <li className={passwordChecks.minLength ? 'is-ok' : ''}>
-                  <i className={`bi ${passwordChecks.minLength ? 'bi-check-circle-fill' : 'bi-dot'}`} aria-hidden="true"></i>
-                  <span>8 caracteres minimo</span>
-                </li>
-                <li className={passwordChecks.hasUppercase ? 'is-ok' : ''}>
-                  <i className={`bi ${passwordChecks.hasUppercase ? 'bi-check-circle-fill' : 'bi-dot'}`} aria-hidden="true"></i>
-                  <span>1 mayuscula</span>
-                </li>
-                <li className={passwordChecks.hasNumber ? 'is-ok' : ''}>
-                  <i className={`bi ${passwordChecks.hasNumber ? 'bi-check-circle-fill' : 'bi-dot'}`} aria-hidden="true"></i>
-                  <span>1 numero</span>
-                </li>
+                {requirementRules.map((rule) => {
+                  const ok = Boolean(ruleOkByKey[rule.key]);
+                  return (
+                    <li key={rule.key} className={ok ? 'is-ok' : ''}>
+                      <i className={`bi ${ok ? 'bi-check-circle-fill' : 'bi-dot'}`} aria-hidden="true"></i>
+                      <span>{rule.label}</span>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
 
@@ -281,7 +331,7 @@ const ForcePasswordChange = () => {
             onClick={onLogout}
             disabled={saving}
           >
-            Cerrar sesion
+            Cerrar sesión
           </button>
         </div>
       </div>

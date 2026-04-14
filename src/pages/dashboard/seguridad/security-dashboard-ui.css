@@ -111,11 +111,26 @@
 .sec-semaforo-card {
   border: 1px solid rgba(227, 223, 210, 0.95);
   border-radius: 11px;
-  background: #fff;
+  background: rgba(243, 241, 216, 0.78);
   padding: 0.54rem 0.64rem;
   display: flex;
   align-items: flex-start;
   gap: 9px;
+}
+
+.sec-semaforo-card.is-verde {
+  background: rgba(229, 244, 236, 0.92);
+  border-color: rgba(45, 107, 102, 0.24);
+}
+
+.sec-semaforo-card.is-amarillo {
+  background: rgba(251, 240, 228, 0.92);
+  border-color: rgba(197, 111, 67, 0.28);
+}
+
+.sec-semaforo-card.is-rojo {
+  background: rgba(252, 233, 231, 0.92);
+  border-color: rgba(178, 45, 48, 0.3);
 }
 
 .sec-semaforo-dot {

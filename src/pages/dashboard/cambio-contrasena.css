@@ -1,92 +1,393 @@
 .password-page {
-  padding-top: 14px;
+  padding-top: 12px;
 }
 
 .password-page__shell {
-  max-width: 1160px;
+  max-width: 1210px;
   margin: 0 auto;
 }
 
 .password-page__header {
-  margin-bottom: 10px;
-}
-
-.password-page__header h3 {
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.password-page__card {
-  border: 1px solid rgba(116, 74, 43, 0.12);
-  border-radius: 16px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(205, 187, 99, 0.14), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 245, 239, 0.95));
+  box-shadow: 0 10px 20px rgba(var(--c-shadow-rgb), 0.1);
+  padding: 14px 16px;
+  position: relative;
   overflow: hidden;
 }
 
+.password-page__header::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #8f4314, #b5622c);
+}
+
+.password-page__header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.password-page__header-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.password-page__header-topline {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.password-page__header-note {
+  margin-top: 2px;
+  color: rgba(82, 44, 34, 0.84);
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.password-page__header-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  border: 1px solid rgba(143, 67, 20, 0.32);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.25), transparent 60%),
+    linear-gradient(145deg, #8f4314, #b5622c);
+  box-shadow: 0 8px 16px rgba(143, 67, 20, 0.28);
+  flex: 0 0 auto;
+}
+
+.password-page__header-icon i {
+  color: #f8f1e8;
+  font-size: 1.05rem;
+}
+
+.password-page__header h3 {
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #1e130e;
+}
+
+.password-page__header small {
+  color: rgba(82, 44, 34, 0.82) !important;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.password-page__last-change {
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 8px 10px;
+  min-width: 154px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.password-page__last-change span {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.password-page__last-change strong {
+  color: #241410;
+  font-size: 1rem;
+  line-height: 1.1;
+}
+
+.password-page__last-change small {
+  color: #a05b24 !important;
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.password-page__card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(249, 246, 241, 0.95));
+  box-shadow: 0 12px 22px rgba(var(--c-shadow-rgb), 0.1);
+}
+
 .password-page__card-body {
-  padding: 18px 18px 16px;
+  padding: 20px 20px 18px;
 }
 
 .password-page__notice {
   border-radius: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.8);
 }
 
 .password-page__field {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .password-page__field .form-label {
-  font-weight: 600;
-  margin-bottom: 6px;
+  font-weight: 700;
+  margin-bottom: 7px;
+  color: #3f2718;
+  letter-spacing: 0.01em;
 }
 
-.password-page__field .input-group .btn {
-  min-width: 44px;
+.password-page .input-group {
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.password-page .input-group:focus-within {
+  border-color: rgba(181, 98, 44, 0.5);
+  box-shadow: 0 0 0 0.18rem rgba(181, 98, 44, 0.16);
+}
+
+.password-page .input-group .form-control {
+  border: 0;
+  background: transparent;
+  min-height: 45px;
+  color: #261912;
+  font-weight: 500;
+}
+
+.password-page .input-group .form-control:focus {
+  box-shadow: none;
+}
+
+.password-page .input-group .btn {
+  min-width: 46px;
+  border: 0;
+  border-left: 1px solid rgba(157, 150, 112, 0.3);
+  background: rgba(243, 241, 216, 0.55);
+  color: #5a4131;
+}
+
+.password-page .input-group .btn:hover {
+  background: rgba(243, 241, 216, 0.85);
+}
+
+.password-page__strength {
+  border: 1px solid rgba(157, 150, 112, 0.3);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 10px 12px;
+  margin: -2px 0 12px;
+}
+
+.password-page__strength-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #53392b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 7px;
+}
+
+.password-page__strength-head strong {
+  color: #241410;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.password-page__strength-track {
+  width: 100%;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(157, 150, 112, 0.26);
+  overflow: hidden;
+}
+
+.password-page__strength-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  transition: width 180ms ease, background-color 180ms ease;
+}
+
+.password-page__strength-fill.is-idle {
+  background: rgba(157, 150, 112, 0.35);
+}
+
+.password-page__strength-fill.is-weak {
+  background: #b22d30;
+}
+
+.password-page__strength-fill.is-medium {
+  background: #c38d29;
+}
+
+.password-page__strength-fill.is-strong {
+  background: #2d6b66;
+}
+
+.password-page__strength small {
+  margin-top: 5px;
+  display: block;
+  color: #6a5648;
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 
 .password-page__rules {
-  border-color: rgba(116, 74, 43, 0.18) !important;
-  border-radius: 12px !important;
-  background: rgba(255, 255, 255, 0.45);
+  border-color: rgba(157, 150, 112, 0.34) !important;
+  border-radius: 14px !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 244, 238, 0.9));
+  padding: 14px !important;
 }
 
-.password-page__rules li + li {
-  margin-top: 4px;
+.password-page__rules > .small.fw-semibold {
+  color: #382417;
+  font-weight: 800 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.password-page__rules > .small.fw-semibold::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #2d6b66;
+  box-shadow: 0 0 0 3px rgba(45, 107, 102, 0.2);
+}
+
+.password-page__rules ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.password-page__rules li {
+  border: 1px solid rgba(157, 150, 112, 0.25);
+  border-radius: 10px;
+  background: #fff;
+  padding: 6px 8px;
+  margin: 0 !important;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.password-page__rules li.text-success {
+  border-color: rgba(45, 107, 102, 0.3);
+  background: rgba(229, 244, 236, 0.72);
+}
+
+.password-page__rules li.text-danger {
+  border-color: rgba(178, 45, 48, 0.22);
+  background: rgba(255, 244, 243, 0.78);
 }
 
 .password-page__submit {
-  min-height: 44px;
-  font-weight: 600;
-  border-radius: 10px;
-  margin-top: 2px;
+  min-height: 46px;
+  font-weight: 700;
+  border-radius: 12px;
+  margin-top: 4px;
+  border: 1px solid rgba(122, 30, 36, 0.4) !important;
+  background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 18px rgba(122, 30, 36, 0.24);
+}
+
+.password-page__submit:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+.password-page__submit:disabled {
+  opacity: 0.58 !important;
+  box-shadow: none;
 }
 
 .password-page__side-card {
-  border: 1px solid rgba(116, 74, 43, 0.12);
-  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(205, 187, 99, 0.12), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 244, 239, 0.95));
+  box-shadow: 0 12px 20px rgba(var(--c-shadow-rgb), 0.09);
+}
+
+.password-page__side-card--ok {
+  border-color: rgba(45, 107, 102, 0.24) !important;
+  background: rgba(229, 244, 236, 0.92) !important;
+}
+
+.password-page__side-card--warn {
+  border-color: rgba(197, 111, 67, 0.28) !important;
+  background: rgba(251, 240, 228, 0.92) !important;
 }
 
 .password-page__side-card .card-body {
-  padding: 16px 16px 14px;
+  padding: 18px 16px 16px;
 }
 
 .password-page__side-card h6 {
   color: #3c2617;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.password-page__side-card h6 i {
+  color: #2d6b66;
+}
+
+.password-page__side-card--warn h6 i {
+  color: #c38d29;
 }
 
 .password-page__tips li {
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   color: #5a4131;
+  padding: 8px 0;
+  border-top: 1px dashed rgba(157, 150, 112, 0.34);
+}
+
+.password-page__tips li:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .password-page__tips li:last-child {
-  margin-bottom: 0;
+  padding-bottom: 0;
 }
 
 .password-page__tips i {
   color: #7d593f;
+  width: 18px;
+  text-align: center;
+}
+
+.password-page__advice-card {
+  box-shadow: 0 12px 20px rgba(var(--c-shadow-rgb), 0.08);
 }
 
 @media (max-width: 1199px) {
@@ -94,17 +395,45 @@
     max-width: 100%;
   }
 
-  .password-page__side-card {
-    margin-top: 2px;
+  .password-page__header {
+    padding: 12px 14px;
+  }
+
+  .password-page__last-change {
+    min-width: 140px;
   }
 }
 
 @media (max-width: 767px) {
+  .password-page__header-main {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .password-page__header-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+
+  .password-page__header-topline {
+    gap: 6px;
+  }
+
+  .password-page__last-change {
+    width: 100%;
+    align-items: flex-start;
+  }
+
   .password-page__card-body {
-    padding: 14px 12px 12px;
+    padding: 15px 12px 13px;
   }
 
   .password-page__field {
-    margin-bottom: 10px;
+    margin-bottom: 11px;
+  }
+
+  .password-page__rules ul {
+    grid-template-columns: 1fr;
   }
 }

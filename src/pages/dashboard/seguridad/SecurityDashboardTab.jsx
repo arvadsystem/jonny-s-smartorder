@@ -442,7 +442,7 @@ const SecurityDashboardTab = () => {
                   {semaforos.map((item) => {
                     const state = item.value || { valor: 0, estado: 'verde', umbral_amarillo: 0, umbral_rojo: 0 };
                     return (
-                      <article key={item.key} className="sec-semaforo-card">
+                      <article key={item.key} className={`sec-semaforo-card ${statusToClass(state.estado)}`}>
                         <div className={`sec-semaforo-dot ${statusToClass(state.estado)}`} />
                         <div className="sec-semaforo-content">
                           <span>{item.label}</span>
