@@ -1,5 +1,40 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
+import { toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
+
+const CATALOG_SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+
+const buildSnapshotKey = ({ branchId, orderType }) =>
+  `pm_catalog_snapshot::${Number(branchId) || 0}::${String(orderType || 'na').trim().toLowerCase()}`;
+
+const readCatalogSnapshot = (key) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.savedAt || !parsed?.payload) return null;
+    if (Date.now() - Number(parsed.savedAt) > CATALOG_SNAPSHOT_TTL_MS) return null;
+    return parsed.payload;
+  } catch {
+    return null;
+  }
+};
+
+const writeCatalogSnapshot = (key, payload) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        savedAt: Date.now(),
+        payload
+      })
+    );
+  } catch {
+    // Si sessionStorage falla (quota/politicas), no bloqueamos el flujo de menu.
+  }
+};
 
 // Normaliza texto para comparaciones de busqueda sin acentos.
 const normalizeText = (value) =>
@@ -34,19 +69,33 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [syncWarning, setSyncWarning] = useState('');
 
   // Carga catalogo real por sucursal y tipo de pedido.
   const loadCatalog = useCallback(async () => {
     if (!branchId) {
       setProducts([]);
       setMenuSummary(null);
+      setSyncWarning('');
       setLoading(false);
       return;
     }
 
+    const snapshotKey = buildSnapshotKey({ branchId, orderType });
+    const snapshot = readCatalogSnapshot(snapshotKey);
+    const hasSnapshot = Boolean(snapshot && Array.isArray(snapshot.items));
+
     try {
-      setLoading(true);
+      // Si hay snapshot reciente, lo pintamos al instante para evitar espera percibida.
+      if (hasSnapshot) {
+        setProducts(snapshot.items || []);
+        setMenuSummary(snapshot.menu || null);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       setError('');
+      setSyncWarning('');
 
       const response = await publicMenuBootstrapService.getCatalog({
         idSucursal: branchId,
@@ -55,12 +104,28 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
 
       setProducts(Array.isArray(response?.items) ? response.items : []);
       setMenuSummary(response?.menu || null);
+      writeCatalogSnapshot(snapshotKey, response);
     } catch (err) {
-      setProducts([]);
-      setMenuSummary(null);
-      setError(err?.message || 'No pudimos cargar el catalogo.');
+      const offline = typeof window !== 'undefined' && window.navigator?.onLine === false;
+      const fallbackMessage = offline
+        ? 'No hay conexion a internet. Verifica tu red e intenta nuevamente.'
+        : 'No pudimos cargar el catalogo.';
+
+      // Si ya mostramos snapshot, evitamos tumbar la pantalla por un error puntual de red.
+      if (hasSnapshot) {
+        setSyncWarning(
+          offline
+            ? 'Estas viendo una version guardada del menu por falta de conexion.'
+            : 'Mostramos una version reciente del menu mientras se restablece la conexion.'
+        );
+      } else {
+        setProducts([]);
+        setMenuSummary(null);
+        setError(toPublicMenuUiErrorMessage(err, fallbackMessage));
+      }
     } finally {
-      setLoading(false);
+      // Si hubo snapshot, la UI ya se mantenia visible; evitamos overlay de carga tardio.
+      if (!hasSnapshot) setLoading(false);
     }
   }, [branchId, orderType]);
 
@@ -113,6 +178,7 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
     selectedCategory,
     loading,
     error,
+    syncWarning,
     stats,
     setSearchTerm,
     setSelectedCategory,

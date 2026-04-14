@@ -36,6 +36,8 @@ const useMenuPublicacionAdmin = () => {
   const [items, setItems] = useState([]);
 
   const [preview, setPreview] = useState(null);
+  const [sharedMenuImpact, setSharedMenuImpact] = useState(null);
+  const [appliedScope, setAppliedScope] = useState('');
 
   const [loadingSucursales, setLoadingSucursales] = useState(false);
   const [loadingCatalogo, setLoadingCatalogo] = useState(false);
@@ -91,11 +93,15 @@ const useMenuPublicacionAdmin = () => {
       setCapabilities(data?.capabilities || {});
       setItems(nextItems);
       setWarnings(Array.isArray(data?.warnings) ? data.warnings : []);
+      setSharedMenuImpact(data?.shared_menu_impact || null);
+      setAppliedScope('');
     } catch (e) {
       setError(e?.message || 'No se pudo cargar el catalogo de publicacion.');
       setMenuSummary(null);
       setItems([]);
       setWarnings([]);
+      setSharedMenuImpact(null);
+      setAppliedScope('');
     } finally {
       setLoadingCatalogo(false);
     }
@@ -113,6 +119,9 @@ const useMenuPublicacionAdmin = () => {
       setPreviewError('');
       const data = await menuPublicacionAdminService.getPreviewPublico(id, idMenu);
       setPreview(data);
+      if (data?.shared_menu_impact) {
+        setSharedMenuImpact(data.shared_menu_impact);
+      }
     } catch (e) {
       setPreviewError(e?.message || 'No se pudo cargar el preview del menu publico.');
       setPreview(null);
@@ -158,6 +167,8 @@ const useMenuPublicacionAdmin = () => {
       setItems([]);
       setPreview(null);
       setWarnings([]);
+      setSharedMenuImpact(null);
+      setAppliedScope('');
       return;
     }
 
@@ -167,6 +178,8 @@ const useMenuPublicacionAdmin = () => {
       setItems([]);
       setPreview(null);
       setWarnings(['La sucursal seleccionada no esta disponible. Selecciona una sucursal valida.']);
+      setSharedMenuImpact(null);
+      setAppliedScope('');
       return;
     }
 
@@ -176,6 +189,8 @@ const useMenuPublicacionAdmin = () => {
       setItems([]);
       setPreview(null);
       setWarnings(['La sucursal seleccionada esta inactiva y no permite publicacion.']);
+      setSharedMenuImpact(null);
+      setAppliedScope('');
       return;
     }
 
@@ -190,6 +205,7 @@ const useMenuPublicacionAdmin = () => {
     setSuccess('');
     setValidationErrors([]);
     setWarnings([]);
+    setAppliedScope('');
   }, []);
 
   const onSelectCatalogMenu = useCallback((nextMenuId) => {
@@ -198,6 +214,7 @@ const useMenuPublicacionAdmin = () => {
     setSuccess('');
     setValidationErrors([]);
     setWarnings([]);
+    setAppliedScope('');
   }, []);
 
   const onToggleVisible = useCallback((itemKey, nextVisible) => {
@@ -340,6 +357,8 @@ const useMenuPublicacionAdmin = () => {
 
       const responseWarnings = Array.isArray(response?.data?.warnings) ? response.data.warnings : [];
       setWarnings([...validation.warnings, ...responseWarnings]);
+      setSharedMenuImpact(response?.data?.shared_menu_impact || null);
+      setAppliedScope(String(response?.data?.applied_scope || ''));
 
       await Promise.all([
         loadCatalogo(idSucursal, selectedCatalogMenuId || null),
@@ -389,6 +408,8 @@ const useMenuPublicacionAdmin = () => {
       previewError,
       success,
       warnings,
+      sharedMenuImpact,
+      appliedScope,
       validationErrors,
       openAsClientUrl
     },

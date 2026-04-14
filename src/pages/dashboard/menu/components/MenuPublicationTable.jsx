@@ -105,6 +105,9 @@ const MenuPublicationTable = ({
                     type="checkbox"
                     className="form-check-input"
                     checked={Boolean(row.visible)}
+                    disabled={!isActive}
+                    title={isActive ? 'Cambiar visibilidad' : 'Item inactivo: no se puede publicar'}
+                    aria-label={`Visibilidad ${row.nombre_item || row.item_key}`}
                     onChange={(event) => onToggleVisible?.(row.item_key, event.target.checked)}
                   />
                 </td>
@@ -117,6 +120,7 @@ const MenuPublicationTable = ({
                     value={row.precio_publico_input}
                     onChange={(event) => onChangePrecioPublico?.(row.item_key, event.target.value)}
                     placeholder={Number.isFinite(basePrice) ? String(basePrice) : 'Sin precio'}
+                    disabled={!isActive}
                   />
                 </td>
                 <td>
@@ -127,7 +131,7 @@ const MenuPublicationTable = ({
                     className="form-control form-control-sm"
                     value={row.orden_input}
                     onChange={(event) => onChangeOrden?.(row.item_key, event.target.value)}
-                    disabled={!row.visible}
+                    disabled={!row.visible || !isActive}
                   />
                 </td>
               </tr>

@@ -16,7 +16,8 @@ const withToastId = (toast) => ({
   id: toast?.id || `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   type: toast?.type || 'info',
   message: toast?.message || '',
-  durationMs: toast?.durationMs ?? 3000
+  durationMs: toast?.durationMs ?? 3000,
+  createdAt: Date.now()
 });
 
 const applyHydrate = (state, payload) => {
@@ -64,14 +65,27 @@ export const publicMenuFlowReducer = (state, action) => {
     case PUBLIC_MENU_ACTIONS.RESET_FLOW:
       return createPublicMenuInitialState();
 
-    case PUBLIC_MENU_ACTIONS.PUSH_TOAST:
+    case PUBLIC_MENU_ACTIONS.PUSH_TOAST: {
+      // Evita spam visual cuando un mismo error ocurre por click repetido o red lenta.
+      const nextToast = withToastId(action.payload);
+      const lastToast = state.ui.toasts[state.ui.toasts.length - 1];
+      if (
+        lastToast &&
+        String(lastToast.type || '') === String(nextToast.type || '') &&
+        String(lastToast.message || '') === String(nextToast.message || '') &&
+        Number(nextToast.createdAt || 0) - Number(lastToast.createdAt || 0) < 1200
+      ) {
+        return state;
+      }
+
       return {
         ...state,
         ui: {
           ...state.ui,
-          toasts: [...state.ui.toasts, withToastId(action.payload)]
+          toasts: [...state.ui.toasts.slice(-3), nextToast]
         }
       };
+    }
 
     case PUBLIC_MENU_ACTIONS.DISMISS_TOAST:
       return {
@@ -114,4 +128,3 @@ export const publicMenuFlowReducer = (state, action) => {
       return state;
   }
 };
-

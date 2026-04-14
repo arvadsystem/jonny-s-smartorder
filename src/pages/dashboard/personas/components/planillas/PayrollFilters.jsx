@@ -41,6 +41,7 @@ export default function PayrollFilters({
       toText(safeValues.salarioMin) ||
       toText(safeValues.salarioMax)
   );
+  const filtersCount = pills.length;
 
   const updateField = (field, value) => {
     onChange?.({ ...safeValues, [field]: value });
@@ -53,34 +54,37 @@ export default function PayrollFilters({
           <i className="bi bi-search" aria-hidden="true" />
           <input
             type="search"
-            className="form-control"
+            className="form-control planillas-filters__input"
             value={safeValues.search}
             onChange={(event) => updateField('search', event.target.value)}
             placeholder="Buscar por nombre, DNI o cargo"
           />
         </div>
 
-        <button
-          type="button"
-          className="btn btn-outline-secondary"
-          onClick={() => updateField('_expanded', !safeValues._expanded)}
-        >
-          <i className={`bi ${safeValues._expanded ? 'bi-chevron-up' : 'bi-sliders'}`} />
-          <span>Filtros</span>
-        </button>
+        <div className="planillas-filters__actions">
+          <button
+            type="button"
+            className="btn planillas-filters__btn planillas-filters__btn--toggle"
+            onClick={() => updateField('_expanded', !safeValues._expanded)}
+          >
+            <i className={`bi ${safeValues._expanded ? 'bi-chevron-up' : 'bi-sliders'}`} />
+            <span>{safeValues._expanded ? 'Ocultar' : 'Filtros'}</span>
+            {filtersCount > 0 ? <small>{filtersCount}</small> : null}
+          </button>
 
-        <button type="button" className="btn btn-outline-secondary" onClick={onClear}>
-          <i className="bi bi-eraser me-1" />
-          Limpiar
-        </button>
+          <button type="button" className="btn planillas-filters__btn planillas-filters__btn--clear" onClick={onClear}>
+            <i className="bi bi-eraser me-1" />
+            Limpiar
+          </button>
+        </div>
       </div>
 
       {safeValues._expanded ? (
         <div className="planillas-filters__advanced">
-          <div>
+          <div className="planillas-filters__group">
             <label className="form-label">Sucursal</label>
             <select
-              className="form-select"
+              className="form-select planillas-filters__select"
               value={safeValues.sucursal}
               onChange={(event) => updateField('sucursal', event.target.value)}
             >
@@ -93,37 +97,37 @@ export default function PayrollFilters({
             </select>
           </div>
 
-          <div>
+          <div className="planillas-filters__group">
             <label className="form-label">Cargo</label>
             <input
               type="text"
-              className="form-control"
+              className="form-control planillas-filters__input"
               value={safeValues.cargo}
               onChange={(event) => updateField('cargo', event.target.value)}
               placeholder="Filtrar por cargo"
             />
           </div>
 
-          <div>
+          <div className="planillas-filters__group">
             <label className="form-label">Salario minimo</label>
             <input
               type="number"
               min="0"
               step="0.01"
-              className="form-control"
+              className="form-control planillas-filters__input"
               value={safeValues.salarioMin}
               onChange={(event) => updateField('salarioMin', event.target.value)}
               placeholder="Ej. 5000"
             />
           </div>
 
-          <div>
+          <div className="planillas-filters__group">
             <label className="form-label">Salario maximo</label>
             <input
               type="number"
               min="0"
               step="0.01"
-              className="form-control"
+              className="form-control planillas-filters__input"
               value={safeValues.salarioMax}
               onChange={(event) => updateField('salarioMax', event.target.value)}
               placeholder="Ej. 12000"
@@ -134,12 +138,13 @@ export default function PayrollFilters({
 
       {pills.length > 0 ? (
         <div className="planillas-filters__pills" aria-live="polite">
+          <span className="planillas-filters__pills-label">Filtros activos:</span>
           {pills.map((pill) => (
             <span key={pill.key} className="planillas-filters__pill">
               {pill.label}
             </span>
           ))}
-          <button type="button" className="btn btn-link btn-sm" onClick={onClear}>
+          <button type="button" className="btn planillas-filters__clear-link" onClick={onClear}>
             Limpiar filtros
           </button>
         </div>

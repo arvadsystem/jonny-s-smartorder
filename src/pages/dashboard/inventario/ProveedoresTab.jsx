@@ -1,13 +1,41 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import CompactHeaderSwitch from './CompactHeaderSwitch.jsx';
 
 const CUENTA_TIPOS = ['AHORRO', 'CHEQUES', 'OTRA'];
 const CUENTA_MONEDAS = ['HNL', 'USD'];
+const PROVEEDORES_CONCURRENCY_CONFLICT_MESSAGE =
+  'El proveedor fue modificado por otro usuario. Recarga la informacion antes de guardar.';
+const PROVEEDORES_ACCOUNT_REMOVAL_HINT =
+  'Las cuentas removidas durante esta edicion se inactivaran al guardar el proveedor.';
+const PROVEEDORES_SCOPE_BLOCKED_MESSAGE =
+  'No tienes acceso al recurso solicitado dentro de tu alcance de sucursal.';
+const PROVEEDORES_SCOPE_NOT_FOUND_MESSAGE =
+  'El proveedor solicitado no esta disponible en tu alcance actual o no existe.';
+const PROVEEDORES_LIFECYCLE_INFO_MESSAGE =
+  'Los proveedores no se eliminan fisicamente; se inactivan para preservar la trazabilidad.';
+
+const resolveProveedoresRequestMessage = (error, fallbackMessage) => {
+  const status = Number(error?.status ?? 0);
+  const code = String(error?.code ?? error?.data?.code ?? '').trim().toUpperCase();
+  const apiMessage = String(error?.message ?? '').trim();
+
+  if (status === 403 || code === 'FORBIDDEN') {
+    return apiMessage || PROVEEDORES_SCOPE_BLOCKED_MESSAGE;
+  }
+  if (status === 404 && /proveedor no encontrado/i.test(apiMessage)) {
+    return PROVEEDORES_SCOPE_NOT_FOUND_MESSAGE;
+  }
+  return apiMessage || fallbackMessage;
+};
 
 const createCuentaDraft = () => ({
   _tmp_id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+  id_cuenta_bancaria: null,
   banco: '',
   tipo_cuenta: 'AHORRO',
   numero_cuenta: '',
@@ -45,6 +73,32 @@ const parseEstado = (value) => {
 const cleanText = (value) => {
   const raw = String(value ?? '').trim();
   return raw ? raw : null;
+};
+
+const normalizeReasonList = (value) => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const normalized = [];
+  for (const rawReason of value) {
+    const reason = String(rawReason ?? '').trim();
+    if (!reason || seen.has(reason)) continue;
+    seen.add(reason);
+    normalized.push(reason);
+  }
+  return normalized;
+};
+
+const resolveBooleanFlag = (...values) => {
+  for (const value of values) {
+    if (typeof value === 'boolean') return value;
+  }
+  return null;
+};
+
+const firstReason = (reasons, fallback) => {
+  const normalized = normalizeReasonList(reasons);
+  if (normalized.length > 0) return normalized[0];
+  return fallback;
 };
 
 const formatMetricValue = (value) => {
@@ -88,8 +142,46 @@ const normalizeCuenta = (raw) => {
 const normalizeProveedor = (row) => {
   const proveedor = row && typeof row === 'object' ? row : {};
   const cuentasRaw = Array.isArray(proveedor.cuentas_bancarias) ? proveedor.cuentas_bancarias : [];
+  const comprasCount = Number(proveedor.compras_count ?? 0);
+  const cuentasBancariasCount = Number(
+    proveedor.cuentas_bancarias_count ?? (Array.isArray(cuentasRaw) ? cuentasRaw.length : 0)
+  );
+  const ordenesHistorialCount = Number(proveedor.ordenes_historial_count ?? 0);
+  const ordenesActivasCount = Number(proveedor.ordenes_activas_count ?? 0);
+  const hasOperationalHistoryResolved = resolveBooleanFlag(
+    proveedor.has_operational_history,
+    proveedor.hasOperationalHistory
+  );
+  const hasActiveProcessesResolved = resolveBooleanFlag(
+    proveedor.has_active_processes,
+    proveedor.hasActiveProcesses
+  );
+  const canDeleteResolved = resolveBooleanFlag(proveedor.can_delete, proveedor.canDelete);
+  const canDeactivateResolved = resolveBooleanFlag(proveedor.can_deactivate, proveedor.canDeactivate);
+
+  const hasOperationalHistory =
+    hasOperationalHistoryResolved !== null
+      ? hasOperationalHistoryResolved
+      : comprasCount > 0 || ordenesHistorialCount > 0;
+  const hasActiveProcesses =
+    hasActiveProcessesResolved !== null ? hasActiveProcessesResolved : ordenesActivasCount > 0;
+  const canDelete = canDeleteResolved !== null ? canDeleteResolved : !hasOperationalHistory;
+  const canDeactivate = canDeactivateResolved !== null ? canDeactivateResolved : !hasActiveProcesses;
+  const deleteBlockingReasons = normalizeReasonList(
+    proveedor.delete_blocking_reasons ?? proveedor.deleteBlockingReasons
+  );
+  const deactivateBlockingReasons = normalizeReasonList(
+    proveedor.deactivate_blocking_reasons ?? proveedor.deactivateBlockingReasons
+  );
+  const blockingReasons = normalizeReasonList(
+    proveedor.blocking_reasons ?? proveedor.blockingReasons ?? [...deleteBlockingReasons, ...deactivateBlockingReasons]
+  );
+
   return {
     id_proveedor: Number(proveedor.id_proveedor ?? 0),
+    concurrency_token: String(
+      proveedor.concurrency_token ?? proveedor.row_version ?? proveedor.xmin ?? ''
+    ).trim(),
     nombre_proveedor: String(proveedor.nombre_proveedor ?? '').trim(),
     contacto_principal: cleanText(proveedor.contacto_principal),
     correo_electronico: cleanText(proveedor.correo_electronico),
@@ -105,14 +197,17 @@ const normalizeProveedor = (row) => {
     observaciones: cleanText(proveedor.observaciones),
     estado: parseEstado(proveedor.estado),
     fecha_registro: proveedor.fecha_registro ?? null,
-    compras_count: Number(proveedor.compras_count ?? 0),
-    cuentas_bancarias_count: Number(
-      proveedor.cuentas_bancarias_count ?? (Array.isArray(cuentasRaw) ? cuentasRaw.length : 0)
-    ),
-    can_delete:
-      typeof proveedor.can_delete === 'boolean'
-        ? proveedor.can_delete
-        : Number(proveedor.compras_count ?? 0) === 0 && Number(proveedor.cuentas_bancarias_count ?? 0) === 0,
+    compras_count: comprasCount,
+    cuentas_bancarias_count: cuentasBancariasCount,
+    ordenes_historial_count: ordenesHistorialCount,
+    ordenes_activas_count: ordenesActivasCount,
+    has_operational_history: hasOperationalHistory,
+    has_active_processes: hasActiveProcesses,
+    can_delete: canDelete,
+    can_deactivate: canDeactivate,
+    blocking_reasons: blockingReasons,
+    delete_blocking_reasons: deleteBlockingReasons,
+    deactivate_blocking_reasons: deactivateBlockingReasons,
     cuentas_bancarias: cuentasRaw.map(normalizeCuenta)
   };
 };
@@ -124,10 +219,13 @@ const getProveedorStatusMeta = (proveedor) =>
 
 const getProveedorActionMeta = (proveedor) => {
   const isActivo = parseEstado(proveedor?.estado);
-  const comprasCount = Number(proveedor?.compras_count ?? 0);
-  const cuentasCount = Number(proveedor?.cuentas_bancarias_count ?? 0);
-  const canDelete =
-    typeof proveedor?.can_delete === 'boolean' ? proveedor.can_delete : comprasCount === 0 && cuentasCount === 0;
+  const canDeactivateResolved = resolveBooleanFlag(proveedor?.can_deactivate, proveedor?.canDeactivate);
+  const canDeactivate =
+    canDeactivateResolved !== null ? canDeactivateResolved : Number(proveedor?.ordenes_activas_count ?? 0) === 0;
+  const deactivateBlockedReason = firstReason(
+    proveedor?.deactivate_blocking_reasons ?? proveedor?.deactivateBlockingReasons ?? proveedor?.blocking_reasons,
+    'Este proveedor no puede inactivarse porque mantiene ordenes de compra activas.'
+  );
 
   if (!isActivo) {
     return {
@@ -135,17 +233,9 @@ const getProveedorActionMeta = (proveedor) => {
       label: 'Reactivar',
       icon: 'bi bi-arrow-clockwise',
       buttonClass: 'btn inv-prod-btn-subtle inv-warehouse-card__action',
-      title: 'Reactivar proveedor'
-    };
-  }
-
-  if (canDelete) {
-    return {
-      action: 'eliminar',
-      label: 'Eliminar',
-      icon: 'bi bi-trash',
-      buttonClass: 'btn inv-prod-btn-danger-lite inv-warehouse-card__action',
-      title: 'Eliminar proveedor'
+      title: 'Reactivar proveedor',
+      disabled: false,
+      disabledReason: ''
     };
   }
 
@@ -154,23 +244,13 @@ const getProveedorActionMeta = (proveedor) => {
     label: 'Inactivar',
     icon: 'bi bi-slash-circle',
     buttonClass: 'btn inv-prod-btn-subtle inv-warehouse-card__action',
-    title: 'Inactivar proveedor'
+    title: canDeactivate ? 'Inactivar proveedor' : deactivateBlockedReason,
+    disabled: !canDeactivate,
+    disabledReason: canDeactivate ? '' : deactivateBlockedReason
   };
 };
 
 const getConfirmCopyByAction = (action) => {
-  if (action === 'inactivar') {
-    return {
-      title: 'Confirmar inactivacion',
-      subtitle: 'El proveedor no aparecera en listas operativas activas.',
-      note: 'No puede eliminarse porque tiene compras o cuentas bancarias asociadas.',
-      question: 'Deseas inactivar este proveedor?',
-      actionLabel: 'Inactivar',
-      actionBusyLabel: 'Inactivando...',
-      actionIcon: 'bi-slash-circle'
-    };
-  }
-
   if (action === 'reactivar') {
     return {
       title: 'Confirmar reactivacion',
@@ -184,13 +264,13 @@ const getConfirmCopyByAction = (action) => {
   }
 
   return {
-    title: 'Confirmar eliminacion',
-    subtitle: 'Esta accion no se puede deshacer.',
-    note: 'Solo se permite eliminar cuando no hay compras ni cuentas bancarias asociadas.',
-    question: 'Deseas eliminar este proveedor?',
-    actionLabel: 'Eliminar',
-    actionBusyLabel: 'Eliminando...',
-    actionIcon: 'bi-trash3'
+    title: 'Confirmar inactivacion',
+    subtitle: 'El proveedor no aparecera en listas operativas activas.',
+    note: PROVEEDORES_LIFECYCLE_INFO_MESSAGE,
+    question: 'Deseas inactivar este proveedor?',
+    actionLabel: 'Inactivar',
+    actionBusyLabel: 'Inactivando...',
+    actionIcon: 'bi-slash-circle'
   };
 };
 
@@ -282,33 +362,71 @@ const validateProveedorForm = (form) => {
   return errors;
 };
 
-const buildCuentaPayload = (cuenta) => ({
-  banco: String(cuenta?.banco ?? '').trim(),
-  tipo_cuenta: String(cuenta?.tipo_cuenta ?? 'AHORRO').trim().toUpperCase(),
-  numero_cuenta: String(cuenta?.numero_cuenta ?? '').trim(),
-  nombre_titular: cleanText(cuenta?.nombre_titular),
-  identificacion_titular: cleanText(cuenta?.identificacion_titular),
-  moneda: String(cuenta?.moneda ?? 'HNL').trim().toUpperCase(),
-  es_principal: parseEstado(cuenta?.es_principal),
-  estado: parseEstado(cuenta?.estado),
-  observacion: cleanText(cuenta?.observacion)
-});
+const buildCuentaPayload = (cuenta) => {
+  const payload = {
+    banco: String(cuenta?.banco ?? '').trim(),
+    tipo_cuenta: String(cuenta?.tipo_cuenta ?? 'AHORRO').trim().toUpperCase(),
+    numero_cuenta: String(cuenta?.numero_cuenta ?? '').trim(),
+    nombre_titular: cleanText(cuenta?.nombre_titular),
+    identificacion_titular: cleanText(cuenta?.identificacion_titular),
+    moneda: String(cuenta?.moneda ?? 'HNL').trim().toUpperCase(),
+    es_principal: parseEstado(cuenta?.es_principal),
+    estado: parseEstado(cuenta?.estado),
+    observacion: cleanText(cuenta?.observacion)
+  };
 
-const buildProveedorPayload = (form) => ({
-  nombre_proveedor: String(form?.nombre_proveedor ?? '').trim(),
-  contacto_principal: cleanText(form?.contacto_principal),
-  correo_electronico: cleanText(form?.correo_electronico),
-  telefono_principal: cleanText(form?.telefono_principal),
-  telefono_secundario: cleanText(form?.telefono_secundario),
-  ciudad: cleanText(form?.ciudad),
-  direccion: cleanText(form?.direccion),
-  rtn: cleanText(form?.rtn),
-  plazo_pago_dias: Number.parseInt(String(form?.plazo_pago_dias ?? '0'), 10),
-  observaciones: cleanText(form?.observaciones),
-  cuentas_bancarias: (Array.isArray(form?.cuentas_bancarias) ? form.cuentas_bancarias : []).map(buildCuentaPayload)
-});
+  const idCuenta = Number(cuenta?.id_cuenta_bancaria ?? 0);
+  if (idCuenta > 0) {
+    payload.id_cuenta_bancaria = idCuenta;
+  }
+
+  return payload;
+};
+
+const buildProveedorPayload = (form) => {
+  const payload = {
+    nombre_proveedor: String(form?.nombre_proveedor ?? '').trim(),
+    contacto_principal: cleanText(form?.contacto_principal),
+    correo_electronico: cleanText(form?.correo_electronico),
+    telefono_principal: cleanText(form?.telefono_principal),
+    telefono_secundario: cleanText(form?.telefono_secundario),
+    ciudad: cleanText(form?.ciudad),
+    direccion: cleanText(form?.direccion),
+    rtn: cleanText(form?.rtn),
+    plazo_pago_dias: Number.parseInt(String(form?.plazo_pago_dias ?? '0'), 10),
+    observaciones: cleanText(form?.observaciones),
+    cuentas_bancarias: (Array.isArray(form?.cuentas_bancarias) ? form.cuentas_bancarias : []).map(buildCuentaPayload)
+  };
+
+  const concurrencyToken = String(form?.concurrency_token ?? '').trim();
+  if (concurrencyToken) {
+    payload.concurrency_token = concurrencyToken;
+  }
+
+  return payload;
+};
 
 const ProveedoresTab = ({ openToast, onScopeChange }) => {
+  const { can, canAny, loading: permisosLoading } = usePermisos();
+  const canVerProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_VER);
+  const canCrearProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR);
+  const canEditarProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR);
+  const canCambiarEstadoProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_ESTADO_CAMBIAR);
+  const canAccessProveedoresTab = canAny([
+    PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_ELIMINAR,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_ESTADO_CAMBIAR
+  ]);
+
+  const canRunProveedorAction = (action) => {
+    if (action === 'inactivar' || action === 'reactivar') {
+      return canCambiarEstadoProveedores;
+    }
+    return false;
+  };
+
   const [proveedores, setProveedores] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -329,18 +447,27 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   const [editForm, setEditForm] = useState(null);
   const [editErrors, setEditErrors] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editRemovedCuentas, setEditRemovedCuentas] = useState([]);
 
   const [confirmModal, setConfirmModal] = useState({
     show: false,
     idToDelete: null,
     nombre: '',
-    action: 'eliminar',
-    counts: null
+    action: 'inactivar',
+    counts: null,
+    canDelete: null,
+    canDeactivate: null,
+    blockingReasons: []
   });
   const [deletingConfirm, setDeletingConfirm] = useState(false);
   const [resolvingActionId, setResolvingActionId] = useState(null);
   const [confirmDeleteError, setConfirmDeleteError] = useState('');
 
+  const proveedoresRequestIdRef = useRef(0);
+  const detailRequestIdRef = useRef(0);
+  const editRequestIdRef = useRef(0);
+  const dependenciasRequestIdRef = useRef(0);
+  const confirmActionRequestIdRef = useRef(0);
   const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
   const showEditModal = Boolean(editForm && editId !== null);
 
@@ -349,25 +476,76 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   };
 
   const cargarProveedores = async ({ silent = false } = {}) => {
+    if (!canVerProveedores) {
+      proveedoresRequestIdRef.current += 1;
+      setProveedores([]);
+      setLoading(false);
+      setError('');
+      return;
+    }
+    const requestId = ++proveedoresRequestIdRef.current;
     if (!silent) setLoading(true);
     setError('');
     try {
       const response = await inventarioService.getProveedores({ include_inactivos: showInactivos });
+      if (requestId !== proveedoresRequestIdRef.current) return;
       const rows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
       const normalized = rows.map(normalizeProveedor).filter((row) => Number(row.id_proveedor) > 0);
       setProveedores(normalized);
     } catch (fetchError) {
-      setError(fetchError?.message || 'No se pudo cargar el listado de proveedores.');
+      if (requestId !== proveedoresRequestIdRef.current) return;
+      setError(resolveProveedoresRequestMessage(fetchError, 'No se pudo cargar el listado de proveedores.'));
       if (!silent) setProveedores([]);
     } finally {
-      if (!silent) setLoading(false);
+      if (requestId === proveedoresRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    if (!canVerProveedores) {
+      proveedoresRequestIdRef.current += 1;
+      detailRequestIdRef.current += 1;
+      editRequestIdRef.current += 1;
+      dependenciasRequestIdRef.current += 1;
+      confirmActionRequestIdRef.current += 1;
+      setProveedores([]);
+      setLoading(false);
+      setShowCreateModal(false);
+      setDetailId(null);
+      setDetailLoading(false);
+      setDetailData(null);
+      setEditId(null);
+      setEditForm(null);
+      setEditRemovedCuentas([]);
+      setConfirmModal({
+        show: false,
+        idToDelete: null,
+        nombre: '',
+        action: 'inactivar',
+        counts: null,
+        canDelete: null,
+        canDeactivate: null,
+        blockingReasons: []
+      });
+      setDeletingConfirm(false);
+      setConfirmDeleteError('');
+      setError('');
+      setResolvingActionId(null);
+      return;
+    }
     cargarProveedores();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showInactivos]);
+  }, [canVerProveedores, showInactivos]);
+
+  useEffect(() => () => {
+    proveedoresRequestIdRef.current += 1;
+    detailRequestIdRef.current += 1;
+    editRequestIdRef.current += 1;
+    dependenciasRequestIdRef.current += 1;
+    confirmActionRequestIdRef.current += 1;
+  }, []);
 
   useEffect(() => {
     if (!proveedores.length) {
@@ -454,6 +632,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   }, [detailData, detailProveedor]);
 
   const normalizarProveedorAFormulario = (proveedor) => ({
+    concurrency_token: String(proveedor.concurrency_token ?? '').trim(),
     nombre_proveedor: proveedor.nombre_proveedor || '',
     contacto_principal: proveedor.contacto_principal || '',
     correo_electronico: proveedor.correo_electronico || '',
@@ -481,18 +660,26 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   };
 
   const openDetail = async (idProveedor) => {
+    if (!canVerProveedores) {
+      safeToast('SIN PERMISO', 'No tienes permiso para ver proveedores.', 'warning');
+      return;
+    }
     const safeId = Number(idProveedor);
     if (!safeId) return;
+    const requestId = ++detailRequestIdRef.current;
 
     setShowCreateModal(false);
+    editRequestIdRef.current += 1;
     setEditId(null);
     setEditForm(null);
+    setEditRemovedCuentas([]);
     setDetailId(safeId);
     setDetailLoading(true);
     setDetailData(null);
 
     try {
       const proveedor = await cargarDetalleProveedor(safeId);
+      if (requestId !== detailRequestIdRef.current) return;
       if (!proveedor) {
         safeToast('PROVEEDORES', 'No se encontro detalle del proveedor.', 'warning');
         setDetailId(null);
@@ -500,14 +687,22 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       }
       setDetailData(proveedor);
     } catch (detailError) {
-      safeToast('ERROR', detailError?.message || 'No se pudo cargar el detalle del proveedor.', 'danger');
+      if (requestId !== detailRequestIdRef.current) return;
+      safeToast(
+        'ERROR',
+        resolveProveedoresRequestMessage(detailError, 'No se pudo cargar el detalle del proveedor.'),
+        'danger'
+      );
       setDetailId(null);
     } finally {
-      setDetailLoading(false);
+      if (requestId === detailRequestIdRef.current) {
+        setDetailLoading(false);
+      }
     }
   };
 
   const closeDetail = () => {
+    detailRequestIdRef.current += 1;
     setDetailId(null);
     setDetailLoading(false);
     setDetailData(null);
@@ -519,9 +714,15 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   };
 
   const openCreate = () => {
+    if (!canCrearProveedores) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear proveedores.', 'warning');
+      return;
+    }
     closeDetail();
+    editRequestIdRef.current += 1;
     setEditId(null);
     setEditForm(null);
+    setEditRemovedCuentas([]);
     resetCreateForm();
     setShowCreateModal(true);
   };
@@ -562,12 +763,68 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       const cuentas = Array.isArray(current.cuentas_bancarias) ? [...current.cuentas_bancarias] : [];
       if (!cuentas[index]) return current;
       const next = cuentas.filter((_, idx) => idx !== index);
-      return { ...current, cuentas_bancarias: next.length ? next : [createCuentaDraft()] };
+      return { ...current, cuentas_bancarias: next };
+    });
+  };
+
+  const registerRemovedCuentaForEdit = (cuenta) => {
+    const idCuenta = Number(cuenta?.id_cuenta_bancaria ?? 0);
+    if (!idCuenta) return;
+    setEditRemovedCuentas((current) => {
+      if (current.some((item) => Number(item?.id_cuenta_bancaria ?? 0) === idCuenta)) {
+        return current;
+      }
+      return [
+        ...current,
+        {
+          ...normalizeCuenta(cuenta),
+          id_cuenta_bancaria: idCuenta
+        }
+      ];
+    });
+  };
+
+  const removeCuentaRowFromEdit = (index) => {
+    const cuentas = Array.isArray(editForm?.cuentas_bancarias) ? editForm.cuentas_bancarias : [];
+    const cuenta = cuentas[index] || null;
+    removeCuentaRow(setEditForm, index);
+    if (cuenta && Number(cuenta?.id_cuenta_bancaria ?? 0) > 0) {
+      registerRemovedCuentaForEdit(cuenta);
+    }
+  };
+
+  const restoreRemovedCuentaForEdit = (idCuentaBancaria) => {
+    const safeId = Number(idCuentaBancaria ?? 0);
+    if (!safeId) return;
+
+    let cuentaToRestore = null;
+    setEditRemovedCuentas((current) => {
+      cuentaToRestore =
+        current.find((cuenta) => Number(cuenta?.id_cuenta_bancaria ?? 0) === safeId) || null;
+      return current.filter((cuenta) => Number(cuenta?.id_cuenta_bancaria ?? 0) !== safeId);
+    });
+
+    if (!cuentaToRestore) return;
+    setEditForm((current) => {
+      if (!current) return current;
+      const cuentas = Array.isArray(current.cuentas_bancarias) ? [...current.cuentas_bancarias] : [];
+      const alreadyExists = cuentas.some(
+        (cuenta) => Number(cuenta?.id_cuenta_bancaria ?? 0) === Number(cuentaToRestore?.id_cuenta_bancaria ?? 0)
+      );
+      if (alreadyExists) return current;
+      return {
+        ...current,
+        cuentas_bancarias: [...cuentas, cuentaToRestore]
+      };
     });
   };
 
   const onCrear = async (event) => {
     event.preventDefault();
+    if (!canCrearProveedores) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear proveedores.', 'warning');
+      return;
+    }
     if (savingCreate) return;
 
     const validationErrors = validateProveedorForm(form);
@@ -586,15 +843,20 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       closeCreate();
       await cargarProveedores({ silent: true });
     } catch (saveError) {
-      safeToast('ERROR', saveError?.message || 'No se pudo crear el proveedor.', 'danger');
+      safeToast('ERROR', resolveProveedoresRequestMessage(saveError, 'No se pudo crear el proveedor.'), 'danger');
     } finally {
       setSavingCreate(false);
     }
   };
 
   const iniciarEdicion = async (proveedor) => {
+    if (!canEditarProveedores) {
+      safeToast('SIN PERMISO', 'No tienes permiso para editar proveedores.', 'warning');
+      return;
+    }
     const idProveedor = Number(proveedor?.id_proveedor ?? proveedor ?? 0);
     if (!idProveedor) return;
+    const requestId = ++editRequestIdRef.current;
 
     closeDetail();
     setShowCreateModal(false);
@@ -602,31 +864,42 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
     setSavingEdit(false);
     setEditId(idProveedor);
     setEditForm(null);
+    setEditRemovedCuentas([]);
 
     try {
       const detalle = await cargarDetalleProveedor(idProveedor);
+      if (requestId !== editRequestIdRef.current) return;
       if (!detalle) {
         safeToast('PROVEEDORES', 'No se pudo cargar el proveedor para edicion.', 'warning');
         setEditId(null);
+        setEditRemovedCuentas([]);
         return;
       }
       setEditForm(normalizarProveedorAFormulario(detalle));
     } catch (editError) {
-      safeToast('ERROR', editError?.message || 'No se pudo abrir la edicion.', 'danger');
+      if (requestId !== editRequestIdRef.current) return;
+      safeToast('ERROR', resolveProveedoresRequestMessage(editError, 'No se pudo abrir la edicion.'), 'danger');
       setEditId(null);
       setEditForm(null);
+      setEditRemovedCuentas([]);
     }
   };
 
   const cancelarEdicion = () => {
     if (savingEdit) return;
+    editRequestIdRef.current += 1;
     setEditId(null);
     setEditForm(null);
     setEditErrors({});
+    setEditRemovedCuentas([]);
   };
 
   const guardarEdicion = async (event) => {
     event.preventDefault();
+    if (!canEditarProveedores) {
+      safeToast('SIN PERMISO', 'No tienes permiso para editar proveedores.', 'warning');
+      return;
+    }
     if (!editForm || !editId || savingEdit) return;
 
     const validationErrors = validateProveedorForm(editForm);
@@ -634,6 +907,14 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
 
     if (Object.keys(validationErrors).length > 0) {
       safeToast('VALIDACION', 'Hay campos invalidos en la edicion del proveedor.', 'warning');
+      return;
+    }
+    const concurrencyToken = String(editForm?.concurrency_token ?? '').trim();
+    if (!concurrencyToken) {
+      const message =
+        'No se pudo validar la version actual del proveedor. Recarga la informacion e intenta nuevamente.';
+      setEditErrors((current) => ({ ...current, _concurrency: message }));
+      safeToast('PROVEEDORES', message, 'warning');
       return;
     }
 
@@ -645,7 +926,21 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       cancelarEdicion();
       await cargarProveedores({ silent: true });
     } catch (updateError) {
-      safeToast('ERROR', updateError?.message || 'No se pudo actualizar el proveedor.', 'danger');
+      const isConcurrencyConflict =
+        updateError?.status === 409 &&
+        String(updateError?.data?.conflict_type || '').toUpperCase() === 'CONCURRENCY';
+      if (isConcurrencyConflict) {
+        const message = updateError?.message || PROVEEDORES_CONCURRENCY_CONFLICT_MESSAGE;
+        setEditErrors((current) => ({ ...current, _concurrency: message }));
+        safeToast('CONFLICTO DE EDICION', message, 'warning');
+        return;
+      }
+
+      safeToast(
+        'ERROR',
+        resolveProveedoresRequestMessage(updateError, 'No se pudo actualizar el proveedor.'),
+        'danger'
+      );
     } finally {
       setSavingEdit(false);
     }
@@ -654,102 +949,185 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   const openConfirmDelete = (proveedor, forceAction = null) => {
     if (!proveedor?.id_proveedor) return;
     const actionMeta = getProveedorActionMeta(proveedor);
+    const requestedAction = String(forceAction || actionMeta.action || '')
+      .trim()
+      .toLowerCase();
+    const action = requestedAction === 'reactivar' ? 'reactivar' : 'inactivar';
+    if (actionMeta.disabled) {
+      safeToast('PROVEEDORES', actionMeta.disabledReason || 'Esta accion no esta disponible para este proveedor.', 'warning');
+      return;
+    }
+    if (!canRunProveedorAction(action)) {
+      safeToast('SIN PERMISO', 'No tienes permiso para realizar esta accion sobre proveedores.', 'warning');
+      return;
+    }
     setConfirmDeleteError('');
     setConfirmModal({
       show: true,
       idToDelete: Number(proveedor.id_proveedor),
       nombre: proveedor.nombre_proveedor || `Proveedor ${proveedor.id_proveedor}`,
-      action: forceAction || actionMeta.action,
+      action,
       counts: {
         compras: Number(proveedor.compras_count ?? 0),
-        cuentas_bancarias: Number(proveedor.cuentas_bancarias_count ?? 0)
-      }
+        cuentas_bancarias: Number(proveedor.cuentas_bancarias_count ?? 0),
+        ordenes_historial: Number(proveedor.ordenes_historial_count ?? 0),
+        ordenes_activas: Number(proveedor.ordenes_activas_count ?? 0)
+      },
+      canDelete: resolveBooleanFlag(proveedor.can_delete, proveedor.canDelete),
+      canDeactivate: resolveBooleanFlag(proveedor.can_deactivate, proveedor.canDeactivate),
+      blockingReasons: normalizeReasonList(proveedor.blocking_reasons ?? proveedor.blockingReasons)
     });
   };
 
   const closeConfirmDelete = () => {
-    if (deletingConfirm) return;
+    dependenciasRequestIdRef.current += 1;
+    setDeletingConfirm(false);
+    setResolvingActionId(null);
     setConfirmDeleteError('');
     setConfirmModal({
       show: false,
       idToDelete: null,
       nombre: '',
-      action: 'eliminar',
-      counts: null
+      action: 'inactivar',
+      counts: null,
+      canDelete: null,
+      canDeactivate: null,
+      blockingReasons: []
     });
   };
 
   const eliminarConfirmado = async () => {
     const id = Number(confirmModal.idToDelete ?? 0);
+    const action = String(confirmModal.action ?? '').trim().toLowerCase();
+    let effectiveAction = action;
     if (!id || deletingConfirm) return;
+    if (!canRunProveedorAction(action)) {
+      safeToast('SIN PERMISO', 'No tienes permiso para realizar esta accion sobre proveedores.', 'warning');
+      return;
+    }
 
     setDeletingConfirm(true);
     setResolvingActionId(id);
     setConfirmDeleteError('');
+    const requestId = ++confirmActionRequestIdRef.current;
 
     try {
       const dependencies = await inventarioService.getProveedorDependencias(id);
-      const counts = dependencies?.counts || {
-        compras: Number(confirmProveedor?.compras_count ?? 0),
-        cuentas_bancarias: Number(confirmProveedor?.cuentas_bancarias_count ?? 0)
-      };
-
-      const canDelete =
-        typeof dependencies?.canDelete === 'boolean'
-          ? dependencies.canDelete
-          : typeof dependencies?.can_delete === 'boolean'
-          ? dependencies.can_delete
-          : Number(counts.compras ?? 0) === 0 && Number(counts.cuentas_bancarias ?? 0) === 0;
-
-      if (confirmModal.action === 'eliminar' && !canDelete) {
-        setConfirmModal((current) => ({
-          ...current,
-          action: parseEstado(confirmProveedor?.estado) ? 'inactivar' : 'reactivar',
-          counts
-        }));
-        setConfirmDeleteError('Este proveedor tiene dependencias y no puede eliminarse. Puedes inactivarlo.');
+      if (requestId !== confirmActionRequestIdRef.current) {
         return;
       }
 
-      if (confirmModal.action === 'inactivar') {
-        await inventarioService.inactivarProveedor(id, '');
-      } else if (confirmModal.action === 'reactivar') {
-        await inventarioService.reactivarProveedor(id);
-      } else {
-        await inventarioService.eliminarProveedor(id);
+      const countsRaw = dependencies?.counts || {
+        compras: Number(confirmProveedor?.compras_count ?? 0),
+        cuentas_bancarias: Number(confirmProveedor?.cuentas_bancarias_count ?? 0),
+        ordenes_historial: Number(confirmProveedor?.ordenes_historial_count ?? 0),
+        ordenes_activas: Number(confirmProveedor?.ordenes_activas_count ?? 0)
+      };
+      const counts = {
+        compras: Number(countsRaw?.compras ?? 0),
+        cuentas_bancarias: Number(countsRaw?.cuentas_bancarias ?? 0),
+        ordenes_historial: Number(countsRaw?.ordenes_historial ?? 0),
+        ordenes_activas: Number(countsRaw?.ordenes_activas ?? 0)
+      };
+
+      const canDeleteResolved = resolveBooleanFlag(dependencies?.canDelete, dependencies?.can_delete);
+      const canDelete =
+        canDeleteResolved !== null ? canDeleteResolved : Number(counts.compras ?? 0) === 0 && Number(counts.ordenes_historial ?? 0) === 0;
+      const canDeactivateResolved = resolveBooleanFlag(dependencies?.canDeactivate, dependencies?.can_deactivate);
+      const canDeactivate =
+        canDeactivateResolved !== null ? canDeactivateResolved : Number(counts.ordenes_activas ?? 0) === 0;
+      const deleteBlockingReasons = normalizeReasonList(
+        dependencies?.deleteBlockingReasons ?? dependencies?.delete_blocking_reasons
+      );
+      const deactivateBlockingReasons = normalizeReasonList(
+        dependencies?.deactivateBlockingReasons ?? dependencies?.deactivate_blocking_reasons
+      );
+      const blockingReasons = normalizeReasonList(
+        dependencies?.blockingReasons ??
+          dependencies?.blocking_reasons ??
+          [...deleteBlockingReasons, ...deactivateBlockingReasons]
+      );
+      const deactivateReason = firstReason(
+        deactivateBlockingReasons.length > 0 ? deactivateBlockingReasons : blockingReasons,
+        'El proveedor no puede inactivarse porque mantiene ordenes de compra activas.'
+      );
+
+      if (effectiveAction === 'inactivar' && !canDeactivate) {
+        setConfirmModal((current) => ({
+          ...current,
+          counts,
+          canDelete,
+          canDeactivate,
+          blockingReasons
+        }));
+        setConfirmDeleteError(deactivateReason);
+        return;
       }
 
-      await cargarProveedores({ silent: true });
+      if (effectiveAction === 'inactivar') {
+        await inventarioService.inactivarProveedor(id, '');
+      } else {
+        effectiveAction = 'reactivar';
+        await inventarioService.reactivarProveedor(id);
+      }
+
+      const successLabel =
+        effectiveAction === 'inactivar'
+          ? 'Proveedor inactivado correctamente.'
+          : 'Proveedor reactivado correctamente.';
+
       if (Number(detailId ?? 0) === id) closeDetail();
       if (Number(editId ?? 0) === id) cancelarEdicion();
       closeConfirmDelete();
-
-      const successLabel =
-        confirmModal.action === 'inactivar'
-          ? 'Proveedor inactivado correctamente.'
-          : confirmModal.action === 'reactivar'
-          ? 'Proveedor reactivado correctamente.'
-          : 'Proveedor eliminado correctamente.';
-
       safeToast('PROVEEDORES', successLabel, 'success');
+
+      try {
+        await cargarProveedores({ silent: true });
+      } catch (reloadError) {
+        safeToast(
+          'AVISO',
+          resolveProveedoresRequestMessage(
+            reloadError,
+            'La accion se aplico, pero no se pudo refrescar el listado de proveedores.'
+          ),
+          'warning'
+        );
+      }
     } catch (deleteError) {
-      setConfirmDeleteError(deleteError?.message || 'No se pudo completar la accion seleccionada.');
+      if (requestId !== confirmActionRequestIdRef.current) return;
+      setConfirmDeleteError(
+        resolveProveedoresRequestMessage(deleteError, 'No se pudo completar la accion seleccionada.')
+      );
     } finally {
-      setDeletingConfirm(false);
-      setResolvingActionId(null);
+      if (requestId === confirmActionRequestIdRef.current) {
+        setDeletingConfirm(false);
+        setResolvingActionId(null);
+      }
     }
   };
 
-  const renderCuentaRows = ({ values, errors, onChange, onRemove, onAdd, disabled }) => {
+  const renderCuentaRows = ({
+    values,
+    errors,
+    onChange,
+    onRemove,
+    onAdd,
+    disabled,
+    removedItems = [],
+    onRestoreRemoved = null
+  }) => {
     const cuentas = Array.isArray(values) ? values : [];
     const cuentasError = errors?.cuentas_bancarias;
     const cuentasDetalleError = errors?.cuentas_bancarias_detalle || {};
+    const removedCuentas = Array.isArray(removedItems) ? removedItems : [];
 
     return (
       <section className="inv-prod-pmodal__section mt-2">
         <div className="inv-prod-pmodal__section-head">
           <div className="inv-prod-pmodal__section-title">Cuentas bancarias</div>
-          <div className="inv-prod-pmodal__section-sub">Registra cuentas en renglones lineales.</div>
+          <div className="inv-prod-pmodal__section-sub">
+            Registra cuentas en renglones lineales (existentes, nuevas y removidas).
+          </div>
         </div>
 
         {cuentasError ? (
@@ -758,17 +1136,61 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
           </div>
         ) : null}
 
+        {removedCuentas.length > 0 ? (
+          <div className="alert alert-secondary py-2 mb-3" role="status">
+            <div className="fw-semibold small mb-1">Cuentas removidas en esta edicion</div>
+            <div className="small mb-2">{PROVEEDORES_ACCOUNT_REMOVAL_HINT}</div>
+            <div className="d-flex flex-column gap-2">
+              {removedCuentas.map((cuenta) => {
+                const accountId = Number(cuenta?.id_cuenta_bancaria ?? 0);
+                const labelBanco = String(cuenta?.banco ?? '').trim() || 'Banco no definido';
+                const labelNumero = String(cuenta?.numero_cuenta ?? '').trim() || 'N/D';
+                return (
+                  <div
+                    key={accountId || cuenta?._tmp_id || labelNumero}
+                    className="d-flex align-items-center justify-content-between gap-2"
+                  >
+                    <span className="small">
+                      <span className="badge text-bg-light border me-2">Removida</span>
+                      {`${labelBanco} - ${labelNumero}`}
+                    </span>
+                    {typeof onRestoreRemoved === 'function' && accountId > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => onRestoreRemoved(accountId)}
+                        disabled={disabled}
+                      >
+                        Restaurar
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <div className="d-flex flex-column gap-3">
+          {cuentas.length === 0 ? (
+            <div className="text-muted small">No hay cuentas bancarias en el formulario.</div>
+          ) : null}
           {cuentas.map((cuenta, index) => {
             const rowErrors = cuentasDetalleError[index] || {};
+            const isExistingAccount = Number(cuenta?.id_cuenta_bancaria ?? 0) > 0;
             return (
               <div key={cuenta._tmp_id || `${index}`} className="border rounded-3 p-3 bg-light-subtle">
                 <div className="d-flex align-items-center justify-content-between mb-2">
-                  <strong>Cuenta #{index + 1}</strong>
+                  <div className="d-flex align-items-center gap-2">
+                    <strong>Cuenta #{index + 1}</strong>
+                    <span className={`badge ${isExistingAccount ? 'text-bg-light border' : 'text-bg-primary'}`}>
+                      {isExistingAccount ? 'Existente' : 'Nueva'}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     className="btn btn-sm btn-outline-danger"
-                    disabled={disabled || cuentas.length <= 1}
+                    disabled={disabled}
                     onClick={() => onRemove(index)}
                   >
                     <i className="bi bi-trash me-1" />Quitar
@@ -925,7 +1347,14 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
         const isInactivo = !parseEstado(proveedor.estado);
         const isResolvingAction = Number(resolvingActionId ?? 0) === Number(proveedor?.id_proveedor ?? 0);
         const isSelected = String(selectedProveedorId ?? '') === String(proveedor?.id_proveedor ?? '');
-        const hasAlert = !proveedor.can_delete && parseEstado(proveedor.estado);
+        const isActivo = parseEstado(proveedor.estado);
+        const hasAlert = isActivo && (!proveedor.can_delete || !proveedor.can_deactivate);
+        const showHistoryHint = isActivo && !proveedor.can_delete && proveedor.can_deactivate;
+        const showDeactivateBlockedHint = isActivo && !proveedor.can_deactivate;
+        const deactivateBlockedReason = firstReason(
+          proveedor.deactivate_blocking_reasons ?? proveedor.blocking_reasons,
+          'No se puede inactivar porque mantiene ordenes de compra activas.'
+        );
 
         return (
           <article
@@ -973,6 +1402,18 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
               {isInactivo ? (
                 <div className="alert alert-warning py-2 mb-3" role="status">
                   INACTIVO - no disponible para conversion de compras
+                </div>
+              ) : null}
+
+              {showHistoryHint ? (
+                <div className="alert alert-info py-2 mb-3" role="status">
+                  {PROVEEDORES_LIFECYCLE_INFO_MESSAGE}
+                </div>
+              ) : null}
+
+              {showDeactivateBlockedHint ? (
+                <div className="alert alert-warning py-2 mb-3" role="alert">
+                  {deactivateBlockedReason}
                 </div>
               ) : null}
 
@@ -1039,30 +1480,35 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                   <span>Detalle</span>
                 </button>
 
-                <button
-                  type="button"
-                  className="btn inv-prod-btn-subtle inv-warehouse-card__action"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    iniciarEdicion(proveedor);
-                  }}
-                >
-                  <i className="bi bi-pencil-square" />
-                  <span>Editar</span>
-                </button>
+                {canEditarProveedores ? (
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle inv-warehouse-card__action"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      iniciarEdicion(proveedor);
+                    }}
+                  >
+                    <i className="bi bi-pencil-square" />
+                    <span>Editar</span>
+                  </button>
+                ) : null}
 
-                <button
-                  type="button"
-                  className={actionMeta.buttonClass}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openConfirmDelete(proveedor, actionMeta.action);
-                  }}
-                  disabled={deletingConfirm || isResolvingAction}
-                >
-                  <i className={`bi ${isResolvingAction ? 'bi-hourglass-split' : actionMeta.icon}`} />
-                  <span>{isResolvingAction ? 'Validando...' : actionMeta.label}</span>
-                </button>
+                {canRunProveedorAction(actionMeta.action) ? (
+                  <button
+                    type="button"
+                    className={actionMeta.buttonClass}
+                    title={actionMeta.title}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openConfirmDelete(proveedor, actionMeta.action);
+                    }}
+                    disabled={deletingConfirm || isResolvingAction || actionMeta.disabled}
+                  >
+                    <i className={`bi ${isResolvingAction ? 'bi-hourglass-split' : actionMeta.icon}`} />
+                    <span>{isResolvingAction ? 'Validando...' : actionMeta.label}</span>
+                  </button>
+                ) : null}
               </div>
             </div>
           </article>
@@ -1072,7 +1518,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   );
 
   const createModal =
-    modalPortalTarget && showCreateModal
+    canCrearProveedores && modalPortalTarget && showCreateModal
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showCreateModal}>
             <div className="inv-prod-pmodal__overlay" onClick={closeCreate} />
@@ -1376,26 +1822,45 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                     </div>
                   )}
                 </div>
+
+                {detailActionMeta?.action === 'inactivar' && detailActionMeta?.disabled ? (
+                  <div className="alert alert-warning mt-3 mb-0" role="alert">
+                    {detailActionMeta.disabledReason}
+                  </div>
+                ) : null}
+
+                {parseEstado(detailProveedor.estado) &&
+                !detailProveedor.can_delete &&
+                detailProveedor.can_deactivate ? (
+                  <div className="alert alert-info mt-3 mb-0" role="status">
+                    {PROVEEDORES_LIFECYCLE_INFO_MESSAGE}
+                  </div>
+                ) : null}
               </>
             )}
           </div>
 
           <div className="modal-footer inv-warehouse-detail-modal__footer">
-            <button type="button" className="btn btn-light" onClick={() => iniciarEdicion(detailProveedor)}>
-              Editar
-            </button>
-            {detailActionMeta ? (
+            {canEditarProveedores ? (
+              <button type="button" className="btn btn-light" onClick={() => iniciarEdicion(detailProveedor)}>
+                Editar
+              </button>
+            ) : null}
+            {detailActionMeta && canRunProveedorAction(detailActionMeta.action) ? (
               <button
                 type="button"
                 className={`btn ${
-                  detailActionMeta.action === 'eliminar'
-                    ? 'btn-outline-danger'
-                    : detailActionMeta.action === 'inactivar'
+                  detailActionMeta.action === 'inactivar'
                     ? 'btn-outline-secondary'
                     : 'btn-outline-success'
                 }`}
+                title={detailActionMeta.title}
                 onClick={() => openConfirmDelete(detailProveedor, detailActionMeta.action)}
-                disabled={Number(resolvingActionId ?? 0) === Number(detailProveedor?.id_proveedor ?? 0) || detailLoading}
+                disabled={
+                  Number(resolvingActionId ?? 0) === Number(detailProveedor?.id_proveedor ?? 0) ||
+                  detailLoading ||
+                  detailActionMeta.disabled
+                }
               >
                 {Number(resolvingActionId ?? 0) === Number(detailProveedor?.id_proveedor ?? 0)
                   ? 'Validando...'
@@ -1412,7 +1877,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   ) : null;
 
   const editModal =
-    modalPortalTarget && showEditModal
+    canEditarProveedores && modalPortalTarget && showEditModal
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showEditModal}>
             <div className="inv-prod-pmodal__overlay" onClick={cancelarEdicion} />
@@ -1458,6 +1923,11 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                           <div className="inv-prod-pmodal__section-head">
                             <div className="inv-prod-pmodal__section-title">Datos generales</div>
                           </div>
+                          {editErrors._concurrency ? (
+                            <div className="alert alert-warning py-2 mb-3" role="alert">
+                              {editErrors._concurrency}
+                            </div>
+                          ) : null}
 
                           <div className="row g-2">
                             <div className="col-12">
@@ -1602,9 +2072,11 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                           values: editForm.cuentas_bancarias,
                           errors: editErrors,
                           onChange: (index, patch) => updateCuentaList(setEditForm, index, patch),
-                          onRemove: (index) => removeCuentaRow(setEditForm, index),
+                          onRemove: removeCuentaRowFromEdit,
                           onAdd: () => addCuentaRow(setEditForm),
-                          disabled: savingEdit
+                          disabled: savingEdit,
+                          removedItems: editRemovedCuentas,
+                          onRestoreRemoved: restoreRemovedCuentaForEdit
                         })}
                       </div>
                     </div>
@@ -1631,12 +2103,9 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
         )
       : null;
 
-  const confirmDeleteModal = confirmModal.show ? (
+  const confirmDeleteModal = confirmModal.show && canRunProveedorAction(confirmModal.action) ? (
     <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
-      <div
-        className={`inv-pro-confirm-panel ${confirmModal.action === 'eliminar' ? 'inv-pro-confirm-panel--danger' : ''}`.trim()}
-        onClick={(event) => event.stopPropagation()}
-      >
+      <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
         <div className="inv-pro-confirm-glow" aria-hidden="true" />
 
         <div className="inv-pro-confirm-head">
@@ -1669,9 +2138,17 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
 
           {confirmModal.counts ? (
             <div className="small text-muted mb-2">
-              {`Dependencias: compras ${confirmModal.counts.compras ?? 0}, cuentas bancarias ${
+              {`Dependencias: compras ${confirmModal.counts.compras ?? 0}, ordenes referenciadas ${
+                confirmModal.counts.ordenes_historial ?? 0
+              }, ordenes activas ${confirmModal.counts.ordenes_activas ?? 0}, cuentas bancarias ${
                 confirmModal.counts.cuentas_bancarias ?? 0
               }`}
+            </div>
+          ) : null}
+
+          {Array.isArray(confirmModal.blockingReasons) && confirmModal.blockingReasons.length > 0 ? (
+            <div className="small text-muted mb-2">
+              {`Motivos de bloqueo: ${confirmModal.blockingReasons.join(' | ')}`}
             </div>
           ) : null}
 
@@ -1698,9 +2175,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
           <button
             type="button"
             className={`btn ${
-              confirmModal.action === 'eliminar'
-                ? 'inv-pro-btn-danger'
-                : confirmModal.action === 'reactivar'
+              confirmModal.action === 'reactivar'
                 ? 'btn-success'
                 : 'btn-warning'
             }`}
@@ -1714,6 +2189,12 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       </div>
     </div>
   ) : null;
+
+  if (permisosLoading) return null;
+
+  if (!canAccessProveedoresTab || !canVerProveedores) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_PROVEEDORES_VER} />;
+  }
 
   return (
     <>
@@ -1769,10 +2250,12 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                   Mostrar inactivos
                 </label>
               </div>
-              <button type="button" className="inv-prod-toolbar-btn inv-cat-v3__new-btn" onClick={openCreate}>
-                <i className="bi bi-plus-circle" aria-hidden="true" />
-                <span>Nuevo proveedor</span>
-              </button>
+              {canCrearProveedores ? (
+                <button type="button" className="inv-prod-toolbar-btn inv-cat-v3__new-btn" onClick={openCreate}>
+                  <i className="bi bi-plus-circle" aria-hidden="true" />
+                  <span>Nuevo proveedor</span>
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

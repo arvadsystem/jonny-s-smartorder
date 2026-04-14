@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 const formatMoney = (value) => {
   const amount = Number(value ?? 0);
@@ -41,12 +41,6 @@ export default function ExportModal({
   planillaLabel = 'Planilla seleccionada'
 }) {
   const [options, setOptions] = useState(initialOptions);
-
-  useEffect(() => {
-    if (!open) {
-      setOptions(initialOptions);
-    }
-  }, [open]);
 
   if (!open) return null;
 
@@ -143,3 +137,4 @@ export default function ExportModal({
     </div>
   );
 }
+

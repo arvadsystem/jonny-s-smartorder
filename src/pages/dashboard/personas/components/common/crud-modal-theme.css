@@ -91,6 +91,40 @@
   letter-spacing: 0.2px;
 }
 
+.crud-modal .persona-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.crud-modal .persona-field-label__meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.08rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.crud-modal .persona-field-label__meta.is-required {
+  border-color: rgba(173, 58, 58, 0.36);
+  background: rgba(255, 231, 231, 0.9);
+  color: #9f2525;
+}
+
+.crud-modal .persona-field-label__meta.is-optional {
+  border-color: rgba(131, 111, 95, 0.35);
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(96, 73, 60, 0.9);
+}
+
 .crud-modal .form-control,
 .crud-modal .form-select {
   min-height: 2.85rem;
@@ -255,6 +289,11 @@
   .crud-modal .form-label,
   .crud-modal .form-check-label {
     font-size: 0.9rem;
+  }
+
+  .crud-modal .persona-field-label__meta {
+    padding: 0.06rem 0.36rem;
+    font-size: 0.6rem;
   }
 
   .crud-modal.empleados-modal .empleados-modal__persona-meta {

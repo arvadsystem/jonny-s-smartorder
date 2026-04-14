@@ -15,11 +15,8 @@ export default function EmployeeRow({
   onOpenDetalle,
   onOpenMovimientos,
   onOpenHorasExtra,
-  onOpenBono,
-  onOpenDeduccion,
   onOpenAdelanto,
   onRecalcularDetalle,
-  canRegistrarMovimiento = false,
   canAplicarAdelanto = false,
   canRecalcular = false
 }) {
@@ -28,6 +25,8 @@ export default function EmployeeRow({
     item.empleado_nombre ||
     item.nombre_empleado ||
     `${item.nombre || ''} ${item.apellido || ''}`.trim();
+  const horasExtraLabel = textValue(item.he_tiempo ?? item.horas_extra_tiempo ?? '0', '0');
+  const canOpenHorasExtra = typeof onOpenHorasExtra === 'function';
 
   return (
     <tr className="payroll-row">
@@ -50,16 +49,19 @@ export default function EmployeeRow({
       <td className="payroll-row__number">{formatMoney(item.total_deducciones ?? item.deducciones)}</td>
       <td className="payroll-row__number">{formatMoney(item.total_adelantos_aplicados ?? item.adelantos)}</td>
       <td className="payroll-row__number">
-        <button
-          type="button"
-          className="btn btn-link payroll-row__he-btn"
-          onClick={() => onOpenHorasExtra?.(item)}
-          disabled={typeof onOpenHorasExtra !== 'function'}
-          title="Ver horas extra"
-        >
-          <i className="bi bi-clock-history me-1" />
-          {textValue(item.he_tiempo ?? item.horas_extra_tiempo ?? '0', '0')}
-        </button>
+        {canOpenHorasExtra ? (
+          <button
+            type="button"
+            className="btn btn-link payroll-row__he-btn"
+            onClick={() => onOpenHorasExtra?.(item)}
+            title="Ver horas extra"
+          >
+            <i className="bi bi-clock-history me-1" />
+            {horasExtraLabel}
+          </button>
+        ) : (
+          <span className="payroll-row__he-text">{horasExtraLabel}</span>
+        )}
       </td>
       <td className="payroll-row__number">
         <strong className="payroll-row__net">
@@ -85,27 +87,6 @@ export default function EmployeeRow({
           >
             <i className="bi bi-list-ul" />
           </button>
-
-          {canRegistrarMovimiento ? (
-            <>
-              <button
-                type="button"
-                className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--bono payroll-row__action-strong"
-                onClick={() => onOpenBono?.(item)}
-                title="Registrar bono"
-              >
-                <i className="bi bi-plus-lg" />
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--deduccion payroll-row__action-strong"
-                onClick={() => onOpenDeduccion?.(item)}
-                title="Registrar deduccion"
-              >
-                <i className="bi bi-dash-lg" />
-              </button>
-            </>
-          ) : null}
 
           {canAplicarAdelanto ? (
             <button

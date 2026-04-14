@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import Select from "react-select";
 import SinPermiso from "../../components/common/SinPermiso";
 import { usePermisos } from "../../context/PermisosContext";
 import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from "../../utils/permissions";
@@ -58,6 +59,28 @@ export default function Personas() {
     return parsed ? String(parsed) : "";
   }, [searchParams]);
 
+  const sucursalContextOptions = useMemo(
+    () =>
+      sucursales
+        .map((sucursal) => {
+          const id = parsePositiveInt(sucursal?.id_sucursal);
+          if (!id) return null;
+          const nombre =
+            sucursal?.nombre_sucursal ||
+            sucursal?.nombre ||
+            sucursal?.sucursal ||
+            `Sucursal #${id}`;
+          return { value: String(id), label: nombre };
+        })
+        .filter(Boolean),
+    [sucursales]
+  );
+
+  const sucursalContextValue = useMemo(
+    () => sucursalContextOptions.find((option) => option.value === selectedSucursalId) || null,
+    [selectedSucursalId, sucursalContextOptions]
+  );
+
   const applySucursalContext = useCallback(
     (nextSucursalId) => {
       const next = new URLSearchParams(searchParams);
@@ -79,6 +102,10 @@ export default function Personas() {
     const t = (searchParams.get("tab") || fallbackTab).toLowerCase();
     return allowedTabs.includes(t) ? t : fallbackTab;
   }, [allowedTabs, fallbackTab, searchParams]);
+
+  const isPlanillasTab = activeTab === "planillas";
+  const useEnhancedSucursalContext = ["clientes", "empleados", "usuarios"].includes(activeTab);
+  const showSucursalContext = isPlanillasTab || useEnhancedSucursalContext;
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -169,7 +196,7 @@ export default function Personas() {
       default:
         return <PersonasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
     }
-  }, [activeTab, applySucursalContext, openToast, selectedSucursalId]);
+  }, [activeTab, openToast, selectedSucursalId]);
 
   if (permisosLoading) {
     return null;
@@ -185,40 +212,73 @@ export default function Personas() {
   }
 
   return (
-    <div className="container-fluid p-3">
-      <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
-        <div className="inv-catpro-body inv-prod-body p-3 d-flex flex-wrap align-items-center gap-2">
-          <span className="fw-semibold text-secondary-emphasis">
-            Contexto de sucursal
-          </span>
-          <select
-            className="form-select form-select-sm"
-            style={{ maxWidth: 320 }}
-            value={selectedSucursalId}
-            onChange={(event) => applySucursalContext(event.target.value)}
-            disabled={sucursalesLoading}
-          >
-            <option value="">Todas las sucursales</option>
-            {sucursales.map((sucursal) => {
-              const id = parsePositiveInt(sucursal?.id_sucursal);
-              if (!id) return null;
-              const nombre =
-                sucursal?.nombre_sucursal ||
-                sucursal?.nombre ||
-                sucursal?.sucursal ||
-                `Sucursal #${id}`;
-              return (
-                <option key={id} value={id}>
-                  {nombre}
-                </option>
-              );
-            })}
-          </select>
-          <span className="text-muted small">
-            Este contexto aplica en submodulos que operan por sucursal.
-          </span>
+    <div className={`container-fluid p-3 ${isPlanillasTab ? "personas-branch-context personas-branch-context--planillas" : ""}`}>
+      {showSucursalContext ? (
+        <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
+          {isPlanillasTab ? (
+            <div className="inv-catpro-body inv-prod-body p-3">
+              <div className="personas-branch-context__row">
+                <label className="personas-branch-context__label" htmlFor="personas-sucursal-context">
+                  Seleccionar sucursal
+                </label>
+                <select
+                  id="personas-sucursal-context"
+                  className="form-select personas-branch-context__select"
+                  value={selectedSucursalId}
+                  onChange={(event) => applySucursalContext(event.target.value)}
+                  disabled={sucursalesLoading}
+                >
+                  <option value="">Selecciona la sucursal</option>
+                  {sucursales.map((sucursal) => {
+                    const id = parsePositiveInt(sucursal?.id_sucursal);
+                    if (!id) return null;
+                    const nombre =
+                      sucursal?.nombre_sucursal ||
+                      sucursal?.nombre ||
+                      sucursal?.sucursal ||
+                      `Sucursal #${id}`;
+                    return (
+                      <option key={id} value={id}>
+                        {nombre}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div className="inv-catpro-body inv-prod-body p-3">
+              <div className="personas-branch-context personas-branch-context--enhanced">
+                <div className="personas-branch-context__title-wrap">
+                  <span className="personas-branch-context__title-icon" aria-hidden="true">
+                    <i className="bi bi-buildings-fill" />
+                  </span>
+                  <div className="personas-branch-context__title">Seleccionar sucursal</div>
+                </div>
+
+                <div className="personas-branch-context__field personas-branch-context__field--enhanced">
+                  <Select
+                    inputId="personas-sucursal-context"
+                    classNamePrefix="personas-sucursal-rs"
+                    className="personas-branch-context__rs"
+                    options={sucursalContextOptions}
+                    value={sucursalContextValue}
+                    onChange={(option) => applySucursalContext(option?.value || "")}
+                    placeholder={sucursalContextOptions.length ? "Selecciona sucursal" : "No hay sucursales"}
+                    noOptionsMessage={() => "No hay sucursales disponibles"}
+                    isClearable
+                    isSearchable
+                    isDisabled={sucursalesLoading || sucursalContextOptions.length === 0}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                    menuPosition="fixed"
+                    aria-label="Seleccionar sucursal"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      ) : null}
 
       {/* ================= CONTENIDO ================= */}
       {tabContent}

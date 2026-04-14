@@ -81,6 +81,11 @@ const CartSheet = ({
                         Salsas: {formatSauces(item.salsas_por_unidad)}
                       </small>
                     ) : null}
+                    {String(item?.nota || '').trim() ? (
+                      <small className="pm-cart-sheet__line-meta">
+                        Nota: {String(item.nota).trim()}
+                      </small>
+                    ) : null}
                   </div>
 
                   <div className="pm-cart-sheet__item-side">

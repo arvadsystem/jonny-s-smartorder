@@ -29,7 +29,6 @@ const MenuPublico = () => {
         setMenu(data?.menu || []);
       } catch (err) {
         setError('No se pudo cargar el menú. Intenta de nuevo.');
-        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -161,3 +160,4 @@ const MenuPublico = () => {
 };
 
 export default MenuPublico;
+

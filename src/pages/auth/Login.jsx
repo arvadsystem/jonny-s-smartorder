@@ -3,11 +3,27 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import authService from '../../services/authService';
 import clientePublicoService from '../../services/clientePublicoService';
+import ForcePasswordChange from './ForcePasswordChange';
 import logo from '../../assets/images/logo-sin-fondo.png';
 import bgImage from '../../assets/images/imagen-fondo.png';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import './Login.scss';
+const normalizeRoleName = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/[\s-]+/g, '_')
+    .toUpperCase();
+
+const isClienteUser = (authUser) => {
+  const tipoUsuario = normalizeRoleName(authUser?.tipo_usuario);
+  if (tipoUsuario === 'CLIENTE') return true;
+
+  const roles = Array.isArray(authUser?.roles) ? authUser.roles : [];
+  return roles.map(normalizeRoleName).includes('CLIENTE');
+};
 
 const _MOTION = motion;
 
@@ -24,6 +40,7 @@ const Login = () => {
 
   // ── Estado general ───────────────────────────────────────────
   const [error, setError] = useState('');
+  const [showForcePasswordModal, setShowForcePasswordModal] = useState(false);
   const [successMsg, setSuccessMsg] = useState(
     searchParams.get('verified') === '1'
       ? '✅ ¡Correo verificado! Tu cuenta está activa. Ya puedes iniciar sesión.'
@@ -33,15 +50,28 @@ const Login = () => {
 
   // Redirección al ya tener sesión
   useEffect(() => {
-    if (!user) return;
-    const isCliente = user.tipo_usuario === 'CLIENTE' || user.roles?.includes('Cliente');
+    if (!user) {
+      setShowForcePasswordModal(false);
+      return;
+    }
+
+    const isCliente = isClienteUser(user);
     const mustChange = Boolean(user?.must_change_password);
+
     if (isCliente) {
+      setShowForcePasswordModal(false);
       const from = searchParams.get('from');
       navigate(from === 'carrito' ? '/carrito' : '/menu-publico', { replace: true });
-    } else {
-      navigate(mustChange ? '/cambiar-password' : '/dashboard', { replace: true });
+      return;
     }
+
+    if (mustChange) {
+      setShowForcePasswordModal(true);
+      return;
+    }
+
+    setShowForcePasswordModal(false);
+    navigate('/dashboard', { replace: true });
   }, [navigate, user, searchParams]);
 
   // ── Detectar si es email o nombre de usuario ─────────────────
@@ -72,7 +102,8 @@ const Login = () => {
 
       if (response?.usuario) {
         login(response);
-        // El useEffect redirige automáticamente según rol
+        const usuario = response.usuario;
+        setShowForcePasswordModal(!isClienteUser(usuario) && Boolean(usuario?.must_change_password));
       }
     } catch (err) {
       let msg = err.message;
@@ -238,8 +269,11 @@ const Login = () => {
           </div>
         </form>
       </motion.aside>
+
+      {showForcePasswordModal ? <ForcePasswordChange asModal /> : null}
     </div>
   );
 };
 
 export default Login;
+

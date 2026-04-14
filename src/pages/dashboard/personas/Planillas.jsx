@@ -1,11 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import Select from 'react-select';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
+import {
+  PLANILLAS_NAV_QUERY_PARAM,
+  PLANILLAS_NAV_TAB_KEYS,
+  resolvePlanillasNavTab
+} from '../../../modules/planillas/navigation';
 import sucursalesService from '../../../services/sucursalesService';
 import planillasService from '../../../services/planillasService';
 import PlanillasHeader from './components/planillas/PlanillasHeader';
 import PlanillasResumenCards from './components/planillas/PlanillasResumenCards';
 import PlanillasTable from './components/planillas/PlanillasTable';
+import PlanillasAdelantosInsight from './components/planillas/PlanillasAdelantosInsight';
+import PlanillasHorasExtraInsight from './components/planillas/PlanillasHorasExtraInsight';
+import PlanillasBonosDeduccionesInsight from './components/planillas/PlanillasBonosDeduccionesInsight';
 import {
   PlanillasLoadingState,
   PlanillasErrorState,
@@ -17,18 +27,112 @@ import PlanillaMovimientoFormModal from './components/planillas/PlanillaMovimien
 import PlanillaAdelantosModal from './components/planillas/PlanillaAdelantosModal';
 import PlanillaAuditoriaModal from './components/planillas/PlanillaAuditoriaModal';
 import PlanillaHorasExtraModal from './components/planillas/PlanillaHorasExtraModal';
+import PlanillaHorasExtraRegistroModal from './components/planillas/PlanillaHorasExtraRegistroModal';
 import PlanillaAdelantosPendientesModal from './components/planillas/PlanillaAdelantosPendientesModal';
+import PlanillaAdelantosHistorialModal from './components/planillas/PlanillaAdelantosHistorialModal';
+import PlanillaAdelantoRegistroGlobalModal from './components/planillas/PlanillaAdelantoRegistroGlobalModal';
+import PlanillaBonosDeduccionesHistorialModal from './components/planillas/PlanillaBonosDeduccionesHistorialModal';
 import PayrollFilters from './components/planillas/PayrollFilters';
 import ExportModal from './components/planillas/ExportModal';
 
 const LIST_LIMIT = 20;
 const DETAIL_LIMIT = 10;
 const DETAIL_FETCH_LIMIT = 2000;
+const SUCURSAL_QUERY_PARAM = 'sucursal';
+const PAGO_RESUMEN_CARD_KEYS = Object.freeze(['salario_base', 'bonos', 'deducciones', 'adelantos', 'neto']);
+const ADELANTO_STATUS = Object.freeze({
+  pendiente: 'pendiente',
+  aplicado: 'aplicado',
+  eliminado: 'eliminado'
+});
+const MOVIMIENTO_TIPO = Object.freeze({
+  bono: 'bono',
+  deduccion: 'deduccion'
+});
+const MOVIMIENTO_ESTADO = Object.freeze({
+  vigente: 'vigente',
+  anulada: 'anulada'
+});
 
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
+
+const buildPlanillasSucursalSelectStyles = () => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 52,
+    borderRadius: 14,
+    borderColor: state.isFocused ? 'rgba(163, 103, 63, 0.76)' : 'rgba(195, 167, 142, 0.72)',
+    boxShadow: state.isFocused ? '0 0 0 0.22rem rgba(170, 118, 82, 0.2)' : 'none',
+    backgroundColor: '#fff',
+    '&:hover': {
+      borderColor: 'rgba(163, 103, 63, 0.76)'
+    }
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    minHeight: 52,
+    padding: '0 14px'
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: 'rgba(90, 60, 42, 0.72)',
+    fontSize: '1.03rem',
+    fontWeight: 500
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: '#2f1a10',
+    fontSize: '1.08rem',
+    fontWeight: 700
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 6
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? 'rgba(118, 71, 43, 0.95)' : 'rgba(118, 71, 43, 0.7)'
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: 'rgba(130, 89, 66, 0.72)'
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 4200
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 14,
+    border: '1px solid rgba(195, 167, 142, 0.72)',
+    overflow: 'hidden',
+    marginTop: 8,
+    boxShadow: '0 14px 30px rgba(60, 36, 22, 0.2)'
+  }),
+  option: (base, state) => ({
+    ...base,
+    padding: '11px 14px',
+    backgroundColor: state.isFocused
+      ? 'rgba(245, 235, 221, 0.95)'
+      : state.isSelected
+        ? 'rgba(236, 218, 198, 0.96)'
+        : '#fff',
+    color: '#2f1a10'
+  }),
+  noOptionsMessage: (base) => ({
+    ...base,
+    color: 'rgba(100, 68, 50, 0.82)',
+    fontSize: '0.92rem'
+  })
+});
 
 const toText = (value, fallback = '') => {
   const text = String(value ?? '').trim();
@@ -54,6 +158,30 @@ const normalizeListResponse = (response) => {
     page: Number(response?.page ?? 1) || 1,
     limit: Number(response?.limit ?? Math.max(items.length, 1)) || Math.max(items.length, 1)
   };
+};
+
+const collectPaginatedApiRows = async (fetchPage, { pageSize = 100, maxPages = 80 } = {}) => {
+  const safePageSize = Math.min(100, Math.max(1, Number.parseInt(String(pageSize), 10) || 100));
+  const safeMaxPages = Math.max(1, Number.parseInt(String(maxPages), 10) || 80);
+  const rows = [];
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (page <= safeMaxPages && rows.length < total) {
+    const response = await fetchPage({ page, limit: safePageSize });
+    const parsed = normalizeListResponse(response);
+    const chunk = Array.isArray(parsed.items) ? parsed.items : [];
+    const parsedTotal = Number(parsed.total);
+    if (Number.isFinite(parsedTotal) && parsedTotal >= 0) {
+      total = parsedTotal;
+    }
+
+    rows.push(...chunk);
+    if (chunk.length < safePageSize) break;
+    page += 1;
+  }
+
+  return rows;
 };
 
 const normalizeResumen = (response) => {
@@ -86,9 +214,135 @@ const safeNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const resolveDniValue = (row = {}) =>
+  toText(
+    row?.dni ||
+      row?.persona_dni ||
+      row?.dni_persona ||
+      row?.numero_dni ||
+      row?.identidad ||
+      row?.no_identidad ||
+      row?.documento_identidad ||
+      row?.documento ||
+      row?.cedula
+  );
+
+const resolveDeduccionesSinAdelantos = ({
+  salarioBase = 0,
+  bonos = 0,
+  deduccionesRaw = 0,
+  adelantos = 0,
+  neto = Number.NaN,
+  deduccionesExplicit = Number.NaN
+} = {}) => {
+  const raw = Math.max(0, safeNumber(deduccionesRaw, 0));
+  const adelantosAplicados = Math.max(0, safeNumber(adelantos, 0));
+  const explicit = safeNumber(deduccionesExplicit, Number.NaN);
+  if (Number.isFinite(explicit)) return Math.max(0, explicit);
+  if (raw === 0) return 0;
+
+  const netoEsperado = safeNumber(neto, Number.NaN);
+  if (Number.isFinite(netoEsperado)) {
+    const base = safeNumber(salarioBase, 0);
+    const totalBonos = safeNumber(bonos, 0);
+    const netoSiDeduccionesSeparadas = base + totalBonos - raw - adelantosAplicados;
+    const netoSiDeduccionesIncluyenAdelantos = base + totalBonos - raw;
+
+    const diffSeparadas = Math.abs(netoSiDeduccionesSeparadas - netoEsperado);
+    const diffIncluidas = Math.abs(netoSiDeduccionesIncluyenAdelantos - netoEsperado);
+
+    if (diffIncluidas + 0.01 < diffSeparadas) {
+      return Math.max(0, raw - adelantosAplicados);
+    }
+    if (diffSeparadas + 0.01 < diffIncluidas) {
+      return raw;
+    }
+  }
+
+  if (adelantosAplicados > 0 && raw >= adelantosAplicados) {
+    return Math.max(0, raw - adelantosAplicados);
+  }
+
+  return raw;
+};
+
+const normalizeDetalleRowForDisplay = (row = {}) => {
+  const adelantos = Math.max(
+    0,
+    safeNumber(
+      row?.total_adelantos_aplicados ??
+        row?.total_adelantos ??
+        row?.adelantos_aplicados ??
+        row?.adelantos,
+      0
+    )
+  );
+
+  const deduccionesRaw = Math.max(0, safeNumber(row?.total_deducciones ?? row?.deducciones, 0));
+  const deducciones = resolveDeduccionesSinAdelantos({
+    salarioBase: row?.salario_base,
+    bonos: row?.total_bonos ?? row?.bonos,
+    deduccionesRaw,
+    adelantos,
+    neto: row?.neto_pagar ?? row?.total_neto_pagar ?? row?.neto,
+    deduccionesExplicit: row?.total_deducciones_sin_adelantos ?? row?.deducciones_sin_adelantos
+  });
+
+  return {
+    ...row,
+    dni: resolveDniValue(row),
+    total_deducciones_raw: deduccionesRaw,
+    total_deducciones: deducciones,
+    deducciones,
+    total_adelantos_aplicados: adelantos,
+    total_adelantos: adelantos,
+    adelantos
+  };
+};
+
+const normalizeResumenForDisplay = (resumen = {}) => {
+  const adelantos = Math.max(
+    0,
+    safeNumber(
+      resumen?.total_adelantos_aplicados ??
+        resumen?.total_adelantos ??
+        resumen?.adelantos_aplicados ??
+        resumen?.adelantos,
+      0
+    )
+  );
+
+  const deduccionesRaw = Math.max(0, safeNumber(resumen?.total_deducciones ?? resumen?.deducciones, 0));
+  const deducciones = resolveDeduccionesSinAdelantos({
+    salarioBase: resumen?.total_salario_base ?? resumen?.salario_base_total,
+    bonos: resumen?.total_bonos ?? resumen?.bonos,
+    deduccionesRaw,
+    adelantos,
+    neto: resumen?.total_neto_pagar ?? resumen?.total_neto ?? resumen?.neto,
+    deduccionesExplicit: resumen?.total_deducciones_sin_adelantos ?? resumen?.deducciones_sin_adelantos
+  });
+
+  return {
+    ...resumen,
+    total_deducciones_raw: deduccionesRaw,
+    total_deducciones: deducciones,
+    deducciones,
+    total_adelantos_aplicados: adelantos,
+    total_adelantos: adelantos,
+    adelantos
+  };
+};
+
 const formatMoney = (value) => {
   const amount = safeNumber(value, 0);
   return `L ${amount.toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const resolveToastIconClass = (variant = 'success') => {
+  if (variant === 'danger') return 'bi bi-x-octagon-fill';
+  if (variant === 'warning') return 'bi bi-exclamation-triangle-fill';
+  if (variant === 'info') return 'bi bi-info-circle-fill';
+  return 'bi bi-check2-circle';
 };
 
 const toHoursNumber = (value) => {
@@ -148,6 +402,345 @@ const extractEmpleadoNombre = (row) =>
       `${toText(row?.nombre)} ${toText(row?.apellido)}`.trim(),
     'Empleado sin nombre'
   );
+
+const resolveHoraExtraId = (item = {}) =>
+  item?.id_horas_extras || item?.id_horas_extra || item?.id_hora_extra || null;
+
+const resolveHoraExtraEmpleadoId = (item = {}) =>
+  safeNumber(item?.id_empleado ?? item?.id_empleado_planilla ?? item?.id_persona_empleado, 0);
+
+const normalizeStatusNote = (value = '') => String(value ?? '').trim().toLowerCase();
+
+const stripAdelantoStatusMarkers = (value = '') =>
+  String(value ?? '')
+    .replace(/\[(eliminado_ad|corregido_ad)\]\s*/gi, '')
+    .replace(/edici[oó]n?\s+deshabilitada:\s*este movimiento no tiene id_adelanto reutilizable\.?/gi, '')
+    .trim();
+
+const resolveMovimientoPlanillaId = (row = {}) =>
+  safeNumber(row?.id_movimiento_planilla ?? row?.id_movimiento ?? row?.id_movimiento_detalle ?? row?.id, 0);
+
+const resolveAdelantoPeriodo = (row = {}) => {
+  const periodCandidates = [
+    row?.periodo,
+    row?.periodo_planilla,
+    row?.periodo_nomina,
+    row?.periodo_pago,
+    row?.mes_periodo,
+    row?.mes_planilla,
+    row?.periodo_movimiento,
+    row?.periodo_referencia
+  ];
+  for (const value of periodCandidates) {
+    const normalized = normalizePeriodoMonth(value);
+    if (normalized) return normalized;
+  }
+
+  const dateCandidates = [
+    row?.fecha_periodo,
+    row?.fecha_inicio_periodo,
+    row?.fecha_inicio,
+    row?.fecha_aplicacion,
+    row?.fecha_registro,
+    row?.fecha,
+    row?.created_at
+  ];
+  for (const value of dateCandidates) {
+    const normalized = normalizePeriodoMonth(value);
+    if (normalized) return normalized;
+  }
+
+  return '';
+};
+
+const resolveMovimientoPlanillaOwnerId = (row = {}) =>
+  safeNumber(
+    row?.id_planilla ??
+      row?.id_planilla_nomina ??
+      row?.id_planilla_detalle ??
+      row?.id_planilla_movimiento ??
+      row?.id_planilla_origen ??
+      row?.planilla_id ??
+      row?.planillaId,
+    0
+  );
+
+const scopeMovimientosToPlanillaContext = ({
+  movimientos = [],
+  detalleRows = [],
+  idPlanilla = 0,
+  periodoScope = ''
+} = {}) => {
+  const rows = Array.isArray(movimientos) ? movimientos : [];
+  const detailIds = new Set(
+    (Array.isArray(detalleRows) ? detalleRows : [])
+      .map((row) => safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0))
+      .filter((id) => id > 0)
+      .map((id) => String(id))
+  );
+  const targetPlanillaId = safeNumber(idPlanilla, 0);
+  const targetPeriodo = normalizePeriodoMonth(periodoScope);
+
+  if (detailIds.size === 0 && targetPlanillaId <= 0) {
+    return rows;
+  }
+
+  return rows.filter((row) => {
+    const rowPlanillaId = resolveMovimientoPlanillaOwnerId(row);
+    if (targetPlanillaId > 0 && rowPlanillaId > 0 && rowPlanillaId !== targetPlanillaId) {
+      return false;
+    }
+
+    const rowDetailId = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+    const hasDetailMatch = rowDetailId > 0 && detailIds.has(String(rowDetailId));
+    const hasPlanillaMatch = rowPlanillaId > 0 && targetPlanillaId > 0 && rowPlanillaId === targetPlanillaId;
+
+    // If we have context identifiers, require at least one strong match.
+    if (targetPlanillaId > 0 || detailIds.size > 0) {
+      const canUseDetailFallback = rowPlanillaId <= 0 && hasDetailMatch;
+      if (!hasPlanillaMatch && !canUseDetailFallback) {
+        return false;
+      }
+    }
+
+    if (targetPeriodo) {
+      const rowPeriodo = resolveAdelantoPeriodo(row);
+      if (!rowPeriodo || rowPeriodo !== targetPeriodo) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+};
+
+const resolveAdelantoOrigenId = (row = {}) =>
+  safeNumber(
+    row?.id_adelanto_salario ??
+      row?.id_adelanto ??
+      row?.id_adelanto_origen ??
+      row?.adelanto_id ??
+      row?.id_adelanto_planilla ??
+      row?.id_adelanto_detalle ??
+      row?.id_adelanto_aplicado ??
+      row?.id_origen ??
+      row?.id_origen_movimiento ??
+      row?.origen_id ??
+      row?.id_referencia ??
+      row?.id_referencia_origen ??
+      row?.referencia_id ??
+      row?.id_registro_origen,
+    0
+  );
+
+const resolveAdelantoEmpleadoId = (row = {}, detalleByDetalleId = new Map()) => {
+  const direct = safeNumber(row?.id_empleado ?? row?.id_empleado_planilla ?? row?.id_persona_empleado, 0);
+  if (direct > 0) return direct;
+
+  const idDetalle = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+  if (!(idDetalle > 0)) return 0;
+
+  const detalleRow = detalleByDetalleId.get(String(idDetalle));
+  return safeNumber(detalleRow?.id_empleado, 0);
+};
+
+const isMovimientoAdelanto = (row = {}) => {
+  const tipo = normalizeMovimientoTipo(row);
+  const origen = toText(row?.origen_movimiento, '').toLowerCase();
+  const concepto = toText(row?.concepto, '').toLowerCase();
+  return (
+    origen.includes('adelanto') ||
+    tipo.includes('adelanto') ||
+    concepto.includes('adelanto') ||
+    resolveAdelantoOrigenId(row) > 0
+  );
+};
+
+const isMovimientoAnulado = (row = {}) => {
+  const estado = toText(row?.estado || row?.estado_movimiento || row?.estado_descripcion, '').toLowerCase();
+  const note = normalizeStatusNote(row?.observacion || row?.motivo || '');
+
+  return (
+    row?.anulado === true ||
+    row?.es_anulado === true ||
+    row?.activo === false ||
+    estado.includes('anulad') ||
+    note.includes('[eliminado_ad]') ||
+    note.includes('eliminado') ||
+    note.includes('anulado')
+  );
+};
+
+const sortByDateDesc = (a = {}, b = {}) => {
+  const aDate = new Date(a?.fecha || 0).getTime();
+  const bDate = new Date(b?.fecha || 0).getTime();
+  if (Number.isFinite(aDate) && Number.isFinite(bDate) && aDate !== bDate) return bDate - aDate;
+  return String(b?.id || '').localeCompare(String(a?.id || ''), 'es-HN');
+};
+
+const normalizeAdelantosDataset = ({
+  pendientes = [],
+  movimientos = [],
+  detalleRows = [],
+  onlyEmpleadoId = 0,
+  periodoScope = ''
+} = {}) => {
+  const normalizedPeriodoScope = normalizePeriodoMonth(periodoScope);
+  const matchesPeriodoScope = (row = {}) => {
+    if (!normalizedPeriodoScope) return true;
+    const rowPeriodo = resolveAdelantoPeriodo(row);
+    if (!rowPeriodo) return false;
+    return rowPeriodo === normalizedPeriodoScope;
+  };
+
+  const detalleByDetalleId = new Map();
+  const detalleByEmpleadoId = new Map();
+
+  (Array.isArray(detalleRows) ? detalleRows : []).forEach((row) => {
+    const idEmpleado = safeNumber(row?.id_empleado, 0);
+    if (idEmpleado > 0) {
+      detalleByEmpleadoId.set(String(idEmpleado), row);
+    }
+
+    const idDetalle = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+    if (idDetalle > 0) {
+      detalleByDetalleId.set(String(idDetalle), row);
+    }
+  });
+
+  const pendingRows = (Array.isArray(pendientes) ? pendientes : [])
+    .map((item, index) => {
+      const idEmpleado = safeNumber(item?.id_empleado, 0);
+      const idAdelanto = safeNumber(item?.id_adelanto_salario ?? item?.id_adelanto, 0);
+      const detalleRow = detalleByEmpleadoId.get(String(idEmpleado));
+      const empleadoNombre = toText(
+        item?.nombre_completo || item?.empleado_nombre || extractEmpleadoNombre(detalleRow),
+        'Empleado'
+      );
+      const saldo = Math.max(0, safeNumber(item?.saldo ?? item?.monto_pendiente ?? item?.saldo_disponible, 0));
+
+      return {
+        id: `pendiente-${idAdelanto || index}`,
+        estado: ADELANTO_STATUS.pendiente,
+        id_movimiento: null,
+        id_adelanto: idAdelanto || null,
+        id_empleado: idEmpleado || null,
+        id_detalle: safeNumber(detalleRow?.id_detalle_planilla ?? detalleRow?.id_detalle, 0) || null,
+        monto: Math.max(0, safeNumber(item?.monto, 0)),
+        saldo,
+        fecha: toText(item?.fecha || item?.fecha_registro, ''),
+        observacion: toText(item?.observacion, ''),
+        empleado_nombre: empleadoNombre,
+        cargo: toText(item?.cargo || detalleRow?.cargo, ''),
+        editable: false,
+        raw: item
+      };
+    })
+    .filter((item) => {
+      if (onlyEmpleadoId > 0) return safeNumber(item?.id_empleado, 0) === onlyEmpleadoId;
+      return true;
+    })
+    .filter((item) => matchesPeriodoScope(item?.raw || item));
+
+  const movimientoRows = (Array.isArray(movimientos) ? movimientos : [])
+    .filter((row) => isMovimientoAdelanto(row))
+    .map((row, index) => {
+      const idMovimiento = resolveMovimientoPlanillaId(row);
+      const idAdelanto = resolveAdelantoOrigenId(row);
+      const idEmpleado = resolveAdelantoEmpleadoId(row, detalleByDetalleId);
+      const detalleRow = detalleByEmpleadoId.get(String(idEmpleado));
+      const empleadoNombre = toText(
+        row?.nombre_completo || row?.empleado_nombre || extractEmpleadoNombre(detalleRow),
+        idEmpleado > 0 ? `Empleado #${idEmpleado}` : 'Empleado'
+      );
+      const estado = isMovimientoAnulado(row) ? ADELANTO_STATUS.eliminado : ADELANTO_STATUS.aplicado;
+      const idDetalleMovimiento =
+        safeNumber(
+          row?.id_detalle_planilla ?? row?.id_detalle ?? detalleRow?.id_detalle_planilla ?? detalleRow?.id_detalle,
+          0
+        ) || null;
+      const editable = Boolean(estado === ADELANTO_STATUS.aplicado && (idAdelanto > 0 || (idMovimiento > 0 && idDetalleMovimiento > 0)));
+
+      return {
+        id: `mov-${idMovimiento || index}`,
+        estado,
+        id_movimiento: idMovimiento || null,
+        id_adelanto: idAdelanto || null,
+        id_empleado: idEmpleado || null,
+        id_detalle: idDetalleMovimiento,
+        monto: Math.max(0, safeNumber(row?.monto_aplicado ?? row?.monto, 0)),
+        saldo: 0,
+        fecha: toText(row?.fecha_registro || row?.fecha || row?.created_at, ''),
+        observacion: stripAdelantoStatusMarkers(toText(row?.observacion || row?.motivo, '')),
+        empleado_nombre: empleadoNombre,
+        cargo: toText(row?.cargo || detalleRow?.cargo, ''),
+        editable,
+        raw: row
+      };
+    })
+    .filter((item) => {
+      if (onlyEmpleadoId > 0) return safeNumber(item?.id_empleado, 0) === onlyEmpleadoId;
+      return true;
+    })
+    .filter((item) => matchesPeriodoScope(item?.raw || item));
+
+  const merged = [...pendingRows, ...movimientoRows];
+  merged.sort(sortByDateDesc);
+  return merged;
+};
+
+const normalizeBonoDeduccionTipo = (row = {}) => {
+  const tipo = normalizeMovimientoTipo(row);
+  if (tipo.includes('bono')) return MOVIMIENTO_TIPO.bono;
+  if (tipo.includes('deduc')) return MOVIMIENTO_TIPO.deduccion;
+  return '';
+};
+
+const normalizeBonosDeduccionesDataset = ({ movimientos = [], detalleRows = [] } = {}) => {
+  const detalleByDetalleId = new Map();
+
+  (Array.isArray(detalleRows) ? detalleRows : []).forEach((row) => {
+    const idDetalle = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+    if (idDetalle > 0) {
+      detalleByDetalleId.set(String(idDetalle), row);
+    }
+  });
+
+  const rows = (Array.isArray(movimientos) ? movimientos : [])
+    .map((row, index) => {
+      const tipo = normalizeBonoDeduccionTipo(row);
+      if (!tipo) return null;
+
+      const idMovimiento = resolveMovimientoPlanillaId(row);
+      const idDetalle = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+      const detalleRow = idDetalle > 0 ? detalleByDetalleId.get(String(idDetalle)) : null;
+      const idEmpleado = resolveAdelantoEmpleadoId(row, detalleByDetalleId);
+      const estado = isMovimientoAnulado(row) ? MOVIMIENTO_ESTADO.anulada : MOVIMIENTO_ESTADO.vigente;
+
+      return {
+        id: `mov-bd-${idMovimiento || index}`,
+        id_movimiento: idMovimiento || null,
+        id_detalle: idDetalle || null,
+        id_empleado: idEmpleado || null,
+        tipo,
+        estado,
+        monto: Math.max(0, safeNumber(row?.monto, 0)),
+        concepto: toText(row?.concepto, ''),
+        fecha: toText(row?.fecha_registro || row?.fecha || row?.created_at, ''),
+        observacion: stripAdelantoStatusMarkers(toText(row?.observacion || row?.motivo, '')),
+        empleado_nombre: toText(
+          row?.nombre_completo || row?.empleado_nombre || extractEmpleadoNombre(detalleRow),
+          'Empleado'
+        ),
+        raw: row
+      };
+    })
+    .filter(Boolean);
+
+  rows.sort(sortByDateDesc);
+  return rows;
+};
+
 
 const extractEstadoPlanilla = (planilla) =>
   toText(
@@ -249,6 +842,7 @@ const buildInitialConfirmModal = () => ({
   title: 'CONFIRMAR ACCION',
   subtitle: 'Esta accion puede afectar la planilla',
   question: 'Deseas continuar con esta accion?',
+  description: '',
   detail: '',
   detailIconClass: 'bi bi-wallet2',
   confirmText: 'Confirmar',
@@ -273,6 +867,112 @@ const normalizePlanillaCompleta = (response) => {
   const resumen = normalizeResumen(base.resumen || base.summary || base.encabezado || {});
 
   return { detalle, resumen };
+};
+
+const normalizePeriodoMonth = (value = '') => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+
+  const yearMonthMatch = text.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (yearMonthMatch) {
+    const year = Number.parseInt(yearMonthMatch[1], 10);
+    const month = Number.parseInt(yearMonthMatch[2], 10);
+    if (Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12) {
+      return `${year}-${String(month).padStart(2, '0')}`;
+    }
+  }
+
+  const yearMonthDayMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (yearMonthDayMatch) {
+    const year = Number.parseInt(yearMonthDayMatch[1], 10);
+    const month = Number.parseInt(yearMonthDayMatch[2], 10);
+    if (Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12) {
+      return `${year}-${String(month).padStart(2, '0')}`;
+    }
+  }
+
+  const isoPrefixMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if (isoPrefixMatch) {
+    const year = Number.parseInt(isoPrefixMatch[1], 10);
+    const month = Number.parseInt(isoPrefixMatch[2], 10);
+    if (Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12) {
+      return `${year}-${String(month).padStart(2, '0')}`;
+    }
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+const resolvePlanillaId = (planilla = {}) => safeNumber(planilla?.id_planilla, 0);
+
+const resolvePlanillaPeriodo = (planilla = {}) => {
+  const directPeriodo = toText(
+    planilla?.periodo ||
+      planilla?.periodo_planilla ||
+      planilla?.periodo_nomina ||
+      planilla?.periodo_pago ||
+      planilla?.mes_periodo ||
+      planilla?.mes_planilla,
+    ''
+  );
+  if (directPeriodo) {
+    const normalized = normalizePeriodoMonth(directPeriodo);
+    if (normalized) return normalized;
+  }
+
+  const anio = safeNumber(planilla?.anio ?? planilla?.ano ?? planilla?.year, 0);
+  const mes = safeNumber(planilla?.mes ?? planilla?.mes_numero ?? planilla?.month, 0);
+  if (anio > 0 && mes >= 1 && mes <= 12) {
+    return `${anio}-${String(mes).padStart(2, '0')}`;
+  }
+
+  return normalizePeriodoMonth(
+    planilla?.fecha_inicio_periodo ||
+      planilla?.fecha_inicio ||
+      planilla?.fecha_planilla ||
+      planilla?.fecha_pago ||
+      planilla?.created_at ||
+      ''
+  );
+};
+
+const scopePlanillasByPeriodo = (items = [], periodoTarget = '') => {
+  const rows = Array.isArray(items) ? items : [];
+  const normalizedTarget = normalizePeriodoMonth(periodoTarget);
+  if (!normalizedTarget) return rows;
+
+  const rowsWithPeriodo = rows.map((row) => ({
+    row,
+    periodo: resolvePlanillaPeriodo(row)
+  }));
+  const hasAtLeastOnePeriodo = rowsWithPeriodo.some((entry) => Boolean(entry.periodo));
+  if (!hasAtLeastOnePeriodo) return rows;
+
+  return rowsWithPeriodo
+    .filter((entry) => entry.periodo === normalizedTarget)
+    .map((entry) => entry.row);
+};
+
+const pickContextPlanilla = (items = [], periodoTarget = '') =>
+  scopePlanillasByPeriodo(items, periodoTarget).find((planilla) => resolvePlanillaId(planilla) > 0) || null;
+
+const buildEmpleadoOption = (item = {}) => {
+  const idEmpleado = safeNumber(item?.id_empleado ?? item?.id_empleado_planilla ?? item?.id_persona_empleado, 0);
+  if (!(idEmpleado > 0)) return null;
+
+  const label = extractEmpleadoNombre(item);
+  const searchText = [label, item?.dni, item?.cargo, item?.id_empleado]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+
+  return {
+    value: String(idEmpleado),
+    label,
+    searchText
+  };
 };
 
 const openPrintWindow = (html) => {
@@ -370,7 +1070,7 @@ const buildPrintTemplate = ({ planillaLabel, periodo, resumen, rows, includeCorr
     <header class="head">
       <div>
         <h1>${escapeHtml(planillaLabel)}</h1>
-        <p>Periodo: ${escapeHtml(periodo || 'Sin periodo')} · Empleados: ${rows.length}</p>
+        <p>Periodo: ${escapeHtml(periodo || 'Sin periodo')} - Empleados: ${rows.length}</p>
       </div>
       <span class="badge">Ficha imprimible</span>
     </header>
@@ -403,10 +1103,10 @@ const buildPrintTemplate = ({ planillaLabel, periodo, resumen, rows, includeCorr
 
 export default function Planillas({
   openToast,
-  selectedSucursalId = '',
-  onSelectedSucursalChange,
+  selectedSucursalId = ''
 }) {
   const { canAny } = usePermisos();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const canView = canAny([PERMISSIONS.PLANILLAS_LISTADO_VER, PERMISSIONS.PLANILLAS_MODULO_VER]);
   const canViewDetalle = canAny([PERMISSIONS.PLANILLAS_DETALLE_VER]);
@@ -420,12 +1120,51 @@ export default function Planillas({
   const canAnular = canAny([PERMISSIONS.PLANILLAS_ANULAR]);
   const canVerAuditoria = canAny([PERMISSIONS.PLANILLAS_AUDITORIA_VER]);
 
+  const rawPlanillasTab = String(searchParams.get(PLANILLAS_NAV_QUERY_PARAM) || '').trim().toLowerCase();
+  const activePlanillasTab = useMemo(
+    () => resolvePlanillasNavTab(rawPlanillasTab),
+    [rawPlanillasTab]
+  );
+  const showPagoSection = activePlanillasTab === PLANILLAS_NAV_TAB_KEYS.pagoPlanilla;
+  const showHorasSection = activePlanillasTab === PLANILLAS_NAV_TAB_KEYS.horasExtras;
+  const showAdelantosSection = activePlanillasTab === PLANILLAS_NAV_TAB_KEYS.adelantosSalario;
+  const showBonosDeduccionesSection = activePlanillasTab === PLANILLAS_NAV_TAB_KEYS.bonosDeducciones;
+  const showPlanillaActions = showPagoSection;
+
+  const [localToast, setLocalToast] = useState({
+    show: false,
+    title: '',
+    message: '',
+    variant: 'success'
+  });
+
+  const closeLocalToast = useCallback(() => {
+    setLocalToast((previous) => ({ ...previous, show: false }));
+  }, []);
+
   const safeToast = useCallback(
     (title, message, variant = 'success') => {
-      if (typeof openToast === 'function') openToast(title, message, variant);
+      if (typeof openToast === 'function') {
+        openToast(title, message, variant);
+        return;
+      }
+      setLocalToast({
+        show: true,
+        title: toText(title, 'AVISO'),
+        message: toText(message, ''),
+        variant: toText(variant, 'success')
+      });
     },
     [openToast]
   );
+
+  useEffect(() => {
+    if (!localToast.show) return undefined;
+    const timer = window.setTimeout(() => {
+      setLocalToast((previous) => ({ ...previous, show: false }));
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [localToast.show]);
 
   const [sucursales, setSucursales] = useState([]);
   const [selectedSucursal, setSelectedSucursal] = useState('');
@@ -437,9 +1176,17 @@ export default function Planillas({
   const [planillas, setPlanillas] = useState([]);
   const [planillasTotal, setPlanillasTotal] = useState(0);
   const [selectedPlanillaId, setSelectedPlanillaId] = useState('');
+  const [planillaPeriodoLookup, setPlanillaPeriodoLookup] = useState({
+    loading: false,
+    hasPlanilla: false,
+    idPlanilla: 0
+  });
 
   const [resumen, setResumen] = useState({});
+  const [empleadosActivosSucursal, setEmpleadosActivosSucursal] = useState([]);
   const [adelantosPendientes, setAdelantosPendientes] = useState([]);
+  const [adelantosHistorialMovimientos, setAdelantosHistorialMovimientos] = useState([]);
+  const [bonosDeduccionesHistorial, setBonosDeduccionesHistorial] = useState([]);
   const [detalle, setDetalle] = useState([]);
   const [detallePage, setDetallePage] = useState(1);
   const [detalleTotal, setDetalleTotal] = useState(0);
@@ -447,7 +1194,10 @@ export default function Planillas({
   const [loadingSucursales, setLoadingSucursales] = useState(true);
   const [loadingPlanillas, setLoadingPlanillas] = useState(false);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
+  const [loadingEmpleadosActivos, setLoadingEmpleadosActivos] = useState(false);
   const [loadingAdelantosPendientes, setLoadingAdelantosPendientes] = useState(false);
+  const [loadingAdelantosHistorial, setLoadingAdelantosHistorial] = useState(false);
+  const [loadingBonosDeduccionesHistorial, setLoadingBonosDeduccionesHistorial] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
   const [loadingExport, setLoadingExport] = useState(false);
   const [listError, setListError] = useState('');
@@ -466,6 +1216,8 @@ export default function Planillas({
     open: false,
     tipo: 'bono',
     item: null,
+    mode: 'detalle',
+    selectedEmpleadoId: '',
     loading: false
   });
 
@@ -477,11 +1229,30 @@ export default function Planillas({
     registering: false,
     items: []
   });
+  const [adelantoRegistroGlobalModal, setAdelantoRegistroGlobalModal] = useState({
+    open: false,
+    registering: false
+  });
+  const [adelantosHistorialModal, setAdelantosHistorialModal] = useState({
+    open: false,
+    loading: false,
+    item: null,
+    empleadoLabel: '',
+    items: [],
+    updatingId: null,
+    deletingId: null
+  });
 
   const [auditoriaModal, setAuditoriaModal] = useState({
     open: false,
     loading: false,
     items: []
+  });
+  const [bonosDeduccionesHistorialModal, setBonosDeduccionesHistorialModal] = useState({
+    open: false,
+    loading: false,
+    items: [],
+    deletingId: null
   });
   const [horasExtraModal, setHorasExtraModal] = useState({
     open: false,
@@ -491,32 +1262,36 @@ export default function Planillas({
     items: [],
     summary: {},
     compensatingId: null,
+    updatingId: null,
+    deletingId: null
+  });
+  const [horasExtraRegistroModal, setHorasExtraRegistroModal] = useState({
+    open: false,
     registering: false,
-    registerEmpleadoId: ''
+    defaultEmpleadoId: ''
   });
   const [adelantosPendientesModalOpen, setAdelantosPendientesModalOpen] = useState(false);
-  const [dismissedInsights, setDismissedInsights] = useState({
-    adelantos: false,
-    horas: false
-  });
   const [confirmModal, setConfirmModal] = useState(buildInitialConfirmModal);
+  const planillasRequestRef = useRef(0);
+  const detalleRequestRef = useRef(0);
+  const adelantosHistorialRequestRef = useRef(0);
 
   const externalSucursalId = useMemo(
     () => normalizeSucursalId(selectedSucursalId),
     [selectedSucursalId]
   );
-
-  const handleSucursalChange = useCallback(
-    (value) => {
-      const normalized = normalizeSucursalId(value);
-      setSelectedSucursal(normalized);
-      setFilters((previous) => ({ ...previous, sucursal: normalized }));
-      if (typeof onSelectedSucursalChange === 'function') {
-        onSelectedSucursalChange(normalized);
-      }
-    },
-    [onSelectedSucursalChange]
+  const urlSucursalId = useMemo(
+    () => normalizeSucursalId(searchParams.get(SUCURSAL_QUERY_PARAM)),
+    [searchParams]
   );
+  const preferredSucursalId = externalSucursalId || urlSucursalId;
+
+  useEffect(() => {
+    if (rawPlanillasTab === activePlanillasTab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set(PLANILLAS_NAV_QUERY_PARAM, activePlanillasTab);
+    setSearchParams(next, { replace: true });
+  }, [activePlanillasTab, rawPlanillasTab, searchParams, setSearchParams]);
 
   const selectedPlanilla = useMemo(
     () =>
@@ -533,15 +1308,49 @@ export default function Planillas({
           sucursal.nombre_sucursal ||
           sucursal.nombre ||
           sucursal.sucursal ||
-          `Sucursal #${sucursal.id_sucursal}`
+          `Sucursal #${sucursal.id_sucursal}`,
+        searchText: [
+          sucursal.nombre_sucursal,
+          sucursal.nombre,
+          sucursal.sucursal,
+          sucursal.id_sucursal
+        ]
+          .map((value) => String(value ?? '').trim().toLowerCase())
+          .filter(Boolean)
+          .join(' ')
       })),
     [sucursales]
   );
+  const selectedSucursalOption = useMemo(() => {
+    const normalizedId = normalizeSucursalId(selectedSucursal);
+    if (!normalizedId) return null;
+    return sucursalOptions.find((option) => normalizeSucursalId(option?.value) === normalizedId) || null;
+  }, [selectedSucursal, sucursalOptions]);
+  const sucursalSelectStyles = useMemo(() => buildPlanillasSucursalSelectStyles(), []);
+  const filterSucursalOption = useCallback((candidate, inputValue) => {
+    const needle = String(inputValue ?? '').trim().toLowerCase();
+    if (!needle) return true;
+    const haystack = String(candidate?.data?.searchText || candidate?.label || '').toLowerCase();
+    return haystack.includes(needle);
+  }, []);
 
   const selectedPlanillaLabel = useMemo(() => {
     if (!selectedPlanilla?.id_planilla) return 'Planilla seleccionada';
     return selectedPlanilla.codigo_planilla || `Planilla #${selectedPlanilla.id_planilla}`;
   }, [selectedPlanilla]);
+  const selectedSucursalLabel = useMemo(() => {
+    const selected = sucursalOptions.find((option) => String(option.value) === String(selectedSucursal));
+    return selected?.label || 'la sucursal seleccionada';
+  }, [selectedSucursal, sucursalOptions]);
+  const activePlanillaSucursalId = useMemo(() => {
+    const fromPlanilla = safeNumber(
+      selectedPlanilla?.id_sucursal ?? selectedPlanilla?.id_sucursal_planilla,
+      0
+    );
+    if (fromPlanilla > 0) return fromPlanilla;
+    const fromSelection = safeNumber(selectedSucursal, 0);
+    return fromSelection > 0 ? fromSelection : 0;
+  }, [selectedPlanilla?.id_sucursal, selectedPlanilla?.id_sucursal_planilla, selectedSucursal]);
 
   const planillaEstadoRaw = useMemo(() => extractEstadoPlanilla(selectedPlanilla), [selectedPlanilla]);
   const planillaEstadoId = useMemo(
@@ -573,41 +1382,207 @@ export default function Planillas({
     const start = (detallePage - 1) * DETAIL_LIMIT;
     return filteredDetalle.slice(start, start + DETAIL_LIMIT);
   }, [detallePage, filteredDetalle]);
-
-  const canExportPlanilla = Boolean(canViewDetalle && selectedPlanilla?.id_planilla && isPlanillaPagada);
-  const hasSucursalSelected = Boolean(normalizeSucursalId(selectedSucursal));
-  const adelantosPendientesTotal = useMemo(
-    () =>
-      adelantosPendientes.reduce(
-        (acc, item) => acc + safeNumber(item?.saldo ?? item?.monto_pendiente ?? item?.monto, 0),
-        0
-      ),
-    [adelantosPendientes]
+  const detalleEmpleadoOptions = useMemo(
+    () => (Array.isArray(detalle) ? detalle : []).map((row) => buildEmpleadoOption(row)).filter(Boolean),
+    [detalle]
   );
-  const adelantosPendientesNombres = useMemo(() => {
-    const unique = new Set();
-    adelantosPendientes.forEach((item) => {
-      const name = toText(item?.nombre_completo || item?.empleado_nombre, '');
-      if (name) unique.add(name);
+  const empleadosActivosOptions = useMemo(
+    () =>
+      (Array.isArray(empleadosActivosSucursal) ? empleadosActivosSucursal : [])
+        .map((row) => buildEmpleadoOption(row))
+        .filter(Boolean),
+    [empleadosActivosSucursal]
+  );
+  const empleadosRegistroOptions = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    [empleadosActivosOptions, detalleEmpleadoOptions].forEach((source) => {
+      source.forEach((employee) => {
+        const key = String(employee?.value || '').trim();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        merged.push(employee);
+      });
     });
-    return Array.from(unique);
-  }, [adelantosPendientes]);
-  const adelantosPendientesResumen = useMemo(() => {
-    if (adelantosPendientesNombres.length === 0) {
-      return 'No hay adelantos pendientes para la sucursal seleccionada.';
+    return merged;
+  }, [detalleEmpleadoOptions, empleadosActivosOptions]);
+
+  const hasSucursalSelected = Boolean(normalizeSucursalId(selectedSucursal));
+  const hasPlanillaForPeriodo = Boolean(planillaPeriodoLookup.hasPlanilla);
+  const canGenerarForPeriodo = Boolean(
+    canGenerar && hasSucursalSelected && !planillaPeriodoLookup.loading && !hasPlanillaForPeriodo
+  );
+  const canExportPlanilla = Boolean(canViewDetalle && selectedPlanilla?.id_planilla && isPlanillaPagada);
+  const adelantosHistorialMovimientosScoped = useMemo(
+    () =>
+      scopeMovimientosToPlanillaContext({
+        movimientos: adelantosHistorialMovimientos,
+        detalleRows: detalle,
+        idPlanilla: selectedPlanilla?.id_planilla,
+        periodoScope: periodo
+      }),
+    [adelantosHistorialMovimientos, detalle, periodo, selectedPlanilla?.id_planilla]
+  );
+  const adelantosDataset = useMemo(
+    () =>
+      normalizeAdelantosDataset({
+        pendientes: adelantosPendientes,
+        movimientos: adelantosHistorialMovimientosScoped,
+        detalleRows: detalle,
+        periodoScope: periodo
+      }),
+    [adelantosHistorialMovimientosScoped, adelantosPendientes, detalle, periodo]
+  );
+  const adelantosStatusTotals = useMemo(
+    () =>
+      adelantosDataset.reduce(
+        (acc, item) => {
+          const estado = item?.estado;
+          if (estado === ADELANTO_STATUS.pendiente) {
+            acc.pendientes += 1;
+            acc.montoPendiente += safeNumber(item?.saldo ?? item?.monto, 0);
+            return acc;
+          }
+          if (estado === ADELANTO_STATUS.aplicado) {
+            acc.aplicados += 1;
+            acc.montoAplicado += safeNumber(item?.monto, 0);
+            return acc;
+          }
+          if (estado === ADELANTO_STATUS.eliminado) {
+            acc.eliminados += 1;
+            acc.montoEliminado += safeNumber(item?.monto, 0);
+          }
+          return acc;
+        },
+        { pendientes: 0, aplicados: 0, eliminados: 0, montoPendiente: 0, montoAplicado: 0, montoEliminado: 0 }
+      ),
+    [adelantosDataset]
+  );
+  const adelantosInsightSummary = useMemo(() => {
+    if (adelantosStatusTotals.pendientes <= 0) {
+      return 'No hay adelantos pendientes por aplicar en este contexto.';
     }
-    if (adelantosPendientesNombres.length === 1) {
-      return `${adelantosPendientesNombres[0]} tiene ${formatMoney(adelantosPendientesTotal)} en adelantos pendientes.`;
+    return `${adelantosStatusTotals.pendientes} adelanto(s) pendiente(s) por aplicar, total ${formatMoney(
+      adelantosStatusTotals.montoPendiente
+    )}.`;
+  }, [adelantosStatusTotals]);
+  const adelantosKpiCards = useMemo(
+    () => [
+      {
+        key: 'adelantos-pendientes-cantidad',
+        iconClass: 'bi-hourglass-split',
+        label: 'Pendientes (cantidad)',
+        value: String(adelantosStatusTotals.pendientes),
+        accent: 'warning'
+      },
+      {
+        key: 'adelantos-pendientes-monto',
+        iconClass: 'bi-wallet2',
+        label: 'Monto pendiente',
+        value: formatMoney(adelantosStatusTotals.montoPendiente),
+        accent: 'warning'
+      },
+      {
+        key: 'adelantos-aplicados-monto',
+        iconClass: 'bi-check-circle',
+        label: 'Monto aplicado',
+        value: formatMoney(adelantosStatusTotals.montoAplicado),
+        accent: 'success'
+      },
+      {
+        key: 'adelantos-eliminados-monto',
+        iconClass: 'bi-trash3',
+        label: 'Monto eliminado',
+        value: formatMoney(adelantosStatusTotals.montoEliminado),
+        accent: 'danger'
+      }
+    ],
+    [adelantosStatusTotals]
+  );
+  const bonosDeduccionesDataset = useMemo(
+    () =>
+      normalizeBonosDeduccionesDataset({
+        movimientos: bonosDeduccionesHistorial,
+        detalleRows: detalle
+      }),
+    [bonosDeduccionesHistorial, detalle]
+  );
+  const bonosDeduccionesStats = useMemo(
+    () =>
+      bonosDeduccionesDataset.reduce(
+        (acc, row) => {
+          const monto = Math.max(0, safeNumber(row?.monto, 0));
+          if (row?.estado === MOVIMIENTO_ESTADO.anulada) {
+            acc.montoAnulado += monto;
+            acc.totalAnuladas += 1;
+            return acc;
+          }
+
+          if (row?.tipo === MOVIMIENTO_TIPO.bono) {
+            acc.bonosVigentes += monto;
+            acc.totalVigentes += 1;
+            return acc;
+          }
+
+          acc.deduccionesVigentes += monto;
+          acc.totalVigentes += 1;
+          return acc;
+        },
+        {
+          bonosVigentes: 0,
+          deduccionesVigentes: 0,
+          montoAnulado: 0,
+          totalVigentes: 0,
+          totalAnuladas: 0
+        }
+      ),
+    [bonosDeduccionesDataset]
+  );
+  const bonosDeduccionesImpactoNeto = useMemo(
+    () => bonosDeduccionesStats.bonosVigentes - bonosDeduccionesStats.deduccionesVigentes,
+    [bonosDeduccionesStats.bonosVigentes, bonosDeduccionesStats.deduccionesVigentes]
+  );
+  const bonosDeduccionesInsightSummary = useMemo(() => {
+    if (bonosDeduccionesStats.totalVigentes <= 0) {
+      return 'No hay movimientos vigentes de bonos o deducciones en este contexto.';
     }
-    if (adelantosPendientesNombres.length === 2) {
-      return `${adelantosPendientesNombres[0]} y ${adelantosPendientesNombres[1]} tienen ${formatMoney(
-        adelantosPendientesTotal
-      )} en adelantos pendientes.`;
-    }
-    return `${adelantosPendientesNombres[0]}, ${adelantosPendientesNombres[1]} y ${
-      adelantosPendientesNombres.length - 2
-    } empleado(s) tienen ${formatMoney(adelantosPendientesTotal)} en adelantos pendientes.`;
-  }, [adelantosPendientesNombres, adelantosPendientesTotal]);
+    return `${bonosDeduccionesStats.totalVigentes} movimiento(s) vigente(s). Bonos ${formatMoney(
+      bonosDeduccionesStats.bonosVigentes
+    )}, deducciones ${formatMoney(bonosDeduccionesStats.deduccionesVigentes)}.`;
+  }, [bonosDeduccionesStats]);
+  const bonosDeduccionesKpiCards = useMemo(
+    () => [
+      {
+        key: 'bd-bonos-vigentes',
+        iconClass: 'bi-plus-circle',
+        label: 'Bonos vigentes',
+        value: formatMoney(bonosDeduccionesStats.bonosVigentes),
+        accent: 'success'
+      },
+      {
+        key: 'bd-deducciones-vigentes',
+        iconClass: 'bi-dash-circle',
+        label: 'Deducciones vigentes',
+        value: formatMoney(bonosDeduccionesStats.deduccionesVigentes),
+        accent: 'warning'
+      },
+      {
+        key: 'bd-impacto-neto',
+        iconClass: 'bi-graph-up-arrow',
+        label: 'Impacto neto',
+        value: formatMoney(bonosDeduccionesImpactoNeto),
+        accent: bonosDeduccionesImpactoNeto >= 0 ? 'success' : 'danger'
+      },
+      {
+        key: 'bd-monto-anulado',
+        iconClass: 'bi-trash3',
+        label: 'Monto anulado',
+        value: formatMoney(bonosDeduccionesStats.montoAnulado),
+        accent: 'danger'
+      }
+    ],
+    [bonosDeduccionesImpactoNeto, bonosDeduccionesStats]
+  );
   const horasExtraStats = useMemo(() => {
     const totals = detalle.reduce(
       (acc, row) => {
@@ -637,18 +1612,86 @@ export default function Planillas({
   }, [safeToast]);
 
   useEffect(() => {
-    setSelectedSucursal((previous) => (previous === externalSucursalId ? previous : externalSucursalId));
+    const validSucursalIds = new Set(sucursalOptions.map((option) => normalizeSucursalId(option.value)));
+    const firstSucursalId = normalizeSucursalId(sucursalOptions[0]?.value);
+
+    setSelectedSucursal((previous) => {
+      const currentId = normalizeSucursalId(previous);
+      if (preferredSucursalId && validSucursalIds.has(preferredSucursalId)) return preferredSucursalId;
+      if (currentId && validSucursalIds.has(currentId)) return currentId;
+      return firstSucursalId || '';
+    });
+  }, [preferredSucursalId, sucursalOptions]);
+
+  useEffect(() => {
     setFilters((previous) => ({
       ...previous,
-      sucursal: externalSucursalId || ''
+      sucursal: selectedSucursal || ''
     }));
-  }, [externalSucursalId]);
+  }, [selectedSucursal]);
+
+  useEffect(() => {
+    const currentParam = normalizeSucursalId(searchParams.get(SUCURSAL_QUERY_PARAM));
+    const selectedParam = normalizeSucursalId(selectedSucursal);
+    if (currentParam === selectedParam) return;
+
+    const next = new URLSearchParams(searchParams);
+    if (selectedParam) {
+      next.set(SUCURSAL_QUERY_PARAM, selectedParam);
+    } else {
+      next.delete(SUCURSAL_QUERY_PARAM);
+    }
+    setSearchParams(next, { replace: true });
+  }, [searchParams, selectedSucursal, setSearchParams]);
+
+  const loadPlanillasByContext = useCallback(
+    async ({ idSucursal, periodoTarget } = {}) => {
+      const normalizedSucursal = normalizeSucursalId(idSucursal ?? selectedSucursal);
+      const normalizedPeriodo = toText(periodoTarget ?? periodo, '');
+      if (!normalizedSucursal || !normalizedPeriodo) return [];
+
+      const response = await planillasService.listarPlanillas({
+        page: 1,
+        limit: DETAIL_FETCH_LIMIT,
+        id_sucursal: normalizedSucursal,
+        periodo: normalizedPeriodo
+      });
+      return scopePlanillasByPeriodo(normalizeListResponse(response).items, normalizedPeriodo);
+    },
+    [periodo, selectedSucursal]
+  );
+
+  const loadEmpleadosActivos = useCallback(async () => {
+    if (!selectedSucursal || !canView) {
+      setEmpleadosActivosSucursal([]);
+      setLoadingEmpleadosActivos(false);
+      return;
+    }
+
+    setLoadingEmpleadosActivos(true);
+    try {
+      const response = await planillasService.listarEmpleadosActivosSucursal(selectedSucursal, {
+        page: 1,
+        limit: DETAIL_FETCH_LIMIT
+      });
+      setEmpleadosActivosSucursal(normalizeListResponse(response).items);
+    } catch {
+      setEmpleadosActivosSucursal([]);
+    } finally {
+      setLoadingEmpleadosActivos(false);
+    }
+  }, [canView, selectedSucursal]);
 
   const loadPlanillas = useCallback(async () => {
+    const requestId = planillasRequestRef.current + 1;
+    planillasRequestRef.current = requestId;
+
     if (!canView || !selectedSucursal) {
-      setPlanillas([]);
-      setPlanillasTotal(0);
-      setSelectedPlanillaId('');
+      if (requestId === planillasRequestRef.current) {
+        setPlanillas([]);
+        setPlanillasTotal(0);
+        setSelectedPlanillaId('');
+      }
       return;
     }
 
@@ -665,76 +1708,129 @@ export default function Planillas({
       });
 
       const parsed = normalizeListResponse(response);
-      setPlanillas(parsed.items);
-      setPlanillasTotal(parsed.total);
+      if (requestId !== planillasRequestRef.current) return;
+      const scopedItems = scopePlanillasByPeriodo(parsed.items, periodo);
+      setPlanillas(scopedItems);
+      setPlanillasTotal(scopedItems.length !== parsed.items.length ? scopedItems.length : parsed.total);
 
-      if (parsed.items.length === 0) {
+      if (scopedItems.length === 0) {
         setSelectedPlanillaId('');
         return;
       }
 
-      const stillExists = parsed.items.some(
+      const stillExists = scopedItems.some(
         (planilla) => String(planilla.id_planilla ?? '') === String(selectedPlanillaId)
       );
 
       if (!selectedPlanillaId || !stillExists) {
-        setSelectedPlanillaId(String(parsed.items[0].id_planilla ?? ''));
+        setSelectedPlanillaId(String(scopedItems[0].id_planilla ?? ''));
       }
     } catch (error) {
+      if (requestId !== planillasRequestRef.current) return;
       setListError(error.message || 'No se pudo cargar planillas');
       setPlanillas([]);
       setPlanillasTotal(0);
       setSelectedPlanillaId('');
     } finally {
-      setLoadingPlanillas(false);
+      if (requestId === planillasRequestRef.current) {
+        setLoadingPlanillas(false);
+      }
     }
   }, [canView, estadoFiltro, listPage, periodo, selectedPlanillaId, selectedSucursal]);
 
   const loadDetalleAndResumen = useCallback(async () => {
-    if (!selectedPlanilla?.id_planilla || !canViewDetalle || !selectedSucursal) {
-      setDetalle([]);
-      setResumen({});
-      setDetalleTotal(0);
+    const requestId = detalleRequestRef.current + 1;
+    detalleRequestRef.current = requestId;
+
+    if (!selectedPlanilla?.id_planilla || !canViewDetalle || !activePlanillaSucursalId) {
+      if (requestId === detalleRequestRef.current) {
+        setDetalle([]);
+        setResumen({});
+        setDetalleTotal(0);
+      }
       return;
     }
 
     const planillaSucursalId = normalizeSucursalId(
       selectedPlanilla?.id_sucursal || selectedPlanilla?.id_sucursal_planilla
     );
-    const currentSucursalId = normalizeSucursalId(selectedSucursal);
+    const currentSucursalId = normalizeSucursalId(activePlanillaSucursalId);
     if (planillaSucursalId && currentSucursalId && planillaSucursalId !== currentSucursalId) {
-      setDetalle([]);
-      setResumen({});
-      setDetalleTotal(0);
+      if (requestId === detalleRequestRef.current) {
+        setDetalle([]);
+        setResumen({});
+        setDetalleTotal(0);
+      }
       return;
     }
 
     setLoadingDetalle(true);
     try {
-      const [resumenResp, detalleResp] = await Promise.all([
+      const [resumenResp, detalleItems] = await Promise.all([
         planillasService.obtenerResumenPlanilla(selectedPlanilla.id_planilla, {
-          id_sucursal: selectedSucursal || undefined
+          id_sucursal: activePlanillaSucursalId || undefined
         }),
-        planillasService.listarDetallePlanilla(selectedPlanilla.id_planilla, {
-          page: 1,
-          limit: DETAIL_FETCH_LIMIT,
-          id_sucursal: selectedSucursal || undefined
-        })
+        collectPaginatedApiRows(
+          ({ page, limit }) =>
+            planillasService.listarDetallePlanilla(selectedPlanilla.id_planilla, {
+              page,
+              limit,
+              id_sucursal: activePlanillaSucursalId || undefined
+            }),
+          { pageSize: 100, maxPages: 80 }
+        )
       ]);
 
-      setResumen(normalizeResumen(resumenResp));
-      const parsedDetalle = normalizeListResponse(detalleResp);
-      setDetalle(parsedDetalle.items);
-      setDetalleTotal(parsedDetalle.total || parsedDetalle.items.length);
+      if (requestId !== detalleRequestRef.current) return;
+      setResumen(normalizeResumenForDisplay(normalizeResumen(resumenResp)));
+      const normalizedDetalle = (Array.isArray(detalleItems) ? detalleItems : []).map((row) =>
+        normalizeDetalleRowForDisplay(row)
+      );
+      setDetalle(normalizedDetalle);
+      setDetalleTotal(normalizedDetalle.length);
     } catch (error) {
+      if (requestId !== detalleRequestRef.current) return;
       safeToast('ERROR', error.message || 'No se pudo cargar el detalle de planilla', 'danger');
       setDetalle([]);
       setDetalleTotal(0);
       setResumen({});
     } finally {
-      setLoadingDetalle(false);
+      if (requestId === detalleRequestRef.current) {
+        setLoadingDetalle(false);
+      }
     }
-  }, [canViewDetalle, safeToast, selectedPlanilla?.id_planilla, selectedSucursal]);
+  }, [
+    activePlanillaSucursalId,
+    canViewDetalle,
+    safeToast,
+    selectedPlanilla?.id_planilla,
+    selectedPlanilla?.id_sucursal,
+    selectedPlanilla?.id_sucursal_planilla
+  ]);
+
+  const fetchPlanillaMovimientos = useCallback(async ({ idPlanilla, idSucursal, idDetalle = 0 } = {}) => {
+    const safePlanillaId = safeNumber(idPlanilla, 0);
+    if (!(safePlanillaId > 0)) return [];
+
+    const safeDetalleId = safeNumber(idDetalle, 0);
+    return collectPaginatedApiRows(
+      ({ page, limit }) => {
+        if (safeDetalleId > 0) {
+          return planillasService.listarMovimientosPlanillaDetalle(safePlanillaId, safeDetalleId, {
+            page,
+            limit,
+            id_sucursal: idSucursal || undefined
+          });
+        }
+        return planillasService.listarMovimientosPlanilla(safePlanillaId, {
+          page,
+          limit,
+          id_sucursal: idSucursal || undefined
+        });
+      },
+      { pageSize: 100, maxPages: 80 }
+    );
+  }, []);
 
   const loadAdelantosPendientes = useCallback(async () => {
     if (!selectedSucursal || !canViewDetalle) {
@@ -745,18 +1841,153 @@ export default function Planillas({
 
     setLoadingAdelantosPendientes(true);
     try {
-      const response = await planillasService.listarAdelantosPendientesSucursal(selectedSucursal, {
-        page: 1,
-        limit: 10,
-        periodo
-      });
-      setAdelantosPendientes(normalizeListResponse(response).items);
+      const rows = await collectPaginatedApiRows(
+        ({ page, limit }) =>
+          planillasService.listarAdelantosPendientesSucursal(selectedSucursal, {
+            page,
+            limit,
+            periodo
+          }),
+        { pageSize: 100, maxPages: 80 }
+      );
+      setAdelantosPendientes(rows);
     } catch {
       setAdelantosPendientes([]);
     } finally {
       setLoadingAdelantosPendientes(false);
     }
   }, [canViewDetalle, periodo, selectedSucursal]);
+
+  const loadAdelantosHistorial = useCallback(async () => {
+    const requestId = adelantosHistorialRequestRef.current + 1;
+    adelantosHistorialRequestRef.current = requestId;
+
+    if (!selectedPlanilla?.id_planilla || !canViewDetalle || !activePlanillaSucursalId) {
+      if (requestId === adelantosHistorialRequestRef.current) {
+        setAdelantosHistorialMovimientos([]);
+        setLoadingAdelantosHistorial(false);
+      }
+      return;
+    }
+
+    const planillaSucursalId = normalizeSucursalId(
+      selectedPlanilla?.id_sucursal || selectedPlanilla?.id_sucursal_planilla
+    );
+    const currentSucursalId = normalizeSucursalId(activePlanillaSucursalId);
+    if (planillaSucursalId && currentSucursalId && planillaSucursalId !== currentSucursalId) {
+      if (requestId === adelantosHistorialRequestRef.current) {
+        setAdelantosHistorialMovimientos([]);
+        setLoadingAdelantosHistorial(false);
+      }
+      return;
+    }
+
+    setLoadingAdelantosHistorial(true);
+    try {
+      const movimientosRows = await fetchPlanillaMovimientos({
+        idPlanilla: selectedPlanilla.id_planilla,
+        idSucursal: activePlanillaSucursalId || undefined
+      });
+      if (requestId !== adelantosHistorialRequestRef.current) return;
+      const scopedItems = scopeMovimientosToPlanillaContext({
+        movimientos: movimientosRows,
+        detalleRows: detalle,
+        idPlanilla: selectedPlanilla?.id_planilla,
+        periodoScope: periodo
+      });
+      setAdelantosHistorialMovimientos(scopedItems);
+    } catch {
+      if (requestId !== adelantosHistorialRequestRef.current) return;
+      setAdelantosHistorialMovimientos([]);
+    } finally {
+      if (requestId === adelantosHistorialRequestRef.current) {
+        setLoadingAdelantosHistorial(false);
+      }
+    }
+  }, [
+    activePlanillaSucursalId,
+    canViewDetalle,
+    detalle,
+    fetchPlanillaMovimientos,
+    periodo,
+    selectedPlanilla?.id_planilla,
+    selectedPlanilla?.id_sucursal,
+    selectedPlanilla?.id_sucursal_planilla
+  ]);
+
+  const loadBonosDeduccionesHistorial = useCallback(async () => {
+    if (!selectedPlanilla?.id_planilla || !canViewDetalle || !activePlanillaSucursalId) {
+      setBonosDeduccionesHistorial([]);
+      setLoadingBonosDeduccionesHistorial(false);
+      return;
+    }
+
+    const planillaSucursalId = normalizeSucursalId(
+      selectedPlanilla?.id_sucursal || selectedPlanilla?.id_sucursal_planilla
+    );
+    const currentSucursalId = normalizeSucursalId(activePlanillaSucursalId);
+    if (planillaSucursalId && currentSucursalId && planillaSucursalId !== currentSucursalId) {
+      setBonosDeduccionesHistorial([]);
+      setLoadingBonosDeduccionesHistorial(false);
+      return;
+    }
+
+    setLoadingBonosDeduccionesHistorial(true);
+    try {
+      const items = await fetchPlanillaMovimientos({
+        idPlanilla: selectedPlanilla.id_planilla,
+        idSucursal: activePlanillaSucursalId || undefined
+      });
+      const filtered = items.filter((row) => {
+        const tipo = normalizeBonoDeduccionTipo(row);
+        return tipo === MOVIMIENTO_TIPO.bono || tipo === MOVIMIENTO_TIPO.deduccion;
+      });
+      setBonosDeduccionesHistorial(filtered);
+    } catch {
+      setBonosDeduccionesHistorial([]);
+    } finally {
+      setLoadingBonosDeduccionesHistorial(false);
+    }
+  }, [
+    activePlanillaSucursalId,
+    canViewDetalle,
+    fetchPlanillaMovimientos,
+    selectedPlanilla?.id_planilla,
+    selectedPlanilla?.id_sucursal,
+    selectedPlanilla?.id_sucursal_planilla
+  ]);
+
+  const refreshPlanillaPeriodoLookup = useCallback(async () => {
+    if (!canView || !selectedSucursal || !toText(periodo, '')) {
+      setPlanillaPeriodoLookup({
+        loading: false,
+        hasPlanilla: false,
+        idPlanilla: 0
+      });
+      return;
+    }
+
+    setPlanillaPeriodoLookup((previous) => ({ ...previous, loading: true }));
+    try {
+      const items = await loadPlanillasByContext({
+        idSucursal: selectedSucursal,
+        periodoTarget: periodo
+      });
+      const planilla = pickContextPlanilla(items, periodo);
+      const idPlanilla = resolvePlanillaId(planilla);
+      setPlanillaPeriodoLookup({
+        loading: false,
+        hasPlanilla: idPlanilla > 0,
+        idPlanilla
+      });
+    } catch {
+      setPlanillaPeriodoLookup({
+        loading: false,
+        hasPlanilla: false,
+        idPlanilla: 0
+      });
+    }
+  }, [canView, loadPlanillasByContext, periodo, selectedSucursal]);
 
   useEffect(() => {
     loadSucursales();
@@ -765,6 +1996,17 @@ export default function Planillas({
   useEffect(() => {
     setListPage(1);
   }, [selectedSucursal, periodo, estadoFiltro]);
+
+  useEffect(() => {
+    if (!selectedSucursal) return;
+    setSelectedPlanillaId('');
+    setDetalle([]);
+    setResumen({});
+    setDetalleTotal(0);
+    setDetallePage(1);
+    setAdelantosHistorialMovimientos([]);
+    setBonosDeduccionesHistorial([]);
+  }, [periodo, selectedSucursal]);
 
   useEffect(() => {
     setSelectedPlanillaId('');
@@ -779,6 +2021,10 @@ export default function Planillas({
   }, [loadPlanillas]);
 
   useEffect(() => {
+    void refreshPlanillaPeriodoLookup();
+  }, [refreshPlanillaPeriodoLookup]);
+
+  useEffect(() => {
     setDetallePage(1);
   }, [selectedPlanillaId, filters.search, filters.sucursal, filters.cargo, filters.salarioMin, filters.salarioMax]);
 
@@ -787,8 +2033,20 @@ export default function Planillas({
   }, [loadDetalleAndResumen]);
 
   useEffect(() => {
+    loadEmpleadosActivos();
+  }, [loadEmpleadosActivos]);
+
+  useEffect(() => {
     loadAdelantosPendientes();
   }, [loadAdelantosPendientes]);
+
+  useEffect(() => {
+    loadAdelantosHistorial();
+  }, [loadAdelantosHistorial]);
+
+  useEffect(() => {
+    loadBonosDeduccionesHistorial();
+  }, [loadBonosDeduccionesHistorial]);
 
   useEffect(() => {
     if (detallePage > totalPagesDetalle) {
@@ -798,7 +2056,17 @@ export default function Planillas({
 
   useEffect(() => {
     if (hasSucursalSelected) return;
+    setEmpleadosActivosSucursal([]);
     setAdelantosPendientesModalOpen(false);
+    setAdelantosHistorialModal({
+      open: false,
+      loading: false,
+      item: null,
+      empleadoLabel: '',
+      items: [],
+      updatingId: null,
+      deletingId: null
+    });
     setHorasExtraModal({
       open: false,
       loading: false,
@@ -807,32 +2075,199 @@ export default function Planillas({
       items: [],
       summary: {},
       compensatingId: null,
-      registering: false,
-      registerEmpleadoId: ''
+      updatingId: null,
+      deletingId: null
       });
+    setHorasExtraRegistroModal({
+      open: false,
+      registering: false,
+      defaultEmpleadoId: ''
+    });
+    setAdelantoRegistroGlobalModal({
+      open: false,
+      registering: false
+    });
+    setAdelantosHistorialMovimientos([]);
+    setBonosDeduccionesHistorial([]);
+    setMovimientoFormModal({
+      open: false,
+      tipo: 'bono',
+      item: null,
+      mode: 'detalle',
+      selectedEmpleadoId: '',
+      loading: false
+    });
+    setBonosDeduccionesHistorialModal({
+      open: false,
+      loading: false,
+      items: [],
+      deletingId: null
+    });
   }, [hasSucursalSelected]);
 
-  useEffect(() => {
-    setDismissedInsights({
-      adelantos: false,
-      horas: false
-    });
-  }, [selectedSucursal, selectedPlanillaId, periodo]);
+  const ensurePlanillaForRegistro = useCallback(
+    async ({ notifyOnCreate = true } = {}) => {
+      const idSucursal = safeNumber(selectedSucursal, 0);
+      const periodoValue = toText(periodo, '');
+
+      if (!(idSucursal > 0)) {
+        safeToast('ERROR', 'Selecciona una sucursal valida antes de registrar movimientos.', 'warning');
+        return null;
+      }
+
+      if (!periodoValue) {
+        safeToast('ERROR', 'Selecciona un periodo valido antes de registrar movimientos.', 'warning');
+        return null;
+      }
+
+      const resolveExistingPlanilla = async () => {
+        const items = await loadPlanillasByContext({ idSucursal, periodoTarget: periodoValue });
+        const planilla = pickContextPlanilla(items, periodoValue);
+        return {
+          planilla,
+          idPlanilla: resolvePlanillaId(planilla)
+        };
+      };
+
+      try {
+        let { planilla, idPlanilla } = await resolveExistingPlanilla();
+
+        if (!(idPlanilla > 0)) {
+          let generatedNow = false;
+          try {
+            await planillasService.generarPlanilla({
+              id_sucursal: idSucursal,
+              periodo: periodoValue
+            });
+            generatedNow = true;
+          } catch (error) {
+            const message = toText(error?.message, '').toLowerCase();
+            const canRetryLookup =
+              message.includes('exist') || message.includes('ya existe') || message.includes('duplic');
+            if (!canRetryLookup) throw error;
+          }
+
+          const refreshed = await resolveExistingPlanilla();
+          planilla = refreshed.planilla;
+          idPlanilla = refreshed.idPlanilla;
+
+          if (!(idPlanilla > 0)) {
+            throw new Error('No se pudo preparar una planilla valida para la sucursal y periodo seleccionados.');
+          }
+
+          if (generatedNow && notifyOnCreate) {
+            safeToast('OK', 'Se creo una planilla en borrador para continuar con el registro.', 'success');
+          }
+        }
+
+        setSelectedPlanillaId(String(idPlanilla));
+        setPlanillaPeriodoLookup({
+          loading: false,
+          hasPlanilla: true,
+          idPlanilla
+        });
+
+        const idSucursalPlanilla =
+          safeNumber(planilla?.id_sucursal ?? planilla?.id_sucursal_planilla, 0) || idSucursal;
+
+        return {
+          idPlanilla,
+          idSucursal: idSucursalPlanilla,
+          planilla
+        };
+      } catch (error) {
+        safeToast('ERROR', error.message || 'No se pudo preparar la planilla para este contexto.', 'danger');
+        return null;
+      }
+    },
+    [loadPlanillasByContext, periodo, safeToast, selectedSucursal]
+  );
+
+  const resolveDetalleIdForEmpleado = useCallback(
+    async ({ idPlanilla, idEmpleado, idSucursal } = {}) => {
+      if (!(safeNumber(idPlanilla, 0) > 0) || !(safeNumber(idEmpleado, 0) > 0)) return 0;
+
+      const localDetalle = (Array.isArray(detalle) ? detalle : []).find(
+        (row) => safeNumber(row?.id_empleado, 0) === safeNumber(idEmpleado, 0)
+      );
+      const localId = safeNumber(localDetalle?.id_detalle_planilla ?? localDetalle?.id_detalle, 0);
+      if (localId > 0) return localId;
+
+      const rows = (await collectPaginatedApiRows(
+        ({ page, limit }) =>
+          planillasService.listarDetallePlanilla(idPlanilla, {
+            page,
+            limit,
+            id_sucursal: idSucursal || undefined
+          }),
+        { pageSize: 100, maxPages: 80 }
+      )).map((row) => normalizeDetalleRowForDisplay(row));
+
+      setDetalle(rows);
+      setDetalleTotal(rows.length);
+
+      const remoteDetalle = rows.find((row) => safeNumber(row?.id_empleado, 0) === safeNumber(idEmpleado, 0));
+      return safeNumber(remoteDetalle?.id_detalle_planilla ?? remoteDetalle?.id_detalle, 0);
+    },
+    [detalle]
+  );
+
+  const refreshPlanillaData = useCallback(
+    async () => {
+      await Promise.all([
+        loadPlanillas(),
+        refreshPlanillaPeriodoLookup(),
+        loadEmpleadosActivos(),
+        loadDetalleAndResumen(),
+        loadAdelantosPendientes(),
+        loadAdelantosHistorial(),
+        loadBonosDeduccionesHistorial()
+      ]);
+    },
+    [
+      loadAdelantosHistorial,
+      loadAdelantosPendientes,
+      loadBonosDeduccionesHistorial,
+      loadDetalleAndResumen,
+      loadEmpleadosActivos,
+      loadPlanillas,
+      refreshPlanillaPeriodoLookup
+    ]
+  );
 
   const withAction = useCallback(
-    async (task, successMessage) => {
+    async (task, successConfig) => {
+      const options =
+        typeof successConfig === 'string'
+          ? { successMessage: successConfig }
+          : successConfig && typeof successConfig === 'object'
+            ? successConfig
+            : {};
+      const successMessage = toText(options.successMessage, '');
+      const skipReload = options.skipReload === true;
+
       setLoadingAction(true);
       try {
         await task();
+        if (typeof options.onSuccess === 'function') {
+          await options.onSuccess();
+        }
         if (successMessage) safeToast('OK', successMessage, 'success');
-        await Promise.all([loadPlanillas(), loadDetalleAndResumen(), loadAdelantosPendientes()]);
+        if (!skipReload) {
+          await refreshPlanillaData();
+        }
+        return true;
       } catch (error) {
+        if (typeof options.onError === 'function') {
+          options.onError(error);
+        }
         safeToast('ERROR', error.message || 'No se pudo ejecutar la accion', 'danger');
+        return false;
       } finally {
         setLoadingAction(false);
       }
     },
-    [loadAdelantosPendientes, loadDetalleAndResumen, loadPlanillas, safeToast]
+    [refreshPlanillaData, safeToast]
   );
 
   const closeConfirmModal = useCallback(() => {
@@ -846,6 +2281,7 @@ export default function Planillas({
       title: config.title || 'CONFIRMAR ACCION',
       subtitle: config.subtitle || 'Esta accion puede afectar la planilla',
       question: config.question || 'Deseas continuar con esta accion?',
+      description: config.description || '',
       detail: config.detail || '',
       detailIconClass: config.detailIconClass || 'bi bi-wallet2',
       confirmText: config.confirmText || 'Confirmar',
@@ -934,8 +2370,8 @@ export default function Planillas({
   }, [periodo, selectedPlanillaLabel]);
 
   const resolveExportDataset = useCallback(async (options = {}) => {
-    let summaryData = resumen;
-    let rows = filteredDetalle;
+    let summaryData = normalizeResumenForDisplay(resumen);
+    let rows = filteredDetalle.map((row) => normalizeDetalleRowForDisplay(row));
     let movimientos = [];
 
     if (!selectedPlanilla?.id_planilla) {
@@ -944,19 +2380,20 @@ export default function Planillas({
 
     try {
       const response = await planillasService.obtenerPlanillaCompleta(selectedPlanilla.id_planilla, {
-        id_sucursal: selectedSucursal || undefined
+        id_sucursal: activePlanillaSucursalId || undefined
       });
       const parsed = normalizePlanillaCompleta(response);
       if (parsed.detalle.length > 0) {
+        const normalizedRows = parsed.detalle.map((row) => normalizeDetalleRowForDisplay(row));
         rows = filterDetalleRows({
-          rows: parsed.detalle,
+          rows: normalizedRows,
           filters,
           selectedSucursal,
           selectedPlanilla
         });
       }
       if (Object.keys(parsed.resumen || {}).length > 0) {
-        summaryData = parsed.resumen;
+        summaryData = normalizeResumenForDisplay(parsed.resumen);
       }
     } catch {
       // fallback
@@ -974,7 +2411,7 @@ export default function Planillas({
           const response = await planillasService.listarMovimientosPlanilla(selectedPlanilla.id_planilla, {
             page,
             limit,
-            id_sucursal: selectedSucursal || undefined
+            id_sucursal: activePlanillaSucursalId || undefined
           });
           const parsed = normalizeListResponse(response);
           const chunk = Array.isArray(parsed.items) ? parsed.items : [];
@@ -992,8 +2429,12 @@ export default function Planillas({
       }
     }
 
-    return { summaryData, rows, movimientos };
-  }, [filters, filteredDetalle, resumen, safeToast, selectedPlanilla, selectedSucursal]);
+    return {
+      summaryData: normalizeResumenForDisplay(summaryData),
+      rows: rows.map((row) => normalizeDetalleRowForDisplay(row)),
+      movimientos
+    };
+  }, [activePlanillaSucursalId, filters, filteredDetalle, resumen, safeToast, selectedPlanilla, selectedSucursal]);
 
   const handleExportSubmit = useCallback(async (options) => {
     if (!selectedPlanilla?.id_planilla) return;
@@ -1037,11 +2478,33 @@ export default function Planillas({
     }
   }, [buildCsvContent, periodo, resolveExportDataset, safeToast, selectedPlanilla?.id_planilla, selectedPlanillaLabel]);
 
-  const handleGenerar = () =>
-    withAction(
-      () => planillasService.generarPlanilla({ id_sucursal: Number(selectedSucursal), periodo }),
-      'Planilla generada correctamente'
-    );
+  const handleGenerar = () => {
+    if (!selectedSucursal || !periodo) {
+      safeToast('ERROR', 'Selecciona sucursal y periodo antes de generar planilla.', 'warning');
+      return;
+    }
+    if (hasPlanillaForPeriodo) {
+      safeToast('AVISO', 'Ya existe una planilla para el periodo seleccionado.', 'warning');
+      return;
+    }
+
+    openConfirmModal({
+      actionType: 'generar_planilla',
+      title: 'CONFIRMAR GENERACION',
+      subtitle: 'Se preparara la planilla del periodo seleccionado',
+      question: 'Deseas generar la planilla para esta sucursal?',
+      description:
+        'La generacion toma el detalle actual de empleados, bonos, deducciones y adelantos para construir la planilla del periodo.',
+      detail: `${selectedSucursalLabel} - ${periodo || 'Sin periodo'}`,
+      detailIconClass: 'bi bi-calendar2-check',
+      confirmText: 'Generar',
+      confirmIconClass: 'bi bi-plus-circle',
+      payload: {
+        idSucursal: Number(selectedSucursal),
+        periodo
+      }
+    });
+  };
 
   const handleRecalcular = () => {
     if (!selectedPlanilla?.id_planilla) return;
@@ -1050,13 +2513,15 @@ export default function Planillas({
       title: 'CONFIRMAR RECALCULO',
       subtitle: 'Se actualizaran los totales de planilla',
       question: 'Deseas recalcular la planilla seleccionada?',
+      description:
+        'Se volveran a calcular los montos de la planilla con la informacion mas reciente de su detalle.',
       detail: `Planilla #${selectedPlanilla.id_planilla}`,
       detailIconClass: 'bi bi-arrow-repeat',
       confirmText: 'Recalcular',
       confirmIconClass: 'bi bi-arrow-repeat',
       payload: {
         idPlanilla: selectedPlanilla.id_planilla,
-        idSucursal: Number(selectedSucursal || 0) || undefined
+        idSucursal: activePlanillaSucursalId || undefined
       }
     });
   };
@@ -1077,20 +2542,31 @@ export default function Planillas({
       borrador: 'marcar como borrador',
       calculada: 'calcular',
     };
+    const estadoDescriptionMap = {
+      cerrada: 'La planilla quedara cerrada para evitar cambios operativos y continuar con el flujo de pago.',
+      pagada: 'La planilla quedara marcada como pagada y se cerrara el ciclo de pago del periodo.',
+      anulada: 'La planilla se marcara como anulada y no podra seguir el flujo normal.',
+      borrador: 'La planilla regresara a borrador para permitir ajustes en el flujo operativo.',
+      calculada: 'La planilla se dejara en estado calculada para revisar resultados antes del cierre.'
+    };
     const normalizedEstado = estadoMap[String(estado || '').toLowerCase()] || estado;
     const actionLabel = estadoLabelMap[String(estado || '').toLowerCase()] || 'actualizar estado';
+    const actionDescription =
+      estadoDescriptionMap[String(estado || '').toLowerCase()] ||
+      'El estado de la planilla se actualizara segun la accion seleccionada.';
     openConfirmModal({
       actionType: 'estado_planilla',
       title: 'CONFIRMAR CAMBIO DE ESTADO',
       subtitle: 'Esta accion se registrara en planilla',
       question: `Confirma que deseas ${actionLabel} la planilla seleccionada?`,
+      description: actionDescription,
       detail: `Planilla #${selectedPlanilla.id_planilla}`,
       detailIconClass: 'bi bi-check2-square',
       confirmText: 'Confirmar',
       confirmIconClass: 'bi bi-check2-circle',
       payload: {
         idPlanilla: selectedPlanilla.id_planilla,
-        idSucursal: Number(selectedSucursal || 0) || undefined,
+        idSucursal: activePlanillaSucursalId || undefined,
         estado: normalizedEstado,
         label: estado
       }
@@ -1104,6 +2580,8 @@ export default function Planillas({
       title: 'CONFIRMAR ANULACION',
       subtitle: 'Esta accion es permanente',
       question: 'Esta accion anulara la planilla completa y revertira adelantos aplicados. Deseas continuar?',
+      description:
+        'Al anular, la planilla deja de ser operativa y la accion quedara registrada en auditoria.',
       detail: `Planilla #${selectedPlanilla.id_planilla}`,
       detailIconClass: 'bi bi-exclamation-triangle-fill',
       confirmText: 'Anular',
@@ -1111,56 +2589,257 @@ export default function Planillas({
       requireReason: true,
       payload: {
         idPlanilla: selectedPlanilla.id_planilla,
-        idSucursal: Number(selectedSucursal || 0) || undefined
+        idSucursal: activePlanillaSucursalId || undefined
       }
     });
   };
 
-  const openMovimientos = async (item) => {
-    setMovimientosModal({ open: true, item, loading: true, items: [] });
-    try {
-      const response = await planillasService.listarMovimientosPlanilla(selectedPlanilla.id_planilla, {
-        page: 1,
-        limit: 50,
-        id_detalle: item.id_detalle_planilla || item.id_detalle,
-        id_sucursal: selectedSucursal || undefined
-      });
-      setMovimientosModal({ open: true, item, loading: false, items: normalizeListResponse(response).items });
-    } catch (error) {
-      setMovimientosModal({ open: true, item, loading: false, items: [] });
-      safeToast('ERROR', error.message || 'No se pudieron cargar movimientos', 'danger');
-    }
-  };
+  const openMovimientos = useCallback(
+    async (item) => {
+      if (!selectedPlanilla?.id_planilla || !item) return;
+      setMovimientosModal({ open: true, item, loading: true, items: [] });
+      try {
+        const response = await planillasService.listarMovimientosPlanilla(selectedPlanilla.id_planilla, {
+          page: 1,
+          limit: 50,
+          id_detalle: item.id_detalle_planilla || item.id_detalle,
+          id_sucursal: activePlanillaSucursalId || undefined
+        });
+        setMovimientosModal({ open: true, item, loading: false, items: normalizeListResponse(response).items });
+      } catch (error) {
+        setMovimientosModal({ open: true, item, loading: false, items: [] });
+        safeToast('ERROR', error.message || 'No se pudieron cargar movimientos', 'danger');
+      }
+    },
+    [activePlanillaSucursalId, safeToast, selectedPlanilla?.id_planilla]
+  );
 
-  const openAdelantos = async (item) => {
-    setAdelantosModal({ open: true, item, loading: true, applying: false, registering: false, items: [] });
+  const openBonosDeduccionesRegistroGlobal = useCallback(async () => {
+    const context = await ensurePlanillaForRegistro();
+    if (!context) return;
+
+    setMovimientoFormModal({
+      open: true,
+      tipo: 'bono',
+      item: null,
+      mode: 'global',
+      selectedEmpleadoId: '',
+      loading: false
+    });
+  }, [ensurePlanillaForRegistro]);
+
+  const openBonosDeduccionesHistorial = useCallback(async () => {
+    const context = await ensurePlanillaForRegistro();
+    if (!context) return;
+
+    setBonosDeduccionesHistorialModal({
+      open: true,
+      loading: true,
+      items: [],
+      deletingId: null
+    });
+
     try {
-      const response = await planillasService.listarAdelantosAplicablesPlanilla(selectedPlanilla.id_planilla, {
+      const response = await planillasService.listarMovimientosPlanilla(context.idPlanilla, {
         page: 1,
-        limit: 50,
-        id_detalle: item.id_detalle_planilla || item.id_detalle,
-        id_sucursal: selectedSucursal || undefined
+        limit: DETAIL_FETCH_LIMIT,
+        id_sucursal: context.idSucursal || undefined
       });
-      setAdelantosModal({
+      const items = normalizeListResponse(response).items;
+      const filtered = items.filter((row) => {
+        const tipo = normalizeBonoDeduccionTipo(row);
+        return tipo === MOVIMIENTO_TIPO.bono || tipo === MOVIMIENTO_TIPO.deduccion;
+      });
+      setBonosDeduccionesHistorial(filtered);
+      setBonosDeduccionesHistorialModal({
         open: true,
-        item,
         loading: false,
-        applying: false,
-        registering: false,
-        items: normalizeListResponse(response).items
+        items: normalizeBonosDeduccionesDataset({
+          movimientos: filtered,
+          detalleRows: detalle
+        }),
+        deletingId: null
       });
     } catch (error) {
-      setAdelantosModal({ open: true, item, loading: false, applying: false, registering: false, items: [] });
-      safeToast('ERROR', error.message || 'No se pudieron cargar adelantos', 'danger');
+      setBonosDeduccionesHistorialModal({
+        open: true,
+        loading: false,
+        items: [],
+        deletingId: null
+      });
+      safeToast('ERROR', error.message || 'No se pudo cargar el historial de movimientos.', 'danger');
     }
-  };
+  }, [detalle, ensurePlanillaForRegistro, safeToast]);
+
+  const handleAnularBonoDeduccion = useCallback(
+    async (row) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      const idMovimiento = safeNumber(row?.id_movimiento, 0);
+      if (!(idMovimiento > 0) || !context?.idPlanilla) {
+        safeToast('ERROR', 'No se pudo identificar el movimiento a anular.', 'danger');
+        return;
+      }
+
+      const tipoLabel = row?.tipo === MOVIMIENTO_TIPO.bono ? 'Bono' : 'Deducción';
+      openConfirmModal({
+        actionType: 'anular_movimiento_bono_deduccion',
+        title: 'CONFIRMAR ANULACION',
+        subtitle: 'Esta accion afectara el calculo de planilla',
+        question: `Deseas anular este ${tipoLabel.toLowerCase()}?`,
+        description: 'El movimiento quedara registrado como anulado en el historial.',
+        detail: `${tipoLabel} - ${toText(row?.empleado_nombre, 'Empleado')}`,
+        detailIconClass: 'bi bi-trash3',
+        confirmText: 'Anular movimiento',
+        confirmIconClass: 'bi bi-trash3',
+        requireReason: true,
+        payload: {
+          rowId: row?.id || null,
+          idMovimiento,
+          idPlanilla: context.idPlanilla,
+          idSucursal: context.idSucursal || undefined
+        }
+      });
+    },
+    [ensurePlanillaForRegistro, openConfirmModal, safeToast]
+  );
+
+  const openAdelantoRegistroGlobal = useCallback(async () => {
+    const context = await ensurePlanillaForRegistro();
+    if (!context) return;
+    setAdelantoRegistroGlobalModal({ open: true, registering: false });
+  }, [ensurePlanillaForRegistro]);
+
+  const openAdelantos = useCallback(
+    async (item) => {
+      const context = await ensurePlanillaForRegistro();
+      if (!context || !item) return;
+      setAdelantosModal({ open: true, item, loading: true, applying: false, registering: false, items: [] });
+      try {
+        const response = await planillasService.listarAdelantosAplicablesPlanilla(context.idPlanilla, {
+          page: 1,
+          limit: 50,
+          id_detalle: item.id_detalle_planilla || item.id_detalle,
+          id_sucursal: context.idSucursal || undefined
+        });
+        setAdelantosModal({
+          open: true,
+          item,
+          loading: false,
+          applying: false,
+          registering: false,
+          items: normalizeListResponse(response).items
+        });
+      } catch (error) {
+        setAdelantosModal({ open: true, item, loading: false, applying: false, registering: false, items: [] });
+        safeToast('ERROR', error.message || 'No se pudieron cargar adelantos', 'danger');
+      }
+    },
+    [ensurePlanillaForRegistro, safeToast]
+  );
+
+  const openAdelantosHistorial = useCallback(
+    async (item = null) => {
+      const context = await ensurePlanillaForRegistro();
+      if (!context) return;
+
+      const onlyEmpleadoId = safeNumber(item?.id_empleado, 0);
+      const empleadoLabel = onlyEmpleadoId > 0 ? extractEmpleadoNombre(item) : '';
+
+      setAdelantosHistorialModal({
+        open: true,
+        loading: true,
+        item: item || null,
+        empleadoLabel,
+        items: [],
+        updatingId: null,
+        deletingId: null
+      });
+
+      try {
+        const idDetalle = safeNumber(item?.id_detalle_planilla ?? item?.id_detalle, 0);
+        const movimientosRows = await fetchPlanillaMovimientos({
+          idPlanilla: context.idPlanilla,
+          idSucursal: context.idSucursal || undefined
+        });
+        const scopedBaseRows = scopeMovimientosToPlanillaContext({
+          movimientos: movimientosRows,
+          detalleRows: detalle,
+          idPlanilla: context.idPlanilla,
+          periodoScope: periodo
+        });
+        setAdelantosHistorialMovimientos(scopedBaseRows);
+
+        const detalleByDetalleId = new Map(
+          (Array.isArray(detalle) ? detalle : [])
+            .map((row) => [String(safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0)), row])
+            .filter(([id]) => id !== '0')
+        );
+
+        let movimientos = scopedBaseRows;
+        if (idDetalle > 0) {
+          movimientos = scopedBaseRows.filter((row) => {
+            const rowDetalleId = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+            const rowEmpleadoId = resolveAdelantoEmpleadoId(row, detalleByDetalleId);
+            return rowDetalleId === idDetalle || (onlyEmpleadoId > 0 && rowEmpleadoId === onlyEmpleadoId);
+          });
+        } else if (onlyEmpleadoId > 0) {
+          movimientos = scopedBaseRows.filter(
+            (row) => resolveAdelantoEmpleadoId(row, detalleByDetalleId) === onlyEmpleadoId
+          );
+        }
+
+        const dataset = normalizeAdelantosDataset({
+          pendientes: adelantosPendientes,
+          movimientos,
+          detalleRows: detalle,
+          onlyEmpleadoId,
+          periodoScope: periodo
+        });
+
+        setAdelantosHistorialModal({
+          open: true,
+          loading: false,
+          item: item || null,
+          empleadoLabel,
+          items: dataset,
+          updatingId: null,
+          deletingId: null
+        });
+      } catch (error) {
+        const fallbackDataset = normalizeAdelantosDataset({
+          pendientes: adelantosPendientes,
+          movimientos: adelantosHistorialMovimientosScoped,
+          detalleRows: detalle,
+          onlyEmpleadoId,
+          periodoScope: periodo
+        });
+        setAdelantosHistorialModal({
+          open: true,
+          loading: false,
+          item: item || null,
+          empleadoLabel,
+          items: fallbackDataset,
+          updatingId: null,
+          deletingId: null
+        });
+      safeToast('ERROR', error.message || 'No se pudo cargar el historial de adelantos.', 'danger');
+      }
+    },
+    [
+      adelantosHistorialMovimientosScoped,
+      adelantosPendientes,
+      detalle,
+      ensurePlanillaForRegistro,
+      fetchPlanillaMovimientos,
+      periodo,
+      safeToast,
+    ]
+  );
 
   const openHorasExtra = useCallback(
     async (item = null) => {
-      if (!selectedPlanilla?.id_planilla) {
-        safeToast('ERROR', 'Selecciona una planilla para consultar horas extra.', 'warning');
-        return;
-      }
+      const context = await ensurePlanillaForRegistro();
+      if (!context) return;
 
       const idEmpleado = safeNumber(item?.id_empleado, 0) || null;
       const empleadoLabel = idEmpleado ? extractEmpleadoNombre(item) : '';
@@ -1173,16 +2852,16 @@ export default function Planillas({
         items: [],
         summary: {},
         compensatingId: null,
-        registering: false,
-        registerEmpleadoId: idEmpleado ? String(idEmpleado) : ''
+        updatingId: null,
+        deletingId: null
       });
 
       try {
-        const response = await planillasService.listarHorasExtraPlanilla(selectedPlanilla.id_planilla, {
+        const response = await planillasService.listarHorasExtraPlanilla(context.idPlanilla, {
           page: 1,
           limit: 200,
           id_empleado: idEmpleado || undefined,
-          id_sucursal: selectedSucursal || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         const parsed = normalizeHorasExtraResponse(response);
         setHorasExtraModal((previous) => ({
@@ -1192,7 +2871,9 @@ export default function Planillas({
           item: item || null,
           empleadoLabel,
           items: parsed.items,
-          summary: parsed.summary || {}
+          summary: parsed.summary || {},
+          updatingId: null,
+          deletingId: null
         }));
       } catch (error) {
         setHorasExtraModal((previous) => ({
@@ -1200,30 +2881,44 @@ export default function Planillas({
           open: true,
           loading: false,
           items: [],
-          summary: {}
+          summary: {},
+          updatingId: null,
+          deletingId: null
         }));
         safeToast('ERROR', error.message || 'No se pudieron cargar horas extra.', 'danger');
       }
     },
-    [safeToast, selectedPlanilla?.id_planilla, selectedSucursal]
+    [ensurePlanillaForRegistro, safeToast]
+  );
+
+  const openHorasExtraRegistro = useCallback(
+    async (item = null) => {
+      const context = await ensurePlanillaForRegistro();
+      if (!context) return;
+      const idEmpleado = safeNumber(item?.id_empleado, 0) || null;
+      setHorasExtraRegistroModal({
+        open: true,
+        registering: false,
+        defaultEmpleadoId: idEmpleado ? String(idEmpleado) : ''
+      });
+    },
+    [ensurePlanillaForRegistro]
   );
 
   const handleCompensarHoraExtra = useCallback(
     async (horaExtraItem, observacion = '') => {
-      if (!selectedPlanilla?.id_planilla) return;
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
 
-      const idHoraExtra =
-        horaExtraItem?.id_horas_extras ||
-        horaExtraItem?.id_horas_extra ||
-        horaExtraItem?.id_hora_extra;
+      const idHoraExtra = resolveHoraExtraId(horaExtraItem);
       if (!idHoraExtra) return;
 
       setHorasExtraModal((previous) => ({ ...previous, compensatingId: idHoraExtra }));
 
       try {
-        await planillasService.compensarHoraExtraPlanilla(selectedPlanilla.id_planilla, idHoraExtra, {
+        await planillasService.compensarHoraExtraPlanilla(context.idPlanilla, idHoraExtra, {
           observacion,
-          id_sucursal: Number(selectedSucursal || 0) || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         safeToast('OK', 'Hora extra compensada correctamente.', 'success');
         await Promise.all([loadPlanillas(), loadDetalleAndResumen()]);
@@ -1239,30 +2934,53 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openHorasExtra,
+      ensurePlanillaForRegistro,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      selectedSucursal
     ]
   );
 
-  const handleRegistrarHoraExtra = useCallback(
-    async (payload) => {
-      if (!selectedPlanilla?.id_planilla) return;
+  const handleActualizarHoraExtra = useCallback(
+    async (horaExtraItem, payload = {}) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
 
-      setHorasExtraModal((previous) => ({ ...previous, registering: true }));
+      const idHoraExtra = resolveHoraExtraId(horaExtraItem);
+      if (!idHoraExtra) return;
+
+      setHorasExtraModal((previous) => ({ ...previous, updatingId: idHoraExtra }));
 
       try {
-        await planillasService.registrarHoraExtraPlanilla(selectedPlanilla.id_planilla, {
-          ...payload,
-          id_sucursal: Number(selectedSucursal || 0) || undefined
+        const idSucursal = context.idSucursal || undefined;
+        const idEmpleado = safeNumber(payload?.id_empleado, 0) || resolveHoraExtraEmpleadoId(horaExtraItem);
+        const fecha = toText(payload?.fecha || horaExtraItem?.fecha, '');
+        const horas = safeNumber(payload?.horas, Number.NaN);
+        const observacion = toText(payload?.observacion, '');
+
+        if (!(idEmpleado > 0 && fecha && Number.isFinite(horas) && horas > 0)) {
+          throw new Error('Datos incompletos para actualizar la hora extra.');
+        }
+
+        await planillasService.compensarHoraExtraPlanilla(context.idPlanilla, idHoraExtra, {
+          observacion: '[CORREGIDA_HE] Registro anterior compensado automaticamente por correccion de hora extra.',
+          id_sucursal: idSucursal
         });
-        safeToast('OK', 'Hora extra registrada correctamente.', 'success');
+
+        await planillasService.registrarHoraExtraPlanilla(context.idPlanilla, {
+          id_empleado: idEmpleado,
+          fecha,
+          horas,
+          observacion: observacion || undefined,
+          id_sucursal: idSucursal
+        });
+
+        safeToast('OK', 'Hora extra actualizada correctamente.', 'success');
         await Promise.all([loadPlanillas(), loadDetalleAndResumen()]);
         await openHorasExtra(horasExtraModal.item);
       } catch (error) {
-        safeToast('ERROR', error.message || 'No se pudo registrar la hora extra.', 'danger');
+        safeToast('ERROR', error.message || 'No se pudo actualizar la hora extra.', 'danger');
+        throw error;
       } finally {
-        setHorasExtraModal((previous) => ({ ...previous, registering: false }));
+        setHorasExtraModal((previous) => ({ ...previous, updatingId: null }));
       }
     },
     [
@@ -1270,24 +2988,96 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openHorasExtra,
+      ensurePlanillaForRegistro,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      selectedSucursal
+    ]
+  );
+
+  const handleEliminarHoraExtra = useCallback(
+    async (horaExtraItem) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
+      const idHoraExtra = resolveHoraExtraId(horaExtraItem);
+      if (!idHoraExtra) return;
+
+      openConfirmModal({
+        actionType: 'anular_hora_extra',
+        title: 'CONFIRMAR ELIMINACION',
+        subtitle: 'Esta accion quitara la hora extra del registro',
+        question: 'Deseas eliminar este registro de hora extra?',
+        description:
+          'Utiliza esta accion cuando el registro se cargo por error. La accion quedara reflejada en planilla.',
+        detail: `${formatFriendlyDate(horaExtraItem?.fecha)} - ${formatHoursLabel(horaExtraItem?.horas)}`,
+        detailIconClass: 'bi bi-clock-history',
+        confirmText: 'Eliminar',
+        confirmIconClass: 'bi bi-trash3',
+        requireReason: true,
+        payload: {
+          idHoraExtra,
+          idPlanilla: context.idPlanilla,
+          idSucursal: context.idSucursal || undefined
+        }
+      });
+    },
+    [ensurePlanillaForRegistro, openConfirmModal]
+  );
+
+  const handleRegistrarHoraExtra = useCallback(
+    async (payload) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
+
+      setHorasExtraRegistroModal((previous) => ({ ...previous, registering: true }));
+
+      try {
+        await planillasService.registrarHoraExtraPlanilla(context.idPlanilla, {
+          ...payload,
+          id_sucursal: context.idSucursal || undefined
+        });
+        safeToast('OK', 'Hora extra registrada correctamente.', 'success');
+        await Promise.all([loadPlanillas(), loadDetalleAndResumen()]);
+        if (horasExtraModal.open) {
+          await openHorasExtra(horasExtraModal.item);
+        }
+        setHorasExtraRegistroModal({
+          open: false,
+          registering: false,
+          defaultEmpleadoId: ''
+        });
+      } catch (error) {
+        safeToast('ERROR', error.message || 'No se pudo registrar la hora extra.', 'danger');
+        setHorasExtraRegistroModal((previous) => ({ ...previous, registering: false }));
+      }
+    },
+    [
+      horasExtraModal.item,
+      horasExtraModal.open,
+      loadDetalleAndResumen,
+      loadPlanillas,
+      openHorasExtra,
+      ensurePlanillaForRegistro,
+      safeToast,
     ]
   );
 
   const handleRegistrarAdelanto = useCallback(
     async (payload) => {
-      if (!selectedPlanilla?.id_planilla || !adelantosModal.item) return;
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla || !adelantosModal.item) return;
 
       setAdelantosModal((previous) => ({ ...previous, registering: true }));
       try {
-        await planillasService.registrarAdelantoPlanilla(selectedPlanilla.id_planilla, {
+        await planillasService.registrarAdelantoPlanilla(context.idPlanilla, {
           ...payload,
-          id_sucursal: Number(selectedSucursal || 0) || undefined
+          id_sucursal: context.idSucursal || undefined
         });
         safeToast('OK', 'Adelanto registrado correctamente.', 'success');
-        await Promise.all([loadPlanillas(), loadDetalleAndResumen(), loadAdelantosPendientes()]);
+        await Promise.all([
+          loadPlanillas(),
+          loadDetalleAndResumen(),
+          loadAdelantosPendientes(),
+          loadAdelantosHistorial()
+        ]);
         await openAdelantos(adelantosModal.item);
       } catch (error) {
         safeToast('ERROR', error.message || 'No se pudo registrar el adelanto.', 'danger');
@@ -1297,48 +3087,354 @@ export default function Planillas({
     },
     [
       adelantosModal.item,
+      loadAdelantosHistorial,
       loadAdelantosPendientes,
       loadDetalleAndResumen,
       loadPlanillas,
       openAdelantos,
+      ensurePlanillaForRegistro,
       safeToast,
-      selectedPlanilla?.id_planilla,
-      selectedSucursal
+    ]
+  );
+
+  const requestApplyAdelantoDirecto = useCallback(
+    async (adelantoPendiente) => {
+      const context = await ensurePlanillaForRegistro();
+      if (!context) return;
+
+      const source = adelantoPendiente && typeof adelantoPendiente === 'object' ? adelantoPendiente : {};
+      const raw =
+        source?.raw && typeof source.raw === 'object'
+          ? source.raw
+          : source?.raw && typeof source.raw === 'string'
+            ? {}
+            : {};
+      const idAdelanto = safeNumber(
+        source?.id_adelanto_salario ?? source?.id_adelanto ?? raw?.id_adelanto_salario ?? raw?.id_adelanto,
+        0
+      );
+      if (!(idAdelanto > 0)) {
+        safeToast('ERROR', 'No se encontro un adelanto valido para aplicar.', 'danger');
+        return;
+      }
+
+      const montoAplicarCandidates = [
+        source?.monto,
+        raw?.monto,
+        source?.saldo,
+        raw?.saldo,
+        source?.monto_pendiente,
+        raw?.monto_pendiente,
+        source?.saldo_disponible,
+        raw?.saldo_disponible
+      ];
+      const montoAplicar = montoAplicarCandidates.reduce((resolved, candidate) => {
+        if (Number.isFinite(resolved) && resolved > 0) return resolved;
+        const parsed = safeNumber(candidate, Number.NaN);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : resolved;
+      }, Number.NaN);
+
+      if (!Number.isFinite(montoAplicar) || montoAplicar <= 0) {
+        safeToast('ERROR', 'No se pudo determinar el monto fijo del adelanto seleccionado.', 'danger');
+        return;
+      }
+
+      const idSucursal = context.idSucursal || undefined;
+      if (!idSucursal) {
+        safeToast('ERROR', 'Selecciona una sucursal valida para aplicar adelantos.', 'warning');
+        return;
+      }
+
+      const empleadoLabel = toText(
+        source?.empleado_nombre ||
+          source?.nombre_completo ||
+          source?.nombre_empleado ||
+          raw?.empleado_nombre ||
+          raw?.nombre_completo ||
+          raw?.nombre_empleado,
+        'Empleado'
+      );
+
+      openConfirmModal({
+        actionType: 'aplicar_adelanto_directo',
+        title: 'CONFIRMAR APLICACION',
+        subtitle: 'Aplicacion rapida de adelanto pendiente',
+        question: `Deseas aplicar este adelanto a ${empleadoLabel}?`,
+        description:
+          'Se aplicara con el monto original registrado en este adelanto pendiente. Este flujo no permite editar monto.',
+        detail: `${empleadoLabel} - ${formatMoney(montoAplicar)}`,
+        detailIconClass: 'bi bi-wallet2',
+        confirmText: 'Aplicar adelanto',
+        confirmIconClass: 'bi bi-check2-circle',
+        payload: {
+          idPlanilla: context.idPlanilla,
+          idSucursal,
+          idAdelanto,
+          montoAplicar
+        }
+      });
+    },
+    [
+      ensurePlanillaForRegistro,
+      openConfirmModal,
+      safeToast,
     ]
   );
 
   const handleApplyFromPendientes = useCallback(
-    async (adelantoPendiente) => {
-      if (!selectedPlanilla?.id_planilla) {
-        safeToast('ERROR', 'Selecciona una planilla para aplicar adelantos.', 'warning');
-        return;
-      }
-
-      const idEmpleado = safeNumber(adelantoPendiente?.id_empleado, 0);
-      const detalleEmpleado = detalle.find(
-        (row) => safeNumber(row?.id_empleado, 0) === idEmpleado
-      );
-
-      if (!detalleEmpleado) {
-        safeToast('ERROR', 'El empleado no pertenece al detalle de la planilla seleccionada.', 'warning');
-        return;
-      }
-
+    (adelantoPendiente) => {
       setAdelantosPendientesModalOpen(false);
-      await openAdelantos(detalleEmpleado);
+      void requestApplyAdelantoDirecto(adelantoPendiente);
     },
-    [detalle, openAdelantos, safeToast, selectedPlanilla?.id_planilla]
+    [requestApplyAdelantoDirecto]
   );
 
-  const handleApplyAllPendientes = useCallback(() => {
-    if (!selectedPlanilla?.id_planilla) {
-      safeToast('ERROR', 'Selecciona una planilla para aplicar adelantos pendientes.', 'warning');
-      return;
+  const handleApplyFromAdelantosHistorial = useCallback(
+    (adelantoItem) => {
+      setAdelantosHistorialModal((previous) => ({
+        ...previous,
+        open: false,
+        loading: false,
+        updatingId: null,
+        deletingId: null
+      }));
+      void requestApplyAdelantoDirecto(adelantoItem);
+    },
+    [requestApplyAdelantoDirecto]
+  );
+
+  const handleActualizarAdelantoAplicado = useCallback(
+    async (adelantoItem, payload = {}) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
+
+      const estadoAdelanto = toText(adelantoItem?.estado, '').toLowerCase();
+      const isPendiente = estadoAdelanto === ADELANTO_STATUS.pendiente;
+      const idMovimiento = safeNumber(adelantoItem?.id_movimiento, 0);
+      const idAdelanto = safeNumber(adelantoItem?.id_adelanto, 0);
+      const idDetalle = safeNumber(adelantoItem?.id_detalle, 0);
+      const rowTrackingId = String(adelantoItem?.id || idMovimiento || `ad-${idAdelanto || 'na'}`);
+      const montoAplicar = safeNumber(payload?.monto_aplicar, Number.NaN);
+      const observacion = toText(payload?.observacion, '');
+      const idSucursal = context.idSucursal || undefined;
+
+      if (!Number.isFinite(montoAplicar) || montoAplicar <= 0) {
+        throw new Error('Ingresa un monto valido mayor que 0.');
+      }
+
+      setAdelantosHistorialModal((previous) => ({ ...previous, updatingId: rowTrackingId }));
+      try {
+        if (isPendiente) {
+          if (!(idAdelanto > 0)) {
+            throw new Error('No se pudo identificar el adelanto pendiente para editarlo.');
+          }
+
+          await planillasService.actualizarAdelantoPlanilla(context.idPlanilla, idAdelanto, {
+            id_empleado: safeNumber(adelantoItem?.id_empleado, 0) || undefined,
+            monto: montoAplicar,
+            fecha: toText(adelantoItem?.fecha, '') || undefined,
+            observacion,
+            id_sucursal: idSucursal
+          });
+
+          setAdelantosHistorialModal((previous) => ({
+            ...previous,
+            items: (Array.isArray(previous.items) ? previous.items : []).map((row) => {
+              const sameRow =
+                String(row?.id || '') === rowTrackingId || safeNumber(row?.id_adelanto, 0) === idAdelanto;
+              if (!sameRow) return row;
+              const montoNormalizado = Math.max(0, montoAplicar);
+              return {
+                ...row,
+                estado: ADELANTO_STATUS.pendiente,
+                monto: montoNormalizado,
+                saldo: montoNormalizado,
+                observacion: observacion || row?.observacion || ''
+              };
+            })
+          }));
+          safeToast('OK', 'Adelanto pendiente actualizado correctamente.', 'success');
+          void refreshPlanillaData();
+          return;
+        }
+
+        if (!(idMovimiento > 0)) {
+          throw new Error('No se pudo ubicar el movimiento aplicado para editarlo.');
+        }
+
+        const markerBase = observacion || 'Ajuste de adelanto aplicado desde historial.';
+        await planillasService.anularMovimientoPlanilla(idMovimiento, {
+          motivo: `[CORREGIDO_AD] ${markerBase}`,
+          id_planilla: context.idPlanilla,
+          id_sucursal: idSucursal
+        });
+
+        if (idAdelanto > 0) {
+          await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
+            id_adelanto_salario: idAdelanto,
+            monto_aplicar: montoAplicar,
+            id_sucursal: idSucursal
+          });
+        } else {
+          if (!(idDetalle > 0)) {
+            throw new Error('No se pudo determinar el detalle para recrear el ajuste de adelanto.');
+          }
+          await planillasService.registrarMovimientoPlanilla(context.idPlanilla, {
+            id_detalle: idDetalle,
+            tipo: 'DEDUCCION',
+            tipo_movimiento: 'DEDUCCION',
+            concepto: 'Ajuste de adelanto aplicado',
+            monto: montoAplicar,
+            observacion: `[CORREGIDO_AD] ${markerBase}`,
+            id_sucursal: idSucursal
+          });
+        }
+
+        setAdelantosHistorialModal((previous) => ({
+          ...previous,
+          items: (Array.isArray(previous.items) ? previous.items : []).map((row) => {
+            const sameRow =
+              String(row?.id || '') === rowTrackingId || safeNumber(row?.id_movimiento, 0) === idMovimiento;
+            if (!sameRow) return row;
+            return {
+              ...row,
+              estado: ADELANTO_STATUS.eliminado,
+              saldo: 0,
+              observacion: observacion || 'Adelanto corregido desde historial.'
+            };
+          })
+        }));
+        safeToast('OK', 'Adelanto actualizado correctamente.', 'success');
+        void refreshPlanillaData();
+      } catch (error) {
+        safeToast(
+          'ERROR',
+          error.message || `No se pudo actualizar el adelanto ${isPendiente ? 'pendiente' : 'aplicado'}.`,
+          'danger'
+        );
+        throw error;
+      } finally {
+        setAdelantosHistorialModal((previous) => ({ ...previous, updatingId: null }));
+      }
+    },
+    [ensurePlanillaForRegistro, refreshPlanillaData, safeToast]
+  );
+
+  const handleRegistrarAdelantoGlobal = useCallback(
+    async (payload) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
+
+      setAdelantoRegistroGlobalModal({ open: true, registering: true });
+      try {
+        await planillasService.registrarAdelantoPlanilla(context.idPlanilla, {
+          ...payload,
+          id_sucursal: context.idSucursal || undefined
+        });
+        safeToast('OK', 'Adelanto registrado correctamente.', 'success');
+        await Promise.all([
+          loadPlanillas(),
+          loadDetalleAndResumen(),
+          loadAdelantosPendientes(),
+          loadAdelantosHistorial()
+        ]);
+        if (adelantosHistorialModal.open) {
+          await openAdelantosHistorial(adelantosHistorialModal.item);
+        }
+        setAdelantoRegistroGlobalModal({ open: false, registering: false });
+      } catch (error) {
+        safeToast('ERROR', error.message || 'No se pudo registrar el adelanto.', 'danger');
+        setAdelantoRegistroGlobalModal({ open: true, registering: false });
+      }
+    },
+    [
+      adelantosHistorialModal.item,
+      adelantosHistorialModal.open,
+      loadAdelantosHistorial,
+      loadAdelantosPendientes,
+      loadDetalleAndResumen,
+      loadPlanillas,
+      openAdelantosHistorial,
+      ensurePlanillaForRegistro,
+      safeToast,
+    ]
+  );
+
+  const handleEliminarAdelantoAplicado = useCallback(
+    async (adelantoItem) => {
+      const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+      if (!context?.idPlanilla) return;
+
+      const estadoAdelanto = toText(adelantoItem?.estado, '').toLowerCase();
+      const isPendiente = estadoAdelanto === ADELANTO_STATUS.pendiente;
+      const idMovimiento = safeNumber(adelantoItem?.id_movimiento, 0);
+      const idAdelanto = safeNumber(adelantoItem?.id_adelanto, 0);
+      const rowTrackingId = String(
+        adelantoItem?.id ||
+          (isPendiente ? `pendiente-${idAdelanto || 'na'}` : `mov-${idMovimiento || 'na'}`)
+      );
+
+      if (isPendiente && !(idAdelanto > 0)) {
+        safeToast('ERROR', 'No se pudo ubicar el adelanto pendiente para eliminarlo.', 'danger');
+        return;
+      }
+      if (!isPendiente && !(idMovimiento > 0)) {
+        safeToast('ERROR', 'No se pudo ubicar el movimiento de este adelanto para eliminarlo.', 'danger');
+        return;
+      }
+
+      openConfirmModal({
+        actionType: isPendiente ? 'anular_adelanto_pendiente' : 'anular_adelanto_aplicado',
+        title: 'CONFIRMAR ELIMINACION',
+        subtitle: isPendiente
+          ? 'El adelanto pendiente sera eliminado del listado actual'
+          : 'El adelanto aplicado sera anulado del calculo',
+        question: isPendiente
+          ? 'Deseas eliminar este adelanto pendiente?'
+          : 'Deseas eliminar este adelanto aplicado?',
+        description:
+          'Se registrara como eliminado en historial para mantener trazabilidad operativa de la planilla.',
+        detail: `${toText(adelantoItem?.empleado_nombre, 'Empleado')} - ${formatMoney(adelantoItem?.monto)}`,
+        detailIconClass: 'bi bi-wallet2',
+        confirmText: 'Eliminar',
+        confirmIconClass: 'bi bi-trash3',
+        requireReason: true,
+        payload: {
+          rowId: rowTrackingId,
+          idAdelanto: idAdelanto > 0 ? idAdelanto : undefined,
+          idMovimiento,
+          idPlanilla: context.idPlanilla,
+          idSucursal: context.idSucursal || undefined
+        }
+      });
+    },
+    [ensurePlanillaForRegistro, openConfirmModal, safeToast]
+  );
+
+  const handleApplyAllPendientes = useCallback(async () => {
+    const context = await ensurePlanillaForRegistro();
+    if (!context) return;
+
+    let detalleRows = Array.isArray(detalle) ? detalle : [];
+    if (detalleRows.length === 0) {
+      try {
+        const detalleResponse = await planillasService.listarDetallePlanilla(context.idPlanilla, {
+          page: 1,
+          limit: DETAIL_FETCH_LIMIT,
+          id_sucursal: context.idSucursal || undefined
+        });
+        const parsed = normalizeListResponse(detalleResponse);
+        detalleRows = parsed.items.map((row) => normalizeDetalleRowForDisplay(row));
+        setDetalle(detalleRows);
+        setDetalleTotal(parsed.total || detalleRows.length);
+      } catch {
+        detalleRows = [];
+      }
     }
 
     const itemsAplicables = adelantosPendientes.filter((item) => {
       const idEmpleado = safeNumber(item?.id_empleado, 0);
-      return detalle.some((row) => safeNumber(row?.id_empleado, 0) === idEmpleado);
+      return detalleRows.some((row) => safeNumber(row?.id_empleado, 0) === idEmpleado);
     });
 
     if (itemsAplicables.length === 0) {
@@ -1346,20 +3442,20 @@ export default function Planillas({
       return;
     }
 
-    withAction(
+    void withAction(
       async () => {
         for (const item of itemsAplicables) {
           const idAdelanto = item?.id_adelanto_salario || item?.id_adelanto;
           if (!idAdelanto) continue;
-          await planillasService.aplicarAdelantoPlanilla(selectedPlanilla.id_planilla, {
+          await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
             id_adelanto_salario: idAdelanto,
-            id_sucursal: Number(selectedSucursal || 0) || undefined
+            id_sucursal: context.idSucursal || undefined
           });
         }
       },
       `Se aplicaron ${itemsAplicables.length} adelanto(s) pendientes.`
     );
-  }, [adelantosPendientes, detalle, safeToast, selectedPlanilla?.id_planilla, selectedSucursal, withAction]);
+  }, [adelantosPendientes, detalle, ensurePlanillaForRegistro, safeToast, withAction]);
 
   const openAuditoria = async () => {
     if (!selectedPlanilla?.id_planilla) return;
@@ -1368,7 +3464,7 @@ export default function Planillas({
       const response = await planillasService.listarAuditoriaPlanilla(selectedPlanilla.id_planilla, {
         page: 1,
         limit: 100,
-        id_sucursal: selectedSucursal || undefined
+        id_sucursal: activePlanillaSucursalId || undefined
       });
       setAuditoriaModal({ open: true, loading: false, items: normalizeListResponse(response).items });
     } catch (error) {
@@ -1385,17 +3481,19 @@ export default function Planillas({
       title: 'CONFIRMAR ANULACION',
       subtitle: 'Esta accion es permanente',
       question: 'Deseas anular este movimiento de planilla?',
+      description:
+        'El movimiento se anulara del calculo actual y quedara trazabilidad en la bitacora de la planilla.',
       detail: movimiento.concepto || `Movimiento #${id}`,
       detailIconClass: 'bi bi-journal-x',
       confirmText: 'Anular',
       confirmIconClass: 'bi bi-trash3',
       requireReason: true,
-      payload: {
-        idMovimiento: id,
-        idPlanilla: selectedPlanilla?.id_planilla,
-        idSucursal: Number(selectedSucursal || 0) || undefined
-      }
-    });
+        payload: {
+          idMovimiento: id,
+          idPlanilla: selectedPlanilla?.id_planilla,
+          idSucursal: activePlanillaSucursalId || undefined
+        }
+      });
   };
 
   const executeConfirmAction = useCallback(async () => {
@@ -1404,6 +3502,18 @@ export default function Planillas({
     const motivo = toText(confirmModal.reason, '');
 
     closeConfirmModal();
+
+    if (actionType === 'generar_planilla') {
+      await withAction(
+        () =>
+          planillasService.generarPlanilla({
+            id_sucursal: payload.idSucursal,
+            periodo: payload.periodo
+          }),
+        'Planilla generada correctamente'
+      );
+      return;
+    }
 
     if (actionType === 'recalcular_planilla') {
       await withAction(
@@ -1440,6 +3550,124 @@ export default function Planillas({
       return;
     }
 
+    if (actionType === 'aplicar_adelanto_directo') {
+      await withAction(
+        () =>
+          planillasService.aplicarAdelantoPlanilla(payload.idPlanilla, {
+            id_adelanto_salario: payload.idAdelanto,
+            id_adelanto: payload.idAdelanto,
+            monto_aplicar: payload.montoAplicar,
+            id_sucursal: payload.idSucursal
+          }),
+        'Adelanto aplicado correctamente'
+      );
+      return;
+    }
+
+    if (actionType === 'anular_hora_extra') {
+      setHorasExtraModal((previous) => ({ ...previous, deletingId: payload.idHoraExtra }));
+      await withAction(async () => {
+        const motivoLimpio = toText(motivo, '');
+        const observacionEliminacion = `[ELIMINADA_HE] ${
+          motivoLimpio || 'Registro eliminado desde la gestion de horas extra.'
+        }`;
+        await planillasService.compensarHoraExtraPlanilla(payload.idPlanilla, payload.idHoraExtra, {
+          observacion: observacionEliminacion,
+          id_sucursal: payload.idSucursal
+        });
+      }, 'Hora extra eliminada correctamente');
+      if (horasExtraModal.open) {
+        await openHorasExtra(horasExtraModal.item);
+      }
+      setHorasExtraModal((previous) => ({ ...previous, deletingId: null }));
+      return;
+    }
+
+    if (actionType === 'anular_adelanto_aplicado') {
+      setAdelantosHistorialModal((previous) => ({ ...previous, deletingId: payload.rowId || payload.idMovimiento }));
+      const motivoLimpio = toText(motivo, '');
+      const eliminadoObservacion = motivoLimpio || 'Adelanto eliminado desde historial de planilla.';
+      const updated = await withAction(
+        async () => {
+          await planillasService.anularMovimientoPlanilla(payload.idMovimiento, {
+            motivo: `[ELIMINADO_AD] ${eliminadoObservacion}`,
+            id_planilla: payload.idPlanilla,
+            id_sucursal: payload.idSucursal
+          });
+        },
+        {
+          successMessage: 'Adelanto eliminado correctamente',
+          skipReload: true,
+          onSuccess: () => {
+            setAdelantosHistorialModal((previous) => ({
+              ...previous,
+              items: (Array.isArray(previous.items) ? previous.items : []).map((row) => {
+                const sameRow =
+                  String(row?.id || '') === String(payload.rowId || '') ||
+                  safeNumber(row?.id_movimiento, 0) === safeNumber(payload.idMovimiento, 0);
+                if (!sameRow) return row;
+                return {
+                  ...row,
+                  estado: ADELANTO_STATUS.eliminado,
+                  saldo: 0,
+                  observacion: eliminadoObservacion
+                };
+              })
+            }));
+          }
+        }
+      );
+      setAdelantosHistorialModal((previous) => ({ ...previous, deletingId: null }));
+      if (updated) {
+        void refreshPlanillaData();
+      }
+      return;
+    }
+
+    if (actionType === 'anular_adelanto_pendiente') {
+      setAdelantosHistorialModal((previous) => ({
+        ...previous,
+        deletingId: payload.rowId || `pendiente-${payload.idAdelanto || 'na'}`
+      }));
+      const motivoLimpio = toText(motivo, '');
+      const eliminadoObservacion = motivoLimpio || 'Adelanto pendiente eliminado desde historial de planilla.';
+      const updated = await withAction(
+        async () => {
+          await planillasService.anularAdelantoPlanilla(payload.idPlanilla, payload.idAdelanto, {
+            motivo: `[ELIMINADO_AD] ${eliminadoObservacion}`,
+            observacion: motivoLimpio || undefined,
+            id_sucursal: payload.idSucursal
+          });
+        },
+        {
+          successMessage: 'Adelanto eliminado correctamente',
+          skipReload: true,
+          onSuccess: () => {
+            setAdelantosHistorialModal((previous) => ({
+              ...previous,
+              items: (Array.isArray(previous.items) ? previous.items : []).map((row) => {
+                const sameRow =
+                  String(row?.id || '') === String(payload.rowId || '') ||
+                  safeNumber(row?.id_adelanto, 0) === safeNumber(payload.idAdelanto, 0);
+                if (!sameRow) return row;
+                return {
+                  ...row,
+                  estado: ADELANTO_STATUS.eliminado,
+                  saldo: 0,
+                  observacion: eliminadoObservacion
+                };
+              })
+            }));
+          }
+        }
+      );
+      setAdelantosHistorialModal((previous) => ({ ...previous, deletingId: null }));
+      if (updated) {
+        void refreshPlanillaData();
+      }
+      return;
+    }
+
     if (actionType === 'anular_movimiento') {
       await withAction(
         async () => {
@@ -1454,14 +3682,73 @@ export default function Planillas({
         },
         'Movimiento anulado correctamente'
       );
+      return;
+    }
+
+    if (actionType === 'anular_movimiento_bono_deduccion') {
+      setBonosDeduccionesHistorialModal((previous) => ({
+        ...previous,
+        deletingId: payload.rowId || payload.idMovimiento
+      }));
+      const updated = await withAction(
+        async () => {
+          await planillasService.anularMovimientoPlanilla(payload.idMovimiento, {
+            motivo,
+            id_planilla: payload.idPlanilla,
+            id_sucursal: payload.idSucursal
+          });
+        },
+        {
+          successMessage: 'Movimiento anulado correctamente',
+          skipReload: true,
+          onSuccess: () => {
+            setBonosDeduccionesHistorial((previous) =>
+              (Array.isArray(previous) ? previous : []).map((row) => {
+                const sameRow =
+                  safeNumber(resolveMovimientoPlanillaId(row), 0) === safeNumber(payload.idMovimiento, 0);
+                if (!sameRow) return row;
+                return {
+                  ...row,
+                  anulado: true,
+                  es_anulado: true,
+                  estado: 'ANULADO',
+                  observacion: motivo || row?.observacion || 'Movimiento anulado.'
+                };
+              })
+            );
+            setBonosDeduccionesHistorialModal((previous) => ({
+              ...previous,
+              items: (Array.isArray(previous.items) ? previous.items : []).map((row) => {
+                const sameRow =
+                  String(row?.id || '') === String(payload.rowId || '') ||
+                  safeNumber(row?.id_movimiento, 0) === safeNumber(payload.idMovimiento, 0);
+                if (!sameRow) return row;
+                return {
+                  ...row,
+                  estado: MOVIMIENTO_ESTADO.anulada,
+                  observacion: motivo || row?.observacion || 'Movimiento anulado.'
+                };
+              })
+            }));
+          }
+        }
+      );
+      setBonosDeduccionesHistorialModal((previous) => ({ ...previous, deletingId: null }));
+      if (updated) {
+        void refreshPlanillaData();
+      }
     }
   }, [
     closeConfirmModal,
     confirmModal.actionType,
     confirmModal.payload,
     confirmModal.reason,
+    horasExtraModal.item,
+    horasExtraModal.open,
     movimientosModal.item,
+    openHorasExtra,
     openMovimientos,
+    refreshPlanillaData,
     withAction
   ]);
 
@@ -1486,10 +3773,43 @@ export default function Planillas({
     <div className="personas-page personas-page--planillas">
       <div className="inv-catpro-card inv-prod-card personas-page__panel mb-3">
         <div className="inv-catpro-body inv-prod-body p-3">
+          <div className="planillas-toolbar planillas-toolbar--sucursal">
+            <div className="planillas-toolbar__title-wrap">
+              <span className="planillas-toolbar__title-icon" aria-hidden="true">
+                <i className="bi bi-buildings" />
+              </span>
+                <div>
+                  <div className="planillas-toolbar__title">Seleccionar sucursal</div>
+                </div>
+            </div>
+            <div className="planillas-toolbar__field planillas-toolbar__field--sucursal">
+              <label htmlFor="planillas-sucursal-context">Sucursal</label>
+              <Select
+                id="planillas-sucursal-context"
+                inputId="planillas-sucursal-context"
+                classNamePrefix="planillas-sucursal-rs"
+                className="planillas-sucursal-select"
+                aria-label="Seleccionar sucursal"
+                value={selectedSucursalOption}
+                onChange={(option) => setSelectedSucursal(normalizeSucursalId(option?.value))}
+                options={sucursalOptions}
+                filterOption={filterSucursalOption}
+                placeholder={sucursalOptions.length === 0 ? 'No hay sucursales disponibles' : 'Seleccione sucursal'}
+                noOptionsMessage={({ inputValue }) =>
+                  String(inputValue || '').trim() ? 'Sin coincidencias' : 'No hay sucursales disponibles'
+                }
+                isClearable
+                isSearchable
+                isDisabled={loadingAction || loadingSucursales || sucursalOptions.length === 0}
+                styles={sucursalSelectStyles}
+                menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                menuPosition="fixed"
+                maxMenuHeight={280}
+              />
+            </div>
+          </div>
+
           <PlanillasHeader
-            sucursalOptions={sucursalOptions}
-            sucursalId={selectedSucursal}
-            onSucursalChange={handleSucursalChange}
             periodo={periodo}
             onPeriodoChange={setPeriodo}
             selectedPlanilla={selectedPlanilla}
@@ -1499,12 +3819,12 @@ export default function Planillas({
             onPagar={() => handleChangeEstado('pagada')}
             onAnular={handleAnular}
             onExport={() => setExportModalOpen(true)}
-            canGenerar={canGenerar}
-            canRecalcular={canRecalcular}
-            canCerrar={canCerrar}
-            canPagar={canPagar}
-            canAnular={canAnular}
-            canExport={canExportPlanilla}
+            canGenerar={showPlanillaActions && canGenerarForPeriodo}
+            canRecalcular={showPlanillaActions && canRecalcular}
+            canCerrar={showPlanillaActions && canCerrar}
+            canPagar={showPlanillaActions && canPagar}
+            canAnular={showPlanillaActions && canAnular}
+            canExport={showPlanillaActions && canExportPlanilla}
             exportLoading={loadingExport}
             loadingAction={loadingAction || loadingSucursales}
           />
@@ -1521,234 +3841,124 @@ export default function Planillas({
             </div>
           ) : (
             <>
-          <div className="planillas-toolbar">
-            <div className="planillas-toolbar__field">
-              <label htmlFor="planillas-select">Planilla</label>
-              <select
-                id="planillas-select"
-                className="form-select"
-                value={selectedPlanillaId}
-                onChange={(event) => setSelectedPlanillaId(event.target.value)}
-                disabled={loadingPlanillas || planillas.length === 0}
-              >
-                <option value="">Seleccione planilla</option>
-                {planillas.map((planilla) => (
-                  <option key={planilla.id_planilla} value={planilla.id_planilla}>
-                    {planilla.codigo_planilla || `Planilla #${planilla.id_planilla}`} ·{' '}
-                    {planilla.estado_descripcion ||
-                      planilla.estado_planilla ||
-                      planilla.estado ||
-                      'Sin estado'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="planillas-toolbar__field">
-              <label htmlFor="planillas-estado-filtro">Estado</label>
-              <select
-                id="planillas-estado-filtro"
-                className="form-select"
-                value={estadoFiltro}
-                onChange={(event) => setEstadoFiltro(event.target.value)}
-              >
-                <option value="">Todos</option>
-                <option value="BORRADOR">Borrador</option>
-                <option value="CALCULADA">Calculada</option>
-                <option value="PAGADA">Pagada</option>
-                <option value="ANULADA">Anulada</option>
-              </select>
-            </div>
-
-            {canVerAuditoria ? (
-              <div className="planillas-toolbar__audit">
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={openAuditoria}
-                  disabled={!selectedPlanilla?.id_planilla}
+          {showPagoSection ? (
+            <div className="planillas-toolbar">
+              <div className="planillas-toolbar__field">
+                <label htmlFor="planillas-select">Planilla</label>
+                <select
+                  id="planillas-select"
+                  className="form-select"
+                  value={selectedPlanillaId}
+                  onChange={(event) => setSelectedPlanillaId(event.target.value)}
+                  disabled={loadingPlanillas || planillas.length === 0}
                 >
-                  <i className="bi bi-clock-history me-1" />
-                  Auditoria
-                </button>
+                  <option value="">Seleccione planilla</option>
+                  {planillas.map((planilla) => (
+                    <option key={planilla.id_planilla} value={planilla.id_planilla}>
+                      {planilla.codigo_planilla || `Planilla #${planilla.id_planilla}`} -{' '}
+                      {planilla.estado_descripcion ||
+                        planilla.estado_planilla ||
+                        planilla.estado ||
+                        'Sin estado'}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ) : null}
-          </div>
 
-          <PayrollFilters
-            values={filters}
-            onChange={setFilters}
-            onClear={() =>
-              setFilters((prev) => ({
-                ...buildInitialFilters(selectedSucursal),
-                _expanded: prev._expanded
-              }))
-            }
-            sucursalOptions={sucursalOptions}
-          />
+              <div className="planillas-toolbar__field">
+                <label htmlFor="planillas-estado-filtro">Estado</label>
+                <select
+                  id="planillas-estado-filtro"
+                  className="form-select"
+                  value={estadoFiltro}
+                  onChange={(event) => setEstadoFiltro(event.target.value)}
+                >
+                  <option value="">Todos</option>
+                  <option value="BORRADOR">Borrador</option>
+                  <option value="CALCULADA">Calculada</option>
+                  <option value="PAGADA">Pagada</option>
+                  <option value="ANULADA">Anulada</option>
+                </select>
+              </div>
+
+              {canVerAuditoria ? (
+                <div className="planillas-toolbar__audit">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={openAuditoria}
+                    disabled={!selectedPlanilla?.id_planilla}
+                  >
+                    <i className="bi bi-clock-history me-1" />
+                    Auditoria
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {showPagoSection ? (
+            <PayrollFilters
+              values={filters}
+              onChange={setFilters}
+              onClear={() =>
+                setFilters((prev) => ({
+                  ...buildInitialFilters(selectedSucursal),
+                  _expanded: prev._expanded
+                }))
+              }
+              sucursalOptions={sucursalOptions}
+            />
+          ) : null}
+
+          {showAdelantosSection ? <PlanillasResumenCards customCards={adelantosKpiCards} /> : null}
+          {showBonosDeduccionesSection ? <PlanillasResumenCards customCards={bonosDeduccionesKpiCards} /> : null}
 
           <div className="planillas-alerts">
-            {!dismissedInsights.adelantos ? (
-              <section className="planillas-insight planillas-insight--adelantos">
-                <div className="planillas-insight__head">
-                  <div className="planillas-insight__title-wrap">
-                    <span className="planillas-insight__icon" aria-hidden="true">
-                      <i className="bi bi-exclamation-circle" />
-                    </span>
-                    <div>
-                      <h4>Adelantos Pendientes Detectados</h4>
-                      <p>{adelantosPendientesResumen}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="planillas-insight__close"
-                    onClick={() => setDismissedInsights((prev) => ({ ...prev, adelantos: true }))}
-                    aria-label="Ocultar bloque de adelantos"
-                  >
-                    <i className="bi bi-x-lg" />
-                  </button>
-                </div>
-
-                {loadingAdelantosPendientes ? (
-                  <div className="planillas-insight__empty">Cargando adelantos pendientes...</div>
-                ) : adelantosPendientes.length === 0 ? (
-                  <div className="planillas-insight__empty">No hay adelantos pendientes para este contexto.</div>
-                ) : (
-                  <>
-                    <div className="planillas-insight__rows">
-                      {adelantosPendientes.slice(0, 3).map((item, index) => {
-                        const key = item?.id_adelanto_salario || item?.id_adelanto || index;
-                        return (
-                          <article key={key} className="planillas-insight__row">
-                            <div>
-                              <strong>Adelanto del {formatFriendlyDate(item?.fecha)}</strong>
-                              <small>Monto original: {formatMoney(item?.monto)}</small>
-                            </div>
-                            <div className="planillas-insight__row-actions">
-                              <span className="planillas-insight__pending-amount">
-                                {formatMoney(item?.saldo)} <small>pendiente</small>
-                              </span>
-                              <button
-                                type="button"
-                                className="planillas-insight__apply-btn"
-                                disabled={!selectedPlanilla?.id_planilla || !canAplicarAdelantos}
-                                onClick={() => handleApplyFromPendientes(item)}
-                              >
-                                Aplicar
-                              </button>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                    {adelantosPendientes.length > 3 ? (
-                      <div className="planillas-insight__more">
-                        +{adelantosPendientes.length - 3} adelanto(s) adicional(es) en la sucursal.
-                      </div>
-                    ) : null}
-                  </>
-                )}
-
-                <div className="planillas-insight__actions">
-                  <button
-                    type="button"
-                    className="planillas-insight__primary"
-                    onClick={handleApplyAllPendientes}
-                    disabled={
-                      loadingAction ||
-                      loadingAdelantosPendientes ||
-                      adelantosPendientes.length === 0 ||
-                      !canAplicarAdelantos ||
-                      !selectedPlanilla?.id_planilla
-                    }
-                  >
-                    <i className="bi bi-check2 me-1" />
-                    Aplicar Todos
-                  </button>
-                  <button
-                    type="button"
-                    className="planillas-insight__ghost"
-                    onClick={() => setAdelantosPendientesModalOpen(true)}
-                    disabled={loadingAdelantosPendientes}
-                  >
-                    <i className="bi bi-list-ul me-1" />
-                    Ver detalle
-                  </button>
-                  <button
-                    type="button"
-                    className="planillas-insight__ghost"
-                    onClick={() => setDismissedInsights((prev) => ({ ...prev, adelantos: true }))}
-                  >
-                    <i className="bi bi-x-lg me-1" />
-                    Ignorar
-                  </button>
-                </div>
-              </section>
+            {showAdelantosSection ? (
+              <PlanillasAdelantosInsight
+                summaryText={adelantosInsightSummary}
+                loading={loadingAdelantosPendientes || loadingAdelantosHistorial}
+                items={adelantosDataset}
+                loadingAction={loadingAction}
+                canAplicarAdelantos={canAplicarAdelantos}
+                onApplyItem={handleApplyFromAdelantosHistorial}
+                onApplyAll={handleApplyAllPendientes}
+                onOpenRegister={openAdelantoRegistroGlobal}
+                onOpenDetail={openAdelantosHistorial}
+                formatFriendlyDate={formatFriendlyDate}
+                formatMoney={formatMoney}
+              />
             ) : null}
 
-            {!dismissedInsights.horas ? (
-              <section className="planillas-insight planillas-insight--horas">
-                <div className="planillas-insight__head">
-                  <div className="planillas-insight__title-wrap">
-                    <span className="planillas-insight__icon" aria-hidden="true">
-                      <i className="bi bi-clock-history" />
-                    </span>
-                    <div>
-                      <h4>Horas Extra - Sistema Tiempo x Tiempo</h4>
-                      <p>
-                        En esta empresa, las <strong>horas extra NO se pagan en dinero.</strong> Se compensan con{' '}
-                        <strong>tiempo libre equivalente.</strong>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="planillas-insight__head-actions">
-                    <button
-                      type="button"
-                      className="planillas-insight__ghost"
-                      onClick={() => openHorasExtra()}
-                      disabled={!selectedPlanilla?.id_planilla}
-                    >
-                      Ver detalle
-                    </button>
-                    <button
-                      type="button"
-                      className="planillas-insight__close"
-                      onClick={() => setDismissedInsights((prev) => ({ ...prev, horas: true }))}
-                      aria-label="Ocultar bloque de horas extra"
-                    >
-                      <i className="bi bi-x-lg" />
-                    </button>
-                  </div>
-                </div>
+            {showBonosDeduccionesSection ? (
+              <PlanillasBonosDeduccionesInsight
+                summaryText={bonosDeduccionesInsightSummary}
+                loading={loadingBonosDeduccionesHistorial}
+                items={bonosDeduccionesDataset}
+                loadingAction={loadingAction}
+                canRegistrarMovimiento={canRegistrarMovimiento}
+                onOpenRegister={openBonosDeduccionesRegistroGlobal}
+                onOpenDetail={openBonosDeduccionesHistorial}
+                formatFriendlyDate={formatFriendlyDate}
+                formatMoney={formatMoney}
+              />
+            ) : null}
 
-                <div className="planillas-insight__stats">
-                  <article>
-                    <span>Total Horas Pendientes</span>
-                    <strong>{formatHoursLabel(horasExtraStats.totalPendientes)}</strong>
-                  </article>
-                  <article>
-                    <span>Empleados con H.E.</span>
-                    <strong>{safeNumber(horasExtraStats.empleadosConHoras, 0)}</strong>
-                  </article>
-                  <article>
-                    <span>Estado</span>
-                    <strong className="planillas-insight__state-chip">NO AFECTA NETO A PAGAR</strong>
-                  </article>
-                </div>
-
-                <div className="planillas-insight__note">
-                  <i className="bi bi-lightbulb" />
-                  <span>
-                    <strong>Importante:</strong> Las horas extra se registran en la columna "H.E. Tiempo" para
-                    control interno. No suman ni restan del calculo monetario de la planilla.
-                  </span>
-                </div>
-              </section>
+            {showHorasSection ? (
+              <PlanillasHorasExtraInsight
+                totalPendientesLabel={formatHoursLabel(horasExtraStats.totalPendientes)}
+                empleadosConHoras={safeNumber(horasExtraStats.empleadosConHoras, 0)}
+                canRegistrar={canRecalcular && !loadingEmpleadosActivos}
+                onOpenDetalle={() => openHorasExtra()}
+                onOpenRegistro={() => openHorasExtraRegistro()}
+              />
             ) : null}
           </div>
 
-          <PlanillasResumenCards resumen={resumen} />
+          {showPagoSection ? (
+            <>
+              <PlanillasResumenCards resumen={resumen} cardKeys={PAGO_RESUMEN_CARD_KEYS} />
 
           <div className="inv-prod-results-meta personas-page__results-meta">
             <span>
@@ -1759,7 +3969,7 @@ export default function Planillas({
             <span>
               {loadingDetalle
                 ? 'Cargando detalle...'
-                : `Detalle visible: ${pagedDetalle.length} (filtrado: ${filteredDetalle.length} · total: ${detalleTotal})`}
+                : `Detalle visible: ${pagedDetalle.length} (filtrado: ${filteredDetalle.length} - total: ${detalleTotal})`}
             </span>
           </div>
 
@@ -1768,7 +3978,7 @@ export default function Planillas({
           ) : listError ? (
             <PlanillasErrorState message={listError} onRetry={loadPlanillas} />
           ) : hasNoData ? (
-            <PlanillasEmptyState onGenerar={handleGenerar} canGenerar={canGenerar} />
+            <PlanillasEmptyState onGenerar={handleGenerar} canGenerar={canGenerarForPeriodo} />
           ) : loadingDetalle ? (
             <PlanillasLoadingState message="Cargando detalle de planilla..." />
           ) : (
@@ -1788,10 +3998,8 @@ export default function Planillas({
                   limit={DETAIL_LIMIT}
                   onOpenDetalle={setDetailItem}
                   onOpenMovimientos={openMovimientos}
-                  onOpenHorasExtra={openHorasExtra}
-                  onOpenBono={(item) => setMovimientoFormModal({ open: true, tipo: 'bono', item, loading: false })}
-                  onOpenDeduccion={(item) =>
-                    setMovimientoFormModal({ open: true, tipo: 'deduccion', item, loading: false })
+                  onOpenHorasExtra={
+                    activePlanillasTab === PLANILLAS_NAV_TAB_KEYS.pagoPlanilla ? undefined : openHorasExtra
                   }
                   onOpenAdelanto={openAdelantos}
                   onRecalcularDetalle={(item) =>
@@ -1800,13 +4008,14 @@ export default function Planillas({
                         planillasService.recalcularDetallePlanilla(
                           selectedPlanilla.id_planilla,
                           item.id_detalle_planilla || item.id_detalle,
-                          { id_sucursal: Number(selectedSucursal || 0) || undefined }
+                          { id_sucursal: activePlanillaSucursalId || undefined }
                         ),
                       'Detalle recalculado correctamente'
                     )
                   }
-                  canRegistrarMovimiento={canRegistrarMovimiento}
-                  canAplicarAdelanto={canAplicarAdelantos}
+                  canAplicarAdelanto={
+                    activePlanillasTab === PLANILLAS_NAV_TAB_KEYS.pagoPlanilla ? false : canAplicarAdelantos
+                  }
                   canRecalcular={canRecalcular}
                 />
               )}
@@ -1837,11 +4046,24 @@ export default function Planillas({
             </>
           )}
             </>
+          ) : null}
+            </>
           )}
         </div>
       </div>
 
-      <PlanillaDetallePanel open={Boolean(detailItem)} item={detailItem} onClose={() => setDetailItem(null)} />
+      <PlanillaDetallePanel
+        open={Boolean(detailItem)}
+        item={detailItem}
+        planillaEstado={
+          selectedPlanilla?.estado_descripcion ||
+          selectedPlanilla?.estado_planilla ||
+          selectedPlanilla?.estado ||
+          selectedPlanilla?.descripcion_estado ||
+          ''
+        }
+        onClose={() => setDetailItem(null)}
+      />
 
       <PlanillaMovimientosModal
         open={movimientosModal.open}
@@ -1853,31 +4075,106 @@ export default function Planillas({
         canAnular={canAnularMovimiento}
       />
 
+      <PlanillaBonosDeduccionesHistorialModal
+        open={bonosDeduccionesHistorialModal.open}
+        loading={bonosDeduccionesHistorialModal.loading}
+        rows={bonosDeduccionesHistorialModal.items}
+        loadingAction={loadingAction}
+        anulandoId={bonosDeduccionesHistorialModal.deletingId}
+        canAnular={canAnularMovimiento}
+        onClose={() =>
+          setBonosDeduccionesHistorialModal({
+            open: false,
+            loading: false,
+            items: [],
+            deletingId: null
+          })
+        }
+        onAnular={handleAnularBonoDeduccion}
+      />
+
       <PlanillaMovimientoFormModal
+        key={`movimiento-form-${movimientoFormModal.open ? 'open' : 'closed'}-${movimientoFormModal.mode}-${
+          movimientoFormModal.tipo
+        }-${movimientoFormModal.item?.id_detalle_planilla || movimientoFormModal.item?.id_detalle || 'global'}-${
+          movimientoFormModal.selectedEmpleadoId || 'none'
+        }`}
         open={movimientoFormModal.open}
         item={movimientoFormModal.item}
         tipo={movimientoFormModal.tipo}
+        allowEmployeeSelect={movimientoFormModal.mode === 'global'}
+        employees={empleadosRegistroOptions}
+        selectedEmpleadoId={movimientoFormModal.selectedEmpleadoId}
         loading={movimientoFormModal.loading}
-        onClose={() => setMovimientoFormModal({ open: false, tipo: 'bono', item: null, loading: false })}
+        onClose={() =>
+          setMovimientoFormModal({
+            open: false,
+            tipo: 'bono',
+            item: null,
+            mode: 'detalle',
+            selectedEmpleadoId: '',
+            loading: false
+          })
+        }
         onSubmit={(payload) => {
-          if (!movimientoFormModal.item || !selectedPlanilla?.id_planilla) return;
-          withAction(
+          void withAction(
             async () => {
               setMovimientoFormModal((state) => ({ ...state, loading: true }));
-              await planillasService.registrarMovimientoPlanilla(selectedPlanilla.id_planilla, {
-                id_detalle:
-                  movimientoFormModal.item.id_detalle_planilla || movimientoFormModal.item.id_detalle,
-                id_sucursal: Number(selectedSucursal || 0) || undefined,
-                ...payload
-              });
-              setMovimientoFormModal({ open: false, tipo: 'bono', item: null, loading: false });
+              try {
+                const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+                if (!context?.idPlanilla) {
+                  throw new Error('No se pudo preparar la planilla para registrar el movimiento.');
+                }
+
+                const isGlobal = movimientoFormModal.mode === 'global';
+                const idEmpleadoPayload = safeNumber(payload?.id_empleado, 0);
+                let idDetalle = safeNumber(
+                  movimientoFormModal.item?.id_detalle_planilla || movimientoFormModal.item?.id_detalle,
+                  0
+                );
+
+                if (isGlobal) {
+                  idDetalle = await resolveDetalleIdForEmpleado({
+                    idPlanilla: context.idPlanilla,
+                    idEmpleado: idEmpleadoPayload,
+                    idSucursal: context.idSucursal
+                  });
+                }
+
+                if (!(idDetalle > 0)) {
+                  throw new Error('No se pudo ubicar el detalle de planilla del empleado seleccionado.');
+                }
+
+                const { id_empleado: _unusedIdEmpleado, ...payloadSinEmpleado } = payload;
+                await planillasService.registrarMovimientoPlanilla(context.idPlanilla, {
+                  id_detalle: idDetalle,
+                  id_sucursal: context.idSucursal || undefined,
+                  ...payloadSinEmpleado
+                });
+                setMovimientoFormModal({
+                  open: false,
+                  tipo: 'bono',
+                  item: null,
+                  mode: 'detalle',
+                  selectedEmpleadoId: '',
+                  loading: false
+                });
+              } finally {
+                setMovimientoFormModal((state) => ({ ...state, loading: false }));
+              }
             },
-            'Movimiento registrado correctamente'
+            {
+              successMessage: 'Movimiento registrado correctamente',
+              onError: () => {
+                setMovimientoFormModal((state) => ({ ...state, loading: false }));
+              }
+            }
           );
         }}
       />
 
       <PlanillaAdelantosModal
+        key={`ad-apply-${adelantosModal.open ? 'open' : 'closed'}-${safeNumber(adelantosModal.item?.id_empleado, 0)}`}
         open={adelantosModal.open}
         item={adelantosModal.item}
         adelantos={adelantosModal.items}
@@ -1896,12 +4193,16 @@ export default function Planillas({
           })
         }
         onApply={(payload) => {
-          if (!adelantosModal.item || !selectedPlanilla?.id_planilla) return;
-          withAction(
+          if (!adelantosModal.item) return;
+          void withAction(
             async () => {
+              const context = await ensurePlanillaForRegistro({ notifyOnCreate: false });
+              if (!context?.idPlanilla) {
+                throw new Error('No se pudo preparar la planilla para aplicar el adelanto.');
+              }
               setAdelantosModal((state) => ({ ...state, applying: true }));
-              await planillasService.aplicarAdelantoPlanilla(selectedPlanilla.id_planilla, {
-                id_sucursal: Number(selectedSucursal || 0) || undefined,
+              await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
+                id_sucursal: context.idSucursal || undefined,
                 ...payload
               });
               setAdelantosModal({
@@ -1913,37 +4214,83 @@ export default function Planillas({
                 items: []
               });
             },
-            'Adelanto aplicado correctamente'
+            {
+              successMessage: 'Adelanto aplicado correctamente',
+              onError: () => {
+                setAdelantosModal((state) => ({ ...state, applying: false }));
+              }
+            }
           );
         }}
         onRegister={handleRegistrarAdelanto}
       />
 
+      <PlanillaAdelantoRegistroGlobalModal
+        key={`ad-register-global-${adelantoRegistroGlobalModal.open ? 'open' : 'closed'}-${
+          selectedPlanilla?.id_planilla || 'na'
+        }`}
+        open={adelantoRegistroGlobalModal.open}
+        registering={adelantoRegistroGlobalModal.registering}
+        canRegister={canAplicarAdelantos && !loadingEmpleadosActivos}
+        empleados={empleadosRegistroOptions}
+        onClose={() => setAdelantoRegistroGlobalModal({ open: false, registering: false })}
+        onSubmit={handleRegistrarAdelantoGlobal}
+      />
+
+      <PlanillaAdelantosHistorialModal
+        key={`ad-detail-${adelantosHistorialModal.open ? 'open' : 'closed'}-${
+          adelantosHistorialModal.item?.id_empleado || 'all'
+        }-${selectedPlanilla?.id_planilla || 'na'}`}
+        open={adelantosHistorialModal.open}
+        loading={adelantosHistorialModal.loading}
+        loadingAction={loadingAction}
+        rows={adelantosHistorialModal.items}
+        empleadoLabel={adelantosHistorialModal.empleadoLabel}
+        updatingId={adelantosHistorialModal.updatingId}
+        deletingId={adelantosHistorialModal.deletingId}
+        canEditar={canAplicarAdelantos}
+        canEliminar={canAplicarAdelantos}
+        hasPlanillaSeleccionada={hasSucursalSelected && Boolean(toText(periodo, ''))}
+        onClose={() =>
+          setAdelantosHistorialModal({
+            open: false,
+            loading: false,
+            item: null,
+            empleadoLabel: '',
+            items: [],
+            updatingId: null,
+            deletingId: null
+          })
+        }
+        onAplicarPendiente={handleApplyFromAdelantosHistorial}
+        onEditar={handleActualizarAdelantoAplicado}
+        onEliminar={handleEliminarAdelantoAplicado}
+      />
+
       <PlanillaAdelantosPendientesModal
         open={adelantosPendientesModalOpen}
         loading={loadingAdelantosPendientes}
+        loadingAction={loadingAction}
         items={adelantosPendientes}
-        hasPlanillaSeleccionada={Boolean(selectedPlanilla?.id_planilla)}
+        hasPlanillaSeleccionada={hasSucursalSelected && Boolean(toText(periodo, ''))}
         onClose={() => setAdelantosPendientesModalOpen(false)}
         onApplyForEmpleado={handleApplyFromPendientes}
       />
 
       <PlanillaHorasExtraModal
+        key={`he-detail-${horasExtraModal.open ? 'open' : 'closed'}-${
+          horasExtraModal.item?.id_empleado || 'all'
+        }-${selectedPlanilla?.id_planilla || 'na'}`}
         open={horasExtraModal.open}
         loading={horasExtraModal.loading}
         rows={horasExtraModal.items}
         resumen={horasExtraModal.summary}
         empleadoLabel={horasExtraModal.empleadoLabel}
         compensatingId={horasExtraModal.compensatingId}
-        registering={horasExtraModal.registering}
-        canRegister={canRecalcular}
-        defaultEmpleadoId={horasExtraModal.registerEmpleadoId}
-        empleados={detalle
-          .map((row) => ({
-            value: String(row.id_empleado || ''),
-            label: extractEmpleadoNombre(row)
-          }))
-          .filter((empleado) => empleado.value)}
+        updatingId={horasExtraModal.updatingId}
+        deletingId={horasExtraModal.deletingId}
+        canEditar={canRecalcular}
+        canEliminar={canRecalcular}
         onClose={() =>
           setHorasExtraModal({
             open: false,
@@ -1953,12 +4300,32 @@ export default function Planillas({
             items: [],
             summary: {},
             compensatingId: null,
-            registering: false,
-            registerEmpleadoId: ''
+            updatingId: null,
+            deletingId: null
           })
         }
         onCompensar={handleCompensarHoraExtra}
-        onRegister={handleRegistrarHoraExtra}
+        onActualizar={handleActualizarHoraExtra}
+        onEliminar={handleEliminarHoraExtra}
+      />
+
+      <PlanillaHorasExtraRegistroModal
+        key={`he-register-${horasExtraRegistroModal.open ? 'open' : 'closed'}-${
+          horasExtraRegistroModal.defaultEmpleadoId || 'none'
+        }-${selectedPlanilla?.id_planilla || 'na'}`}
+        open={horasExtraRegistroModal.open}
+        registering={horasExtraRegistroModal.registering}
+        canRegister={canRecalcular && !loadingEmpleadosActivos}
+        empleados={empleadosRegistroOptions}
+        defaultEmpleadoId={horasExtraRegistroModal.defaultEmpleadoId}
+        onClose={() =>
+          setHorasExtraRegistroModal({
+            open: false,
+            registering: false,
+            defaultEmpleadoId: ''
+          })
+        }
+        onSubmit={handleRegistrarHoraExtra}
       />
 
       <PlanillaAuditoriaModal
@@ -1969,6 +4336,7 @@ export default function Planillas({
       />
 
       <ExportModal
+        key={`export-${exportModalOpen ? 'open' : 'closed'}-${safeNumber(selectedPlanilla?.id_planilla, 0)}`}
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         onSubmit={handleExportSubmit}
@@ -1976,6 +4344,29 @@ export default function Planillas({
         resumen={resumen}
         planillaLabel={selectedPlanillaLabel}
       />
+
+      {localToast.show ? (
+        <div className="inv-toast-wrap" role="status" aria-live="polite">
+          <div className={`inv-toast-card ${toText(localToast.variant, 'success')}`}>
+            <div className="inv-toast-icon">
+              <i className={resolveToastIconClass(localToast.variant)} />
+            </div>
+            <div className="inv-toast-content">
+              <div className="inv-toast-title">{toText(localToast.title, 'AVISO')}</div>
+              <div className="inv-toast-message">{toText(localToast.message, '')}</div>
+            </div>
+            <button
+              type="button"
+              className="inv-toast-close"
+              onClick={closeLocalToast}
+              aria-label="Cerrar notificacion"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+            <div className="inv-toast-progress" />
+          </div>
+        </div>
+      ) : null}
 
       {confirmModal.open ? (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmModal}>
@@ -1995,6 +4386,9 @@ export default function Planillas({
 
             <div className="inv-pro-confirm-body">
               <div className="inv-pro-confirm-question">{confirmModal.question}</div>
+              {confirmModal.description ? (
+                <div className="inv-pro-confirm-description">{confirmModal.description}</div>
+              ) : null}
               {confirmModal.detail ? (
                 <div className="inv-pro-confirm-name">
                   <i className={confirmModal.detailIconClass || 'bi bi-wallet2'} />
@@ -2034,5 +4428,6 @@ export default function Planillas({
     </div>
   );
 }
+
 
 

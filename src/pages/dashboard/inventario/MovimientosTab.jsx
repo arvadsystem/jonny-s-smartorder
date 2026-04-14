@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 
 const parseEstado = (value) => {
   if (value === true || value === 'true' || value === 1 || value === '1') return true;
@@ -95,7 +98,82 @@ const getItemId = (item, itemTipo) =>
   itemTipo === 'producto' ? String(item?.id_producto ?? '').trim() : String(item?.id_insumo ?? '').trim();
 
 const MOVIMIENTOS_PAGE_SIZE = 10;
+const MOVIMIENTOS_REFERENCIAS_LIMIT = 300;
+const DEFAULT_KARDEX_PAGINATION = {
+  page: 1,
+  pageSize: MOVIMIENTOS_PAGE_SIZE,
+  total: 0,
+  totalPages: 1
+};
 const AJUSTE_STOCK_FINAL_HELP = 'En AJUSTE, la cantidad representa la existencia final del item en el almacen.';
+const REFERENCIAS_CONTEXT_MESSAGE = 'Selecciona un almacen y el tipo de item para cargar opciones.';
+const MOVIMIENTOS_SCOPE_BLOCKED_MESSAGE =
+  'No tienes acceso al recurso solicitado dentro de tu alcance de sucursal.';
+const MOVIMIENTOS_SCOPE_NOT_FOUND_MESSAGE =
+  'El recurso solicitado no esta disponible en tu alcance actual o no existe.';
+
+const resolveMovimientosRequestMessage = (error, fallbackMessage) => {
+  const status = Number(error?.status ?? 0);
+  const code = String(error?.code ?? error?.data?.code ?? '').trim().toUpperCase();
+  const apiMessage = String(error?.message ?? '').trim();
+
+  if (status === 403 || code === 'FORBIDDEN') {
+    return apiMessage || MOVIMIENTOS_SCOPE_BLOCKED_MESSAGE;
+  }
+
+  if (status === 404 && /almacen no encontrado/i.test(apiMessage)) {
+    return MOVIMIENTOS_SCOPE_NOT_FOUND_MESSAGE;
+  }
+
+  return apiMessage || fallbackMessage;
+};
+
+const normalizeReferenciaItems = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+
+const normalizeKardexResponse = (payload, fallbackPagination = DEFAULT_KARDEX_PAGINATION) => {
+  const items = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.items)
+    ? payload.items
+    : Array.isArray(payload?.data)
+    ? payload.data
+    : [];
+
+  const paginationPayload = Array.isArray(payload) ? null : payload?.pagination;
+  const fallbackPage = Number(fallbackPagination?.page) || DEFAULT_KARDEX_PAGINATION.page;
+  const fallbackPageSize = Number(fallbackPagination?.pageSize) || MOVIMIENTOS_PAGE_SIZE;
+
+  const page = Math.max(1, Number(paginationPayload?.page ?? fallbackPage) || fallbackPage);
+  const pageSize = Math.max(
+    1,
+    Number(paginationPayload?.pageSize ?? paginationPayload?.limit ?? fallbackPageSize) || fallbackPageSize
+  );
+
+  const explicitTotal = Number(paginationPayload?.total);
+  const total = Number.isFinite(explicitTotal) && explicitTotal >= 0 ? explicitTotal : items.length;
+
+  const totalPagesFromPayload = Number(paginationPayload?.totalPages ?? paginationPayload?.total_pages);
+  const computedTotalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages =
+    Number.isFinite(totalPagesFromPayload) && totalPagesFromPayload > 0
+      ? Math.max(1, totalPagesFromPayload)
+      : computedTotalPages;
+
+  return {
+    items,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages
+    }
+  };
+};
 
 const MovimientosTab = ({
   openToast,
@@ -108,9 +186,19 @@ const MovimientosTab = ({
   presetFilters = {},
   presetFiltersVersion = 0
 }) => {
+  const { can, canAny, loading: permisosLoading } = usePermisos();
+  const canVerMovimientos = can(PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER);
+  const canCrearMovimientos = can(PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR);
+  const canAccessMovimientosTab = canAny([
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_CREAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_EDITAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_ELIMINAR
+  ]);
+
   const [movimientos, setMovimientos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingRefs, setLoadingRefs] = useState(true);
+  const [loadingRefs, setLoadingRefs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -123,6 +211,7 @@ const MovimientosTab = ({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [listPage, setListPage] = useState(1);
+  const [pagination, setPagination] = useState({ ...DEFAULT_KARDEX_PAGINATION });
   const [tipoFiltro, setTipoFiltro] = useState('todos');
   const [sucursalFiltro, setSucursalFiltro] = useState('');
   const [almacenFiltro, setAlmacenFiltro] = useState('todos');
@@ -152,6 +241,10 @@ const MovimientosTab = ({
 
   const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
   const kardexRequestIdRef = useRef(0);
+  const kardexFiltersKeyRef = useRef('');
+  const referenciasRequestIdRef = useRef(0);
+  const referenciasCacheRef = useRef(new Map());
+  const referenciasInFlightRef = useRef(new Set());
 
   const safeToast = (title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
@@ -305,7 +398,7 @@ const MovimientosTab = ({
     return 'Todos los almacenes';
   }, [selectedAlmacen, sucursalFiltro, sucursalesMap]);
 
-  const kardexRequest = useMemo(
+  const kardexFiltersRequest = useMemo(
     () => ({
       id_sucursal: sucursalFiltro || undefined,
       id_almacen: almacenFiltro === 'todos' ? undefined : almacenFiltro,
@@ -317,6 +410,15 @@ const MovimientosTab = ({
       q: debouncedSearch || undefined
     }),
     [almacenFiltro, debouncedSearch, desde, hasta, itemFiltroId, itemTipoFiltro, sucursalFiltro, tipoFiltro]
+  );
+
+  const kardexRequest = useMemo(
+    () => ({
+      ...kardexFiltersRequest,
+      page: listPage,
+      pageSize: MOVIMIENTOS_PAGE_SIZE
+    }),
+    [kardexFiltersRequest, listPage]
   );
 
   const hasActiveListadoFilters = useMemo(
@@ -331,21 +433,20 @@ const MovimientosTab = ({
   );
 
   const listTotalPages = useMemo(
-    () => Math.max(1, Math.ceil(movimientos.length / MOVIMIENTOS_PAGE_SIZE)),
-    [movimientos.length]
+    () => Math.max(1, Number(pagination?.totalPages ?? 1) || 1),
+    [pagination?.totalPages]
   );
 
-  const paginatedMovimientos = useMemo(() => {
-    const start = (listPage - 1) * MOVIMIENTOS_PAGE_SIZE;
-    return movimientos.slice(start, start + MOVIMIENTOS_PAGE_SIZE);
-  }, [listPage, movimientos]);
+  const paginatedMovimientos = movimientos;
 
   const listPageWindow = useMemo(() => {
-    if (!movimientos.length) return '0-0';
-    const start = (listPage - 1) * MOVIMIENTOS_PAGE_SIZE + 1;
-    const end = Math.min(movimientos.length, start + MOVIMIENTOS_PAGE_SIZE - 1);
+    const total = Number(pagination?.total ?? 0);
+    const pageSize = Number(pagination?.pageSize ?? MOVIMIENTOS_PAGE_SIZE) || MOVIMIENTOS_PAGE_SIZE;
+    if (!movimientos.length || total <= 0) return '0-0';
+    const start = (listPage - 1) * pageSize + 1;
+    const end = Math.min(total, start + movimientos.length - 1);
     return `${start}-${end}`;
-  }, [listPage, movimientos.length]);
+  }, [listPage, movimientos.length, pagination?.pageSize, pagination?.total]);
 
   const visiblePageNumbers = useMemo(() => {
     if (listTotalPages <= 5) return Array.from({ length: listTotalPages }, (_, index) => index + 1);
@@ -358,44 +459,116 @@ const MovimientosTab = ({
   }, [listPage, listTotalPages]);
 
   const auxModalOpen = showCreateModal || showFiltersModal;
+  const setReferenciasByTipo = (itemTipo, rows) => {
+    if (itemTipo === 'producto') {
+      setProductos(Array.isArray(rows) ? rows : []);
+      return;
+    }
+    setInsumos(Array.isArray(rows) ? rows : []);
+  };
 
-  const cargarReferencias = async () => {
+  const clearCreateErrors = (...fields) => {
+    if (!fields.length) return;
+    setCreateErrors((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const field of fields) {
+        if (Object.prototype.hasOwnProperty.call(next, field)) {
+          delete next[field];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  };
+
+  const cargarReferenciasContextuales = async ({ itemTipo, idAlmacen }) => {
+    const normalizedItemTipo = itemTipo === 'insumo' ? 'insumo' : 'producto';
+    const normalizedAlmacen = String(idAlmacen ?? '').trim();
+
+    if (!normalizedAlmacen) {
+      setReferenciasByTipo(normalizedItemTipo, []);
+      setLoadingRefs(false);
+      return;
+    }
+
+    const sucursalDelAlmacen = String(almacenesMap.get(normalizedAlmacen)?.id_sucursal ?? '').trim();
+    const cacheKey = `${normalizedItemTipo}|${normalizedAlmacen}|${sucursalDelAlmacen}`;
+    if (referenciasCacheRef.current.has(cacheKey)) {
+      setReferenciasByTipo(normalizedItemTipo, referenciasCacheRef.current.get(cacheKey));
+      setLoadingRefs(false);
+      return;
+    }
+
+    if (referenciasInFlightRef.current.has(cacheKey)) {
+      return;
+    }
+
+    referenciasInFlightRef.current.add(cacheKey);
+    const requestId = ++referenciasRequestIdRef.current;
     setLoadingRefs(true);
 
     try {
-      const [productosData, insumosData] = await Promise.all([
-        inventarioService.getProductos(),
-        inventarioService.getInsumos()
-      ]);
+      const payload = await inventarioService.getMovimientosReferencias({
+        item_tipo: normalizedItemTipo,
+        id_almacen: normalizedAlmacen,
+        id_sucursal: sucursalDelAlmacen || undefined,
+        limit: MOVIMIENTOS_REFERENCIAS_LIMIT
+      });
+      if (requestId !== referenciasRequestIdRef.current) return;
 
-      setProductos(Array.isArray(productosData) ? productosData.filter((item) => parseEstado(item?.estado ?? true)) : []);
-      setInsumos(Array.isArray(insumosData) ? insumosData.filter((item) => parseEstado(item?.estado ?? true)) : []);
+      const rows = normalizeReferenciaItems(payload);
+      const onlyActive = rows.filter((row) => parseEstado(row?.estado ?? true));
+      referenciasCacheRef.current.set(cacheKey, onlyActive);
+      setReferenciasByTipo(normalizedItemTipo, onlyActive);
     } catch (requestError) {
-      const message = requestError?.message || 'ERROR CARGANDO REFERENCIAS DEL KARDEX';
-      setError(message);
+      if (requestId !== referenciasRequestIdRef.current) return;
+      const message = resolveMovimientosRequestMessage(
+        requestError,
+        'No se pudieron cargar las referencias para este contexto.'
+      );
       safeToast('ERROR', message, 'danger');
     } finally {
-      setLoadingRefs(false);
+      referenciasInFlightRef.current.delete(cacheKey);
+      if (requestId === referenciasRequestIdRef.current) {
+        setLoadingRefs(false);
+      }
     }
   };
 
   const cargarKardex = async (request = kardexRequest) => {
+    if (!canVerMovimientos) {
+      setMovimientos([]);
+      setPagination({ ...DEFAULT_KARDEX_PAGINATION });
+      setLoading(false);
+      return;
+    }
+
     const requestId = ++kardexRequestIdRef.current;
     setLoading(true);
     setError('');
 
     try {
-      const data = await inventarioService.getKardex(request);
+      const payload = await inventarioService.getKardex(request);
       if (requestId !== kardexRequestIdRef.current) return;
-      setMovimientos(Array.isArray(data) ? data : []);
+      const normalized = normalizeKardexResponse(payload, {
+        page: Number(request?.page ?? listPage) || 1,
+        pageSize: Number(request?.pageSize ?? MOVIMIENTOS_PAGE_SIZE) || MOVIMIENTOS_PAGE_SIZE,
+        total: 0,
+        totalPages: 1
+      });
+
+      setMovimientos(normalized.items);
+      setPagination(normalized.pagination);
     } catch (requestError) {
       if (requestId !== kardexRequestIdRef.current) return;
-      const message = requestError?.message || 'ERROR CARGANDO KARDEX';
+      const message = resolveMovimientosRequestMessage(requestError, 'ERROR CARGANDO KARDEX');
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
-      if (requestId !== kardexRequestIdRef.current) return;
-      setLoading(false);
+      if (requestId === kardexRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -425,18 +598,84 @@ const MovimientosTab = ({
   }, [auxModalOpen]);
 
   useEffect(() => {
-    cargarReferencias();
+    if (!canVerMovimientos || !canCrearMovimientos) {
+      setProductos([]);
+      setInsumos([]);
+      referenciasRequestIdRef.current += 1;
+      referenciasCacheRef.current.clear();
+      referenciasInFlightRef.current.clear();
+      setLoadingRefs(false);
+      return;
+    }
+  }, [canCrearMovimientos, canVerMovimientos]);
+
+  useEffect(() => {
+    if (!canVerMovimientos || !canCrearMovimientos) return;
+
+    if (showCreateModal) {
+      const itemTipo = String(form.item_tipo ?? '').trim().toLowerCase();
+      const idAlmacen = String(form.id_almacen ?? '').trim();
+      if (['producto', 'insumo'].includes(itemTipo) && idAlmacen) {
+        cargarReferenciasContextuales({ itemTipo, idAlmacen });
+      } else {
+        setLoadingRefs(false);
+      }
+      return;
+    }
+
+    if (showFiltersModal) {
+      const itemTipo = String(filterDraft.item_tipo ?? '').trim().toLowerCase();
+      const idAlmacen = String(filterDraft.id_almacen ?? '').trim();
+      if (['producto', 'insumo'].includes(itemTipo) && idAlmacen) {
+        cargarReferenciasContextuales({ itemTipo, idAlmacen });
+      } else {
+        setLoadingRefs(false);
+      }
+      return;
+    }
+
+    referenciasRequestIdRef.current += 1;
+    referenciasInFlightRef.current.clear();
+    setLoadingRefs(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    canCrearMovimientos,
+    canVerMovimientos,
+    filterDraft.id_almacen,
+    filterDraft.item_tipo,
+    form.id_almacen,
+    form.item_tipo,
+    showCreateModal,
+    showFiltersModal
+  ]);
+
+  useEffect(() => () => {
+    kardexRequestIdRef.current += 1;
+    referenciasRequestIdRef.current += 1;
+    referenciasInFlightRef.current.clear();
   }, []);
 
   useEffect(() => {
+    if (!canVerMovimientos) {
+      setMovimientos([]);
+      setPagination({ ...DEFAULT_KARDEX_PAGINATION });
+      kardexFiltersKeyRef.current = '';
+      setLoading(false);
+      return;
+    }
+
+    const nextFiltersKey = JSON.stringify(kardexFiltersRequest);
+    if (kardexFiltersKeyRef.current !== nextFiltersKey) {
+      kardexFiltersKeyRef.current = nextFiltersKey;
+      if (listPage !== 1) {
+        setListPage(1);
+        return;
+      }
+    }
+
     cargarKardex(kardexRequest);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kardexRequest]);
-
-  useEffect(() => {
-    setListPage(1);
-  }, [kardexRequest]);
+  }, [canVerMovimientos, kardexFiltersRequest, kardexRequest, listPage]);
 
   useEffect(() => {
     if (!sucursalFiltro && defaultSucursalId) setSucursalFiltro(defaultSucursalId);
@@ -504,6 +743,8 @@ const MovimientosTab = ({
       return;
     }
 
+    if (itemFiltroId && itemFiltroOptions.length === 0) return;
+
     if (
       itemFiltroId &&
       !itemFiltroOptions.some((item) => getItemId(item, itemTipoFiltro) === String(itemFiltroId ?? '').trim())
@@ -542,6 +783,15 @@ const MovimientosTab = ({
     }
   }, [form.id_item, form.item_tipo, formItemOptions]);
 
+  const isCreateItemContextReady = Boolean(String(form.id_almacen ?? '').trim()) && ['producto', 'insumo'].includes(form.item_tipo);
+  const createItemPlaceholder = !isCreateItemContextReady
+    ? REFERENCIAS_CONTEXT_MESSAGE
+    : loadingRefs
+    ? 'Cargando items del contexto seleccionado...'
+    : form.item_tipo === 'producto'
+    ? 'Seleccione producto'
+    : 'Seleccione insumo';
+
   const resetForm = () => {
     const preferredAlmacenId =
       almacenFiltro !== 'todos'
@@ -560,9 +810,14 @@ const MovimientosTab = ({
       descripcion: ''
     });
     setCreateErrors({});
+    setLoadingRefs(false);
   };
 
   const openCreateModal = () => {
+    if (!canCrearMovimientos) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear movimientos de inventario.', 'warning');
+      return;
+    }
     resetForm();
     setShowCreateModal(true);
   };
@@ -628,6 +883,10 @@ const MovimientosTab = ({
 
   const onCrear = async (event) => {
     event.preventDefault();
+    if (!canCrearMovimientos) {
+      safeToast('SIN PERMISO', 'No tienes permiso para crear movimientos de inventario.', 'warning');
+      return;
+    }
     const validated = validarMovimiento(form);
     setCreateErrors(validated.errors);
     if (!validated.ok) return;
@@ -643,7 +902,7 @@ const MovimientosTab = ({
       setShowCreateModal(false);
       safeToast('CREADO', 'EL MOVIMIENTO SE REGISTRO CORRECTAMENTE.', 'success');
     } catch (requestError) {
-      const message = requestError?.message || 'ERROR CREANDO MOVIMIENTO';
+      const message = resolveMovimientosRequestMessage(requestError, 'ERROR CREANDO MOVIMIENTO');
       setError(message);
       safeToast('ERROR', message, 'danger');
     } finally {
@@ -817,11 +1076,15 @@ const MovimientosTab = ({
                               onChange={(event) =>
                                 setFilterDraft((current) => ({ ...current, id_item: event.target.value }))
                               }
-                              disabled={filterDraft.item_tipo === 'todos'}
+                              disabled={filterDraft.item_tipo === 'todos' || !filterDraft.id_almacen || loadingRefs}
                             >
                               <option value="">
                                 {filterDraft.item_tipo === 'todos'
                                   ? 'Seleccione primero un item'
+                                  : !filterDraft.id_almacen
+                                  ? REFERENCIAS_CONTEXT_MESSAGE
+                                  : loadingRefs
+                                  ? 'Cargando opciones del almacen...'
                                   : filterDraft.item_tipo === 'producto'
                                   ? 'Todos los productos'
                                   : 'Todos los insumos'}
@@ -890,7 +1153,7 @@ const MovimientosTab = ({
       : null;
 
   const createModal =
-    modalPortalTarget && showCreateModal
+    canCrearMovimientos && modalPortalTarget && showCreateModal
       ? createPortal(
           <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!showCreateModal}>
             <div className="inv-prod-pmodal__overlay" onClick={() => setShowCreateModal(false)} />
@@ -969,16 +1232,18 @@ const MovimientosTab = ({
                               id="inv-moves-create-almacen"
                               className={`form-select ${createErrors.id_almacen ? 'is-invalid' : ''}`}
                               value={form.id_almacen}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                const nextAlmacen = event.target.value;
                                 setForm((current) => ({
                                   ...current,
-                                  id_almacen: event.target.value,
+                                  id_almacen: nextAlmacen,
                                   id_item: ''
-                                }))
-                              }
+                                }));
+                                clearCreateErrors('id_almacen', 'id_item');
+                              }}
                               disabled={saving}
                             >
-                              <option value="">{loadingRefs ? 'Cargando almacenes...' : 'Seleccione almacen'}</option>
+                              <option value="">Seleccione almacen</option>
                               {almacenesOperativos.map((almacen) => (
                                 <option key={almacen.id_almacen} value={almacen.id_almacen}>
                                   {formatAlmacenOptionLabel(almacen, sucursalesMap)}
@@ -1007,13 +1272,15 @@ const MovimientosTab = ({
                               id="inv-moves-create-item-tipo"
                               className={`form-select ${createErrors.item_tipo ? 'is-invalid' : ''}`}
                               value={form.item_tipo}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                const nextTipo = event.target.value;
                                 setForm((current) => ({
                                   ...current,
-                                  item_tipo: event.target.value,
+                                  item_tipo: nextTipo,
                                   id_item: ''
-                                }))
-                              }
+                                }));
+                                clearCreateErrors('item_tipo', 'id_item');
+                              }}
                               disabled={saving}
                             >
                               <option value="producto">Producto</option>
@@ -1028,18 +1295,13 @@ const MovimientosTab = ({
                               id="inv-moves-create-item"
                               className={`form-select ${createErrors.id_item ? 'is-invalid' : ''}`}
                               value={form.id_item}
-                              onChange={(event) => setForm((current) => ({ ...current, id_item: event.target.value }))}
-                              disabled={loadingRefs || saving || !form.id_almacen}
+                              onChange={(event) => {
+                                setForm((current) => ({ ...current, id_item: event.target.value }));
+                                clearCreateErrors('id_item');
+                              }}
+                              disabled={loadingRefs || saving || !isCreateItemContextReady}
                             >
-                              <option value="">
-                                {!form.id_almacen
-                                  ? 'Seleccione primero un almacen'
-                                  : loadingRefs
-                                  ? 'Cargando items...'
-                                  : form.item_tipo === 'producto'
-                                  ? 'Seleccione producto'
-                                  : 'Seleccione insumo'}
-                              </option>
+                              <option value="">{createItemPlaceholder}</option>
                               {formItemOptions.map((item) => (
                                 <option key={getItemId(item, form.item_tipo)} value={getItemId(item, form.item_tipo)}>
                                   {formatItemOptionLabel(item, form.item_tipo === 'producto' ? 'Producto' : 'Insumo')}
@@ -1047,6 +1309,9 @@ const MovimientosTab = ({
                               ))}
                             </select>
                             {createErrors.id_item ? <div className="invalid-feedback">{createErrors.id_item}</div> : null}
+                            {!createErrors.id_item && !isCreateItemContextReady ? (
+                              <div className="form-text">{REFERENCIAS_CONTEXT_MESSAGE}</div>
+                            ) : null}
                           </div>
 
                           <div className="col-12 col-md-4">
@@ -1124,6 +1389,12 @@ const MovimientosTab = ({
         )
       : null;
 
+  if (permisosLoading) return null;
+
+  if (!canAccessMovimientosTab || !canVerMovimientos) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_MOVIMIENTOS_VER} />;
+  }
+
   const rootClass = `inv-warehouse-moves ${embedded ? 'is-embedded' : ''}`;
 
   return (
@@ -1143,10 +1414,12 @@ const MovimientosTab = ({
                 <i className="bi bi-funnel" aria-hidden="true" />
                 <span>Filtros</span>
               </button>
-              <button type="button" className="inv-prod-toolbar-btn" onClick={openCreateModal}>
-                <i className="bi bi-plus-circle-dotted" aria-hidden="true" />
-                <span>Nuevo movimiento</span>
-              </button>
+              {canCrearMovimientos ? (
+                <button type="button" className="inv-prod-toolbar-btn" onClick={openCreateModal}>
+                  <i className="bi bi-plus-circle-dotted" aria-hidden="true" />
+                  <span>Nuevo movimiento</span>
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -1295,7 +1568,7 @@ const MovimientosTab = ({
 
               <div className="inv-warehouse-moves__pagination inv-ins-pagination">
                 <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
-                  {`Mostrando ${listPageWindow} de ${movimientos.length}`}
+                  {`Mostrando ${listPageWindow} de ${pagination.total}`}
                 </div>
 
                 <div className="inv-warehouse-moves__pagination-controls">

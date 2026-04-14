@@ -140,24 +140,140 @@ const fetchGetWithSignal = async (endpoint, signal) => {
   });
 
   const payload = await readResponseBody(response);
+  const buildHttpError = (fallbackMessage) => {
+    const error = new Error(getErrorMessage(payload, fallbackMessage));
+    error.status = response.status;
+    error.payload = payload;
+    return error;
+  };
 
   if (response.status === 401) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }
-    throw new Error(getErrorMessage(payload, 'No autorizado'));
+    throw buildHttpError('No autorizado');
   }
 
   if (response.status === 403) {
-    throw new Error(getErrorMessage(payload, 'Acceso denegado'));
+    throw buildHttpError('Acceso denegado');
   }
 
   if (!response.ok) {
-    throw new Error(getErrorMessage(payload, `Error HTTP: ${response.status}`));
+    throw buildHttpError(`Error HTTP: ${response.status}`);
   }
 
   if (response.status === 204) return null;
   return payload;
+};
+
+const PHOTO_ROUTE_RETRYABLE_STATUS = new Set([404, 405, 415]);
+const PHOTO_CONTRACT_RETRYABLE_STATUS = new Set([400, 404, 405, 415, 422]);
+
+const isRetryablePhotoRouteError = (error) =>
+  PHOTO_ROUTE_RETRYABLE_STATUS.has(Number(error?.status));
+
+const isRetryablePhotoContractError = (error) =>
+  PHOTO_CONTRACT_RETRYABLE_STATUS.has(Number(error?.status));
+
+const buildEmployeePhotoEndpointMissingError = (baseError = null) => {
+  const error = new Error(
+    'No se encontro un endpoint backend para foto de empleados. Configure /empleados/v2/photo/:id o equivalente.'
+  );
+  error.code = 'EMPLEADOS_FOTO_ENDPOINT_MISSING';
+  if (baseError?.status) error.status = baseError.status;
+  if (baseError?.data) error.data = baseError.data;
+  return error;
+};
+
+const runEndpointFallbacks = async (attempts = [], canRetry = isRetryablePhotoRouteError) => {
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    if (!attempt || !attempt.endpoint) continue;
+    const method = String(attempt.method || 'GET').toUpperCase();
+
+    try {
+      if (Object.prototype.hasOwnProperty.call(attempt, 'body')) {
+        return await apiFetch(attempt.endpoint, method, attempt.body);
+      }
+      return await apiFetch(attempt.endpoint, method);
+    } catch (error) {
+      if (!canRetry(error)) throw error;
+      lastError = error;
+    }
+  }
+
+  if (lastError) throw lastError;
+  throw new Error('No se encontro un endpoint disponible para la operacion solicitada.');
+};
+
+const toPositiveInteger = (value) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeOptionalImageValue = (value) => {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text || null;
+};
+
+const resolveImagePayloadValue = (payload = {}) => {
+  if (!isPlainObject(payload)) return null;
+  if (Object.prototype.hasOwnProperty.call(payload, 'foto_perfil')) {
+    return normalizeOptionalImageValue(payload.foto_perfil);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'foto')) {
+    return normalizeOptionalImageValue(payload.foto);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'imagen')) {
+    return normalizeOptionalImageValue(payload.imagen);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'imagen_perfil')) {
+    return normalizeOptionalImageValue(payload.imagen_perfil);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'url_imagen')) {
+    return normalizeOptionalImageValue(payload.url_imagen);
+  }
+  return null;
+};
+
+const resolveEmpleadosBatchRequest = (payload = {}) => {
+  if (!isPlainObject(payload)) return { empleados: [], ids: [] };
+
+  const sourceRows = Array.isArray(payload.empleados)
+    ? payload.empleados
+    : (Array.isArray(payload.items) ? payload.items : []);
+
+  const empleados = sourceRows
+    .map((row) => {
+      if (!isPlainObject(row)) return null;
+      const id = toPositiveInteger(row.id_empleado ?? row.id ?? row.empleado_id);
+      if (!id) return null;
+
+      const storagePath = normalizeOptionalImageValue(
+        row.storage_path
+        ?? row.path
+        ?? row.foto_storage_path
+        ?? row.imagen_storage_path
+      );
+
+      return storagePath ? { id_empleado: id, storage_path: storagePath } : { id_empleado: id };
+    })
+    .filter(Boolean);
+
+  const directIdsSource = Array.isArray(payload.ids_empleado)
+    ? payload.ids_empleado
+    : (Array.isArray(payload.ids) ? payload.ids : []);
+
+  const idsFromPayload = directIdsSource
+    .map((item) => toPositiveInteger(item))
+    .filter(Boolean);
+
+  const idsFromRows = empleados.map((row) => row.id_empleado);
+  const ids = [...new Set([...idsFromRows, ...idsFromPayload])];
+
+  return { empleados, ids };
 };
 
 export const personaService = {
@@ -314,7 +430,7 @@ export const personaService = {
   // ==============================
   // EMPLEADOS (SUBMODULO PERSONAS)
   // ==============================
-  getEmpleados: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal } = {}) => {
+  getEmpleados: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal, signal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -329,12 +445,16 @@ export const personaService = {
       params.set('id_sucursal', String(id_sucursal).trim());
     }
     const query = params.toString();
+    const requestGet = (endpoint) =>
+      signal
+        ? fetchGetWithSignal(endpoint, signal)
+        : apiFetch(endpoint, 'GET');
 
     try {
-      return await apiFetch(`/empleados?${query}`, 'GET');
+      return await requestGet(`/empleados?${query}`);
     } catch (error) {
       if (error?.status === 404) {
-        return apiFetch(`/empleados-detalle?${query}`, 'GET');
+        return requestGet(`/empleados-detalle?${query}`);
       }
       throw error;
     }
@@ -393,10 +513,139 @@ export const personaService = {
   deleteEmpleado: (id) =>
     apiFetch(`/empleados/${id}`, 'DELETE'),
 
+  updateEmpleadoFotoV2: async (id, payload = {}) => {
+    const empleadoId = toPositiveInteger(id);
+    if (!empleadoId) throw new Error('Id de empleado invalido');
+
+    const imageValue = resolveImagePayloadValue(payload);
+
+    const attempts = [
+      {
+        endpoint: `/empleados/v2/photo/${empleadoId}`,
+        method: 'PUT',
+        body: { foto_perfil: imageValue }
+      },
+      {
+        endpoint: `/empleados/photo/${empleadoId}`,
+        method: 'PUT',
+        body: { foto_perfil: imageValue }
+      },
+      {
+        endpoint: `/empleados/${empleadoId}/photo`,
+        method: 'PUT',
+        body: { foto_perfil: imageValue }
+      },
+      {
+        endpoint: `/empleados/${empleadoId}/foto`,
+        method: 'PUT',
+        body: { foto: imageValue }
+      },
+      {
+        endpoint: `/empleados/${empleadoId}/imagen`,
+        method: 'PUT',
+        body: { imagen: imageValue }
+      },
+      {
+        endpoint: `/empleados/v2/foto/${empleadoId}`,
+        method: 'PUT',
+        body: { foto: imageValue }
+      }
+    ];
+
+    try {
+      return await runEndpointFallbacks(attempts, isRetryablePhotoRouteError);
+    } catch (error) {
+      if (isRetryablePhotoRouteError(error)) {
+        throw buildEmployeePhotoEndpointMissingError(error);
+      }
+      throw error;
+    }
+  },
+
+  deleteEmpleadoFotoV2: async (id) => {
+    const empleadoId = toPositiveInteger(id);
+    if (!empleadoId) throw new Error('Id de empleado invalido');
+
+    const attempts = [
+      { endpoint: `/empleados/v2/photo/${empleadoId}`, method: 'DELETE' },
+      { endpoint: `/empleados/photo/${empleadoId}`, method: 'DELETE' },
+      { endpoint: `/empleados/${empleadoId}/photo`, method: 'DELETE' },
+      { endpoint: `/empleados/${empleadoId}/foto`, method: 'DELETE' },
+      { endpoint: `/empleados/${empleadoId}/imagen`, method: 'DELETE' },
+      { endpoint: `/empleados/v2/foto/${empleadoId}`, method: 'DELETE' }
+    ];
+
+    try {
+      return await runEndpointFallbacks(attempts, isRetryablePhotoRouteError);
+    } catch (error) {
+      if (isRetryablePhotoRouteError(error)) {
+        throw buildEmployeePhotoEndpointMissingError(error);
+      }
+      throw error;
+    }
+  },
+
+  getEmpleadoFotoFirmadaV2: async (id, options = {}) => {
+    const empleadoId = toPositiveInteger(id);
+    if (!empleadoId) throw new Error('Id de empleado invalido');
+
+    const storagePath = normalizeOptionalImageValue(
+      options?.storage_path
+      ?? options?.path
+      ?? options?.foto_storage_path
+      ?? options?.imagen_storage_path
+    );
+
+    const postBody = storagePath
+      ? { id_empleado: empleadoId, storage_path: storagePath }
+      : { id_empleado: empleadoId };
+
+    const attempts = [
+      { endpoint: `/empleados/v2/photo/${empleadoId}/signed-url`, method: 'GET' },
+      { endpoint: `/empleados/${empleadoId}/photo/signed-url`, method: 'GET' },
+      { endpoint: `/empleados/${empleadoId}/foto/signed-url`, method: 'GET' },
+      { endpoint: `/empleados/${empleadoId}/imagen/signed-url`, method: 'GET' },
+      { endpoint: '/empleados/v2/photo/signed-url', method: 'POST', body: postBody },
+      { endpoint: '/empleados/photo/signed-url', method: 'POST', body: postBody },
+      { endpoint: '/empleados/foto/signed-url', method: 'POST', body: postBody },
+      { endpoint: '/empleados/imagen/signed-url', method: 'POST', body: postBody }
+    ];
+
+    return runEndpointFallbacks(attempts, isRetryablePhotoContractError);
+  },
+
+  getEmpleadosFotosFirmadasV2: async (payload = {}) => {
+    const { empleados, ids } = resolveEmpleadosBatchRequest(payload);
+
+    if (!empleados.length && !ids.length) return {};
+
+    const bodyCandidates = [];
+    if (empleados.length) bodyCandidates.push({ empleados });
+    if (ids.length) bodyCandidates.push({ ids_empleado: ids });
+    if (ids.length) bodyCandidates.push({ ids });
+
+    const endpointCandidates = [
+      '/empleados/v2/photo/signed-urls',
+      '/empleados/photo/signed-urls',
+      '/empleados/fotos/signed-urls',
+      '/empleados/imagenes/signed-urls',
+      '/empleados/v2/fotos/signed-urls'
+    ];
+
+    const attempts = [];
+    endpointCandidates.forEach((endpoint) => {
+      bodyCandidates.forEach((body) => {
+        attempts.push({ endpoint, method: 'POST', body });
+      });
+    });
+
+    return runEndpointFallbacks(attempts, isRetryablePhotoContractError);
+  },
+
   // ==============================
   // CLIENTES (SUBMODULO PERSONAS)
   // ==============================
-  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal } = {}) => {
+  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal, signal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -411,33 +660,72 @@ export const personaService = {
       params.set('id_sucursal', String(id_sucursal).trim());
     }
     const query = params.toString();
+    const requestGet = (endpoint) =>
+      signal
+        ? fetchGetWithSignal(endpoint, signal)
+        : apiFetch(endpoint, 'GET', null, { noCache: true });
 
     try {
-      return await apiFetch(`/clientes?${query}`, 'GET');
+      return await requestGet(`/clientes?${query}`);
     } catch (error) {
       if (error?.status === 404) {
-        return apiFetch(`/clientes-detalle?${query}`, 'GET');
+        return requestGet(`/clientes-detalle?${query}`);
       }
       throw error;
     }
   },
 
-  createCliente: (data) =>
-    apiFetch('/clientes', 'POST', pickAllowedFields(data, [
+  createCliente: (data) => {
+    const payload = pickAllowedFields(data, [
       'fecha_ingreso',
       'puntos',
       'id_tipo_cliente',
       'id_persona',
+      'id_empresa_cliente',
       'id_empresa',
       'id_sucursal',
       'estado'
-    ])),
+    ]);
+    if (
+      payload.id_empresa_cliente === undefined
+      && payload.id_empresa !== undefined
+      && payload.id_empresa !== null
+      && String(payload.id_empresa).trim() !== ''
+    ) {
+      payload.id_empresa_cliente = payload.id_empresa;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'id_empresa')) {
+      delete payload.id_empresa;
+    }
+    return apiFetch('/clientes', 'POST', payload);
+  },
 
-  createClienteAtomico: (payload = {}) =>
-    apiFetch('/clientes/atomico', 'POST', {
-      ...(isPlainObject(payload) ? payload : {}),
+  createClienteAtomico: (payload = {}) => {
+    const requestPayload = isPlainObject(payload) ? { ...payload } : {};
+    const clientePayload = isPlainObject(requestPayload.cliente)
+      ? { ...requestPayload.cliente }
+      : null;
+
+    if (clientePayload) {
+      if (
+        clientePayload.id_empresa_cliente === undefined
+        && clientePayload.id_empresa !== undefined
+        && clientePayload.id_empresa !== null
+        && String(clientePayload.id_empresa).trim() !== ''
+      ) {
+        clientePayload.id_empresa_cliente = clientePayload.id_empresa;
+      }
+      if (Object.prototype.hasOwnProperty.call(clientePayload, 'id_empresa')) {
+        delete clientePayload.id_empresa;
+      }
+      requestPayload.cliente = clientePayload;
+    }
+
+    return apiFetch('/clientes/atomico', 'POST', {
+      ...requestPayload,
       rbac_context: 'clientes'
-    }),
+    });
+  },
 
   updateCliente: async (id, updates = {}) => {
     if (isPlainObject(updates) && Object.prototype.hasOwnProperty.call(updates, 'campo')) {
@@ -454,6 +742,14 @@ export const personaService = {
     const payload = Object.fromEntries(
       Object.entries(updates).filter(([campo, valor]) => campo && valor !== undefined)
     );
+    if (
+      payload.id_empresa_cliente === undefined
+      && payload.id_empresa !== undefined
+      && payload.id_empresa !== null
+      && String(payload.id_empresa).trim() !== ''
+    ) {
+      payload.id_empresa_cliente = payload.id_empresa;
+    }
     if (!Object.keys(payload).length) return { error: false, message: 'Sin cambios para actualizar' };
 
     return apiFetch(`/clientes/${id}`, 'PUT', payload);

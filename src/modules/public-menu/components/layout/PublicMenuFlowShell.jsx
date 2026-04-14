@@ -14,8 +14,8 @@ import {
 
 const STEP_COPY = {
   [PUBLIC_MENU_STEPS.BRANCH]: {
-    title: 'Menu publico',
-    subtitle: 'Primero elige la sucursal donde deseas pedir.'
+    title: 'Menu',
+    subtitle: 'Elige la sucursal donde deseas pedir.'
   },
   [PUBLIC_MENU_STEPS.ORDER_TYPE]: {
     title: 'Tipo de pedido',
@@ -84,6 +84,48 @@ const PublicMenuFlowShell = () => {
         subtitle={stepMeta.subtitle}
         onBack={hasPreviousStep ? handleBack : null}
         branchName={state.selectedBranch?.name}
+        actions={
+          <div className="pm-shell__header-actions">
+            {user ? (
+              <button
+                type="button"
+                className="pm-shell__header-btn"
+                onClick={() => {
+                  logout();
+                  navigate('/menu-publico');
+                }}
+              >
+                <i className="bi bi-box-arrow-right" aria-hidden="true" />
+                <span>Cerrar sesion</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="pm-shell__header-btn"
+                onClick={() => navigate('/auth/login?from=public-menu')}
+              >
+                <i className="bi bi-person-fill" aria-hidden="true" />
+                <span>Iniciar sesion</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="pm-shell__header-btn"
+              onClick={() =>
+                actions.openConfirm({
+                  title: 'Volver al inicio',
+                  message:
+                    'Si vuelves al inicio se perderan la sucursal, el tipo de pedido y los productos agregados al carrito.',
+                  confirmLabel: 'Si, volver al inicio'
+                })
+              }
+            >
+              <i className="bi bi-house-door-fill" aria-hidden="true" />
+              <span>Inicio</span>
+            </button>
+          </div>
+        }
       />
 
       <main className="pm-shell__content">
@@ -100,46 +142,6 @@ const PublicMenuFlowShell = () => {
           helperText={primaryAction.helper}
         />
       ) : null}
-
-      <button
-        type="button"
-        className="pm-shell__reset-btn"
-        onClick={() =>
-          actions.openConfirm({
-            title: 'Reiniciar flujo',
-            message: 'Se perdera la sucursal y tipo de pedido seleccionados.',
-            confirmLabel: 'Si, reiniciar'
-          })
-        }
-      >
-        Reiniciar flujo
-      </button>
-
-      {/* Botón provisional solicitado para iniciar sesión / Cerrar sesión */}
-      {user ? (
-        <button
-          type="button"
-          className="pm-shell__reset-btn"
-          style={{ right: '140px', background: 'white', color: '#dc2626', fontWeight: 'bold', padding: '0.4rem 0.8rem', borderRadius: '4px' }}
-          onClick={() => {
-            logout();
-            navigate('/menu-publico');
-          }}
-        >
-          <i className="bi bi-box-arrow-right" style={{ marginRight: '6px' }}></i>
-          Cerrar Sesión
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="pm-shell__reset-btn"
-          style={{ right: '140px', background: 'white', color: '#311008', fontWeight: 'bold', padding: '0.4rem 0.8rem', borderRadius: '4px' }}
-          onClick={() => navigate('/auth/login')}
-        >
-          <i className="bi bi-person-fill" style={{ marginRight: '6px' }}></i>
-          Iniciar Sesión
-        </button>
-      )}
 
       <ConfirmModal
         open={state.ui.confirm.isOpen}

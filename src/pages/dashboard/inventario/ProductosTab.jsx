@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { toUpperSafe } from '../../../utils/toUpperSafe';
+import { PERMISSIONS } from '../../../utils/permissions';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
+  INVENTARIO_IMAGE_CONTEXT,
+  optimizeInventarioImageForUpload,
   resolveInventarioImageUrl
 } from '../../../utils/inventarioImagenes';
 
@@ -15,13 +20,6 @@ const getStockMeta = (cantidad, stockMinimo = 0) => {
   if (Number.isNaN(qty) || qty <= 0) return { qty: 0, label: 'Sin stock', className: 'is-empty' };
   if (minQty > 0 && qty <= minQty) return { qty, label: 'Stock bajo', className: 'is-low' };
   return { qty, label: 'Con stock', className: 'is-ok' };
-};
-
-const getStockPriorityRank = (cantidad, stockMinimo = 0) => {
-  const stockMeta = getStockMeta(cantidad, stockMinimo);
-  if (stockMeta.qty <= 0) return 0;
-  if (stockMeta.className === 'is-low') return 1;
-  return 2;
 };
 
 // NEW: configuracion responsive del carrusel principal de Productos.
@@ -54,7 +52,7 @@ const chunkProductosCarouselPages = (items, pageSize) => {
 const INACTIVATE_CONFIRM_COPY = Object.freeze({
   title: 'Confirmar inactivación',
   subtitle: 'Este registro quedará marcado como inactivo',
-  question: '¿Deseas inactivar este registro?',
+  question: '¿Deseas inactivar este registro',
   fallbackName: 'Registro seleccionado',
   iconClass: 'bi bi-slash-circle'
 });
@@ -75,13 +73,15 @@ const buildDrawerImageActionState = () => ({
 // WHY: prevenir que un timestamp en ms (Date.now()) se use como `id_producto` en mutaciones.
 // IMPACT: validacion frontend local; no cambia endpoints ni payloads validos.
 const PRODUCTO_DB_INT32_MAX = 2147483647;
-const SINGLE_ALMACEN_TEMP_MESSAGE = 'Temporalmente solo se permite un almacén por producto o insumo.';
+const PRODUCTOS_FETCH_PAGE_SIZE = 100;
+const PRODUCTO_DUPLICATE_CONFLICT_MESSAGE = 'Ya existe un producto con el mismo nombre, categoría y departamento.';
+const PRODUCTO_DATE_ORDER_MESSAGE = 'La fecha de caducidad no puede ser menor que la fecha de ingreso del producto.';
 // NEW: se oculta `tipo_departamento` en el modulo de Productos.
 // WHY: el usuario indico que Departamentos ya no se necesitara en Productos.
 // IMPACT: solo frontend de Productos; backend y otros modulos siguen intactos.
 const SHOW_PRODUCTO_DEPARTAMENTOS = false;
 const PRODUCTO_FILTER_SORT_LABELS = Object.freeze({
-  recientes: 'Mas recientes',
+  recientes: 'Más recientes',
   nombre_asc: 'Nombre A-Z',
   nombre_desc: 'Nombre Z-A',
   precio_desc: 'Precio mayor',
@@ -93,6 +93,17 @@ const PRODUCTO_FILTER_SORT_LABELS = Object.freeze({
 const ProductosTab = ({ categorias = [], openToast }) => {
   // NUEVO: toma contexto de sesion existente para segmentar historial KPI por usuario/empresa/sucursal.
   const { user } = useAuth();
+  const { can, canAny, loading: permisosLoading } = usePermisos();
+  const canVer = canAny([
+    PERMISSIONS.INVENTARIO_PRODUCTOS_VER,
+    PERMISSIONS.INVENTARIO_PRODUCTOS_DETALLE_VER
+  ]);
+  const canCrear = can(PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR);
+  const canEditar = can(PERMISSIONS.INVENTARIO_PRODUCTOS_EDITAR);
+  const canInactivar = canAny([
+    PERMISSIONS.INVENTARIO_PRODUCTOS_ELIMINAR,
+    PERMISSIONS.INVENTARIO_PRODUCTOS_ESTADO_CAMBIAR
+  ]);
   // ==============================
   // TOAST (SI NO VIENE DEL PADRE)
   // ==============================
@@ -124,8 +135,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [stockFiltro, setStockFiltro] = useState('todos'); // todos | con_stock | sin_stock
   const [estadoFiltro, setEstadoFiltro] = useState('todos'); // todos | activo | inactivo
   const [categoriaFiltro, setCategoriaFiltro] = useState('todos'); // todos | id_categoria
-  // AM: filtro multi-almacen para visualizar el listado por 1 o varios almacenes sin cambiar la asignacion unica en BD.
-  const [almacenFiltro, setAlmacenFiltro] = useState([]); // [] | [id_almacen...]
+  // AM: filtro por un unico almacen para mantener coherencia con el modelo operativo actual.
+  const [almacenFiltro, setAlmacenFiltro] = useState('todos'); // todos | id_almacen
   const [deptoFiltro, setDeptoFiltro] = useState('todos'); // todos | id_tipo_departamento
   const [sortBy, setSortBy] = useState('recientes');
   // NEW: toggle admin para incluir productos inactivos en el listado del tab.
@@ -150,14 +161,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
     // AJUSTE: se usan datos de sesion existentes; si no hay contexto suficiente, cae a global.
     const userEntries = user && typeof user === 'object' ? Object.entries(user) : [];
-    const usuarioCtx = normalizePart(user?.nombre_usuario);
+    const usuarioCtx = normalizePart(user.nombre_usuario);
     const empresaCtx = normalizePart(
       userEntries.find(([key, value]) =>
         String(key).toLowerCase().includes('empresa') && value !== null && value !== undefined && String(value).trim() !== ''
       )?.[1]
     );
     const sucursalCtx = normalizePart(
-      user?.id_sucursal ||
+      user.id_sucursal ||
       userEntries.find(([key, value]) =>
         String(key).toLowerCase().includes('sucursal') && value !== null && value !== undefined && String(value).trim() !== ''
       )?.[1]
@@ -168,8 +179,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, [user]);
   // AJUSTE: limita snapshots para controlar tamano de almacenamiento local.
   const KPI_HISTORY_LIMIT = 20;
-  const currentPage = 1;
-  const pageSize = 8;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(8);
+  const [totalProductos, setTotalProductos] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const renderLegacyLayouts = false;
   // NEW: flag runtime local para conservar el código legacy de shells sin renderizarlo por defecto.
   // WHY: evitar errores de lint por `false && (...)` mientras se mantiene un fallback visual para depuración.
@@ -188,7 +201,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [form, setForm] = useState({
     nombre_producto: '',
     precio: '',
-    cantidad: '',
     // NUEVO: se agrega stock_minimo al formulario de alta para alinear payload con backend.
     stock_minimo: '0',
     descripcion_producto: '',
@@ -196,8 +208,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     fecha_caducidad: '',
     id_categoria_producto: '',
     id_almacen: '',
-    // AM: seleccion multi-almacen para crear el mismo producto en una o varias sucursales.
-    id_almacenes: [],
     id_tipo_departamento: '' // OPCIONAL
   });
 
@@ -260,10 +270,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // WHY: al quitar imagen se debe vaciar tambien el valor del `<input type="file">` para evitar estados colgados.
   // IMPACT: solo sincroniza UI local del formulario de alta; el flujo de upload no cambia.
   const createImageInputRef = useRef(null);
-  // NEW: secuencia de IDs temporales negativos (int32-safe) para altas locales sin `id_producto` en respuesta.
-  // WHY: reemplazar el fallback `Date.now()` que produce valores fuera de rango para INT en backend/BD.
-  // IMPACT: solo IDs temporales en frontend; se sincronizan con IDs reales tras recarga silenciosa.
-  const tempProductoIdSeqRef = useRef(-1);
 
   useEffect(() => {
     // NEW: escucha el ancho del viewport para recalcular paginas 4x2/2x2/1x2 sin remount del modulo.
@@ -275,6 +281,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, []);
 
   const openConfirmDelete = (id, nombre) => {
+    if (!canInactivar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para inactivar productos.', 'warning');
+      return;
+    }
     setConfirmDeleteError('');
     setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
   };
@@ -318,89 +328,46 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const sanitizeInteger = (value) => String(value ?? '').replace(/[^\d]/g, '');
 
-  // AM: normaliza ids de almacenes a una lista unica de enteros positivos.
-  const normalizeSelectedAlmacenes = useCallback((rawValues, fallbackSingle = '') => {
-    const source = Array.isArray(rawValues)
-      ? rawValues
-      : rawValues === undefined || rawValues === null || rawValues === ''
-      ? []
-      : [rawValues];
-
-    const unique = [];
-    for (const raw of source) {
-      const parsed = Number.parseInt(String(raw ?? '').trim(), 10);
-      if (!Number.isInteger(parsed) || parsed <= 0) continue;
-      if (!unique.includes(parsed)) unique.push(parsed);
-    }
-
-    if (unique.length > 0) return [unique[0]];
-
-    const parsedFallback = Number.parseInt(String(fallbackSingle ?? '').trim(), 10);
-    if (Number.isInteger(parsedFallback) && parsedFallback > 0) return [parsedFallback];
-
-    return [];
-  }, []);
-
-  // AM: alterna un almacen en la seleccion multi-almacen usando checkboxes.
-  const toggleSelectedAlmacen = useCallback((currentValues, rawId, checked) => {
-    const idAlmacen = Number.parseInt(String(rawId ?? '').trim(), 10);
-    if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return normalizeSelectedAlmacenes(currentValues);
-
-    const current = normalizeSelectedAlmacenes(currentValues);
-    if (checked) return [idAlmacen];
-
-    return current.filter((id) => id !== idAlmacen);
-  }, [normalizeSelectedAlmacenes]);
-
-  // AM: renderer compartido para mostrar "Almacén asignado" con selección única.
-  const renderAlmacenesCheckboxGroup = useCallback(({
+  // AM: renderer compartido de selector unico de almacen para create/edit.
+  const renderAlmacenSelectField = useCallback(({
     scope,
-    selectedValues,
+    selectedValue,
     error,
     onChange,
     compact = false,
     feedbackClassName = 'invalid-feedback'
   }) => {
-    const selectedIds = normalizeSelectedAlmacenes(selectedValues);
     const safeScope = String(scope || 'default');
+    const safeValue = String(selectedValue ?? '');
+    const selectClassName = compact ? 'form-select form-select-sm' : 'form-select';
 
     return (
       <>
-        <div className={`inv-almacenes-checkboxes ${compact ? 'inv-almacenes-checkboxes--compact' : ''} ${error ? 'is-invalid' : ''}`}>
-          {loadingAlmacenes ? (
-            <div className="form-text">Cargando almacenes...</div>
-          ) : null}
-          {!loadingAlmacenes && almacenes.length === 0 ? (
-            <div className="form-text text-muted">No hay almacenes disponibles</div>
-          ) : null}
+        <select
+          id={`inv-prod-alm-${safeScope}`}
+          className={`${selectClassName} ${error ? 'is-invalid' : ''}`}
+          value={safeValue}
+          disabled={loadingAlmacenes}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value="">{loadingAlmacenes ? 'Cargando...' : 'Seleccione almacén'}</option>
           {almacenes.map((a) => {
-            const idAlmacen = Number.parseInt(String(a?.id_almacen ?? ''), 10);
+            const idAlmacen = Number.parseInt(String(a.id_almacen ?? ''), 10);
             if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return null;
-
-            const checked = selectedIds.includes(idAlmacen);
-            const inputId = `inv-prod-alm-${safeScope}-${idAlmacen}`;
-
             return (
-              <div key={idAlmacen} className="form-check">
-                <input
-                  id={inputId}
-                  type="checkbox"
-                  className="form-check-input"
-                  checked={checked}
-                  disabled={loadingAlmacenes}
-                  onChange={(e) => onChange(idAlmacen, e.target.checked)}
-                />
-                <label className="form-check-label" htmlFor={inputId}>
-                  {a.nombre}
-                </label>
-              </div>
+              <option key={idAlmacen} value={String(idAlmacen)}>
+                {a.nombre}
+              </option>
             );
           })}
-        </div>
+        </select>
+        {!loadingAlmacenes && almacenes.length === 0 ? (
+          <div className="form-text text-muted">No hay almacenes disponibles</div>
+        ) : null}
         {error ? <div className={feedbackClassName}>{error}</div> : null}
       </>
     );
-  }, [almacenes, loadingAlmacenes, normalizeSelectedAlmacenes]);
+  }, [almacenes, loadingAlmacenes]);
 
   // NEW: normalizador local para campos de texto elegibles del formulario de Productos.
   // WHY: aplicar mayúsculas de forma segura solo en nombre/descripcion sin afectar números, fechas o selects.
@@ -421,17 +388,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return parsed;
   }, []);
 
-  // NEW: genera IDs temporales negativos y seguros para int32 cuando el POST no devuelve ID.
-  // WHY: evitar usar `Date.now()` como ID local y luego enviarlo accidentalmente en edit/delete.
-  // IMPACT: frontend-only; no cambia contratos API ni estructura de datos persistida.
-  const nextTempProductoId = useCallback(() => {
-    const currentRaw = Number(tempProductoIdSeqRef.current ?? -1);
-    const current = Number.isInteger(currentRaw) && currentRaw < 0 ? currentRaw : -1;
-    const next = current - 1;
-    tempProductoIdSeqRef.current = next < -PRODUCTO_DB_INT32_MAX ? -1 : next;
-    return current;
-  }, []);
-
   const formatMoney = (value) => {
     const n = Number.parseFloat(String(value ?? '0'));
     if (Number.isNaN(n)) return 'L. 0.00';
@@ -440,7 +396,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   // NUEVO: extrae errores de campo del backend cuando vienen en e.data.errors.
   const mapApiFieldErrors = useCallback((apiData) => {
-    const errors = apiData?.errors;
+    const errors = apiData.errors;
     if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return {};
 
     return Object.entries(errors).reduce((acc, [field, rawValue]) => {
@@ -477,19 +433,19 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   // NUEVO: centraliza lectura de mensaje y estado para toasts consistentes.
   const handleApiStatusError = useCallback((apiError, fallbackMessage, setFieldErrors) => {
-    const status = Number(apiError?.status || 0);
-    const backendData = apiError?.data;
+    const status = Number(apiError.status || 0);
+    const backendData = apiError.data;
     const backendMessage = backendData && typeof backendData === 'object'
-      ? backendData.message || backendData.mensaje
+        ? backendData.message || backendData.mensaje
       : '';
     // AJUSTE: fallback especifico para auth/permisos manteniendo el flujo actual sin redirecciones.
     const fallbackByStatus =
       status === 401
-        ? 'Vuelve a iniciar sesi\u00F3n para continuar.'
+          ? 'Vuelve a iniciar sesi\u00F3n para continuar.'
         : status === 403
-        ? 'No tienes autorizaci\u00F3n para realizar esta acci\u00F3n.'
+          ? 'No tienes autorizaci\u00F3n para realizar esta acci\u00F3n.'
         : fallbackMessage;
-    const rawMessage = String(backendMessage || apiError?.message || fallbackByStatus || 'Error inesperado');
+    const rawMessage = String(backendMessage || apiError.message || fallbackByStatus || 'Error inesperado');
     const message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
 
     // NEW: conserva el detalle interno de error solo en desarrollo cuando se oculta en UI.
@@ -575,7 +531,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const categoriasMap = useMemo(() => {
     const m = new Map();
     for (const c of categorias) {
-      m.set(String(c?.id_categoria_producto), c);
+      m.set(String(c.id_categoria_producto), c);
     }
     return m;
   }, [categorias]);
@@ -585,7 +541,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // IMPACT: no cambia endpoints; el mapa de labels sigue usando todas las categorias para leer historicos.
   const categoriasActivas = useMemo(() => {
     const isActive = (categoria) => {
-      const raw = categoria?.estado;
+      const raw = categoria.estado;
       if (raw === undefined || raw === null || raw === '') return true;
       return raw === true || raw === 'true' || raw === 1 || raw === '1';
     };
@@ -595,7 +551,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const almacenesMap = useMemo(() => {
     const m = new Map();
     for (const a of almacenes) {
-      m.set(String(a?.id_almacen), a);
+      m.set(String(a.id_almacen), a);
     }
     return m;
   }, [almacenes]);
@@ -603,44 +559,15 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const tipoDeptoMap = useMemo(() => {
     const m = new Map();
     for (const d of tipoDepartamentos) {
-      m.set(String(d?.id_tipo_departamento), d);
+      m.set(String(d.id_tipo_departamento), d);
     }
     return m;
   }, [tipoDepartamentos]);
 
-  // AM: normaliza valores del filtro multi-almacen permitiendo compatibilidad con formatos legacy.
-  const normalizeAlmacenFiltroIds = useCallback((rawValue) => {
-    const source = Array.isArray(rawValue)
-      ? rawValue
-      : rawValue === null || rawValue === undefined || rawValue === '' || rawValue === 'todos'
-      ? []
-      : [rawValue];
-    return Array.from(
-      new Set(
-        source
-          .map((value) => Number.parseInt(String(value ?? '').trim(), 10))
-          .filter((value) => Number.isInteger(value) && value > 0)
-      )
-    );
-  }, []);
-
-  const almacenFiltroIds = useMemo(
-    () => normalizeAlmacenFiltroIds(almacenFiltro),
-    [almacenFiltro, normalizeAlmacenFiltroIds]
-  );
-
-  // AM: alterna almacenes en el filtro (1 o varios) sin requerir select unico.
-  const toggleAlmacenFiltro = useCallback((idAlmacen) => {
-    const safeId = Number.parseInt(String(idAlmacen ?? '').trim(), 10);
-    if (!Number.isInteger(safeId) || safeId <= 0) return;
-    setAlmacenFiltro((prev) => {
-      const current = normalizeAlmacenFiltroIds(prev);
-      if (current.includes(safeId)) {
-        return current.filter((value) => value !== safeId);
-      }
-      return [...current, safeId];
-    });
-  }, [normalizeAlmacenFiltroIds]);
+  const almacenFiltroId = useMemo(() => {
+    const parsed = Number.parseInt(String(almacenFiltro ?? '').trim(), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [almacenFiltro]);
 
   const getCategoriaLabel = useCallback((id) => {
     const c = categoriasMap.get(String(id));
@@ -664,7 +591,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const selectedProducto = useMemo(() => {
     if (!selectedProductoId) return null;
-    return productos.find((p) => Number(p?.id_producto) === Number(selectedProductoId)) || null;
+    return productos.find((p) => Number(p.id_producto) === Number(selectedProductoId)) || null;
   }, [productos, selectedProductoId]);
 
   // NEW: normalización local para detectar productos duplicados sin depender del backend.
@@ -683,39 +610,33 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return raw.toLowerCase();
   }, []);
 
-  const buildProductoDuplicateKey = useCallback((data) => {
-    const nombre = normalizeProductoDuplicateText(data?.nombre_producto);
-    const categoria = normalizeProductoDuplicateId(data?.id_categoria_producto);
-    const almacen = normalizeProductoDuplicateId(data?.id_almacen);
-    const depto = SHOW_PRODUCTO_DEPARTAMENTOS ? normalizeProductoDuplicateId(data?.id_tipo_departamento) : '';
+  const buildProductoDuplicateKey = useCallback((data, { deptoFallback = null } = {}) => {
+    const nombre = normalizeProductoDuplicateText(data.nombre_producto);
+    const categoria = normalizeProductoDuplicateId(data.id_categoria_producto);
+    const deptoRaw = data.id_tipo_departamento ?? deptoFallback;
+    const depto = normalizeProductoDuplicateId(deptoRaw) || '-';
 
-    // NEW: no se usa SKU/codigo porque el formulario actual de Productos no expone ese campo.
-    // WHY: aplicar criterio real del modelo disponible en UI (nombre + categoria + almacen).
-    // IMPACT: evita falsos positivos por campos inexistentes; no inventa atributos nuevos.
-    if (!nombre || !categoria || !almacen) return '';
-    return `${nombre}__cat:${categoria}__alm:${almacen}__dep:${depto || '-'}`;
+    if (!nombre || !categoria) return '';
+    return `${nombre}__cat:${categoria}__dep:${depto}`;
   }, [normalizeProductoDuplicateId, normalizeProductoDuplicateText]);
 
-  const findDuplicateProducto = useCallback((data, { excludeId = null } = {}) => {
-    const candidateKey = buildProductoDuplicateKey(data);
+  const findDuplicateProducto = useCallback((data, { excludeId = null, deptoFallback = null } = {}) => {
+    const candidateKey = buildProductoDuplicateKey(data, { deptoFallback });
     if (!candidateKey) return null;
 
     return productos.find((item) => {
-      const sameRecord = excludeId !== null && Number(item?.id_producto) === Number(excludeId);
+      const sameRecord = excludeId !== null && Number(item.id_producto) === Number(excludeId);
       if (sameRecord) return false;
       return buildProductoDuplicateKey(item) === candidateKey;
     }) || null;
   }, [buildProductoDuplicateKey, productos]);
 
-  // NEW: helpers locales para crear/editar/eliminar sin recargar visiblemente toda la grilla/carrusel.
-  // WHY: mantener cards estables y reflejar cambios inmediatos tras éxito de la API.
-  // IMPACT: solo sincronización de estado `productos`; no altera llamadas al backend.
   const patchProductoLocalById = useCallback((id, patch) => {
     if (!id || !patch || typeof patch !== 'object') return;
     setProductos((prev) =>
       prev.map((item) => (
-        Number(item?.id_producto) === Number(id)
-          ? { ...item, ...patch }
+        Number(item.id_producto) === Number(id)
+            ? { ...item, ...patch }
           : item
       ))
     );
@@ -723,9 +644,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const upsertProductoLocal = useCallback((producto) => {
     if (!producto || typeof producto !== 'object') return;
-    const productId = Number(producto?.id_producto);
+    const productId = Number(producto.id_producto);
     setProductos((prev) => {
-      const idx = prev.findIndex((item) => Number(item?.id_producto) === productId);
+      const idx = prev.findIndex((item) => Number(item.id_producto) === productId);
       if (idx === -1) return [producto, ...prev];
       const next = [...prev];
       next[idx] = { ...prev[idx], ...producto };
@@ -733,34 +654,114 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     });
   }, []);
 
+  const buildProductosQueryOptions = useCallback((overrides = {}) => {
+    const nextPageRaw = overrides.page ?? 1;
+    const nextPage = Math.max(1, Number(nextPageRaw) || 1);
+    const nextPageSizeRaw = overrides.pageSize ?? PRODUCTOS_FETCH_PAGE_SIZE;
+    const nextPageSize = Math.max(1, Number(nextPageSizeRaw) || PRODUCTOS_FETCH_PAGE_SIZE);
+    const normalizedSearch = String(search ?? '').trim();
+
+    let normalizedEstado = 'activo';
+    if (estadoFiltro === 'activo' || estadoFiltro === 'inactivo' || estadoFiltro === 'todos') {
+      normalizedEstado = estadoFiltro;
+    }
+    if (normalizedEstado === 'todos') {
+      normalizedEstado = showInactiveProductos ? 'inactivo' : 'activo';
+    }
+
+    const options = {
+      q: normalizedSearch || undefined,
+      estado: normalizedEstado,
+      stock: stockFiltro !== 'todos' ? stockFiltro : undefined,
+      id_categoria_producto: categoriaFiltro !== 'todos' ? categoriaFiltro : undefined,
+      id_almacen: almacenFiltroId ?? undefined,
+      id_tipo_departamento:
+        SHOW_PRODUCTO_DEPARTAMENTOS && deptoFiltro !== 'todos'
+            ? deptoFiltro
+          : undefined,
+      page: nextPage,
+      pageSize: nextPageSize,
+      sort: sortBy
+    };
+
+    return options;
+  }, [
+    almacenFiltroId,
+    categoriaFiltro,
+    currentPage,
+    deptoFiltro,
+    estadoFiltro,
+    pageSize,
+    search,
+    showInactiveProductos,
+    sortBy,
+    stockFiltro
+  ]);
+
+  const fetchProductosDataset = useCallback(async (overrides = {}) => {
+    const baseOptions = buildProductosQueryOptions({
+      ...overrides,
+      page: 1,
+      pageSize: overrides.pageSize ?? PRODUCTOS_FETCH_PAGE_SIZE
+    });
+
+    const firstPayload = await inventarioService.getProductos(baseOptions);
+    if (Array.isArray(firstPayload)) {
+      return {
+        items: firstPayload,
+        total: firstPayload.length
+      };
+    }
+
+    let items = Array.isArray(firstPayload?.items) ? [...firstPayload.items] : [];
+    const totalRaw = Number(firstPayload?.total);
+    const total = Number.isFinite(totalRaw) ? Math.max(0, totalRaw) : items.length;
+    const totalPagesRaw = Number(firstPayload?.totalPages);
+    const totalPagesApi = Number.isFinite(totalPagesRaw) ? Math.max(1, totalPagesRaw) : 1;
+
+    for (let page = 2; page <= totalPagesApi; page += 1) {
+      const nextPayload = await inventarioService.getProductos({ ...baseOptions, page });
+      if (Array.isArray(nextPayload)) {
+        items = items.concat(nextPayload);
+        continue;
+      }
+      const nextItems = Array.isArray(nextPayload?.items) ? nextPayload.items : [];
+      if (nextItems.length > 0) items = items.concat(nextItems);
+    }
+
+    return {
+      items,
+      total: Number.isFinite(total) ? total : items.length
+    };
+  }, [buildProductosQueryOptions]);
+
   // NEW: sincronizacion silenciosa de productos sin vaciar lista ni activar loader global.
   // WHY: obtener IDs reales despues de crear cuando el backend responde solo con mensaje (sin `id_producto`).
   // IMPACT: refresca estado local de `productos` sin cambiar contratos API ni UX de loaders.
   const syncProductosSilently = useCallback(async () => {
     try {
-      // NEW: sincronizacion silenciosa siempre contra dataset global (activos + inactivos).
-      // WHY: mantener KPIs y "Total" estables aunque el toggle solo cambie el listado visible.
-      // IMPACT: `syncProductosSilently` sigue usando el mismo endpoint; no cambia contratos.
-      const data = await inventarioService.getProductos({ incluirInactivos: true });
-      if (!Array.isArray(data)) return false;
-      setProductos(data);
+      const dataset = await fetchProductosDataset();
+      setProductos(dataset.items);
+      setTotalProductos(dataset.total);
+      setTotalPages(1);
+      if (currentPage !== 1) setCurrentPage(1);
       return true;
     } catch (syncError) {
       // NEW: logging solo en DEV para diagnosticar fallos de sincronizacion sin ensuciar la UI.
-      // WHY: el usuario ya recibe feedback del create; la sincronizacion posterior debe ser silenciosa.
+      // WHY: este refresh se usa para mutaciones secundarias y no debe interrumpir la experiencia.
       // IMPACT: no altera flujos; solo agrega diagnostico en desarrollo.
       if (import.meta.env.DEV) {
         console.error('PRODUCTOS syncProductosSilently error:', syncError);
       }
       return false;
     }
-  }, []);
+  }, [currentPage, fetchProductosDataset]);
 
   const removeProductoLocalById = useCallback((id, { animate = false } = {}) => {
     if (!id) return;
     const numericId = Number(id);
     const commitRemove = () => {
-      setProductos((prev) => prev.filter((item) => Number(item?.id_producto) !== numericId));
+      setProductos((prev) => prev.filter((item) => Number(item.id_producto) !== numericId));
       setRemovingProductoIds((prev) => {
         if (!Object.prototype.hasOwnProperty.call(prev, numericId)) return prev;
         const next = { ...prev };
@@ -787,73 +788,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     removeCardTimeoutsRef.current.set(numericId, timeoutId);
   }, []);
 
-  const buildLocalProductoFromCreateResponse = useCallback((cleaned, createResponse) => {
-    const directResponse = createResponse && typeof createResponse === 'object' && !Array.isArray(createResponse)
-      ? createResponse
-      : null;
-    const nestedProducto = directResponse?.producto && typeof directResponse.producto === 'object'
-      ? directResponse.producto
-      : null;
-    const nestedDataProducto = directResponse?.data?.producto && typeof directResponse.data.producto === 'object'
-      ? directResponse.data.producto
-      : null;
-    const nestedData = directResponse?.data && typeof directResponse.data === 'object' && !Array.isArray(directResponse.data)
-      ? directResponse.data
-      : null;
-
-    const apiProducto =
-      [nestedProducto, nestedDataProducto, nestedData, directResponse]
-        .find((candidate) => candidate && (candidate.id_producto || candidate.nombre_producto)) || null;
-
-    const rawId =
-      apiProducto?.id_producto
-      ?? directResponse?.id_producto
-      ?? directResponse?.insertId
-      ?? directResponse?.id;
-    const persistedId = parseProductoPersistedId(rawId);
-    const safeId = persistedId ?? nextTempProductoId();
-
-    const localProductoBase = {
-      id_producto: safeId,
-      nombre_producto: cleaned.nombre_producto,
-      precio: cleaned.precio,
-      cantidad: cleaned.cantidad,
-      stock_minimo: cleaned.stock_minimo,
-      descripcion_producto: cleaned.descripcion_producto || '',
-      fecha_ingreso_producto: cleaned.fecha_ingreso_producto || '',
-      fecha_caducidad: cleaned.fecha_caducidad || '',
-      id_categoria_producto: cleaned.id_categoria_producto,
-      id_almacen: cleaned.id_almacen,
-      id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS ? (cleaned.id_tipo_departamento ?? null) : null,
-      estado: true,
-      // NEW: flag local para identificar cards creadas sin ID persistido y forzar sincronizacion silenciosa.
-      // WHY: evitar que un ID temporal llegue a edit/delete mientras el backend no retorna `id_producto`.
-      // IMPACT: propiedad solo frontend; desaparece al sincronizar desde GET /productos.
-      __local_temp_id: persistedId === null
-    };
-
-    return apiProducto
-      ? {
-          ...localProductoBase,
-          ...apiProducto,
-          id_producto: parseProductoPersistedId(apiProducto?.id_producto ?? safeId) ?? safeId,
-          __local_temp_id: parseProductoPersistedId(apiProducto?.id_producto ?? safeId) === null
-        }
-      : localProductoBase;
-  }, [nextTempProductoId, parseProductoPersistedId]);
-
   // AJUSTE: usa normalización estricta para mostrar estado activo/inactivo de forma consistente.
   const resolveEstadoActivo = useCallback((producto) => {
     if (!producto) return false;
-    const localEstado = localEstadoMap[producto?.id_producto];
+    const localEstado = localEstadoMap[producto.id_producto];
     if (localEstado !== null && localEstado !== undefined) return productoActivo(localEstado);
-    return productoActivo(producto?.estado);
+    return productoActivo(producto.estado);
   }, [localEstadoMap, productoActivo]);
 
   const resolveEstadoProducto = useCallback((producto) => {
     if (!resolveEstadoActivo(producto)) return { label: 'Inactivo', className: 'is-inactive' };
 
-    const stockMeta = getStockMeta(producto?.cantidad, producto?.stock_minimo);
+    const stockMeta = getStockMeta(producto.cantidad, producto.stock_minimo);
     if (stockMeta.qty <= 0) return { label: 'Sin existencias', className: 'is-empty' };
     if (stockMeta.className === 'is-low') return { label: 'Stock bajo', className: 'is-low' };
     return { label: 'En existencia', className: 'is-ok' };
@@ -876,14 +822,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const onCreateImageChange = useCallback((event) => {
     const input = event.target;
-    const file = input?.files?.[0];
+    const file = input.files?.[0];
 
     if (!file) {
       clearCreateImage();
       return;
     }
 
-    const fileError = getInventarioImageFileError(file);
+    const fileError = getInventarioImageFileError(file, INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS);
     if (fileError) {
       setCreateImage((prev) => ({
         ...prev,
@@ -934,40 +880,72 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const getProductoImageSrc = useCallback((producto) => {
     if (!producto) return '';
-    const id = producto?.id_producto;
+    const id = producto.id_producto;
     if (imageErrorMap[id]) return '';
     return resolveInventarioImageUrl(
-      producto?.imagen_principal_url || producto?.imagen_url || producto?.imagen || producto?.url_publica || ''
+      producto.imagen_principal_url || producto.imagen_url || producto.imagen || producto.url_publica || ''
     );
   }, [imageErrorMap]);
 
   const uploadProductoImageFile = useCallback(async (file) => {
-    const payload = await buildInventarioImageUploadPayload(file);
-    return inventarioService.crearArchivoImagen(payload);
+    const optimizedFile = await optimizeInventarioImageForUpload(
+      file,
+      INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS
+    );
+    const optimizedFileError = getInventarioImageFileError(
+      optimizedFile,
+      INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS
+    );
+    if (optimizedFileError) throw new Error(optimizedFileError);
+
+    const payload = await buildInventarioImageUploadPayload(optimizedFile);
+    return inventarioService.crearArchivoImagen({
+      ...payload,
+      bucket: 'jonnys-assets'
+    });
+  }, []);
+
+  const extractProductoFromApiResponse = useCallback((payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    if (payload.producto && typeof payload.producto === 'object') return payload.producto;
+    if (payload.data.producto && typeof payload.data.producto === 'object') return payload.data.producto;
+    return null;
+  }, []);
+
+  const cleanupArchivoTemporal = useCallback(async (idArchivo, reason) => {
+    const parsedId = Number.parseInt(String(idArchivo ?? ''), 10);
+    if (!Number.isInteger(parsedId) || parsedId <= 0) return true;
+    try {
+      await inventarioService.eliminarArchivo(parsedId, {
+        reason: String(reason || 'productos_cleanup')
+      });
+      return true;
+    } catch (cleanupError) {
+      if (import.meta.env.DEV) {
+        console.error('PRODUCTOS cleanupArchivoTemporal error:', cleanupError);
+      }
+      return false;
+    }
   }, []);
 
   // ==============================
   // VALIDACIÓN MÍNIMA (PRODUCTOS)
   // ==============================
-  const validarProducto = (data, options = {}) => {
-    const includeCantidad = options.includeCantidad !== false;
+  const validarProducto = (data) => {
     // === LIMPIEZA ===
-    const nombre = String(data?.nombre_producto ?? '').trim();
-    const descripcion = String(data?.descripcion_producto ?? '').trim();
+    const nombre = String(data.nombre_producto ?? '').trim();
+    const descripcion = String(data.descripcion_producto ?? '').trim();
 
-    const precioRaw = String(data?.precio ?? '').trim();
-    const cantidadRaw = String(data?.cantidad ?? '').trim();
+    const precioRaw = String(data.precio ?? '').trim();
     // NUEVO: se valida stock_minimo para enviar valor compatible con backend.
-    const stockMinimoRaw = String(data?.stock_minimo ?? '').trim();
+    const stockMinimoRaw = String(data.stock_minimo ?? '').trim();
 
-    const categoriaRaw = String(data?.id_categoria_producto ?? '').trim();
-    const rawAlmacenesCount = Array.isArray(data?.id_almacenes) ? data.id_almacenes.filter((v) => String(v ?? '').trim() !== '').length : 0;
-    const almacenesSelected = normalizeSelectedAlmacenes(data?.id_almacenes, data?.id_almacen);
-    const almacenRaw = String(almacenesSelected[0] ?? data?.id_almacen ?? '').trim();
-    const deptoRaw = SHOW_PRODUCTO_DEPARTAMENTOS ? String(data?.id_tipo_departamento ?? '').trim() : '';
+    const categoriaRaw = String(data.id_categoria_producto ?? '').trim();
+    const almacenRaw = String(data.id_almacen ?? '').trim();
+    const deptoRaw = SHOW_PRODUCTO_DEPARTAMENTOS ? String(data.id_tipo_departamento ?? '').trim() : '';
 
-    const fechaIngreso = String(data?.fecha_ingreso_producto ?? '').trim();
-    const fechaCaducidad = String(data?.fecha_caducidad ?? '').trim();
+    const fechaIngreso = String(data.fecha_ingreso_producto ?? '').trim();
+    const fechaCaducidad = String(data.fecha_caducidad ?? '').trim();
 
     const errors = {};
 
@@ -980,14 +958,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const precio = Number.parseFloat(precioRaw);
     if (!precioRaw) errors.precio = 'EL PRECIO ES OBLIGATORIO';
     else if (Number.isNaN(precio) || precio < 0) errors.precio = 'DEBE SER UN NÚMERO >= 0';
-
-    // === CANTIDAD (SOLO EN CREACION) ===
-    const cantidad = Number.parseInt(cantidadRaw, 10);
-    if (includeCantidad) {
-      if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
-      else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
-      else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
-    }
 
     // === FK CATEGORÍA OBLIGATORIA ===
     // VALIDACION: stock_minimo debe ser entero no negativo.
@@ -1003,10 +973,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
     // === FK ALMACÉN OBLIGATORIA ===
     const id_almacen = Number.parseInt(almacenRaw, 10);
-    if (rawAlmacenesCount > 1) {
-      errors.id_almacen = SINGLE_ALMACEN_TEMP_MESSAGE;
-    }
-    if (almacenesSelected.length === 0) {
+    if (!almacenRaw) {
       errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACÉN';
     } else if (Number.isNaN(id_almacen) || id_almacen <= 0) {
       errors.id_almacen = 'DEBE SER UN NÚMERO > 0';
@@ -1032,20 +999,27 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (fechaCaducidad && !/^\d{4}-\d{2}-\d{2}$/.test(fechaCaducidad)) {
       errors.fecha_caducidad = 'FORMATO INVÁLIDO (YYYY-MM-DD)';
     }
-
+    if (
+      !errors.fecha_ingreso_producto &&
+      !errors.fecha_caducidad &&
+      fechaIngreso &&
+      fechaCaducidad &&
+      fechaCaducidad < fechaIngreso
+    ) {
+      errors.fecha_caducidad = PRODUCTO_DATE_ORDER_MESSAGE;
+    }
     return {
       ok: Object.keys(errors).length === 0,
       errors,
       cleaned: {
         nombre_producto: nombre,
         precio,
-        cantidad: Number.isNaN(cantidad) || cantidad < 0 ? 0 : cantidad,
+        cantidad: 0,
         stock_minimo,
         descripcion_producto: descripcion,
         fecha_ingreso_producto: fechaIngreso,
         fecha_caducidad: fechaCaducidad,
         id_categoria_producto,
-        id_almacenes: id_almacen > 0 ? [id_almacen] : [],
         id_almacen,
         id_tipo_departamento // PUEDE SER null (PERO NO LO ENVIAREMOS SI ES NULL)
       }
@@ -1055,8 +1029,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   // CONSTRUIR PAYLOAD SIN NULLS
   // ==============================
-  const buildProductoPayload = (cleaned, options = {}) => {
-    const includeCantidad = options.includeCantidad !== false;
+  const buildProductoPayload = (cleaned) => {
     // COMENTARIO EN MAYÚSCULAS: OMITIMOS CAMPOS OPCIONALES VACÍOS PARA NO ENVIAR NULLS
     const payload = {
       nombre_producto: cleaned.nombre_producto,
@@ -1064,11 +1037,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       // AJUSTE: se incluye stock_minimo como numero para alinear create con backend.
       stock_minimo: cleaned.stock_minimo,
       id_categoria_producto: cleaned.id_categoria_producto,
-      id_almacen: cleaned.id_almacen,
-      // AM: payload multi-almacen (backend acepta 1 o varios ids).
-      id_almacenes: cleaned.id_almacenes
+      id_almacen: cleaned.id_almacen
     };
-    if (includeCantidad) payload.cantidad = cleaned.cantidad;
 
     if (cleaned.descripcion_producto) payload.descripcion_producto = cleaned.descripcion_producto;
     if (cleaned.fecha_ingreso_producto) payload.fecha_ingreso_producto = cleaned.fecha_ingreso_producto;
@@ -1083,24 +1053,24 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   // CARGAS (API)
   // ==============================
-  const cargarProductos = async () => {
-    setLoadingProductos(true);
+  const cargarProductos = useCallback(async (overrides = {}) => {
+    const silent = overrides.silent === true;
+    if (!silent) setLoadingProductos(true);
     setError('');
     try {
-      // COMENTARIO EN MAYÚSCULAS: PRODUCTOS SE CARGA DESDE EL BACKEND /productos
-      // NEW: se pide siempre el dataset global (activos + inactivos) para KPIs y "Total" global.
-      // WHY: el toggle "Ver inactivos" ahora debe afectar solo el listado visible (filtro local).
-      // IMPACT: no cambia endpoint ni contrato; la vista usa el mismo `productos` con filtro por estado.
-      const data = await inventarioService.getProductos({ incluirInactivos: true });
-      setProductos(Array.isArray(data) ? data : []);
+      const dataset = await fetchProductosDataset(overrides);
+      setProductos(dataset.items);
+      setTotalProductos(dataset.total);
+      setTotalPages(1);
+      if (currentPage !== 1) setCurrentPage(1);
     } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO PRODUCTOS';
+      const msg = e.message || 'ERROR CARGANDO PRODUCTOS';
       setError(msg);
       safeToast('ERROR', msg, 'danger');
     } finally {
-      setLoadingProductos(false);
+      if (!silent) setLoadingProductos(false);
     }
-  };
+  }, [currentPage, fetchProductosDataset, safeToast]);
 
   const cargarAlmacenes = async () => {
     setLoadingAlmacenes(true);
@@ -1108,15 +1078,15 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       const data = await inventarioService.getAlmacenes();
       // AM: compatibilidad defensiva para respuestas array u objeto ({data|resultado}) en el catalogo de almacenes.
       const rows = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.resultado)
-        ? data.resultado
+          ? data
+        : Array.isArray(data.data)
+          ? data.data
+        : Array.isArray(data.resultado)
+          ? data.resultado
         : [];
       setAlmacenes(rows);
     } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO ALMACENES';
+      const msg = e.message || 'ERROR CARGANDO ALMACENES';
       setError(msg);
       safeToast('ERROR', msg, 'danger');
     } finally {
@@ -1131,7 +1101,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       const data = await inventarioService.getTipoDepartamentos();
       setTipoDepartamentos(Array.isArray(data) ? data : []);
     } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO TIPO DEPARTAMENTO';
+      const msg = e.message || 'ERROR CARGANDO TIPO DEPARTAMENTO';
       setError(msg);
       safeToast('ERROR', msg, 'danger');
     } finally {
@@ -1151,12 +1121,28 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, []);
 
   useEffect(() => {
-    // NEW: carga inicial del dataset global de productos (activos + inactivos) para KPIs y listado.
-    // WHY: el toggle "Ver inactivos" ahora filtra localmente y no requiere refetch para cambiar la vista.
-    // IMPACT: reduce recargas visibles en el toggle; CRUD y `cargarProductos()` manual siguen intactos.
+    setCurrentPage(1);
+  }, [
+    almacenFiltro,
+    categoriaFiltro,
+    deptoFiltro,
+    estadoFiltro,
+    search,
+    showInactiveProductos,
+    sortBy,
+    stockFiltro
+  ]);
+
+  useEffect(() => {
     void cargarProductos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cargarProductos]);
+
+  useEffect(() => {
+    setCurrentPage((prev) => {
+      if (prev <= totalPages) return prev;
+      return Math.max(1, totalPages);
+    });
+  }, [totalPages]);
 
   // ==============================
   // RESET FORM CREAR
@@ -1165,7 +1151,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setForm({
       nombre_producto: '',
       precio: '',
-      cantidad: '',
       // AJUSTE: reset consistente del nuevo campo stock_minimo.
       stock_minimo: '0',
       descripcion_producto: '',
@@ -1173,7 +1158,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       fecha_caducidad: '',
       id_categoria_producto: '',
       id_almacen: '',
-      id_almacenes: [],
       id_tipo_departamento: ''
     });
     setCreateErrors({});
@@ -1185,6 +1169,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   const onCrear = async (e) => {
     e.preventDefault();
+    if (!canCrear) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para crear productos.', 'warning');
+      return;
+    }
     if (creating) return;
     setError('');
 
@@ -1192,66 +1180,59 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setCreateErrors(v.errors);
     if (!v.ok) return;
 
-    const duplicateAlmacenId = (Array.isArray(v.cleaned?.id_almacenes) ? v.cleaned.id_almacenes : [])
-      .find((idAlmacen) => Boolean(findDuplicateProducto({ ...v.cleaned, id_almacen: idAlmacen })));
-    if (duplicateAlmacenId) {
-      // AM: validación anti-duplicado en selección multi antes de enviar al backend.
-      const duplicateAlmacenLabel = getAlmacenLabel(duplicateAlmacenId);
+    const duplicateProducto = findDuplicateProducto(v.cleaned);
+    if (duplicateProducto) {
       setCreateErrors((prev) => ({
         ...prev,
-        nombre_producto: `YA EXISTE UN PRODUCTO CON ESTOS DATOS EN ${duplicateAlmacenLabel.toUpperCase()}.`
+        nombre_producto: PRODUCTO_DUPLICATE_CONFLICT_MESSAGE
       }));
       return;
     }
 
     setCreating(true);
+    let uploadedArchivoId = null;
     try {
       const payload = buildProductoPayload(v.cleaned);
-      let uploadedImage = null;
 
       // NEW: si hay imagen seleccionada, se crea primero en `archivos` y luego se envia la FK al POST /productos.
       // WHY: mantener el flujo actual del formulario sin introducir multipart ni romper el contrato existente.
       // IMPACT: el create solo agrega `id_archivo_imagen_principal` cuando la imagen se subio correctamente.
       if (createImage.file) {
         const archivoResp = await uploadProductoImageFile(createImage.file);
-        const archivoId = Number.parseInt(String(archivoResp?.id_archivo ?? ''), 10);
+        const archivoId = Number.parseInt(String(archivoResp.id_archivo ?? ''), 10);
         if (!Number.isInteger(archivoId) || archivoId <= 0) {
           throw new Error('No se pudo obtener el archivo de imagen creado.');
         }
+        uploadedArchivoId = archivoId;
         payload.id_archivo_imagen_principal = archivoId;
-        uploadedImage = {
-          id_archivo_imagen_principal: archivoId,
-          imagen_principal_url: resolveInventarioImageUrl(archivoResp?.url_publica || '')
-        };
       }
 
       const createResp = await inventarioService.crearProducto(payload);
-      const selectedAlmacenes = Array.isArray(v.cleaned?.id_almacenes) ? v.cleaned.id_almacenes : [];
-      if (selectedAlmacenes.length > 1) {
-        // AM: en alta multi-almacen se refresca dataset completo para incorporar todas las sucursales creadas.
-        await syncProductosSilently();
-      } else {
-        const createdProductoLocal = {
-          ...buildLocalProductoFromCreateResponse(v.cleaned, createResp),
-          ...(uploadedImage || {})
-        };
-        upsertProductoLocal(createdProductoLocal);
-        if (createdProductoLocal?.__local_temp_id === true) {
-          // NEW: sincroniza la lista tras create cuando el backend no devolvio `id_producto`.
-          // WHY: reemplazar el ID temporal local por el ID real antes de futuras acciones (edit/delete).
-          // IMPACT: fetch silencioso de `/productos` sin loader global ni cambio de contrato del POST.
-          void syncProductosSilently();
-        }
+      const createdProductoApi = extractProductoFromApiResponse(createResp);
+      const persistedId = parseProductoPersistedId(createdProductoApi.id_producto);
+      if (!createdProductoApi || !persistedId) {
+        throw new Error('No se pudo confirmar el producto creado. Intenta nuevamente.');
       }
+
+      const createdProductoLocal = {
+        ...createdProductoApi,
+        id_producto: persistedId
+      };
+      upsertProductoLocal(createdProductoLocal);
+      uploadedArchivoId = null;
 
       resetForm();
       closeCreateProductoModal();
 
       safeToast('CREADO', 'EL PRODUCTO SE CREÓ CORRECTAMENTE.', 'success');
     } catch (e2) {
+      const cleanupOk = await cleanupArchivoTemporal(uploadedArchivoId, 'productos_create_failed');
       // AJUSTE: se maneja ApiError por status y errores de campo para feedback consistente.
       const msg = handleApiStatusError(e2, 'ERROR CREANDO PRODUCTO', setCreateErrors);
       setError(msg);
+      if (!cleanupOk) {
+        safeToast('AVISO', 'No se pudo limpiar la imagen temporal. Se reintentara posteriormente.', 'warning');
+      }
     } finally {
       setCreating(false);
     }
@@ -1261,24 +1242,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // INICIAR / CANCELAR EDICIÓN
   // ==============================
   const iniciarEdicion = (p) => {
+    if (!canEditar) return;
     setError('');
     setEditErrors({});
     setEditId(p.id_producto);
-    // AM: en edicion prioriza asignaciones multi-almacen reales y usa id_almacen legacy solo como fallback.
-    const selectedAlmacenes = normalizeSelectedAlmacenes(p?.id_almacenes, p?.id_almacen);
 
     setEditForm({
       nombre_producto: p.nombre_producto ?? '',
       precio: p.precio ?? '',
-      cantidad: p.cantidad ?? '',
       // AJUSTE: el form de edicion conserva stock_minimo para validacion homogenea.
       stock_minimo: String(p.stock_minimo ?? '0'),
       descripcion_producto: p.descripcion_producto ?? '',
       fecha_ingreso_producto: toDateInputValue(p.fecha_ingreso_producto),
       fecha_caducidad: toDateInputValue(p.fecha_caducidad),
       id_categoria_producto: String(p.id_categoria_producto ?? ''),
-      id_almacen: selectedAlmacenes[0] ? String(selectedAlmacenes[0]) : String(p.id_almacen ?? ''),
-      id_almacenes: selectedAlmacenes,
+      id_almacen: String(p.id_almacen ?? ''),
       id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && p.id_tipo_departamento ? String(p.id_tipo_departamento) : ''
     });
   };
@@ -1291,8 +1269,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   };
 
   const abrirDrawerProducto = (producto) => {
-    iniciarEdicion(producto);
-    setSelectedProductoId(producto?.id_producto ?? null);
+    if (canEditar) iniciarEdicion(producto);
+    setSelectedProductoId(producto.id_producto ?? null);
     // NEW: el drawer de Productos abre directamente en modo edicion.
     // WHY: el usuario pidio ver todos los campos modificables sin una capa previa de detalle.
     // IMPACT: solo cambia el estado inicial del drawer; el guardado y validaciones permanecen.
@@ -1321,26 +1299,35 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const openDrawerImagePicker = useCallback(() => {
     if (drawerImageAction.loading) return;
-    drawerImageInputRef.current?.click();
+    drawerImageInputRef.current.click();
   }, [drawerImageAction.loading]);
 
   const onDrawerImageChange = useCallback(async (event) => {
     const input = event.target;
-    const file = input?.files?.[0];
+    const file = input.files?.[0];
+
+    if (!canEditar) {
+      setDrawerImageAction({
+        loading: false,
+        error: 'No tienes permisos para editar productos.'
+      });
+      if (input) input.value = '';
+      return;
+    }
 
     if (!file || !selectedProducto) {
       if (input) input.value = '';
       return;
     }
 
-    const fileError = getInventarioImageFileError(file);
+    const fileError = getInventarioImageFileError(file, INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS);
     if (fileError) {
       setDrawerImageAction({ loading: false, error: fileError });
       if (input) input.value = '';
       return;
     }
 
-    const persistedProductId = parseProductoPersistedId(selectedProducto?.id_producto);
+    const persistedProductId = parseProductoPersistedId(selectedProducto.id_producto);
     if (!persistedProductId) {
       const safeMsg = 'No se pudo completar la accion. Verifica los datos e intenta de nuevo.';
       setDrawerImageAction({ loading: false, error: safeMsg });
@@ -1350,50 +1337,70 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       return;
     }
 
+    let uploadedArchivoId = null;
     setDrawerImageAction({ loading: true, error: '' });
     try {
       const archivoResp = await uploadProductoImageFile(file);
-      const archivoId = Number.parseInt(String(archivoResp?.id_archivo ?? ''), 10);
+      const archivoId = Number.parseInt(String(archivoResp.id_archivo ?? ''), 10);
       if (!Number.isInteger(archivoId) || archivoId <= 0) {
         throw new Error('No se pudo obtener el archivo de imagen creado.');
       }
+      uploadedArchivoId = archivoId;
 
-      await inventarioService.actualizarProductoCampo(
+      const updateResp = await inventarioService.actualizarProductoCampo(
         persistedProductId,
         'id_archivo_imagen_principal',
         archivoId
       );
+      const updatedProductoApi = extractProductoFromApiResponse(updateResp);
+      const updatedProductoId = parseProductoPersistedId(updatedProductoApi.id_producto);
 
-      clearProductoImageError(persistedProductId);
-      patchProductoLocalById(persistedProductId, {
-        id_archivo_imagen_principal: archivoId,
-        imagen_principal_url: resolveInventarioImageUrl(archivoResp?.url_publica || '')
-      });
+      if (updatedProductoApi && updatedProductoId) {
+        clearProductoImageError(updatedProductoId);
+        upsertProductoLocal({
+          ...updatedProductoApi,
+          id_producto: updatedProductoId
+        });
+      } else {
+        await syncProductosSilently();
+      }
+      uploadedArchivoId = null;
       setDrawerImageAction({ loading: false, error: '' });
       setDrawerMessage('Imagen actualizada.');
       safeToast('ACTUALIZADO', 'LA IMAGEN DEL PRODUCTO SE ACTUALIZO CORRECTAMENTE.', 'success');
     } catch (errorUpload) {
+      const cleanupOk = await cleanupArchivoTemporal(uploadedArchivoId, 'productos_update_image_failed');
       const msg = handleApiStatusError(errorUpload, 'NO SE PUDO ACTUALIZAR LA IMAGEN DEL PRODUCTO.');
       setDrawerImageAction({ loading: false, error: msg });
       setDrawerMessage(msg);
+      if (!cleanupOk) {
+        safeToast('AVISO', 'No se pudo limpiar la imagen temporal. Se reintentara posteriormente.', 'warning');
+      }
     } finally {
       if (input) input.value = '';
     }
   }, [
+    cleanupArchivoTemporal,
     clearProductoImageError,
+    extractProductoFromApiResponse,
     handleApiStatusError,
     parseProductoPersistedId,
-    patchProductoLocalById,
     safeToast,
     selectedProducto,
     syncProductosSilently,
-    uploadProductoImageFile
+    upsertProductoLocal,
+    uploadProductoImageFile,
+    canEditar
   ]);
 
   const removeDrawerImage = useCallback(async () => {
+    if (!canEditar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+      return;
+    }
     if (drawerImageAction.loading || !selectedProducto) return;
 
-    const persistedProductId = parseProductoPersistedId(selectedProducto?.id_producto);
+    const persistedProductId = parseProductoPersistedId(selectedProducto.id_producto);
     if (!persistedProductId) {
       const safeMsg = 'No se pudo completar la accion. Verifica los datos e intenta de nuevo.';
       setDrawerImageAction({ loading: false, error: safeMsg });
@@ -1403,21 +1410,30 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     }
 
     const currentImageSrc = getProductoImageSrc(selectedProducto);
-    if (!currentImageSrc && !selectedProducto?.id_archivo_imagen_principal) return;
+    if (!currentImageSrc && !selectedProducto.id_archivo_imagen_principal) return;
 
     setDrawerImageAction({ loading: true, error: '' });
     try {
-      await inventarioService.actualizarProductoCampo(
+      const updateResp = await inventarioService.actualizarProductoCampo(
         persistedProductId,
         'id_archivo_imagen_principal',
         null
       );
+      const updatedProductoApi = extractProductoFromApiResponse(updateResp);
+      const updatedProductoId = parseProductoPersistedId(updatedProductoApi.id_producto);
 
-      clearProductoImageError(persistedProductId);
-      patchProductoLocalById(persistedProductId, {
-        id_archivo_imagen_principal: null,
-        imagen_principal_url: null
-      });
+      if (updatedProductoApi && updatedProductoId) {
+        clearProductoImageError(updatedProductoId);
+        upsertProductoLocal({
+          ...updatedProductoApi,
+          id_producto: updatedProductoId
+        });
+      } else {
+        patchProductoLocalById(persistedProductId, {
+          id_archivo_imagen_principal: null,
+          imagen_principal_url: null
+        });
+      }
       // NEW: limpia el file input oculto del drawer al desvincular la imagen.
       // WHY: evita reenvios accidentales o que el navegador retenga el mismo archivo seleccionado.
       // IMPACT: solo sincroniza el estado visual del picker del drawer.
@@ -1433,42 +1449,43 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, [
     clearProductoImageError,
     drawerImageAction.loading,
+    extractProductoFromApiResponse,
     getProductoImageSrc,
     handleApiStatusError,
     parseProductoPersistedId,
     patchProductoLocalById,
     safeToast,
     selectedProducto,
-    syncProductosSilently
+    syncProductosSilently,
+    upsertProductoLocal,
+    canEditar
   ]);
 
   const duplicarProductoDesdeDrawer = () => {
+    if (!canCrear) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para crear productos.', 'warning');
+      return;
+    }
     if (!selectedProducto) return;
 
     // AJUSTE: se toma snapshot antes de cerrar drawer para no perder la referencia seleccionada.
     const productoBase = { ...selectedProducto };
     // VALIDACION: se normalizan campos numericos para evitar valores invalidos al precargar.
-    const precioRaw = Number.parseFloat(String(productoBase?.precio ?? '0'));
+    const precioRaw = Number.parseFloat(String(productoBase.precio ?? '0'));
     const precioNormalizado = Number.isNaN(precioRaw) || precioRaw < 0 ? 0 : precioRaw;
-    const stockMinimoRaw = Number.parseInt(String(productoBase?.stock_minimo ?? '0'), 10);
+    const stockMinimoRaw = Number.parseInt(String(productoBase.stock_minimo ?? '0'), 10);
     const stockMinimoNormalizado = Number.isNaN(stockMinimoRaw) || stockMinimoRaw < 0 ? 0 : stockMinimoRaw;
-    // AM: al duplicar conserva todas las asignaciones multi-almacen existentes del item base.
-    const selectedAlmacenes = normalizeSelectedAlmacenes(productoBase?.id_almacenes, productoBase?.id_almacen);
-
     setForm({
-      nombre_producto: productoBase?.nombre_producto ? `${productoBase.nombre_producto} (copia)` : '',
+      nombre_producto: productoBase.nombre_producto ? `${productoBase.nombre_producto} (copia)` : '',
       precio: String(precioNormalizado),
-      // VALIDACION: el duplicado inicia con cantidad 0 para evitar clonar existencias sin intencion.
-      cantidad: '0',
       // AJUSTE: al duplicar se replica stock_minimo y si no existe se usa 0.
       stock_minimo: String(stockMinimoNormalizado),
-      descripcion_producto: productoBase?.descripcion_producto ?? '',
-      fecha_ingreso_producto: toDateInputValue(productoBase?.fecha_ingreso_producto),
-      fecha_caducidad: toDateInputValue(productoBase?.fecha_caducidad),
-      id_categoria_producto: String(productoBase?.id_categoria_producto ?? ''),
-      id_almacen: selectedAlmacenes[0] ? String(selectedAlmacenes[0]) : String(productoBase?.id_almacen ?? ''),
-      id_almacenes: selectedAlmacenes,
-      id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && productoBase?.id_tipo_departamento ? String(productoBase?.id_tipo_departamento) : ''
+      descripcion_producto: productoBase.descripcion_producto ?? '',
+      fecha_ingreso_producto: toDateInputValue(productoBase.fecha_ingreso_producto),
+      fecha_caducidad: toDateInputValue(productoBase.fecha_caducidad),
+      id_categoria_producto: String(productoBase.id_categoria_producto ?? ''),
+      id_almacen: String(productoBase.id_almacen ?? ''),
+      id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && productoBase.id_tipo_departamento ? String(productoBase.id_tipo_departamento) : ''
     });
     setCreateErrors({});
     clearCreateImage();
@@ -1485,15 +1502,19 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     // NUEVO: al abrir Nuevo desde duplicar se desplaza al formulario para completar datos.
     if (typeof window !== 'undefined') {
       window.requestAnimationFrame(() => {
-        createSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        createSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
   };
 
   const toggleEstadoProductoDesdeDrawer = async () => {
+    if (!canEditar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+      return;
+    }
     if (!selectedProducto || togglingEstado) return;
 
-    const productId = selectedProducto?.id_producto;
+    const productId = selectedProducto.id_producto;
     const persistedProductId = parseProductoPersistedId(productId);
     if (!persistedProductId) {
       // NEW: evita mutar backend con IDs temporales/fuera de rango y fuerza sincronizacion silenciosa.
@@ -1533,7 +1554,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       setProductos((prev) =>
         prev.map((item) => (
-          Number(item?.id_producto) === Number(productId)
+          Number(item.id_producto) === Number(productId)
             ? { ...item, estado: nextActive }
             : item
         ))
@@ -1553,7 +1574,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         delete next[productId];
         return next;
       });
-      const msg = e?.message || 'No se pudo actualizar el estado. Intenta de nuevo.';
+      const msg = e.message || 'No se pudo actualizar el estado. Intenta de nuevo.';
       setDrawerMessage(msg);
       safeToast('ERROR', msg, 'danger');
     } finally {
@@ -1565,9 +1586,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // WHY: corregir la coherencia del CTA del card (ACTIVAR/INACTIVAR) sin obligar al usuario a abrir el drawer.
   // IMPACT: reutiliza `actualizarProductoCampo` y el estado local existente; no cambia contratos ni el DELETE actual.
   const activarProductoDesdeCard = useCallback(async (producto) => {
+    if (!canEditar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+      return;
+    }
     if (!producto || togglingEstado || deleting) return;
 
-    const productId = producto?.id_producto;
+    const productId = producto.id_producto;
     const persistedProductId = parseProductoPersistedId(productId);
     if (!persistedProductId) {
       // NEW: evita mutar backend con IDs temporales/fuera de rango y fuerza sincronizacion silenciosa.
@@ -1630,13 +1655,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     safeToast,
     selectedProductoId,
     syncProductosSilently,
-    togglingEstado
+    togglingEstado,
+    canEditar
   ]);
 
   // ==============================
   // GUARDAR EDICIÓN (CAMPO POR CAMPO)
   // ==============================
   const guardarEdicion = async () => {
+    if (!canEditar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+      return;
+    }
     if (!editId || !editForm || savingEdit) return;
 
     setError('');
@@ -1645,12 +1675,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       ...editForm,
       stock_minimo: String(editForm?.stock_minimo ?? '').trim() === '' ? '0' : editForm.stock_minimo
     };
-    const v = validarProducto(editData, { includeCantidad: false });
+    const v = validarProducto(editData);
     setEditErrors(v.errors);
     if (!v.ok) return;
 
     // VALIDACION: bloquea guardado si stock_minimo no es entero valido >= 0.
-    const stockMinimoEdit = Number.parseInt(String(v.cleaned?.stock_minimo ?? '0'), 10);
+    const stockMinimoEdit = Number.parseInt(String(v.cleaned.stock_minimo ?? '0'), 10);
     if (Number.isNaN(stockMinimoEdit) || stockMinimoEdit < 0) {
       setEditErrors((prev) => ({
         ...prev,
@@ -1659,11 +1689,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       return;
     }
 
-    const duplicateEditAlmacenId = (Array.isArray(v.cleaned?.id_almacenes) ? v.cleaned.id_almacenes : [])
-      .find((idAlmacen) => Boolean(findDuplicateProducto({ ...v.cleaned, id_almacen: idAlmacen }, { excludeId: editId })));
-    if (duplicateEditAlmacenId) {
-      // AM: valida duplicados por cada almacen seleccionado antes de persistir la edicion multi.
-      const duplicateMsg = `YA EXISTE UN PRODUCTO CON ESTOS DATOS EN ${getAlmacenLabel(duplicateEditAlmacenId).toUpperCase()}.`;
+    const actual = productos.find((x) => x.id_producto === editId);
+    if (!actual) {
+      const safeMsg = 'No se pudo completar la accion. Verifica los datos e intenta de nuevo.';
+      setError(safeMsg);
+      setDrawerMessage(safeMsg);
+      void syncProductosSilently();
+      return;
+    }
+
+    const duplicateEdit = findDuplicateProducto(v.cleaned, {
+      excludeId: editId,
+      deptoFallback: SHOW_PRODUCTO_DEPARTAMENTOS ? null : (actual.id_tipo_departamento ?? null)
+    });
+    if (duplicateEdit) {
+      const duplicateMsg = PRODUCTO_DUPLICATE_CONFLICT_MESSAGE;
       setEditErrors((prev) => ({
         ...prev,
         nombre_producto: duplicateMsg
@@ -1686,53 +1726,22 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
     setSavingEdit(true);
     try {
-      const actual = productos.find((x) => x.id_producto === editId);
-      if (!actual) throw new Error('PRODUCTO NO ENCONTRADO');
-
-      const almacenesSolicitados = normalizeSelectedAlmacenes(v.cleaned?.id_almacenes, v.cleaned?.id_almacen);
-      const almacenActual = Number.parseInt(String(actual?.id_almacen ?? ''), 10);
-      const isMultiSync = almacenesSolicitados.length > 1 || (almacenesSolicitados[0] && almacenesSolicitados[0] !== almacenActual);
-
-      if (isMultiSync) {
-        // AM: cuando se seleccionan varios almacenes (o se mueve de sucursal), usa endpoint transaccional multi.
-        const payloadMulti = buildProductoPayload({
-          ...v.cleaned,
-          id_almacenes: almacenesSolicitados,
-          id_almacen: almacenesSolicitados[0]
-        }, { includeCantidad: false });
-
-        await inventarioService.actualizarProductoMultiAlmacen(persistedEditId, payloadMulti);
-        await syncProductosSilently();
-
-        const shouldCloseDrawerAfterEdit = drawerOpen && Number(selectedProductoId) === Number(persistedEditId);
-        if (shouldCloseDrawerAfterEdit) {
-          cerrarDrawerProducto();
-        } else {
-          setDrawerMessage('Cambios guardados.');
-          setDrawerEditMode(false);
-        }
-        safeToast('EXITO', 'Cambios guardados.', 'success');
-        return;
-      }
-
       // COMENTARIO EN MAYÚSCULAS: SOLO ACTUALIZAMOS CAMPOS QUE CAMBIARON
       const cambios = [];
 
-      const nombreActual = String(actual?.nombre_producto ?? '').trim();
-      const precioActual = Number.parseFloat(String(actual?.precio ?? ''));
+      const nombreActual = String(actual.nombre_producto ?? '').trim();
+      const precioActual = Number.parseFloat(String(actual.precio ?? ''));
       // AJUSTE: normaliza stock_minimo actual para comparar contra edicion con fallback 0.
-      const stockMinimoActualRaw = Number.parseInt(String(actual?.stock_minimo ?? '0'), 10);
+      const stockMinimoActualRaw = Number.parseInt(String(actual.stock_minimo ?? '0'), 10);
       const stockMinimoActual = Number.isNaN(stockMinimoActualRaw) ? 0 : stockMinimoActualRaw;
 
-      const descActual = String(actual?.descripcion_producto ?? '').trim();
+      const descActual = String(actual.descripcion_producto ?? '').trim();
 
-      const catActual = Number.parseInt(String(actual?.id_categoria_producto ?? ''), 10);
-      const almActual = Number.parseInt(String(actual?.id_almacen ?? ''), 10);
+      const catActual = Number.parseInt(String(actual.id_categoria_producto ?? ''), 10);
+      const ingresoActual = toDateInputValue(actual.fecha_ingreso_producto);
+      const caducidadActual = toDateInputValue(actual.fecha_caducidad);
 
-      const ingresoActual = toDateInputValue(actual?.fecha_ingreso_producto);
-      const caducidadActual = toDateInputValue(actual?.fecha_caducidad);
-
-      const deptoActual = actual?.id_tipo_departamento ? Number.parseInt(String(actual.id_tipo_departamento), 10) : null;
+      const deptoActual = actual.id_tipo_departamento ? Number.parseInt(String(actual.id_tipo_departamento), 10) : null;
 
       if (v.cleaned.nombre_producto !== nombreActual) cambios.push(['nombre_producto', v.cleaned.nombre_producto]);
       if (!Number.isNaN(v.cleaned.precio) && v.cleaned.precio !== precioActual) cambios.push(['precio', v.cleaned.precio]);
@@ -1741,10 +1750,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       if (!Number.isNaN(v.cleaned.id_categoria_producto) && v.cleaned.id_categoria_producto !== catActual) {
         cambios.push(['id_categoria_producto', v.cleaned.id_categoria_producto]);
-      }
-
-      if (!Number.isNaN(v.cleaned.id_almacen) && v.cleaned.id_almacen !== almActual) {
-        cambios.push(['id_almacen', v.cleaned.id_almacen]);
       }
 
       // DESCRIPCIÓN: PERMITIMOS VACÍO (NO ES NULL)
@@ -1769,10 +1774,28 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         return;
       }
 
-      for (const [campo, valor] of cambios) {
+      let cambiosOrdenados = cambios;
+      const changeIngreso = cambios.find(([campo]) => campo === 'fecha_ingreso_producto');
+      const changeCaducidad = cambios.find(([campo]) => campo === 'fecha_caducidad');
+      if (changeIngreso && changeCaducidad) {
+        const nextIngreso = String(changeIngreso[1] ?? '').trim();
+        const nextCaducidad = String(changeCaducidad[1] ?? '').trim();
+        const canIngresoFirst = !caducidadActual || caducidadActual >= nextIngreso;
+        const canCaducidadFirst = !ingresoActual || nextCaducidad >= ingresoActual;
+        const nonDateChanges = cambios.filter(
+          ([campo]) => campo !== 'fecha_ingreso_producto' && campo !== 'fecha_caducidad'
+        );
+        if (!canIngresoFirst && canCaducidadFirst) {
+          cambiosOrdenados = [...nonDateChanges, changeCaducidad, changeIngreso];
+        } else {
+          cambiosOrdenados = [...nonDateChanges, changeIngreso, changeCaducidad];
+        }
+      }
+
+      for (const [campo, valor] of cambiosOrdenados) {
         await inventarioService.actualizarProductoCampo(persistedEditId, campo, valor);
       }
-      const patchLocal = Object.fromEntries(cambios);
+      const patchLocal = Object.fromEntries(cambiosOrdenados);
       patchProductoLocalById(persistedEditId, patchLocal);
       setLocalEstadoMap((prev) => {
         if (!Object.prototype.hasOwnProperty.call(prev, persistedEditId)) return prev;
@@ -1802,6 +1825,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ELIMINAR PRODUCTO (CONFIRMADO)
   // ==============================
   const eliminarConfirmado = async () => {
+    if (!canInactivar) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para inactivar productos.', 'warning');
+      return;
+    }
     const id = confirmModal.idToDelete;
     if (!id || deleting) return;
     const persistedDeleteId = parseProductoPersistedId(id);
@@ -1824,7 +1851,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       closeConfirmDelete();
       if (Number(selectedProductoId) === Number(persistedDeleteId) && drawerOpen) {
         if (showInactiveProductos) {
-          setDrawerMessage(resp?.message || 'Producto inactivado.');
+          setDrawerMessage(resp.message || 'Producto inactivado.');
         } else {
           cerrarDrawerProducto();
         }
@@ -1839,7 +1866,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         delete next[persistedDeleteId];
         return next;
       });
-      safeToast('INACTIVADO', resp?.message || 'PRODUCTO INACTIVADO.', 'success');
+      safeToast('INACTIVADO', resp.message || 'PRODUCTO INACTIVADO.', 'success');
     } catch (e) {
       const msg = handleApiStatusError(e, 'ERROR INACTIVANDO PRODUCTO');
       setError(msg);
@@ -1853,81 +1880,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // FILTRAR + ORDENAR
   // ==============================
   const productosFiltrados = useMemo(() => {
-    const s = search.trim().toLowerCase();
-
-    const filtered = [...productos].filter((p) => {
-      const deptoTexto = SHOW_PRODUCTO_DEPARTAMENTOS ? getDeptoLabel(p.id_tipo_departamento) : '';
-      const texto = `${p.nombre_producto ?? ''} ${p.descripcion_producto ?? ''} ${getCategoriaLabel(p.id_categoria_producto)} ${getAlmacenLabel(p.id_almacen)} ${deptoTexto}`.toLowerCase();
-      const matchTexto = s ? texto.includes(s) : true;
-
-      const cant = Number.parseInt(String(p.cantidad ?? '0'), 10);
-      const conStock = !Number.isNaN(cant) && cant > 0;
-
-      const matchStock =
-        stockFiltro === 'todos' ? true : stockFiltro === 'con_stock' ? conStock : !conStock;
-
-      const matchCategoria =
-        categoriaFiltro === 'todos' ? true : String(p.id_categoria_producto) === String(categoriaFiltro);
-
-      const matchAlmacen = almacenFiltroIds.length === 0
-        ? true
-        : almacenFiltroIds.includes(Number.parseInt(String(p?.id_almacen ?? ''), 10));
-
-      const matchDepto =
-        !SHOW_PRODUCTO_DEPARTAMENTOS || deptoFiltro === 'todos'
-          ? true
-          : String(p.id_tipo_departamento ?? '') === String(deptoFiltro);
-
-      // AJUSTE: filtro por estado usando normalizacion de activo/inactivo.
-      const activo = resolveEstadoActivo(p);
-      // NEW: modo "Ver inactivos" fuerza listado exclusivo de inactivos; OFF deja solo activos.
-      // WHY: evitar mezclar estados cuando el backend devuelve ambos con `incluir_inactivos=1`.
-      // IMPACT: filtro local adicional en la grilla/carrusel; no altera handlers ni paginación visual.
-      const matchViewEstado = showInactiveProductos ? !activo : activo;
-      const matchEstado =
-        estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? activo : !activo;
-
-      return matchTexto && matchStock && matchEstado && matchCategoria && matchAlmacen && matchDepto && matchViewEstado;
-    });
-
-    filtered.sort((a, b) => {
-      // NEW: prioridad operativa fija para mostrar primero sin stock y luego stock bajo.
-      // WHY: el usuario necesita ver faltantes al inicio sin importar si la vista es cards o listado.
-      // IMPACT: respeta filtros activos y aplica el `sortBy` actual solo dentro de cada grupo de prioridad.
-      const stockRankDiff =
-        getStockPriorityRank(a?.cantidad, a?.stock_minimo) - getStockPriorityRank(b?.cantidad, b?.stock_minimo);
-      if (stockRankDiff !== 0) return stockRankDiff;
-
-      let sortDiff = 0;
-      if (sortBy === 'nombre_asc') {
-        sortDiff = String(a?.nombre_producto ?? '').localeCompare(String(b?.nombre_producto ?? ''), 'es', { sensitivity: 'base' });
-      } else if (sortBy === 'nombre_desc') {
-        sortDiff = String(b?.nombre_producto ?? '').localeCompare(String(a?.nombre_producto ?? ''), 'es', { sensitivity: 'base' });
-      } else if (sortBy === 'precio_desc') {
-        sortDiff = Number(b?.precio ?? 0) - Number(a?.precio ?? 0);
-      } else if (sortBy === 'precio_asc') {
-        sortDiff = Number(a?.precio ?? 0) - Number(b?.precio ?? 0);
-      } else if (sortBy === 'stock_desc') {
-        sortDiff = Number(b?.cantidad ?? 0) - Number(a?.cantidad ?? 0);
-      } else if (sortBy === 'stock_asc') {
-        sortDiff = Number(a?.cantidad ?? 0) - Number(b?.cantidad ?? 0);
-      } else {
-        sortDiff = Number(b?.id_producto ?? 0) - Number(a?.id_producto ?? 0);
-      }
-      if (sortDiff !== 0) return sortDiff;
-
-      const byName = String(a?.nombre_producto ?? '').localeCompare(String(b?.nombre_producto ?? ''), 'es', { sensitivity: 'base' });
-      if (byName !== 0) return byName;
-      return Number(a?.id_producto ?? 0) - Number(b?.id_producto ?? 0);
-    });
-
-    return filtered;
-  }, [productos, search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltroIds, deptoFiltro, sortBy, showInactiveProductos, getCategoriaLabel, getAlmacenLabel, getDeptoLabel, resolveEstadoActivo]);
+    return Array.isArray(productos) ? productos : [];
+  }, [productos]);
 
   const kpis = useMemo(() => {
     const total = Array.isArray(productos) ? productos.length : 0;
-    const conStock = (productos || []).filter((p) => getStockMeta(p?.cantidad, p?.stock_minimo).qty > 0).length;
-    const stockBajo = (productos || []).filter((p) => getStockMeta(p?.cantidad, p?.stock_minimo).className === 'is-low').length;
+    const conStock = (productos || []).filter((p) => getStockMeta(p.cantidad, p.stock_minimo).qty > 0).length;
+    const stockBajo = (productos || []).filter((p) => getStockMeta(p.cantidad, p.stock_minimo).className === 'is-low').length;
     const sinStock = total - conStock;
     // AJUSTE: se agregan KPIs de activas/inactivas con la misma regla de estado.
     const activas = (productos || []).filter((p) => resolveEstadoActivo(p)).length;
@@ -2009,12 +1968,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const kpiSeries = useMemo(() => {
     const values = Array.isArray(kpiHistory) ? kpiHistory : [];
     return {
-      total: values.map((item) => Number(item?.total ?? 0)),
-      activas: values.map((item) => Number(item?.activas ?? 0)),
-      inactivas: values.map((item) => Number(item?.inactivas ?? 0)),
-      conStock: values.map((item) => Number(item?.conStock ?? 0)),
-      stockBajo: values.map((item) => Number(item?.stockBajo ?? 0)),
-      sinStock: values.map((item) => Number(item?.sinStock ?? 0))
+      total: values.map((item) => Number(item.total ?? 0)),
+      activas: values.map((item) => Number(item.activas ?? 0)),
+      inactivas: values.map((item) => Number(item.inactivas ?? 0)),
+      conStock: values.map((item) => Number(item.conStock ?? 0)),
+      stockBajo: values.map((item) => Number(item.stockBajo ?? 0)),
+      sinStock: values.map((item) => Number(item.sinStock ?? 0))
     };
   }, [kpiHistory]);
 
@@ -2024,11 +1983,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       stockFiltro !== 'todos' ||
       estadoFiltro !== 'todos' ||
       categoriaFiltro !== 'todos' ||
-      almacenFiltroIds.length > 0 ||
+      almacenFiltroId !== null ||
       (SHOW_PRODUCTO_DEPARTAMENTOS && deptoFiltro !== 'todos') ||
       sortBy !== 'recientes'
     );
-  }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltroIds, deptoFiltro, sortBy]);
+  }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltroId, deptoFiltro, sortBy]);
 
   // NEW: contador derivado de filtros activos para reforzar el header del modal de Filtros.
   // WHY: aprovechar el estado actual (filtros live) sin introducir lógica draft adicional.
@@ -2039,11 +1998,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       stockFiltro !== 'todos',
       estadoFiltro !== 'todos',
       categoriaFiltro !== 'todos',
-      almacenFiltroIds.length > 0,
+      almacenFiltroId !== null,
       SHOW_PRODUCTO_DEPARTAMENTOS && deptoFiltro !== 'todos',
       sortBy !== 'recientes'
     ].filter(Boolean).length;
-  }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltroIds, deptoFiltro, sortBy]);
+  }, [search, stockFiltro, estadoFiltro, categoriaFiltro, almacenFiltroId, deptoFiltro, sortBy]);
 
   const productosPaginados = productosFiltrados;
   const carouselConfig = useMemo(
@@ -2067,7 +2026,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // NUEVO: helper de scroll para enfocar paneles abiertos sin cambiar rutas ni navegacion.
   const scrollToSection = useCallback((sectionRef) => {
     if (typeof window === 'undefined') return;
-    const node = sectionRef?.current;
+    const node = sectionRef.current;
     if (!node) return;
     window.requestAnimationFrame(() => {
       node.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2089,6 +2048,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   // AJUSTE: al abrir Nuevo en desktop se cierran filtros y se enfoca el formulario.
   const toggleNuevoDesktop = useCallback(() => {
+    if (!canCrear) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para crear productos.', 'warning');
+      return;
+    }
     const nextOpen = !createPanelOpen;
     if (!nextOpen) {
       setCreatePanelOpen(false);
@@ -2098,14 +2061,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setShowCreateProductoSheet(false);
     setCreatePanelOpen(true);
     scrollToSection(createSectionRef);
-  }, [createPanelOpen, scrollToSection]);
+  }, [canCrear, createPanelOpen, safeToast, scrollToSection]);
 
   // AJUSTE: en mobile, Nuevo abre sheet y cierra filtros para mantener exclusividad.
   const _abrirNuevoMobile = useCallback(() => {
+    if (!canCrear) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para crear productos.', 'warning');
+      return;
+    }
     setFiltersOpen(false);
     setCreatePanelOpen(false);
     setShowCreateProductoSheet(true);
-  }, []);
+  }, [canCrear, safeToast]);
 
   // NEW: cierre compartido del shell lateral de Filtros/Nuevo cuando se usa overlay.
   // WHY: mantener la UX de drawer lateral consistente con otros submodulos sin tocar la logica interna de formularios.
@@ -2183,9 +2150,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     // AJUSTE: limpia tambien el nuevo filtro por estado.
     setEstadoFiltro('todos');
     setCategoriaFiltro('todos');
-    setAlmacenFiltro([]);
+    setAlmacenFiltro('todos');
     setDeptoFiltro('todos');
     setSortBy('recientes');
+    setCurrentPage(1);
   };
 
   const drawerEstadoActivo = selectedProducto ? resolveEstadoActivo(selectedProducto) : true;
@@ -2269,6 +2237,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     );
   };
 
+  if (permisosLoading) return null;
+
+  if (!canVer) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_PRODUCTOS_VER} />;
+  }
+
   // NEW: helper class para habilitar sticky del header del submódulo Productos.
   // WHY: el sticky requiere un override local de `overflow` en el card contenedor.
   // IMPACT: solo comportamiento visual del header al scrollear; no cambia CRUD ni filtros.
@@ -2309,30 +2283,34 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <span>Filtros</span>
           </button>
 
-          <button
-            type="button"
-            className={`inv-prod-toolbar-btn d-none d-md-inline-flex ${createPanelOpen ? 'is-on' : ''}`}
-            // AJUSTE: usa handler dedicado para cerrar filtros y hacer scroll al formulario.
-            onClick={toggleNuevoDesktop}
-            aria-expanded={createPanelOpen}
-            aria-controls="inv-prod-create-panel"
-          >
-            <i className="bi bi-plus-circle" />
-            <span>Nuevo</span>
-          </button>
+          {canCrear ? (
+            <>
+              <button
+                type="button"
+                className={`inv-prod-toolbar-btn d-none d-md-inline-flex ${createPanelOpen ? 'is-on' : ''}`}
+                // AJUSTE: usa handler dedicado para cerrar filtros y hacer scroll al formulario.
+                onClick={toggleNuevoDesktop}
+                aria-expanded={createPanelOpen}
+                aria-controls="inv-prod-create-panel"
+              >
+                <i className="bi bi-plus-circle" />
+                <span>Nuevo</span>
+              </button>
 
-          <button
-            type="button"
-            className="inv-prod-toolbar-btn d-md-none"
-            // NEW: en mobile se reutiliza el drawer lateral para mantener el mismo patron visual de Inventario.
-            // WHY: estandarizar Nuevo de Productos con el shell derecho (glass/overlay/animacion) sin cambiar el formulario.
-            // IMPACT: UI-only; el submit/validaciones del formulario permanecen intactos.
-            onClick={toggleNuevoDesktop}
-            aria-label="Abrir drawer de crear producto"
-          >
-            <i className="bi bi-plus-circle" />
-            <span>Nuevo</span>
-          </button>
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn d-md-none"
+                // NEW: en mobile se reutiliza el drawer lateral para mantener el mismo patron visual de Inventario.
+                // WHY: estandarizar Nuevo de Productos con el shell derecho (glass/overlay/animacion) sin cambiar el formulario.
+                // IMPACT: UI-only; el submit/validaciones del formulario permanecen intactos.
+                onClick={toggleNuevoDesktop}
+                aria-label="Abrir drawer de crear producto"
+              >
+                <i className="bi bi-plus-circle" />
+                <span>Nuevo</span>
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -2390,7 +2368,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         <div className="inv-ins-create-hero__copy">
                           <div id="inv-prod-filters-sub" className="inv-ins-create-hero__kicker">Vista De Filtros</div>
                           <div id="inv-prod-filters-title" className="inv-ins-create-hero__title">
-                            Ajusta stock, categoria y orden del catalogo
+                            Ajusta stock, categoría y orden del catálogo
                           </div>
                         </div>
                         <div className="inv-ins-create-hero__chips">
@@ -2400,11 +2378,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           </span>
                           <span className="inv-ins-create-hero__chip">
                             <i className="bi bi-tags" aria-hidden="true" />
-                            {categoriaFiltro !== 'todos' ? getCategoriaLabel(categoriaFiltro) : 'Todas Las Categorias'}
+                            {categoriaFiltro !== 'todos' ? getCategoriaLabel(categoriaFiltro) : 'Todas las categorías'}
                           </span>
                           <span className="inv-ins-create-hero__chip">
                             <i className="bi bi-arrow-down-up" aria-hidden="true" />
-                            {PRODUCTO_FILTER_SORT_LABELS[sortBy] || 'Mas recientes'}
+                            {PRODUCTO_FILTER_SORT_LABELS[sortBy] || 'Más recientes'}
                           </span>
                         </div>
                       </div>
@@ -2442,7 +2420,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           <div className="row g-2 inv-prod-filters-grid">
                             <div className="col-12 col-md-4">
                               <select className="form-select" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
-                                <option value="todos">CATEGORIAS</option>
+                                <option value="todos">CATEGORÍAS</option>
                                 {categoriasActivas.map((c) => (
                                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                                     {c.nombre_categoria}
@@ -2452,30 +2430,23 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             </div>
 
                             <div className="col-12 col-md-8">
-                              <div className="small text-uppercase fw-semibold text-muted mb-1">Almacenes (1 o más)</div>
-                              <div className="d-flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  className={`btn btn-sm ${almacenFiltroIds.length === 0 ? 'btn-dark' : 'btn-outline-secondary'}`}
-                                  onClick={() => setAlmacenFiltro([])}
-                                >
-                                  Todos
-                                </button>
+                              <div className="small text-uppercase fw-semibold text-muted mb-1">Almacén</div>
+                              <select
+                                className="form-select"
+                                value={almacenFiltro}
+                                onChange={(e) => setAlmacenFiltro(e.target.value)}
+                              >
+                                <option value="todos">Todos</option>
                                 {almacenes.map((a) => {
-                                  const idAlmacen = Number.parseInt(String(a?.id_almacen ?? ''), 10);
-                                  const selected = almacenFiltroIds.includes(idAlmacen);
+                                  const idAlmacen = Number.parseInt(String(a.id_almacen ?? ''), 10);
+                                  if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return null;
                                   return (
-                                    <button
-                                      key={a.id_almacen}
-                                      type="button"
-                                      className={`btn btn-sm ${selected ? 'btn-primary' : 'btn-outline-secondary'}`}
-                                      onClick={() => toggleAlmacenFiltro(idAlmacen)}
-                                    >
+                                    <option key={idAlmacen} value={String(idAlmacen)}>
                                       {a.nombre}
-                                    </button>
+                                    </option>
                                   );
                                 })}
-                              </div>
+                              </select>
                             </div>
 
                             {SHOW_PRODUCTO_DEPARTAMENTOS ? (
@@ -2567,15 +2538,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         <div className="inv-ins-create-hero__chips">
                           <span className="inv-ins-create-hero__chip">
                             <i className="bi bi-cash-stack" aria-hidden="true" />
-                            {formatMoney(form?.precio || 0)}
-                          </span>
-                          <span className="inv-ins-create-hero__chip">
-                            <i className="bi bi-boxes" aria-hidden="true" />
-                            {String(form?.cantidad || '').trim() || '0'} En Inventario
+                            {formatMoney(form.precio || 0)}
                           </span>
                           <span className="inv-ins-create-hero__chip">
                             <i className="bi bi-tags" aria-hidden="true" />
-                            {form?.id_categoria_producto ? getCategoriaLabel(form.id_categoria_producto) : 'Sin Categoria'}
+                            {form.id_categoria_producto ? getCategoriaLabel(form.id_categoria_producto) : 'Sin categoría'}
                           </span>
                         </div>
                       </div>
@@ -2637,26 +2604,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         <section className="inv-prod-pmodal__section">
                           <div className="inv-prod-pmodal__section-head">
                             <div className="inv-prod-pmodal__section-title">Inventario</div>
-                            <div className="inv-prod-pmodal__section-sub">Cantidad inicial, stock mínimo y ubicación.</div>
+                            <div className="inv-prod-pmodal__section-sub">Stock mínimo y ubicación.</div>
                           </div>
                           <div className="row g-2 inv-prod-create-form">
-                            <div className="col-12 col-sm-6 col-lg-3">
-                              <label className="form-label mb-1">Cantidad</label>
-                              <input
-                                className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
-                                type="number"
-                                step="1"
-                                min="0"
-                                inputMode="numeric"
-                                placeholder="Ej: 10"
-                                value={form.cantidad}
-                                onKeyDown={blockNonIntegerKeys}
-                                onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                                required
-                              />
-                              {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
-                            </div>
-
                             <div className="col-12 col-sm-6 col-lg-3">
                               <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
                               <input
@@ -2674,18 +2624,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                             <div className="col-12 col-md-6 col-lg-3">
                               <label className="form-label mb-1">Almacén asignado</label>
-                              {renderAlmacenesCheckboxGroup({
+                              {renderAlmacenSelectField({
                                 scope: 'create-1',
-                                selectedValues: form.id_almacenes,
+                                selectedValue: form.id_almacen,
                                 error: createErrors.id_almacen,
-                                onChange: (idAlmacen, checked) => {
-                                  const selected = toggleSelectedAlmacen(form.id_almacenes, idAlmacen, checked);
-                                  setForm((s) => ({
-                                    ...s,
-                                    id_almacenes: selected,
-                                    id_almacen: selected[0] ? String(selected[0]) : ''
-                                  }));
-                                }
+                                onChange: (idAlmacen) => setForm((s) => ({ ...s, id_almacen: idAlmacen }))
                               })}
                             </div>
 
@@ -2880,23 +2823,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 </div>
 
                 <div className="col-12 col-md-4">
-                  <label className="form-label mb-1">Cantidad</label>
-                  <input
-                    className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
-                    type="number"
-                    step="1"
-                    min="0"
-                    inputMode="numeric"
-                    placeholder="Ej: 10"
-                    value={form.cantidad}
-                    onKeyDown={blockNonIntegerKeys}
-                    onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                    required
-                  />
-                  {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
-                </div>
-
-                <div className="col-12 col-md-4">
                   <label className="form-label mb-1">Stock mínimo</label>
                   <input
                     className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
@@ -2933,18 +2859,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                 <div className="col-12 col-md-4">
                   <label className="form-label mb-1">Almacén asignado</label>
-                  {renderAlmacenesCheckboxGroup({
+                  {renderAlmacenSelectField({
                     scope: 'create-2',
-                    selectedValues: form.id_almacenes,
+                    selectedValue: form.id_almacen,
                     error: createErrors.id_almacen,
-                    onChange: (idAlmacen, checked) => {
-                      const selected = toggleSelectedAlmacen(form.id_almacenes, idAlmacen, checked);
-                      setForm((s) => ({
-                        ...s,
-                        id_almacenes: selected,
-                        id_almacen: selected[0] ? String(selected[0]) : ''
-                      }));
-                    }
+                    onChange: (idAlmacen) => setForm((s) => ({ ...s, id_almacen: idAlmacen }))
                   })}
                 </div>
 
@@ -3059,23 +2978,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </div>
 
             <div className="col-6 col-md-2">
-              <label className="form-label mb-1">Cantidad</label>
-              <input
-                className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
-                type="number"
-                step="1"
-                min="0"
-                inputMode="numeric"
-                placeholder="Ej: 10"
-                value={form.cantidad}
-                onKeyDown={blockNonIntegerKeys}
-                onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                required
-              />
-              {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
-            </div>
-
-            <div className="col-6 col-md-2">
               <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
               <input
                 className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
@@ -3112,18 +3014,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
             <div className="col-12 col-md-3">
               <label className="form-label mb-1">Almacén asignado</label>
-              {renderAlmacenesCheckboxGroup({
+              {renderAlmacenSelectField({
                 scope: 'create-3',
-                selectedValues: form.id_almacenes,
+                selectedValue: form.id_almacen,
                 error: createErrors.id_almacen,
-                onChange: (idAlmacen, checked) => {
-                  const selected = toggleSelectedAlmacen(form.id_almacenes, idAlmacen, checked);
-                  setForm((s) => ({
-                    ...s,
-                    id_almacenes: selected,
-                    id_almacen: selected[0] ? String(selected[0]) : ''
-                  }));
-                }
+                onChange: (idAlmacen) => setForm((s) => ({ ...s, id_almacen: idAlmacen }))
               })}
             </div>
 
@@ -3210,7 +3105,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         {/* FILTROS */}
         <div className="inv-prod-results-meta inv-inventory-results-meta">
           <span>{loadingProductos ? 'Cargando productos...' : `${productosFiltrados.length} resultados`}</span>
-          <span>{loadingProductos ? '' : `Total: ${productos.length}`}</span>
+          <span>{loadingProductos ? '' : `Total: ${totalProductos}`}</span>
+          <span>{loadingProductos ? '' : `Página ${carouselPageIndex + 1} de ${carouselPageCount}`}</span>
           {/* NEW: toggle admin para incluir productos inactivos en el GET del tab. */}
           {/* WHY: backend lista solo activos por defecto despues del cambio a soft delete. */}
           {/* IMPACT: recarga usando el mismo endpoint; filtros locales se mantienen. */}
@@ -3261,7 +3157,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <i className="bi bi-bag-check inv-cat-v2__drawer-mark" aria-hidden="true" />
             <div>
               <div className="inv-prod-drawer-title">Filtros de productos</div>
-              <div className="inv-prod-drawer-sub">Stock, estado, categoria, almacen y orden</div>
+              <div className="inv-prod-drawer-sub">Stock, estado, categoría, almacén y orden</div>
             </div>
             <button type="button" className="inv-prod-drawer-close" onClick={() => setFiltersOpen(false)} aria-label="Cerrar filtros">
               <i className="bi bi-x-lg" />
@@ -3279,7 +3175,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className="col-12 col-md-4">
               <input
                 className="form-control"
-                placeholder="Buscar productos…"
+                placeholder="Buscar productos..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -3303,7 +3199,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
             <div className="col-12 col-md-2">
               <select className="form-select" value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
-                <option value="todos">CATEGORIAS</option>
+                <option value="todos">CATEGORÍAS</option>
                 {categoriasActivas.map((c) => (
                   <option key={c.id_categoria_producto} value={c.id_categoria_producto}>
                     {c.nombre_categoria}
@@ -3313,30 +3209,23 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </div>
 
             <div className="col-12 col-md-4">
-              <div className="small text-uppercase fw-semibold text-muted mb-1">Almacenes (1 o más)</div>
-              <div className="d-flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={`btn btn-sm ${almacenFiltroIds.length === 0 ? 'btn-dark' : 'btn-outline-secondary'}`}
-                  onClick={() => setAlmacenFiltro([])}
-                >
-                  Todos
-                </button>
+              <div className="small text-uppercase fw-semibold text-muted mb-1">Almacén</div>
+              <select
+                className="form-select"
+                value={almacenFiltro}
+                onChange={(e) => setAlmacenFiltro(e.target.value)}
+              >
+                <option value="todos">Todos</option>
                 {almacenes.map((a) => {
-                  const idAlmacen = Number.parseInt(String(a?.id_almacen ?? ''), 10);
-                  const selected = almacenFiltroIds.includes(idAlmacen);
+                  const idAlmacen = Number.parseInt(String(a.id_almacen ?? ''), 10);
+                  if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return null;
                   return (
-                    <button
-                      key={a.id_almacen}
-                      type="button"
-                      className={`btn btn-sm ${selected ? 'btn-primary' : 'btn-outline-secondary'}`}
-                      onClick={() => toggleAlmacenFiltro(idAlmacen)}
-                    >
+                    <option key={idAlmacen} value={String(idAlmacen)}>
                       {a.nombre}
-                    </button>
+                    </option>
                   );
                 })}
-              </div>
+              </select>
             </div>
 
             {SHOW_PRODUCTO_DEPARTAMENTOS ? (
@@ -3391,21 +3280,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               <div className="inv-prod-empty-title">
                 {hasActiveFilters
                   ? 'No encontramos productos con esos filtros.'
-                  : 'Aún no hay productos. Haz clic en ‘Nuevo’ para crear el primero.'}
+                  : 'Aún no hay productos. Haz clic en "Nuevo" para crear el primero.'}
               </div>
             </div>
           ) : (
             <div className="inv-prod-catalog-shell">
               <div className="inv-prod-carousel-caption">Carrusel de productos</div>
               <div className="inv-prod-carousel-meta">
-                <span>{`Pagina ${carouselPageIndex + 1} de ${carouselPageCount}`}</span>
+                <span>{`Página ${carouselPageIndex + 1} de ${carouselPageCount}`}</span>
                 <span>{`${productosPaginados.length} productos visibles`}</span>
               </div>
               <div className="inv-prod-carousel-stage inv-prod-carousel-stage--paged">
                 <button
                   type="button"
                   className={`btn inv-prod-carousel-float is-prev ${carouselPageIndex > 0 ? 'is-visible' : ''}`}
-                  aria-label="Pagina anterior del carrusel de productos"
+                  aria-label="Página anterior del carrusel de productos"
                   onClick={() => setCarouselPageIndex((prev) => Math.max(0, prev - 1))}
                   disabled={carouselPageIndex <= 0}
                 >
@@ -3415,10 +3304,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 <div className={`inv-prod-carousel-page cols-${carouselConfig.columns}`} key={`productos-page-${carouselPageIndex}`}>
                 {currentCarouselItems.map((p) => {
                   const cardIsActive = resolveEstadoActivo(p);
+                  const canToggleCardEstado = cardIsActive ? canInactivar : canEditar;
                   const estado = resolveEstadoProducto(p);
-                  const stock = getStockMeta(p.cantidad, p?.stock_minimo);
+                  const stock = getStockMeta(p.cantidad, p.stock_minimo);
                   const imgSrc = getProductoImageSrc(p);
-                  const stockMin = Number.parseInt(String(p?.stock_minimo ?? 0), 10);
+                  const stockMin = Number.parseInt(String(p.stock_minimo ?? 0), 10);
                   const ratioBase = stockMin > 0 ? stock.qty / (stockMin * 2) : stock.qty / 20;
                   const ratio = Math.max(0, Math.min(1, Number.isNaN(ratioBase) ? 0 : ratioBase));
 
@@ -3440,10 +3330,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         {imgSrc ? (
                           <img
                             src={imgSrc}
-                            alt={p?.nombre_producto || 'Producto'}
+                            alt={p.nombre_producto || 'Producto'}
                             className="inv-prod-thumb"
                             loading="lazy"
-                            onError={() => markImageAsError(p?.id_producto)}
+                            onError={() => markImageAsError(p.id_producto)}
                           />
                         ) : (
                           <div className="inv-prod-thumb placeholder">
@@ -3462,17 +3352,17 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           <i className="bi bi-box-seam" />
                         </div>
 
-                        <div className="inv-prod-card-name">{p?.nombre_producto || 'Producto sin nombre'}</div>
-                        <div className="inv-prod-card-category">{getCategoriaLabel(p?.id_categoria_producto)}</div>
+                        <div className="inv-prod-card-name">{p.nombre_producto || 'Producto sin nombre'}</div>
+                        <div className="inv-prod-card-category">{getCategoriaLabel(p.id_categoria_producto)}</div>
 
                         <div className="inv-prod-card-metrics">
                           <div>
                             <div className="inv-prod-card-label">Precio</div>
-                            <div className="inv-prod-card-value">{formatMoney(p?.precio)}</div>
+                            <div className="inv-prod-card-value">{formatMoney(p.precio)}</div>
                           </div>
                           <div>
                             <div className="inv-prod-card-label">Existencias</div>
-                            <div className="inv-prod-card-value">{Number.parseInt(String(p?.cantidad ?? '0'), 10) || 0}</div>
+                            <div className="inv-prod-card-value">{Number.parseInt(String(p.cantidad ?? '0'), 10) || 0}</div>
                           </div>
                         </div>
 
@@ -3487,25 +3377,27 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           {/* NEW: CTA de estado dinamico para que el card sea coherente en activos vs. solo inactivos. */}
                           {/* WHY: cuando el producto esta inactivo el usuario debe poder activarlo desde el card sin abrir drawer. */}
                           {/* IMPACT: `Inactivar` conserva el flujo actual (DELETE + confirm); `Activar` reutiliza PUT por campo `estado`. */}
-                          <button
-                            type="button"
-                            className={`btn inv-prod-card-action ${cardIsActive ? 'inactivate' : ''} inv-prod-card-action-compact`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (cardIsActive) {
-                                openConfirmDelete(p?.id_producto, p?.nombre_producto);
-                                return;
-                              }
-                              void activarProductoDesdeCard(p);
-                            }}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            aria-label={`${cardIsActive ? 'Inactivar' : 'Activar'} ${p?.nombre_producto || 'producto'}`}
-                            title={`${cardIsActive ? 'Inactivar' : 'Activar'} producto`}
-                            disabled={togglingEstado || deleting}
-                          >
-                            <i className={`bi ${cardIsActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
-                            <span className="inv-prod-card-action-label">{cardIsActive ? 'Inactivar' : 'Activar'}</span>
-                          </button>
+                          {canToggleCardEstado ? (
+                            <button
+                              type="button"
+                              className={`btn inv-prod-card-action ${cardIsActive ? 'inactivate' : ''} inv-prod-card-action-compact`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (cardIsActive) {
+                                  openConfirmDelete(p.id_producto, p.nombre_producto);
+                                  return;
+                                }
+                                void activarProductoDesdeCard(p);
+                              }}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              aria-label={`${cardIsActive ? 'Inactivar' : 'Activar'} ${p.nombre_producto || 'producto'}`}
+                              title={`${cardIsActive ? 'Inactivar' : 'Activar'} producto`}
+                              disabled={togglingEstado || deleting}
+                            >
+                              <i className={`bi ${cardIsActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
+                              <span className="inv-prod-card-action-label">{cardIsActive ? 'Inactivar' : 'Activar'}</span>
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     </article>
@@ -3516,13 +3408,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 <button
                   type="button"
                   className={`btn inv-prod-carousel-float is-next ${carouselPageIndex < carouselPageCount - 1 ? 'is-visible' : ''}`}
-                  aria-label="Pagina siguiente del carrusel de productos"
+                  aria-label="Página siguiente del carrusel de productos"
                   onClick={() => setCarouselPageIndex((prev) => Math.min(carouselPageCount - 1, prev + 1))}
                   disabled={carouselPageIndex >= carouselPageCount - 1}
                 >
                   <i className="bi bi-chevron-right" />
                 </button>
               </div>
+
             </div>
           )}
         </div>
@@ -3538,7 +3431,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             <div className="d-flex flex-column gap-2 inv-prod-mobile-list">
               {productosPaginados.map((p, index) => {
                 const isEditing = editId === p.id_producto;
-                const stockMeta = getStockMeta(p.cantidad, p?.stock_minimo);
+                const stockMeta = getStockMeta(p.cantidad, p.stock_minimo);
 
                 return (
                   <div key={p.id_producto} className={`card border inv-prod-mobile-card ${isEditing ? 'is-editing' : ''}`}>
@@ -3596,27 +3489,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           )}
                         </div>
 
-                        <div className="col-6">
-                          <div className="small text-muted">Cantidad</div>
-                          {isEditing ? (
-                            <>
-                              <input
-                                className="form-control form-control-sm"
-                                type="number"
-                                step="1"
-                                min="0"
-                                inputMode="numeric"
-                                value={editForm.cantidad}
-                                readOnly
-                                disabled
-                                title="La cantidad se ajusta desde movimientos de inventario."
-                              />
-                            </>
-                          ) : (
-                            <div>{p.cantidad}</div>
-                          )}
-                        </div>
-
                         <div className="col-12">
                           <div className="small text-muted">Categoría</div>
                           {isEditing ? (
@@ -3646,20 +3518,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           <div className="small text-muted">Almacén asignado</div>
                           {isEditing ? (
                             <>
-                              {renderAlmacenesCheckboxGroup({
-                                scope: 'edit-inline-1',
-                                compact: true,
-                                selectedValues: editForm.id_almacenes,
-                                error: editErrors.id_almacen,
-                                onChange: (idAlmacen, checked) => {
-                                  const selected = toggleSelectedAlmacen(editForm.id_almacenes, idAlmacen, checked);
-                                  setEditForm((s) => ({
-                                    ...s,
-                                    id_almacenes: selected,
-                                    id_almacen: selected[0] ? String(selected[0]) : ''
-                                  }));
-                                }
-                              })}
+                              <div className="form-control form-control-sm" title="El almacén no puede modificarse desde la edición de catálogo.">
+                                {getAlmacenLabel(editForm.id_almacen)}
+                              </div>
                             </>
                           ) : (
                             <div>{getAlmacenLabel(p.id_almacen)}</div>
@@ -3717,7 +3578,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         <div className="col-12">
                           {isEditing ? (
                             <div className="d-flex gap-2 mt-2 inv-prod-actions">
-                              <button className="btn btn-sm btn-primary inv-prod-btn-primary" type="button" onClick={guardarEdicion} disabled={savingEdit}>
+                              <button className="btn btn-sm btn-primary inv-prod-btn-primary" type="button" onClick={guardarEdicion} disabled={savingEdit || !canEditar}>
                                 {savingEdit ? 'Guardando...' : 'Guardar'}
                               </button>
                               <button className="btn btn-sm btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={cancelarEdicion} disabled={savingEdit}>
@@ -3726,16 +3587,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             </div>
                           ) : (
                             <div className="d-flex gap-2 mt-2 inv-prod-actions">
-                              <button className="btn btn-sm btn-outline-primary inv-prod-btn-outline" type="button" onClick={() => iniciarEdicion(p)}>
-                                <i className="bi bi-pencil-square" /> Editar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger inv-prod-btn-danger-lite"
-                                type="button"
-                                onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
-                              >
-                                <i className="bi bi-trash3" /> Inactivar
-                              </button>
+                              {canEditar ? (
+                                <button className="btn btn-sm btn-outline-primary inv-prod-btn-outline" type="button" onClick={() => iniciarEdicion(p)}>
+                                  <i className="bi bi-pencil-square" /> Editar
+                                </button>
+                              ) : null}
+                              {canInactivar ? (
+                                <button
+                                  className="btn btn-sm btn-outline-danger inv-prod-btn-danger-lite"
+                                  type="button"
+                                  onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
+                                >
+                                  <i className="bi bi-trash3" /> Inactivar
+                                </button>
+                              ) : null}
                             </div>
                           )}
                         </div>
@@ -3774,7 +3639,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 <tbody>
                   {productosPaginados.map((p, index) => {
                     const isEditing = editId === p.id_producto;
-                    const stockMeta = getStockMeta(p.cantidad, p?.stock_minimo);
+                    const stockMeta = getStockMeta(p.cantidad, p.stock_minimo);
 
                     return (
                       <tr key={p.id_producto} className={isEditing ? 'is-editing' : ''}>
@@ -3825,20 +3690,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         <td>
                           {isEditing ? (
                             <>
-                              {renderAlmacenesCheckboxGroup({
-                                scope: 'edit-inline-2',
-                                compact: true,
-                                selectedValues: editForm.id_almacenes,
-                                error: editErrors.id_almacen,
-                                onChange: (idAlmacen, checked) => {
-                                  const selected = toggleSelectedAlmacen(editForm.id_almacenes, idAlmacen, checked);
-                                  setEditForm((s) => ({
-                                    ...s,
-                                    id_almacenes: selected,
-                                    id_almacen: selected[0] ? String(selected[0]) : ''
-                                  }));
-                                }
-                              })}
+                              <div className="form-control form-control-sm" title="El almacén no puede modificarse desde la edición de catálogo.">
+                                {getAlmacenLabel(editForm.id_almacen)}
+                              </div>
                             </>
                           ) : (
                             <span>{getAlmacenLabel(p.id_almacen)}</span>
@@ -3893,29 +3747,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         </td>
 
                         <td className="text-end">
-                          {isEditing ? (
-                            <>
-                              <input
-                                className="form-control form-control-sm text-end"
-                                type="number"
-                                step="1"
-                                min="0"
-                                inputMode="numeric"
-                                value={editForm.cantidad}
-                                readOnly
-                                disabled
-                                title="La cantidad se ajusta desde movimientos de inventario."
-                              />
-                            </>
-                          ) : (
-                            <span className={`fw-semibold inv-prod-stock-inline ${stockMeta.className}`}>{p.cantidad}</span>
-                          )}
+                          <span className={`fw-semibold inv-prod-stock-inline ${stockMeta.className}`}>{p.cantidad}</span>
                         </td>
 
                         <td>
                           {isEditing ? (
                             <div className="d-flex gap-2 inv-prod-actions">
-                              <button className="btn btn-sm btn-primary inv-prod-btn-primary" type="button" onClick={guardarEdicion} disabled={savingEdit}>
+                              <button className="btn btn-sm btn-primary inv-prod-btn-primary" type="button" onClick={guardarEdicion} disabled={savingEdit || !canEditar}>
                                 {savingEdit ? 'Guardando...' : 'Guardar'}
                               </button>
                               <button className="btn btn-sm btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={cancelarEdicion} disabled={savingEdit}>
@@ -3924,16 +3762,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                             </div>
                           ) : (
                             <div className="d-flex gap-2 inv-prod-actions">
-                              <button className="btn btn-sm btn-outline-primary inv-prod-btn-outline" type="button" onClick={() => iniciarEdicion(p)}>
-                                <i className="bi bi-pencil-square" /> Editar
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger inv-prod-btn-danger-lite"
-                                type="button"
-                                onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
-                              >
-                                <i className="bi bi-trash3" /> Inactivar
-                              </button>
+                              {canEditar ? (
+                                <button className="btn btn-sm btn-outline-primary inv-prod-btn-outline" type="button" onClick={() => iniciarEdicion(p)}>
+                                  <i className="bi bi-pencil-square" /> Editar
+                                </button>
+                              ) : null}
+                              {canInactivar ? (
+                                <button
+                                  className="btn btn-sm btn-outline-danger inv-prod-btn-danger-lite"
+                                  type="button"
+                                  onClick={() => openConfirmDelete(p.id_producto, p.nombre_producto)}
+                                >
+                                  <i className="bi bi-trash3" /> Inactivar
+                                </button>
+                              ) : null}
                             </div>
                           )}
                         </td>
@@ -3969,7 +3811,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   </div>
                   <div className="inv-ins-create-hero__copy">
                     <div className="inv-ins-create-hero__kicker">Edicion Activa</div>
-                    <div className="inv-ins-create-hero__title">{editForm?.nombre_producto || selectedProducto?.nombre_producto || 'Producto'}</div>
+                    <div className="inv-ins-create-hero__title">{editForm.nombre_producto || selectedProducto.nombre_producto || 'Producto'}</div>
                   </div>
                   <div className="inv-ins-create-hero__chips">
                     <span className="inv-ins-create-hero__chip">
@@ -3979,13 +3821,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     <span className="inv-ins-create-hero__chip">
                       <i className="bi bi-box-seam" aria-hidden="true" />
                       {getStockMeta(
-                        editForm?.cantidad ?? selectedProducto?.cantidad,
-                        editForm?.stock_minimo ?? selectedProducto?.stock_minimo
+                        selectedProducto.cantidad,
+                        editForm.stock_minimo ?? selectedProducto.stock_minimo
                       ).label}
                     </span>
                     <span className="inv-ins-create-hero__chip">
                       <i className="bi bi-tags" aria-hidden="true" />
-                      {getCategoriaLabel(editForm?.id_categoria_producto ?? selectedProducto?.id_categoria_producto)}
+                      {getCategoriaLabel(editForm.id_categoria_producto ?? selectedProducto.id_categoria_producto)}
                     </span>
                   </div>
                 </div>
@@ -4002,8 +3844,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     {drawerImageSrc ? (
                       <img
                         src={drawerImageSrc}
-                        alt={selectedProducto?.nombre_producto || 'Producto'}
-                        onError={() => markImageAsError(selectedProducto?.id_producto)}
+                        alt={selectedProducto.nombre_producto || 'Producto'}
+                        onError={() => markImageAsError(selectedProducto.id_producto)}
                       />
                     ) : (
                       <div className="inv-prod-drawer-image-empty">
@@ -4029,7 +3871,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         type="button"
                         className="btn inv-prod-btn-subtle"
                         onClick={openDrawerImagePicker}
-                        disabled={drawerImageAction.loading}
+                        disabled={drawerImageAction.loading || !canEditar}
                       >
                         <i className="bi bi-upload" /> {drawerImageSrc ? 'Cambiar imagen' : 'Agregar imagen'}
                       </button>
@@ -4037,7 +3879,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         type="button"
                         className="btn inv-prod-btn-outline"
                         onClick={removeDrawerImage}
-                        disabled={drawerImageAction.loading || (!drawerImageSrc && !selectedProducto?.id_archivo_imagen_principal)}
+                        disabled={drawerImageAction.loading || !canEditar || (!drawerImageSrc && !selectedProducto.id_archivo_imagen_principal)}
                       >
                         Quitar
                       </button>
@@ -4058,68 +3900,53 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   <div className="inv-prod-drawer-field--span-2">
                     <label>Nombre</label>
                     <input
-                      className={editErrors?.nombre_producto ? 'is-invalid' : ''}
+                      className={editErrors.nombre_producto ? 'is-invalid' : ''}
                       type="text"
-                      value={editForm?.nombre_producto ?? ''}
+                      value={editForm.nombre_producto ?? ''}
                       onChange={(e) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }));
                       }}
                     />
-                    {editErrors?.nombre_producto ? <div className="invalid-feedback d-block">{editErrors.nombre_producto}</div> : null}
+                    {editErrors.nombre_producto ? <div className="invalid-feedback d-block">{editErrors.nombre_producto}</div> : null}
                   </div>
                   <div>
                     <label>Precio (L.)</label>
                     <input
-                      className={editErrors?.precio ? 'is-invalid' : ''}
+                      className={editErrors.precio ? 'is-invalid' : ''}
                       type="number"
                       step="0.01"
                       min="0"
-                      value={editForm?.precio ?? ''}
+                      value={editForm.precio ?? ''}
                       onChange={(e) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, precio: e.target.value }));
                       }}
                     />
-                    {editErrors?.precio ? <div className="invalid-feedback d-block">{editErrors.precio}</div> : null}
-                  </div>
-                  <div>
-                    <label>Existencias</label>
-                    <input
-                      className="form-control"
-                      type="number"
-                      step="1"
-                      min="0"
-                      inputMode="numeric"
-                      value={String(editForm?.cantidad ?? '')}
-                      readOnly
-                      disabled
-                      title="La cantidad se ajusta desde movimientos de inventario."
-                    />
-                    <div className="form-text">Gestiona la cantidad desde Movimientos de inventario.</div>
+                    {editErrors.precio ? <div className="invalid-feedback d-block">{editErrors.precio}</div> : null}
                   </div>
                   <div>
                     <label>{'Stock m\u00EDnimo'}</label>
                     <input
-                      className={editErrors?.stock_minimo ? 'is-invalid' : ''}
+                      className={editErrors.stock_minimo ? 'is-invalid' : ''}
                       type="number"
                       step="1"
                       min="0"
                       inputMode="numeric"
-                      value={String(editForm?.stock_minimo ?? '')}
+                      value={String(editForm.stock_minimo ?? '')}
                       onKeyDown={blockNonIntegerKeys}
                       onChange={(e) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, stock_minimo: sanitizeInteger(e.target.value) }));
                       }}
                     />
-                    {editErrors?.stock_minimo ? <div className="invalid-feedback d-block">{editErrors.stock_minimo}</div> : null}
+                    {editErrors.stock_minimo ? <div className="invalid-feedback d-block">{editErrors.stock_minimo}</div> : null}
                   </div>
                   <div>
                     <label>Categoría</label>
                     <select
-                      className={`form-select ${editErrors?.id_categoria_producto ? 'is-invalid' : ''}`}
-                      value={String(editForm?.id_categoria_producto ?? '')}
+                      className={`form-select ${editErrors.id_categoria_producto ? 'is-invalid' : ''}`}
+                      value={String(editForm.id_categoria_producto ?? '')}
                       onChange={(e) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, id_categoria_producto: e.target.value }));
@@ -4132,32 +3959,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         </option>
                       ))}
                     </select>
-                    {editErrors?.id_categoria_producto ? <div className="invalid-feedback d-block">{editErrors.id_categoria_producto}</div> : null}
+                    {editErrors.id_categoria_producto ? <div className="invalid-feedback d-block">{editErrors.id_categoria_producto}</div> : null}
                   </div>
                   <div>
                     <label>Almacén asignado</label>
-                    {renderAlmacenesCheckboxGroup({
-                      scope: 'edit-drawer-1',
-                      selectedValues: editForm?.id_almacenes,
-                      error: editErrors?.id_almacen,
-                      feedbackClassName: 'invalid-feedback d-block',
-                      onChange: (idAlmacen, checked) => {
-                        const selected = toggleSelectedAlmacen(editForm?.id_almacenes, idAlmacen, checked);
-                        setDrawerEditMode(true);
-                        setEditForm((s) => ({
-                          ...s,
-                          id_almacenes: selected,
-                          id_almacen: selected[0] ? String(selected[0]) : ''
-                        }));
-                      }
-                    })}
+                    <div className="form-control" title="El almacén no puede modificarse desde la edición de catálogo.">
+                      {getAlmacenLabel(editForm.id_almacen)}
+                    </div>
+                    <div className="form-text">El almacén se define al crear el producto.</div>
                   </div>
                   {SHOW_PRODUCTO_DEPARTAMENTOS ? (
                     <div>
                       <label>Departamento (opcional)</label>
                       <select
-                        className={`form-select ${editErrors?.id_tipo_departamento ? 'is-invalid' : ''}`}
-                        value={String(editForm?.id_tipo_departamento ?? '')}
+                        className={`form-select ${editErrors.id_tipo_departamento ? 'is-invalid' : ''}`}
+                        value={String(editForm.id_tipo_departamento ?? '')}
                         onChange={(e) => {
                           setDrawerEditMode(true);
                           setEditForm((s) => ({ ...s, id_tipo_departamento: e.target.value }));
@@ -4171,64 +3987,72 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           </option>
                         ))}
                       </select>
-                      {editErrors?.id_tipo_departamento ? <div className="invalid-feedback d-block">{editErrors.id_tipo_departamento}</div> : null}
+                      {editErrors.id_tipo_departamento ? <div className="invalid-feedback d-block">{editErrors.id_tipo_departamento}</div> : null}
                     </div>
                   ) : null}
                   <div>
                     <label>Fecha de ingreso</label>
                     <input
-                      className={editErrors?.fecha_ingreso_producto ? 'is-invalid' : ''}
+                      className={editErrors.fecha_ingreso_producto ? 'is-invalid' : ''}
                       type="date"
-                      value={editForm?.fecha_ingreso_producto ?? ''}
+                      value={editForm.fecha_ingreso_producto ?? ''}
                       onChange={(e) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, fecha_ingreso_producto: e.target.value }));
                       }}
                     />
-                    {editErrors?.fecha_ingreso_producto ? <div className="invalid-feedback d-block">{editErrors.fecha_ingreso_producto}</div> : null}
+                    {editErrors.fecha_ingreso_producto ? <div className="invalid-feedback d-block">{editErrors.fecha_ingreso_producto}</div> : null}
                   </div>
                   <div>
                     <label>Fecha de caducidad</label>
                     <input
-                      className={editErrors?.fecha_caducidad ? 'is-invalid' : ''}
+                      className={editErrors.fecha_caducidad ? 'is-invalid' : ''}
                       type="date"
-                      value={editForm?.fecha_caducidad ?? ''}
+                      value={editForm.fecha_caducidad ?? ''}
                       onChange={(e) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, fecha_caducidad: e.target.value }));
                       }}
                     />
-                    {editErrors?.fecha_caducidad ? <div className="invalid-feedback d-block">{editErrors.fecha_caducidad}</div> : null}
+                    {editErrors.fecha_caducidad ? <div className="invalid-feedback d-block">{editErrors.fecha_caducidad}</div> : null}
                   </div>
                   <div className="inv-prod-drawer-field--span-2">
                     <label>Descripción (opcional)</label>
                     <textarea
-                      className={`form-control ${editErrors?.descripcion_producto ? 'is-invalid' : ''}`}
+                      className={`form-control ${editErrors.descripcion_producto ? 'is-invalid' : ''}`}
                       rows={4}
-                      value={editForm?.descripcion_producto ?? ''}
+                      value={editForm.descripcion_producto ?? ''}
                       onChange={(e) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }));
                       }}
                     />
-                    {editErrors?.descripcion_producto ? <div className="invalid-feedback d-block">{editErrors.descripcion_producto}</div> : null}
+                    {editErrors.descripcion_producto ? <div className="invalid-feedback d-block">{editErrors.descripcion_producto}</div> : null}
                   </div>
                 </div>
                 </div>
 
                 <div className="inv-prod-drawer-actions inv-prod-drawer-actions--edit inv-ins-drawer-footer">
-                  <button type="button" className="btn inv-prod-btn-subtle" onClick={duplicarProductoDesdeDrawer} disabled={togglingEstado}>Duplicar</button>
-                  <button
-                    type="button"
-                    className={`btn ${drawerEstadoActivo ? 'inv-prod-btn-danger-lite' : 'inv-prod-btn-success-lite'}`}
-                    onClick={toggleEstadoProductoDesdeDrawer}
-                    disabled={togglingEstado}
-                  >
-                    {togglingEstado ? 'Procesando...' : drawerEstadoActivo ? 'Desactivar' : 'Activar'}
-                  </button>
-                  <button type="button" className="btn inv-prod-btn-primary" onClick={guardarEdicion} disabled={savingEdit || togglingEstado}>
-                    {savingEdit ? 'Guardando...' : 'Guardar cambios'}
-                  </button>
+                  {canCrear ? (
+                    <button type="button" className="btn inv-prod-btn-subtle" onClick={duplicarProductoDesdeDrawer} disabled={togglingEstado}>
+                      Duplicar
+                    </button>
+                  ) : null}
+                  {canEditar ? (
+                    <button
+                      type="button"
+                      className={`btn ${drawerEstadoActivo ? 'inv-prod-btn-danger-lite' : 'inv-prod-btn-success-lite'}`}
+                      onClick={toggleEstadoProductoDesdeDrawer}
+                      disabled={togglingEstado}
+                    >
+                      {togglingEstado ? 'Procesando...' : drawerEstadoActivo ? 'Desactivar' : 'Activar'}
+                    </button>
+                  ) : null}
+                  {canEditar ? (
+                    <button type="button" className="btn inv-prod-btn-primary" onClick={guardarEdicion} disabled={savingEdit || togglingEstado}>
+                      {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                  ) : null}
                 </div>
 
                 {drawerMessage ? <div className="inv-prod-drawer-feedback">{drawerMessage}</div> : null}
@@ -4288,22 +4112,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     </div>
 
                     <div className="col-6">
-                      <label className="form-label mb-1">Cantidad</label>
-                      <input
-                        className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
-                        type="number"
-                        step="1"
-                        min="0"
-                        inputMode="numeric"
-                        value={form.cantidad}
-                        onKeyDown={blockNonIntegerKeys}
-                        onChange={(e) => setForm((s) => ({ ...s, cantidad: sanitizeInteger(e.target.value) }))}
-                        required
-                      />
-                      {createErrors.cantidad && <div className="invalid-feedback">{createErrors.cantidad}</div>}
-                    </div>
-
-                    <div className="col-6">
                       <label className="form-label mb-1">{'Stock m\u00EDnimo'}</label>
                       <input
                         className={`form-control ${createErrors.stock_minimo ? 'is-invalid' : ''}`}
@@ -4340,18 +4148,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                     <div className="col-12">
                       <label className="form-label mb-1">Almacén asignado</label>
-                      {renderAlmacenesCheckboxGroup({
+                      {renderAlmacenSelectField({
                         scope: 'create-4',
-                        selectedValues: form.id_almacenes,
+                        selectedValue: form.id_almacen,
                         error: createErrors.id_almacen,
-                        onChange: (idAlmacen, checked) => {
-                          const selected = toggleSelectedAlmacen(form.id_almacenes, idAlmacen, checked);
-                          setForm((s) => ({
-                            ...s,
-                            id_almacenes: selected,
-                            id_almacen: selected[0] ? String(selected[0]) : ''
-                          }));
-                        }
+                        onChange: (idAlmacen) => setForm((s) => ({ ...s, id_almacen: idAlmacen }))
                       })}
                     </div>
 

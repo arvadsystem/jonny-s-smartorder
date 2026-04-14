@@ -4,6 +4,14 @@ import PlanillasModalField from './PlanillasModalField';
 import PlanillasModalLayout from './PlanillasModalLayout';
 import PlanillasMoneyInput from './PlanillasMoneyInput';
 
+const todayInput = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const money = (value) => {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount)) return 'L 0.00';
@@ -11,7 +19,8 @@ const money = (value) => {
 };
 
 const parsePositiveMoney = (value) => {
-  const parsed = Number(value);
+  const normalized = String(value ?? '').replace(/,/g, '').trim();
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
@@ -33,6 +42,7 @@ export default function PlanillaAdelantosModal({
   const [registerFecha, setRegisterFecha] = useState('');
   const [submittedApply, setSubmittedApply] = useState(false);
   const [submittedRegister, setSubmittedRegister] = useState(false);
+  const today = useMemo(() => todayInput(), []);
 
   useEffect(() => {
     if (!open) return;
@@ -54,6 +64,9 @@ export default function PlanillaAdelantosModal({
 
   if (!open || !item) return null;
 
+  const netoRaw = Number(item?.neto_pagar ?? item?.total_neto_pagar ?? item?.neto);
+  const hasNetoConstraint = Number.isFinite(netoRaw);
+  const netoDisponible = hasNetoConstraint ? Math.max(0, netoRaw) : Number.POSITIVE_INFINITY;
   const selectedSaldo = Number(
     selectedAdelanto?.saldo_disponible ?? selectedAdelanto?.saldo ?? selectedAdelanto?.monto_pendiente ?? 0
   );
@@ -68,14 +81,33 @@ export default function PlanillaAdelantosModal({
         ? 'Ingrese un monto valido.'
         : montoAplicar > selectedSaldo
           ? 'El monto a aplicar no puede superar el saldo disponible.'
+          : hasNetoConstraint && montoAplicar > netoDisponible
+            ? 'El monto a aplicar no puede superar el neto a pagar disponible.'
           : ''
     : '';
 
-  const registerError = submittedRegister && !registerMontoValue ? 'Ingrese un monto valido mayor que 0.' : '';
+  const registerError = submittedRegister
+    ? !registerMontoValue
+      ? 'Ingrese un monto valido mayor que 0.'
+      : hasNetoConstraint && registerMontoValue > netoDisponible
+        ? 'El adelanto no puede superar el neto a pagar disponible.'
+        : ''
+    : '';
+  const registerFechaFuture = Boolean(registerFecha) && registerFecha > today;
+  const registerFechaError = submittedRegister && registerFechaFuture ? 'La fecha no puede ser mayor al dia actual.' : '';
 
-  const canSubmitRegister = Boolean(canRegister && registerMontoValue);
+  const canSubmitRegister = Boolean(
+    canRegister &&
+      registerMontoValue &&
+      !registerFechaFuture &&
+      (!hasNetoConstraint || registerMontoValue <= netoDisponible)
+  );
   const canSubmitApply = Boolean(
-    selectedAdelanto && montoAplicar && Number.isFinite(selectedSaldo) && montoAplicar <= selectedSaldo
+    selectedAdelanto &&
+      montoAplicar &&
+      Number.isFinite(selectedSaldo) &&
+      montoAplicar <= selectedSaldo &&
+      (!hasNetoConstraint || montoAplicar <= netoDisponible)
   );
 
   const handleRegister = (event) => {
@@ -196,6 +228,7 @@ export default function PlanillaAdelantosModal({
                       currency="L"
                       placeholder="Ingrese el monto"
                       error={Boolean(applyError)}
+                      allowThousandsSeparators
                     />
                   </PlanillasModalField>
                 </div>
@@ -213,6 +246,12 @@ export default function PlanillaAdelantosModal({
                     <span>Saldo restante</span>
                     <strong>{money(saldoRestante)}</strong>
                   </article>
+                  {hasNetoConstraint ? (
+                    <article>
+                      <span>Neto disponible</span>
+                      <strong>{money(netoDisponible)}</strong>
+                    </article>
+                  ) : null}
                 </div>
               </section>
             </>
@@ -231,15 +270,21 @@ export default function PlanillaAdelantosModal({
                     placeholder="Ingrese el monto"
                     error={Boolean(registerError)}
                     disabled={registering}
+                    allowThousandsSeparators
                   />
                 </PlanillasModalField>
 
-                <PlanillasModalField id="adelanto-registrar-fecha" label="Fecha (opcional)">
+                <PlanillasModalField
+                  id="adelanto-registrar-fecha"
+                  label="Fecha (opcional)"
+                  error={registerFechaError}
+                >
                   <input
                     id="adelanto-registrar-fecha"
                     type="date"
                     className="form-control planillas-modal-input"
                     value={registerFecha}
+                    max={today}
                     onChange={(event) => setRegisterFecha(event.target.value)}
                     disabled={registering}
                   />
@@ -263,3 +308,4 @@ export default function PlanillaAdelantosModal({
     </PlanillasModalLayout>
   );
 }
+

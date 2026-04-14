@@ -34,6 +34,75 @@ const withItemCatalogFilters = (path, options) => {
   return `${path}${path.includes('?') ? '&' : '?'}${query}`;
 };
 
+const withProductosListFilters = (path, options) => {
+  if (!options || typeof options !== 'object') return path;
+
+  const params = new URLSearchParams();
+  const includeInactivos =
+    options.incluirInactivos === true ||
+    options.includeInactivos === true ||
+    options.include_inactivos === true;
+
+  if (includeInactivos) params.set('incluir_inactivos', '1');
+
+  const search = String(
+    options.q ?? options.search ?? options.busqueda ?? options.nombre ?? ''
+  ).trim();
+  if (search) params.set('q', search);
+
+  if (options.estado !== undefined && options.estado !== null && options.estado !== '') {
+    params.set('estado', String(options.estado));
+  }
+
+  if (options.stock !== undefined && options.stock !== null && options.stock !== '') {
+    params.set('stock', String(options.stock));
+  }
+
+  if (
+    options.id_categoria_producto !== undefined &&
+    options.id_categoria_producto !== null &&
+    options.id_categoria_producto !== ''
+  ) {
+    params.set('id_categoria_producto', String(options.id_categoria_producto));
+  } else if (options.id_categoria !== undefined && options.id_categoria !== null && options.id_categoria !== '') {
+    params.set('id_categoria_producto', String(options.id_categoria));
+  }
+
+  if (options.id_almacen !== undefined && options.id_almacen !== null && options.id_almacen !== '') {
+    params.set('id_almacen', String(options.id_almacen));
+  }
+
+  if (options.id_sucursal !== undefined && options.id_sucursal !== null && options.id_sucursal !== '') {
+    params.set('id_sucursal', String(options.id_sucursal));
+  }
+
+  if (
+    options.id_tipo_departamento !== undefined &&
+    options.id_tipo_departamento !== null &&
+    options.id_tipo_departamento !== ''
+  ) {
+    params.set('id_tipo_departamento', String(options.id_tipo_departamento));
+  }
+
+  if (options.page !== undefined && options.page !== null && options.page !== '') {
+    params.set('page', String(options.page));
+  }
+
+  if (options.pageSize !== undefined && options.pageSize !== null && options.pageSize !== '') {
+    params.set('pageSize', String(options.pageSize));
+  }
+
+  if (options.sort !== undefined && options.sort !== null && options.sort !== '') {
+    params.set('sort', String(options.sort));
+  } else if (options.sortBy !== undefined && options.sortBy !== null && options.sortBy !== '') {
+    params.set('sort', String(options.sortBy));
+  }
+
+  const query = params.toString();
+  if (!query) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+};
+
 const withAlmacenesFilters = (path, options) => {
   if (!options || typeof options !== 'object') return path;
 
@@ -73,6 +142,43 @@ const withMovimientosFilters = (path, options) => {
 
   if (options.id_sucursal !== undefined && options.id_sucursal !== null && options.id_sucursal !== '') {
     params.set('id_sucursal', String(options.id_sucursal));
+  }
+
+  if (options.page !== undefined && options.page !== null && options.page !== '') {
+    params.set('page', String(options.page));
+  }
+
+  if (options.pageSize !== undefined && options.pageSize !== null && options.pageSize !== '') {
+    params.set('pageSize', String(options.pageSize));
+  } else if (options.limit !== undefined && options.limit !== null && options.limit !== '') {
+    params.set('pageSize', String(options.limit));
+  }
+
+  const query = params.toString();
+  if (!query) return path;
+
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+};
+
+const withMovimientosReferenciasFilters = (path, options) => {
+  if (!options || typeof options !== 'object') return path;
+
+  const params = new URLSearchParams();
+
+  if (options.item_tipo !== undefined && options.item_tipo !== null && options.item_tipo !== '') {
+    params.set('item_tipo', String(options.item_tipo));
+  }
+
+  if (options.id_almacen !== undefined && options.id_almacen !== null && options.id_almacen !== '') {
+    params.set('id_almacen', String(options.id_almacen));
+  }
+
+  if (options.id_sucursal !== undefined && options.id_sucursal !== null && options.id_sucursal !== '') {
+    params.set('id_sucursal', String(options.id_sucursal));
+  }
+
+  if (options.limit !== undefined && options.limit !== null && options.limit !== '') {
+    params.set('limit', String(options.limit));
   }
 
   const query = params.toString();
@@ -119,6 +225,16 @@ const withKardexFilters = (path, options) => {
 
   if (options.q !== undefined && options.q !== null && options.q !== '') {
     params.set('q', String(options.q));
+  }
+
+  if (options.page !== undefined && options.page !== null && options.page !== '') {
+    params.set('page', String(options.page));
+  }
+
+  if (options.pageSize !== undefined && options.pageSize !== null && options.pageSize !== '') {
+    params.set('pageSize', String(options.pageSize));
+  } else if (options.limit !== undefined && options.limit !== null && options.limit !== '') {
+    params.set('pageSize', String(options.limit));
   }
 
   const query = params.toString();
@@ -187,6 +303,11 @@ export const inventarioService = {
   // ===== CATEGORIAS PRODUCTOS =====
   getCategorias: (options) => apiFetch(withInactivosParam('/categorias_productos', options), 'GET'),
   crearCategoria: (data) => apiFetch('/categorias_productos', 'POST', data),
+  actualizarCategoriaCompleta: (id, data) =>
+    apiFetch('/categorias_productos/edicion', 'PUT', {
+      id_categoria_producto: id,
+      ...data
+    }),
   actualizarCategoriaCampo: (id, campo, valor) =>
     apiFetch('/categorias_productos', 'PUT', {
       campo,
@@ -205,6 +326,11 @@ export const inventarioService = {
   // IMPACT: agrega endpoints nuevos retrocompatibles; no cambia llamadas actuales.
   getCategoriasInsumos: (options) => apiFetch(withInactivosParam('/categorias_insumos', options), 'GET'),
   crearCategoriaInsumo: (data) => apiFetch('/categorias_insumos', 'POST', data),
+  actualizarCategoriaInsumoCompleta: (id, data) =>
+    apiFetch('/categorias_insumos/edicion', 'PUT', {
+      id_categoria_insumo: id,
+      ...data
+    }),
   actualizarCategoriaInsumoCampo: (id, campo, valor) =>
     apiFetch('/categorias_insumos', 'PUT', {
       campo,
@@ -234,7 +360,7 @@ export const inventarioService = {
       const primaryPayload = await apiFetch(primaryPath, 'GET');
       const primaryRows = normalizeAlmacenesRows(primaryPayload);
       if (primaryRows.length > 0) return primaryRows;
-    } catch (primaryError) {
+    } catch {
       // AM: si el endpoint dashboard falla, intenta el catalogo simple para no bloquear el formulario.
       const fallbackPath = includeInactivosRequested
         ? '/almacenes/catalogo?include_inactivos=1'
@@ -263,6 +389,11 @@ export const inventarioService = {
   reactivarProveedor: (id) => apiFetch(`/proveedores/${id}/reactivar`, 'PATCH', {}),
   eliminarProveedor: (id) => apiFetch(`/proveedores/${id}`, 'DELETE'),
   crearInsumo: (data) => apiFetch('/insumos', 'POST', data),
+  actualizarInsumoCompleto: (id, data = {}) =>
+    apiFetch('/insumos/edicion', 'PUT', {
+      id_insumo: id,
+      ...data
+    }),
   actualizarInsumoCampo: (id, campo, valor) =>
     apiFetch('/insumos', 'PUT', {
       campo,
@@ -270,11 +401,10 @@ export const inventarioService = {
       id_campo: 'id_insumo',
       id_valor: id
     }),
-  // AM: edicion completa de insumo sincronizando uno o varios almacenes en una sola operacion.
-  actualizarInsumoMultiAlmacen: (id, data = {}) =>
-    apiFetch('/insumos/multi-almacen', 'PUT', {
+  actualizarEstadoInsumo: (id, estado) =>
+    apiFetch('/insumos/estado', 'PATCH', {
       id_insumo: id,
-      ...data
+      estado
     }),
   eliminarInsumo: (id) =>
     apiFetch('/insumos', 'DELETE', {
@@ -283,7 +413,7 @@ export const inventarioService = {
     }),
 
   // ===== PRODUCTOS =====
-  getProductos: (options) => apiFetch(withItemCatalogFilters('/productos', options), 'GET'),
+  getProductos: (options) => apiFetch(withProductosListFilters('/productos', options), 'GET'),
   crearProducto: (data) => apiFetch('/productos', 'POST', data),
   actualizarProductoCampo: (id, campo, valor) =>
     apiFetch('/productos', 'PUT', {
@@ -292,7 +422,7 @@ export const inventarioService = {
       id_campo: 'id_producto',
       id_valor: id
     }),
-  // AM: edicion completa de producto sincronizando uno o varios almacenes en una sola operacion.
+  // AM: endpoint legado de compatibilidad; el flujo principal de Productos usa `actualizarProductoCampo`.
   actualizarProductoMultiAlmacen: (id, data = {}) =>
     apiFetch('/productos/multi-almacen', 'PUT', {
       id_producto: id,
@@ -308,6 +438,10 @@ export const inventarioService = {
   // WHY: Productos e Insumos comparten la misma infraestructura de imagen principal sin multipart.
   // IMPACT: agrega `POST /archivos`; no altera servicios existentes.
   crearArchivoImagen: (data) => apiFetch('/archivos', 'POST', data),
+  // NEW: cleanup compensatorio de archivos temporales cuando falla la operacion principal de negocio.
+  // WHY: evitar archivos huerfanos si la imagen se sube pero create/update del producto no se concreta.
+  // IMPACT: se usa como best-effort; no altera flujos exitosos.
+  eliminarArchivo: (idArchivo, payload = {}) => apiFetch(`/archivos/${idArchivo}`, 'DELETE', payload),
 
   // ===== TIPO DEPARTAMENTO =====
   getTipoDepartamentos: () => apiFetch('/tipo_departamento', 'GET'),
@@ -340,6 +474,8 @@ export const inventarioService = {
   // ===== MOVIMIENTOS INVENTARIO (KARDEX) =====
   getKardex: (options) => apiFetch(withKardexFilters('/kardex', options), 'GET'),
   getMovimientosInventario: (options) => apiFetch(withMovimientosFilters('/movimientos_inventario', options), 'GET'),
+  getMovimientosReferencias: (options) =>
+    apiFetch(withMovimientosReferenciasFilters('/movimientos_inventario/referencias', options), 'GET'),
   crearMovimientoInventario: (data) => apiFetch('/movimientos_inventario', 'POST', data),
   // DEPRECATED / BACKEND 405 APPEND-ONLY:
   // Se conserva por compatibilidad; la UI no debe usar update/delete de movimientos.
@@ -361,11 +497,17 @@ export const inventarioService = {
   // AM: contexto de creacion con sucursal/almacenes permitidos segun usuario autenticado.
   getOrdenCompraWorkflowContextoCreacion: () => apiFetch('/orden_compras/workflow/contexto_creacion', 'GET'),
   getOrdenCompraWorkflowById: (idOrdenCompra) => apiFetch(`/orden_compras/workflow/${idOrdenCompra}`, 'GET'),
+  getOrdenCompraWorkflowEvidenciaFactura: (idOrdenCompra) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/evidencias/factura`, 'GET'),
+  getOrdenCompraWorkflowEvidenciaTransferencia: (idOrdenCompra) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/evidencias/transferencia`, 'GET'),
   crearOrdenCompraWorkflow: (data) => apiFetch('/orden_compras/workflow', 'POST', data),
   aprobarOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/aprobar`, 'POST', data),
   rechazarOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/rechazar`, 'POST', data),
+  cancelarOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
+    apiFetch(`/orden_compras/workflow/${idOrdenCompra}/cancelar`, 'POST', data),
   actualizarDetalleOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/detalles`, 'PUT', data),
   // AM: revision administrativa de solicitudes de item no registrado (aprobar/rechazar).
@@ -400,14 +542,49 @@ export const inventarioService = {
   cambiarEstadoMobiliario: (idMobiliario, activo) =>
     apiFetch(`/mobiliario/${idMobiliario}/estado`, 'PATCH', { activo }),
   getEmpleadosCatalogoMobiliario: async () => {
-    const payload = await apiFetch('/empleados?page=1&limit=200&estado=true', 'GET');
-    const rows = normalizeCatalogRows(payload);
-    return rows.map((row) => ({
+    const limit = 100;
+    const maxPages = 50;
+    const collectedRows = [];
+    let page = 1;
+    let totalExpected = Number.POSITIVE_INFINITY;
+
+    while (page <= maxPages && collectedRows.length < totalExpected) {
+      const payload = await apiFetch(`/empleados?page=${page}&limit=${limit}&estado=true`, 'GET');
+      const rows = normalizeCatalogRows(payload);
+      if (!rows.length) break;
+
+      collectedRows.push(...rows);
+
+      const payloadTotal = Number(payload?.total);
+      if (Number.isFinite(payloadTotal) && payloadTotal >= 0) {
+        totalExpected = payloadTotal;
+      }
+
+      const payloadLimit = Number(payload?.limit);
+      const effectiveLimit = Number.isFinite(payloadLimit) && payloadLimit > 0 ? payloadLimit : limit;
+      if (rows.length < effectiveLimit) break;
+      if (Number.isFinite(payloadTotal) && collectedRows.length >= payloadTotal) break;
+      page += 1;
+    }
+
+    const uniqueRows = [];
+    const seenIds = new Set();
+    for (const row of collectedRows) {
+      const idEmpleado = Number.parseInt(String(row?.id_empleado ?? ''), 10);
+      if (!Number.isInteger(idEmpleado) || idEmpleado <= 0 || seenIds.has(idEmpleado)) continue;
+      seenIds.add(idEmpleado);
+      uniqueRows.push(row);
+    }
+
+    return uniqueRows.map((row) => ({
       id_empleado: row?.id_empleado,
       empleado_nombre:
         String(row?.persona_nombre_completo ?? '').trim() ||
         String([row?.persona_nombre, row?.persona_apellido].filter(Boolean).join(' ')).trim() ||
-        `Empleado #${row?.id_empleado ?? ''}`
+        `Empleado #${row?.id_empleado ?? ''}`,
+      identidad: String(row?.persona_dni ?? row?.dni ?? row?.identidad ?? '').trim(),
+      codigo_empleado: String(row?.codigo_empleado ?? row?.codigo ?? '').trim(),
+      correo_electronico: String(row?.correo ?? row?.email ?? row?.texto_correo ?? '').trim()
     }));
   }
 };
