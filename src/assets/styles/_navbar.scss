@@ -246,6 +246,12 @@
   color: #543421;
 }
 
+.dashboard-shell .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'] {
+  background: var(--shell-pill-bg);
+  border-color: rgba(159, 110, 67, 0.1);
+  color: #543421;
+}
+
 .dashboard-shell .navbar-icon-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--shell-focus);
@@ -385,9 +391,9 @@
 }
 
 .dashboard-shell .gear-dropdown-menu {
-  top: calc(100% + 12px);
+  top: calc(100% + 4px);
   right: -8px;
-  min-width: 232px;
+  min-width: 248px;
   padding: 10px;
   border-radius: 16px;
   gap: 6px;
@@ -396,7 +402,7 @@
 .dashboard-shell .gear-dropdown-menu::before {
   content: "";
   position: absolute;
-  top: -7px;
+  top: -8px;
   right: 20px;
   width: 14px;
   height: 14px;
@@ -410,6 +416,7 @@
   min-height: 46px;
   padding: 11px 14px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .dashboard-shell .gear-dropdown-item i {
