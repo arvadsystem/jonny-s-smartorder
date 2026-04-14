@@ -13,8 +13,8 @@
   --pm-brand-1: #20160f;
   --pm-brand-2: #4d2f1f;
   --pm-brand-3: #f6c37a;
-  /* Tipografia de titulos mas estandar para lectura rapida en cliente final. */
-  --pm-display: 'Sora', 'Inter', system-ui, sans-serif;
+  /* Tipografia mas estandar/corporativa para cliente final (menos curva). */
+  --pm-display: 'Inter', 'Segoe UI', Tahoma, Arial, sans-serif;
   --pm-cream: #fff3e0;
   --pm-ink: #1b1411;
   --pm-gold: #e7b26a;
@@ -23,7 +23,7 @@
 
 .pm-shell {
   min-height: 100vh;
-  font-family: 'Sora', sans-serif;
+  font-family: var(--pm-display);
   background:
     radial-gradient(circle at 85% -10%, rgba(231, 178, 106, 0.35), transparent 42%),
     radial-gradient(circle at 12% 12%, rgba(94, 58, 36, 0.18), transparent 44%),

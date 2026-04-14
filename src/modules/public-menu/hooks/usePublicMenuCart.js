@@ -48,26 +48,13 @@ const isValidCartLine = (line) => {
 };
 
 const getStorageSnapshot = () => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(PUBLIC_MENU_CART_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!isPlainObject(parsed)) return null;
-    if (Number(parsed?.schemaVersion || 0) !== CART_SNAPSHOT_SCHEMA_VERSION) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  // Cache local deshabilitado: el carrito se calcula en memoria por sesion actual.
+  return null;
 };
 
 const persistSnapshot = (snapshot) => {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(PUBLIC_MENU_CART_STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // no-op
-  }
+  // Cache local deshabilitado intencionalmente.
+  void snapshot;
 };
 
 const clearSnapshot = () => {
@@ -174,6 +161,11 @@ export const usePublicMenuCart = ({ branch }) => {
   const branchSlug = String(branch?.slug || '').trim() || null;
 
   const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    // Limpieza unica de snapshots viejos para evitar inconsistencias al desplegar este cambio.
+    clearSnapshot();
+  }, []);
 
   useEffect(() => {
     if (!branchId) {
