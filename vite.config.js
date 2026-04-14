@@ -74,8 +74,17 @@ const proxiedPaths = [
 const proxy = Object.fromEntries(proxiedPaths.map((path) => [path, buildProxyTarget()]));
 
 export default defineConfig(({ command }) => ({
-  // Dev rapido: Million solo en build para evitar demora inicial en `npm run dev`.
-  plugins: command === 'build' ? [million.vite({ auto: true }), react()] : [react()],
+  // Million en build por defecto. Para habilitarlo en dev:
+  // VITE_ENABLE_MILLION_DEV=true npm run dev
+  plugins:
+    command === 'build' || process.env.VITE_ENABLE_MILLION_DEV === 'true'
+      ? [million.vite({ auto: true }), react()]
+      : [react()],
+  // Evita recargas completas al navegar por primera vez a rutas lazy
+  // que traen dependencias pesadas no pre-optimizadas.
+  optimizeDeps: {
+    include: ['framer-motion', 'react-icons/fi', 'react-select', 'react-select/async', 'react-dom']
+  },
   server: {
     proxy
   }
