@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import CatalogHeader from '../components/catalog/CatalogHeader';
+import CatalogSkeleton from '../components/catalog/CatalogSkeleton';
 import CartSheet from '../components/catalog/CartSheet';
 import CartFab from '../components/catalog/CartFab';
 import CategoryChips from '../components/catalog/CategoryChips';
@@ -11,10 +11,12 @@ import StateBlock from '../components/feedback/StateBlock';
 import jonnysLogo from '../../../assets/images/jonny_logo_no_bg_keep_teeth.png';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { useCatalogProducts } from '../hooks/useCatalogProducts';
+import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { usePublicMenuCart } from '../hooks/usePublicMenuCart';
 import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { getPublicMenuPathByStep } from '../routes/flowSteps';
 import { PUBLIC_MENU_ORDER_TYPE_OPTIONS, PUBLIC_MENU_STEPS } from '../types/publicMenuTypes';
+import { isPublicMenuAuthError, toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
 import { requiresItemConfiguration } from '../utils/publicMenuItemConfig';
 
 const getOrderTypeLabel = (orderTypeId) =>
@@ -36,6 +38,7 @@ const CatalogScreen = () => {
     selectedCategory,
     loading,
     error,
+    syncWarning,
     stats,
     setSearchTerm,
     setSelectedCategory,
@@ -49,6 +52,9 @@ const CatalogScreen = () => {
   const [showCategorySplash, setShowCategorySplash] = useState(false);
   const [contentTransitionKey, setContentTransitionKey] = useState(0);
   const transitionRef = useRef(0);
+  const confirmLockRef = useRef(false);
+  const authRedirectRef = useRef(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const {
     items: cartItems,
@@ -118,7 +124,7 @@ const CatalogScreen = () => {
   }, [actions, menuSummary]);
 
   const handleConfirmOrder = async () => {
-    if (confirmingOrder) return;
+    if (confirmingOrder || confirmLockRef.current) return;
 
     const payload = {
       ...buildOrderPayload(),
@@ -135,6 +141,7 @@ const CatalogScreen = () => {
 
     try {
       setConfirmingOrder(true);
+      confirmLockRef.current = true;
       const created = await publicMenuBootstrapService.createOrder(payload);
 
       actions.pushToast({
@@ -147,12 +154,34 @@ const CatalogScreen = () => {
       setCartOpen(false);
       clearCart();
     } catch (e) {
+      if (isPublicMenuAuthError(e)) {
+        actions.pushToast({
+          type: 'error',
+          durationMs: 5000,
+          message: toPublicMenuUiErrorMessage(
+            e,
+            'Tu sesion de cliente no es valida. Inicia sesion para confirmar el pedido.'
+          )
+        });
+
+        if (!authRedirectRef.current) {
+          authRedirectRef.current = true;
+          setCartOpen(false);
+          navigate('/auth/login?from=public-menu');
+          window.setTimeout(() => {
+            authRedirectRef.current = false;
+          }, 2000);
+        }
+        return;
+      }
+
       actions.pushToast({
         type: 'error',
-        message: e?.message || 'No se pudo enviar el pedido. Intenta nuevamente.'
+        message: toPublicMenuUiErrorMessage(e, 'No se pudo enviar el pedido. Intenta nuevamente.')
       });
     } finally {
       setConfirmingOrder(false);
+      confirmLockRef.current = false;
     }
   };
 
@@ -167,7 +196,7 @@ const CatalogScreen = () => {
   };
 
   useEffect(() => {
-    if (!selectedCategory || selectedCategory === 'all') {
+    if (!selectedCategory || selectedCategory === 'all' || prefersReducedMotion) {
       setShowCategorySplash(false);
       return;
     }
@@ -175,30 +204,18 @@ const CatalogScreen = () => {
     const current = transitionRef.current + 1;
     transitionRef.current = current;
     setShowCategorySplash(true);
-    const start = Date.now();
-    const minDuration = 650;
 
     const timer = window.setTimeout(() => {
-      const elapsed = Date.now() - start;
-      const remaining = Math.max(minDuration - elapsed, 0);
-      window.setTimeout(() => {
-        if (transitionRef.current !== current) return;
-        setShowCategorySplash(false);
-        setContentTransitionKey((prev) => prev + 1);
-      }, remaining);
-    }, 0);
+      if (transitionRef.current !== current) return;
+      setShowCategorySplash(false);
+      setContentTransitionKey((prev) => prev + 1);
+    }, 320);
 
     return () => window.clearTimeout(timer);
-  }, [selectedCategory]);
+  }, [prefersReducedMotion, selectedCategory]);
 
   if (loading) {
-    return (
-      <StateBlock
-        variant="loading"
-        title="Cargando catalogo"
-        description="Estamos preparando el menu vigente para tu sucursal."
-      />
-    );
+    return <CatalogSkeleton />;
   }
 
   if (error) {
@@ -231,10 +248,9 @@ const CatalogScreen = () => {
       >
         <div className="pm-catalog-hero__overlay" aria-hidden="true" />
         <div className="pm-catalog-hero__content">
-          <span className="pm-catalog-hero__eyebrow">Menu publico</span>
-          <h1 className="pm-catalog-hero__title">{menuSummary?.nombreMenu || 'Catalogo'}</h1>
+          <h1 className="pm-catalog-hero__title">Menú</h1>
           <p className="pm-catalog-hero__subtitle">
-            {state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal'} · {getOrderTypeLabel(orderType)}
+            {state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal'} - {getOrderTypeLabel(orderType)}
           </p>
         </div>
       </div>
@@ -255,14 +271,6 @@ const CatalogScreen = () => {
         </div>
       </div>
 
-      <CatalogHeader
-        branchName={state.selectedBranch?.name || 'Sucursal'}
-        orderTypeLabel={getOrderTypeLabel(orderType)}
-        menuName={menuSummary?.nombreMenu || 'Catalogo'}
-        totalProducts={stats.total}
-        availableProducts={stats.available}
-      />
-
       <SearchInput
         value={searchTerm}
         onChange={setSearchTerm}
@@ -275,6 +283,16 @@ const CatalogScreen = () => {
         selectedCategory={selectedCategory}
         onSelect={setSelectedCategory}
       />
+
+      {syncWarning ? (
+        <StateBlock
+          variant="warning"
+          title="Conexion inestable"
+          description={syncWarning}
+          actionLabel="Reintentar"
+          onAction={() => reloadCatalog()}
+        />
+      ) : null}
 
       {showCategorySplash ? (
         <div className="pm-category-splash" aria-hidden="true">
@@ -353,3 +371,4 @@ const CatalogScreen = () => {
 };
 
 export default CatalogScreen;
+

@@ -25,6 +25,8 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       previewError,
       success,
       warnings,
+      sharedMenuImpact,
+      appliedScope,
       validationErrors,
       openAsClientUrl
     },
@@ -289,6 +291,30 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
               ))}
             </ul>
           </div>
+        ) : null}
+
+        {sharedMenuImpact?.is_shared ? (
+          <section className="menu-pub-admin__shared-impact" aria-label="Impacto por menu compartido">
+            <div className="menu-pub-admin__shared-impact-head">
+              <div className="fw-semibold">Impacto transversal</div>
+              <span className="badge text-bg-warning">
+                {Number(sharedMenuImpact?.total_sucursales_activas || 0)} sucursales activas
+              </span>
+            </div>
+            <p className="mb-2">
+              Este menu esta compartido. Al guardar, los cambios aplican a las sucursales listadas abajo.
+            </p>
+            <ul className="mb-2 ps-3">
+              {(Array.isArray(sharedMenuImpact?.sucursales_activas) ? sharedMenuImpact.sucursales_activas : []).map((branch) => (
+                <li key={`menu-shared-branch-${branch?.id_sucursal}`}>
+                  #{branch?.id_sucursal} {branch?.nombre_sucursal}
+                </li>
+              ))}
+            </ul>
+            {appliedScope ? (
+              <small className="text-muted d-block">Scope aplicado en backend: {appliedScope}</small>
+            ) : null}
+          </section>
         ) : null}
 
         <section className="menu-pub-admin__selector" aria-label="Selector de sucursal para publicacion">

@@ -73,10 +73,11 @@ const proxiedPaths = [
 
 const proxy = Object.fromEntries(proxiedPaths.map((path) => [path, buildProxyTarget()]));
 
-export default defineConfig({
-  plugins: [million.vite({ auto: true }), react()],
+export default defineConfig(({ command }) => ({
+  // Dev rapido: Million solo en build para evitar demora inicial en `npm run dev`.
+  plugins: command === 'build' ? [million.vite({ auto: true }), react()] : [react()],
   server: {
     proxy
   }
-});
+}));
 

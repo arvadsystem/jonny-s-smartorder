@@ -1,0 +1,86 @@
+/* Grid de productos, modal de confirmacion y toasts. */
+
+.pm-product-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.7rem;
+}
+
+.pm-confirm-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: 1rem;
+}
+
+.pm-confirm-modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--pm-card);
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.pm-confirm-modal__title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.pm-confirm-modal__message {
+  margin: 0 0 0.9rem;
+  color: var(--pm-muted);
+  font-size: 0.9rem;
+}
+
+.pm-confirm-modal__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.pm-toast-host {
+  position: fixed;
+  top: 4.7rem;
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0 1rem;
+  z-index: 70;
+}
+
+.pm-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  box-shadow: var(--pm-shadow);
+  background: #212529;
+  color: #fff;
+}
+
+.pm-toast--success {
+  background: #0f7a4a;
+}
+
+.pm-toast--error {
+  background: #a13028;
+}
+
+.pm-toast__message {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.pm-toast__close {
+  border: 0;
+  color: inherit;
+  background: transparent;
+  line-height: 1;
+}
+

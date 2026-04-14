@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
+import { toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
 
 // Retrieves branches for the initial selection step.
 export const useBranches = () => {
@@ -16,7 +17,7 @@ export const useBranches = () => {
       setBranches(Array.isArray(rows) ? rows : []);
     } catch (err) {
       setBranches([]);
-      setError(err?.message || 'No pudimos cargar las sucursales.');
+      setError(toPublicMenuUiErrorMessage(err, 'No pudimos cargar las sucursales.'));
     } finally {
       setLoading(false);
     }
@@ -33,4 +34,3 @@ export const useBranches = () => {
     reloadBranches: loadBranches
   };
 };
-

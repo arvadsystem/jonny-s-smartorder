@@ -103,10 +103,12 @@ const normalizeBranchWithUi = (raw) => {
 
   return {
     ...base,
-    slug: ui.slug,
-    // `ui.foto` puede ser asset local del frontend; no se fuerza a API_URL.
-    imageUrl: ui.foto || base.imageUrl || '',
-    displayName: ui.nombre || base.name
+    // Regla de negocio: el nombre de sucursal visible al cliente debe venir de BD.
+    // Solo usamos `ui` para fallback de slug/foto cuando faltan en la data real.
+    slug: String(raw?.slug || ui.slug || '').trim(),
+    // Priorizamos imagen de BD/API; el asset local queda como respaldo visual.
+    imageUrl: base.imageUrl || ui.foto || '',
+    displayName: base.name
   };
 };
 
@@ -164,7 +166,8 @@ const normalizeCatalogItem = (raw) => ({
           id_salsa: Number(sauce?.id_salsa || 0) || null,
           nombre: String(sauce?.nombre || 'Salsa'),
           nivel_picante: Number(sauce?.nivel_picante || 0),
-          orden: Number(sauce?.orden || 0)
+          orden: Number(sauce?.orden || 0),
+          disponible: Boolean(sauce?.disponible ?? true)
         }))
         : [],
       reglas: Array.isArray(component?.reglas)
@@ -185,7 +188,8 @@ const normalizeCatalogItem = (raw) => ({
       id_salsa: Number(sauce?.id_salsa || 0) || null,
       nombre: String(sauce?.nombre || 'Salsa'),
       nivel_picante: Number(sauce?.nivel_picante || 0),
-      orden: Number(sauce?.orden || 0)
+      orden: Number(sauce?.orden || 0),
+      disponible: Boolean(sauce?.disponible ?? true)
     }))
     : [],
   salsas_requiere_seleccion: Boolean(raw?.salsas_requiere_seleccion),
