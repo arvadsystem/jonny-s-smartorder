@@ -1108,24 +1108,19 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const sanitizeForm = () => {
     const personaId = String(form.id_persona ?? "").trim();
     const empresaId = String(form.id_empresa ?? "").trim();
-    const tipoClienteId = String(form.id_tipo_cliente ?? "").trim();
     const contextSucursalId = parsePositiveInteger(selectedSucursalId);
 
     return {
       id_persona: personaId ? parseIntegerValue(personaId) : null,
       id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
       id_empresa_cliente: empresaId ? parseIntegerValue(empresaId) : null,
-      id_tipo_cliente: tipoClienteId ? parseIntegerValue(tipoClienteId) : null,
       id_sucursal: contextSucursalId || null,
-      fecha_ingreso: form.fecha_ingreso,
-      puntos: parseIntegerValue(form.puntos),
       estado: Boolean(form.estado),
     };
   };
 
   const validar = () => {
     const currentErrors = {};
-    const today = new Date().toISOString().split("T")[0];
     const payload = sanitizeForm();
     const hasPersona = Boolean(String(form.id_persona ?? "").trim());
     const hasEmpresa = Boolean(String(form.id_empresa ?? "").trim());
@@ -1157,12 +1152,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       }
     }
 
-    if (!form.id_tipo_cliente) currentErrors.id_tipo_cliente = "Selecciona un tipo de cliente";
-    if (!form.fecha_ingreso || form.fecha_ingreso > today) {
-      currentErrors.fecha_ingreso = "Ingresa una fecha valida (hoy o anterior)";
-    }
-    if (form.puntos === "") currentErrors.puntos = "Ingresa los puntos iniciales";
-    if (Number.isNaN(payload.puntos) || payload.puntos < 0) currentErrors.puntos = "Debe ser entero mayor o igual a 0";
+    void payload;
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
@@ -1869,10 +1859,24 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         aria-hidden={!showModal}
       >
         <div className="inv-prod-drawer-head crud-modal__header">
-          <div className="crud-modal__header-copy">
-            <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo cliente" : "Editar cliente"}</div>
-            <div className="inv-prod-drawer-sub crud-modal__subtitle">
-              {drawerMode === "create" ? createSubtitle : "Actualiza los campos necesarios y guarda los cambios."}
+          <div className="crud-modal__header-copy crud-modal__header-copy--insumo">
+            <div className="crud-modal__hero-icon" aria-hidden="true">
+              <i className="bi bi-people" />
+            </div>
+            <div className="crud-modal__hero-main">
+              <div className="crud-modal__hero-kicker">{drawerMode === "create" ? "Nuevo registro" : "Edicion activa"}</div>
+              <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo cliente" : "Editar cliente"}</div>
+              <div className="inv-prod-drawer-sub crud-modal__subtitle">
+                {drawerMode === "create" ? createSubtitle : "Actualiza los campos necesarios y guarda los cambios."}
+              </div>
+            </div>
+            <div className="crud-modal__hero-chips">
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-person-check" /> Persona o empresa
+              </span>
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-shield-check" /> Alta controlada
+              </span>
             </div>
           </div>
           <button
@@ -2098,57 +2102,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               </div>
             )}
 
-            <div className="col-12">
-              <label className="form-label text-light text-opacity-75">Tipo de cliente</label>
-              <AsyncSelect
-                inputId="cliente-tipo-select"
-                className={`clientes-persona-select ${errors.id_tipo_cliente ? "is-invalid" : ""}`}
-                classNamePrefix="clientes-persona-select"
-                placeholder="Selecciona el tipo de cliente"
-                cacheOptions
-                defaultOptions={tipoClienteDefaultOptions}
-                loadOptions={loadTipoClienteOptions}
-                isClearable={false}
-                value={tipoClienteSelectValue}
-                onChange={(option) =>
-                  setForm((state) => ({
-                    ...state,
-                    id_tipo_cliente: option?.value ? String(option.value) : "",
-                  }))
-                }
-                styles={tipoClienteSelectStyles}
-                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                menuPosition="fixed"
-                noOptionsMessage={() => "No se encontraron resultados"}
-                loadingMessage={() => "Buscando..."}
-              />
-              {errors.id_tipo_cliente && <div className="invalid-feedback d-block">{errors.id_tipo_cliente}</div>}
-            </div>
-
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Fecha de ingreso</label>
-              <input
-                type="date"
-                className={`form-control ${errors.fecha_ingreso ? "is-invalid" : ""}`}
-                value={form.fecha_ingreso}
-                onChange={(event) => setForm((state) => ({ ...state, fecha_ingreso: event.target.value }))}
-                max={todayDate}
-              />
-              {errors.fecha_ingreso && <div className="invalid-feedback d-block">{errors.fecha_ingreso}</div>}
-            </div>
-
-            <div className="col-12 col-md-6">
-              <label className="form-label text-light text-opacity-75">Puntos</label>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                className={`form-control ${errors.puntos ? "is-invalid" : ""}`}
-                value={form.puntos}
-                onChange={(event) => setForm((state) => ({ ...state, puntos: event.target.value }))}
-              />
-              {errors.puntos && <div className="invalid-feedback d-block">{errors.puntos}</div>}
-            </div>
+            {/* Sprint 5: tipo_cliente, fecha_ingreso y puntos se gestionan en backend/BD */}
 
             <div className="col-12">
               <div className="form-check form-switch m-0">

@@ -30,6 +30,67 @@
   gap: 0.25rem;
 }
 
+.crud-modal .crud-modal__header-copy--insumo {
+  position: relative;
+  display: grid;
+  gap: 0.72rem;
+  width: 100%;
+  padding: 0.92rem;
+  border-radius: 18px;
+  border: 1px solid rgba(197, 111, 67, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(255, 190, 113, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(255, 249, 240, 0.82));
+  box-shadow: 0 16px 28px rgba(55, 35, 30, 0.1);
+}
+
+.crud-modal .crud-modal__hero-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  color: #fff8f0;
+  box-shadow: 0 14px 24px rgba(122, 30, 36, 0.2);
+}
+
+.crud-modal .crud-modal__hero-icon i {
+  font-size: 1.32rem;
+}
+
+.crud-modal .crud-modal__hero-main {
+  min-width: 0;
+}
+
+.crud-modal .crud-modal__hero-kicker {
+  color: rgba(122, 30, 36, 0.72);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  margin-bottom: 0.22rem;
+}
+
+.crud-modal .crud-modal__hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.52rem;
+}
+
+.crud-modal .crud-modal__hero-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.46rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.8);
+  color: #5a4137;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .crud-modal .crud-modal__title {
   color: #3c2119;
   font-size: 1.35rem;
@@ -48,6 +109,7 @@
 
 .crud-modal .crud-modal__close.inv-prod-drawer-close {
   margin-left: auto;
+  margin-top: 0.1rem;
   width: 2.3rem;
   height: 2.3rem;
   min-width: 2.3rem;
@@ -89,6 +151,12 @@
   font-size: 0.95rem;
   font-weight: 600;
   letter-spacing: 0.2px;
+}
+
+.crud-modal .form-label.text-light,
+.crud-modal .form-check-label.text-light {
+  color: #6f564b !important;
+  opacity: 1 !important;
 }
 
 .crud-modal .persona-field-label {
@@ -194,6 +262,72 @@
   letter-spacing: 0.2px;
 }
 
+.crud-modal.empresas-modal .empresas-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.crud-modal.empresas-modal .empresas-modal__field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.crud-modal.empresas-modal .empresas-modal__field-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.08rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.crud-modal.empresas-modal .empresas-modal__field-meta.is-required {
+  border-color: rgba(173, 58, 58, 0.36);
+  background: rgba(255, 231, 231, 0.9);
+  color: #9f2525;
+}
+
+.crud-modal.empresas-modal .empresas-modal__field-meta.is-optional {
+  border-color: rgba(131, 111, 95, 0.35);
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(96, 73, 60, 0.9);
+}
+
+.crud-modal.clientes-modal .clientes-modal__origin-helper,
+.crud-modal.usuarios-modal .usuarios-modal__section,
+.crud-modal.usuarios-modal .usuarios-modal__result-box {
+  border: 1px solid rgba(181, 165, 155, 0.34);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 0.86rem;
+}
+
+.crud-modal.clientes-modal .clientes-modal__entity-block,
+.crud-modal.empleados-modal .empleados-modal__entity-block {
+  border: 1px solid rgba(183, 168, 156, 0.36);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 0.72rem;
+}
+
+.crud-modal.usuarios-modal .usuarios-modal__label {
+  color: #6f564b !important;
+}
+
+.crud-modal.usuarios-modal .usuarios-modal__roles-box {
+  border: 1px solid rgba(188, 171, 153, 0.58);
+  background: rgba(255, 255, 255, 0.74);
+}
+
 .crud-modal.empleados-modal .crud-modal__section {
   border: 1px solid rgba(181, 165, 155, 0.34);
   border-radius: 16px;
@@ -268,6 +402,10 @@
     padding: 0.9rem 0.9rem 0.75rem;
   }
 
+  .crud-modal .crud-modal__header-copy--insumo {
+    padding: 0.84rem;
+  }
+
   .crud-modal .crud-modal__body {
     padding: 0.3rem 0.9rem 0.9rem;
   }
@@ -280,6 +418,21 @@
 
   .crud-modal .crud-modal__subtitle {
     font-size: 0.86rem;
+  }
+
+  .crud-modal .crud-modal__hero-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 15px;
+  }
+
+  .crud-modal .crud-modal__hero-icon i {
+    font-size: 1.15rem;
+  }
+
+  .crud-modal .crud-modal__hero-chip {
+    font-size: 0.7rem;
+    padding: 0.4rem 0.58rem;
   }
 
   .crud-modal .crud-modal__footer {
