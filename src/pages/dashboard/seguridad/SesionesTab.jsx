@@ -6,6 +6,7 @@ import SecurityConfirmAction from "./components/SecurityConfirmAction";
 import { fmtHN } from "../../../utils/dateTime";
 import { usePermisos } from "../../../context/PermisosContext";
 import { PERMISSIONS } from "../../../utils/permissions";
+import "../perfil-toast.css";
 import "./sesiones-ui.css";
 
 const PAGE_SIZE = 10;
@@ -377,7 +378,7 @@ const SesionesTabPersonal = () => {
           )}
         </div>
       </div>
-    </div>
+      </div>
   );
 };
 
@@ -401,6 +402,30 @@ const SesionesTabGlobal = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const [closingId, setClosingId] = useState(null);
+  const [alerta, setAlerta] = useState({
+    visible: false,
+    titulo: "AVISO",
+    mensaje: "",
+    icono: "bi-exclamation-triangle-fill",
+  });
+
+  useEffect(() => {
+    if (!alerta.visible) return undefined;
+
+    const timer = setTimeout(
+      () => setAlerta((prev) => ({ ...prev, visible: false })),
+      3200
+    );
+
+    return () => clearTimeout(timer);
+  }, [alerta.visible]);
+
+  const mostrarAlerta = (
+    mensaje,
+    { titulo = "AVISO", icono = "bi-exclamation-triangle-fill" } = {}
+  ) => {
+    setAlerta({ visible: true, titulo, mensaje, icono });
+  };
 
   const load = async ({ silent = false } = {}) => {
     if (!silent) {
@@ -463,6 +488,10 @@ const SesionesTabGlobal = () => {
       await securityService.cerrarGlobalMenosActual();
       setOffset(0);
       await load({ silent: true });
+      mostrarAlerta("Sesiones cerradas correctamente.", {
+        titulo: "AVISO",
+        icono: "bi-check-circle-fill",
+      });
     } catch (e) {
       alert(e?.message || "No se pudieron cerrar las sesiones");
     }
@@ -475,6 +504,10 @@ const SesionesTabGlobal = () => {
     try {
       await securityService.cerrarSesionGlobal(id_sesion);
       await load({ silent: true });
+      mostrarAlerta("Sesion cerrada correctamente.", {
+        titulo: "AVISO",
+        icono: "bi-check-circle-fill",
+      });
     } catch (e) {
       alert(e?.message || "No se pudo cerrar la sesión");
     } finally {
@@ -485,7 +518,30 @@ const SesionesTabGlobal = () => {
   if (noPermiso) return <SinPermiso permiso="SEGURIDAD_VER" detalle="Solo Super Admin." />;
 
   return (
-    <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
+    <>
+      {alerta.visible && (
+        <div className="perfil-save-toast" role="status" aria-live="polite">
+          <div className="perfil-save-toast__body">
+            <div className="perfil-save-toast__icon" aria-hidden="true">
+              <i className={`bi ${alerta.icono}`} />
+            </div>
+            <div className="perfil-save-toast__copy">
+              <div className="perfil-save-toast__title">{alerta.titulo}</div>
+              <div className="perfil-save-toast__subtitle">{alerta.mensaje}</div>
+            </div>
+            <button
+              type="button"
+              className="perfil-save-toast__close"
+              onClick={() => setAlerta((prev) => ({ ...prev, visible: false }))}
+              aria-label="Cerrar"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
       <div className="card-body p-0">
         <div className="sec-panel-header sec-sesiones-header">
           <div className="sec-panel-title-wrap">
@@ -639,7 +695,8 @@ const SesionesTabGlobal = () => {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
