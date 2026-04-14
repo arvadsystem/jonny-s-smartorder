@@ -1,15 +1,60 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { perfilService } from "../../services/perfilService";
+import { API_URL } from "../../utils/constants";
 import { fmtHN } from "../../utils/dateTime";
 import "./perfil-page.css";
 import "./perfil-toast.css";
 
+const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/|data:image\/)/i;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_PROFILE_IMAGE_BYTES = 6 * 1024 * 1024;
+
+const normalizeText = (value) => String(value ?? "").trim();
+
+const getApiOrigin = () => {
+  const clean = normalizeText(API_URL);
+  if (!clean) return "";
+
+  try {
+    return new URL(clean).origin;
+  } catch {
+    return clean.replace(/\/+$/, "");
+  }
+};
+
+const resolveProfilePhotoSrc = (value) => {
+  const photo = normalizeText(value);
+  if (!photo || !PHOTO_URL_RE.test(photo)) return "";
+  if (/^data:image\//i.test(photo)) return photo;
+  if (/^https?:\/\//i.test(photo)) return photo;
+  if (/^\/uploads\//i.test(photo)) {
+    const origin = getApiOrigin();
+    return origin ? `${origin}${photo}` : photo;
+  }
+  return "";
+};
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen seleccionada."));
+    reader.readAsDataURL(file);
+  });
+
 const Perfil = () => {
+  const imageInputRef = useRef(null);
   const [roles, setRoles] = useState([]);
   const [ultimo, setUltimo] = useState(null);
   const [sesionesTotales, setSesionesTotales] = useState(0);
   const [usuarioSesion, setUsuarioSesion] = useState("");
   const [cuentaVerificada, setCuentaVerificada] = useState(true);
+  const [fotoPerfil, setFotoPerfil] = useState("");
+  const [fotoPerfilDraft, setFotoPerfilDraft] = useState("");
+  const [fotoPerfilDirty, setFotoPerfilDirty] = useState(false);
+  const [fotoProcesando, setFotoProcesando] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,6 +91,7 @@ const Perfil = () => {
       setCuentaVerificada(
         p.estado === undefined || p.estado === null ? true : Boolean(p.estado)
       );
+      setFotoPerfil(p.foto_perfil || "");
       setPerfilVisible({
         nombre: p.nombre || "",
         apellido: p.apellido || "",
@@ -76,6 +122,87 @@ const Perfil = () => {
     const timer = setTimeout(() => setShowSaveConfirm(false), 3200);
     return () => clearTimeout(timer);
   }, [showSaveConfirm]);
+
+  const avatarImageSrc = useMemo(() => resolveProfilePhotoSrc(fotoPerfil), [fotoPerfil]);
+  const avatarDraftImageSrc = useMemo(() => resolveProfilePhotoSrc(fotoPerfilDraft), [fotoPerfilDraft]);
+
+  const handleAvatarEditClick = () => {
+    if (fotoProcesando) return;
+    setFotoError("");
+    setFotoPerfilDraft(fotoPerfil || "");
+    setFotoPerfilDirty(false);
+    setShowAvatarModal(true);
+  };
+
+  const handleCloseAvatarModal = () => {
+    if (fotoProcesando) return;
+    setFotoError("");
+    setFotoPerfilDraft("");
+    setFotoPerfilDirty(false);
+    setShowAvatarModal(false);
+  };
+
+  const handleAvatarFileChange = async (event) => {
+    const input = event.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+
+    setFotoError("");
+
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      setFotoError("Solo se permiten imagenes JPG, PNG o WEB.");
+      if (input) input.value = "";
+      return;
+    }
+
+    if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+      setFotoError("La imagen supera el limite de 6 MB.");
+      if (input) input.value = "";
+      return;
+    }
+
+    setFotoProcesando(true);
+    try {
+      const photoDataUrl = await readFileAsDataUrl(file);
+      setFotoPerfilDraft(photoDataUrl);
+      setFotoPerfilDirty(true);
+    } catch (e) {
+      setFotoError(e?.message || "No se pudo procesar la imagen de perfil.");
+    } finally {
+      setFotoProcesando(false);
+      if (input) input.value = "";
+    }
+  };
+
+  const handleRemoveAvatarImage = () => {
+    if (fotoProcesando) return;
+    setFotoError("");
+    const hadStoredPhoto = normalizeText(fotoPerfil) !== "";
+    const hasDraftPhoto = normalizeText(fotoPerfilDraft) !== "";
+    if (!hadStoredPhoto && !hasDraftPhoto) return;
+    setFotoPerfilDraft("");
+    setFotoPerfilDirty(true);
+  };
+
+  const handleSaveAvatarChanges = async () => {
+    if (fotoProcesando || !fotoPerfilDirty) return;
+    setFotoError("");
+    setFotoProcesando(true);
+    try {
+      const nextPhoto = normalizeText(fotoPerfilDraft);
+      await perfilService.updatePerfil({ foto_perfil: nextPhoto });
+      setFotoPerfil(nextPhoto);
+      setShowAvatarModal(false);
+      setFotoPerfilDraft("");
+      setFotoPerfilDirty(false);
+      setShowSaveConfirm(true);
+      await cargar();
+    } catch (e) {
+      setFotoError(e?.message || "No se pudo actualizar la imagen de perfil.");
+    } finally {
+      setFotoProcesando(false);
+    }
+  };
 
   const onSavePerfil = async () => {
     try {
@@ -166,12 +293,121 @@ const Perfil = () => {
         </div>
       )}
 
+      {showAvatarModal && (
+        <div
+          className="perfil-avatar-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Editar imagen de perfil"
+          onClick={handleCloseAvatarModal}
+        >
+          <div className="perfil-avatar-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="perfil-avatar-modal__head">
+              <h4>Imagen de perfil</h4>
+              <button
+                type="button"
+                className="perfil-avatar-modal__close"
+                onClick={handleCloseAvatarModal}
+                aria-label="Cerrar modal"
+                disabled={fotoProcesando}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <div className={`perfil-avatar-modal__preview ${avatarDraftImageSrc ? "has-image" : ""}`}>
+              {fotoProcesando ? (
+                <div className="perfil-avatar-modal__loading" role="status">
+                  <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                  <span>Procesando imagen...</span>
+                </div>
+              ) : avatarDraftImageSrc ? (
+                <img src={avatarDraftImageSrc} alt={`Foto de perfil de ${nombreCompleto}`} referrerPolicy="no-referrer" />
+              ) : (
+                <div className="perfil-avatar-modal__placeholder">
+                  <i className="bi bi-image" />
+                  <span>Sin imagen seleccionada</span>
+                </div>
+              )}
+            </div>
+
+            <div className="perfil-avatar-modal__actions">
+              <label className="perfil-avatar-modal__btn perfil-avatar-modal__btn--primary">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleAvatarFileChange}
+                  disabled={fotoProcesando}
+                />
+                <i className="bi bi-upload" />
+                <span>{avatarDraftImageSrc ? "Cambiar imagen" : "Seleccionar imagen"}</span>
+              </label>
+
+              <button
+                type="button"
+                className="perfil-avatar-modal__btn perfil-avatar-modal__btn--danger"
+                onClick={handleRemoveAvatarImage}
+                disabled={fotoProcesando || !avatarDraftImageSrc}
+              >
+                Quitar
+              </button>
+            </div>
+
+            <div className="perfil-avatar-modal__confirm-actions">
+              <button
+                type="button"
+                className="perfil-avatar-modal__confirm-btn perfil-avatar-modal__confirm-btn--cancel"
+                onClick={handleCloseAvatarModal}
+                disabled={fotoProcesando}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="perfil-avatar-modal__confirm-btn perfil-avatar-modal__confirm-btn--save"
+                onClick={handleSaveAvatarChanges}
+                disabled={fotoProcesando || !fotoPerfilDirty}
+              >
+                Guardar cambios
+              </button>
+            </div>
+
+            {fotoError ? (
+              <div className="perfil-avatar-modal__error">{fotoError}</div>
+            ) : (
+              <div className="perfil-avatar-modal__hint">JPG, PNG o WEB hasta 6 MB.</div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="perfil-page__shell">
         <div className="card shadow-sm perfil-panel perfil-panel--total perfil-page__hero mb-3">
           <div className="card-body">
             <div className="perfil-page__hero-main">
-              <div className="perfil-page__avatar" aria-hidden="true">
-                {iniciales}
+              <div className="perfil-page__avatar-wrap">
+                <div className="perfil-page__avatar" aria-hidden="true">
+                  {avatarImageSrc ? (
+                    <img
+                      src={avatarImageSrc}
+                      alt={`Foto de perfil de ${nombreCompleto}`}
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    iniciales
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="perfil-page__avatar-edit-btn"
+                  onClick={handleAvatarEditClick}
+                  disabled={fotoProcesando}
+                  aria-label="Editar imagen de perfil"
+                  title="Editar imagen"
+                >
+                  <i className={`bi ${fotoProcesando ? "bi-arrow-repeat" : "bi-pencil-fill"}`} />
+                </button>
               </div>
               <div>
                 <h3 className="mb-1">Mi perfil</h3>
@@ -371,3 +607,5 @@ const Perfil = () => {
 };
 
 export default Perfil;
+
+
