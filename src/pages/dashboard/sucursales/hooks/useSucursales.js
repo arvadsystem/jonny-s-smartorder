@@ -84,11 +84,7 @@ export const useSucursales = () => {
     setError('');
     try {
       await sucursalesApi.updateFull(idNum, payload);
-      setSucursales((prev) =>
-        (Array.isArray(prev) ? prev : []).map((item) =>
-          Number(item?.id_sucursal ?? 0) === idNum ? normalizeSucursalRecord({ ...item, ...payload }) : item
-        )
-      );
+      await refresh();
       openToast('ACTUALIZADO', 'LA SUCURSAL SE ACTUALIZO CORRECTAMENTE.', 'success');
     } catch (err) {
       const msg = extractApiMessage(err, 'NO SE PUDO ACTUALIZAR LA SUCURSAL');
@@ -97,7 +93,7 @@ export const useSucursales = () => {
     } finally {
       setSaving(false);
     }
-  }, [openToast]);
+  }, [openToast, refresh]);
 
   const toggleSucursalEstado = useCallback(async (sucursal, nextEstado) => {
     const idNum = Number(sucursal?.id_sucursal ?? 0);

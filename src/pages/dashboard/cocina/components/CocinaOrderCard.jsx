@@ -45,7 +45,7 @@ export default function CocinaOrderCard({
   const columnKey = resolveOrderColumnKey(pedido);
   const isReadyColumn = columnKey === 'LISTOS_PARA_ENTREGA';
 
-  const fechaRef = pedido.fecha_hora_facturacion || pedido.fecha_hora_pedido;
+  const fechaRef = pedido.visible_en_cocina_at || pedido.fecha_hora_facturacion || pedido.fecha_hora_pedido;
   const timerLabel = formatTimerLabel(fechaRef, now);
   const minutosEnEspera = pedido.minutos_en_espera ?? null;
   const timerClass = getTimerClass(minutosEnEspera);

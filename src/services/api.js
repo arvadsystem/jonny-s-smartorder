@@ -12,6 +12,8 @@ class ApiError extends Error {
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+const DEV_DIRECT_API_URL = import.meta.env.VITE_DEV_DIRECT_API_URL || 'http://localhost:3001';
+const AUTH_ENDPOINTS_WITH_DEV_FALLBACK = new Set(['/login', '/api/public/login']);
 
 const appendNoCacheParam = (endpoint) => {
   const safeEndpoint = String(endpoint || '');
@@ -149,18 +151,32 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
   requestOptions.signal = signal;
 
   let response;
+  let firstError = null;
   try {
     response = await fetch(`${API_URL}${resolvedEndpoint}`, requestOptions);
   } catch (error) {
-    const aborted = error?.name === 'AbortError';
-    const message = aborted
-      ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
-      : 'No se pudo establecer comunicacion con el servidor.';
-    throw new ApiError(message, {
-      status: aborted ? 408 : 0,
-      code: aborted ? 'REQUEST_TIMEOUT' : 'FETCH_ERROR',
-      data: error
-    });
+    firstError = error;
+    const shouldTryDirectBackend =
+      import.meta.env.DEV &&
+      !API_URL &&
+      AUTH_ENDPOINTS_WITH_DEV_FALLBACK.has(String(endpoint || '').split('?')[0]) &&
+      config?.disableDevDirectFallback !== true;
+
+    if (shouldTryDirectBackend) {
+      response = await fetch(`${DEV_DIRECT_API_URL}${resolvedEndpoint}`, requestOptions).catch(() => null);
+    }
+
+    if (!response) {
+      const aborted = error?.name === 'AbortError';
+      const message = aborted
+        ? `Tiempo de espera agotado (${timeoutMs}ms) al conectar con el servidor.`
+        : 'No se pudo establecer comunicacion con el servidor.';
+      throw new ApiError(message, {
+        status: aborted ? 408 : 0,
+        code: aborted ? 'REQUEST_TIMEOUT' : 'FETCH_ERROR',
+        data: firstError || error
+      });
+    }
   } finally {
     cleanup();
   }

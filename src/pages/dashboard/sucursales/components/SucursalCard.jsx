@@ -36,6 +36,16 @@ export default function SucursalCard({
         <i className="bi bi-shop" />
       </div>
 
+      {sucursal?.imagen_url_publica ? (
+        <div className="mb-2">
+          <img
+            src={sucursal.imagen_url_publica}
+            alt={sucursal?.nombre_sucursal || 'Sucursal'}
+            style={{ width: '100%', maxHeight: 120, objectFit: 'cover', borderRadius: 12 }}
+          />
+        </div>
+      ) : null}
+
       <div className="inv-catpro-item-top">
         <div className="inv-cat-card__title-wrap">
           <span className="inv-cat-card__icon" aria-hidden="true">
@@ -71,6 +81,14 @@ export default function SucursalCard({
           <i className="bi bi-clock-history" />
           <span>{getAntiguedadLabel(sucursal)}</span>
         </div>
+        {(sucursal?.hora_inicio || sucursal?.hora_final) ? (
+          <div className="suc-page__card-row">
+            <i className="bi bi-clock" />
+            <span>
+              {sucursal?.hora_inicio || '--:--'} - {sucursal?.hora_final || '--:--'}
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <div className="inv-catpro-meta inv-catpro-item-footer">

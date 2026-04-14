@@ -2090,3 +2090,34 @@
   display: flex;
   align-items: center;
 }
+
+.ventas-pedidos__search {
+  min-height: 42px;
+}
+
+.ventas-pedidos-page .collapsible-search__field {
+  transition: width 0.22s ease, opacity 0.2s ease;
+}
+
+.ventas-pedidos-page .collapsible-search.is-expanded .collapsible-search__field {
+  width: clamp(220px, 28vw, 420px);
+  opacity: 1;
+}
+
+.ventas-pedidos-page .collapsible-search__input {
+  min-height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  box-shadow: 0 8px 18px rgba(18, 7, 3, 0.04);
+  font-weight: 600;
+}
+
+.spin {
+  animation: spin-ring 0.8s linear infinite;
+}
+
+@keyframes spin-ring {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -250,8 +250,17 @@ export default function CierresCajaView() {
   const handleSubmitArqueo = async (payload) => {
     if (!selectedSesion?.id_sesion_caja) return;
     await createArqueo(selectedSesion.id_sesion_caja, payload);
-    await Promise.all([refreshCurrentScope(), ensureDetalle(selectedSesion)]);
+    const [, detail] = await Promise.all([refreshCurrentScope(), ensureDetalle(selectedSesion)]);
     setArqueoOpen(false);
+
+    const selectedType = (catalogos.tipos_arqueo || []).find(
+      (item) => Number(item?.id_tipo_arqueo_caja) === Number(payload?.id_tipo_arqueo_caja)
+    );
+    const isClosingArqueo = String(selectedType?.codigo || '').trim().toUpperCase() === 'CIERRE';
+    if (isClosingArqueo) {
+      setSelectedDetalle(detail || selectedDetalle);
+      setCloseOpen(true);
+    }
   };
 
   const handleSubmitClose = async (payload) => {

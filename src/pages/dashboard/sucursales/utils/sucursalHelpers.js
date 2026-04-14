@@ -5,6 +5,10 @@ export const initialSucursalForm = {
   texto_telefono: '',
   texto_correo: '',
   fecha_inauguracion: '',
+  hora_inicio: '',
+  hora_final: '',
+  id_archivo_imagen: null,
+  imagen_url_publica: '',
   estado: true
 };
 
@@ -22,7 +26,11 @@ export const parseEstado = (value) => {
 
 export const normalizeSucursalRecord = (item) => ({
   ...(item || {}),
-  estado: parseEstado(item?.estado)
+  estado: parseEstado(item?.estado),
+  hora_inicio: item?.hora_inicio ? String(item.hora_inicio).slice(0, 5) : '',
+  hora_final: item?.hora_final ? String(item.hora_final).slice(0, 5) : '',
+  id_archivo_imagen: item?.id_archivo_imagen ? Number(item.id_archivo_imagen) : null,
+  imagen_url_publica: String(item?.imagen_url_publica || '')
 });
 
 export const normalizeComparable = (value) =>
@@ -61,6 +69,9 @@ export const buildSucursalPayload = (form) => ({
   texto_telefono: String(form?.texto_telefono ?? '').trim() || null,
   texto_correo: String(form?.texto_correo ?? '').trim() || null,
   fecha_inauguracion: String(form?.fecha_inauguracion ?? '').trim() || null,
+  hora_inicio: String(form?.hora_inicio ?? '').trim() || null,
+  hora_final: String(form?.hora_final ?? '').trim() || null,
+  id_archivo_imagen: Number(form?.id_archivo_imagen ?? 0) > 0 ? Number(form.id_archivo_imagen) : null,
   estado: !!form?.estado
 });
 
@@ -86,6 +97,13 @@ export const validateSucursalForm = ({ form, sucursales = [], mode = 'create', e
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.texto_correo)) {
       errors.texto_correo = 'CORREO INVALIDO';
     }
+  }
+
+  if ((payload.hora_inicio && !payload.hora_final) || (!payload.hora_inicio && payload.hora_final)) {
+    errors.hora_final = 'DEBE DEFINIR HORA INICIO Y HORA FINAL';
+  }
+  if (payload.hora_inicio && payload.hora_final && payload.hora_final <= payload.hora_inicio) {
+    errors.hora_final = 'HORA FINAL DEBE SER MAYOR A HORA INICIO';
   }
 
   const isSameRecord = (item) =>
@@ -181,4 +199,3 @@ export const buildKpiSeries = (stats) => {
     inactivas: makeSeries(stats?.inactivas, stats?.total)
   };
 };
-

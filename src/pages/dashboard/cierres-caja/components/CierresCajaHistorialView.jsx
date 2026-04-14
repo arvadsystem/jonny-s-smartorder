@@ -44,10 +44,12 @@ export default function CierresCajaHistorialView() {
   const { canAny, isSuperAdmin } = usePermisos();
   const {
     detailLoading,
+    saving,
     toast,
     openToast,
     closeToast,
-    getSesionDetalle
+    getSesionDetalle,
+    editCierre
   } = useCierresCaja();
 
   const [selectedSucursalId, setSelectedSucursalId] = useState('');
@@ -81,6 +83,7 @@ export default function CierresCajaHistorialView() {
     PERMISSIONS.VENTAS_CAJAS_DETALLE_VER,
     PERMISSIONS.VENTAS_CAJAS_REPORTE_VER
   ]);
+  const canEditClose = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_CERRAR]);
 
   const deferredSearch = useDeferredValue(search);
   const scopeQuery = useMemo(() => buildScopeQuery(selectedSucursalId), [selectedSucursalId]);
@@ -246,6 +249,34 @@ export default function CierresCajaHistorialView() {
     } catch {
       setDetailOpen(false);
       setSelectedDetalle(null);
+    }
+  };
+
+  const handleQuickEdit = async (closure) => {
+    if (!canEditClose || !closure?.id_cierre_caja || !closure?.editable_en_ventana) return;
+    const motivo = window.prompt('Motivo de edicion (obligatorio):', 'Ajuste operativo');
+    if (!motivo || !motivo.trim()) return;
+    const montoInput = window.prompt(
+      'Monto declarado de cierre:',
+      String(closure?.monto_declarado_cierre ?? '0')
+    );
+    if (montoInput === null) return;
+    const parsed = Number(montoInput);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      openToast('ERROR', 'Monto declarado invalido.', 'danger');
+      return;
+    }
+
+    try {
+      await editCierre(closure.id_cierre_caja, {
+        monto_declarado_cierre: parsed,
+        id_resolucion_cierre_caja: closure.id_resolucion_cierre_caja || null,
+        observacion_cierre: closure.resolucion_nombre || null,
+        motivo_edicion: motivo.trim()
+      });
+      await loadHistory();
+    } catch {
+      // El hook ya muestra toast de error.
     }
   };
 
@@ -478,30 +509,36 @@ export default function CierresCajaHistorialView() {
                           L. {formatCajaCurrency(closure.monto_declarado_cierre)}
                         </td>
                         <td className="text-center align-middle">
-                          <div className="d-grid gap-1 justify-items-center">
-                            <span className={`ventas-page__table-pill ${closureBadge.className}`}>
-                              {closureBadge.label}
-                            </span>
-                            <small className="text-muted fw-semibold">
-                              {closure.diferencia === null || closure.diferencia === undefined
-                                ? '-'
-                                : `L. ${formatCajaCurrency(closure.diferencia)}`}
-                            </small>
-                          </div>
+                          <span className={`ventas-page__table-pill ${closureBadge.className}`}>
+                            {closureBadge.label}
+                          </span>
                         </td>
                         <td className="align-middle text-muted small fw-semibold">
                           {closure.resolucion_nombre || 'Sin resolucion'}
                         </td>
                         <td className="text-end align-middle" onClick={(event) => event.stopPropagation()}>
-                          <button
-                            type="button"
-                            className="ventas-page__table-detail-btn"
-                            title="Ver detalle"
-                            onClick={() => openDetalle(closure)}
-                            disabled={!canViewDetail}
-                          >
-                            <i className="bi bi-eye" />
-                          </button>
+                          <div className="d-inline-flex gap-2">
+                            <button
+                              type="button"
+                              className="ventas-page__table-detail-btn"
+                              title="Ver detalle"
+                              onClick={() => openDetalle(closure)}
+                              disabled={!canViewDetail}
+                            >
+                              <i className="bi bi-eye" />
+                            </button>
+                            {canEditClose ? (
+                              <button
+                                type="button"
+                                className="ventas-page__table-detail-btn bg-white border-warning text-warning"
+                                title={closure.editable_en_ventana ? 'Editar cierre' : 'Ventana de edicion expirada'}
+                                onClick={() => void handleQuickEdit(closure)}
+                                disabled={!closure.editable_en_ventana || saving}
+                              >
+                                <i className="bi bi-pencil-square" />
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );
