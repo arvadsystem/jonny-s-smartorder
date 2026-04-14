@@ -14,7 +14,7 @@ import {
 
 const STEP_COPY = {
   [PUBLIC_MENU_STEPS.BRANCH]: {
-    title: 'Menu',
+    title: 'Menú',
     subtitle: 'Elige la sucursal donde deseas pedir.'
   },
   [PUBLIC_MENU_STEPS.ORDER_TYPE]: {
@@ -101,17 +101,17 @@ const PublicMenuFlowShell = () => {
             ) : (
               <button
                 type="button"
-                className="pm-shell__header-btn"
+                className="pm-shell__header-btn pm-shell__header-btn--wide"
                 onClick={() => navigate('/auth/login?from=public-menu')}
               >
                 <i className="bi bi-person-fill" aria-hidden="true" />
-                <span>Iniciar sesion</span>
+                <span>Iniciar sesión</span>
               </button>
             )}
 
             <button
               type="button"
-              className="pm-shell__header-btn"
+              className="pm-shell__header-btn pm-shell__header-btn--wide"
               onClick={() =>
                 actions.openConfirm({
                   title: 'Volver al inicio',
