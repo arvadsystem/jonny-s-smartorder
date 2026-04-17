@@ -22,6 +22,42 @@ import { requiresItemConfiguration } from '../utils/publicMenuItemConfig';
 const getOrderTypeLabel = (orderTypeId) =>
   PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === orderTypeId)?.title || 'Pedido';
 
+const buildOrderPayloadFingerprint = (payload) => {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const normalizedItems = items
+    .map((item) => ({
+      id_detalle_menu: Number(item?.id_detalle_menu || 0),
+      cantidad: Number(item?.cantidad || 0),
+      extras: (Array.isArray(item?.extras) ? item.extras : [])
+        .map((entry) => String(entry?.id_extra || '').trim())
+        .filter(Boolean)
+        .sort(),
+      salsas_por_unidad: (Array.isArray(item?.salsas_por_unidad) ? item.salsas_por_unidad : [])
+        .map((entry) => ({
+          id_salsa: Number(entry?.id_salsa || 0),
+          cantidad: Number(entry?.cantidad || 0)
+        }))
+        .sort((left, right) => left.id_salsa - right.id_salsa),
+      nota: String(item?.nota || '').trim()
+    }))
+    .sort((left, right) => left.id_detalle_menu - right.id_detalle_menu);
+
+  return JSON.stringify({
+    id_sucursal: Number(payload?.id_sucursal || 0),
+    tipo_pedido: String(payload?.tipo_pedido || ''),
+    items: normalizedItems
+  });
+};
+
+const generateOrderIdempotencyKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `pm-${crypto.randomUUID()}`;
+  }
+
+  const random = Math.random().toString(36).slice(2, 12);
+  return `pm-${Date.now().toString(36)}-${random}`;
+};
+
 // Paso 3: catalogo real basado en menu_vigente + detalle_menu.
 const CatalogScreen = () => {
   const navigate = useNavigate();
@@ -54,6 +90,7 @@ const CatalogScreen = () => {
   const transitionRef = useRef(0);
   const confirmLockRef = useRef(false);
   const authRedirectRef = useRef(false);
+  const idempotencyRef = useRef({ fingerprint: '', key: '' });
   const prefersReducedMotion = usePrefersReducedMotion();
 
   const {
@@ -139,6 +176,16 @@ const CatalogScreen = () => {
       return;
     }
 
+    // Reutiliza llave cuando el payload es igual (reintentos), y regenera al cambiar carrito/contexto.
+    const payloadFingerprint = buildOrderPayloadFingerprint(payload);
+    if (idempotencyRef.current.fingerprint !== payloadFingerprint) {
+      idempotencyRef.current = {
+        fingerprint: payloadFingerprint,
+        key: generateOrderIdempotencyKey()
+      };
+    }
+    payload.idempotency_key = idempotencyRef.current.key;
+
     try {
       setConfirmingOrder(true);
       confirmLockRef.current = true;
@@ -153,6 +200,7 @@ const CatalogScreen = () => {
 
       setCartOpen(false);
       clearCart();
+      idempotencyRef.current = { fingerprint: '', key: '' };
     } catch (e) {
       if (isPublicMenuAuthError(e)) {
         actions.pushToast({
@@ -189,6 +237,7 @@ const CatalogScreen = () => {
   const handleChangeBranch = () => {
     closeConfigSheet();
     clearCart();
+    idempotencyRef.current = { fingerprint: '', key: '' };
     actions.selectMenu(null);
     actions.selectOrderType(null);
     actions.selectBranch(null);

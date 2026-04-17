@@ -4,6 +4,26 @@ import { API_URL } from '../../../utils/constants';
 
 const CATALOG_CACHE_TTL_MS = 20_000;
 const catalogCache = new Map();
+const PUBLIC_ORDER_TYPES = new Set(['dine-in', 'pickup', 'delivery']);
+
+const toPositiveIntOrNull = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const assertValidBranchId = (idSucursal) => {
+  if (!toPositiveIntOrNull(idSucursal)) {
+    throw new Error('La sucursal seleccionada no es valida. Vuelve a seleccionar una sucursal.');
+  }
+};
+
+const assertValidOrderType = (orderType) => {
+  const normalized = String(orderType || '').trim().toLowerCase();
+  if (!normalized || !PUBLIC_ORDER_TYPES.has(normalized)) {
+    throw new Error('El tipo de pedido no es valido. Selecciona nuevamente como deseas ordenar.');
+  }
+  return normalized;
+};
 
 // Construye querystring segura evitando repetir concatenacion manual.
 const withQueryParams = (endpoint, params = {}) => {
@@ -156,11 +176,12 @@ const normalizeCatalogItem = (raw) => ({
       precio_adicional: Number(extra?.precio_adicional || 0)
     }))
     : [],
-  salsas_componentes: Array.isArray(raw?.salsas_componentes)
+      salsas_componentes: Array.isArray(raw?.salsas_componentes)
     ? raw.salsas_componentes.map((component) => ({
       id_receta: Number(component?.id_receta || 0) || null,
       nombre_receta: String(component?.nombre_receta || ''),
       multiplicador: Math.max(1, Number(component?.multiplicador || 1)),
+      unidades_base: Math.max(1, Number(component?.unidades_base || 1)),
       salsas_permitidas: Array.isArray(component?.salsas_permitidas)
         ? component.salsas_permitidas.map((sauce) => ({
           id_salsa: Number(sauce?.id_salsa || 0) || null,
@@ -211,6 +232,8 @@ export const publicMenuBootstrapService = {
 
   // Obtiene menu vigente de la sucursal seleccionada.
   async getBranchActiveMenu(idSucursal) {
+    assertValidBranchId(idSucursal);
+
     const response = await apiFetch(
       `/api/public-menu/sucursales/${idSucursal}/menu-vigente`,
       'GET',
@@ -223,7 +246,10 @@ export const publicMenuBootstrapService = {
 
   // Obtiene catalogo real publicado para sucursal/tipo de pedido.
   async getCatalog({ idSucursal, orderType }) {
-    const cacheKey = buildCatalogCacheKey({ idSucursal, orderType });
+    assertValidBranchId(idSucursal);
+    const normalizedOrderType = assertValidOrderType(orderType);
+
+    const cacheKey = buildCatalogCacheKey({ idSucursal, orderType: normalizedOrderType });
     const cached = readValidCatalogCache(cacheKey);
     if (cached) return cached;
 
@@ -232,7 +258,7 @@ export const publicMenuBootstrapService = {
 
     const endpoint = withQueryParams('/api/public-menu/catalogo', {
       id_sucursal: idSucursal,
-      tipo_pedido: orderType
+      tipo_pedido: normalizedOrderType
     });
 
     const requestPromise = (async () => {
@@ -281,6 +307,11 @@ export const publicMenuBootstrapService = {
 
   // Obtiene detalle real de un item puntual para HU-133.
   async getCatalogItemDetail({ idSucursal, idDetalleMenu }) {
+    assertValidBranchId(idSucursal);
+    if (!toPositiveIntOrNull(idDetalleMenu)) {
+      throw new Error('El item solicitado no es valido. Recarga el menu e intenta nuevamente.');
+    }
+
     const endpoint = withQueryParams(`/api/public-menu/items/${idDetalleMenu}`, {
       id_sucursal: idSucursal
     });

@@ -64,8 +64,11 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
   const unitBase = Number(item?.precio?.final || 0);
   const unitPrice = Number((unitBase + extraAmountPerUnit).toFixed(2));
   const subtotal = Number((unitPrice * quantity).toFixed(2));
-  const requiresSauceSelection = item?.salsas_requiere_seleccion === true;
   const requiredSauceCount = calculateRequiredSauces(item, quantity);
+  const requiresSauceSelection =
+    item?.salsas_requiere_seleccion === true ||
+    requiredSauceCount > 0 ||
+    allowedSauces.length > 0;
   const selectedSauceCount = sumSauceCount(sauceCounts);
   const canIncreaseSauce = requiredSauceCount <= 0 || selectedSauceCount < requiredSauceCount;
   const isSingleSauceSelection = requiresSauceSelection && requiredSauceCount === 1;
@@ -208,16 +211,6 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
                   ? 'Precio pendiente'
                   : currencyFormatter.format(unitPrice)}
               </strong>
-            </div>
-
-            <div
-              className={`pm-detail-sheet__availability ${
-                item.disponibilidad.available ? 'is-available' : 'is-unavailable'
-              }`}
-            >
-              {item.disponibilidad.available
-                ? 'Disponible para pedido'
-                : item.disponibilidad.message || 'No disponible por ahora'}
             </div>
 
             <section className="pm-detail-sheet__section">

@@ -161,20 +161,6 @@ const CombosFormDrawer = ({
           </div>
 
           <div className="col-12 col-md-6">
-            <label className="form-label" htmlFor="combo_id_usuario">ID usuario</label>
-            <input
-              id="combo_id_usuario"
-              type="number"
-              min="1"
-              className="form-control"
-              name="id_usuario"
-              value={form.id_usuario}
-              onChange={onChangeField}
-              required
-            />
-          </div>
-
-          <div className="col-12 col-md-6">
             <label className="form-label" htmlFor="combo_estado">Estado</label>
             <select
               id="combo_estado"

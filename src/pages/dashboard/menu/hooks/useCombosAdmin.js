@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useAuth } from '../../../../hooks/useAuth';
 import combosAdminService from '../../../../services/combosAdminService';
 import recetasAdminService from '../../../../services/recetasAdminService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
@@ -31,10 +30,6 @@ const validarFormulario = (form) => {
 
   if (toNumberOrNull(form.id_menu) === null) {
     return 'id_menu es obligatorio.';
-  }
-
-  if (toNumberOrNull(form.id_usuario) === null) {
-    return 'id_usuario es obligatorio.';
   }
 
   const cantPersonas = toNumberOrNull(form.cant_personas);
@@ -100,7 +95,6 @@ const buildPayloadBase = (form) => {
     precio: Number(form.precio),
     cant_personas: Number(form.cant_personas),
     id_menu: Number(form.id_menu),
-    id_usuario: Number(form.id_usuario),
     estado: parseBoolean(form.estado),
     detalle: normalizeDetallePayload(form.detalle)
   };
@@ -115,8 +109,7 @@ const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
     nombre_original: `${toSafeComboBaseName(form.nombre_combo || form.descripcion)}-url`,
     url_publica: imageUrl,
     tipo_archivo: 'image/url',
-    tamano_bytes: null,
-    id_usuario: toNumberOrNull(form.id_usuario)
+    tamano_bytes: null
   };
 
   const archivoResponse = await combosAdminService.registrarArchivoCombo(payloadArchivo);
@@ -170,10 +163,8 @@ const useCombosAdmin = () => {
   const [form, setForm] = useState({ ...emptyComboForm });
   const [cardImageErrors, setCardImageErrors] = useState({});
   const [formPreviewError, setFormPreviewError] = useState(false);
-  const { user } = useAuth();
-  // Prefill tecnico para reducir captura manual de id_usuario/id_menu en el MVP.
+  // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
-    id_usuario: '',
     id_menu: ''
   });
 
@@ -269,16 +260,6 @@ const useCombosAdmin = () => {
     setFormPreviewError(false);
   }, [form.url_imagen_publica]);
   useEffect(() => {
-    const idUsuario = Number(user?.id_usuario || 0);
-    if (!idUsuario) return;
-
-    setDefaultIds((current) => ({
-      ...current,
-      id_usuario: String(idUsuario)
-    }));
-  }, [user?.id_usuario]);
-
-  useEffect(() => {
     let isMounted = true;
 
     const loadDefaultMenu = async () => {
@@ -350,7 +331,6 @@ const useCombosAdmin = () => {
     setEditingId(null);
     setForm({
       ...emptyComboForm,
-      id_usuario: defaultIds.id_usuario || emptyComboForm.id_usuario,
       id_menu: defaultIds.id_menu || emptyComboForm.id_menu
     });
     setDrawerOpen(true);
@@ -359,7 +339,7 @@ const useCombosAdmin = () => {
     setFormPreviewError(false);
     // Refresca el catalogo al abrir para tomar recetas nuevas sin recargar pagina.
     void cargarCatalogoRecetas();
-  }, [cargarCatalogoRecetas, defaultIds.id_menu, defaultIds.id_usuario]);
+  }, [cargarCatalogoRecetas, defaultIds.id_menu]);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -462,7 +442,6 @@ const useCombosAdmin = () => {
 
       setForm({
         ...emptyComboForm,
-        id_usuario: defaultIds.id_usuario || emptyComboForm.id_usuario,
         id_menu: defaultIds.id_menu || emptyComboForm.id_menu
       });
       setEditingId(null);
@@ -474,7 +453,7 @@ const useCombosAdmin = () => {
     } finally {
       setSaving(false);
     }
-  }, [cargarCombos, defaultIds.id_menu, defaultIds.id_usuario, editingId, form]);
+  }, [cargarCombos, defaultIds.id_menu, editingId, form]);
 
   const onEditar = useCallback(async (idCombo) => {
     try {
@@ -502,18 +481,8 @@ const useCombosAdmin = () => {
       setError('');
       setSuccess('');
 
-      const idUsuarioForm = toNumberOrNull(form.id_usuario);
-      const idUsuarioRow = toNumberOrNull(combo?.id_usuario);
-      const idUsuario = idUsuarioForm ?? idUsuarioRow;
-
-      if (idUsuario === null) {
-        setError('Para cambiar estado debes indicar id_usuario en formulario o tenerlo en la fila.');
-        return;
-      }
-
       await combosAdminService.cambiarEstadoComboAdmin(comboId, {
-        estado: !resolveComboActivo(combo),
-        id_usuario: idUsuario
+        estado: !resolveComboActivo(combo)
       });
 
       setSuccess('Estado de combo actualizado correctamente.');
@@ -523,7 +492,7 @@ const useCombosAdmin = () => {
     } finally {
       setTogglingId(null);
     }
-  }, [cargarCombos, form.id_usuario]);
+  }, [cargarCombos]);
 
   const clearFormImage = useCallback(() => {
     setForm((prev) => ({ ...prev, url_imagen_publica: '' }));

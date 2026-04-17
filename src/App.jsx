@@ -101,6 +101,8 @@ function App() {
 
         {/* Inicio y mundo público */}
         <Route path="/" element={<Navigate to="/menu-publico" replace />} />
+        <Route path="/menu" element={<Navigate to="/menu-publico" replace />} />
+        <Route path="/menu/*" element={<Navigate to="/menu-publico" replace />} />
         <Route path="/menu-publico/*" element={<PublicMenuRoutes />} />
 
         {/* Mundo público */}

@@ -31,6 +31,7 @@ const BranchSelectionScreen = () => {
   const { state, actions } = usePublicMenuFlow();
   const { branches, loading, error, reloadBranches } = useBranches();
   const [ignoreQueryPrefill, setIgnoreQueryPrefill] = useState(false);
+  const [queryBranchError, setQueryBranchError] = useState('');
   const heroImage = useMemo(
     () => (Array.isArray(branches) ? branches.find((branch) => branch?.imageUrl)?.imageUrl : ''),
     [branches]
@@ -44,10 +45,12 @@ const BranchSelectionScreen = () => {
   useEffect(() => {
     if (queryBranchSlug) {
       setIgnoreQueryPrefill(false);
+      setQueryBranchError('');
       return;
     }
 
     setIgnoreQueryPrefill(true);
+    setQueryBranchError('');
   }, [queryBranchSlug]);
 
   useEffect(() => {
@@ -58,6 +61,7 @@ const BranchSelectionScreen = () => {
     const branchFromQuery = findBranchBySlug(branches, queryBranchSlug);
     if (!branchFromQuery) {
       setIgnoreQueryPrefill(true);
+      setQueryBranchError('El QR o enlace de sucursal no es valido. Selecciona una sucursal disponible.');
 
       if (state.selectedBranch?.id) {
         actions.selectBranch(null);
@@ -68,6 +72,7 @@ const BranchSelectionScreen = () => {
       return;
     }
 
+    setQueryBranchError('');
     if (Number(state.selectedBranch?.id) !== Number(branchFromQuery.id)) {
       actions.selectBranch(branchFromQuery);
       actions.selectOrderType(null);
@@ -109,6 +114,7 @@ const BranchSelectionScreen = () => {
 
   const handleSelectBranch = (branch) => {
     const isBranchChange = Number(state.selectedBranch?.id) !== Number(branch?.id);
+    setQueryBranchError('');
     setIgnoreQueryPrefill(true);
     actions.selectBranch(branch);
     if (isBranchChange) {
@@ -168,6 +174,11 @@ const BranchSelectionScreen = () => {
       </div>
 
       <div className="pm-screen__list">
+        {queryBranchError ? (
+          <div className="alert alert-warning py-2" role="alert">
+            {queryBranchError}
+          </div>
+        ) : null}
         {branches.map((branch) => (
           <SucursalCard
             key={branch.id}

@@ -143,20 +143,6 @@ const RecetasFormDrawer = ({
           )}
 
           <div className="col-12 col-md-6">
-            <label className="form-label" htmlFor="receta_id_usuario">ID usuario</label>
-            <input
-              id="receta_id_usuario"
-              type="number"
-              min="1"
-              className="form-control"
-              name="id_usuario"
-              value={form.id_usuario}
-              onChange={onChangeField}
-              required
-            />
-          </div>
-
-          <div className="col-12 col-md-6">
             <label className="form-label" htmlFor="receta_estado">Estado</label>
             <select
               id="receta_estado"

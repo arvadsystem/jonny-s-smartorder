@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useAuth } from '../../../../hooks/useAuth';
 import recetasAdminService from '../../../../services/recetasAdminService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
@@ -32,9 +31,6 @@ const validarFormulario = (form) => {
   if (toNumberOrNull(form.id_tipo_departamento) === null) {
     return 'id_tipo_departamento es obligatorio.';
   }
-  if (toNumberOrNull(form.id_usuario) === null) {
-    return 'id_usuario es obligatorio.';
-  }
   const precio = toNumberOrNull(form.precio);
   if (precio === null || precio < 0) {
     return 'precio debe ser mayor o igual a 0.';
@@ -66,7 +62,6 @@ const buildPayloadBase = (form) => {
     id_menu: Number(form.id_menu),
     // Para no alitas/tenders se envia un nivel por defecto de No aplica.
     id_nivel_picante: resolvedSpiceLevelId,
-    id_usuario: Number(form.id_usuario),
     estado: parseBoolean(form.estado),
     id_tipo_departamento: Number(form.id_tipo_departamento)
   };
@@ -94,8 +89,7 @@ const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
     nombre_original: `${toSafeRecetaBaseName(form.nombre_receta)}-url`,
     url_publica: toDrivePreviewUrl(imageUrl),
     tipo_archivo: 'image/url',
-    tamano_bytes: null,
-    id_usuario: toNumberOrNull(form.id_usuario)
+    tamano_bytes: null
   };
 
   const archivoResponse = await recetasAdminService.registrarArchivoReceta(payloadArchivo);
@@ -150,10 +144,8 @@ const useRecetasAdmin = () => {
   const [viewMode, setViewMode] = useState('cards');
   const [cardImageErrors, setCardImageErrors] = useState({});
   const [formPreviewError, setFormPreviewError] = useState(false);
-  const { user } = useAuth();
-  // Prefill tecnico para reducir captura manual de id_usuario/id_menu en el MVP.
+  // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
-    id_usuario: '',
     id_menu: ''
   });
 
@@ -185,16 +177,6 @@ const useRecetasAdmin = () => {
   useEffect(() => {
     setFormPreviewError(false);
   }, [form.url_imagen_publica]);
-
-  useEffect(() => {
-    const idUsuario = Number(user?.id_usuario || 0);
-    if (!idUsuario) return;
-
-    setDefaultIds((current) => ({
-      ...current,
-      id_usuario: String(idUsuario)
-    }));
-  }, [user?.id_usuario]);
 
   useEffect(() => {
     let isMounted = true;
@@ -254,14 +236,13 @@ const useRecetasAdmin = () => {
     setEditingId(null);
     setForm({
       ...emptyForm,
-      id_usuario: defaultIds.id_usuario || emptyForm.id_usuario,
       id_menu: defaultIds.id_menu || emptyForm.id_menu
     });
     setDrawerOpen(true);
     setError('');
     setSuccess('');
     setFormPreviewError(false);
-  }, [defaultIds.id_menu, defaultIds.id_usuario]);
+  }, [defaultIds.id_menu]);
 
   const closeCreateDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -308,7 +289,6 @@ const useRecetasAdmin = () => {
 
       setForm({
         ...emptyForm,
-        id_usuario: defaultIds.id_usuario || emptyForm.id_usuario,
         id_menu: defaultIds.id_menu || emptyForm.id_menu
       });
       setEditingId(null);
@@ -321,7 +301,7 @@ const useRecetasAdmin = () => {
     } finally {
       setSaving(false);
     }
-  }, [cargarRecetas, defaultIds.id_menu, defaultIds.id_usuario, editingId, form]);
+  }, [cargarRecetas, defaultIds.id_menu, editingId, form]);
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {
@@ -351,18 +331,8 @@ const useRecetasAdmin = () => {
       setError('');
       setSuccess('');
 
-      const idUsuarioForm = toNumberOrNull(form.id_usuario);
-      const idUsuarioRow = toNumberOrNull(receta?.id_usuario);
-      const idUsuario = idUsuarioForm ?? idUsuarioRow;
-
-      if (idUsuario === null) {
-        setError('Para cambiar estado debes indicar id_usuario en formulario o tenerlo en la fila.');
-        return;
-      }
-
       await recetasAdminService.cambiarEstadoRecetaAdmin(recetaId, {
-        estado: !resolveRecetaActiva(receta),
-        id_usuario: idUsuario
+        estado: !resolveRecetaActiva(receta)
       });
 
       setSuccess('Estado de receta actualizado correctamente.');
@@ -372,7 +342,7 @@ const useRecetasAdmin = () => {
     } finally {
       setTogglingId(null);
     }
-  }, [cargarRecetas, form.id_usuario]);
+  }, [cargarRecetas]);
 
   const applyFilters = useCallback(() => {
     setFilters({ ...filtersDraft });
