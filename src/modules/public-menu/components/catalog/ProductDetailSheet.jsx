@@ -32,6 +32,7 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
   const [quantity, setQuantity] = useState(1);
   const [selectedExtraIds, setSelectedExtraIds] = useState([]);
   const [sauceCounts, setSauceCounts] = useState({});
+  const [isSauceSectionOpen, setIsSauceSectionOpen] = useState(false);
   const [lineNote, setLineNote] = useState('');
   const [validationError, setValidationError] = useState('');
 
@@ -40,6 +41,7 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
     setQuantity(1);
     setSelectedExtraIds([]);
     setSauceCounts({});
+    setIsSauceSectionOpen(false);
     setLineNote('');
     setValidationError('');
   }, [open, item?.id_detalle_menu]);
@@ -285,83 +287,96 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
                   </button>
                 ) : null}
 
-                <div className="pm-detail-sheet__section-head">
-                  <strong>Elige tu salsa:</strong>
-                  <span className="pm-detail-sheet__tag-required">
-                    {requiredSauceCount > 0 ? 'Requerido' : 'Opcional'}
+                <button
+                  type="button"
+                  className="pm-detail-sheet__sauce-toggle"
+                  onClick={() => setIsSauceSectionOpen((current) => !current)}
+                  aria-expanded={isSauceSectionOpen}
+                >
+                  <strong>Elegi tu salsa</strong>
+                  <span className="pm-detail-sheet__sauce-toggle-side">
+                    <span className="pm-detail-sheet__tag-required">
+                      {requiredSauceCount > 0 ? 'Requerido' : 'Opcional'}
+                    </span>
+                    <i
+                      className={`bi ${isSauceSectionOpen ? 'bi-chevron-up' : 'bi-chevron-down'}`}
+                      aria-hidden="true"
+                    />
                   </span>
-                </div>
+                </button>
 
-                <p className="pm-detail-sheet__hint">
-                  {requiredSauceCount > 0
-                    ? `Elige ${requiredSauceCount} opcion${requiredSauceCount > 1 ? 'es' : ''}.`
-                    : 'No requiere seleccion de salsa para esta cantidad.'}
-                </p>
+                {isSauceSectionOpen ? (
+                  <>
+                    <p className="pm-detail-sheet__hint">
+                      {requiredSauceCount > 0
+                        ? `Elegi ${requiredSauceCount} opcion${requiredSauceCount > 1 ? 'es' : ''}.`
+                        : 'No requiere seleccion de salsa para esta cantidad.'}
+                    </p>
 
-                {allowedSauces.length > 0 ? (
-                  <div className="pm-detail-sheet__sauces">
-                    {allowedSauces.map((sauce) => {
-                      const sauceId = Number(sauce?.id_salsa || 0);
-                      const currentCount = Number(sauceCounts?.[sauceId] || 0);
-                      const isUnavailable = sauce?.disponible === false;
-                      const selected = currentCount > 0;
+                    {allowedSauces.length > 0 ? (
+                      <div className="pm-detail-sheet__sauces">
+                        {allowedSauces.map((sauce) => {
+                          const sauceId = Number(sauce?.id_salsa || 0);
+                          const currentCount = Number(sauceCounts?.[sauceId] || 0);
+                          const isUnavailable = sauce?.disponible === false;
+                          const selected = currentCount > 0;
 
-                      if (isSingleSauceSelection) {
-                        return (
-                          <button
-                            key={sauceId}
-                            type="button"
-                            className={`pm-detail-sheet__sauce-choice ${selected ? 'is-selected' : ''}`}
-                            onClick={() => selectSingleSauce(sauceId)}
-                            disabled={isUnavailable}
-                          >
-                            <span>{sauce.nombre}</span>
-                            {isUnavailable ? (
-                              <strong className="pm-detail-sheet__sauce-unavailable">Agotado</strong>
-                            ) : (
-                              <span className={`pm-detail-sheet__radio ${selected ? 'is-on' : ''}`} aria-hidden="true" />
-                            )}
-                          </button>
-                        );
-                      }
+                          if (isSingleSauceSelection) {
+                            return (
+                              <button
+                                key={sauceId}
+                                type="button"
+                                className={`pm-detail-sheet__sauce-choice ${selected ? 'is-selected' : ''}`}
+                                onClick={() => selectSingleSauce(sauceId)}
+                                disabled={isUnavailable}
+                              >
+                                <span>{sauce.nombre}</span>
+                                {isUnavailable ? (
+                                  <strong className="pm-detail-sheet__sauce-unavailable">Agotado</strong>
+                                ) : (
+                                  <span className={`pm-detail-sheet__radio ${selected ? 'is-on' : ''}`} aria-hidden="true" />
+                                )}
+                              </button>
+                            );
+                          }
 
-                      return (
-                        <div key={sauceId} className="pm-detail-sheet__sauce-row">
-                          <div className="pm-detail-sheet__sauce-copy">
-                            <strong>{sauce.nombre}</strong>
-                            {isUnavailable ? (
-                              <small className="pm-detail-sheet__sauce-unavailable">Agotado</small>
-                            ) : (
-                              <small>Picante: {Number(sauce?.nivel_picante || 0)}</small>
-                            )}
-                          </div>
+                          return (
+                            <div key={sauceId} className="pm-detail-sheet__sauce-row">
+                              <div className="pm-detail-sheet__sauce-copy">
+                                <strong>{sauce.nombre}</strong>
+                                {isUnavailable ? (
+                                  <small className="pm-detail-sheet__sauce-unavailable">Agotado</small>
+                                ) : null}
+                              </div>
 
-                          <div className="pm-detail-sheet__qty pm-detail-sheet__qty--mini">
-                            <button
-                              type="button"
-                              onClick={() => changeSauceCount(sauceId, -1)}
-                              disabled={currentCount <= 0 || isUnavailable}
-                              aria-label={`Quitar salsa ${sauce.nombre}`}
-                            >
-                              -
-                            </button>
-                            <span>{currentCount}</span>
-                            <button
-                              type="button"
-                              onClick={() => changeSauceCount(sauceId, 1)}
-                              disabled={!canIncreaseSauce || isUnavailable}
-                              aria-label={`Agregar salsa ${sauce.nombre}`}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="pm-detail-sheet__hint">No hay salsas configuradas para este item.</p>
-                )}
+                              <div className="pm-detail-sheet__qty pm-detail-sheet__qty--mini">
+                                <button
+                                  type="button"
+                                  onClick={() => changeSauceCount(sauceId, -1)}
+                                  disabled={currentCount <= 0 || isUnavailable}
+                                  aria-label={`Quitar salsa ${sauce.nombre}`}
+                                >
+                                  -
+                                </button>
+                                <span>{currentCount}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => changeSauceCount(sauceId, 1)}
+                                  disabled={!canIncreaseSauce || isUnavailable}
+                                  aria-label={`Agregar salsa ${sauce.nombre}`}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="pm-detail-sheet__hint">No hay salsas configuradas para este item.</p>
+                    )}
+                  </>
+                ) : null}
               </section>
             ) : null}
 
@@ -396,7 +411,14 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
               aria-disabled={!item.disponibilidad.available}
               onClick={handleAdd}
             >
-              {item.disponibilidad.available ? 'Agregar al carrito' : 'No disponible para agregar'}
+              {item.disponibilidad.available ? (
+                <>
+                  <i className="bi bi-cart3" aria-hidden="true" />
+                  <span>Agregar al Carrito</span>
+                </>
+              ) : (
+                'No disponible para agregar'
+              )}
             </button>
           </>
         ) : null}

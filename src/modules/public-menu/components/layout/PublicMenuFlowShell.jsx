@@ -1,4 +1,4 @@
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+﻿import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import PublicHeader from './PublicHeader';
 import StickyActionBar from './StickyActionBar';
 import ConfirmModal from '../feedback/ConfirmModal';
@@ -14,7 +14,7 @@ import {
 
 const STEP_COPY = {
   [PUBLIC_MENU_STEPS.BRANCH]: {
-    title: 'Menú',
+    title: 'MenÃº',
     subtitle: 'Elige la sucursal donde deseas pedir.'
   },
   [PUBLIC_MENU_STEPS.ORDER_TYPE]: {
@@ -96,7 +96,7 @@ const PublicMenuFlowShell = () => {
                 }}
               >
                 <i className="bi bi-box-arrow-right" aria-hidden="true" />
-                <span>Cerrar sesion</span>
+                <span>Cerrar Sesión</span>
               </button>
             ) : (
               <button
@@ -105,7 +105,7 @@ const PublicMenuFlowShell = () => {
                 onClick={() => navigate('/auth/login?from=public-menu')}
               >
                 <i className="bi bi-person-fill" aria-hidden="true" />
-                <span>Iniciar sesión</span>
+                <span>Iniciar Sesión</span>
               </button>
             )}
 
@@ -158,3 +158,4 @@ const PublicMenuFlowShell = () => {
 };
 
 export default PublicMenuFlowShell;
+

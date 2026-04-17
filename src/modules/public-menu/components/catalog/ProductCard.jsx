@@ -68,7 +68,14 @@ const ProductCard = ({ product, cartQuantity = 0, onAdd, onIncrease, onDecrease 
               onClick={() => onAdd?.(product)}
               disabled={!canAddToCart}
             >
-              {isSoldOut ? 'Agotado' : 'Agregar'}
+              {isSoldOut ? (
+                'Agotado'
+              ) : (
+                <>
+                  <i className="bi bi-cart3" aria-hidden="true" />
+                  <span>Agregar al Carrito</span>
+                </>
+              )}
             </button>
             {hasInCart ? (
               <small className="pm-product-card__config-note">En carrito: {quantity}</small>
@@ -81,7 +88,14 @@ const ProductCard = ({ product, cartQuantity = 0, onAdd, onIncrease, onDecrease 
             onClick={() => onAdd?.(product)}
             disabled={!canAddToCart}
           >
-            {isSoldOut ? 'Agotado' : 'Agregar'}
+            {isSoldOut ? (
+              'Agotado'
+            ) : (
+              <>
+                <i className="bi bi-cart3" aria-hidden="true" />
+                <span>Agregar al Carrito</span>
+              </>
+            )}
           </button>
         ) : (
           <div className="pm-product-card__qty">

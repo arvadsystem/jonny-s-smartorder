@@ -15,6 +15,15 @@ const clearPublicMenuCartStorage = () => {
   window.localStorage.removeItem(PUBLIC_MENU_CART_STORAGE_KEY);
 };
 
+const getBranchSortNumber = (branch) => {
+  const label = String(branch?.displayName || branch?.name || branch?.slug || '').trim();
+  if (!label) return Number.POSITIVE_INFINITY;
+  const match = label.match(/sucursal\s*(\d+)/i);
+  if (!match) return Number.POSITIVE_INFINITY;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+};
+
 const findBranchBySlug = (branches, rawSlug) => {
   const target = String(rawSlug || '').trim().toLowerCase();
   if (!target) return null;
@@ -32,9 +41,22 @@ const BranchSelectionScreen = () => {
   const { branches, loading, error, reloadBranches } = useBranches();
   const [ignoreQueryPrefill, setIgnoreQueryPrefill] = useState(false);
   const [queryBranchError, setQueryBranchError] = useState('');
+  const orderedBranches = useMemo(() => {
+    const list = Array.isArray(branches) ? [...branches] : [];
+    return list.sort((a, b) => {
+      const sortA = getBranchSortNumber(a);
+      const sortB = getBranchSortNumber(b);
+      if (sortA !== sortB) return sortA - sortB;
+
+      const nameA = String(a?.displayName || a?.name || '').trim().toLowerCase();
+      const nameB = String(b?.displayName || b?.name || '').trim().toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }, [branches]);
+
   const heroImage = useMemo(
-    () => (Array.isArray(branches) ? branches.find((branch) => branch?.imageUrl)?.imageUrl : ''),
-    [branches]
+    () => orderedBranches.find((branch) => branch?.imageUrl)?.imageUrl || '',
+    [orderedBranches]
   );
 
   const queryBranchSlug = useMemo(() => {
@@ -179,7 +201,7 @@ const BranchSelectionScreen = () => {
             {queryBranchError}
           </div>
         ) : null}
-        {branches.map((branch) => (
+        {orderedBranches.map((branch) => (
           <SucursalCard
             key={branch.id}
             branch={branch}

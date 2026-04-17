@@ -98,9 +98,45 @@
 
 .pm-product-card__cta {
   width: 100%;
-  min-height: 42px;
+  min-height: 50px;
   border-radius: 999px;
-  font-weight: 700;
+  border: 0 !important;
+  background: linear-gradient(90deg, #212933 0%, #171c23 100%) !important;
+  color: #f6f7f8 !important;
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  box-shadow: 0 8px 14px rgba(18, 23, 30, 0.26);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.pm-product-card__cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: 0 11px 18px rgba(18, 23, 30, 0.32);
+}
+
+.pm-product-card__cta:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+.pm-product-card__cta:focus-visible {
+  outline: 3px solid rgba(38, 45, 55, 0.28);
+  outline-offset: 2px;
+}
+
+.pm-product-card__cta:disabled {
+  background: #95a0aa !important;
+  box-shadow: none;
+}
+
+.pm-product-card__cta i {
+  font-size: 0.95rem;
 }
 
 .pm-product-card__actions {
