@@ -1,4 +1,5 @@
-﻿import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import PublicHeader from './PublicHeader';
 import StickyActionBar from './StickyActionBar';
 import ConfirmModal from '../feedback/ConfirmModal';
@@ -14,7 +15,7 @@ import {
 
 const STEP_COPY = {
   [PUBLIC_MENU_STEPS.BRANCH]: {
-    title: 'MenÃº',
+    title: 'Men\u00fa',
     subtitle: 'Elige la sucursal donde deseas pedir.'
   },
   [PUBLIC_MENU_STEPS.ORDER_TYPE]: {
@@ -35,21 +36,42 @@ const PublicMenuFlowShell = () => {
   const { state, actions, selectors } = usePublicMenuFlow();
   const currentStep = getPublicMenuStepFromPath(location.pathname);
   const currentStepIndex = PUBLIC_MENU_STEP_ORDER.indexOf(currentStep);
+  const [orderTypeActionArmed, setOrderTypeActionArmed] = useState(true);
 
   const stepMeta = STEP_COPY[currentStep] || STEP_COPY[PUBLIC_MENU_STEPS.BRANCH];
   const hasPreviousStep = currentStepIndex > 0;
+
+  // Evita salto accidental en movil cuando el boton "Continuar" se habilita
+  // en el mismo toque que selecciona metodo/mesa.
+  useEffect(() => {
+    if (currentStep !== PUBLIC_MENU_STEPS.ORDER_TYPE) {
+      setOrderTypeActionArmed(true);
+      return;
+    }
+    setOrderTypeActionArmed(false);
+    const timer = window.setTimeout(() => setOrderTypeActionArmed(true), 350);
+    return () => window.clearTimeout(timer);
+  }, [currentStep, state.orderType, state.dineInTable, state.pickupPaymentMethod]);
+
 
   const getPrimaryAction = () => {
     if (currentStep === PUBLIC_MENU_STEPS.BRANCH) return null;
 
     if (currentStep === PUBLIC_MENU_STEPS.ORDER_TYPE) {
       const needsTable = state.orderType === 'dine-in' && !String(state.dineInTable || '').trim();
+      const needsPickupPaymentMethod =
+        state.orderType === 'pickup' &&
+        !['caja', 'transferencia'].includes(
+          String(state.pickupPaymentMethod || '').trim().toLowerCase()
+        );
       return {
         label: 'Continuar',
-        disabled: !selectors.hasRequiredOrderContext,
+        disabled: !selectors.hasRequiredOrderContext || !orderTypeActionArmed,
         helper: !selectors.hasOrderTypeSelected
           ? 'Selecciona un tipo de pedido'
-          : (needsTable ? 'Ingresa el numero de mesa para continuar' : ''),
+          : (needsTable
+            ? 'Ingresa el numero de mesa para continuar'
+            : (needsPickupPaymentMethod ? 'Selecciona metodo de pago para retiro en local' : '')),
         onClick: () => navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.MENU))
       };
     }

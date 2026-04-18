@@ -268,6 +268,136 @@
   margin-right: 0.24rem;
 }
 
+.pm-order-type-card {
+  /* Variable de acento por tipo para mantener identidad sin saturar la UI. */
+  --pm-order-accent: #8b5e3c;
+  display: grid;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+  border-width: 1.6px;
+}
+
+.pm-order-type-card::after {
+  content: '';
+  position: absolute;
+  inset: auto -36% -44% auto;
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 178, 102, 0.18), rgba(255, 178, 102, 0));
+  pointer-events: none;
+}
+
+.pm-order-type-card__hero {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.78rem;
+  align-items: start;
+  position: relative;
+  z-index: 1;
+}
+
+.pm-order-type-card__icon-wrap {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.96), rgba(255, 250, 242, 0.9));
+  border: 1px solid rgba(90, 65, 40, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.62);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.pm-order-type-card__icon {
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: var(--pm-order-accent);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(253, 248, 241, 0.9));
+  border: 1px solid color-mix(in srgb, var(--pm-order-accent) 24%, white);
+  box-shadow: 0 8px 14px rgba(46, 28, 14, 0.12);
+  transition: transform 0.22s ease;
+}
+
+.pm-order-type-card__copy {
+  min-width: 0;
+}
+
+.pm-order-type-card__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  width: 1.2rem;
+  height: 1.2rem;
+  font-size: 1rem;
+  color: #2f6d3c;
+}
+
+.pm-order-type-card[data-order-type='dine-in'] .pm-order-type-card__icon {
+  --pm-order-accent: #9e5e2f;
+}
+
+.pm-order-type-card[data-order-type='dine-in'] {
+  --pm-order-accent: #9e5e2f;
+  background:
+    radial-gradient(circle at 102% -22%, rgba(255, 194, 126, 0.22), transparent 45%),
+    linear-gradient(180deg, #fffefb 0%, #fff7ec 100%);
+}
+
+.pm-order-type-card[data-order-type='pickup'] .pm-order-type-card__icon {
+  --pm-order-accent: #2e6d40;
+}
+
+.pm-order-type-card[data-order-type='pickup'] {
+  --pm-order-accent: #2e6d40;
+  background:
+    radial-gradient(circle at 102% -22%, rgba(127, 201, 146, 0.2), transparent 45%),
+    linear-gradient(180deg, #fcfffc 0%, #f2fcf3 100%);
+}
+
+.pm-order-type-card[data-order-type='delivery'] .pm-order-type-card__icon {
+  --pm-order-accent: #0e6e7f;
+}
+
+.pm-order-type-card[data-order-type='delivery'] {
+  --pm-order-accent: #0e6e7f;
+  background:
+    radial-gradient(circle at 102% -22%, rgba(122, 222, 238, 0.28), transparent 45%),
+    linear-gradient(180deg, #f9feff 0%, #eaf9fb 100%);
+}
+
+.pm-order-type-card.is-selected {
+  border-color: color-mix(in srgb, var(--pm-order-accent) 68%, #8a5530);
+  box-shadow: 0 16px 28px rgba(52, 31, 14, 0.2);
+  transform: translateY(-2px) scale(1.008);
+}
+
+.pm-order-type-card.is-selected .pm-order-type-card__icon-wrap {
+  border-color: color-mix(in srgb, var(--pm-order-accent) 42%, #c7b39d);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72), 0 8px 15px rgba(66, 40, 19, 0.16);
+}
+
+.pm-order-type-card.is-selected .pm-order-type-card__icon {
+  transform: scale(1.04);
+}
+
+.pm-order-type-card.is-selected::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--pm-order-accent) 24%, white);
+  pointer-events: none;
+}
+
 .pm-status-pill,
 .pm-selected-badge {
   border-radius: 999px;
@@ -287,8 +417,8 @@
 }
 
 .pm-selected-badge {
-  background: rgba(17, 17, 17, 0.08);
-  color: #151515;
+  background: linear-gradient(135deg, rgba(45, 26, 12, 0.95), rgba(22, 13, 6, 0.95));
+  color: #fff7ed;
 }
 
 .pm-info-highlight {

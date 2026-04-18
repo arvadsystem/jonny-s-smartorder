@@ -1,6 +1,10 @@
 /* Reglas responsivas del modulo public-menu. */
 
 @media (max-width: 767.98px) {
+  .pm-catalog-screen {
+    padding-bottom: 5.5rem;
+  }
+
   .pm-shell__content {
     /* Layout mobile casi full-bleed para evitar sensacion de columna angosta. */
     width: 100%;
@@ -62,14 +66,6 @@
 
   .pm-header__meta {
     display: none;
-  }
-
-  /* En movil el carrito ya no invade el bloque de titulo/subtitulo. */
-  .pm-cart-fab {
-    top: auto;
-    bottom: calc(0.9rem + env(safe-area-inset-bottom, 0px));
-    right: 0.85rem;
-    z-index: 45;
   }
 
   .pm-branch-banner,
@@ -140,18 +136,6 @@
     height: 150px;
   }
 
-  .pm-cart-fab {
-    right: 0.7rem;
-    left: auto;
-    padding: 0.52rem 0.8rem;
-    min-height: 46px;
-    gap: 0.4rem;
-  }
-
-  .pm-cart-fab span {
-    font-size: 0.88rem;
-  }
-
   .pm-cart-sheet__item {
     flex-direction: column;
     align-items: flex-start;
@@ -168,32 +152,6 @@
 @media (max-width: 420px) {
   .pm-shell__content {
     padding: 0.52rem 0.14rem 1.2rem;
-  }
-
-  /* Boton de carrito compacto para no tapar contenido en anchos ultra estrechos. */
-  .pm-cart-fab {
-    width: 50px;
-    min-width: 50px;
-    height: 50px;
-    min-height: 50px;
-    border-radius: 999px;
-    padding: 0;
-    justify-content: center;
-    gap: 0;
-  }
-
-  .pm-cart-fab span {
-    display: none;
-  }
-
-  .pm-cart-fab__count {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    min-width: 1.15rem;
-    height: 1.15rem;
-    font-size: 0.66rem;
-    padding: 0 0.2rem;
   }
 
   .pm-sticky-bar__actions {
@@ -227,10 +185,6 @@
     border-bottom: 0;
     border-top-left-radius: 16px;
     border-top-right-radius: 16px;
-  }
-
-  .pm-cart-fab {
-    right: calc(50% - 332px);
   }
 
   .pm-branch-confirm-card__actions {

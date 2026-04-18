@@ -5,6 +5,7 @@ export const PUBLIC_MENU_ACTIONS = Object.freeze({
   SELECT_BRANCH: 'SELECT_BRANCH',
   SELECT_ORDER_TYPE: 'SELECT_ORDER_TYPE',
   SET_DINE_IN_TABLE: 'SET_DINE_IN_TABLE',
+  SET_PICKUP_PAYMENT_METHOD: 'SET_PICKUP_PAYMENT_METHOD',
   SELECT_MENU: 'SELECT_MENU',
   RESET_FLOW: 'RESET_FLOW',
   PUSH_TOAST: 'PUSH_TOAST',
@@ -28,6 +29,7 @@ const applyHydrate = (state, payload) => {
     selectedBranch: payload.selectedBranch || null,
     orderType: payload.orderType || null,
     dineInTable: String(payload.dineInTable || ''),
+    pickupPaymentMethod: String(payload.pickupPaymentMethod || ''),
     selectedMenu: payload.selectedMenu || null,
     cartRevision: Number(payload.cartRevision || 0)
   };
@@ -48,6 +50,7 @@ export const publicMenuFlowReducer = (state, action) => {
         // Branch switch invalidates downstream selections.
         orderType: changedBranch ? null : state.orderType,
         dineInTable: changedBranch ? '' : state.dineInTable,
+        pickupPaymentMethod: changedBranch ? '' : state.pickupPaymentMethod,
         selectedMenu: changedBranch ? null : state.selectedMenu,
         cartRevision: changedBranch ? state.cartRevision + 1 : state.cartRevision
       };
@@ -58,13 +61,21 @@ export const publicMenuFlowReducer = (state, action) => {
         ...state,
         orderType: action.payload || null,
         // Solo conservamos mesa cuando la opcion activa es comer en restaurante.
-        dineInTable: action.payload === 'dine-in' ? state.dineInTable : ''
+        dineInTable: action.payload === 'dine-in' ? state.dineInTable : '',
+        // Solo conservamos metodo cuando la opcion activa es retiro en local.
+        pickupPaymentMethod: action.payload === 'pickup' ? state.pickupPaymentMethod : ''
       };
 
     case PUBLIC_MENU_ACTIONS.SET_DINE_IN_TABLE:
       return {
         ...state,
         dineInTable: String(action.payload || '')
+      };
+
+    case PUBLIC_MENU_ACTIONS.SET_PICKUP_PAYMENT_METHOD:
+      return {
+        ...state,
+        pickupPaymentMethod: String(action.payload || '')
       };
 
     case PUBLIC_MENU_ACTIONS.SELECT_MENU:

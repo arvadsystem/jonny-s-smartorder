@@ -16,7 +16,7 @@ export const PUBLIC_MENU_ORDER_TYPE_OPTIONS = [
     id: PUBLIC_MENU_ORDER_TYPES.PICKUP,
     title: 'Retiro en local',
     description: 'Pides en linea y retiras en la sucursal seleccionada.',
-    paymentCopy: 'Pago por transferencia antes de preparar tu pedido.'
+    paymentCopy: 'Puedes pagar en caja al retirar o por transferencia.'
   },
   {
     id: PUBLIC_MENU_ORDER_TYPES.DELIVERY,

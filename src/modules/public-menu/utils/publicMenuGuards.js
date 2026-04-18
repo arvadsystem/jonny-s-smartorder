@@ -5,8 +5,14 @@ export const hasBranchSelected = (state) => Boolean(state?.selectedBranch?.id);
 export const hasOrderTypeSelected = (state) => Boolean(state?.orderType);
 export const hasRequiredOrderContext = (state) => {
   if (!hasOrderTypeSelected(state)) return false;
-  if (state?.orderType !== 'dine-in') return true;
-  return String(state?.dineInTable || '').trim().length > 0;
+  if (state?.orderType === 'dine-in') {
+    return String(state?.dineInTable || '').trim().length > 0;
+  }
+  if (state?.orderType === 'pickup') {
+    const method = String(state?.pickupPaymentMethod || '').trim().toLowerCase();
+    return method === 'caja' || method === 'transferencia';
+  }
+  return true;
 };
 
 export const canAccessStep = (state, stepKey) => {

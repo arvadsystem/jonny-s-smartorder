@@ -3,6 +3,7 @@ export const createPublicMenuInitialState = () => ({
   selectedBranch: null,
   orderType: null,
   dineInTable: '',
+  pickupPaymentMethod: '',
   selectedMenu: null,
   cartRevision: 0,
   ui: {
@@ -21,6 +22,7 @@ export const toPublicMenuSnapshot = (state) => ({
   selectedBranch: state.selectedBranch,
   orderType: state.orderType,
   dineInTable: state.dineInTable || '',
+  pickupPaymentMethod: state.pickupPaymentMethod || '',
   selectedMenu: state.selectedMenu,
   cartRevision: state.cartRevision
 });

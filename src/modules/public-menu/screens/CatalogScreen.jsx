@@ -45,6 +45,9 @@ const buildOrderPayloadFingerprint = (payload) => {
   return JSON.stringify({
     id_sucursal: Number(payload?.id_sucursal || 0),
     tipo_pedido: String(payload?.tipo_pedido || ''),
+    pago: {
+      metodo: String(payload?.pago?.metodo || '').trim().toLowerCase()
+    },
     servicio: {
       mesa: String(payload?.servicio?.mesa || '').trim()
     },
@@ -59,6 +62,11 @@ const generateOrderIdempotencyKey = () => {
 
   const random = Math.random().toString(36).slice(2, 12);
   return `pm-${Date.now().toString(36)}-${random}`;
+};
+
+const formatWhatsAppNumber = (value) => {
+  const clean = String(value || '').replace(/[^\d+]/g, '').trim();
+  return clean || '';
 };
 
 // Paso 3: catalogo real basado en menu_vigente + detalle_menu.
@@ -166,6 +174,9 @@ const CatalogScreen = () => {
   const handleConfirmOrder = async () => {
     if (confirmingOrder || confirmLockRef.current) return;
     const mesaSeleccionada = String(state.dineInTable || '').trim();
+    const pickupPaymentMethod = String(state.pickupPaymentMethod || '')
+      .trim()
+      .toLowerCase();
     if (orderType === 'dine-in' && !mesaSeleccionada) {
       actions.pushToast({
         type: 'error',
@@ -174,10 +185,35 @@ const CatalogScreen = () => {
       navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.ORDER_TYPE));
       return;
     }
+    if (orderType === 'pickup' && !['caja', 'transferencia'].includes(pickupPaymentMethod)) {
+      actions.pushToast({
+        type: 'error',
+        message: 'Selecciona metodo de pago en Tipo de pedido antes de confirmar.'
+      });
+      navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.ORDER_TYPE));
+      return;
+    }
+
+    if (orderType === 'pickup' && pickupPaymentMethod === 'transferencia') {
+      const whatsapp = formatWhatsAppNumber(state.selectedBranch?.whatsapp || '');
+      actions.pushToast({
+        type: 'info',
+        durationMs: 7000,
+        message: whatsapp
+          ? `Importante: envia tu comprobante de transferencia al WhatsApp ${whatsapp}. Ahora enviaremos tu pedido.`
+          : 'Importante: envia tu comprobante de transferencia al WhatsApp de la sucursal. Ahora enviaremos tu pedido.'
+      });
+    }
 
     const payload = {
       ...buildOrderPayload(),
       tipo_pedido: orderType,
+      pago: {
+        metodo:
+          orderType === 'pickup'
+            ? pickupPaymentMethod
+            : (orderType === 'dine-in' ? 'caja' : 'transferencia')
+      },
       // Backend espera servicio en raiz del payload.
       servicio: {
         mesa: orderType === 'dine-in' ? mesaSeleccionada : ''
@@ -408,7 +444,12 @@ const CatalogScreen = () => {
         )}
       </div>
 
-      <CartFab itemCount={totalItems} disabled={totalItems <= 0} onClick={() => setCartOpen(true)} />
+      <CartFab
+        itemCount={totalItems}
+        total={total}
+        disabled={totalItems <= 0}
+        onClick={() => setCartOpen(true)}
+      />
 
       <CartSheet
         open={cartOpen}

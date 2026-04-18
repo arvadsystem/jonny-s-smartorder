@@ -33,6 +33,8 @@ export const PublicMenuFlowProvider = ({ children }) => {
         dispatch({ type: PUBLIC_MENU_ACTIONS.SELECT_ORDER_TYPE, payload: orderType }),
       setDineInTable: (table) =>
         dispatch({ type: PUBLIC_MENU_ACTIONS.SET_DINE_IN_TABLE, payload: table }),
+      setPickupPaymentMethod: (method) =>
+        dispatch({ type: PUBLIC_MENU_ACTIONS.SET_PICKUP_PAYMENT_METHOD, payload: method }),
       selectMenu: (menu) => dispatch({ type: PUBLIC_MENU_ACTIONS.SELECT_MENU, payload: menu }),
       resetFlow: () => {
         clearPublicMenuSnapshot();

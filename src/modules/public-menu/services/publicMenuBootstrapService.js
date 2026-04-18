@@ -105,6 +105,21 @@ const normalizeBranch = (raw) => ({
   id: Number(raw?.id_sucursal ?? raw?.id),
   name: raw?.nombre_sucursal || raw?.name || 'Sucursal',
   address: raw?.direccion || raw?.address || 'Direccion no disponible',
+  whatsapp:
+    String(
+      raw?.whatsapp ??
+      raw?.telefono_whatsapp ??
+      raw?.telefono ??
+      raw?.phone ??
+      ''
+    ).trim(),
+  transferAccount:
+    String(
+      raw?.cuenta_transferencia ??
+      raw?.cuenta_bancaria ??
+      raw?.numero_cuenta ??
+      ''
+    ).trim(),
   schedule: raw?.horario || raw?.schedule || 'Horario no disponible',
   etaMinutes: raw?.tiempo_entrega || raw?.etaMinutes || '20-30 min',
   imageUrl: resolvePublicImageUrl(raw?.url_imagen || raw?.imageUrl || ''),
@@ -128,6 +143,10 @@ const normalizeBranchWithUi = (raw) => {
     slug: String(raw?.slug || ui.slug || '').trim(),
     // Priorizamos imagen de BD/API; el asset local queda como respaldo visual.
     imageUrl: base.imageUrl || ui.foto || '',
+    // Preferimos telefono real de API y dejamos config UI como fallback por sucursal.
+    whatsapp: base.whatsapp || String(ui?.whatsapp || '').trim(),
+    // Preferimos cuenta real de API y dejamos config UI como fallback por sucursal.
+    transferAccount: base.transferAccount || String(ui?.cuenta_transferencia || '').trim(),
     displayName: base.name
   };
 };
