@@ -87,15 +87,6 @@
   font-weight: 700;
 }
 
-.pm-product-card__time {
-  font-size: 0.8rem;
-  /* Evita recorte del tipo (COMBO/RECETA) en el borde derecho. */
-  margin-left: auto;
-  white-space: nowrap;
-  flex-shrink: 0;
-  padding-right: 0.12rem;
-}
-
 .pm-product-card__cta {
   width: 100%;
   min-height: 50px;

@@ -43,10 +43,13 @@ const PublicMenuFlowShell = () => {
     if (currentStep === PUBLIC_MENU_STEPS.BRANCH) return null;
 
     if (currentStep === PUBLIC_MENU_STEPS.ORDER_TYPE) {
+      const needsTable = state.orderType === 'dine-in' && !String(state.dineInTable || '').trim();
       return {
         label: 'Continuar',
-        disabled: !selectors.hasOrderTypeSelected,
-        helper: selectors.hasOrderTypeSelected ? '' : 'Selecciona un tipo de pedido',
+        disabled: !selectors.hasRequiredOrderContext,
+        helper: !selectors.hasOrderTypeSelected
+          ? 'Selecciona un tipo de pedido'
+          : (needsTable ? 'Ingresa el numero de mesa para continuar' : ''),
         onClick: () => navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.MENU))
       };
     }

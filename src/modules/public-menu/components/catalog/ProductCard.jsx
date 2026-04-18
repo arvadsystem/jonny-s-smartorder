@@ -56,7 +56,6 @@ const ProductCard = ({ product, cartQuantity = 0, onAdd, onIncrease, onDecrease 
         <span className="pm-product-card__price">
           {finalPrice === null || finalPrice === undefined ? 'Precio pendiente' : currencyFormatter.format(finalPrice)}
         </span>
-        <span className="pm-product-card__time">{product.tipo_item}</span>
       </div>
 
       <div className="pm-product-card__actions">

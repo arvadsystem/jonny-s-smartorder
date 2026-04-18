@@ -4,6 +4,7 @@ export const PUBLIC_MENU_ACTIONS = Object.freeze({
   HYDRATE: 'HYDRATE',
   SELECT_BRANCH: 'SELECT_BRANCH',
   SELECT_ORDER_TYPE: 'SELECT_ORDER_TYPE',
+  SET_DINE_IN_TABLE: 'SET_DINE_IN_TABLE',
   SELECT_MENU: 'SELECT_MENU',
   RESET_FLOW: 'RESET_FLOW',
   PUSH_TOAST: 'PUSH_TOAST',
@@ -26,6 +27,7 @@ const applyHydrate = (state, payload) => {
     ...state,
     selectedBranch: payload.selectedBranch || null,
     orderType: payload.orderType || null,
+    dineInTable: String(payload.dineInTable || ''),
     selectedMenu: payload.selectedMenu || null,
     cartRevision: Number(payload.cartRevision || 0)
   };
@@ -45,6 +47,7 @@ export const publicMenuFlowReducer = (state, action) => {
         selectedBranch: nextBranch,
         // Branch switch invalidates downstream selections.
         orderType: changedBranch ? null : state.orderType,
+        dineInTable: changedBranch ? '' : state.dineInTable,
         selectedMenu: changedBranch ? null : state.selectedMenu,
         cartRevision: changedBranch ? state.cartRevision + 1 : state.cartRevision
       };
@@ -53,7 +56,15 @@ export const publicMenuFlowReducer = (state, action) => {
     case PUBLIC_MENU_ACTIONS.SELECT_ORDER_TYPE:
       return {
         ...state,
-        orderType: action.payload || null
+        orderType: action.payload || null,
+        // Solo conservamos mesa cuando la opcion activa es comer en restaurante.
+        dineInTable: action.payload === 'dine-in' ? state.dineInTable : ''
+      };
+
+    case PUBLIC_MENU_ACTIONS.SET_DINE_IN_TABLE:
+      return {
+        ...state,
+        dineInTable: String(action.payload || '')
       };
 
     case PUBLIC_MENU_ACTIONS.SELECT_MENU:

@@ -45,6 +45,9 @@ const buildOrderPayloadFingerprint = (payload) => {
   return JSON.stringify({
     id_sucursal: Number(payload?.id_sucursal || 0),
     tipo_pedido: String(payload?.tipo_pedido || ''),
+    servicio: {
+      mesa: String(payload?.servicio?.mesa || '').trim()
+    },
     items: normalizedItems
   });
 };
@@ -162,10 +165,23 @@ const CatalogScreen = () => {
 
   const handleConfirmOrder = async () => {
     if (confirmingOrder || confirmLockRef.current) return;
+    const mesaSeleccionada = String(state.dineInTable || '').trim();
+    if (orderType === 'dine-in' && !mesaSeleccionada) {
+      actions.pushToast({
+        type: 'error',
+        message: 'Primero indica el numero de mesa en Tipo de pedido.'
+      });
+      navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.ORDER_TYPE));
+      return;
+    }
 
     const payload = {
       ...buildOrderPayload(),
-      tipo_pedido: orderType
+      tipo_pedido: orderType,
+      // Backend espera servicio en raiz del payload.
+      servicio: {
+        mesa: orderType === 'dine-in' ? mesaSeleccionada : ''
+      }
     };
 
     if (!payload.id_sucursal || !payload.tipo_pedido || !Array.isArray(payload.items) || payload.items.length === 0) {

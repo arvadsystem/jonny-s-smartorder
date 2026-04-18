@@ -106,3 +106,21 @@
   font-weight: 700;
 }
 
+.pm-order-type-table {
+  margin-top: 0.7rem;
+}
+
+.pm-order-type-table .form-control {
+  border-radius: 12px;
+  min-height: 44px;
+  border: 1px solid #d7cebf;
+}
+
+.pm-order-type-table__error {
+  display: block;
+  margin-top: 0.35rem;
+  color: #9c2f2f;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+

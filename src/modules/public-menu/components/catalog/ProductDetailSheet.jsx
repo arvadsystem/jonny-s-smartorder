@@ -218,7 +218,6 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
             <section className="pm-detail-sheet__section">
               <div className="pm-detail-sheet__section-head">
                 <strong>Cantidad</strong>
-                <span>{currencyFormatter.format(subtotal)}</span>
               </div>
 
               <div className="pm-detail-sheet__qty">
