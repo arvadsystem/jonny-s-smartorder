@@ -23,6 +23,7 @@ const RecetasAdmin = () => {
       viewMode,
       cardImageErrors,
       formPreviewError,
+      selectedImageFileName,
       isAnyDrawerOpen
     },
     derived: {
@@ -47,6 +48,7 @@ const RecetasAdmin = () => {
       applyFilters,
       clearFilters,
       clearFormImage,
+      onPickImageFile,
       setCardImageError
     }
   } = useRecetasAdmin();
@@ -226,6 +228,8 @@ const RecetasAdmin = () => {
         onSubmit={onSubmit}
         onClose={closeCreateDrawer}
         onClearImage={clearFormImage}
+        onPickImageFile={onPickImageFile}
+        selectedImageFileName={selectedImageFileName}
         formPreviewUrl={formPreviewUrl}
         formPreviewError={formPreviewError}
         onPreviewError={() => setFormPreviewError(true)}

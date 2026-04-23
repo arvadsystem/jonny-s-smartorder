@@ -935,6 +935,16 @@
   gap: 8px;
 }
 
+/* Boton Editar de Menu: reutiliza el estilo compacto de Inventarios/Categorias sin forzar ancho completo. */
+.menu-recetas-admin__edit-action {
+  flex: 0 0 auto !important;
+}
+
+/* Boton Inactivar/Activar de Menu con patron de Inventarios, sin estirarse en filas/cards. */
+.menu-recetas-admin__state-action {
+  flex: 0 0 auto !important;
+}
+
 .menu-recetas-admin__cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
@@ -1060,7 +1070,8 @@
 
 .menu-recetas-card__meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Se adapta automaticamente segun cuantas metricas tenga la card (sin dejar huecos). */
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(157, 150, 112, 0.24);
@@ -1085,12 +1096,24 @@
 
 .menu-recetas-card__actions {
   display: flex;
+  /* Centra los botones de accion de card (Editar + Inactivar/Activar). */
+  justify-content: center;
   gap: 8px;
   padding: 0 12px 12px;
 }
 
 .menu-recetas-card__actions .btn {
   flex: 1 1 0;
+}
+
+/* Asegura que el boton Editar tipo Inventario no se estire en cards de Menu. */
+.menu-recetas-card__actions .menu-recetas-admin__edit-action {
+  flex: 0 0 auto !important;
+}
+
+/* Mantiene compacto el boton de estado tambien en cards. */
+.menu-recetas-card__actions .menu-recetas-admin__state-action {
+  flex: 0 0 auto !important;
 }
 
 .menu-recetas-admin__form-image-preview {
@@ -1119,6 +1142,125 @@
 
 .menu-recetas-admin__form-image-placeholder i {
   font-size: 1.4rem;
+}
+
+/* Bloque de imagen del drawer de Menu: replica layout compacto (preview + estado + acciones). */
+.menu-recetas-admin__image-editor {
+  margin-top: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(248, 244, 236, 0.9));
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.menu-recetas-admin__form-image-preview.is-compact {
+  margin-top: 0;
+  width: 110px;
+  min-width: 110px;
+  height: 110px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.menu-recetas-admin__form-image-preview.is-compact img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.menu-recetas-admin__form-image-preview.is-compact .menu-recetas-admin__form-image-placeholder {
+  min-height: 110px;
+  text-align: center;
+  padding: 8px;
+}
+
+.menu-recetas-admin__form-image-preview.is-compact .menu-recetas-admin__form-image-placeholder span {
+  font-size: 0.78rem;
+}
+
+.menu-recetas-admin__image-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.menu-recetas-admin__status-pill {
+  width: 100%;
+  max-width: 340px;
+  min-height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(114, 170, 160, 0.48);
+  background: rgba(225, 237, 234, 0.72);
+  color: #2a6c62;
+  font-weight: 900;
+  text-align: center;
+  padding: 0 16px;
+}
+
+.menu-recetas-admin__status-pill--readonly {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  cursor: default;
+}
+
+.menu-recetas-admin__image-actions {
+  /* Mantiene "Agregar imagen" y "Quitar" siempre en la misma fila, como el modal base. */
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.menu-recetas-admin__image-btn {
+  border-radius: 10px !important;
+  min-height: 46px;
+  border: 1px solid rgba(157, 150, 112, 0.42) !important;
+  background: #fff !important;
+  color: #6b463c !important;
+  font-weight: 700 !important;
+  padding: 0 16px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.menu-recetas-admin__image-btn:hover {
+  border-color: rgba(154, 83, 25, 0.44) !important;
+  color: #4d2e27 !important;
+}
+
+.menu-recetas-admin__image-btn--add {
+  flex: 1 1 auto;
+}
+
+.menu-recetas-admin__image-btn--ghost {
+  border-color: rgba(221, 162, 162, 0.7) !important;
+  color: #9a5f5f !important;
+}
+
+.menu-recetas-admin__image-btn--remove {
+  flex: 0 0 auto;
+  min-width: 102px;
+}
+
+.menu-recetas-admin__image-help {
+  color: rgba(106, 58, 42, 0.86);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* Muestra nombre del archivo local seleccionado para dar feedback inmediato de carga. */
+.menu-recetas-admin__image-file-name {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .menu-combos-receta-picker {
@@ -1300,6 +1442,29 @@
 
   .menu-combos-receta-picker__item-add {
     justify-self: start;
+  }
+
+  .menu-recetas-admin__image-editor {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .menu-recetas-admin__form-image-preview.is-compact {
+    width: 100%;
+    max-width: 120px;
+  }
+
+  /* Mantiene ambos botones en una sola fila en movil, igual al layout de referencia. */
+  .menu-recetas-admin__image-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .menu-recetas-admin__image-btn {
+    min-height: 42px;
+    padding: 0 12px !important;
+    font-size: 0.95rem !important;
   }
 }
 

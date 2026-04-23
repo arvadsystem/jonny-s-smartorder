@@ -17,6 +17,33 @@ import {
   shouldRequireSpiceLevel
 } from '../utils/recetasAdminUtils';
 
+const MENU_IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MENU_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+
+// Valida archivo local antes de intentar subida para mantener feedback inmediato en el drawer.
+const validateMenuImageFile = (file) => {
+  if (!file) return 'Selecciona una imagen.';
+  if (!MENU_IMAGE_ALLOWED_TYPES.has(String(file.type || '').toLowerCase())) {
+    return 'Solo se permiten imagenes JPG, PNG o WEBP.';
+  }
+  if (Number(file.size || 0) <= 0) {
+    return 'La imagen seleccionada no tiene contenido valido.';
+  }
+  if (Number(file.size || 0) > MENU_IMAGE_MAX_BYTES) {
+    return 'La imagen supera 6 MB.';
+  }
+  return '';
+};
+
+// Convierte el archivo a data URL para enviarlo al endpoint /archivos (contrato JSON/base64).
+const fileToDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen seleccionada.'));
+    reader.readAsDataURL(file);
+  });
+
 const validarFormulario = (form) => {
   if (!String(form.nombre_receta || '').trim()) {
     return 'nombre_receta es obligatorio.';
@@ -100,13 +127,35 @@ const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
   return idArchivo;
 };
 
-const buildPayload = async ({ form, editingId }) => {
+const registrarArchivoDesdeFile = async ({ form, file }) => {
+  const dataUrl = await fileToDataUrl(file);
+  const payloadArchivo = {
+    nombre_original: file?.name || `${toSafeRecetaBaseName(form.nombre_receta)}.jpg`,
+    data_url: dataUrl,
+    bucket: 'jonnys-assets'
+  };
+
+  const archivoResponse = await recetasAdminService.registrarArchivoReceta(payloadArchivo);
+  const idArchivo = extractArchivoId(archivoResponse);
+  if (idArchivo === null) {
+    throw new Error('No se pudo obtener id_archivo al subir la imagen de la receta.');
+  }
+  return idArchivo;
+};
+
+const buildPayload = async ({ form, editingId, selectedImageFile = null }) => {
   const imageUrl = String(form.url_imagen_publica || '').trim();
   const originalImageUrl = String(form.url_imagen_original || '').trim();
   const currentArchivoId = toNumberOrNull(form.id_archivo);
   const didUserChangeUrl = imageUrl !== originalImageUrl;
 
   const payload = buildPayloadBase(form);
+
+  // Prioriza archivo local cuando el usuario selecciona nueva imagen desde el modal.
+  if (selectedImageFile) {
+    payload.id_archivo = await registrarArchivoDesdeFile({ form, file: selectedImageFile });
+    return payload;
+  }
 
   // Regla: si la URL no cambia y ya hay archivo asociado, se conserva id_archivo.
   // Si cambia, primero se registra en /archivos y se envia solo id_archivo a recetas.
@@ -144,6 +193,8 @@ const useRecetasAdmin = () => {
   const [viewMode, setViewMode] = useState('cards');
   const [cardImageErrors, setCardImageErrors] = useState({});
   const [formPreviewError, setFormPreviewError] = useState(false);
+  const [selectedImageFile, setSelectedImageFile] = useState(null);
+  const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
   // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
     id_menu: ''
@@ -177,6 +228,15 @@ const useRecetasAdmin = () => {
   useEffect(() => {
     setFormPreviewError(false);
   }, [form.url_imagen_publica]);
+
+  // Libera Object URLs temporales para evitar fugas de memoria al reemplazar previews locales.
+  useEffect(() => {
+    return () => {
+      if (selectedImagePreviewUrl && selectedImagePreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(selectedImagePreviewUrl);
+      }
+    };
+  }, [selectedImagePreviewUrl]);
 
   useEffect(() => {
     let isMounted = true;
@@ -242,6 +302,8 @@ const useRecetasAdmin = () => {
     setError('');
     setSuccess('');
     setFormPreviewError(false);
+    setSelectedImageFile(null);
+    setSelectedImagePreviewUrl('');
   }, [defaultIds.id_menu]);
 
   const closeCreateDrawer = useCallback(() => {
@@ -277,7 +339,7 @@ const useRecetasAdmin = () => {
 
     try {
       setSaving(true);
-      const payload = await buildPayload({ form, editingId });
+      const payload = await buildPayload({ form, editingId, selectedImageFile });
 
       if (editingId) {
         await recetasAdminService.actualizarRecetaAdmin(editingId, payload);
@@ -295,13 +357,15 @@ const useRecetasAdmin = () => {
       setDrawerMode('create');
       setDrawerOpen(false);
       setCardImageErrors({});
+      setSelectedImageFile(null);
+      setSelectedImagePreviewUrl('');
       await cargarRecetas();
     } catch (e) {
       setError(e?.message || 'No se pudo guardar la receta.');
     } finally {
       setSaving(false);
     }
-  }, [cargarRecetas, defaultIds.id_menu, editingId, form]);
+  }, [cargarRecetas, defaultIds.id_menu, editingId, form, selectedImageFile]);
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {
@@ -316,6 +380,8 @@ const useRecetasAdmin = () => {
       setFiltersOpen(false);
       setDrawerOpen(true);
       setFormPreviewError(false);
+      setSelectedImageFile(null);
+      setSelectedImagePreviewUrl('');
     } catch (e) {
       setError(e?.message || 'No se pudo cargar la receta para edicion.');
     }
@@ -358,10 +424,31 @@ const useRecetasAdmin = () => {
   const clearFormImage = useCallback(() => {
     setForm((prev) => ({ ...prev, url_imagen_publica: '' }));
     setFormPreviewError(false);
+    setSelectedImageFile(null);
+    setSelectedImagePreviewUrl('');
   }, []);
 
-  // Preview usa URL normalizada para render estable.
-  const formPreviewUrl = toDrivePreviewUrl(form.url_imagen_publica);
+  // Maneja seleccion de archivo local para el flujo real de subida a Supabase.
+  const onPickImageFile = useCallback((file) => {
+    const validationMessage = validateMenuImageFile(file);
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    setError('');
+    setFormPreviewError(false);
+    setSelectedImageFile(file);
+    setForm((prev) => ({ ...prev, url_imagen_publica: '' }));
+
+    if (selectedImagePreviewUrl && selectedImagePreviewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(selectedImagePreviewUrl);
+    }
+    setSelectedImagePreviewUrl(URL.createObjectURL(file));
+  }, [selectedImagePreviewUrl]);
+
+  // Preview: usa archivo local seleccionado; si no hay, usa URL remota existente.
+  const formPreviewUrl = selectedImagePreviewUrl || toDrivePreviewUrl(form.url_imagen_publica);
 
   const setCardImageError = useCallback((idReceta) => {
     setCardImageErrors((prev) => ({
@@ -388,6 +475,7 @@ const useRecetasAdmin = () => {
       viewMode,
       cardImageErrors,
       formPreviewError,
+      selectedImageFileName: String(selectedImageFile?.name || ''),
       isAnyDrawerOpen
     },
     derived: {
@@ -414,6 +502,7 @@ const useRecetasAdmin = () => {
       applyFilters,
       clearFilters,
       clearFormImage,
+      onPickImageFile,
       setCardImageError
     }
   };

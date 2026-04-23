@@ -55,18 +55,26 @@ const RecetasTable = ({
                     <div className="menu-recetas-admin__row-actions">
                       <button
                         type="button"
-                        className="btn inv-prod-btn-subtle btn-sm"
+                        // Replica el boton Editar de Inventarios > Categorias para mantener consistencia visual.
+                        className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action"
                         onClick={() => onEditar(id)}
+                        title="Editar"
                       >
-                        Editar
+                        <i className="bi bi-pencil-square" aria-hidden="true" />
+                        <span className="inv-catpro-action-label">Editar</span>
                       </button>
                       <button
                         type="button"
-                        className={`btn btn-sm ${estadoActivo ? 'inv-prod-btn-danger-lite' : 'inv-prod-btn-success-lite'}`}
+                        // Replica el boton de estado de Inventarios > Categorias (Inactivar/Activar).
+                        className={`inv-catpro-action ${estadoActivo ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
                         onClick={() => onCambiarEstado(receta)}
                         disabled={togglingId === id}
+                        title={estadoActivo ? 'Inactivar' : 'Activar'}
                       >
-                        {togglingId === id ? 'Procesando...' : estadoActivo ? 'Inactivar' : 'Activar'}
+                        <i className={`bi ${estadoActivo ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
+                        <span className="inv-catpro-action-label">
+                          {togglingId === id ? 'Procesando' : estadoActivo ? 'Inactivar' : 'Activar'}
+                        </span>
                       </button>
                     </div>
                   </td>
@@ -87,7 +95,6 @@ const RecetasTable = ({
         const imageCandidates = resolveRecetaImageCandidates(receta);
         const imageAttempt = Math.max(0, Number(cardImageErrors?.[id] || 0));
         const imageUrl = imageCandidates[imageAttempt] || '';
-        const hasImageUrl = imageCandidates.length > 0;
         const descripcion = truncateText(
           String(receta?.descripcion || '').trim() || 'Sin descripcion registrada.',
           104
@@ -140,28 +147,32 @@ const RecetasTable = ({
                   <small>Departamento</small>
                   <strong>{departamentoId}</strong>
                 </div>
-                <div>
-                  <small>Imagen</small>
-                  <strong>{hasImageUrl ? 'Con URL' : 'Sin URL'}</strong>
-                </div>
               </div>
             </div>
 
             <footer className="menu-recetas-card__actions">
               <button
                 type="button"
-                className="btn inv-prod-btn-subtle btn-sm"
+                // Replica el boton Editar de Inventarios > Categorias para mantener consistencia visual.
+                className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action"
                 onClick={() => onEditar(id)}
+                title="Editar"
               >
-                Editar
+                <i className="bi bi-pencil-square" aria-hidden="true" />
+                <span className="inv-catpro-action-label">Editar</span>
               </button>
               <button
                 type="button"
-                className={`btn btn-sm ${estadoActivo ? 'inv-prod-btn-danger-lite' : 'inv-prod-btn-success-lite'}`}
+                // Replica el boton de estado de Inventarios > Categorias (Inactivar/Activar).
+                className={`inv-catpro-action ${estadoActivo ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
                 onClick={() => onCambiarEstado(receta)}
                 disabled={togglingId === id}
+                title={estadoActivo ? 'Inactivar' : 'Activar'}
               >
-                {togglingId === id ? 'Procesando...' : estadoActivo ? 'Inactivar' : 'Activar'}
+                <i className={`bi ${estadoActivo ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
+                <span className="inv-catpro-action-label">
+                  {togglingId === id ? 'Procesando' : estadoActivo ? 'Inactivar' : 'Activar'}
+                </span>
               </button>
             </footer>
           </article>

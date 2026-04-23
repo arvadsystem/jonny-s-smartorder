@@ -458,17 +458,23 @@ const MenuSalsasAdmin = () => {
                               <div className="d-inline-flex gap-2">
                                 <button
                                   type="button"
-                                  className="btn btn-sm btn-outline-secondary"
+                                  // Reutiliza el estilo de accion "Editar" del modulo Inventarios/Categorias.
+                                  className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action"
                                   onClick={() => onEditSalsa(row)}
+                                  title="Editar"
                                 >
-                                  Editar
+                                  <i className="bi bi-pencil-square" aria-hidden="true" />
+                                  <span className="inv-catpro-action-label">Editar</span>
                                 </button>
                                 <button
                                   type="button"
-                                  className={`btn btn-sm ${isActive ? 'btn-outline-danger' : 'btn-outline-success'}`}
+                                  // Reutiliza la accion de estado de Inventarios/Categorias para inactivar/activar.
+                                  className={`inv-catpro-action ${isActive ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
                                   onClick={() => void onToggleSalsaEstado(row)}
+                                  title={isActive ? 'Inactivar' : 'Activar'}
                                 >
-                                  {isActive ? 'Inactivar' : 'Activar'}
+                                  <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
+                                  <span className="inv-catpro-action-label">{isActive ? 'Inactivar' : 'Activar'}</span>
                                 </button>
                               </div>
                             </td>

@@ -42,7 +42,7 @@ const PublicMenuFlowShell = () => {
   const hasPreviousStep = currentStepIndex > 0;
 
   // Evita salto accidental en movil cuando el boton "Continuar" se habilita
-  // en el mismo toque que selecciona metodo/mesa.
+  // en el mismo toque que selecciona metodo de pago.
   useEffect(() => {
     if (currentStep !== PUBLIC_MENU_STEPS.ORDER_TYPE) {
       setOrderTypeActionArmed(true);
@@ -51,14 +51,13 @@ const PublicMenuFlowShell = () => {
     setOrderTypeActionArmed(false);
     const timer = window.setTimeout(() => setOrderTypeActionArmed(true), 350);
     return () => window.clearTimeout(timer);
-  }, [currentStep, state.orderType, state.dineInTable, state.pickupPaymentMethod]);
+  }, [currentStep, state.orderType, state.pickupPaymentMethod]);
 
 
   const getPrimaryAction = () => {
     if (currentStep === PUBLIC_MENU_STEPS.BRANCH) return null;
 
     if (currentStep === PUBLIC_MENU_STEPS.ORDER_TYPE) {
-      const needsTable = state.orderType === 'dine-in' && !String(state.dineInTable || '').trim();
       const needsPickupPaymentMethod =
         state.orderType === 'pickup' &&
         !['caja', 'transferencia'].includes(
@@ -69,9 +68,7 @@ const PublicMenuFlowShell = () => {
         disabled: !selectors.hasRequiredOrderContext || !orderTypeActionArmed,
         helper: !selectors.hasOrderTypeSelected
           ? 'Selecciona un tipo de pedido'
-          : (needsTable
-            ? 'Ingresa el numero de mesa para continuar'
-            : (needsPickupPaymentMethod ? 'Selecciona metodo de pago para retiro en local' : '')),
+          : (needsPickupPaymentMethod ? 'Selecciona metodo de pago para retiro en local' : ''),
         onClick: () => navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.MENU))
       };
     }

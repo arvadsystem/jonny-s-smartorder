@@ -18,6 +18,33 @@ import {
   toSafeComboBaseName
 } from '../utils/combosAdminUtils';
 
+const MENU_IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MENU_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+
+// Valida imagen local de combo antes de enviar al backend para evitar roundtrips innecesarios.
+const validateMenuImageFile = (file) => {
+  if (!file) return 'Selecciona una imagen.';
+  if (!MENU_IMAGE_ALLOWED_TYPES.has(String(file.type || '').toLowerCase())) {
+    return 'Solo se permiten imagenes JPG, PNG o WEBP.';
+  }
+  if (Number(file.size || 0) <= 0) {
+    return 'La imagen seleccionada no tiene contenido valido.';
+  }
+  if (Number(file.size || 0) > MENU_IMAGE_MAX_BYTES) {
+    return 'La imagen supera 6 MB.';
+  }
+  return '';
+};
+
+// Convierte File a data URL para cumplir el contrato JSON/base64 de /archivos.
+const fileToDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen seleccionada.'));
+    reader.readAsDataURL(file);
+  });
+
 const validarFormulario = (form) => {
   if (!String(form.nombre_combo || '').trim()) {
     return 'nombre_combo es obligatorio.';
@@ -120,13 +147,35 @@ const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
   return idArchivo;
 };
 
-const buildPayload = async ({ form, editingId }) => {
+const registrarArchivoDesdeFile = async ({ form, file }) => {
+  const dataUrl = await fileToDataUrl(file);
+  const payloadArchivo = {
+    nombre_original: file?.name || `${toSafeComboBaseName(form.nombre_combo || form.descripcion)}.jpg`,
+    data_url: dataUrl,
+    bucket: 'jonnys-assets'
+  };
+
+  const archivoResponse = await combosAdminService.registrarArchivoCombo(payloadArchivo);
+  const idArchivo = extractArchivoId(archivoResponse);
+  if (idArchivo === null) {
+    throw new Error('No se pudo obtener id_archivo al subir la imagen del combo.');
+  }
+  return idArchivo;
+};
+
+const buildPayload = async ({ form, editingId, selectedImageFile = null }) => {
   const imageUrl = String(form.url_imagen_publica || '').trim();
   const originalImageUrl = String(form.url_imagen_original || '').trim();
   const didUserChangeUrl = imageUrl !== originalImageUrl;
   const currentArchivoId = toNumberOrNull(form.id_archivo);
 
   const payload = buildPayloadBase(form);
+
+  // Si hay archivo local nuevo, siempre reemplaza la referencia previa de imagen.
+  if (selectedImageFile) {
+    payload.id_archivo = await registrarArchivoDesdeFile({ form, file: selectedImageFile });
+    return payload;
+  }
 
   if (imageUrl) {
     // Si el usuario NO cambio la URL textual en edicion, se conserva el archivo actual.
@@ -163,6 +212,8 @@ const useCombosAdmin = () => {
   const [form, setForm] = useState({ ...emptyComboForm });
   const [cardImageErrors, setCardImageErrors] = useState({});
   const [formPreviewError, setFormPreviewError] = useState(false);
+  const [selectedImageFile, setSelectedImageFile] = useState(null);
+  const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
   // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
     id_menu: ''
@@ -259,6 +310,15 @@ const useCombosAdmin = () => {
   useEffect(() => {
     setFormPreviewError(false);
   }, [form.url_imagen_publica]);
+
+  // Libera object URLs temporales al desmontar/cambiar preview para evitar fuga de memoria.
+  useEffect(() => {
+    return () => {
+      if (selectedImagePreviewUrl && selectedImagePreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(selectedImagePreviewUrl);
+      }
+    };
+  }, [selectedImagePreviewUrl]);
   useEffect(() => {
     let isMounted = true;
 
@@ -337,6 +397,8 @@ const useCombosAdmin = () => {
     setError('');
     setSuccess('');
     setFormPreviewError(false);
+    setSelectedImageFile(null);
+    setSelectedImagePreviewUrl('');
     // Refresca el catalogo al abrir para tomar recetas nuevas sin recargar pagina.
     void cargarCatalogoRecetas();
   }, [cargarCatalogoRecetas, defaultIds.id_menu]);
@@ -408,7 +470,7 @@ const useCombosAdmin = () => {
 
     try {
       setSaving(true);
-      const payload = await buildPayload({ form, editingId });
+      const payload = await buildPayload({ form, editingId, selectedImageFile });
       let comboGuardado = null;
 
       if (editingId) {
@@ -447,13 +509,15 @@ const useCombosAdmin = () => {
       setEditingId(null);
       setDrawerMode('create');
       setDrawerOpen(false);
+      setSelectedImageFile(null);
+      setSelectedImagePreviewUrl('');
       await cargarCombos();
     } catch (e) {
       setError(e?.message || 'No se pudo guardar el combo.');
     } finally {
       setSaving(false);
     }
-  }, [cargarCombos, defaultIds.id_menu, editingId, form]);
+  }, [cargarCombos, defaultIds.id_menu, editingId, form, selectedImageFile]);
 
   const onEditar = useCallback(async (idCombo) => {
     try {
@@ -467,6 +531,8 @@ const useCombosAdmin = () => {
       setDrawerMode('edit');
       setDrawerOpen(true);
       setFormPreviewError(false);
+      setSelectedImageFile(null);
+      setSelectedImagePreviewUrl('');
     } catch (e) {
       setError(e?.message || 'No se pudo cargar el combo para edicion.');
     }
@@ -497,10 +563,31 @@ const useCombosAdmin = () => {
   const clearFormImage = useCallback(() => {
     setForm((prev) => ({ ...prev, url_imagen_publica: '' }));
     setFormPreviewError(false);
+    setSelectedImageFile(null);
+    setSelectedImagePreviewUrl('');
   }, []);
 
-  // Preview con URL canonica para evitar que el drawer intente renderizar pages HTML de Drive.
-  const formPreviewUrl = normalizeDriveStorageUrl(form.url_imagen_publica);
+  // Selecciona archivo local para subida real a Supabase via /archivos.
+  const onPickImageFile = useCallback((file) => {
+    const validationMessage = validateMenuImageFile(file);
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    setError('');
+    setFormPreviewError(false);
+    setSelectedImageFile(file);
+    setForm((prev) => ({ ...prev, url_imagen_publica: '' }));
+
+    if (selectedImagePreviewUrl && selectedImagePreviewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(selectedImagePreviewUrl);
+    }
+    setSelectedImagePreviewUrl(URL.createObjectURL(file));
+  }, [selectedImagePreviewUrl]);
+
+  // Preview prioriza archivo local; mantiene fallback URL para combos existentes.
+  const formPreviewUrl = selectedImagePreviewUrl || normalizeDriveStorageUrl(form.url_imagen_publica);
 
   const setCardImageError = useCallback((idCombo) => {
     setCardImageErrors((prev) => ({
@@ -523,6 +610,7 @@ const useCombosAdmin = () => {
       form,
       cardImageErrors,
       formPreviewError,
+      selectedImageFileName: String(selectedImageFile?.name || ''),
       loadingRecetasCatalogo,
       recetasCatalogo
     },
@@ -544,6 +632,7 @@ const useCombosAdmin = () => {
       onEditar,
       onCambiarEstado,
       clearFormImage,
+      onPickImageFile,
       setCardImageError,
       resolveComboImageUrl
     }

@@ -4,12 +4,6 @@ import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { PUBLIC_MENU_ORDER_TYPE_OPTIONS } from '../types/publicMenuTypes';
 
-const normalizeTableInput = (value, maxLength = 40) =>
-  String(value ?? '')
-    .trimStart()
-    .replace(/\s+/g, ' ')
-    .slice(0, maxLength);
-
 const formatCompactText = (value) =>
   String(value ?? '')
     .trim()
@@ -36,9 +30,7 @@ const OrderTypeScreen = () => {
   const selectedOption = PUBLIC_MENU_ORDER_TYPE_OPTIONS.find(
     (option) => option.id === state.orderType
   );
-  const needsTable = state.orderType === 'dine-in';
   const needsPickupPaymentMethod = state.orderType === 'pickup';
-  const dineInTable = String(state.dineInTable || '');
   const pickupPaymentMethod = String(state.pickupPaymentMethod || '').trim().toLowerCase();
   const transferAccount = formatCompactText(state.selectedBranch?.transferAccount || '');
   const transferWhatsapp = formatCompactText(state.selectedBranch?.whatsapp || '');
@@ -94,31 +86,6 @@ const OrderTypeScreen = () => {
         <aside className="pm-info-highlight">
           <h3 className="pm-info-highlight__title">Metodo de pago para esta opcion</h3>
           <p className="pm-info-highlight__content">{selectedOption.paymentCopy}</p>
-        </aside>
-      ) : null}
-
-      {needsTable ? (
-        <aside className="pm-info-highlight" aria-label="Mesa para comer en restaurante">
-          <h3 className="pm-info-highlight__title">Numero de mesa</h3>
-          <p className="pm-info-highlight__content">
-            Este dato es obligatorio para enviar pedidos de comer en restaurante.
-          </p>
-          <div className="pm-order-type-table">
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Ejemplo: Mesa 7"
-              value={dineInTable}
-              onChange={(event) => actions.setDineInTable(normalizeTableInput(event.target.value))}
-              maxLength={40}
-              autoComplete="off"
-            />
-            {!dineInTable.trim() ? (
-              <small className="pm-order-type-table__error">
-                Ingresa tu numero de mesa para continuar.
-              </small>
-            ) : null}
-          </div>
         </aside>
       ) : null}
 

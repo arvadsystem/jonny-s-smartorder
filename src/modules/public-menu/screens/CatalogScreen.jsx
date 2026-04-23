@@ -173,18 +173,9 @@ const CatalogScreen = () => {
 
   const handleConfirmOrder = async () => {
     if (confirmingOrder || confirmLockRef.current) return;
-    const mesaSeleccionada = String(state.dineInTable || '').trim();
     const pickupPaymentMethod = String(state.pickupPaymentMethod || '')
       .trim()
       .toLowerCase();
-    if (orderType === 'dine-in' && !mesaSeleccionada) {
-      actions.pushToast({
-        type: 'error',
-        message: 'Primero indica el numero de mesa en Tipo de pedido.'
-      });
-      navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.ORDER_TYPE));
-      return;
-    }
     if (orderType === 'pickup' && !['caja', 'transferencia'].includes(pickupPaymentMethod)) {
       actions.pushToast({
         type: 'error',
@@ -216,7 +207,7 @@ const CatalogScreen = () => {
       },
       // Backend espera servicio en raiz del payload.
       servicio: {
-        mesa: orderType === 'dine-in' ? mesaSeleccionada : ''
+        mesa: ''
       }
     };
 

@@ -20,6 +20,7 @@ const CombosAdmin = () => {
       form,
       cardImageErrors,
       formPreviewError,
+      selectedImageFileName,
       loadingRecetasCatalogo
     },
     derived: {
@@ -40,6 +41,7 @@ const CombosAdmin = () => {
       onEditar,
       onCambiarEstado,
       clearFormImage,
+      onPickImageFile,
       setCardImageError
     }
   } = useCombosAdmin();
@@ -109,6 +111,8 @@ const CombosAdmin = () => {
         onSubmit={onSubmit}
         onClose={closeDrawer}
         onClearImage={clearFormImage}
+        onPickImageFile={onPickImageFile}
+        selectedImageFileName={selectedImageFileName}
         formPreviewUrl={formPreviewUrl}
         formPreviewError={formPreviewError}
         loadingRecetasCatalogo={loadingRecetasCatalogo}

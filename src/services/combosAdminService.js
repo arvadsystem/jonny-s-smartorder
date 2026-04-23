@@ -1,6 +1,7 @@
 import { apiFetch } from './api';
 
 const BASE_ENDPOINT = '/api/admin/combos';
+const MENU_PUBLIC_BUCKET = 'jonnys-assets';
 
 const toRows = (response) => {
   if (Array.isArray(response)) return response;
@@ -52,8 +53,12 @@ const combosAdminService = {
       Boolean(payload?.archivo);
 
     // Flujo de combos: cuando viene URL publica, se usa endpoint URL-based de menu_pos.
+    // El bucket se manda explicito para respetar el contrato de imagen publica.
     if (hasPublicUrl && !hasBinaryPayload) {
-      return apiFetch('/menu-pos/archivos/upload', 'POST', payload);
+      return apiFetch('/menu-pos/archivos/upload', 'POST', {
+        ...payload,
+        bucket: MENU_PUBLIC_BUCKET
+      });
     }
 
     try {
@@ -61,7 +66,10 @@ const combosAdminService = {
     } catch (error) {
       const message = String(error?.message || '').toLowerCase();
       if (message.includes('la imagen es obligatoria')) {
-        return apiFetch('/menu-pos/archivos/upload', 'POST', payload);
+        return apiFetch('/menu-pos/archivos/upload', 'POST', {
+          ...payload,
+          bucket: MENU_PUBLIC_BUCKET
+        });
       }
       throw error;
     }

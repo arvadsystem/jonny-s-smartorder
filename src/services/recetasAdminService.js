@@ -2,6 +2,7 @@ import { apiFetch } from './api';
 
 // Endpoint base del módulo administrativo de recetas.
 const BASE_ENDPOINT = '/api/admin/recetas';
+const MENU_PUBLIC_BUCKET = 'jonnys-assets';
 
 const recetasAdminService = {
   // Lista todas las recetas administrativas.
@@ -26,8 +27,12 @@ const recetasAdminService = {
       Boolean(data?.archivo);
 
     // Para flujo por URL publica usamos endpoint URL-based de menu_pos.
+    // El bucket queda explicito para mantener menu como contenido publico.
     if (hasPublicUrl && !hasBinaryPayload) {
-      return apiFetch('/menu-pos/archivos/upload', 'POST', data);
+      return apiFetch('/menu-pos/archivos/upload', 'POST', {
+        ...data,
+        bucket: MENU_PUBLIC_BUCKET
+      });
     }
 
     try {
@@ -36,7 +41,10 @@ const recetasAdminService = {
       const message = String(error?.message || '').toLowerCase();
       if (message.includes('la imagen es obligatoria')) {
         // Fallback para entornos donde /archivos solo acepta base64 y el alta por URL vive en menu-pos.
-        return apiFetch('/menu-pos/archivos/upload', 'POST', data);
+        return apiFetch('/menu-pos/archivos/upload', 'POST', {
+          ...data,
+          bucket: MENU_PUBLIC_BUCKET
+        });
       }
       throw error;
     }
