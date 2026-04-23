@@ -1673,9 +1673,118 @@
   color: rgba(82, 44, 34, 0.66);
 }
 
+/* Layout espejo: render real de cliente en iframe + panel tecnico lateral para control operativo. */
+.menu-pub-admin__preview-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.menu-pub-admin__preview-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.menu-pub-admin__preview-mirror {
+  position: relative;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(247, 241, 231, 0.6));
+  min-height: 540px;
+}
+
+.menu-pub-admin__preview-iframe {
+  width: 100%;
+  min-height: 540px;
+  border: 0;
+  display: block;
+  background: #fff;
+}
+
+.menu-pub-admin__preview-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(82, 44, 34, 0.86);
+  font-weight: 700;
+}
+
+.menu-pub-admin__preview-overlay.is-error {
+  background: rgba(255, 240, 240, 0.9);
+  color: #8a2c2c;
+}
+
+.menu-pub-admin__preview-tech {
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.menu-pub-admin__preview-tech-title {
+  margin: 0;
+  font-weight: 900;
+}
+
+.menu-pub-admin__preview-tech-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(82, 44, 34, 0.72);
+}
+
+.menu-pub-admin__preview-tech-list {
+  display: grid;
+  gap: 7px;
+}
+
+.menu-pub-admin__preview-tech-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 10px;
+  padding: 0 10px;
+  background: rgba(249, 245, 240, 0.7);
+}
+
+.menu-pub-admin__preview-tech-row span {
+  font-size: 0.8rem;
+  color: rgba(82, 44, 34, 0.82);
+  font-weight: 700;
+}
+
+.menu-pub-admin__preview-tech-row strong {
+  font-size: 0.96rem;
+  color: #17080a;
+  font-weight: 900;
+}
+
 @media (max-width: 991.98px) {
   .menu-module-head .menu-module-switch.menu-module-switch--ventas-like {
     width: min(100%, 760px);
+  }
+
+  .menu-pub-admin__preview-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-pub-admin__preview-mirror,
+  .menu-pub-admin__preview-iframe {
+    min-height: 460px;
   }
 }
 

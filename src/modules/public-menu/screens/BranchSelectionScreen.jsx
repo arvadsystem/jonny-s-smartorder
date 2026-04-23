@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import SucursalCard from '../components/branch/SucursalCard';
 import StateBlock from '../components/feedback/StateBlock';
@@ -7,6 +7,7 @@ import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { getPublicMenuPathByStep } from '../routes/flowSteps';
 import {
   PUBLIC_MENU_CART_STORAGE_KEY,
+  PUBLIC_MENU_ORDER_TYPES,
   PUBLIC_MENU_STEPS
 } from '../types/publicMenuTypes';
 
@@ -33,6 +34,14 @@ const findBranchBySlug = (branches, rawSlug) => {
   ) || null;
 };
 
+const resolvePreviewOrderType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === PUBLIC_MENU_ORDER_TYPES.DINE_IN) return PUBLIC_MENU_ORDER_TYPES.DINE_IN;
+  if (normalized === PUBLIC_MENU_ORDER_TYPES.PICKUP) return PUBLIC_MENU_ORDER_TYPES.PICKUP;
+  if (normalized === PUBLIC_MENU_ORDER_TYPES.DELIVERY) return PUBLIC_MENU_ORDER_TYPES.DELIVERY;
+  return PUBLIC_MENU_ORDER_TYPES.DINE_IN;
+};
+
 // Step 1: customer picks the working branch for the rest of the flow.
 const BranchSelectionScreen = () => {
   const location = useLocation();
@@ -41,6 +50,7 @@ const BranchSelectionScreen = () => {
   const { branches, loading, error, reloadBranches } = useBranches();
   const [ignoreQueryPrefill, setIgnoreQueryPrefill] = useState(false);
   const [queryBranchError, setQueryBranchError] = useState('');
+  const autoPreviewRef = useRef('');
   const orderedBranches = useMemo(() => {
     const list = Array.isArray(branches) ? [...branches] : [];
     return list.sort((a, b) => {
@@ -64,10 +74,22 @@ const BranchSelectionScreen = () => {
     return String(params.get('sucursal') || '').trim().toLowerCase();
   }, [location.search]);
 
+  const previewAdminMode = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return String(params.get('preview_admin') || '').trim() === '1'
+      && String(params.get('auto') || '').trim() === '1';
+  }, [location.search]);
+
+  const previewOrderType = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return resolvePreviewOrderType(params.get('tipo_pedido'));
+  }, [location.search]);
+
   useEffect(() => {
     if (queryBranchSlug) {
       setIgnoreQueryPrefill(false);
       setQueryBranchError('');
+      autoPreviewRef.current = '';
       return;
     }
 
@@ -100,12 +122,29 @@ const BranchSelectionScreen = () => {
       actions.selectOrderType(null);
       clearPublicMenuCartStorage();
     }
+
+    // En modo preview_admin forzamos entrada directa al menu para espejo en iframe.
+    if (previewAdminMode) {
+      const previewKey = `${queryBranchSlug}:${previewOrderType}`;
+      if (autoPreviewRef.current !== previewKey) {
+        autoPreviewRef.current = previewKey;
+        actions.selectBranch(branchFromQuery);
+        actions.selectOrderType(previewOrderType);
+        if (previewOrderType === PUBLIC_MENU_ORDER_TYPES.PICKUP) {
+          actions.setPickupPaymentMethod('caja');
+        }
+        navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.MENU), { replace: true });
+      }
+    }
   }, [
     actions,
     branches,
     error,
     ignoreQueryPrefill,
     loading,
+    navigate,
+    previewAdminMode,
+    previewOrderType,
     queryBranchSlug,
     state.selectedBranch?.id
   ]);
