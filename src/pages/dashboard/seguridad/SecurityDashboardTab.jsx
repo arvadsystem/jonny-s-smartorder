@@ -57,7 +57,7 @@ const statusToClass = (status) => {
 const statusToText = (status) => {
   const normalized = String(status ?? '').toLowerCase();
   if (normalized === 'rojo') return 'Alerta';
-  if (normalized === 'amarillo') return 'Precaucion';
+  if (normalized === 'amarillo') return 'Precaución';
   return 'Estable';
 };
 
@@ -77,11 +77,11 @@ const escapeHtml = (value) =>
 const buildCsvContent = (data) => {
   const rows = [];
   rows.push('Resumen de seguridad');
-  rows.push('Metrica,Valor');
+  rows.push('Métrica,Valor');
   rows.push(`"Logins fallidos",${csvEscape(data?.resumen?.logins_fallidos ?? 0)}`);
   rows.push(`"Usuarios bloqueados",${csvEscape(data?.resumen?.usuarios_bloqueados ?? 0)}`);
   rows.push(`"Sesiones activas totales",${csvEscape(data?.resumen?.sesiones_activas_totales ?? 0)}`);
-  rows.push(`"Actividad critica reciente",${csvEscape(data?.resumen?.actividad_critica_total ?? 0)}`);
+  rows.push(`"Actividad crítica reciente",${csvEscape(data?.resumen?.actividad_critica_total ?? 0)}`);
   rows.push(`"Usuarios sospechosos",${csvEscape(data?.resumen?.usuarios_sospechosos_total ?? 0)}`);
   rows.push('');
 
@@ -93,7 +93,7 @@ const buildCsvContent = (data) => {
   rows.push('');
 
   rows.push('Usuarios bloqueados');
-  rows.push('ID,Usuario,Nombre,Rol,Fallos en rango,Sesiones activas,Ultimo acceso');
+  rows.push('ID,Usuario,Nombre,Rol,Fallos en rango,Sesiones activas,Último acceso');
   (Array.isArray(data?.tablas?.usuarios_bloqueados) ? data.tablas.usuarios_bloqueados : []).forEach((row) => {
     rows.push([
       csvEscape(toInt(row?.id_usuario)),
@@ -108,7 +108,7 @@ const buildCsvContent = (data) => {
   rows.push('');
 
   rows.push('Usuarios sospechosos');
-  rows.push('ID,Usuario,Nombre,Fallos consecutivos,Fallos en rango,Ultima IP,Ultimo fallo');
+  rows.push('ID,Usuario,Nombre,Fallos consecutivos,Fallos en rango,Última IP,Último fallo');
   (Array.isArray(data?.usuarios_sospechosos) ? data.usuarios_sospechosos : []).forEach((row) => {
     rows.push([
       csvEscape(toInt(row?.id_usuario)),
@@ -210,13 +210,13 @@ const buildPrintableHtml = ({ data, lastUpdated }) => {
 
   <h2>Usuarios sospechosos</h2>
   <table>
-    <thead><tr><th>Usuario</th><th>Fallos consecutivos</th><th>Ultima IP</th><th>Ultimo fallo</th></tr></thead>
+    <thead><tr><th>Usuario</th><th>Fallos consecutivos</th><th>Última IP</th><th>Último fallo</th></tr></thead>
     <tbody>${sospechososHtml}</tbody>
   </table>
 
-  <h2>Actividad critica reciente</h2>
+  <h2>Actividad crítica reciente</h2>
   <table>
-    <thead><tr><th>Actor</th><th>Accion</th><th>Descripcion</th><th>Fecha/Hora</th></tr></thead>
+    <thead><tr><th>Actor</th><th>Acción</th><th>Descripción</th><th>Fecha/Hora</th></tr></thead>
     <tbody>${actividadHtml}</tbody>
   </table>
 </body>
@@ -229,7 +229,7 @@ const BarChart = ({ rows }) => {
   const maxValue = Math.max(1, ...points.map((row) => toInt(row?.total)));
 
   return (
-    <div className="sec-chart sec-chart--bars" role="img" aria-label="Grafico de barras de logins fallidos">
+    <div className="sec-chart sec-chart--bars" role="img" aria-label="Gráfico de barras de logins fallidos">
       {points.length === 0 ? (
         <div className="sec-chart-empty">Sin datos en el rango seleccionado.</div>
       ) : (
@@ -260,7 +260,7 @@ const DonutChart = ({ total }) => {
     : 'conic-gradient(#e3dbd0 0deg 360deg)';
 
   return (
-    <div className="sec-chart sec-chart--donut" role="img" aria-label="Grafico de dona de sesiones activas">
+    <div className="sec-chart sec-chart--donut" role="img" aria-label="Gráfico de dona de sesiones activas">
       <div className="sec-donut-layout">
         <div className="sec-donut-chart" style={{ '--donut-gradient': gradient }}>
           <div className="sec-donut-center">
@@ -335,7 +335,7 @@ const SecurityDashboardTab = () => {
       { key: 'usuarios_sospechosos', label: 'Usuarios sospechosos', value: data?.semaforo?.usuarios_sospechosos },
       {
         key: 'actividad_critica',
-        label: 'Actividad critica',
+        label: 'Actividad crítica',
         value: data?.semaforo?.actividad_critica || {
           valor: toInt(data?.resumen?.actividad_critica_total),
           estado: toInt(data?.resumen?.actividad_critica_total) > 0 ? 'amarillo' : 'verde',
@@ -403,18 +403,26 @@ const SecurityDashboardTab = () => {
 
             <button
               type="button"
-              className="btn btn-outline-secondary sec-sesiones-global-btn"
+              className="btn inv-prod-toolbar-btn sec-btn-ghost sec-sesiones-global-btn"
               onClick={() => void loadSummary()}
               disabled={loading}
             >
               <i className="bi bi-arrow-clockwise me-2" />
               Actualizar
             </button>
-            <button type="button" className="btn btn-outline-secondary sec-sesiones-global-btn" onClick={onExportExcel}>
+            <button
+              type="button"
+              className="btn inv-prod-toolbar-btn sec-btn-ghost sec-sesiones-global-btn"
+              onClick={onExportExcel}
+            >
               <i className="bi bi-file-earmark-spreadsheet me-2" />
               Excel
             </button>
-            <button type="button" className="btn btn-outline-secondary sec-sesiones-global-btn" onClick={onExportPdf}>
+            <button
+              type="button"
+              className="btn inv-prod-toolbar-btn sec-btn-ghost sec-sesiones-global-btn"
+              onClick={onExportPdf}
+            >
               <i className="bi bi-filetype-pdf me-2" />
               PDF
             </button>
@@ -427,10 +435,10 @@ const SecurityDashboardTab = () => {
 
           {!loading && !error ? (
             <>
-              <div className="sec-results-meta sec-sesiones-results-meta sec-dashboard-meta">
+              <div className="sec-results-meta sec-sesiones-results-meta sec-dashboard-meta inv-inventory-results-meta">
                 <span>Rango activo: {data?.range_label || '-'}</span>
                 <span className="text-muted">
-                  Ultima actualizacion: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : '-'}
+                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : '-'}
                 </span>
               </div>
 
@@ -519,7 +527,7 @@ const SecurityDashboardTab = () => {
                             <th>Rol</th>
                             <th>Fallos</th>
                             <th>Sesiones</th>
-                            <th>Ultimo acceso</th>
+                            <th>Último acceso</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -563,8 +571,8 @@ const SecurityDashboardTab = () => {
                             <th>Usuario</th>
                             <th>Fallos consecutivos</th>
                             <th>Fallos en rango</th>
-                            <th>Ultima IP</th>
-                            <th>Ultimo fallo</th>
+                            <th>Última IP</th>
+                            <th>Último fallo</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -596,7 +604,7 @@ const SecurityDashboardTab = () => {
 
                 <section className="sec-dashboard-block">
                   <div className="sec-dashboard-block-head">
-                    <h4>Actividad critica reciente</h4>
+                    <h4>Actividad crítica reciente</h4>
                   </div>
                   <div className="sec-sesiones-table-card">
                     <div className="table-responsive sec-sesiones-table-responsive">
@@ -604,15 +612,15 @@ const SecurityDashboardTab = () => {
                         <thead>
                           <tr>
                             <th>Actor</th>
-                            <th>Accion</th>
-                            <th>Descripcion</th>
+                            <th>Acción</th>
+                            <th>Descripción</th>
                             <th>Fecha/Hora</th>
                           </tr>
                         </thead>
                         <tbody>
                           {(data?.actividad_reciente || []).length === 0 ? (
                             <tr>
-                              <td colSpan="4" className="text-center text-muted py-4">Sin actividad critica en el rango.</td>
+                              <td colSpan="4" className="text-center text-muted py-4">Sin actividad crítica en el rango.</td>
                             </tr>
                           ) : (
                             (data.actividad_reciente || []).map((row, index) => (

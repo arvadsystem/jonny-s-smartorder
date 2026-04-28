@@ -470,3 +470,45 @@
     justify-content: space-between;
   }
 }
+
+/* ==========================================================================
+   HOMOLOGACION DASHBOARD SEGURIDAD <> INVENTARIO
+   ========================================================================== */
+
+.sec-dashboard-shell {
+  border-radius: 18px !important;
+  box-shadow: 0 14px 26px rgba(var(--c-shadow-rgb), 0.1) !important;
+}
+
+.sec-dashboard-actions .inv-prod-toolbar-btn {
+  min-height: 38px;
+}
+
+.sec-dashboard-range-btn {
+  min-height: 30px;
+}
+
+.sec-dashboard-summary-grid .sec-summary-card {
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #fcfbf6);
+}
+
+.sec-dashboard-block {
+  border-radius: 16px;
+}
+
+.sec-dashboard-block-head {
+  padding: 11px 12px;
+}
+
+.sec-dashboard-block-head h4 {
+  letter-spacing: 0.01em;
+}
+
+.sec-semaforo-card {
+  border-radius: 12px;
+}
+
+.sec-user-cell strong {
+  letter-spacing: 0.01em;
+}
