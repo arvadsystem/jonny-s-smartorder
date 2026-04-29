@@ -2,7 +2,7 @@
 
 @media (max-width: 767.98px) {
   .pm-catalog-screen {
-    padding-bottom: 5.5rem;
+    padding-bottom: 6.2rem;
   }
 
   .pm-shell__content {
@@ -72,6 +72,14 @@
   .pm-catalog-header {
     position: static;
   }
+
+  .pm-branch-screen {
+    padding-inline: 0.4rem;
+  }
+
+  .pm-branch-showcase {
+    border-radius: 16px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -89,6 +97,10 @@
 }
 
 @media (max-width: 575.98px) {
+  .pm-branch-screen {
+    padding-inline: 0.2rem;
+  }
+
   .pm-shell__content {
     /* Margen horizontal minimo en telefono. */
     padding: 0.58rem 0.22rem 1.25rem;
@@ -119,6 +131,37 @@
 
   .pm-screen__title {
     font-size: 1.05rem;
+  }
+
+  .pm-branch-hero-carousel__viewport {
+    min-height: 252px;
+  }
+
+  .pm-branch-screen__hero-content {
+    max-width: 100%;
+    gap: 0.36rem;
+  }
+
+  .pm-branch-screen__hero-title {
+    font-size: 1.22rem;
+  }
+
+  .pm-branch-hero-carousel__arrow {
+    width: 39px;
+    height: 39px;
+  }
+
+  .pm-option-card {
+    padding: 0.9rem;
+  }
+
+  .pm-branch-card__media {
+    margin: -0.9rem -0.9rem 0.75rem;
+    min-height: 168px;
+  }
+
+  .pm-branch-card__image {
+    height: 168px;
   }
 
   .pm-branch-banner__change {
@@ -199,6 +242,14 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .pm-branch-screen .pm-screen__list {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+
+  .pm-branch-hero-carousel__viewport {
+    min-height: 380px;
+  }
+
   .pm-detail-sheet {
     border-radius: 18px 18px 0 0;
     margin: 0 auto;
@@ -210,11 +261,36 @@
     width: min(100%, 1180px);
   }
 
+  /* Mantiene el catalogo en ancho completo tambien en escritorio grande. */
+  .pm-shell__content.pm-shell__content--catalog {
+    width: 100%;
+    max-width: none;
+    padding-inline: clamp(0.85rem, 2vw, 1.8rem);
+  }
+
   .pm-product-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .pm-skeleton__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-branch-hero-carousel__viewport {
+    min-height: 430px;
+  }
+
+  .pm-branch-screen {
+    padding-inline: clamp(1rem, 2.2vw, 2.6rem);
+  }
+}
+
+@media (min-width: 1280px) {
+  .pm-screen__list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-branch-screen .pm-screen__list {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   }
 }

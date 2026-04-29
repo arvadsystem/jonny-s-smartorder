@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap');
 
 /* Entry CSS del modulo menu publico: segmentado por componente para mantenimiento. */
 @import './styles/components/core-shell-header.css';
@@ -6,11 +6,17 @@
 @import './styles/components/sticky-state-skeleton.css';
 @import './styles/components/branch-order-selection.css';
 @import './styles/components/catalog-toolbar-and-chips.css';
+@import './styles/components/catalog-modern-delivery.css';
 @import './styles/components/category-splash.css';
 @import './styles/components/catalog-grid-and-feedback.css';
 @import './styles/components/product-card.css';
 @import './styles/components/cart-fab.css';
 @import './styles/components/product-detail-sheet.css';
 @import './styles/components/cart-sheet.css';
+@import './styles/components/catalog-premium-experience.css';
 @import './styles/components/public-menu-responsive.css';
+@import './styles/components/flow-premium-shell.css';
+@import './styles/components/menu-landing-premium.css';
+/* Paridad visual con el estilo del login, solo dentro del modulo public-menu. */
+@import './styles/components/public-menu-login-parity.css';
 

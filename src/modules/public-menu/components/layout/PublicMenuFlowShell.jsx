@@ -15,7 +15,7 @@ import {
 
 const STEP_COPY = {
   [PUBLIC_MENU_STEPS.BRANCH]: {
-    title: 'Men\u00fa',
+    title: 'Menu',
     subtitle: 'Elige la sucursal donde deseas pedir.'
   },
   [PUBLIC_MENU_STEPS.ORDER_TYPE]: {
@@ -36,6 +36,8 @@ const PublicMenuFlowShell = () => {
   const { state, actions, selectors } = usePublicMenuFlow();
   const currentStep = getPublicMenuStepFromPath(location.pathname);
   const currentStepIndex = PUBLIC_MENU_STEP_ORDER.indexOf(currentStep);
+  const normalizedPath = String(location.pathname || '').replace(/\/+$/, '');
+  const isLandingView = normalizedPath === '/menu-publico' || normalizedPath === '';
   const [orderTypeActionArmed, setOrderTypeActionArmed] = useState(true);
 
   const stepMeta = STEP_COPY[currentStep] || STEP_COPY[PUBLIC_MENU_STEPS.BRANCH];
@@ -52,7 +54,6 @@ const PublicMenuFlowShell = () => {
     const timer = window.setTimeout(() => setOrderTypeActionArmed(true), 350);
     return () => window.clearTimeout(timer);
   }, [currentStep, state.orderType, state.pickupPaymentMethod]);
-
 
   const getPrimaryAction = () => {
     if (currentStep === PUBLIC_MENU_STEPS.BRANCH) return null;
@@ -101,56 +102,60 @@ const PublicMenuFlowShell = () => {
 
   return (
     <div className="pm-shell">
-      <PublicHeader
-        title={stepMeta.title}
-        subtitle={stepMeta.subtitle}
-        onBack={hasPreviousStep ? handleBack : null}
-        branchName={state.selectedBranch?.name}
-        actions={
-          <div className="pm-shell__header-actions">
-            {user ? (
-              <button
-                type="button"
-                className="pm-shell__header-btn"
-                onClick={() => {
-                  logout();
-                  navigate('/menu-publico');
-                }}
-              >
-                <i className="bi bi-box-arrow-right" aria-hidden="true" />
-                <span>Cerrar Sesión</span>
-              </button>
-            ) : (
+      {!isLandingView && currentStep !== PUBLIC_MENU_STEPS.MENU ? (
+        <PublicHeader
+          title={stepMeta.title}
+          subtitle={stepMeta.subtitle}
+          onBack={hasPreviousStep ? handleBack : null}
+          branchName={state.selectedBranch?.name}
+          actions={
+            <div className="pm-shell__header-actions">
+              {user ? (
+                <button
+                  type="button"
+                  className="pm-shell__header-btn"
+                  onClick={() => {
+                    logout();
+                    navigate('/menu-publico');
+                  }}
+                >
+                  <i className="bi bi-box-arrow-right" aria-hidden="true" />
+                  <span>Cerrar Sesion</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="pm-shell__header-btn pm-shell__header-btn--wide"
+                  onClick={() => navigate('/auth/login?from=public-menu')}
+                >
+                  <i className="bi bi-person-fill" aria-hidden="true" />
+                  <span>Iniciar Sesion</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 className="pm-shell__header-btn pm-shell__header-btn--wide"
-                onClick={() => navigate('/auth/login?from=public-menu')}
+                onClick={() =>
+                  actions.openConfirm({
+                    title: 'Volver al inicio',
+                    message:
+                      'Si vuelves al inicio se perderan la sucursal, el tipo de pedido y los productos agregados al carrito.',
+                    confirmLabel: 'Si, volver al inicio'
+                  })
+                }
               >
-                <i className="bi bi-person-fill" aria-hidden="true" />
-                <span>Iniciar Sesión</span>
+                <i className="bi bi-house-door-fill" aria-hidden="true" />
+                <span>Inicio</span>
               </button>
-            )}
+            </div>
+          }
+        />
+      ) : null}
 
-            <button
-              type="button"
-              className="pm-shell__header-btn pm-shell__header-btn--wide"
-              onClick={() =>
-                actions.openConfirm({
-                  title: 'Volver al inicio',
-                  message:
-                    'Si vuelves al inicio se perderan la sucursal, el tipo de pedido y los productos agregados al carrito.',
-                  confirmLabel: 'Si, volver al inicio'
-                })
-              }
-            >
-              <i className="bi bi-house-door-fill" aria-hidden="true" />
-              <span>Inicio</span>
-            </button>
-          </div>
-        }
-      />
-
-      <main className="pm-shell__content">
+      <main
+        className={`pm-shell__content ${currentStep === PUBLIC_MENU_STEPS.MENU ? 'pm-shell__content--catalog' : ''}`}
+      >
         <Outlet />
       </main>
 
@@ -180,4 +185,3 @@ const PublicMenuFlowShell = () => {
 };
 
 export default PublicMenuFlowShell;
-

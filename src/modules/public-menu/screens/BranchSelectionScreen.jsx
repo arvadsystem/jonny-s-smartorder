@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import SucursalCard from '../components/branch/SucursalCard';
 import StateBlock from '../components/feedback/StateBlock';
 import { useBranches } from '../hooks/useBranches';
+import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { getPublicMenuPathByStep } from '../routes/flowSteps';
 import {
@@ -42,6 +43,23 @@ const resolvePreviewOrderType = (value) => {
   return PUBLIC_MENU_ORDER_TYPES.DINE_IN;
 };
 
+const HERO_AUTOPLAY_MS = 5000;
+const HERO_DEFAULT_EYEBROW = 'Menu destacado';
+
+const buildHeroSlide = ({
+  id,
+  imageUrl,
+  title,
+  source = 'fallback',
+  eyebrow = HERO_DEFAULT_EYEBROW
+}) => ({
+  id,
+  imageUrl: String(imageUrl || '').trim(),
+  title: String(title || '').trim() || 'Sabores listos para ordenar',
+  source,
+  eyebrow: String(eyebrow || '').trim() || HERO_DEFAULT_EYEBROW
+});
+
 // Step 1: customer picks the working branch for the rest of the flow.
 const BranchSelectionScreen = () => {
   const location = useLocation();
@@ -50,7 +68,10 @@ const BranchSelectionScreen = () => {
   const { branches, loading, error, reloadBranches } = useBranches();
   const [ignoreQueryPrefill, setIgnoreQueryPrefill] = useState(false);
   const [queryBranchError, setQueryBranchError] = useState('');
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [heroSlides, setHeroSlides] = useState([]);
   const autoPreviewRef = useRef('');
+  const heroTimerRef = useRef(null);
   const orderedBranches = useMemo(() => {
     const list = Array.isArray(branches) ? [...branches] : [];
     return list.sort((a, b) => {
@@ -64,10 +85,100 @@ const BranchSelectionScreen = () => {
     });
   }, [branches]);
 
-  const heroImage = useMemo(
-    () => orderedBranches.find((branch) => branch?.imageUrl)?.imageUrl || '',
-    [orderedBranches]
-  );
+  // Carga imagenes de platillos para el carrusel principal de la pantalla de sucursal.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDishSlides = async () => {
+      if (!orderedBranches.length) return;
+
+      const collectedSlides = [];
+      const seenImages = new Set();
+
+      for (const branch of orderedBranches) {
+        try {
+          const catalog = await publicMenuBootstrapService.getCatalog({
+            idSucursal: branch.id,
+            orderType: PUBLIC_MENU_ORDER_TYPES.DINE_IN
+          });
+          const rows = Array.isArray(catalog?.items) ? catalog.items : [];
+          const withImage = rows.filter((item) => Boolean(item?.imagen_url));
+          withImage.forEach((item, index) => {
+            const image = String(item?.imagen_url || '').trim();
+            if (!image || seenImages.has(image)) return;
+            seenImages.add(image);
+            collectedSlides.push(
+              buildHeroSlide({
+                id: `hero-dish-${branch.id}-${item?.id_detalle_menu || index}`,
+                imageUrl: image,
+                title: item?.nombre || 'Platillo destacado',
+                eyebrow: 'Lo mas pedido',
+                source: 'dish'
+              })
+            );
+          });
+
+          if (collectedSlides.length >= 8) break;
+        } catch {
+          // Si una sucursal falla, intentamos la siguiente sin romper la UI.
+        }
+      }
+
+      if (!cancelled) {
+        if (collectedSlides.length > 0) {
+          setHeroSlides(collectedSlides.slice(0, 8));
+        } else {
+          setHeroSlides([
+            buildHeroSlide({
+              id: 'hero-menu-fallback',
+              imageUrl: '',
+              title: 'Menu en preparacion',
+              eyebrow: 'Menu',
+              source: 'fallback',
+              branchName: ''
+            })
+          ]);
+        }
+      }
+    };
+
+    loadDishSlides();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderedBranches]);
+
+  // Mantiene el indice del carrusel en rango cuando cambian sucursales.
+  useEffect(() => {
+    if (heroIndex <= heroSlides.length - 1) return;
+    setHeroIndex(0);
+  }, [heroIndex, heroSlides.length]);
+
+  // Autoplay del hero para replicar comportamiento comercial tipo banner principal.
+  useEffect(() => {
+    if (heroTimerRef.current) {
+      window.clearInterval(heroTimerRef.current);
+      heroTimerRef.current = null;
+    }
+    if (heroSlides.length <= 1) return undefined;
+
+    heroTimerRef.current = window.setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % heroSlides.length);
+    }, HERO_AUTOPLAY_MS);
+
+    return () => {
+      if (!heroTimerRef.current) return;
+      window.clearInterval(heroTimerRef.current);
+      heroTimerRef.current = null;
+    };
+  }, [heroSlides.length]);
+
+  const goToHeroSlide = (index) => {
+    if (!heroSlides.length) return;
+    const normalized = (index + heroSlides.length) % heroSlides.length;
+    setHeroIndex(normalized);
+  };
 
   const queryBranchSlug = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -221,17 +332,69 @@ const BranchSelectionScreen = () => {
   return (
     <section className="pm-screen pm-branch-screen" aria-label="Seleccion de sucursal">
       <div
-        className={`pm-screen__intro pm-branch-screen__hero ${heroImage ? 'has-photo' : ''}`}
-        style={heroImage ? { backgroundImage: `url(${heroImage})` } : undefined}
+        className="pm-branch-showcase pm-branch-hero-carousel"
+        aria-roledescription="carousel"
+        aria-label="Carrusel de platillos"
       >
-        <div className="pm-branch-screen__hero-overlay" aria-hidden="true" />
-        <div className="pm-branch-screen__hero-content">
-          <span className="pm-screen__eyebrow">Paso 1 de 3</span>
-          <h2 className="pm-screen__title">Selecciona tu sucursal</h2>
-          <p className="pm-screen__subtitle">
-            El menu se ajusta a la sede y al tipo de pedido que elijas.
-          </p>
+        <div className="pm-branch-showcase__topline" aria-hidden="true" />
+        <div className="pm-branch-hero-carousel__viewport">
+          {heroSlides.map((slide, index) => (
+            <div
+              key={slide.id}
+              className={`pm-branch-screen__hero ${slide.imageUrl ? 'has-photo' : ''} ${index === heroIndex ? 'is-active' : ''}`}
+              style={slide.imageUrl ? { backgroundImage: `url(${slide.imageUrl})` } : undefined}
+              aria-hidden={index !== heroIndex}
+            >
+              <div className="pm-branch-screen__hero-overlay" aria-hidden="true" />
+              <div className="pm-branch-screen__hero-content">
+                <span className="pm-screen__eyebrow">{slide.eyebrow || HERO_DEFAULT_EYEBROW}</span>
+                <h2 className="pm-branch-screen__hero-title">{slide.title}</h2>
+              </div>
+            </div>
+          ))}
         </div>
+
+        {heroSlides.length > 1 ? (
+          <>
+            <button
+              type="button"
+              className="pm-branch-hero-carousel__arrow pm-branch-hero-carousel__arrow--prev"
+              onClick={() => goToHeroSlide(heroIndex - 1)}
+              aria-label="Imagen anterior"
+            >
+              <i className="bi bi-chevron-left" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="pm-branch-hero-carousel__arrow pm-branch-hero-carousel__arrow--next"
+              onClick={() => goToHeroSlide(heroIndex + 1)}
+              aria-label="Siguiente imagen"
+            >
+              <i className="bi bi-chevron-right" aria-hidden="true" />
+            </button>
+            <div className="pm-branch-hero-carousel__dots" role="tablist" aria-label="Indicadores del carrusel">
+              {heroSlides.map((slide, index) => (
+                <button
+                  key={`hero-dot-${slide.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={index === heroIndex}
+                  aria-label={`Ir a imagen ${index + 1}`}
+                  className={`pm-branch-hero-carousel__dot ${index === heroIndex ? 'is-active' : ''}`}
+                  onClick={() => goToHeroSlide(index)}
+                />
+              ))}
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      <div className="pm-screen__intro">
+        <span className="pm-screen__eyebrow">Paso 1 de 3</span>
+        <h2 className="pm-screen__title">Selecciona tu sucursal</h2>
+        <p className="pm-screen__subtitle">
+          Elige la sucursal donde deseas pedir para cargar el menu y opciones disponibles.
+        </p>
       </div>
 
       <div className="pm-screen__list">

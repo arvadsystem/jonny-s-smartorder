@@ -1,0 +1,254 @@
+/* Tema balanceado: profesional, con continuidad visual y sin salto brusco. */
+.pm-shell {
+  /* Fondo neutro-cálido para conectar con la marca sin oscurecer el flujo cliente. */
+  background:
+    radial-gradient(circle at 8% -8%, rgba(212, 165, 116, 0.18), transparent 34%),
+    linear-gradient(180deg, #f9f4ec 0%, #f6efe5 56%, #f3ebdf 100%);
+  color: #2c221c;
+}
+
+.pm-shell__content {
+  padding-top: 1.1rem;
+}
+
+/* Header en marrón de marca para mantener continuidad con login y dashboard. */
+.pm-header {
+  background: linear-gradient(135deg, #2a1910 0%, #4f2f1d 55%, #7a4a2b 100%);
+  color: #fff2e3;
+  border-bottom: 1px solid rgba(255, 230, 204, 0.22);
+  box-shadow: 0 10px 22px rgba(46, 27, 16, 0.28);
+}
+
+.pm-header__back-btn {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 229, 201, 0.34);
+  color: #fff4e7;
+}
+
+.pm-header__subtitle,
+.pm-header__meta {
+  color: rgba(255, 233, 213, 0.86);
+}
+
+.pm-shell__header-btn {
+  color: #fff2e3;
+  border: 1px solid rgba(255, 223, 192, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.pm-shell__header-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+/* Tarjetas limpias con radio moderado para un look más corporativo. */
+.pm-shell .pm-catalog-header,
+.pm-shell .pm-branch-banner,
+.pm-shell .pm-option-card,
+.pm-shell .pm-product-card,
+.pm-shell .pm-branch-confirm-card,
+.pm-shell .pm-confirm-modal,
+.pm-shell .pm-detail-sheet,
+.pm-shell .pm-cart-sheet,
+.pm-shell .pm-category-splash,
+.pm-shell .pm-sticky-state,
+.pm-shell .pm-empty-state,
+.pm-shell .pm-error-state {
+  background: #fffdf9;
+  border-color: rgba(159, 117, 86, 0.24) !important;
+  color: #2c221c;
+  box-shadow: 0 12px 26px rgba(79, 48, 29, 0.11);
+}
+
+.pm-shell .pm-option-card,
+.pm-shell .pm-product-card,
+.pm-shell .pm-branch-confirm-card {
+  border-radius: 18px;
+}
+
+.pm-shell .pm-product-card__media {
+  border-radius: 12px;
+}
+
+/* Copys secundarios con contraste suave y estable en todo el flujo. */
+.pm-shell .pm-screen__subtitle,
+.pm-shell .pm-option-card__description,
+.pm-shell .pm-option-card__meta,
+.pm-shell .pm-branch-confirm-card__body p,
+.pm-shell .pm-catalog-header__meta,
+.pm-shell .pm-catalog-header__availability,
+.pm-shell .pm-product-card__description,
+.pm-shell .pm-product-card__config-note,
+.pm-shell .pm-cart-sheet__branch,
+.pm-shell .pm-cart-sheet__empty,
+.pm-shell .pm-detail-sheet__description,
+.pm-shell .pm-detail-sheet__hint,
+.pm-shell .pm-detail-sheet__price-label,
+.pm-shell .pm-detail-sheet__state,
+.pm-shell .pm-detail-sheet__popular-copy small {
+  color: #675446 !important;
+}
+
+/* Inputs y selectores sobrios para mejorar claridad al pedir. */
+.pm-shell .pm-search-input,
+.pm-shell .pm-order-type-table .form-control,
+.pm-shell .pm-order-type-payment__option,
+.pm-shell .pm-branch-order-selector,
+.pm-shell .pm-branch-confirm-card__order,
+.pm-shell .pm-branch-order-selector__btn,
+.pm-shell .pm-branch-confirm-card__order-btn,
+.pm-shell .pm-detail-sheet__option,
+.pm-shell .pm-detail-sheet__sauce-row,
+.pm-shell .pm-detail-sheet__popular,
+.pm-shell .pm-detail-sheet__sauce-toggle,
+.pm-shell .pm-cart-sheet__item,
+.pm-shell .pm-product-card__qty {
+  background: #fffaf4 !important;
+  border-color: rgba(164, 122, 90, 0.28) !important;
+  color: #2c221c !important;
+}
+
+.pm-shell .pm-search-input {
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.pm-shell .pm-search-input__field {
+  color: #2c221c !important;
+}
+
+.pm-shell .pm-search-input__field::placeholder {
+  color: #9a8373;
+}
+
+/* Carrusel de categorias con look premium oscuro y activo dorado (referencia UI). */
+.pm-shell .pm-category-chips {
+  background: linear-gradient(180deg, #161719 0%, #131417 100%);
+  border: 1px solid rgba(255, 186, 102, 0.2);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 212, 155, 0.06);
+  padding: 0.56rem 0.7rem;
+  justify-content: flex-start;
+  gap: 0.45rem;
+}
+
+.pm-shell .pm-category-chip {
+  border: 1px solid rgba(255, 189, 112, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 225, 186, 0.9);
+  text-transform: none;
+  letter-spacing: 0.01em;
+  padding: 0.42rem 0.82rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.pm-shell .pm-category-chip:hover {
+  border-color: rgba(255, 196, 122, 0.45);
+  color: #ffe5be;
+  transform: translateY(-1px);
+}
+
+.pm-shell .pm-category-chip.is-selected {
+  background: rgba(255, 173, 66, 0.08);
+  border-color: #f1b24f;
+  color: #ffd48b;
+  box-shadow:
+    inset 0 -2px 0 #f1b24f,
+    0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.pm-shell .pm-category-chip.is-selected::after {
+  display: none;
+}
+
+/* Respeta el estilo landing cuando categorias viven dentro del bloque showcase. */
+.pm-shell .pm-menu-showcase .pm-category-chips {
+  background: #5e5750 !important;
+  border: 0 !important;
+  border-bottom: 4px solid #e42c2c !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.pm-shell .pm-menu-showcase .pm-category-chip {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  text-transform: uppercase !important;
+}
+
+.pm-shell .pm-menu-showcase .pm-category-chip.is-selected {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+}
+
+.pm-shell .pm-menu-showcase .pm-category-chip.is-selected::after {
+  display: block !important;
+  background: #ffffff !important;
+}
+
+/* CTA principal con identidad de marca y tono premium contenido. */
+.pm-shell .btn-primary,
+.pm-shell .pm-product-card__cta,
+.pm-shell .pm-detail-sheet__cta,
+.pm-shell .pm-cart-sheet__confirm {
+  background: linear-gradient(90deg, #8c4518 0%, #ad6331 100%) !important;
+  border: 1px solid rgba(124, 70, 40, 0.28) !important;
+  color: #fff6ec !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 20px rgba(132, 75, 42, 0.2);
+}
+
+.pm-shell .btn-secondary,
+.pm-shell .btn-outline-secondary {
+  background: #fff7ed !important;
+  color: #6e4328 !important;
+  border-color: rgba(161, 117, 84, 0.3) !important;
+}
+
+/* Estado activo claro para que admin/cliente entiendan selección sin ruido. */
+.pm-shell .pm-option-card.is-selected,
+.pm-shell .pm-branch-order-selector__btn.is-selected,
+.pm-shell .pm-branch-confirm-card__order-btn.is-selected,
+.pm-shell .pm-order-type-payment__option.is-selected {
+  border-color: #b87342 !important;
+  background: #fceedd !important;
+  color: #4f321f !important;
+}
+
+/* Feedback visual claro y profesional para eventos rápidos. */
+.pm-shell .pm-toast {
+  background: #fffdf9;
+  color: #3a271a;
+  border: 1px solid rgba(166, 118, 78, 0.32);
+}
+
+.pm-shell .pm-toast--success {
+  background: #edf8f0;
+  color: #1e6a3d;
+}
+
+.pm-shell .pm-toast--error {
+  background: #fff1ef;
+  color: #9b2f28;
+}
+
+.pm-shell .pm-product-card__placeholder {
+  color: #8f7868;
+  background: #f3e8dc;
+}
+
+@media (max-width: 640px) {
+  /* Mobile: menor carga visual para navegación más cómoda en celular. */
+  .pm-shell .pm-catalog-header,
+  .pm-shell .pm-branch-banner,
+  .pm-shell .pm-option-card,
+  .pm-shell .pm-product-card {
+    box-shadow: 0 8px 16px rgba(90, 57, 31, 0.1);
+  }
+}

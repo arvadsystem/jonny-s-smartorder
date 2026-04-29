@@ -63,8 +63,9 @@ const OrderTypeScreen = () => {
   };
 
   return (
-    <section className="pm-screen" aria-label="Tipo de pedido">
+    <section className="pm-screen pm-order-type-screen" aria-label="Tipo de pedido">
       <div className="pm-screen__intro">
+        <span className="pm-screen__eyebrow">Paso 2 de 3</span>
         <h2 className="pm-screen__title">Como quieres pedir hoy?</h2>
         <p className="pm-screen__subtitle">
           Esto define el metodo de pago y los datos que te pediremos para confirmar tu pedido.

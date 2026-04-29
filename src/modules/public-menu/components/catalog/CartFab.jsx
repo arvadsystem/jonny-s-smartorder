@@ -5,13 +5,13 @@ const currencyFormatter = new Intl.NumberFormat('es-HN', {
 });
 
 // Barra de carrito mobile-first: accesible para pulgar y siempre visible cuando hay items.
-const CartFab = ({ itemCount = 0, total = 0, disabled = false, onClick }) => {
+const CartFab = ({ itemCount = 0, total = 0, disabled = false, pulse = false, onClick }) => {
   if (disabled || Number(itemCount || 0) <= 0) return null;
 
   return (
     <button
       type="button"
-      className="pm-cart-fab"
+      className={`pm-cart-fab ${pulse ? 'is-pulse' : ''}`}
       aria-label="Abrir carrito"
       onClick={onClick}
     >
