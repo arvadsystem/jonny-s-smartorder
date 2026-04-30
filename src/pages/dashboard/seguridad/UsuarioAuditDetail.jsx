@@ -601,7 +601,7 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
 
                     <div className="sec-sesiones-table-card">
                       <div className="table-responsive sec-sesiones-table-responsive">
-                        <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                        <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-audit-sessions sec-mobile-card-table">
                           <thead>
                             <tr>
                               <th>Estado</th>
@@ -682,7 +682,7 @@ const UsuarioAuditDetail = ({ userId, onBack }) => {
 
                     <div className="sec-sesiones-table-card">
                       <div className="table-responsive sec-sesiones-table-responsive">
-                        <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                        <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-audit-logins sec-mobile-card-table">
                           <thead>
                             <tr>
                               <th>Fecha</th>

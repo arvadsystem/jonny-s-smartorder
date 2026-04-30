@@ -292,7 +292,7 @@ const SesionesTabPersonal = () => {
 
               <div className="sec-sesiones-table-card">
                 <div className="table-responsive sec-sesiones-table-responsive">
-                  <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                  <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-personal-sessions sec-mobile-card-table">
                     <thead>
                       <tr>
                         <th>Estado</th>
@@ -574,7 +574,7 @@ const SesionesTabGlobal = () => {
 
                 <div className="sec-sesiones-table-card">
                   <div className="table-responsive sec-sesiones-table-responsive">
-                    <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                    <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-global-sessions sec-mobile-card-table">
                       <thead>
                         <tr>
                           <th>Estado</th>

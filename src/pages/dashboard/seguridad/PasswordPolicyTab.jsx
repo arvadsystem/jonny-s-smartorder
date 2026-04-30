@@ -93,6 +93,48 @@ const PasswordPolicyTab = () => {
 
   const onChange = (k, v) => setForm((s) => ({ ...s, [k]: v }));
 
+  const renderBooleanPolicyField = (fieldKey, label) => {
+    const value = String(form[fieldKey]);
+    const isTrue = value === "true";
+
+    return (
+      <div className="col-md-4" key={fieldKey}>
+        <label className="form-label sec-audit-filter-label">{label}</label>
+
+        <div className="sec-policy-boolean-wrap">
+          <div className="sec-policy-mobile-toggle" role="group" aria-label={label}>
+            <button
+              type="button"
+              className={`btn sec-policy-mobile-option ${!isTrue ? "is-active" : ""}`.trim()}
+              onClick={() => onChange(fieldKey, "false")}
+              disabled={!canEditPolicy}
+            >
+              No
+            </button>
+            <button
+              type="button"
+              className={`btn sec-policy-mobile-option ${isTrue ? "is-active" : ""}`.trim()}
+              onClick={() => onChange(fieldKey, "true")}
+              disabled={!canEditPolicy}
+            >
+              Sí
+            </button>
+          </div>
+
+          <select
+            className="form-select sec-audit-filter-control sec-policy-desktop-select"
+            value={value}
+            onChange={(e) => onChange(fieldKey, e.target.value)}
+            disabled={!canEditPolicy}
+          >
+            <option value="false">No</option>
+            <option value="true">Sí</option>
+          </select>
+        </div>
+      </div>
+    );
+  };
+
   const onGuardar = async () => {
     if (!canEditPolicy) return;
 
@@ -132,7 +174,7 @@ const PasswordPolicyTab = () => {
     <>
       <ToastNotice alert={alerta} onClose={() => setAlerta((prev) => ({ ...prev, visible: false }))} />
 
-      <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
+      <div className="card shadow-sm sec-sesiones-shell sec-password-policy-shell" style={{ backgroundColor: "#fff" }}>
         <div className="card-body p-0">
           <div className="sec-panel-header">
             <div className="sec-panel-title-wrap">
@@ -183,44 +225,9 @@ const PasswordPolicyTab = () => {
                   <div className="form-text">Recomendado: 8 a 12.</div>
                 </div>
 
-                <div className="col-md-4">
-                  <label className="form-label sec-audit-filter-label">Requiere mayúscula</label>
-                  <select
-                    className="form-select sec-audit-filter-control"
-                    value={String(form.password_require_upper)}
-                    onChange={(e) => onChange("password_require_upper", e.target.value)}
-                    disabled={!canEditPolicy}
-                  >
-                    <option value="false">No</option>
-                    <option value="true">Sí</option>
-                  </select>
-                </div>
-
-                <div className="col-md-4">
-                  <label className="form-label sec-audit-filter-label">Requiere número</label>
-                  <select
-                    className="form-select sec-audit-filter-control"
-                    value={String(form.password_require_number)}
-                    onChange={(e) => onChange("password_require_number", e.target.value)}
-                    disabled={!canEditPolicy}
-                  >
-                    <option value="false">No</option>
-                    <option value="true">Sí</option>
-                  </select>
-                </div>
-
-                <div className="col-md-4">
-                  <label className="form-label sec-audit-filter-label">Requiere símbolo</label>
-                  <select
-                    className="form-select sec-audit-filter-control"
-                    value={String(form.password_require_symbol)}
-                    onChange={(e) => onChange("password_require_symbol", e.target.value)}
-                    disabled={!canEditPolicy}
-                  >
-                    <option value="false">No</option>
-                    <option value="true">Sí</option>
-                  </select>
-                </div>
+                {renderBooleanPolicyField("password_require_upper", "Requiere mayúscula")}
+                {renderBooleanPolicyField("password_require_number", "Requiere número")}
+                {renderBooleanPolicyField("password_require_symbol", "Requiere símbolo")}
               </div>
             )}
           </div>

@@ -327,7 +327,7 @@ const BitacorasTab = () => {
 
                 <div className="sec-sesiones-table-card">
                   <div className="table-responsive sec-sesiones-table-responsive">
-                    <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                    <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-bitacoras sec-mobile-card-table">
                       <thead>
                         <tr>
                           <th>Usuario</th>

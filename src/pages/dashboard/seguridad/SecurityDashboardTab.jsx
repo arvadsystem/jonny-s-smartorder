@@ -486,7 +486,7 @@ const SecurityDashboardTab = () => {
                   </div>
                   <div className="sec-sesiones-table-card">
                     <div className="table-responsive sec-sesiones-table-responsive">
-                      <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                      <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-dash-topips">
                         <thead>
                           <tr>
                             <th style={{ width: 70 }}>#</th>
@@ -520,7 +520,7 @@ const SecurityDashboardTab = () => {
                   </div>
                   <div className="sec-sesiones-table-card">
                     <div className="table-responsive sec-sesiones-table-responsive">
-                      <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                      <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-dash-blocked">
                         <thead>
                           <tr>
                             <th>Usuario</th>
@@ -565,7 +565,7 @@ const SecurityDashboardTab = () => {
                   </div>
                   <div className="sec-sesiones-table-card">
                     <div className="table-responsive sec-sesiones-table-responsive">
-                      <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                      <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-dash-suspicious">
                         <thead>
                           <tr>
                             <th>Usuario</th>
@@ -608,7 +608,7 @@ const SecurityDashboardTab = () => {
                   </div>
                   <div className="sec-sesiones-table-card">
                     <div className="table-responsive sec-sesiones-table-responsive">
-                      <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                      <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-dash-activity">
                         <thead>
                           <tr>
                             <th>Actor</th>

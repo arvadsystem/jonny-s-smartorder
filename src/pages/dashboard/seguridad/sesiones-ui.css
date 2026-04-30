@@ -987,3 +987,528 @@
     width: 100%;
   }
 }
+
+/* ==========================================================================
+   RESPONSIVE GLOBAL SEGURIDAD (MOBILE-FIRST)
+   ========================================================================== */
+
+@media (max-width: 992px) {
+  .sec-sesiones-table-responsive {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sec-table-personal-sessions,
+  .sec-table-audit-sessions {
+    min-width: 860px;
+  }
+
+  .sec-table-global-sessions,
+  .sec-table-users,
+  .sec-table-audit-logins,
+  .sec-table-login-logs {
+    min-width: 960px;
+  }
+
+  .sec-table-bitacoras {
+    min-width: 1080px;
+  }
+
+  .sec-table-dash-topips,
+  .sec-table-dash-blocked,
+  .sec-table-dash-suspicious,
+  .sec-table-dash-activity {
+    min-width: 700px;
+  }
+
+  .sec-module-page.p-4 {
+    padding: 0.92rem !important;
+    gap: 11px;
+  }
+
+  .sec-page-header {
+    padding: 11px 12px;
+  }
+
+  .sec-panel-body.p-3,
+  .sec-sesiones-body.p-3 {
+    padding: 0.82rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .sec-module-page.p-4 {
+    padding: 0.72rem !important;
+    gap: 10px;
+  }
+
+  .sec-page-header {
+    gap: 8px;
+    padding: 10px 11px;
+  }
+
+  .sec-page-header__title {
+    font-size: 1.03rem;
+  }
+
+  .sec-page-header__subtitle {
+    font-size: 0.8rem;
+  }
+
+  .sec-page-header__chip {
+    font-size: 0.71rem;
+    padding: 0.25rem 0.56rem;
+  }
+
+  .sec-panel-header,
+  .sec-sesiones-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+    padding: 10px 11px;
+  }
+
+  .sec-panel-title {
+    font-size: 0.9rem;
+  }
+
+  .sec-panel-subtitle {
+    font-size: 0.76rem;
+  }
+
+  .sec-panel-header-actions,
+  .sec-sesiones-header-actions,
+  .sec-audit-header-actions,
+  .sec-audit-tabs-actions,
+  .sec-dashboard-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.42rem;
+  }
+
+  .sec-toolbar-search,
+  .sec-toolbar-search.inv-ins-search,
+  .sec-sesiones-search {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .sec-panel-header-actions > .btn,
+  .sec-sesiones-header-actions > .btn,
+  .sec-audit-header-actions > .btn,
+  .sec-audit-tabs-actions > .btn {
+    min-height: 36px;
+    padding-inline: 12px !important;
+  }
+
+  .sec-sesiones-global-btn {
+    min-height: 36px;
+    padding: 0 12px !important;
+  }
+
+  .sec-sesiones-segments-wrap {
+    padding: 0 11px 8px;
+  }
+
+  .sec-sesiones-table-card {
+    border-radius: 14px;
+  }
+
+  .sec-pagination-bar {
+    margin-top: 0.76rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination {
+    display: grid;
+    gap: 0.42rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-meta {
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+    font-size: 0.73rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.38rem;
+    width: 100%;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls > :nth-child(1) {
+    order: 1;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls > :nth-child(2) {
+    order: 2;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls > :nth-child(4) {
+    order: 3;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls > :nth-child(3) {
+    order: 4;
+    width: 100%;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-btn,
+  .sec-pagination-bar .inv-ins-pagination__page {
+    width: auto !important;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-btn {
+    min-width: 92px;
+    min-height: 32px;
+    padding: 0 10px !important;
+    font-size: 0.72rem !important;
+    border-radius: 999px !important;
+    flex: 0 0 auto;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-pages {
+    width: auto !important;
+    gap: 0.28rem;
+    justify-content: center;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-number {
+    min-width: 30px;
+    height: 30px;
+    font-size: 0.72rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-status {
+    min-width: 0;
+    text-align: center;
+    font-size: 0.72rem;
+  }
+
+  .sec-confirm-backdrop {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .sec-confirm-panel {
+    width: min(100%, 560px);
+    max-height: calc(100vh - 20px);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sec-confirm-body {
+    overflow: auto;
+  }
+
+  .sec-confirm-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .sec-confirm-btn-cancel,
+  .sec-confirm-btn-danger {
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+
+  .sec-json-modal-backdrop {
+    padding: 10px;
+  }
+
+  .sec-json-modal-panel {
+    max-height: calc(100vh - 20px);
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .sec-mobile-card-table {
+    min-width: 0 !important;
+  }
+
+  .sec-mobile-card-table thead {
+    display: none;
+  }
+
+  .sec-mobile-card-table tbody {
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .sec-mobile-card-table tbody tr {
+    display: block;
+    border: 1px solid rgba(228, 227, 209, 0.95);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 7px 16px rgba(var(--c-shadow-rgb), 0.08);
+    padding: 8px 9px;
+  }
+
+  .sec-mobile-card-table tbody td {
+    display: grid;
+    grid-template-columns: minmax(92px, 40%) 1fr;
+    align-items: flex-start;
+    gap: 8px;
+    border: 0 !important;
+    border-bottom: 1px dashed rgba(228, 227, 209, 0.88) !important;
+    padding: 6px 0 !important;
+    white-space: normal;
+    font-size: 0.83rem;
+  }
+
+  .sec-mobile-card-table tbody td::before {
+    content: "";
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #765a49;
+    line-height: 1.2;
+  }
+
+  .sec-mobile-card-table tbody td:first-child {
+    padding-top: 0 !important;
+  }
+
+  .sec-mobile-card-table tbody td:last-child {
+    border-bottom: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  .sec-mobile-card-table tbody td.text-end {
+    text-align: left !important;
+  }
+
+  .sec-mobile-card-table tbody td .btn {
+    width: 100%;
+  }
+
+  .sec-mobile-card-table tbody td[colspan] {
+    display: block;
+    border-bottom: 0 !important;
+    text-align: center;
+    padding: 10px 6px !important;
+  }
+
+  .sec-mobile-card-table tbody td[colspan]::before {
+    content: none;
+  }
+
+  .sec-table-personal-sessions tbody td:nth-child(1)::before { content: "Estado"; }
+  .sec-table-personal-sessions tbody td:nth-child(2)::before { content: "Dispositivo"; }
+  .sec-table-personal-sessions tbody td:nth-child(3)::before { content: "Navegador"; }
+  .sec-table-personal-sessions tbody td:nth-child(4)::before { content: "SO"; }
+  .sec-table-personal-sessions tbody td:nth-child(5)::before { content: "IP"; }
+  .sec-table-personal-sessions tbody td:nth-child(6)::before { content: "Inicio"; }
+  .sec-table-personal-sessions tbody td:nth-child(7)::before { content: "Ultima actividad"; }
+  .sec-table-personal-sessions tbody td:nth-child(8)::before { content: "Acciones"; }
+
+  .sec-table-global-sessions tbody td:nth-child(1)::before { content: "Estado"; }
+  .sec-table-global-sessions tbody td:nth-child(2)::before { content: "Usuario"; }
+  .sec-table-global-sessions tbody td:nth-child(3)::before { content: "Dispositivo"; }
+  .sec-table-global-sessions tbody td:nth-child(4)::before { content: "Navegador"; }
+  .sec-table-global-sessions tbody td:nth-child(5)::before { content: "SO"; }
+  .sec-table-global-sessions tbody td:nth-child(6)::before { content: "IP"; }
+  .sec-table-global-sessions tbody td:nth-child(7)::before { content: "Inicio de sesion"; }
+  .sec-table-global-sessions tbody td:nth-child(8)::before { content: "Ultima actividad"; }
+  .sec-table-global-sessions tbody td:nth-child(9)::before { content: "Acciones"; }
+
+  .sec-table-users tbody td:nth-child(1)::before { content: "ID"; }
+  .sec-table-users tbody td:nth-child(2)::before { content: "Usuario"; }
+  .sec-table-users tbody td:nth-child(3)::before { content: "Nombre"; }
+  .sec-table-users tbody td:nth-child(4)::before { content: "Rol"; }
+  .sec-table-users tbody td:nth-child(5)::before { content: "Estado"; }
+  .sec-table-users tbody td:nth-child(6)::before { content: "Ultimo acceso"; }
+  .sec-table-users tbody td:nth-child(7)::before { content: "Sesiones activas"; }
+  .sec-table-users tbody td:nth-child(8)::before { content: "Auditoria"; }
+
+  .sec-table-login-logs tbody td:nth-child(1)::before { content: "Fecha"; }
+  .sec-table-login-logs tbody td:nth-child(2)::before { content: "Usuario"; }
+  .sec-table-login-logs tbody td:nth-child(3)::before { content: "Estado"; }
+  .sec-table-login-logs tbody td:nth-child(4)::before { content: "IP"; }
+  .sec-table-login-logs tbody td:nth-child(5)::before { content: "Navegador"; }
+  .sec-table-login-logs tbody td:nth-child(6)::before { content: "SO"; }
+  .sec-table-login-logs tbody td:nth-child(7)::before { content: "Dispositivo"; }
+  .sec-table-login-logs tbody td:nth-child(8)::before { content: "Mensaje"; }
+
+  .sec-table-bitacoras tbody td:nth-child(1)::before { content: "Usuario"; }
+  .sec-table-bitacoras tbody td:nth-child(2)::before { content: "Accion"; }
+  .sec-table-bitacoras tbody td:nth-child(3)::before { content: "Descripcion"; }
+  .sec-table-bitacoras tbody td:nth-child(4)::before { content: "IP origen"; }
+  .sec-table-bitacoras tbody td:nth-child(5)::before { content: "Datos antes"; }
+  .sec-table-bitacoras tbody td:nth-child(6)::before { content: "Datos despues"; }
+  .sec-table-bitacoras tbody td:nth-child(7)::before { content: "Fecha y hora"; }
+
+  .sec-table-audit-sessions tbody td:nth-child(1)::before { content: "Estado"; }
+  .sec-table-audit-sessions tbody td:nth-child(2)::before { content: "Dispositivo"; }
+  .sec-table-audit-sessions tbody td:nth-child(3)::before { content: "Navegador"; }
+  .sec-table-audit-sessions tbody td:nth-child(4)::before { content: "SO"; }
+  .sec-table-audit-sessions tbody td:nth-child(5)::before { content: "IP"; }
+  .sec-table-audit-sessions tbody td:nth-child(6)::before { content: "Inicio"; }
+  .sec-table-audit-sessions tbody td:nth-child(7)::before { content: "Ultima actividad"; }
+  .sec-table-audit-sessions tbody td:nth-child(8)::before { content: "Cierre"; }
+
+  .sec-table-audit-logins tbody td:nth-child(1)::before { content: "Fecha"; }
+  .sec-table-audit-logins tbody td:nth-child(2)::before { content: "Estado"; }
+  .sec-table-audit-logins tbody td:nth-child(3)::before { content: "Usuario"; }
+  .sec-table-audit-logins tbody td:nth-child(4)::before { content: "IP"; }
+  .sec-table-audit-logins tbody td:nth-child(5)::before { content: "Navegador"; }
+  .sec-table-audit-logins tbody td:nth-child(6)::before { content: "SO"; }
+  .sec-table-audit-logins tbody td:nth-child(7)::before { content: "Dispositivo"; }
+  .sec-table-audit-logins tbody td:nth-child(8)::before { content: "Mensaje"; }
+
+  .sec-table-personal-sessions tbody td:nth-child(8),
+  .sec-table-global-sessions tbody td:nth-child(9),
+  .sec-table-users tbody td:nth-child(8) {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 576px) {
+  .sec-module-page.p-4 {
+    padding: 0.6rem !important;
+  }
+
+  .sec-sesiones-segment-btn {
+    padding: 0.27rem 0.56rem;
+    font-size: 0.77rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-meta {
+    font-size: 0.71rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-btn {
+    min-width: 86px;
+    min-height: 31px;
+    padding-inline: 8px !important;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-number {
+    min-width: 28px;
+    height: 28px;
+    font-size: 0.7rem;
+  }
+
+  .sec-mobile-card-table tbody td {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+/* ==========================================================================
+   AJUSTE FINAL PAGINACION RESPONSIVE (FILA HORIZONTAL)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .sec-pagination-bar {
+    margin-top: 0.76rem;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.42rem;
+    align-items: center;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-meta {
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0;
+    text-align: center;
+    font-size: 0.72rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap !important;
+    gap: 0.34rem;
+    width: 100% !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls > :nth-child(1),
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls > :nth-child(2),
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls > :nth-child(3),
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls > :nth-child(4) {
+    order: initial !important;
+    width: auto !important;
+    flex: 0 0 auto;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-btn,
+  .sec-pagination-bar .inv-ins-pagination__page,
+  .sec-pagination-bar .inv-warehouse-moves__pagination-status {
+    width: auto !important;
+    min-width: 0;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-btn {
+    min-width: 84px;
+    min-height: 32px;
+    padding: 0 10px !important;
+    font-size: 0.72rem !important;
+    border-radius: 999px !important;
+    flex: 0 0 auto;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-pages {
+    display: none !important;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-number {
+    min-width: 30px;
+    height: 30px;
+    font-size: 0.72rem;
+    flex: 0 0 auto;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-status {
+    min-width: 108px;
+    font-size: 0.72rem;
+    text-align: center;
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 576px) {
+  .sec-pagination-bar .inv-warehouse-moves__pagination-meta {
+    font-size: 0.69rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-controls {
+    justify-content: center;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-btn {
+    min-width: 76px;
+    min-height: 30px;
+    padding: 0 8px !important;
+    font-size: 0.69rem !important;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__page-number {
+    min-width: 28px;
+    height: 28px;
+    font-size: 0.69rem;
+  }
+
+  .sec-pagination-bar .inv-warehouse-moves__pagination-status {
+    min-width: 98px;
+    font-size: 0.69rem;
+  }
+}

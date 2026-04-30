@@ -343,6 +343,11 @@ const Navbar = () => {
     };
   }, [activeModuleTab, location.search, moduleKey, moduleTabs, navigate, permisosLoading]);
 
+  const topNavbarClassName = useMemo(() => {
+    if (!moduleKey) return 'top-navbar';
+    return `top-navbar top-navbar--${moduleKey}`;
+  }, [moduleKey]);
+
   useEffect(() => {
     if (!isOpen && !isGearMenuOpen) return undefined;
 
@@ -375,7 +380,7 @@ const Navbar = () => {
   }, [closeGearDropdown, closeProfileDropdown, isGearMenuOpen, isOpen]);
 
   return (
-    <div className="top-navbar">
+    <div className={topNavbarClassName}>
       <div className="top-navbar__left">
         {isDashboard ? (
           <div className="navbar-context" aria-label="Ubicacion actual">
@@ -400,7 +405,7 @@ const Navbar = () => {
           <div className="position-relative gear-dropdown-wrap" ref={gearMenuRef}>
             <button
               type="button"
-              className="navbar-icon-btn"
+              className={`navbar-icon-btn ${isGearMenuOpen ? 'is-active' : ''}`.trim()}
               aria-label="Configuracion"
               aria-haspopup="menu"
               aria-expanded={isGearMenuOpen}
