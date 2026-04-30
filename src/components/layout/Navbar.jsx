@@ -61,13 +61,14 @@ const resolveProfilePhotoSrc = (value) => {
   return '';
 };
 
-const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
+const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab, onMoreOpenChange }) => {
   const rowRef = useRef(null);
   const sliderRef = useRef(null);
   const moreBtnRef = useRef(null);
   const moreWrapRef = useRef(null);
   const tabRefs = useRef({});
   const [moreOpen, setMoreOpen] = useState(false);
+  const [moreBackdropTop, setMoreBackdropTop] = useState(0);
 
   const layout = useMemo(() => {
     const keys = tabs.map((tab) => tab.key);
@@ -94,6 +95,17 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
 
   const closeMore = useCallback(() => {
     setMoreOpen(false);
+  }, []);
+
+  const updateMoreBackdropTop = useCallback(() => {
+    const navEl = rowRef.current?.closest('.top-navbar');
+    if (!navEl) {
+      setMoreBackdropTop(0);
+      return;
+    }
+
+    const rect = navEl.getBoundingClientRect();
+    setMoreBackdropTop(Math.max(0, Math.round(rect.bottom + 2)));
   }, []);
 
   const updateSlider = useCallback(() => {
@@ -152,8 +164,39 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
     };
   }, [closeMore, moreOpen]);
 
+  useEffect(() => {
+    if (!onMoreOpenChange) return undefined;
+    onMoreOpenChange(moreOpen);
+    return () => onMoreOpenChange(false);
+  }, [moreOpen, onMoreOpenChange]);
+
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+
+    updateMoreBackdropTop();
+
+    const handleViewportChange = () => updateMoreBackdropTop();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [moreOpen, updateMoreBackdropTop]);
+
   return (
     <div className="inventory-tabs-bar" aria-label="Submodulos">
+      {moreOpen ? (
+        <button
+          type="button"
+          className="inventory-more-mobile-backdrop"
+          style={{ top: `${moreBackdropTop}px` }}
+          onClick={closeMore}
+          aria-label="Cerrar menu"
+        />
+      ) : null}
+
       <div className="inventory-tabs-fixed" ref={rowRef}>
         <div className="inventory-active-slider" ref={sliderRef} />
 
@@ -182,7 +225,13 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
               className={`inventory-tab-btn inventory-more-btn ${
                 isActiveInOverflow ? 'inventory-tab-active' : ''
               }`}
-              onClick={() => setMoreOpen((state) => !state)}
+              onClick={() =>
+                setMoreOpen((state) => {
+                  const next = !state;
+                  if (next) updateMoreBackdropTop();
+                  return next;
+                })
+              }
               aria-expanded={moreOpen}
               aria-haspopup="menu"
             >
@@ -219,12 +268,20 @@ const InventoryTabsOverflow = ({ tabs, activeKey, onGoTab }) => {
   );
 };
 
-const NavbarTabs = ({ config }) =>
-  config ? <InventoryTabsOverflow tabs={config.tabs} activeKey={config.activeKey} onGoTab={config.onGoTab} /> : null;
+const NavbarTabs = ({ config, onMoreOpenChange }) =>
+  config ? (
+    <InventoryTabsOverflow
+      tabs={config.tabs}
+      activeKey={config.activeKey}
+      onGoTab={config.onGoTab}
+      onMoreOpenChange={onMoreOpenChange}
+    />
+  ) : null;
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isGearMenuOpen, setIsGearMenuOpen] = useState(false);
+  const [isTabsMoreOpen, setIsTabsMoreOpen] = useState(false);
   const [failedPhotoSrc, setFailedPhotoSrc] = useState('');
   const profileMenuRef = useRef(null);
   const gearMenuRef = useRef(null);
@@ -349,6 +406,34 @@ const Navbar = () => {
   }, [moduleKey]);
 
   useEffect(() => {
+    const bodyEl = typeof document !== 'undefined' ? document.body : null;
+    if (!bodyEl) return undefined;
+
+    const className = 'sec-more-menu-open';
+    const media = typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)') : null;
+
+    const syncClass = () => {
+      const shouldApply =
+        moduleKey === 'seguridad' &&
+        Boolean(media?.matches) &&
+        (isTabsMoreOpen || isGearMenuOpen || isOpen);
+      bodyEl.classList.toggle(className, shouldApply);
+    };
+
+    syncClass();
+
+    const onMediaChange = () => syncClass();
+    if (media?.addEventListener) media.addEventListener('change', onMediaChange);
+    else if (media?.addListener) media.addListener(onMediaChange);
+
+    return () => {
+      bodyEl.classList.remove(className);
+      if (media?.removeEventListener) media.removeEventListener('change', onMediaChange);
+      else if (media?.removeListener) media.removeListener(onMediaChange);
+    };
+  }, [isGearMenuOpen, isOpen, isTabsMoreOpen, moduleKey]);
+
+  useEffect(() => {
     if (!isOpen && !isGearMenuOpen) return undefined;
 
     const handlePointerDown = (event) => {
@@ -391,7 +476,7 @@ const Navbar = () => {
 
         {moduleTabsConfig ? (
           <div className="navbar-tabs-zone">
-            <NavbarTabs config={moduleTabsConfig} />
+            <NavbarTabs config={moduleTabsConfig} onMoreOpenChange={setIsTabsMoreOpen} />
           </div>
         ) : null}
       </div>

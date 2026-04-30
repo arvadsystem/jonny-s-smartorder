@@ -435,6 +435,12 @@
   color: #7d593f;
 }
 
+@media (min-width: 769px) {
+  .dashboard-shell .inventory-more-mobile-backdrop {
+    display: none;
+  }
+}
+
 @media (max-width: 1024px) {
   .dashboard-shell .top-navbar {
     gap: 12px;
@@ -444,6 +450,18 @@
 }
 
 @media (max-width: 768px) {
+  body.sec-more-menu-open .dashboard-shell .top-navbar.top-navbar--seguridad ~ * {
+    filter: blur(3px);
+    opacity: 0.62;
+    pointer-events: none;
+    user-select: none;
+    transition: filter 180ms ease, opacity 180ms ease;
+  }
+
+  body.sec-more-menu-open .dashboard-shell .top-navbar.top-navbar--seguridad {
+    z-index: 1490;
+  }
+
   .dashboard-shell .top-navbar__left {
     gap: 10px;
   }
@@ -517,14 +535,50 @@
     z-index: 1405;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--seguridad .inventory-more-menu {
-    right: auto;
+  .dashboard-shell .top-navbar.top-navbar--seguridad .inventory-more-mobile-backdrop {
+    position: fixed;
     left: 0;
+    right: 0;
+    bottom: 0;
+    display: block;
+    width: 100vw;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background: rgba(247, 243, 236, 0.32);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1398;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--seguridad .inventory-more-menu {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 78px);
+    right: max(0px, env(safe-area-inset-right, 0px));
+    left: auto;
     width: max-content;
     min-width: 186px;
-    max-width: min(232px, calc(100vw - 24px));
+    max-width: min(232px, calc(100vw - 8px));
     overflow: hidden;
     z-index: 1450;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--seguridad .gear-dropdown-menu {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 78px);
+    right: max(0px, env(safe-area-inset-right, 0px));
+    left: auto;
+    max-width: min(248px, calc(100vw - 8px));
+    padding: 8px 6px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--seguridad .gear-dropdown-item {
+    justify-content: flex-start !important;
+    text-align: left !important;
+    padding: 10px 8px !important;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
   }
 
   .dashboard-shell .top-navbar.top-navbar--seguridad .inventory-tab-btn.inventory-tab-active {
@@ -606,6 +660,24 @@
   .dashboard-shell .top-navbar.top-navbar--seguridad .inventory-more-menu {
     width: max-content;
     min-width: 176px;
-    max-width: min(212px, calc(100vw - 24px));
+    max-width: min(212px, calc(100vw - 6px));
+    top: calc(env(safe-area-inset-top, 0px) + 72px);
+    right: max(0px, env(safe-area-inset-right, 0px));
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--seguridad .gear-dropdown-menu {
+    top: calc(env(safe-area-inset-top, 0px) + 72px);
+    right: max(0px, env(safe-area-inset-right, 0px));
+    max-width: min(214px, calc(100vw - 6px));
+    padding: 8px 6px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--seguridad .gear-dropdown-item {
+    justify-content: flex-start !important;
+    text-align: left !important;
+    padding: 10px 8px !important;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
   }
 }
