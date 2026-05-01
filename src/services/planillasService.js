@@ -173,32 +173,28 @@ const planillasService = {
 
   listarAdelantosPendientesSucursal: (
     idSucursal,
-    { page = 1, limit = 10, search, periodo, tipo_periodo, quincena } = {}
+    { page = 1, limit = 10, search, periodo } = {}
   ) =>
     apiFetch(
       `/planillas/sucursales/${idSucursal}/adelantos-pendientes${buildQuery({
         page,
         limit,
         search,
-        periodo,
-        tipo_periodo,
-        quincena
+        periodo
       })}`,
       'GET'
     ),
 
   listarAdelantosAplicablesPlanilla: (
     idPlanilla,
-    { page = 1, limit = 10, id_detalle, id_sucursal, tipo_periodo, quincena } = {}
+    { page = 1, limit = 10, id_detalle, id_sucursal } = {}
   ) =>
     apiFetch(
       `/planillas/${idPlanilla}/adelantos-aplicables${buildQuery({
         page,
         limit,
         id_detalle,
-        id_sucursal,
-        tipo_periodo,
-        quincena
+        id_sucursal
       })}`,
       'GET'
     ),

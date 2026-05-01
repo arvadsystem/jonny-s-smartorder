@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import './usuarios-detail-modal.css';
 import { resolveUserImageSrc } from './imageSourcePolicy';
+import { parseEstadoUsuario } from './estadoUtils';
 
 const toDisplayValue = (value, fallback = '—') => {
   if (value === null || value === undefined) return fallback;
@@ -20,10 +21,8 @@ const formatDate = (value) => {
 };
 
 const detectEstado = (record) => {
-  if (Object.prototype.hasOwnProperty.call(record || {}, 'estado')) return Boolean(record.estado);
-  if (Object.prototype.hasOwnProperty.call(record || {}, 'activo')) return Boolean(record.activo);
-  if (Object.prototype.hasOwnProperty.call(record || {}, 'habilitado')) return Boolean(record.habilitado);
-  return null;
+  if (!record) return null;
+  return parseEstadoUsuario(record);
 };
 
 const getNombreCompleto = (usuario) =>

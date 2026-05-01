@@ -937,23 +937,6 @@ export default function UsuariosTab({ openToast }) {
     setShowModal(true);
   };
 
-  const openCreateEmpleadoForm = useCallback(() => {
-    if (typeof window !== 'undefined') {
-      window.open('/dashboard/personas?tab=empleados&create=1', '_blank', 'noopener,noreferrer');
-    }
-  }, []);
-
-  const openCreateClienteForm = useCallback(() => {
-    if (typeof window !== 'undefined') {
-      window.open('/dashboard/personas?tab=clientes&create=1', '_blank', 'noopener,noreferrer');
-    }
-  }, []);
-
-  const refreshUsuariosCatalogs = useCallback(async () => {
-    catalogLoadedRef.current = false;
-    await cargarCatalogos({ force: true });
-  }, [cargarCatalogos]);
-
   const openConfirmDelete = (usuario) => {
     if (!canDeleteUsuario) return;
     setDetailUsuario(null);
@@ -1370,9 +1353,6 @@ export default function UsuariosTab({ openToast }) {
         canEdit={canEditUsuario}
         canResetPassword={canResetPassword}
         canEditPhoto={canEditFotoUsuario}
-        onOpenCreateEmpleado={openCreateEmpleadoForm}
-        onOpenCreateCliente={openCreateClienteForm}
-        onRefreshCatalogs={refreshUsuariosCatalogs}
       />
 
       <UsuarioDetailModal open={Boolean(detailUsuario)} usuario={detailUsuario} onClose={() => setDetailUsuario(null)} />

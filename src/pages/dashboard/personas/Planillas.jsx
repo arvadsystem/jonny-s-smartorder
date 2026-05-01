@@ -86,19 +86,18 @@ const resolvePeriodoOperativoLabel = ({ periodo, tipoPeriodo, quincena }) => {
 const buildPlanillasSucursalSelectStyles = () => ({
   control: (base, state) => ({
     ...base,
-    minHeight: 52,
-    borderRadius: 14,
-    borderColor: state.isFocused ? 'rgba(163, 103, 63, 0.76)' : 'rgba(195, 167, 142, 0.72)',
-    boxShadow: state.isFocused ? '0 0 0 0.22rem rgba(170, 118, 82, 0.2)' : 'none',
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: state.isFocused ? 'rgba(158, 105, 61, 0.72)' : 'rgba(206, 196, 177, 0.9)',
+    boxShadow: state.isFocused ? '0 0 0 0.2rem rgba(158, 105, 61, 0.18)' : 'none',
     backgroundColor: '#fff',
     '&:hover': {
-      borderColor: 'rgba(163, 103, 63, 0.76)'
+      borderColor: 'rgba(158, 105, 61, 0.72)'
     }
   }),
   valueContainer: (base) => ({
     ...base,
-    minHeight: 52,
-    padding: '0 14px'
+    padding: '2px 12px'
   }),
   input: (base) => ({
     ...base,
@@ -107,27 +106,23 @@ const buildPlanillasSucursalSelectStyles = () => ({
   }),
   placeholder: (base) => ({
     ...base,
-    color: 'rgba(90, 60, 42, 0.72)',
-    fontSize: '1.03rem',
-    fontWeight: 500
+    color: 'rgba(98, 83, 73, 0.75)'
   }),
   singleValue: (base) => ({
     ...base,
-    color: '#2f1a10',
-    fontSize: '1.08rem',
-    fontWeight: 700
+    color: '#2f1a10'
   }),
   indicatorsContainer: (base) => ({
     ...base,
-    paddingRight: 6
+    paddingRight: 4
   }),
   dropdownIndicator: (base, state) => ({
     ...base,
-    color: state.isFocused ? 'rgba(118, 71, 43, 0.95)' : 'rgba(118, 71, 43, 0.7)'
+    color: state.isFocused ? 'rgba(99, 58, 37, 0.9)' : 'rgba(99, 58, 37, 0.65)'
   }),
   clearIndicator: (base) => ({
     ...base,
-    color: 'rgba(130, 89, 66, 0.72)'
+    color: 'rgba(120, 84, 66, 0.72)'
   }),
   menuPortal: (base) => ({
     ...base,
@@ -135,15 +130,15 @@ const buildPlanillasSucursalSelectStyles = () => ({
   }),
   menu: (base) => ({
     ...base,
-    borderRadius: 14,
-    border: '1px solid rgba(195, 167, 142, 0.72)',
+    borderRadius: 12,
+    border: '1px solid rgba(206, 196, 177, 0.9)',
     overflow: 'hidden',
-    marginTop: 8,
+    marginTop: 6,
     boxShadow: '0 14px 30px rgba(60, 36, 22, 0.2)'
   }),
   option: (base, state) => ({
     ...base,
-    padding: '11px 14px',
+    padding: '10px 12px',
     backgroundColor: state.isFocused
       ? 'rgba(245, 235, 221, 0.95)'
       : state.isSelected
@@ -477,6 +472,94 @@ const resolveAdelantoPeriodo = (row = {}) => {
   return '';
 };
 
+const resolveDatePartsFromAny = (value = '') => {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+
+  const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/);
+  if (isoMatch) {
+    const year = Number.parseInt(isoMatch[1], 10);
+    const month = Number.parseInt(isoMatch[2], 10);
+    const day = Number.parseInt(isoMatch[3], 10);
+    const maxDay = new Date(year, month, 0).getDate();
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= maxDay
+    ) {
+      return { year, month, day };
+    }
+  }
+
+  const dayFirstMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[T\s].*)?$/);
+  if (dayFirstMatch) {
+    const day = Number.parseInt(dayFirstMatch[1], 10);
+    const month = Number.parseInt(dayFirstMatch[2], 10);
+    const year = Number.parseInt(dayFirstMatch[3], 10);
+    const maxDay = new Date(year, month, 0).getDate();
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= maxDay
+    ) {
+      return { year, month, day };
+    }
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return {
+    year: parsed.getUTCFullYear(),
+    month: parsed.getUTCMonth() + 1,
+    day: parsed.getUTCDate()
+  };
+};
+
+const matchesAdelantoContext = ({
+  row = {},
+  periodoScope = '',
+  tipoPeriodoScope = TIPO_PERIODO.mensual,
+  quincenaScope = QUINCENA_DEFAULT
+} = {}) => {
+  const normalizedTipo = normalizeTipoPeriodo(tipoPeriodoScope);
+  if (normalizedTipo !== TIPO_PERIODO.quincenal) return true;
+
+  const dateCandidates = [
+    row?.fecha,
+    row?.fecha_registro,
+    row?.created_at,
+    row?.fecha_aplicacion,
+    row?.fecha_periodo,
+    row?.fecha_inicio_periodo,
+    row?.fecha_inicio
+  ];
+
+  let dateParts = null;
+  for (const candidate of dateCandidates) {
+    dateParts = resolveDatePartsFromAny(candidate);
+    if (dateParts) break;
+  }
+  if (!dateParts) return false;
+
+  const targetPeriodo = normalizePeriodoMonth(periodoScope);
+  if (targetPeriodo) {
+    const rowPeriodo = `${dateParts.year}-${String(dateParts.month).padStart(2, '0')}`;
+    if (rowPeriodo !== targetPeriodo) return false;
+  }
+
+  const targetQuincena = normalizeQuincena(quincenaScope);
+  if (targetQuincena === '1') return dateParts.day >= 1 && dateParts.day <= 15;
+  return dateParts.day >= 16;
+};
+
 const resolveMovimientoPlanillaOwnerId = (row = {}) =>
   safeNumber(
     row?.id_planilla ??
@@ -607,7 +690,9 @@ const normalizeAdelantosDataset = ({
   movimientos = [],
   detalleRows = [],
   onlyEmpleadoId = 0,
-  periodoScope = ''
+  periodoScope = '',
+  tipoPeriodoScope = TIPO_PERIODO.mensual,
+  quincenaScope = QUINCENA_DEFAULT
 } = {}) => {
   const normalizedPeriodoScope = normalizePeriodoMonth(periodoScope);
   const matchesPeriodoScope = (row = {}) => {
@@ -664,7 +749,15 @@ const normalizeAdelantosDataset = ({
       if (onlyEmpleadoId > 0) return safeNumber(item?.id_empleado, 0) === onlyEmpleadoId;
       return true;
     })
-    .filter((item) => matchesPeriodoScope(item?.raw || item));
+    .filter((item) => matchesPeriodoScope(item?.raw || item))
+    .filter((item) =>
+      matchesAdelantoContext({
+        row: item?.raw || item,
+        periodoScope,
+        tipoPeriodoScope,
+        quincenaScope
+      })
+    );
 
   const movimientoRows = (Array.isArray(movimientos) ? movimientos : [])
     .filter((row) => isMovimientoAdelanto(row))
@@ -706,7 +799,15 @@ const normalizeAdelantosDataset = ({
       if (onlyEmpleadoId > 0) return safeNumber(item?.id_empleado, 0) === onlyEmpleadoId;
       return true;
     })
-    .filter((item) => matchesPeriodoScope(item?.raw || item));
+    .filter((item) => matchesPeriodoScope(item?.raw || item))
+    .filter((item) =>
+      matchesAdelantoContext({
+        row: item?.raw || item,
+        periodoScope,
+        tipoPeriodoScope,
+        quincenaScope
+      })
+    );
 
   const merged = [...pendingRows, ...movimientoRows];
   merged.sort(sortByDateDesc);
@@ -1757,9 +1858,11 @@ export default function Planillas({
         pendientes: adelantosPendientes,
         movimientos: adelantosHistorialMovimientosScoped,
         detalleRows: detalle,
-        periodoScope: periodo
+        periodoScope: periodo,
+        tipoPeriodoScope: tipoPeriodo,
+        quincenaScope: quincena
       }),
-    [adelantosHistorialMovimientosScoped, adelantosPendientes, detalle, periodo]
+    [adelantosHistorialMovimientosScoped, adelantosPendientes, detalle, periodo, quincena, tipoPeriodo]
   );
   const adelantosStatusTotals = useMemo(
     () =>
@@ -2213,22 +2316,26 @@ export default function Planillas({
           planillasService.listarAdelantosPendientesSucursal(selectedSucursal, {
             page,
             limit,
-            periodo,
-            tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
-            quincena:
-              normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
-                ? normalizeQuincena(quincena)
-                : undefined
+            periodo
           }),
         { pageSize: 100, maxPages: 80 }
       );
-      setAdelantosPendientes(rows);
-    } catch {
+      const scopedRows = (Array.isArray(rows) ? rows : []).filter((row) =>
+        matchesAdelantoContext({
+          row,
+          periodoScope: periodo,
+          tipoPeriodoScope: tipoPeriodo,
+          quincenaScope: quincena
+        })
+      );
+      setAdelantosPendientes(scopedRows);
+    } catch (error) {
+      safeToast('ERROR', error?.message || 'No se pudieron cargar los adelantos pendientes.', 'danger');
       setAdelantosPendientes([]);
     } finally {
       setLoadingAdelantosPendientes(false);
     }
-  }, [canViewDetalle, periodo, quincena, selectedSucursal, tipoPeriodo]);
+  }, [canViewDetalle, periodo, quincena, safeToast, selectedSucursal, tipoPeriodo]);
 
   const loadAdelantosHistorial = useCallback(async () => {
     const requestId = adelantosHistorialRequestRef.current + 1;
@@ -3186,27 +3293,30 @@ export default function Planillas({
           page: 1,
           limit: 50,
           id_detalle: item.id_detalle_planilla || item.id_detalle,
-          id_sucursal: context.idSucursal || undefined,
-          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
-          quincena:
-            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
-              ? normalizeQuincena(quincena)
-              : undefined
+          id_sucursal: context.idSucursal || undefined
         });
+        const scopedItems = normalizeListResponse(response).items.filter((row) =>
+          matchesAdelantoContext({
+            row,
+            periodoScope: periodo,
+            tipoPeriodoScope: tipoPeriodo,
+            quincenaScope: quincena
+          })
+        );
         setAdelantosModal({
           open: true,
           item,
           loading: false,
           applying: false,
           registering: false,
-          items: normalizeListResponse(response).items
+          items: scopedItems
         });
       } catch (error) {
         setAdelantosModal({ open: true, item, loading: false, applying: false, registering: false, items: [] });
         safeToast('ERROR', error.message || 'No se pudieron cargar adelantos', 'danger');
       }
     },
-    [ensurePlanillaForRegistro, quincena, safeToast, tipoPeriodo]
+    [ensurePlanillaForRegistro, periodo, quincena, safeToast, tipoPeriodo]
   );
 
   const openAdelantosHistorial = useCallback(
@@ -3265,7 +3375,9 @@ export default function Planillas({
           movimientos,
           detalleRows: detalle,
           onlyEmpleadoId,
-          periodoScope: periodo
+          periodoScope: periodo,
+          tipoPeriodoScope: tipoPeriodo,
+          quincenaScope: quincena
         });
 
         setAdelantosHistorialModal({
@@ -3283,7 +3395,9 @@ export default function Planillas({
           movimientos: adelantosHistorialMovimientosScoped,
           detalleRows: detalle,
           onlyEmpleadoId,
-          periodoScope: periodo
+          periodoScope: periodo,
+          tipoPeriodoScope: tipoPeriodo,
+          quincenaScope: quincena
         });
         setAdelantosHistorialModal({
           open: true,
@@ -3304,7 +3418,9 @@ export default function Planillas({
       ensurePlanillaForRegistro,
       fetchPlanillaMovimientos,
       periodo,
+      quincena,
       safeToast,
+      tipoPeriodo,
     ]
   );
 

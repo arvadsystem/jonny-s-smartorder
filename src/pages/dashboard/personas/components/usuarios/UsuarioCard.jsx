@@ -1,6 +1,7 @@
 import { useState } from "react";
 import EntityCard from "../../../../../components/ui/EntityCard";
 import { resolveUserImageSrc } from "./imageSourcePolicy";
+import { parseEstadoUsuario } from "./estadoUtils";
 
 const toDisplayValue = (value, fallback = "No registrado") => {
   if (value === null || value === undefined) return fallback;
@@ -9,10 +10,7 @@ const toDisplayValue = (value, fallback = "No registrado") => {
 };
 
 const isActivo = (usuario) => {
-  if (Object.prototype.hasOwnProperty.call(usuario || {}, "estado")) return Boolean(usuario.estado);
-  if (Object.prototype.hasOwnProperty.call(usuario || {}, "activo")) return Boolean(usuario.activo);
-  if (Object.prototype.hasOwnProperty.call(usuario || {}, "habilitado")) return Boolean(usuario.habilitado);
-  return true;
+  return parseEstadoUsuario(usuario);
 };
 
 const getNombreCompleto = (usuario) =>
