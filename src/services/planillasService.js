@@ -20,9 +20,9 @@ const pickAllowedFields = (payload, allowedFields = []) => {
 };
 
 const planillasService = {
-  listarPlanillas: ({ page = 1, limit = 10, id_sucursal, periodo, search, estado } = {}) =>
+  listarPlanillas: ({ page = 1, limit = 10, id_sucursal, periodo, search, estado, tipo_periodo, quincena } = {}) =>
     apiFetch(
-      `/planillas${buildQuery({ page, limit, id_sucursal, periodo, search, estado })}`,
+      `/planillas${buildQuery({ page, limit, id_sucursal, periodo, search, estado, tipo_periodo, quincena })}`,
       'GET',
       null,
       { noCache: true }
@@ -37,7 +37,9 @@ const planillasService = {
         'periodo',
         'id_estado_planilla',
         'dias_laborados',
-        'horas_laboradas'
+        'horas_laboradas',
+        'tipo_periodo',
+        'quincena'
       ])
     ),
 
@@ -48,28 +50,41 @@ const planillasService = {
       pickAllowedFields(payload, ['id_sucursal'])
     ),
 
-  listarDetallePlanilla: (idPlanilla, { page = 1, limit = 10, search, id_sucursal } = {}) =>
+  listarDetallePlanilla: (
+    idPlanilla,
+    { page = 1, limit = 10, search, id_sucursal, tipo_periodo, quincena } = {}
+  ) =>
     apiFetch(
-      `/planillas/${idPlanilla}/detalle${buildQuery({ page, limit, search, id_sucursal })}`,
+      `/planillas/${idPlanilla}/detalle${buildQuery({
+        page,
+        limit,
+        search,
+        id_sucursal,
+        tipo_periodo,
+        quincena
+      })}`,
       'GET',
       null,
       { noCache: true }
     ),
 
-  obtenerResumenPlanilla: (idPlanilla, { id_sucursal } = {}) =>
+  obtenerResumenPlanilla: (idPlanilla, { id_sucursal, tipo_periodo, quincena } = {}) =>
     apiFetch(
-      `/planillas/${idPlanilla}/resumen${buildQuery({ id_sucursal })}`,
+      `/planillas/${idPlanilla}/resumen${buildQuery({ id_sucursal, tipo_periodo, quincena })}`,
       'GET',
       null,
       { noCache: true }
     ),
 
-  obtenerPlanillaCompleta: (idPlanilla, { id_sucursal } = {}) =>
-    apiFetch(`/planillas/${idPlanilla}/completa${buildQuery({ id_sucursal })}`, 'GET'),
+  obtenerPlanillaCompleta: (idPlanilla, { id_sucursal, tipo_periodo, quincena } = {}) =>
+    apiFetch(
+      `/planillas/${idPlanilla}/completa${buildQuery({ id_sucursal, tipo_periodo, quincena })}`,
+      'GET'
+    ),
 
   listarHorasExtraPlanilla: (
     idPlanilla,
-    { page = 1, limit = 10, id_empleado, estado, id_sucursal } = {}
+    { page = 1, limit = 10, id_empleado, estado, id_sucursal, tipo_periodo, quincena } = {}
   ) =>
     apiFetch(
       `/planillas/${idPlanilla}/horas-extra${buildQuery({
@@ -77,7 +92,9 @@ const planillasService = {
         limit,
         id_empleado,
         estado,
-        id_sucursal
+        id_sucursal,
+        tipo_periodo,
+        quincena
       })}`,
       'GET'
     ),
@@ -94,7 +111,9 @@ const planillasService = {
         'id_sucursal',
         'id_tipo_hora',
         'id_factor_horas_extras',
-        'tarifa_base'
+        'tarifa_base',
+        'tipo_periodo',
+        'quincena'
       ])
     ),
 
@@ -102,7 +121,7 @@ const planillasService = {
     apiFetch(
       `/planillas/${idPlanilla}/horas-extra/${idHorasExtra}/compensar`,
       'POST',
-      pickAllowedFields(payload, ['observacion', 'id_sucursal'])
+      pickAllowedFields(payload, ['observacion', 'id_sucursal', 'tipo_periodo', 'quincena'])
     ),
 
   actualizarHoraExtraPlanilla: (idPlanilla, idHorasExtra, payload = {}) => {
@@ -127,7 +146,16 @@ const planillasService = {
     apiFetch(
       `/planillas/${idPlanilla}/estado`,
       'PUT',
-      pickAllowedFields(payload, ['id_estado_planilla', 'id_estado', 'estado', 'recalcular', 'id_sucursal'])
+      pickAllowedFields(payload, [
+        'id_estado_planilla',
+        'id_estado',
+        'estado',
+        'recalcular',
+        'id_sucursal',
+        'tipo_periodo',
+        'quincena',
+        'usuario_accion'
+      ])
     ),
 
   anularPlanilla: (idPlanilla, payload = {}) =>
@@ -145,24 +173,33 @@ const planillasService = {
 
   listarAdelantosPendientesSucursal: (
     idSucursal,
-    { page = 1, limit = 10, search, periodo } = {}
+    { page = 1, limit = 10, search, periodo, tipo_periodo, quincena } = {}
   ) =>
     apiFetch(
       `/planillas/sucursales/${idSucursal}/adelantos-pendientes${buildQuery({
         page,
         limit,
         search,
-        periodo
+        periodo,
+        tipo_periodo,
+        quincena
       })}`,
       'GET'
     ),
 
   listarAdelantosAplicablesPlanilla: (
     idPlanilla,
-    { page = 1, limit = 10, id_detalle, id_sucursal } = {}
+    { page = 1, limit = 10, id_detalle, id_sucursal, tipo_periodo, quincena } = {}
   ) =>
     apiFetch(
-      `/planillas/${idPlanilla}/adelantos-aplicables${buildQuery({ page, limit, id_detalle, id_sucursal })}`,
+      `/planillas/${idPlanilla}/adelantos-aplicables${buildQuery({
+        page,
+        limit,
+        id_detalle,
+        id_sucursal,
+        tipo_periodo,
+        quincena
+      })}`,
       'GET'
     ),
 
@@ -177,7 +214,15 @@ const planillasService = {
     apiFetch(
       `/planillas/${idPlanilla}/adelantos/aplicar`,
       'POST',
-      pickAllowedFields(payload, ['id_adelanto', 'id_adelanto_salario', 'monto_aplicar', 'monto', 'id_sucursal'])
+      pickAllowedFields(payload, [
+        'id_adelanto',
+        'id_adelanto_salario',
+        'monto_aplicar',
+        'monto',
+        'id_sucursal',
+        'tipo_periodo',
+        'quincena'
+      ])
     ),
 
   actualizarAdelantoPlanilla: (idPlanilla, idAdelanto, payload = {}) =>
@@ -198,18 +243,49 @@ const planillasService = {
     apiFetch(
       `/planillas/${idPlanilla}/movimientos`,
       'POST',
-      pickAllowedFields(payload, ['id_detalle', 'id_detalle_planilla', 'tipo', 'tipo_movimiento', 'concepto', 'monto', 'observacion', 'id_sucursal'])
+      pickAllowedFields(payload, [
+        'id_detalle',
+        'id_detalle_planilla',
+        'tipo',
+        'tipo_movimiento',
+        'concepto',
+        'monto',
+        'observacion',
+        'id_sucursal',
+        'tipo_periodo',
+        'quincena'
+      ])
     ),
 
-  listarMovimientosPlanilla: (idPlanilla, { page = 1, limit = 10, id_detalle, id_sucursal } = {}) =>
+  listarMovimientosPlanilla: (
+    idPlanilla,
+    { page = 1, limit = 10, id_detalle, id_sucursal, tipo_periodo, quincena } = {}
+  ) =>
     apiFetch(
-      `/planillas/${idPlanilla}/movimientos${buildQuery({ page, limit, id_detalle, id_sucursal })}`,
+      `/planillas/${idPlanilla}/movimientos${buildQuery({
+        page,
+        limit,
+        id_detalle,
+        id_sucursal,
+        tipo_periodo,
+        quincena
+      })}`,
       'GET'
     ),
 
-  listarMovimientosPlanillaDetalle: (idPlanilla, idDetalle, { page = 1, limit = 10, id_sucursal } = {}) =>
+  listarMovimientosPlanillaDetalle: (
+    idPlanilla,
+    idDetalle,
+    { page = 1, limit = 10, id_sucursal, tipo_periodo, quincena } = {}
+  ) =>
     apiFetch(
-      `/planillas/${idPlanilla}/movimientos/${idDetalle}${buildQuery({ page, limit, id_sucursal })}`,
+      `/planillas/${idPlanilla}/movimientos/${idDetalle}${buildQuery({
+        page,
+        limit,
+        id_sucursal,
+        tipo_periodo,
+        quincena
+      })}`,
       'GET'
     ),
 

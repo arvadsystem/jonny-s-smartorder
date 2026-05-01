@@ -6,21 +6,12 @@ import { usePermisos } from "../../context/PermisosContext";
 import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from "../../utils/permissions";
 import sucursalesService from "../../services/sucursalesService";
 
-import PersonasTab from "./personas/PersonasTab";
-import EmpresasTab from "./personas/EmpresasTab";
 import EmpleadosTab from "./personas/EmpleadosTab";
 import UsuariosTab from "./personas/UsuariosTab";
 import ClientesTab from "./personas/ClientesTab";
 import RolesPermisosTab from "./personas/components/RolesPermisosTab";
 
-const PERSONAS_TAB_KEYS = [
-  "personas",
-  "empresas",
-  "empleados",
-  "usuarios",
-  "clientes",
-  "roles",
-];
+const VISIBLE_PERSONAS_TABS = new Set(["clientes", "empleados", "usuarios", "roles"]);
 
 const parsePositiveInt = (value) => {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -48,10 +39,10 @@ export default function Personas() {
     variant: "success",
   });
 
-  const allowedTabs = useMemo(
-    () => getAllowedTabs("personas", permisos, { isSuperAdmin }).map((tab) => tab.key),
-    [isSuperAdmin, permisos]
-  );
+  const allowedTabs = useMemo(() => {
+    const tabs = getAllowedTabs("personas", permisos, { isSuperAdmin }).map((tab) => tab.key);
+    return tabs.filter((key) => VISIBLE_PERSONAS_TABS.has(String(key || "").toLowerCase()));
+  }, [isSuperAdmin, permisos]);
 
   const fallbackTab = allowedTabs[0] || null;
   const selectedSucursalId = useMemo(() => {
@@ -104,7 +95,7 @@ export default function Personas() {
   }, [allowedTabs, fallbackTab, searchParams]);
 
   const isPlanillasTab = activeTab === "planillas";
-  const useEnhancedSucursalContext = ["clientes", "empleados", "usuarios"].includes(activeTab);
+  const useEnhancedSucursalContext = ["empleados"].includes(activeTab);
   const showSucursalContext = isPlanillasTab || useEnhancedSucursalContext;
 
   useEffect(() => {
@@ -183,8 +174,6 @@ export default function Personas() {
   const tabContent = useMemo(() => {
     if (!activeTab) return null;
     switch (activeTab) {
-      case "empresas":
-        return <EmpresasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "empleados":
         return <EmpleadosTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "usuarios":
@@ -192,9 +181,9 @@ export default function Personas() {
       case "roles":
         return <RolesPermisosTab openToast={openToast} />;
       case "clientes":
-        return <ClientesTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
+        return <ClientesTab openToast={openToast} />;
       default:
-        return <PersonasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
+        return <ClientesTab openToast={openToast} />;
     }
   }, [activeTab, openToast, selectedSucursalId]);
 
@@ -247,7 +236,7 @@ export default function Personas() {
               </div>
             </div>
           ) : (
-            <div className="inv-catpro-body inv-prod-body p-3">
+            <div className="inv-catpro-body inv-prod-body p-2">
               <div className="personas-branch-context personas-branch-context--enhanced">
                 <div className="personas-branch-context__title-wrap">
                   <span className="personas-branch-context__title-icon" aria-hidden="true">

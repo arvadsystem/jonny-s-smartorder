@@ -46,6 +46,22 @@ const getFirstNonEmptyValue = (values) => {
   return "";
 };
 
+const normalizeGeneroLabel = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  const normalized = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (["m", "masculino", "masculina", "male", "hombre", "1"].includes(normalized)) return "Masculino";
+  if (["f", "femenino", "femenina", "female", "mujer", "2"].includes(normalized)) return "Femenino";
+  if (["o", "otro", "otra", "others", "3"].includes(normalized)) return "Otro";
+
+  return raw;
+};
+
 const getTelefono = (empleado) =>
   getFirstNonEmptyValue([
     getFirstNonEmptyField(empleado, [
@@ -69,6 +85,76 @@ const getTelefono = (empleado) =>
       "celular",
     ]),
   ]);
+
+const getCorreo = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "correo",
+      "texto_correo",
+      "correo_texto",
+      "direccion_correo",
+      "email",
+      "correo_electronico",
+      "persona_correo",
+      "correo_persona",
+    ]),
+  ]);
+
+const getDireccion = (empleado) =>
+  getFirstNonEmptyValue([
+    getFirstNonEmptyField(empleado, [
+      "direccion",
+      "texto_direccion",
+      "direccion_texto",
+      "domicilio",
+      "persona_direccion",
+      "direccion_persona",
+    ]),
+    getFirstNonEmptyField(empleado?.persona, [
+      "direccion",
+      "texto_direccion",
+      "direccion_texto",
+      "domicilio",
+      "persona_direccion",
+      "direccion_persona",
+    ]),
+  ]);
+
+const getGenero = (empleado) =>
+  normalizeGeneroLabel(
+    getFirstNonEmptyValue([
+      getFirstNonEmptyField(empleado, [
+        "genero",
+        "sexo",
+        "persona_genero",
+        "genero_persona",
+        "sexo_persona",
+        "gender",
+        "Genero",
+        "Sexo",
+      ]),
+      getFirstNonEmptyField(empleado?.persona, [
+        "genero",
+        "sexo",
+        "persona_genero",
+        "genero_persona",
+        "sexo_persona",
+        "gender",
+        "Genero",
+        "Sexo",
+      ]),
+    ])
+  );
 
 const getCargo = (empleado) =>
   getFirstNonEmptyField(empleado, [
@@ -123,6 +209,7 @@ export default function EmpleadoCard({
   deletingId = null,
   getPersonaNombre,
   getSucursalNombre,
+  getGeneroLabel,
 }) {
   const isActive = parseEstado(empleado);
   const idEmpleado = empleado?.id_empleado;
@@ -130,6 +217,12 @@ export default function EmpleadoCard({
   const personaNombre = typeof getPersonaNombre === "function" ? getPersonaNombre(empleado) : "No registrado";
   const sucursalNombre = typeof getSucursalNombre === "function" ? getSucursalNombre(empleado) : "No registrado";
   const telefono = getTelefono(empleado);
+  const correo = getCorreo(empleado);
+  const direccion = getDireccion(empleado);
+  const genero =
+    typeof getGeneroLabel === "function"
+      ? String(getGeneroLabel(empleado) ?? "").trim()
+      : getGenero(empleado);
   const cargo = getCargo(empleado);
   const salario = getSalario(empleado);
   const codeLabel = `EMP-${String(idEmpleado ?? "-")}`;
@@ -194,11 +287,11 @@ export default function EmpleadoCard({
             type="button"
             className="inv-catpro-action danger inv-catpro-action-compact"
             onClick={() => onOpenDelete(empleado)}
-            title="Eliminar"
-            disabled={actionLoading || deleting}
+            title={isActive ? "Inactivar" : "Inactivo"}
+            disabled={actionLoading || deleting || !isActive}
           >
-            <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
-            <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+            <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-slash-circle"}`} />
+            <span className="inv-catpro-action-label">{deleting ? "Inactivando..." : "Inactivar"}</span>
           </button>
         </>
       }
@@ -206,6 +299,10 @@ export default function EmpleadoCard({
       <div className="personas-page__card-row">
         <i className="bi bi-shop" />
         <span>{`Sucursal: ${toDisplayValue(sucursalNombre, "Sin sucursal")}`}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-briefcase" />
+        <span>{`Cargo: ${toDisplayValue(cargo, "Sin cargo")}`}</span>
       </div>
       <div className="personas-page__card-row">
         <i className="bi bi-person-vcard" />
@@ -216,8 +313,16 @@ export default function EmpleadoCard({
         <span>{`Telefono: ${toDisplayValue(telefono, "Sin telefono")}`}</span>
       </div>
       <div className="personas-page__card-row">
-        <i className="bi bi-briefcase" />
-        <span>{`Cargo: ${toDisplayValue(cargo, "Sin cargo")}`}</span>
+        <i className="bi bi-envelope" />
+        <span>{`Correo: ${toDisplayValue(correo, "Sin correo")}`}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-geo-alt" />
+        <span>{`Direccion: ${toDisplayValue(direccion, "Sin direccion")}`}</span>
+      </div>
+      <div className="personas-page__card-row">
+        <i className="bi bi-gender-ambiguous" />
+        <span>{`Genero: ${toDisplayValue(genero, "No disponible")}`}</span>
       </div>
       <div className="personas-page__card-row">
         <i className="bi bi-cash-stack" />

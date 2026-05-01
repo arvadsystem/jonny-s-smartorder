@@ -264,7 +264,8 @@ const Navbar = () => {
     if (!moduleKey) return [];
     const tabs = getAllowedTabs(moduleKey, permisos, { isSuperAdmin });
     if (moduleKey === 'personas') {
-      return tabs.filter((tab) => tab.key !== PLANILLAS_PARENT_TAB_KEY);
+      const hiddenPersonasTabs = new Set([PLANILLAS_PARENT_TAB_KEY, 'personas', 'empresas']);
+      return tabs.filter((tab) => !hiddenPersonasTabs.has(String(tab?.key || '').toLowerCase()));
     }
     return tabs;
   }, [isSuperAdmin, moduleKey, permisos]);

@@ -37,6 +37,7 @@ export default function PersonaInlineCreateModal({
   show,
   title = "Nueva persona",
   subtitle = "Completa los campos y guarda los cambios.",
+  saveLabel = "Crear",
   initialForm = null,
   onClose,
   onSave,
@@ -348,9 +349,23 @@ export default function PersonaInlineCreateModal({
         aria-hidden={!show}
       >
         <div className="inv-prod-drawer-head crud-modal__header">
-          <div className="crud-modal__header-copy">
-            <div className="inv-prod-drawer-title crud-modal__title">{title}</div>
-            <div className="inv-prod-drawer-sub crud-modal__subtitle">{subtitle}</div>
+          <div className="crud-modal__header-copy crud-modal__header-copy--insumo">
+            <div className="crud-modal__hero-icon" aria-hidden="true">
+              <i className="bi bi-person-vcard" />
+            </div>
+            <div className="crud-modal__hero-main">
+              <div className="crud-modal__hero-kicker">Catalogo de Personas</div>
+              <div className="inv-prod-drawer-title crud-modal__title">{title}</div>
+              <div className="inv-prod-drawer-sub crud-modal__subtitle">{subtitle}</div>
+            </div>
+            <div className="crud-modal__hero-chips">
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-person" /> Persona
+              </span>
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-check2-circle" /> Alta controlada
+              </span>
+            </div>
           </div>
           <button
             type="button"
@@ -565,7 +580,7 @@ export default function PersonaInlineCreateModal({
                   Guardando...
                 </>
               ) : (
-                "Crear"
+                saveLabel
               )}
             </button>
           </div>

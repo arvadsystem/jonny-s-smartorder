@@ -39,7 +39,7 @@ const emptyForm = {
 const emptyInlinePersonaForm = createInitialPersonaForm();
 
 const createInitialFiltersDraft = () => ({
-  estadoFiltro: "todos",
+  estadoFiltro: "activo",
   sortBy: "recientes",
 });
 
@@ -225,6 +225,34 @@ const resolveCardsPerPage = (width) => {
   return 2;
 };
 
+const buildVisiblePageNumbers = (page, totalPages, max = 5) => {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeTotalPages = Math.max(1, Number(totalPages) || 1);
+  const safeMax = Math.max(3, Number(max) || 5);
+
+  if (safeTotalPages <= safeMax) {
+    return Array.from({ length: safeTotalPages }, (_, index) => index + 1);
+  }
+
+  let start = Math.max(1, safePage - Math.floor(safeMax / 2));
+  let end = Math.min(safeTotalPages, start + safeMax - 1);
+  start = Math.max(1, end - safeMax + 1);
+
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+};
+
+const buildPageRangeLabel = ({ page, limit, total, currentLength }) => {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.max(1, Number(limit) || 1);
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeCurrentLength = Math.max(0, Number(currentLength) || 0);
+
+  if (!safeTotal || !safeCurrentLength) return "0-0";
+  const start = (safePage - 1) * safeLimit + 1;
+  const end = Math.min(safeTotal, start + safeCurrentLength - 1);
+  return `${start}-${end}`;
+};
+
 const toDisplayValue = (value, fallback = "No registrado") => {
   if (value === null || value === undefined) return fallback;
   const text = String(value).trim();
@@ -326,6 +354,33 @@ const getCorreo = (empleado) =>
     ]),
   ]);
 
+const GENERO_FIELD_CANDIDATES = [
+  "genero",
+  "sexo",
+  "persona_genero",
+  "genero_persona",
+  "sexo_persona",
+  "gender",
+  "Genero",
+  "Sexo",
+];
+
+const normalizeGeneroLabel = (value) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  const normalized = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (["m", "masculino", "masculina", "male", "hombre", "1"].includes(normalized)) return "Masculino";
+  if (["f", "femenino", "femenina", "female", "mujer", "2"].includes(normalized)) return "Femenino";
+  if (["o", "otro", "otra", "others", "3"].includes(normalized)) return "Otro";
+
+  return raw;
+};
+
 const getCargo = (empleado) =>
   getFirstNonEmptyField(empleado, [
     "cargo",
@@ -344,6 +399,7 @@ const getTelefonoReferencia = (empleado) =>
   getFirstNonEmptyField(empleado, ["telefono_referencia", "referencia_telefono", "telefono_contacto_referencia"]);
 const SUGGESTION_LIMIT = 8;
 const MAX_EMPLEADOS_PAGE_CACHE = 24;
+const GLOBAL_STATS_FETCH_LIMIT = 1;
 
 const isAbortError = (error) =>
   Boolean(error) && (
@@ -728,7 +784,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("empleadosViewMode"));
 
-  const [estadoFiltro, setEstadoFiltro] = useState("todos");
+  const [estadoFiltro, setEstadoFiltro] = useState("activo");
   const [sortBy, setSortBy] = useState("recientes");
   const [filtersDraft, setFiltersDraft] = useState(createInitialFiltersDraft);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -736,14 +792,19 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const [page, setPage] = useState(1);
   const limit = 10;
   const [total, setTotal] = useState(0);
+  const [globalStats, setGlobalStats] = useState({ total: 0, activas: 0, inactivas: 0 });
 
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [createStep, setCreateStep] = useState(1);
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [useInlinePersonaCreate, setUseInlinePersonaCreate] = useState(false);
   const [inlinePersonaForm, setInlinePersonaForm] = useState(emptyInlinePersonaForm);
   const [showPersonaCreateModal, setShowPersonaCreateModal] = useState(false);
+  const [showPersonaEditModal, setShowPersonaEditModal] = useState(false);
+  const [inlinePersonaSaving, setInlinePersonaSaving] = useState(false);
+  const [personaModalContext, setPersonaModalContext] = useState("initial");
   const [detailEmpleado, setDetailEmpleado] = useState(null);
   const [formImage, setFormImage] = useState(() => createImageDraftState());
   const [employeeSignedImages, setEmployeeSignedImages] = useState({});
@@ -765,6 +826,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const globalStatsRequestIdRef = useRef(0);
   const listAbortRef = useRef(null);
   const listPrefetchAbortRef = useRef(null);
   const empleadosListCacheRef = useRef(new Map());
@@ -775,6 +837,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const telefonoReferenciaCaretRef = useRef(null);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
   const isAnyDrawerOpen = showModal || filtersOpen;
 
   const blurFocusedElementInside = useCallback((containerId) => {
@@ -790,6 +853,9 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const closeFormDrawer = useCallback(() => {
     blurFocusedElementInside("empd-form-drawer");
     setShowPersonaCreateModal(false);
+    setShowPersonaEditModal(false);
+    setPersonaModalContext("initial");
+    setCreateStep(1);
     setShowModal(false);
   }, [blurFocusedElementInside]);
 
@@ -800,10 +866,36 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         const nombreCompleto = `${persona?.nombre || ""} ${persona?.apellido || ""}`.trim();
         return {
           id: id ? String(id) : "",
-          label: nombreCompleto || `Persona #${id ?? "N/D"}`,
+          label: nombreCompleto || "Persona sin nombre",
           dni: persona?.dni || "",
         };
       }),
+    [personasCatalogo]
+  );
+
+  const personaGeneroById = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(personasCatalogo) ? personasCatalogo : [])
+          .map((persona) => [
+            String(persona?.id_persona ?? "").trim(),
+            getFirstNonEmptyField(persona, GENERO_FIELD_CANDIDATES),
+          ])
+          .filter(([id]) => id)
+      ),
+    [personasCatalogo]
+  );
+
+  const personaGeneroByDni = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(personasCatalogo) ? personasCatalogo : [])
+          .map((persona) => [
+            String(getFirstNonEmptyField(persona, ["dni", "persona_dni"]) ?? "").trim(),
+            getFirstNonEmptyField(persona, GENERO_FIELD_CANDIDATES),
+          ])
+          .filter(([dni]) => dni)
+      ),
     [personasCatalogo]
   );
 
@@ -811,33 +903,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     () =>
       (Array.isArray(sucursales) ? sucursales : []).map((sucursal) => {
         const id = sucursal?.id_sucursal;
-        const label = sucursal?.nombre_sucursal || sucursal?.nombre || sucursal?.sucursal || `Sucursal #${id ?? "N/D"}`;
+        const label = sucursal?.nombre_sucursal || sucursal?.nombre || sucursal?.sucursal || "Sucursal sin nombre";
         return {
           id: id ? String(id) : "",
           label: String(label),
         };
       }),
     [sucursales]
-  );
-
-  const personaSelectOptions = useMemo(
-    () =>
-      personaOptions.map((item) => ({
-        value: item.id,
-        label: item.dni ? `${item.label} | DNI: ${item.dni}` : item.label,
-      })),
-    [personaOptions]
-  );
-
-  const personaSelectValue = useMemo(() => {
-    const selectedId = String(form.id_persona ?? "");
-    if (!selectedId) return null;
-    return personaSelectOptions.find((option) => option.value === selectedId) || null;
-  }, [form.id_persona, personaSelectOptions]);
-
-  const personaSelectStyles = useMemo(
-    () => buildEmpleadosSelectStyles(Boolean(errors.id_persona)),
-    [errors.id_persona]
   );
 
   const sucursalSelectOptions = useMemo(
@@ -886,6 +958,33 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         "telefono_persona",
       ]),
     [selectedPersona]
+  );
+
+  const getGeneroEmpleado = useCallback(
+    (empleado) => {
+      const fromEmpleado = normalizeGeneroLabel(
+        getFirstNonEmptyValue([
+          getFirstNonEmptyField(empleado, GENERO_FIELD_CANDIDATES),
+          getFirstNonEmptyField(empleado?.persona, GENERO_FIELD_CANDIDATES),
+        ])
+      );
+      if (fromEmpleado) return fromEmpleado;
+
+      const personaId = String(empleado?.id_persona ?? "").trim();
+      if (personaId) {
+        const fromPersonaId = normalizeGeneroLabel(personaGeneroById.get(personaId));
+        if (fromPersonaId) return fromPersonaId;
+      }
+
+      const dni = String(getDni(empleado) ?? "").trim();
+      if (dni) {
+        const fromDni = normalizeGeneroLabel(personaGeneroByDni.get(dni));
+        if (fromDni) return fromDni;
+      }
+
+      return "";
+    },
+    [personaGeneroById, personaGeneroByDni]
   );
 
   const resolveEmpleadoImage = useCallback(
@@ -1238,6 +1337,91 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     [resolvePersonaId, resolveSucursalId]
   );
 
+  const buildInlinePersonaFormFromEmpleado = useCallback(
+    (empleado) => {
+      const personaId = toEmpleadoId(empleado?.id_persona);
+      const personaCatalogo = personaId
+        ? (Array.isArray(personasCatalogo)
+            ? personasCatalogo.find((item) => toEmpleadoId(item?.id_persona) === personaId)
+            : null)
+        : null;
+
+      return normalizePersonaFormValues({
+        nombre: getFirstNonEmptyValue([
+          getFirstNonEmptyField(personaCatalogo, ["nombre", "persona_nombre"]),
+          getFirstNonEmptyField(empleado, ["persona_nombre", "nombre"]),
+          getFirstNonEmptyField(empleado?.persona, ["nombre", "persona_nombre"]),
+        ]),
+        apellido: getFirstNonEmptyValue([
+          getFirstNonEmptyField(personaCatalogo, ["apellido", "persona_apellido"]),
+          getFirstNonEmptyField(empleado, ["persona_apellido", "apellido"]),
+          getFirstNonEmptyField(empleado?.persona, ["apellido", "persona_apellido"]),
+        ]),
+        dni: getFirstNonEmptyValue([
+          getFirstNonEmptyField(personaCatalogo, ["dni", "persona_dni"]),
+          getDni(empleado),
+        ]),
+        rtn: getFirstNonEmptyValue([
+          getFirstNonEmptyField(personaCatalogo, ["rtn", "persona_rtn", "numero_rtn"]),
+          getFirstNonEmptyField(empleado, ["persona_rtn", "rtn", "numero_rtn"]),
+          getFirstNonEmptyField(empleado?.persona, ["rtn", "persona_rtn", "numero_rtn"]),
+        ]),
+        genero: getFirstNonEmptyValue([
+          getFirstNonEmptyField(personaCatalogo, ["genero", "persona_genero"]),
+          getFirstNonEmptyField(empleado, ["persona_genero", "genero"]),
+          getFirstNonEmptyField(empleado?.persona, ["genero", "persona_genero"]),
+        ]),
+        fecha_nacimiento: toDateInputValue(
+          getFirstNonEmptyValue([
+            getFirstNonEmptyField(personaCatalogo, ["fecha_nacimiento", "persona_fecha_nacimiento"]),
+            getFirstNonEmptyField(empleado, ["persona_fecha_nacimiento", "fecha_nacimiento"]),
+            getFirstNonEmptyField(empleado?.persona, ["fecha_nacimiento", "persona_fecha_nacimiento"]),
+          ])
+        ),
+        id_telefono: getFirstNonEmptyValue([
+          getFirstNonEmptyField(personaCatalogo, [
+            "texto_telefono",
+            "telefono",
+            "telefono_numero",
+            "numero_telefono",
+            "persona_telefono",
+            "telefono_persona",
+          ]),
+          getTelefono(empleado),
+        ]),
+        id_direccion: getFirstNonEmptyValue([
+          getFirstNonEmptyField(personaCatalogo, ["texto_direccion", "direccion", "direccion_detalle"]),
+          getFirstNonEmptyField(empleado, [
+            "texto_direccion",
+            "direccion",
+            "direccion_detalle",
+            "persona_direccion",
+            "direccion_persona",
+          ]),
+          getFirstNonEmptyField(empleado?.persona, [
+            "texto_direccion",
+            "direccion",
+            "direccion_detalle",
+            "persona_direccion",
+            "direccion_persona",
+          ]),
+        ]),
+        id_correo: getFirstNonEmptyValue([
+          getFirstNonEmptyField(personaCatalogo, [
+            "texto_correo",
+            "correo",
+            "correo_texto",
+            "direccion_correo",
+            "email",
+            "correo_electronico",
+          ]),
+          getCorreo(empleado),
+        ]),
+      });
+    },
+    [personasCatalogo]
+  );
+
   const buildEmpleadosCacheKey = useCallback(
     (targetPage) =>
       JSON.stringify({
@@ -1245,8 +1429,9 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         limit,
         search: normalizeSearchText(debouncedSearch),
         sucursal: toEmpleadoId(selectedSucursalId) || null,
+        estado: estadoFiltro,
       }),
-    [limit, debouncedSearch, selectedSucursalId]
+    [limit, debouncedSearch, selectedSucursalId, estadoFiltro]
   );
 
   const setEmpleadosCacheEntry = useCallback((cacheKey, data) => {
@@ -1292,11 +1477,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
       try {
         const normalizedSucursalId = toEmpleadoId(selectedSucursalId);
+        const estadoQuery = estadoFiltro === "inactivo" ? false : true;
         const resp = await personaService.getEmpleados({
           page: nextPage,
           limit,
           nombre: debouncedSearch || undefined,
           id_sucursal: normalizedSucursalId || undefined,
+          estado: estadoQuery,
           signal: controller.signal,
         });
 
@@ -1314,6 +1501,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     [
       buildEmpleadosCacheKey,
       debouncedSearch,
+      estadoFiltro,
       limit,
       selectedSucursalId,
       setEmpleadosCacheEntry,
@@ -1366,11 +1554,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
     try {
       const normalizedSucursalId = toEmpleadoId(selectedSucursalId);
+      const estadoQuery = estadoFiltro === "inactivo" ? false : true;
       const resp = await personaService.getEmpleados({
         page: targetPage,
         limit,
         nombre: debouncedSearch || undefined,
         id_sucursal: normalizedSucursalId || undefined,
+        estado: estadoQuery,
         signal: controller.signal,
       });
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
@@ -1396,11 +1586,46 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     page,
     limit,
     debouncedSearch,
+    estadoFiltro,
     safeToast,
     selectedSucursalId,
     setEmpleadosCacheEntry,
     prefetchEmpleadosPage,
   ]);
+
+  const cargarEmpleadosGlobalStats = useCallback(async () => {
+    const reqId = ++globalStatsRequestIdRef.current;
+    const normalizedSucursalId = toEmpleadoId(selectedSucursalId);
+
+    try {
+      const [activosResp, inactivosResp] = await Promise.all([
+        personaService.getEmpleados({
+          page: 1,
+          limit: GLOBAL_STATS_FETCH_LIMIT,
+          id_sucursal: normalizedSucursalId || undefined,
+          estado: true,
+        }),
+        personaService.getEmpleados({
+          page: 1,
+          limit: GLOBAL_STATS_FETCH_LIMIT,
+          id_sucursal: normalizedSucursalId || undefined,
+          estado: false,
+        }),
+      ]);
+
+      if (!mountedRef.current || reqId !== globalStatsRequestIdRef.current) return;
+
+      const activosTotal = Math.max(0, Number(normalizeListResponse(activosResp).total) || 0);
+      const inactivosTotal = Math.max(0, Number(normalizeListResponse(inactivosResp).total) || 0);
+      setGlobalStats({
+        total: activosTotal + inactivosTotal,
+        activas: activosTotal,
+        inactivas: inactivosTotal,
+      });
+    } catch {
+      // Keep current KPI values when the stats refresh fails.
+    }
+  }, [selectedSucursalId]);
 
   const fetchNewestEmpleadoId = useCallback(async () => {
     try {
@@ -1439,8 +1664,16 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   }, [showModal, cargarCatalogos]);
 
   useEffect(() => {
+    void cargarCatalogos();
+  }, [cargarCatalogos]);
+
+  useEffect(() => {
     cargarEmpleados();
   }, [cargarEmpleados]);
+
+  useEffect(() => {
+    void cargarEmpleadosGlobalStats();
+  }, [cargarEmpleadosGlobalStats]);
 
   useEffect(() => {
     if (!Array.isArray(empleados) || !empleados.length) return;
@@ -1702,6 +1935,33 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     return Object.keys(currentErrors).length === 0;
   };
 
+  const validatePersonaStep = useCallback(() => {
+    let stepMessage = "";
+    const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
+    if (Object.keys(personaValidationErrors).length > 0) {
+      stepMessage = "Completa los datos personales antes de continuar";
+    }
+
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (stepMessage) next.id_persona = stepMessage;
+      else delete next.id_persona;
+      return next;
+    });
+
+    return !stepMessage;
+  }, [inlinePersonaForm]);
+
+  const goToCreateStepTwo = useCallback(() => {
+    if (!validatePersonaStep()) {
+      setShowPersonaCreateModal(true);
+      return;
+    }
+    setShowPersonaCreateModal(false);
+    setPersonaModalContext("edit");
+    setCreateStep(2);
+  }, [validatePersonaStep]);
+
   const onFormImageChange = useCallback(async (event) => {
     const input = event.target;
     const file = input?.files?.[0];
@@ -1789,6 +2049,10 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
   const guardar = async (event) => {
     event.preventDefault();
+    if (!editId && createStep === 1) {
+      goToCreateStepTwo();
+      return;
+    }
     if (!validar() || actionLoading) return;
 
     const payloadLimpio = sanitizeForm();
@@ -1872,10 +2136,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
           return;
         }
 
+        const empleadoPayloadForFullCreate = { ...payloadLimpio };
+        delete empleadoPayloadForFullCreate.id_persona;
+
         const createResp = useInlinePersonaCreate
-          ? await personaService.createEmpleadoAtomico({
+          ? await personaService.createEmpleadoFull({
               persona: buildPersonaPayloadFromForm(inlinePersonaForm),
-              empleado: payloadLimpio,
+              empleado: empleadoPayloadForFullCreate,
             })
           : await personaService.createEmpleado(payloadLimpio);
 
@@ -1924,6 +2191,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       } else {
         await cargarEmpleados({ force: true });
       }
+      await cargarEmpleadosGlobalStats();
     } catch (error) {
       const errorMessage = String(error?.message || "No se pudo guardar").trim();
       const statusCode = Number(error?.status);
@@ -1958,8 +2226,11 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     setEditId(empleado.id_empleado);
     setErrors({});
     setUseInlinePersonaCreate(false);
-    setInlinePersonaForm(emptyInlinePersonaForm);
+    setInlinePersonaForm(buildInlinePersonaFormFromEmpleado(empleado));
     setShowPersonaCreateModal(false);
+    setShowPersonaEditModal(false);
+    setPersonaModalContext("initial");
+    setCreateStep(2);
     setForm(buildFormFromEmpleado(empleado));
     setFormImage(createImageDraftState(resolveEmpleadoImage(empleado)));
     setImageDirty(false);
@@ -1969,9 +2240,76 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
   const handleInlinePersonaModalSave = useCallback(async (_personaPayload, personaFormState) => {
     setInlinePersonaForm(normalizePersonaFormValues(personaFormState));
+    setUseInlinePersonaCreate(true);
     setErrors((state) => ({ ...state, id_persona: undefined }));
     setShowPersonaCreateModal(false);
+    setPersonaModalContext("edit");
+    setCreateStep(2);
   }, []);
+
+  const handleInlinePersonaEditSave = useCallback(
+    async (_personaPayload, personaFormState) => {
+      if (!editId) return;
+      const empleadoActual = empleados.find((item) => String(item?.id_empleado ?? "") === String(editId));
+      const personaId = toEmpleadoId(form.id_persona) || toEmpleadoId(empleadoActual?.id_persona);
+      if (!personaId) {
+        safeToast("ERROR", "No se encontro la persona vinculada para actualizar.", "danger");
+        return;
+      }
+
+      setInlinePersonaSaving(true);
+      try {
+        await personaService.updatePersona(personaId, buildPersonaPayloadFromForm(personaFormState));
+        setInlinePersonaForm(normalizePersonaFormValues(personaFormState));
+        setErrors((state) => ({ ...state, id_persona: undefined }));
+        setShowPersonaEditModal(false);
+        safeToast("OK", "Datos de persona actualizados");
+        clearEmpleadosListCache();
+        await cargarEmpleados({ force: true });
+        await cargarEmpleadosGlobalStats();
+      } catch (error) {
+        safeToast("ERROR", error.message || "No se pudo actualizar la persona.", "danger");
+      } finally {
+        if (mountedRef.current) setInlinePersonaSaving(false);
+      }
+    },
+    [editId, empleados, form.id_persona, safeToast, clearEmpleadosListCache, cargarEmpleados, cargarEmpleadosGlobalStats]
+  );
+
+  const openPersonaEditModal = useCallback(() => {
+    if (!editId) return;
+    const empleadoActual = empleados.find((item) => String(item?.id_empleado ?? "") === String(editId));
+    if (!empleadoActual) return;
+    const personaId = toEmpleadoId(form.id_persona) || toEmpleadoId(empleadoActual?.id_persona);
+    if (!personaId) {
+      safeToast("ERROR", "No se encontro la persona vinculada para editar.", "danger");
+      return;
+    }
+    setInlinePersonaForm(buildInlinePersonaFormFromEmpleado(empleadoActual));
+    setShowPersonaCreateModal(false);
+    setShowPersonaEditModal(true);
+  }, [editId, empleados, form.id_persona, buildInlinePersonaFormFromEmpleado, safeToast]);
+
+  const handlePersonaModalClose = useCallback(() => {
+    if (editId) {
+      setShowPersonaEditModal(false);
+      return;
+    }
+
+    setShowPersonaCreateModal(false);
+
+    if (personaModalContext === "initial") {
+      closeFormDrawer();
+      setEditId(null);
+      setForm(emptyForm);
+      setUseInlinePersonaCreate(false);
+      setInlinePersonaForm(emptyInlinePersonaForm);
+      clearFormImageDraft();
+      return;
+    }
+
+    setCreateStep(2);
+  }, [editId, personaModalContext, closeFormDrawer, clearFormImageDraft]);
 
   const openCreate = () => {
     if (actionLoading || deletingId) return;
@@ -1980,9 +2318,12 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
-    setUseInlinePersonaCreate(false);
+    setUseInlinePersonaCreate(true);
     setInlinePersonaForm(emptyInlinePersonaForm);
-    setShowPersonaCreateModal(false);
+    setShowPersonaCreateModal(true);
+    setShowPersonaEditModal(false);
+    setPersonaModalContext("initial");
+    setCreateStep(1);
     clearFormImageDraft();
     setShowModal(true);
   };
@@ -2005,7 +2346,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
     setDeletingId(id);
     try {
-      await personaService.deleteEmpleado(id);
+      await personaService.updateEmpleado(id, { estado: false });
       setEmployeeSignedImages((prev) => {
         const next = { ...prev };
         delete next[String(id)];
@@ -2043,10 +2384,11 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         await cargarEmpleados({ force: true });
       }
 
-      safeToast("OK", "Empleado eliminado");
+      safeToast("OK", "Empleado inactivado");
       closeConfirmDelete();
+      await cargarEmpleadosGlobalStats();
     } catch (error) {
-      safeToast("ERROR", error.message || "No se pudo eliminar", "danger");
+      safeToast("ERROR", error.message || "No se pudo inactivar", "danger");
       clearEmpleadosListCache();
       await cargarEmpleados({ force: true });
     } finally {
@@ -2103,6 +2445,10 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
     return filtered;
   }, [empleados, search, estadoFiltro, sortBy, getPersonaNombre, getSucursalNombre]);
+  const pageWindowLabel = useMemo(
+    () => buildPageRangeLabel({ page, limit, total, currentLength: empleadosFiltrados.length }),
+    [empleadosFiltrados.length, limit, page, total]
+  );
 
   const predictiveSuggestions = useMemo(() => {
     const searchTerm = normalizeSearchToken(search);
@@ -2186,30 +2532,58 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     recentStorageKey: "empleadosRecentSearchesV1",
   });
 
-  const stats = useMemo(() => {
-    const totalFiltradas = empleadosFiltrados.length;
-    const activas = empleadosFiltrados.filter((item) => isActivo(item)).length;
-    return { total: totalFiltradas, activas, inactivas: totalFiltradas - activas };
-  }, [empleadosFiltrados]);
+  const stats = useMemo(
+    () => ({
+      total: globalStats.total,
+      activas: globalStats.activas,
+      inactivas: globalStats.inactivas,
+    }),
+    [globalStats]
+  );
 
   const hasActiveFilters = useMemo(
-    () => search.trim() !== "" || estadoFiltro !== "todos" || sortBy !== "recientes",
+    () => search.trim() !== "" || estadoFiltro !== "activo" || sortBy !== "recientes",
     [search, estadoFiltro, sortBy]
   );
 
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
   const drawerMode = editId ? "edit" : "create";
+  const isCreateFlow = drawerMode === "create";
+  const isCreateStepOne = isCreateFlow && createStep === 1;
+  const isCreateStepTwo = !isCreateFlow || createStep === 2;
+  const isFormDrawerOpen = showModal && isCreateStepTwo;
+  const showMainBackdrop = filtersOpen || isFormDrawerOpen;
   const todayDate = new Date().toISOString().split("T")[0];
-  const isInlinePersonaFlow = drawerMode === "create" && useInlinePersonaCreate;
+  const isInlinePersonaFlow = isCreateFlow && useInlinePersonaCreate;
   const drawerSubtitle =
-    drawerMode === "create"
-      ? isInlinePersonaFlow
-        ? "Paso 1 de 2: completa la persona. Luego define los datos del empleado y guarda."
-        : "Paso 1: selecciona o crea la persona. Paso 2: completa la informacion laboral."
+    isCreateFlow
+      ? isCreateStepOne
+        ? "Paso 1 de 2: completa los datos personales de la persona."
+        : "Paso 2 de 2: completa los datos del empleado, agrega foto y crea el registro."
       : "Actualiza los campos necesarios y guarda los cambios.";
-  const datosEmpleadoCopy = isInlinePersonaFlow
-    ? "Persona base en proceso. Al terminar, completa la informacion laboral."
-    : "Selecciona la persona base y completa la informacion laboral.";
+  const datosEmpleadoCopy = isCreateStepOne
+    ? "Completa los datos personales para continuar con el registro del empleado."
+    : isInlinePersonaFlow
+      ? "Persona base lista. Ahora completa la informacion laboral."
+      : "Completa la informacion laboral y la foto del empleado.";
+  const empleadoEditando = useMemo(
+    () => (drawerMode === "edit"
+      ? empleados.find((item) => String(item?.id_empleado ?? "") === String(editId ?? "")) || null
+      : null),
+    [drawerMode, empleados, editId]
+  );
+  const editPersonaSummary = useMemo(() => {
+    if (!empleadoEditando) return emptyInlinePersonaForm;
+
+    const hasInlinePersonaData = Boolean(
+      String(inlinePersonaForm?.nombre ?? "").trim()
+      || String(inlinePersonaForm?.apellido ?? "").trim()
+      || String(inlinePersonaForm?.dni ?? "").trim()
+      || String(inlinePersonaForm?.rtn ?? "").trim()
+    );
+    if (hasInlinePersonaData) return inlinePersonaForm;
+    return buildInlinePersonaFormFromEmpleado(empleadoEditando);
+  }, [empleadoEditando, inlinePersonaForm, buildInlinePersonaFormFromEmpleado]);
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -2222,13 +2596,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const closeFiltersDrawer = () => setFiltersOpen(false);
 
   const applyFiltersDrawer = () => {
-    setEstadoFiltro(filtersDraft.estadoFiltro || "todos");
+    setEstadoFiltro(filtersDraft.estadoFiltro === "inactivo" ? "inactivo" : "activo");
     setSortBy(filtersDraft.sortBy || "recientes");
     setFiltersOpen(false);
   };
 
   const clearVisualFilters = () => {
-    setEstadoFiltro("todos");
+    setEstadoFiltro("activo");
     setSortBy("recientes");
     setFiltersDraft(createInitialFiltersDraft());
   };
@@ -2289,6 +2663,22 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
           <div className="inv-prod-results-meta personas-page__results-meta">
             <span>{loading ? "Cargando empleados..." : `${empleadosFiltrados.length} resultados`}</span>
             <span>{loading ? "" : `Total: ${total}`}</span>
+            <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                role="switch"
+                checked={estadoFiltro === "inactivo"}
+                onChange={(event) => {
+                  const nextEstado = event.target.checked ? "inactivo" : "activo";
+                  setEstadoFiltro(nextEstado);
+                  setFiltersDraft((state) => ({ ...state, estadoFiltro: nextEstado }));
+                  setPage((prev) => (prev === 1 ? prev : 1));
+                }}
+                aria-label="Ver inactivos"
+              />
+              <span className="form-check-label">Ver inactivos</span>
+            </label>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
           </div>
 
@@ -2391,11 +2781,11 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                                 type="button"
                                 className="inv-catpro-action danger inv-catpro-action-compact"
                                 onClick={() => openConfirmDelete(empleado)}
-                                title="Eliminar"
-                                disabled={actionLoading || deleting}
+                                title={isActive ? "Inactivar" : "Inactivo"}
+                                disabled={actionLoading || deleting || !isActive}
                               >
-                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
-                                <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-slash-circle"}`} />
+                                <span className="inv-catpro-action-label">{deleting ? "Inactivando..." : "Inactivar"}</span>
                               </button>
                             </div>
                           </td>
@@ -2420,34 +2810,60 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                     deletingId={deletingId}
                     getPersonaNombre={getPersonaNombre}
                     getSucursalNombre={getSucursalNombre}
+                    getGeneroLabel={getGeneroEmpleado}
                   />
                 ))}
               </div>
             )}
           </div>
 
-          <div className="personas-page__pagination">
-            <button
-              type="button"
-              className="btn btn-outline-secondary"
-              disabled={page === 1 || loading || actionLoading || !!deletingId}
-              onClick={() => setPage((prev) => prev - 1)}
-            >
-              <i className="bi bi-chevron-left me-1" />
-              Anterior
-            </button>
-            <span>
-              Pagina {page} de {totalPages}
-            </span>
-            <button
-              type="button"
-              className="btn btn-outline-secondary"
-              disabled={page >= totalPages || loading || actionLoading || !!deletingId}
-              onClick={() => setPage((prev) => prev + 1)}
-            >
-              Siguiente
-              <i className="bi bi-chevron-right ms-1" />
-            </button>
+          <div className="inv-warehouse-moves__pagination inv-ins-pagination">
+            <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
+              {`Mostrando ${pageWindowLabel} de ${total}`}
+            </div>
+
+            <div className="inv-warehouse-moves__pagination-controls">
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1 || loading || actionLoading || !!deletingId}
+                aria-label="Pagina anterior"
+              >
+                <i className="bi bi-chevron-left" aria-hidden="true" />
+                <span>Anterior</span>
+              </button>
+
+              <div className="inv-warehouse-moves__pagination-pages">
+                {visiblePageNumbers.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    className={`inv-warehouse-moves__page-number ${pageNumber === page ? "is-active" : ""}`.trim()}
+                    onClick={() => setPage(pageNumber)}
+                    aria-label={`Ir a la pagina ${pageNumber}`}
+                    aria-current={pageNumber === page ? "page" : undefined}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+              </div>
+
+              <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">
+                {`Pagina ${page} de ${totalPages}`}
+              </div>
+
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page >= totalPages || loading || actionLoading || !!deletingId}
+                aria-label="Pagina siguiente"
+              >
+                <span>Siguiente</span>
+                <i className="bi bi-chevron-right" aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2463,9 +2879,9 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       </button>
 
       <div
-        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? "show" : ""}`}
+        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${showMainBackdrop ? "show" : ""}`}
         onClick={closeAnyDrawer}
-        aria-hidden={!isAnyDrawerOpen}
+        aria-hidden={!showMainBackdrop}
       />
 
       <ModuleFiltros
@@ -2479,19 +2895,19 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         onClose={closeFiltersDrawer}
         onApply={applyFiltersDrawer}
         onClear={clearVisualFilters}
-        allLabel="Todos"
+        allowAll={false}
         activeLabel="Activos"
         inactiveLabel="Inactivos"
       />
 
       <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal empleados-modal ${showModal ? "show" : ""} ${
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal empleados-modal ${isFormDrawerOpen ? "show" : ""} ${
           drawerMode === "create" ? "is-create" : "is-edit"
         }`}
         id="empd-form-drawer"
         role="dialog"
         aria-modal="true"
-        aria-hidden={!showModal}
+        aria-hidden={!isFormDrawerOpen}
       >
         <div className="inv-prod-drawer-head crud-modal__header">
           <div className="crud-modal__header-copy crud-modal__header-copy--insumo">
@@ -2525,119 +2941,111 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
           <section className="crud-modal__section empleados-modal__section">
             <header className="crud-modal__section-head">
-              <h4>Datos del empleado</h4>
+              <h4>{isCreateStepOne ? "Datos personales" : "Datos del empleado"}</h4>
               <p>{datosEmpleadoCopy}</p>
             </header>
 
             <div className="row g-3 crud-modal__grid">
-              <div className="col-12">
-                <SmartSelectEntity
-                  className="empleados-modal__entity-block"
-                  label="Persona"
-                  showToggle={drawerMode === "create"}
-                  isInlineCreate={drawerMode === "create" && useInlinePersonaCreate}
-                  onToggleInline={() => {
-                    setUseInlinePersonaCreate((prev) => {
-                      const next = !prev;
-                      if (next) {
-                        setShowPersonaCreateModal(true);
-                        setForm((state) => ({ ...state, id_persona: "" }));
-                      } else {
-                        setInlinePersonaForm(emptyInlinePersonaForm);
-                        setShowPersonaCreateModal(false);
+              {drawerMode === "edit" ? (
+                <>
+                  <div className="col-12">
+                    <SmartSelectEntity
+                      className="empleados-modal__entity-block"
+                      label="Persona"
+                      showToggle={false}
+                      isInlineCreate
+                      onToggleInline={() => {
+                        // noop: en edicion solo se usa el selector de persona existente.
+                        setErrors((state) => ({ ...state, id_persona: undefined }));
+                      }}
+                      toggleVariant="dual"
+                      toggleCreateLabel="Crear persona nueva"
+                      toggleExistingLabel="Usar persona existente"
+                      toggleDisabled={actionLoading || Boolean(deletingId)}
+                      selector={null}
+                      error={errors.id_persona}
+                      inlineContent={
+                        <div className="smart-select-entity__summary empleados-inline-summary">
+                          <div className="empleados-inline-summary__text">
+                            Edita los datos de la persona vinculada cuando lo necesites.
+                          </div>
+                          <div className="empleados-inline-summary__chips">
+                            <span className="empleados-inline-summary__chip">
+                              {toDisplayValue(
+                                `${String(editPersonaSummary?.nombre ?? "").trim()} ${String(editPersonaSummary?.apellido ?? "").trim()}`.trim(),
+                                "Sin nombre"
+                              )}
+                            </span>
+                            <span className="empleados-inline-summary__chip">
+                              DNI: {toDisplayValue(editPersonaSummary?.dni, "N/D")}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm empleados-inline-summary__action"
+                            onClick={openPersonaEditModal}
+                            disabled={actionLoading || Boolean(deletingId)}
+                          >
+                            <i className="bi bi-pencil-square me-2" />
+                            Editar datos de persona
+                          </button>
+                        </div>
                       }
-                      return next;
-                    });
-                    setErrors((state) => ({ ...state, id_persona: undefined }));
-                  }}
-                  toggleVariant="dual"
-                  toggleCreateLabel="Crear persona nueva"
-                  toggleExistingLabel="Usar persona existente"
-                  toggleDisabled={actionLoading || Boolean(deletingId)}
-                  selector={
-                    drawerMode === "create" ? (
-                      <Select
-                        inputId="empleado-persona-select"
-                        className={`empleados-select ${errors.id_persona ? "is-invalid" : ""}`}
-                        classNamePrefix="empleados-select"
-                        placeholder="Buscar y seleccionar persona"
-                        isSearchable
-                        isClearable
-                        options={personaSelectOptions}
-                        value={personaSelectValue}
-                        onChange={(option) => {
-                          setForm((state) => ({
-                            ...state,
-                            id_persona: option?.value ? String(option.value) : "",
-                          }));
-                          setErrors((state) => ({ ...state, id_persona: undefined }));
-                        }}
-                        styles={personaSelectStyles}
-                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                        menuPosition="fixed"
-                        isDisabled={actionLoading || Boolean(deletingId) || useInlinePersonaCreate}
-                      />
-                    ) : (
-                      <select
-                        className={`form-select ${errors.id_persona ? "is-invalid" : ""}`}
-                        value={form.id_persona}
-                        onChange={(event) => setForm((state) => ({ ...state, id_persona: event.target.value }))}
-                      >
-                        <option value="">Seleccione</option>
-                        {personaOptions.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.label} {item.dni ? `| DNI: ${item.dni}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    )
-                  }
-                  error={errors.id_persona}
-                  inlineContent={
-                    <div className="smart-select-entity__summary empleados-inline-summary">
-                      <div className="empleados-inline-summary__text">
-                        {String(inlinePersonaForm.nombre ?? "").trim()
-                          ? "Persona lista. Ahora completa sucursal, fecha de ingreso y salario base."
-                          : "Primero completa los datos de la persona para continuar."}
-                      </div>
-                      <div className="empleados-inline-summary__chips">
-                        <span className="empleados-inline-summary__chip">
-                          {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
-                          {String(inlinePersonaForm.apellido ?? "").trim()}
-                        </span>
-                        <span className="empleados-inline-summary__chip">
-                          DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-sm empleados-inline-summary__action"
-                        onClick={() => setShowPersonaCreateModal(true)}
-                        disabled={actionLoading || Boolean(deletingId)}
-                      >
-                        {String(inlinePersonaForm.nombre ?? "").trim()
-                          ? "Revisar persona creada"
-                          : "Abrir formulario de persona"}
-                      </button>
-                    </div>
-                  }
-                />
-              </div>
-
-              <div className="col-12">
-                <div className="empleados-modal__persona-meta" role="status" aria-live="polite">
-                  <div className="empleados-modal__persona-meta-item">
-                    <span>DNI</span>
-                    <strong>{toDisplayValue(selectedPersonaDni, "N/D")}</strong>
+                    />
                   </div>
-                  <div className="empleados-modal__persona-meta-item">
-                    <span>Telefono</span>
-                    <strong>{toDisplayValue(selectedPersonaTelefono, "Sin telefono")}</strong>
+
+                  <div className="col-12">
+                    <div className="empleados-modal__persona-meta" role="status" aria-live="polite">
+                      <div className="empleados-modal__persona-meta-item">
+                        <span>DNI</span>
+                        <strong>{toDisplayValue(selectedPersonaDni, "N/D")}</strong>
+                      </div>
+                      <div className="empleados-modal__persona-meta-item">
+                        <span>Telefono</span>
+                        <strong>{toDisplayValue(selectedPersonaTelefono, "Sin telefono")}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {isCreateFlow && isCreateStepTwo ? (
+                <div className="col-12">
+                  <div className="smart-select-entity__summary empleados-inline-summary">
+                    <div className="empleados-inline-summary__text">
+                      Datos personales listos para el empleado.
+                    </div>
+                    <div className="empleados-inline-summary__chips">
+                      <span className="empleados-inline-summary__chip">
+                        {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
+                        {String(inlinePersonaForm.apellido ?? "").trim()}
+                      </span>
+                      <span className="empleados-inline-summary__chip">
+                        DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
+                      </span>
+                      <span className="empleados-inline-summary__chip">
+                        Telefono: {toDisplayValue(inlinePersonaForm.id_telefono, "N/D")}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm empleados-inline-summary__action"
+                      onClick={() => {
+                        setPersonaModalContext("edit");
+                        setCreateStep(1);
+                        setShowPersonaCreateModal(true);
+                      }}
+                      disabled={actionLoading || Boolean(deletingId)}
+                    >
+                      Editar datos personales
+                    </button>
                   </div>
                 </div>
-              </div>
+              ) : null}
 
-              <div className="col-12">
+              {isCreateStepTwo ? (
+                <>
+                  <div className="col-12">
                 <label className="form-label text-light text-opacity-75">Sucursal</label>
                 {drawerMode === "create" ? (
                   <Select
@@ -2748,13 +3156,16 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                 />
                 {errors.salario_base && <div className="invalid-feedback d-block">{errors.salario_base}</div>}
               </div>
+                </>
+              ) : null}
             </div>
           </section>
 
-          <section className="crud-modal__section empleados-modal__section empleados-modal__section--secondary">
+          {isCreateStepTwo ? (
+            <section className="crud-modal__section empleados-modal__section empleados-modal__section--secondary">
             <header className="crud-modal__section-head">
-              <h4>Presentacion y estado</h4>
-              <p>Configura imagen de perfil y disponibilidad del registro.</p>
+              <h4>Foto del empleado</h4>
+              <p>Configura la imagen de perfil del empleado.</p>
             </header>
 
             <div className="row g-3 crud-modal__grid">
@@ -2808,48 +3219,112 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                 </div>
               </div>
 
-              <div className="col-12">
-                <div className="form-check form-switch m-0">
-                  <input
-                    className="form-check-input"
-                    type="checkbox"
-                    id="empleado_estado"
-                    checked={Boolean(form.estado)}
-                    onChange={(event) => setForm((state) => ({ ...state, estado: event.target.checked }))}
-                  />
-                  <label className="form-check-label text-light text-opacity-75" htmlFor="empleado_estado">
-                    Registro activo
-                  </label>
+              {drawerMode === "edit" ? (
+                <div className="col-12">
+                  <div className="form-check form-switch m-0">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="empleado_estado"
+                      checked={Boolean(form.estado)}
+                      onChange={(event) => setForm((state) => ({ ...state, estado: event.target.checked }))}
+                    />
+                    <label className="form-check-label text-light text-opacity-75" htmlFor="empleado_estado">
+                      Registro activo
+                    </label>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
-          </section>
+            </section>
+          ) : null}
 
           <div className="d-flex gap-2 mt-4 crud-modal__footer">
-            <button
-              type="button"
-              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
-              onClick={closeFormDrawer}
-              disabled={actionLoading || !!deletingId}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
-              disabled={actionLoading || !!deletingId}
-            >
-              {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear empleado" : "Guardar cambios"}
-            </button>
+            {isCreateFlow ? (
+              isCreateStepOne ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+                    onClick={closeFormDrawer}
+                    disabled={actionLoading || !!deletingId}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
+                    onClick={goToCreateStepTwo}
+                    disabled={actionLoading || !!deletingId}
+                  >
+                    Siguiente
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+                    onClick={() => {
+                      setPersonaModalContext("edit");
+                      setCreateStep(1);
+                      setShowPersonaCreateModal(true);
+                    }}
+                    disabled={actionLoading || !!deletingId}
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
+                    disabled={actionLoading || !!deletingId}
+                  >
+                    {actionLoading ? "Guardando..." : "Crear empleado"}
+                  </button>
+                </>
+              )
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+                  onClick={closeFormDrawer}
+                  disabled={actionLoading || !!deletingId}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
+                  disabled={actionLoading || !!deletingId}
+                >
+                  {actionLoading ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </>
+            )}
           </div>
         </form>
       </aside>
 
       <PersonaInlineCreateModal
-        show={showModal && drawerMode === "create" && useInlinePersonaCreate && showPersonaCreateModal}
+        show={
+          showModal
+          && (
+            (drawerMode === "create" && createStep === 1 && showPersonaCreateModal)
+            || (drawerMode === "edit" && showPersonaEditModal)
+          )
+        }
+        title={drawerMode === "edit" ? "Editar persona vinculada" : "Datos personales del empleado"}
+        subtitle={
+          drawerMode === "edit"
+            ? "Actualiza los datos de la persona vinculada y guarda los cambios."
+            : "Paso 1 de 2: completa los datos personales para continuar."
+        }
+        saveLabel={drawerMode === "edit" ? "Guardar cambios" : "Siguiente"}
+        saving={inlinePersonaSaving}
         initialForm={inlinePersonaForm}
-        onClose={() => setShowPersonaCreateModal(false)}
-        onSave={handleInlinePersonaModalSave}
+        onClose={handlePersonaModalClose}
+        onSave={drawerMode === "edit" ? handleInlinePersonaEditSave : handleInlinePersonaModalSave}
       />
 
       <EmployeeDetailModal
@@ -2869,8 +3344,8 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                 <i className="bi bi-exclamation-triangle-fill" />
               </div>
               <div>
-                <div className="inv-pro-confirm-title">CONFIRMAR ELIMINACION</div>
-                <div className="inv-pro-confirm-sub">Esta accion es permanente</div>
+                <div className="inv-pro-confirm-title">CONFIRMAR INACTIVACION</div>
+                <div className="inv-pro-confirm-sub">El empleado se ocultara del listado activo</div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
                 <i className="bi bi-x-lg" />
@@ -2878,7 +3353,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="inv-pro-confirm-body">
-              <div className="inv-pro-confirm-question">Deseas eliminar este empleado?</div>
+              <div className="inv-pro-confirm-question">Deseas inactivar este empleado?</div>
               <div className="inv-pro-confirm-name">
                 <i className="bi bi-person-badge" />
                 <span>{confirmModal.nombre || "Empleado seleccionado"}</span>
@@ -2890,8 +3365,8 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                 Cancelar
               </button>
               <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
-                <i className="bi bi-trash3" />
-                <span>Eliminar</span>
+                <i className="bi bi-slash-circle" />
+                <span>Inactivar</span>
               </button>
             </div>
           </div>

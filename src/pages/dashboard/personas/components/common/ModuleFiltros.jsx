@@ -21,6 +21,7 @@ export default function ModuleFiltros({
   inactiveLabel = "Inactivas",
   sortLabel = "Ordenar por",
   sortOptions = DEFAULT_SORT_OPTIONS,
+  allowAll = true,
 }) {
   const selectId = `${drawerId}-sort`;
 
@@ -47,13 +48,15 @@ export default function ModuleFiltros({
         <div className="inv-prod-drawer-section">
           <div className="inv-prod-drawer-section-title">{statusLabel}</div>
           <div className="inv-ins-chip-grid">
-            <button
-              type="button"
-              className={`inv-ins-chip ${draft.estadoFiltro === "todos" ? "is-active" : ""}`}
-              onClick={() => onChangeDraft((state) => ({ ...state, estadoFiltro: "todos" }))}
-            >
-              {allLabel}
-            </button>
+            {allowAll ? (
+              <button
+                type="button"
+                className={`inv-ins-chip ${draft.estadoFiltro === "todos" ? "is-active" : ""}`}
+                onClick={() => onChangeDraft((state) => ({ ...state, estadoFiltro: "todos" }))}
+              >
+                {allLabel}
+              </button>
+            ) : null}
             <button
               type="button"
               className={`inv-ins-chip ${draft.estadoFiltro === "activo" ? "is-active" : ""}`}
@@ -69,7 +72,9 @@ export default function ModuleFiltros({
               {inactiveLabel}
             </button>
           </div>
-          <div className="inv-ins-help">Selecciona un estado o deja el listado completo.</div>
+          <div className="inv-ins-help">
+            {allowAll ? "Selecciona un estado o deja el listado completo." : "Selecciona si quieres ver activos o inactivos."}
+          </div>
         </div>
 
         <div className="inv-prod-drawer-section">

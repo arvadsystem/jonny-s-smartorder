@@ -13,23 +13,13 @@ const toDateInputValue = (value = new Date()) => {
 const sanitizeHoursInputValue = (value) => {
   const raw = String(value ?? '');
   if (!raw) return '';
-  const normalized = raw.replace(/,/g, '.').replace(/[^\d.]/g, '');
-  if (!normalized) return '';
-  const firstDotIndex = normalized.indexOf('.');
-  if (firstDotIndex < 0) return normalized;
-  const integerPart = normalized.slice(0, firstDotIndex);
-  const decimalPart = normalized
-    .slice(firstDotIndex + 1)
-    .replace(/\./g, '')
-    .slice(0, 2);
-  return `${integerPart}.${decimalPart}`;
+  return raw.replace(/\D/g, '');
 };
 
 const parseHoursInputValue = (value) => {
   const text = String(value ?? '').trim();
   if (!text) return Number.NaN;
-  const normalized = text.replace(/,/g, '.');
-  const parsed = Number(normalized);
+  const parsed = Number.parseInt(text, 10);
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
@@ -263,10 +253,9 @@ export default function PlanillaHorasExtraRegistroModal({
                 <label className="form-label">Horas</label>
                 <input
                   type="text"
-                  inputMode="decimal"
-                  pattern="^\\d*(\\.\\d{0,2})?$"
+                  inputMode="numeric"
                   className="form-control planillas-he-modal__field-control"
-                  placeholder="0.00"
+                  placeholder="0"
                   value={form.horas}
                   onKeyDown={(event) => {
                     if (['e', 'E', '+', '-'].includes(event.key)) {

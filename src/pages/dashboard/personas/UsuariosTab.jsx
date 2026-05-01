@@ -13,6 +13,7 @@ import useSearchSuggestionsDropdown, {
   MIN_CHARS_FOR_SUGGESTIONS,
   normalizeSearchText,
 } from './components/common/useSearchSuggestionsDropdown';
+import { buildPageRangeLabel, buildVisiblePageNumbers } from './components/common/paginationWindow';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
 import {
@@ -31,12 +32,13 @@ const emptyForm = {
 };
 
 const createInitialFiltersDraft = () => ({
-  estadoFiltro: 'todos',
+  estadoFiltro: 'activo',
   sortBy: 'recientes',
 });
 
 const IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+const GLOBAL_STATS_FETCH_LIMIT = 1;
 const FOTO_PERFIL_MAX_LENGTH = 500;
 const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'La imagen supera el limite de 20 MB.';
 const FOTO_PERFIL_URL_TOO_LARGE_MESSAGE = 'URL de imagen demasiado larga. Maximo 500 caracteres.';
@@ -206,14 +208,16 @@ export default function UsuariosTab({ openToast }) {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [viewMode, setViewMode] = useState(() => readViewMode('usuariosViewMode'));
 
-  const [estadoFiltro, setEstadoFiltro] = useState('todos');
+  const [estadoFiltro, setEstadoFiltro] = useState('activo');
   const [sortBy, setSortBy] = useState('recientes');
   const [filtersDraft, setFiltersDraft] = useState(createInitialFiltersDraft);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const limit = 10;
+  const isTableView = viewMode === "table";
+  const limit = isTableView ? 10 : 9;
   const [total, setTotal] = useState(0);
+  const [globalStats, setGlobalStats] = useState({ total: 0, activas: 0, inactivas: 0 });
 
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -256,12 +260,13 @@ export default function UsuariosTab({ openToast }) {
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const globalStatsRequestIdRef = useRef(0);
   const catalogLoadedRef = useRef(false);
   const panelRef = useRef(null);
   const imageInputRef = useRef(null);
 
   const getNombreCompleto = useCallback((u) =>
-    normalizeText(u?.nombre_completo || u?.empleado?.nombre_completo || u?.cliente?.nombre_completo || `${u?.nombre || ''} ${u?.apellido || ''}`) || 'No registrado',
+    normalizeText(u?.nombre_completo || u?.empleado?.nombre_completo || u?.cliente?.nombre_completo) || normalizeText(u?.nombre_usuario) || 'No registrado',
   []);
   const getSucursalNombre = useCallback((u) => normalizeText(u?.empleado?.sucursal_nombre || u?.sucursal_nombre) || 'No registrado', []);
   const getDni = useCallback((u) => normalizeText(u?.dni || u?.empleado?.dni || u?.cliente?.dni), []);
@@ -276,6 +281,7 @@ export default function UsuariosTab({ openToast }) {
   }, []);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
   const drawerMode = editId ? 'edit' : 'create';
   const isAnyDrawerOpen = showModal || filtersOpen;
 
@@ -376,7 +382,7 @@ export default function UsuariosTab({ openToast }) {
         const nombreCompleto =
           normalizeText(e?.persona_nombre_completo)
           || `${nombre} ${apellido}`.trim()
-          || `Empleado #${e?.id_empleado ?? 'N/D'}`;
+          || "Empleado sin nombre";
 
         return {
           id: String(e?.id_empleado ?? ''),
@@ -405,7 +411,7 @@ export default function UsuariosTab({ openToast }) {
             || c?.persona_nombre_completo
             || c?.nombre_principal
             || `${c?.persona_nombre || ''} ${c?.persona_apellido || ''}`
-          ) || `Cliente #${c?.id_cliente ?? 'N/D'}`;
+          ) || "Cliente sin nombre";
           return {
             id: String(c?.id_cliente ?? ''),
             nombre_completo: nombreCompleto,
@@ -441,10 +447,12 @@ export default function UsuariosTab({ openToast }) {
     const reqId = ++requestIdRef.current;
 
     try {
+      const estadoQuery = estadoFiltro === 'inactivo' ? false : true;
       const response = await personaService.getUsuariosV2({
         page,
         limit,
         q: debouncedSearch || '',
+        estado: estadoQuery,
       });
       if (!mountedRef.current || reqId !== requestIdRef.current) return;
 
@@ -459,7 +467,44 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current && reqId === requestIdRef.current) setLoading(false);
     }
-  }, [canListUsuarios, page, limit, debouncedSearch, safeToast]);
+  }, [canListUsuarios, page, limit, debouncedSearch, estadoFiltro, safeToast]);
+
+  const cargarUsuariosGlobalStats = useCallback(async () => {
+    if (!canListUsuarios) {
+      if (mountedRef.current) {
+        setGlobalStats({ total: 0, activas: 0, inactivas: 0 });
+      }
+      return;
+    }
+
+    const reqId = ++globalStatsRequestIdRef.current;
+    try {
+      const [activosResp, inactivosResp] = await Promise.all([
+        personaService.getUsuariosV2({
+          page: 1,
+          limit: GLOBAL_STATS_FETCH_LIMIT,
+          estado: true,
+        }),
+        personaService.getUsuariosV2({
+          page: 1,
+          limit: GLOBAL_STATS_FETCH_LIMIT,
+          estado: false,
+        }),
+      ]);
+
+      if (!mountedRef.current || reqId !== globalStatsRequestIdRef.current) return;
+
+      const activosTotal = Math.max(0, Number(normalizeListResponse(activosResp).total) || 0);
+      const inactivosTotal = Math.max(0, Number(normalizeListResponse(inactivosResp).total) || 0);
+      setGlobalStats({
+        total: activosTotal + inactivosTotal,
+        activas: activosTotal,
+        inactivas: inactivosTotal,
+      });
+    } catch {
+      // Keep current KPI values when the stats refresh fails.
+    }
+  }, [canListUsuarios]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -476,6 +521,10 @@ export default function UsuariosTab({ openToast }) {
   useEffect(() => {
     cargarUsuarios();
   }, [cargarUsuarios]);
+
+  useEffect(() => {
+    void cargarUsuariosGlobalStats();
+  }, [cargarUsuariosGlobalStats]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -761,6 +810,7 @@ export default function UsuariosTab({ openToast }) {
         safeToast('OK', 'Usuario generado correctamente');
 
         await cargarUsuarios();
+        await cargarUsuariosGlobalStats();
       } else {
         const original = usuarios.find((item) => String(item.id_usuario) === String(editId));
         if (!original) {
@@ -807,6 +857,7 @@ export default function UsuariosTab({ openToast }) {
         setShowModal(false);
         resetFormState();
         await cargarUsuarios();
+        await cargarUsuariosGlobalStats();
       }
     } catch (error) {
       const errorMessage = String(error?.message || 'No se pudo guardar');
@@ -922,7 +973,7 @@ export default function UsuariosTab({ openToast }) {
 
     setDeletingId(id);
     try {
-      await personaService.deleteUsuarioV2(id);
+      await personaService.updateUsuarioV2(id, { estado: false });
       if (String(editId) === String(id)) {
         setShowModal(false);
         resetFormState();
@@ -936,10 +987,11 @@ export default function UsuariosTab({ openToast }) {
         await cargarUsuarios();
       }
 
-      safeToast('OK', 'Usuario eliminado');
+      safeToast('OK', 'Usuario inactivado');
       closeConfirmDelete();
+      await cargarUsuariosGlobalStats();
     } catch (error) {
-      safeToast('ERROR', error.message || 'No se pudo eliminar', 'danger');
+      safeToast('ERROR', error.message || 'No se pudo inactivar', 'danger');
       await cargarUsuarios();
     } finally {
       if (mountedRef.current) setDeletingId(null);
@@ -979,6 +1031,10 @@ export default function UsuariosTab({ openToast }) {
 
     return filtered;
   }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo, getRolNombre]);
+  const pageWindowLabel = useMemo(
+    () => buildPageRangeLabel({ page, limit, total, currentLength: usuariosFiltrados.length }),
+    [limit, page, total, usuariosFiltrados.length]
+  );
 
   const predictiveSuggestions = useMemo(() => {
     const searchTerm = normalizeSearchText(search).toLowerCase();
@@ -1059,13 +1115,16 @@ export default function UsuariosTab({ openToast }) {
     recentStorageKey: 'usuariosRecentSearchesV1',
   });
 
-  const stats = useMemo(() => {
-    const totalRows = usuariosFiltrados.length;
-    const activas = usuariosFiltrados.filter((u) => parseBooleanField(u)).length;
-    return { total: totalRows, activas, inactivas: totalRows - activas };
-  }, [usuariosFiltrados]);
+  const stats = useMemo(
+    () => ({
+      total: globalStats.total,
+      activas: globalStats.activas,
+      inactivas: globalStats.inactivas,
+    }),
+    [globalStats]
+  );
 
-  const hasActiveFilters = search.trim() !== '' || estadoFiltro !== 'todos' || sortBy !== 'recientes';
+  const hasActiveFilters = search.trim() !== '' || estadoFiltro !== 'activo' || sortBy !== 'recientes';
   const colsClass = cardsPerPage >= 6 ? 'cols-3' : cardsPerPage >= 4 ? 'cols-2' : 'cols-1';
 
   const openFiltersDrawer = () => {
@@ -1077,13 +1136,13 @@ export default function UsuariosTab({ openToast }) {
   };
 
   const applyFiltersDrawer = () => {
-    setEstadoFiltro(filtersDraft.estadoFiltro || 'todos');
+    setEstadoFiltro(filtersDraft.estadoFiltro === 'inactivo' ? 'inactivo' : 'activo');
     setSortBy(filtersDraft.sortBy || 'recientes');
     setFiltersOpen(false);
   };
 
   const clearVisualFilters = useCallback(() => {
-    setEstadoFiltro('todos');
+    setEstadoFiltro('activo');
     setSortBy('recientes');
     setFiltersDraft(createInitialFiltersDraft());
   }, []);
@@ -1134,6 +1193,22 @@ export default function UsuariosTab({ openToast }) {
           <div className="inv-prod-results-meta personas-page__results-meta">
             <span>{loading ? 'Cargando usuarios...' : `${usuariosFiltrados.length} resultados`}</span>
             <span>{loading ? '' : `Total: ${total}`}</span>
+            <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                role="switch"
+                checked={estadoFiltro === 'inactivo'}
+                onChange={(event) => {
+                  const nextEstado = event.target.checked ? 'inactivo' : 'activo';
+                  setEstadoFiltro(nextEstado);
+                  setFiltersDraft((state) => ({ ...state, estadoFiltro: nextEstado }));
+                  setPage((prev) => (prev === 1 ? prev : 1));
+                }}
+                aria-label="Ver inactivos"
+              />
+              <span className="form-check-label">Ver inactivos</span>
+            </label>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
           </div>
 
@@ -1146,7 +1221,7 @@ export default function UsuariosTab({ openToast }) {
               <EntityTable>
                 <table className="table personas-page__table">
                   <thead><tr><th scope="col">Usuario</th><th scope="col">Sucursal</th><th scope="col">DNI</th><th scope="col">Telefono</th><th scope="col">Nombre usuario</th><th scope="col">Fecha creacion</th><th scope="col">Estado</th><th scope="col">Codigo</th><th scope="col" className="text-end">Acciones</th></tr></thead>
-                  <tbody>{usuariosFiltrados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => openDetalle(usuario)} title="Ver detalle" disabled={actionLoading || deleting || !canVerDetalleUsuario}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting || !canEditUsuario}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title="Eliminar" disabled={actionLoading || deleting || !canDeleteUsuario}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} /><span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span></button></div></td></tr>); })}</tbody>
+                  <tbody>{usuariosFiltrados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => openDetalle(usuario)} title="Ver detalle" disabled={actionLoading || deleting || !canVerDetalleUsuario}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting || !canEditUsuario}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title={active ? 'Inactivar' : 'Inactivo'} disabled={actionLoading || deleting || !canDeleteUsuario || !active}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-slash-circle'}`} /><span className="inv-catpro-action-label">{deleting ? 'Inactivando...' : 'Inactivar'}</span></button></div></td></tr>); })}</tbody>
                 </table>
               </EntityTable>
             ) : (
@@ -1160,10 +1235,52 @@ export default function UsuariosTab({ openToast }) {
             )}
           </div>
 
-          <div className="personas-page__pagination">
-            <button type="button" className="btn btn-outline-secondary" disabled={page === 1 || loading || actionLoading || !!deletingId} onClick={() => setPage((prev) => prev - 1)}><i className="bi bi-chevron-left me-1" />Anterior</button>
-            <span>Pagina {page} de {totalPages}</span>
-            <button type="button" className="btn btn-outline-secondary" disabled={page >= totalPages || loading || actionLoading || !!deletingId} onClick={() => setPage((prev) => prev + 1)}>Siguiente<i className="bi bi-chevron-right ms-1" /></button>
+          <div className="inv-warehouse-moves__pagination inv-ins-pagination">
+            <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
+              {`Mostrando ${pageWindowLabel} de ${total}`}
+            </div>
+            <div className="inv-warehouse-moves__pagination-controls">
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1 || loading || actionLoading || !!deletingId}
+                aria-label="Pagina anterior"
+              >
+                <i className="bi bi-chevron-left" aria-hidden="true" />
+                <span>Anterior</span>
+              </button>
+
+              <div className="inv-warehouse-moves__pagination-pages">
+                {visiblePageNumbers.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    className={`inv-warehouse-moves__page-number ${pageNumber === page ? 'is-active' : ''}`.trim()}
+                    onClick={() => setPage(pageNumber)}
+                    aria-label={`Ir a la pagina ${pageNumber}`}
+                    aria-current={pageNumber === page ? 'page' : undefined}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+              </div>
+
+              <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">
+                {`Pagina ${page} de ${totalPages}`}
+              </div>
+
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page >= totalPages || loading || actionLoading || !!deletingId}
+                aria-label="Pagina siguiente"
+              >
+                <span>Siguiente</span>
+                <i className="bi bi-chevron-right" aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1173,7 +1290,7 @@ export default function UsuariosTab({ openToast }) {
 
       <ModuleFiltros open={filtersOpen} drawerId="usr-filtros-drawer" iconClass="bi bi-people-fill" title="Filtros de usuarios" subtitle="Estado y orden visual del listado" draft={filtersDraft}
         onChangeDraft={setFiltersDraft} onClose={() => setFiltersOpen(false)} onApply={applyFiltersDrawer} onClear={clearVisualFilters}
-        allLabel="Todos" activeLabel="Activos" inactiveLabel="Inactivos" />
+        allowAll={false} activeLabel="Activos" inactiveLabel="Inactivos" />
 
       <UsuarioModal
         open={showModal}
@@ -1261,7 +1378,7 @@ export default function UsuariosTab({ openToast }) {
       <UsuarioDetailModal open={Boolean(detailUsuario)} usuario={detailUsuario} onClose={() => setDetailUsuario(null)} />
 
       {confirmModal.show && (
-        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}><div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}><div className="inv-pro-confirm-head"><div className="inv-pro-confirm-head-icon"><i className="bi bi-exclamation-triangle-fill" /></div><div><div className="inv-pro-confirm-title">CONFIRMAR ELIMINACION</div><div className="inv-pro-confirm-sub">Esta accion es permanente</div></div><button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar"><i className="bi bi-x-lg" /></button></div><div className="inv-pro-confirm-body"><div className="inv-pro-confirm-question">Deseas eliminar este usuario?</div><div className="inv-pro-confirm-name"><i className="bi bi-person-badge" /><span>{confirmModal.nombre || 'Usuario seleccionado'}</span></div></div><div className="inv-pro-confirm-footer"><button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>Cancelar</button><button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}><i className="bi bi-trash3" /><span>Eliminar</span></button></div></div></div>
+        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}><div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}><div className="inv-pro-confirm-head"><div className="inv-pro-confirm-head-icon"><i className="bi bi-exclamation-triangle-fill" /></div><div><div className="inv-pro-confirm-title">CONFIRMAR INACTIVACION</div><div className="inv-pro-confirm-sub">El usuario se ocultara del listado activo</div></div><button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar"><i className="bi bi-x-lg" /></button></div><div className="inv-pro-confirm-body"><div className="inv-pro-confirm-question">Deseas inactivar este usuario?</div><div className="inv-pro-confirm-name"><i className="bi bi-person-badge" /><span>{confirmModal.nombre || 'Usuario seleccionado'}</span></div></div><div className="inv-pro-confirm-footer"><button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>Cancelar</button><button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}><i className="bi bi-slash-circle" /><span>Inactivar</span></button></div></div></div>
       )}
 
       {tempPasswordModal.show && (

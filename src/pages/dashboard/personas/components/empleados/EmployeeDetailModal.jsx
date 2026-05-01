@@ -301,14 +301,14 @@ const buildEmployeePrintTemplate = ({
     <title>Detalle de Empleado</title>
     <style>
       :root {
-        --ink: #2f1a10;
-        --brown: #6d3a26;
-        --brown-soft: #8a563a;
-        --paper: #f7f4ef;
-        --card: #f3efe8;
-        --line: #dccfbe;
-        --ok: #3f7d35;
-        --warn: #8d2d2d;
+        --ink: #151515;
+        --brown: #424242;
+        --brown-soft: #626262;
+        --paper: #ffffff;
+        --card: #ffffff;
+        --line: #d4d4d4;
+        --ok: #2d6a3a;
+        --warn: #7a2f2f;
       }
       * { box-sizing: border-box; }
       body {
@@ -316,15 +316,15 @@ const buildEmployeePrintTemplate = ({
         font-family: "Segoe UI", Tahoma, Arial, sans-serif;
         color: var(--ink);
         background: #ffffff;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        -webkit-print-color-adjust: economy;
+        print-color-adjust: economy;
       }
       .sheet {
         width: calc(210mm - 12mm);
         min-height: calc(297mm - 12mm);
         margin: 0 auto;
         background: var(--paper);
-        border: 1px solid #ece4d8;
+        border: 1px solid #d7d7d7;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -333,31 +333,26 @@ const buildEmployeePrintTemplate = ({
         position: relative;
         display: flex;
         align-items: center;
-        min-height: 102px;
-        padding: 16px 18px 14px 124px;
+        min-height: 78px;
+        padding: 11px 16px 10px 102px;
         background: #fff;
+        border-bottom: 1px solid #d7d7d7;
         break-inside: avoid-page;
         page-break-inside: avoid;
       }
       .header::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        right: 0;
-        top: 25px;
-        height: 56px;
-        background: linear-gradient(135deg, #4d2214 0%, #7a452c 45%, #5f2c1a 100%);
+        display: none;
       }
       .header-logo {
         position: absolute;
         left: 16px;
-        top: 23px;
+        top: 16px;
         z-index: 2;
         display: block;
         width: auto;
-        height: 56px;
-        max-width: 96px;
-        max-height: 56px;
+        height: 44px;
+        max-width: 86px;
+        max-height: 44px;
         margin: 0;
         padding: 0;
         border: 0;
@@ -365,22 +360,23 @@ const buildEmployeePrintTemplate = ({
         box-shadow: none;
         object-fit: contain;
         object-position: center;
+        filter: grayscale(100%);
       }
       .header-copy {
         position: relative;
         z-index: 2;
-        color: #fff;
+        color: #121212;
       }
       .header-copy h1 {
         margin: 0;
-        font-size: 31px;
+        font-size: 27px;
         line-height: 1.1;
-        letter-spacing: 0.2px;
+        letter-spacing: 0.1px;
       }
       .header-copy p {
         margin: 4px 0 0;
-        font-size: 16px;
-        opacity: 0.96;
+        font-size: 14px;
+        color: #4a4a4a;
       }
       .content {
         padding: 16px 18px 12px;
@@ -395,18 +391,18 @@ const buildEmployeePrintTemplate = ({
         text-align: center;
         padding: 6px 12px;
         border-radius: 999px;
-        border: 1px solid #d9cdbf;
-        background: #f5eee3;
-        color: #6e3f29;
+        border: 1px solid #d3d3d3;
+        background: #ffffff;
+        color: #2f2f2f;
         font-weight: 700;
-        font-size: 18px;
+        font-size: 17px;
       }
       .employee-name {
         margin: 2px 0 0;
         text-align: center;
         font-size: 42px;
         line-height: 1.06;
-        color: #2f1710;
+        color: #151515;
         font-weight: 800;
       }
       .employee-code {
@@ -415,15 +411,15 @@ const buildEmployeePrintTemplate = ({
         font-size: 14px;
         font-weight: 700;
         letter-spacing: 0.4px;
-        color: #6f4c3b;
+        color: #5a5a5a;
       }
       .image-wrap {
         margin: 6px auto 10px;
         width: 170px;
         height: 204px;
-        border: 1.5px dashed #d7c9b7;
+        border: 1px dashed #c8c8c8;
         border-radius: 14px;
-        background: #fcfaf6;
+        background: #ffffff;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -436,7 +432,7 @@ const buildEmployeePrintTemplate = ({
       }
       .image-placeholder {
         text-align: center;
-        color: #8b6c5a;
+        color: #666;
         font-size: 13px;
       }
       .image-placeholder strong {
@@ -447,9 +443,9 @@ const buildEmployeePrintTemplate = ({
       .separator {
         width: 360px;
         max-width: 100%;
-        height: 2px;
+        height: 1px;
         margin: 0 auto 10px;
-        background: linear-gradient(90deg, transparent 0%, #9f5d3d 20%, #9f5d3d 80%, transparent 100%);
+        background: #d3d3d3;
       }
       .intent-badge {
         margin: -2px auto 8px;
@@ -457,9 +453,9 @@ const buildEmployeePrintTemplate = ({
         text-align: center;
         font-size: 12px;
         line-height: 1.35;
-        color: #5f4334;
-        background: #f0e5d8;
-        border: 1px solid #dbc9b6;
+        color: #525252;
+        background: #ffffff;
+        border: 1px solid #d5d5d5;
         border-radius: 10px;
         padding: 6px 10px;
       }
@@ -475,8 +471,8 @@ const buildEmployeePrintTemplate = ({
       }
       .column {
         background: var(--card);
-        border: 1px solid #eadfce;
-        border-radius: 12px;
+        border: 1px solid #d7d7d7;
+        border-radius: 10px;
         padding: 6px 12px;
         break-inside: avoid-page;
         page-break-inside: avoid;
@@ -499,15 +495,15 @@ const buildEmployeePrintTemplate = ({
       .detail-value {
         font-size: 16px;
         font-weight: 600;
-        color: #2f1a10;
+        color: #151515;
       }
       .detail-value.state-active { color: var(--ok); }
       .detail-value.state-inactive { color: var(--warn); }
       .footer {
         margin-top: auto;
-        background: #f2ece3;
-        border: 1px solid #e7dbc9;
-        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #d7d7d7;
+        border-radius: 10px;
         padding: 10px 14px;
         break-inside: avoid-page;
         page-break-inside: avoid;
@@ -521,18 +517,18 @@ const buildEmployeePrintTemplate = ({
       .sign-item h3 {
         margin: 0 0 7px;
         font-size: 14px;
-        color: #3b2318;
+        color: #2f2f2f;
       }
       .sign-line {
-        border-bottom: 1.5px dashed #bda690;
+        border-bottom: 1px dashed #b4b4b4;
         height: 16px;
       }
       .meta {
-        border-top: 1px solid #d8c8b4;
+        border-top: 1px solid #d0d0d0;
         padding-top: 8px;
         font-size: 12px;
         line-height: 1.3;
-        color: #5b4337;
+        color: #444;
         display: grid;
         grid-template-columns: 1fr auto;
         gap: 8px;
