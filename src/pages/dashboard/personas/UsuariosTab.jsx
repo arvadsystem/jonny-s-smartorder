@@ -8,6 +8,7 @@ import ModuleKPICards from './components/common/ModuleKPICards';
 import UsuarioCard from './components/usuarios/UsuarioCard';
 import UsuarioDetailModal from './components/usuarios/UsuarioDetailModal';
 import UsuarioModal from './components/usuarios/UsuarioModal';
+import { parseEstadoUsuario } from './components/usuarios/estadoUtils';
 import SearchSuggestionsDropdown from './components/common/SearchSuggestionsDropdown';
 import useSearchSuggestionsDropdown, {
   MIN_CHARS_FOR_SUGGESTIONS,
@@ -38,7 +39,8 @@ const createInitialFiltersDraft = () => ({
 
 const IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const IMAGE_MAX_BYTES = 20 * 1024 * 1024;
-const GLOBAL_STATS_FETCH_LIMIT = 1;
+const USERS_FETCH_BATCH_LIMIT = 100;
+const USERS_FETCH_MAX_PAGES = 40;
 const FOTO_PERFIL_MAX_LENGTH = 500;
 const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'La imagen supera el limite de 20 MB.';
 const FOTO_PERFIL_URL_TOO_LARGE_MESSAGE = 'URL de imagen demasiado larga. Maximo 500 caracteres.';
@@ -134,12 +136,7 @@ const buildUsernamePreview = (empleado, usedSet) => {
   return `${base2}9999`;
 };
 
-const parseBooleanField = (row) => {
-  if (Object.prototype.hasOwnProperty.call(row || {}, 'estado')) return Boolean(row.estado);
-  if (Object.prototype.hasOwnProperty.call(row || {}, 'activo')) return Boolean(row.activo);
-  if (Object.prototype.hasOwnProperty.call(row || {}, 'habilitado')) return Boolean(row.habilitado);
-  return true;
-};
+const parseBooleanField = (row) => parseEstadoUsuario(row);
 
 const resolveCardsPerPage = (width) => {
   if (width >= 1200) return 6;
@@ -217,7 +214,6 @@ export default function UsuariosTab({ openToast }) {
   const isTableView = viewMode === "table";
   const limit = isTableView ? 10 : 9;
   const [total, setTotal] = useState(0);
-  const [globalStats, setGlobalStats] = useState({ total: 0, activas: 0, inactivas: 0 });
 
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -260,7 +256,6 @@ export default function UsuariosTab({ openToast }) {
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
-  const globalStatsRequestIdRef = useRef(0);
   const catalogLoadedRef = useRef(false);
   const panelRef = useRef(null);
   const imageInputRef = useRef(null);
@@ -280,8 +275,6 @@ export default function UsuariosTab({ openToast }) {
     return normalizeText(u?.rol?.nombre || u?.rol_nombre || u?.nombre_rol);
   }, []);
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
   const drawerMode = editId ? 'edit' : 'create';
   const isAnyDrawerOpen = showModal || filtersOpen;
 
@@ -447,18 +440,38 @@ export default function UsuariosTab({ openToast }) {
     const reqId = ++requestIdRef.current;
 
     try {
-      const estadoQuery = estadoFiltro === 'inactivo' ? false : true;
-      const response = await personaService.getUsuariosV2({
-        page,
-        limit,
-        q: debouncedSearch || '',
-        estado: estadoQuery,
-      });
-      if (!mountedRef.current || reqId !== requestIdRef.current) return;
+      const allItems = [];
+      let pageCursor = 1;
+      let expectedTotal = Number.POSITIVE_INFINITY;
 
-      const { items, total: totalResp } = normalizeListResponse(response);
-      setUsuarios(items);
-      setTotal(totalResp);
+      while (pageCursor <= USERS_FETCH_MAX_PAGES && allItems.length < expectedTotal) {
+        const response = await personaService.getUsuariosV2({
+          page: pageCursor,
+          limit: USERS_FETCH_BATCH_LIMIT,
+        });
+        if (!mountedRef.current || reqId !== requestIdRef.current) return;
+
+        const { items, total: totalResp } = normalizeListResponse(response);
+        const batch = Array.isArray(items) ? items : [];
+        const parsedTotal = Number(totalResp);
+        if (Number.isFinite(parsedTotal) && parsedTotal >= 0) expectedTotal = parsedTotal;
+        if (batch.length === 0) break;
+        allItems.push(...batch);
+        if (batch.length < USERS_FETCH_BATCH_LIMIT) break;
+        pageCursor += 1;
+      }
+
+      const seen = new Set();
+      const deduped = allItems.filter((item) => {
+        const id = String(item?.id_usuario ?? '').trim();
+        if (!id) return true;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+
+      setUsuarios(deduped);
+      setTotal(deduped.length);
     } catch (error) {
       if (!mountedRef.current) return;
       setUsuarios([]);
@@ -467,44 +480,7 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current && reqId === requestIdRef.current) setLoading(false);
     }
-  }, [canListUsuarios, page, limit, debouncedSearch, estadoFiltro, safeToast]);
-
-  const cargarUsuariosGlobalStats = useCallback(async () => {
-    if (!canListUsuarios) {
-      if (mountedRef.current) {
-        setGlobalStats({ total: 0, activas: 0, inactivas: 0 });
-      }
-      return;
-    }
-
-    const reqId = ++globalStatsRequestIdRef.current;
-    try {
-      const [activosResp, inactivosResp] = await Promise.all([
-        personaService.getUsuariosV2({
-          page: 1,
-          limit: GLOBAL_STATS_FETCH_LIMIT,
-          estado: true,
-        }),
-        personaService.getUsuariosV2({
-          page: 1,
-          limit: GLOBAL_STATS_FETCH_LIMIT,
-          estado: false,
-        }),
-      ]);
-
-      if (!mountedRef.current || reqId !== globalStatsRequestIdRef.current) return;
-
-      const activosTotal = Math.max(0, Number(normalizeListResponse(activosResp).total) || 0);
-      const inactivosTotal = Math.max(0, Number(normalizeListResponse(inactivosResp).total) || 0);
-      setGlobalStats({
-        total: activosTotal + inactivosTotal,
-        activas: activosTotal,
-        inactivas: inactivosTotal,
-      });
-    } catch {
-      // Keep current KPI values when the stats refresh fails.
-    }
-  }, [canListUsuarios]);
+  }, [canListUsuarios, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -521,10 +497,6 @@ export default function UsuariosTab({ openToast }) {
   useEffect(() => {
     cargarUsuarios();
   }, [cargarUsuarios]);
-
-  useEffect(() => {
-    void cargarUsuariosGlobalStats();
-  }, [cargarUsuariosGlobalStats]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -810,7 +782,6 @@ export default function UsuariosTab({ openToast }) {
         safeToast('OK', 'Usuario generado correctamente');
 
         await cargarUsuarios();
-        await cargarUsuariosGlobalStats();
       } else {
         const original = usuarios.find((item) => String(item.id_usuario) === String(editId));
         if (!original) {
@@ -857,7 +828,6 @@ export default function UsuariosTab({ openToast }) {
         setShowModal(false);
         resetFormState();
         await cargarUsuarios();
-        await cargarUsuariosGlobalStats();
       }
     } catch (error) {
       const errorMessage = String(error?.message || 'No se pudo guardar');
@@ -963,16 +933,10 @@ export default function UsuariosTab({ openToast }) {
       }
       if (String(detailUsuario?.id_usuario) === String(id)) setDetailUsuario(null);
 
-      const emptyPage = usuarios.length === 1 && page > 1;
-      if (emptyPage) {
-        setPage((prev) => Math.max(1, prev - 1));
-      } else {
-        await cargarUsuarios();
-      }
+      await cargarUsuarios();
 
       safeToast('OK', 'Usuario inactivado');
       closeConfirmDelete();
-      await cargarUsuariosGlobalStats();
     } catch (error) {
       safeToast('ERROR', error.message || 'No se pudo inactivar', 'danger');
       await cargarUsuarios();
@@ -1014,9 +978,17 @@ export default function UsuariosTab({ openToast }) {
 
     return filtered;
   }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo, getRolNombre]);
+
+  const totalPages = Math.max(1, Math.ceil(usuariosFiltrados.length / limit));
+  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
+  const usuariosPaginados = useMemo(() => {
+    const start = Math.max(0, (page - 1) * limit);
+    return usuariosFiltrados.slice(start, start + limit);
+  }, [limit, page, usuariosFiltrados]);
+
   const pageWindowLabel = useMemo(
-    () => buildPageRangeLabel({ page, limit, total, currentLength: usuariosFiltrados.length }),
-    [limit, page, total, usuariosFiltrados.length]
+    () => buildPageRangeLabel({ page, limit, total: usuariosFiltrados.length, currentLength: usuariosPaginados.length }),
+    [limit, page, usuariosFiltrados.length, usuariosPaginados.length]
   );
 
   const predictiveSuggestions = useMemo(() => {
@@ -1100,11 +1072,11 @@ export default function UsuariosTab({ openToast }) {
 
   const stats = useMemo(
     () => ({
-      total: globalStats.total,
-      activas: globalStats.activas,
-      inactivas: globalStats.inactivas,
+      total: usuarios.length,
+      activas: usuarios.filter((item) => parseBooleanField(item)).length,
+      inactivas: Math.max(0, usuarios.length - usuarios.filter((item) => parseBooleanField(item)).length),
     }),
-    [globalStats]
+    [usuarios]
   );
 
   const hasActiveFilters = search.trim() !== '' || estadoFiltro !== 'activo' || sortBy !== 'recientes';
@@ -1135,6 +1107,12 @@ export default function UsuariosTab({ openToast }) {
     setShowModal(false);
     setFiltersOpen(false);
   };
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const selectedUser = usuarios.find((item) => String(item.id_usuario) === String(editId)) || null;
   const clearAllFilters = useCallback(() => {
@@ -1204,12 +1182,12 @@ export default function UsuariosTab({ openToast }) {
               <EntityTable>
                 <table className="table personas-page__table">
                   <thead><tr><th scope="col">Usuario</th><th scope="col">Sucursal</th><th scope="col">DNI</th><th scope="col">Telefono</th><th scope="col">Nombre usuario</th><th scope="col">Fecha creacion</th><th scope="col">Estado</th><th scope="col">Codigo</th><th scope="col" className="text-end">Acciones</th></tr></thead>
-                  <tbody>{usuariosFiltrados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => openDetalle(usuario)} title="Ver detalle" disabled={actionLoading || deleting || !canVerDetalleUsuario}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting || !canEditUsuario}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title={active ? 'Inactivar' : 'Inactivo'} disabled={actionLoading || deleting || !canDeleteUsuario || !active}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-slash-circle'}`} /><span className="inv-catpro-action-label">{deleting ? 'Inactivando...' : 'Inactivar'}</span></button></div></td></tr>); })}</tbody>
+                  <tbody>{usuariosPaginados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => openDetalle(usuario)} title="Ver detalle" disabled={actionLoading || deleting || !canVerDetalleUsuario}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting || !canEditUsuario}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title={active ? 'Inactivar' : 'Inactivo'} disabled={actionLoading || deleting || !canDeleteUsuario || !active}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-slash-circle'}`} /><span className="inv-catpro-action-label">{deleting ? 'Inactivando...' : 'Inactivar'}</span></button></div></td></tr>); })}</tbody>
                 </table>
               </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
-                {usuariosFiltrados.map((usuario, idx) => (
+                {usuariosPaginados.map((usuario, idx) => (
                   <UsuarioCard key={usuario?.id_usuario ?? idx} usuario={usuario} index={(page - 1) * limit + idx}
                     onOpenEdit={iniciarEdicion} onOpenDelete={openConfirmDelete} onOpenDetail={openDetalle} canEdit={canEditUsuario} canDelete={canDeleteUsuario} canViewDetail={canVerDetalleUsuario}
                     actionLoading={actionLoading} deletingId={deletingId} />
@@ -1220,7 +1198,7 @@ export default function UsuariosTab({ openToast }) {
 
           <div className="inv-warehouse-moves__pagination inv-ins-pagination">
             <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
-              {`Mostrando ${pageWindowLabel} de ${total}`}
+              {`Mostrando ${pageWindowLabel} de ${usuariosFiltrados.length}`}
             </div>
             <div className="inv-warehouse-moves__pagination-controls">
               <button
