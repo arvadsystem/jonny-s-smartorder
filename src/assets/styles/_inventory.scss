@@ -7737,3 +7737,147 @@
     flex: 0 0 156px;
   }
 }
+
+// AM: Bloque 5 - unificacion visual premium de KPIs informativas en Inventario.
+.inv-catpro-card .inv-prod-kpis,
+.inv-oc-stats-band,
+.inv-warehouse-moves__summary-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card,
+.inv-oc-stat-card.inv-invstat-card,
+.inv-warehouse-summary-card.inv-invstat-card {
+  min-height: 92px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start;
+  gap: 12px !important;
+  padding: 0.7rem 0.8rem !important;
+  border-radius: 12px !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content,
+.inv-warehouse-summary-card.inv-invstat-card .inv-warehouse-summary-card__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content span,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span,
+.inv-warehouse-summary-card.inv-invstat-card .inv-warehouse-summary-card__copy span {
+  color: rgba(82, 44, 34, 0.8);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content strong,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong,
+.inv-warehouse-summary-card.inv-invstat-card .inv-warehouse-summary-card__copy strong {
+  color: #17080a;
+  font-size: 1.46rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.inv-invstat-icon,
+.inv-warehouse-summary-card__icon {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  color: #9a5319;
+  box-shadow: inset 0 0 0 1px rgba(157, 150, 112, 0.2);
+  flex-shrink: 0;
+}
+
+.inv-oc-module .inv-oc-stats-band {
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+@media (max-width: 767.98px) {
+  .inv-catpro-card .inv-prod-kpis,
+  .inv-oc-stats-band,
+  .inv-warehouse-moves__summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .inv-catpro-card .inv-prod-kpi.inv-invstat-card,
+  .inv-oc-stat-card.inv-invstat-card,
+  .inv-warehouse-summary-card.inv-invstat-card {
+    min-height: 86px;
+  }
+}
+
+// AM: Bloque 5.1 - ajuste fino exclusivo KPIs de Ordenes de compra (compactas + centradas).
+.inv-oc-module .inv-oc-stats-band {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  align-items: stretch;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+  min-height: 78px;
+  padding: 0.48rem 0.58rem !important;
+  gap: 0.48rem !important;
+  align-items: center !important;
+  justify-content: center;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-invstat-icon {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 10px;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span {
+  font-size: 0.74rem;
+  line-height: 1.05;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong {
+  font-size: 1.18rem;
+  line-height: 1;
+}
+
+@media (max-width: 1199.98px) {
+  .inv-oc-module .inv-oc-stats-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-oc-module .inv-oc-stats-band {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+    min-height: 74px;
+    padding: 0.44rem 0.54rem !important;
+  }
+}
