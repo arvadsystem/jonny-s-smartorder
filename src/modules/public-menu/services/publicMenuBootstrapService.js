@@ -80,6 +80,13 @@ const resolvePublicImageUrl = (rawUrl) => {
   return `${base}${path}`;
 };
 
+const toBoolean = (value, fallback = true) => {
+  if (value === true || value === false) return value;
+  if (value === 1 || value === '1' || String(value || '').toLowerCase() === 'true') return true;
+  if (value === 0 || value === '0' || String(value || '').toLowerCase() === 'false') return false;
+  return fallback;
+};
+
 // Normaliza estructura de sucursal para componentes de UI.
 const normalizeBranch = (raw) => ({
   id: Number(raw?.id_sucursal ?? raw?.id),
@@ -88,7 +95,8 @@ const normalizeBranch = (raw) => ({
   schedule: raw?.horario || raw?.schedule || 'Horario no disponible',
   etaMinutes: raw?.tiempo_entrega || raw?.etaMinutes || '20-30 min',
   imageUrl: resolvePublicImageUrl(raw?.url_imagen || raw?.imageUrl || ''),
-  isOpen: raw?.isOpen ?? raw?.estado ?? true
+  statusLabel: raw?.status_label || '',
+  isOpen: toBoolean(raw?.is_open ?? raw?.isOpen ?? raw?.estado, true)
 });
 
 const normalizeBranchWithUi = (raw) => {
