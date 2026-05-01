@@ -263,7 +263,7 @@ const Perfil = () => {
           <div className="card shadow-sm perfil-panel">
             <div className="card-body">
               <div className="alert alert-danger mb-3">{error}</div>
-              <button className="btn btn-outline-danger btn-sm" onClick={cargar}>
+              <button className="btn btn-outline-danger btn-sm perfil-page__retry-btn" onClick={cargar}>
                 Reintentar carga
               </button>
             </div>
@@ -276,24 +276,28 @@ const Perfil = () => {
   return (
     <div className="p-4 perfil-page">
       {showSaveConfirm && (
-        <div className="perfil-save-toast" role="status" aria-live="polite">
-          <div className="perfil-save-toast__body">
-            <div className="perfil-save-toast__icon" aria-hidden="true">
+        <div className="inv-toast-wrap" role="status" aria-live="polite">
+          <article className="inv-toast-card success">
+            <div className="inv-toast-icon" aria-hidden="true">
               <i className="bi bi-check-circle-fill" />
             </div>
-            <div className="perfil-save-toast__copy">
-              <div className="perfil-save-toast__title">ACTUALIZADO</div>
-              <div className="perfil-save-toast__subtitle">Perfil actualizado correctamente</div>
+
+            <div className="inv-toast-content">
+              <div className="inv-toast-title">ACTUALIZADO</div>
+              <div className="inv-toast-message">Perfil actualizado correctamente</div>
             </div>
+
             <button
               type="button"
-              className="perfil-save-toast__close"
+              className="inv-toast-close"
               onClick={() => setShowSaveConfirm(false)}
               aria-label="Cerrar"
             >
               <i className="bi bi-x-lg" />
             </button>
-          </div>
+
+            <div className="inv-toast-progress" aria-hidden="true" />
+          </article>
         </div>
       )}
 
