@@ -3,7 +3,9 @@ import CombosFormDrawer from './components/CombosFormDrawer';
 import CombosTable from './components/CombosTable';
 import CombosToolbar from './components/CombosToolbar';
 import MenuActionToast from './components/MenuActionToast';
+import MenuConfirmDialog from './components/MenuConfirmDialog';
 import useCombosAdmin from './hooks/useCombosAdmin';
+import { resolveComboActivo, resolveComboNombre } from './utils/combosAdminUtils';
 
 const CombosAdmin = () => {
   const {
@@ -47,12 +49,27 @@ const CombosAdmin = () => {
   } = useCombosAdmin();
 
   const [toastMessage, setToastMessage] = useState('');
+  const [estadoConfirm, setEstadoConfirm] = useState(null);
 
   // Muestra confirmacion visible despues de crear/editar/cambiar estado de combos.
   useEffect(() => {
     if (!success) return;
     setToastMessage(success);
   }, [success]);
+
+  const closeEstadoConfirm = () => {
+    if (togglingId) return;
+    setEstadoConfirm(null);
+  };
+
+  const confirmCambiarEstado = async () => {
+    if (!estadoConfirm) return;
+    await onCambiarEstado(estadoConfirm);
+    setEstadoConfirm(null);
+  };
+
+  const estadoConfirmActivo = estadoConfirm ? resolveComboActivo(estadoConfirm) : false;
+  const estadoConfirmNombre = String(resolveComboNombre(estadoConfirm) || 'Combo seleccionado');
 
   return (
     <>
@@ -89,7 +106,7 @@ const CombosAdmin = () => {
             cardImageErrors={cardImageErrors}
             onCardImageError={setCardImageError}
             onEditar={onEditar}
-            onCambiarEstado={onCambiarEstado}
+            onCambiarEstado={setEstadoConfirm}
           />
         </div>
       </div>
@@ -126,6 +143,21 @@ const CombosAdmin = () => {
         title="Combos"
         message={toastMessage}
         onClose={() => setToastMessage('')}
+      />
+
+      <MenuConfirmDialog
+        open={Boolean(estadoConfirm)}
+        title={estadoConfirmActivo ? 'Confirmar inactivacion' : 'Confirmar activacion'}
+        subtitle={estadoConfirmActivo ? 'El combo dejara de estar disponible' : 'El combo volvera a estar disponible'}
+        question={estadoConfirmActivo ? 'Deseas inactivar este combo?' : 'Deseas activar este combo?'}
+        description="El cambio afecta la disponibilidad de este combo en el menu."
+        itemLabel={estadoConfirmNombre}
+        itemIcon={estadoConfirmActivo ? 'bi-slash-circle' : 'bi-check-circle'}
+        confirmLabel={estadoConfirmActivo ? 'Inactivar' : 'Activar'}
+        confirmingLabel="Procesando..."
+        loading={Boolean(togglingId)}
+        onClose={closeEstadoConfirm}
+        onConfirm={confirmCambiarEstado}
       />
     </>
   );

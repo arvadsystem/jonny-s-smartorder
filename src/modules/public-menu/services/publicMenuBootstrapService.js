@@ -5,6 +5,9 @@ import { API_URL } from '../../../utils/constants';
 const CATALOG_CACHE_TTL_MS = 20_000;
 const catalogCache = new Map();
 const PUBLIC_ORDER_TYPES = new Set(['dine-in', 'pickup', 'delivery']);
+const SUPABASE_PUBLIC_BUCKET = 'jonnys-assets';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const LEGACY_GOOGLE_IMAGE_RE = /(?:drive\.google\.com|drive\.usercontent\.google\.com|googleusercontent\.com)/i;
 
 const toPositiveIntOrNull = (value) => {
   const parsed = Number(value);
@@ -48,51 +51,17 @@ const readValidCatalogCache = (key) => {
   return null;
 };
 
-const getDriveFileIdFromUrl = (rawUrl) => {
-  const safeUrl = String(rawUrl || '').trim();
-  if (!safeUrl) return '';
-
-  try {
-    const parsed = new URL(safeUrl);
-    const host = String(parsed.hostname || '').toLowerCase();
-    const isDriveHost =
-      host.includes('drive.google.com') ||
-      host.includes('drive.usercontent.google.com') ||
-      host.includes('lh3.googleusercontent.com');
-
-    if (!isDriveHost) return '';
-
-    const path = String(parsed.pathname || '');
-    const fromPath =
-      path.match(/\/file\/d\/([^/?#]+)/i)?.[1] ||
-      path.match(/\/d\/([^/?#]+)/i)?.[1] ||
-      path.match(/^\/d\/([^/?#]+)/i)?.[1] ||
-      '';
-
-    const fromQuery = String(parsed.searchParams.get('id') || '').trim();
-    return String(fromPath || fromQuery).trim();
-  } catch {
-    return '';
-  }
-};
-
-const normalizeDriveImageUrl = (rawUrl) => {
-  const safeUrl = String(rawUrl || '').trim();
-  if (!safeUrl) return '';
-
-  const fileId = getDriveFileIdFromUrl(safeUrl);
-  if (!fileId) return safeUrl;
-
-  // Evita redirecciones de drive.google.com/thumbnail y mejora tiempos de render.
-  return `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1200`;
-};
-
 const resolvePublicImageUrl = (rawUrl) => {
-  const normalized = normalizeDriveImageUrl(rawUrl);
+  const normalized = String(rawUrl || '').trim();
   if (!normalized) return '';
+  if (LEGACY_GOOGLE_IMAGE_RE.test(normalized)) return '';
 
   if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith('blob:') || normalized.startsWith('data:')) {
     return normalized;
+  }
+
+  if (normalized.startsWith(`${SUPABASE_PUBLIC_BUCKET}/`) && SUPABASE_URL) {
+    return `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public/${normalized}`;
   }
 
   const base = String(API_URL || '').replace(/\/+$/, '');

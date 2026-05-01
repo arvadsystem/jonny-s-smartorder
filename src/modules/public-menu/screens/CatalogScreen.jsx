@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import CatalogSkeleton from '../components/catalog/CatalogSkeleton';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import CartSheet from '../components/catalog/CartSheet';
+import AuthRequiredModal from '../components/feedback/AuthRequiredModal';
+import OrderSuccessModal from '../components/feedback/OrderSuccessModal';
 import PremiumCatalogHeader from '../components/catalog/PremiumCatalogHeader';
 import PremiumHero from '../components/catalog/PremiumHero';
 import PremiumProductSection from '../components/catalog/PremiumProductSection';
@@ -9,25 +10,57 @@ import PremiumStickyCart from '../components/catalog/PremiumStickyCart';
 import ProductDetailSheet from '../components/catalog/ProductDetailSheet';
 import StateBlock from '../components/feedback/StateBlock';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
+import { useAuth } from '../../../hooks/useAuth';
+import { useBranches } from '../hooks/useBranches';
 import { useCatalogProducts } from '../hooks/useCatalogProducts';
 import { usePublicMenuCart } from '../hooks/usePublicMenuCart';
 import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
 import { getPublicMenuPathByStep } from '../routes/flowSteps';
-import { PUBLIC_MENU_ORDER_TYPE_OPTIONS, PUBLIC_MENU_STEPS } from '../types/publicMenuTypes';
-import { buildCatalogPromoSections } from '../utils/catalogPromoSections';
+import {
+  PUBLIC_MENU_ORDER_TYPE_OPTIONS,
+  PUBLIC_MENU_ORDER_TYPES,
+  PUBLIC_MENU_STEPS
+} from '../types/publicMenuTypes';
 import { isPublicMenuAuthError, toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
 import { requiresItemConfiguration } from '../utils/publicMenuItemConfig';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
+import useOrderSuccessSound from '../hooks/useOrderSuccessSound';
 import {
   getHeroCarouselCustomImagesByBranch,
   getHeroCarouselSelectionByBranch
 } from '../utils/heroCarouselStorage';
 import { resolveInventarioImageUrl } from '../../../utils/inventarioImagenes';
+import jonnysLogo from '../../../assets/images/logo-sin-fondo.png';
 
 const getOrderTypeLabel = (orderTypeId) =>
   PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === orderTypeId)?.title || 'Pedido';
 
+const formatCategoryLabel = (category) =>
+  String(category || '').replace(/\btenders\b/gi, 'Tenders');
+
 const HERO_AUTOPLAY_MS = 5000;
+
+const getGreetingName = (user) => {
+  const candidates = [
+    user?.nombre_completo_cliente,
+    user?.nombre_cliente,
+    user?.cliente?.nombre_completo,
+    user?.cliente?.nombre,
+    user?.nombre_completo,
+    user?.nombre,
+    user?.nombres,
+    user?.nombre_usuario,
+    user?.email,
+    user?.correo
+  ];
+
+  const rawName = candidates
+    .map((value) => String(value || '').trim())
+    .find(Boolean);
+
+  if (!rawName) return '';
+  return rawName.includes('@') ? rawName.split('@')[0] : rawName.split(/\s+/)[0];
+};
 
 const buildCatalogHeroSlides = ({
   products = [],
@@ -140,12 +173,17 @@ const formatWhatsAppNumber = (value) => {
 // Paso 3: catalogo real basado en menu_vigente + detalle_menu.
 const CatalogScreen = () => {
   const navigate = useNavigate();
+  const outletContext = useOutletContext() || {};
+  const { user } = useAuth();
   const { state, actions } = usePublicMenuFlow();
   const branchId = state.selectedBranch?.id;
   const orderType = state.orderType;
+  const theme = outletContext.theme || 'dark';
+  const onToggleTheme = outletContext.onToggleTheme;
 
   const {
     products,
+    availableProducts,
     filteredProducts,
     categories,
     menuSummary,
@@ -154,25 +192,42 @@ const CatalogScreen = () => {
     error,
     syncWarning,
     stats,
+    setSearchTerm,
     setSelectedCategory,
     reloadCatalog
   } = useCatalogProducts({ branchId, orderType });
+  const {
+    branches,
+    loading: branchesLoading,
+    error: branchesError,
+    reloadBranches
+  } = useBranches();
+
+  const preferredBranch = useMemo(
+    () => state.selectedBranch || branches.find((branch) => branch?.isOpen) || branches[0] || null,
+    [branches, state.selectedBranch]
+  );
 
   const [cartOpen, setCartOpen] = useState(false);
+  const [authRequired, setAuthRequired] = useState({ open: false, message: '' });
+  const [orderSuccess, setOrderSuccess] = useState({ open: false, order: null });
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
   const [heroIndex, setHeroIndex] = useState(0);
   const [cartFabPulse, setCartFabPulse] = useState(false);
   const [recentlyAddedId, setRecentlyAddedId] = useState(null);
+  const [categorySwitching, setCategorySwitching] = useState(false);
   const heroTimerRef = useRef(null);
   const recentlyAddedTimerRef = useRef(null);
+  const categorySwitchTimerRef = useRef(null);
   const confirmLockRef = useRef(false);
   const authRedirectRef = useRef(false);
   const idempotencyRef = useRef({ fingerprint: '', key: '' });
   const previousTotalItemsRef = useRef(0);
   const catalogAnchorRef = useRef(null);
   const prefersReducedMotion = usePrefersReducedMotion();
+  const playOrderSuccessSound = useOrderSuccessSound();
 
   const {
     items: cartItems,
@@ -190,6 +245,18 @@ const CatalogScreen = () => {
     branch: state.selectedBranch
   });
 
+  useEffect(() => {
+    if (!state.selectedBranch?.id && preferredBranch?.id) {
+      actions.selectBranch(preferredBranch);
+    }
+  }, [actions, preferredBranch, state.selectedBranch?.id]);
+
+  useEffect(() => {
+    if (!state.orderType) {
+      actions.selectOrderType(PUBLIC_MENU_ORDER_TYPES.DINE_IN);
+    }
+  }, [actions, state.orderType]);
+
   const cartQuantityByDetail = useMemo(
     () => {
       const map = new Map();
@@ -204,24 +271,23 @@ const CatalogScreen = () => {
     [cartItems]
   );
   const orderTypeLabel = getOrderTypeLabel(orderType);
-  const promoSections = useMemo(
-    () => buildCatalogPromoSections(products),
-    [products]
-  );
+  const greetingName = getGreetingName(user);
   const topNavCategories = useMemo(
     () => categories.filter((category) => category !== 'all').slice(0, 8),
     [categories]
   );
+  const activeCategoryLabel = selectedCategory === 'all' ? 'Todo el menu' : formatCategoryLabel(selectedCategory);
+  const isCatalogLanding = selectedCategory === 'all';
   const heroSlides = useMemo(
     () =>
       buildCatalogHeroSlides({
-        products,
+        products: availableProducts,
         branchName: state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal',
         orderTypeLabel,
         preferredDetailIds: getHeroCarouselSelectionByBranch(branchId),
         customImages: getHeroCarouselCustomImagesByBranch(branchId)
       }),
-    [branchId, orderTypeLabel, products, state.selectedBranch?.displayName, state.selectedBranch?.name]
+    [availableProducts, branchId, orderTypeLabel, state.selectedBranch?.displayName, state.selectedBranch?.name]
   );
 
   useEffect(() => {
@@ -263,6 +329,12 @@ const CatalogScreen = () => {
     if (!recentlyAddedTimerRef.current) return;
     window.clearTimeout(recentlyAddedTimerRef.current);
     recentlyAddedTimerRef.current = null;
+  }, []);
+
+  useEffect(() => () => {
+    if (!categorySwitchTimerRef.current) return;
+    window.clearTimeout(categorySwitchTimerRef.current);
+    categorySwitchTimerRef.current = null;
   }, []);
 
   const goToHeroSlide = (index) => {
@@ -314,6 +386,18 @@ const CatalogScreen = () => {
     catalogAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const handleSelectCategory = (category) => {
+    setCategorySwitching(true);
+    setSearchTerm('');
+    setSelectedCategory(category);
+
+    if (categorySwitchTimerRef.current) window.clearTimeout(categorySwitchTimerRef.current);
+    categorySwitchTimerRef.current = window.setTimeout(() => {
+      setCategorySwitching(false);
+      categorySwitchTimerRef.current = null;
+    }, prefersReducedMotion ? 220 : 720);
+  };
+
   const handleConfiguredAdd = (product, configuration) => {
     addItem(product, configuration);
     const id = Number(product?.id_detalle_menu || 0);
@@ -323,6 +407,25 @@ const CatalogScreen = () => {
       recentlyAddedTimerRef.current = window.setTimeout(() => setRecentlyAddedId(null), 580);
     }
     closeConfigSheet();
+  };
+
+  const closeAuthRequiredModal = () => {
+    authRedirectRef.current = false;
+    setAuthRequired({ open: false, message: '' });
+  };
+
+  const goToLoginFromAuthModal = () => {
+    closeAuthRequiredModal();
+    navigate('/auth/login?from=public-menu');
+  };
+
+  const closeOrderSuccessModal = () => {
+    setOrderSuccess({ open: false, order: null });
+  };
+
+  const startNewOrderAfterSuccess = () => {
+    closeOrderSuccessModal();
+    handleScrollToCatalog();
   };
 
   // Guarda menu vigente en store para los siguientes pasos del flujo.
@@ -393,34 +496,23 @@ const CatalogScreen = () => {
       confirmLockRef.current = true;
       const created = await publicMenuBootstrapService.createOrder(payload);
 
-      actions.pushToast({
-        type: 'success',
-        message: created?.numero_ticket
-          ? `Pedido ${created.numero_ticket} enviado correctamente.`
-          : 'Pedido enviado correctamente.'
-      });
-
       setCartOpen(false);
       clearCart();
       idempotencyRef.current = { fingerprint: '', key: '' };
+      playOrderSuccessSound();
+      setOrderSuccess({ open: true, order: created });
     } catch (e) {
       if (isPublicMenuAuthError(e)) {
-        actions.pushToast({
-          type: 'error',
-          durationMs: 5000,
-          message: toPublicMenuUiErrorMessage(
-            e,
-            'Tu sesion de cliente no es valida. Inicia sesion para confirmar el pedido.'
-          )
-        });
-
         if (!authRedirectRef.current) {
           authRedirectRef.current = true;
           setCartOpen(false);
-          navigate('/auth/login?from=public-menu');
-          window.setTimeout(() => {
-            authRedirectRef.current = false;
-          }, 2000);
+          setAuthRequired({
+            open: true,
+            message: toPublicMenuUiErrorMessage(
+              e,
+              'Tu sesión de cliente no es válida. Inicia sesión para confirmar el pedido.'
+            )
+          });
         }
         return;
       }
@@ -446,14 +538,40 @@ const CatalogScreen = () => {
     navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.BRANCH));
   };
 
-  // Permite ajustar el tipo de pedido desde catalogo manteniendo el flujo existente.
-  const handleChangeOrderType = () => {
-    navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.ORDER_TYPE));
+  const handleSelectBranchFromHeader = (branch) => {
+    const nextBranchId = Number(branch?.id || 0);
+    if (!nextBranchId) return;
+
+    if (Number(state.selectedBranch?.id || 0) === nextBranchId) {
+      setSelectedCategory('all');
+      return;
+    }
+
+    closeConfigSheet();
+    clearCart();
+    idempotencyRef.current = { fingerprint: '', key: '' };
+    actions.selectMenu(null);
+    actions.selectBranch(branch);
+    if (orderType) actions.selectOrderType(orderType);
+    if (orderType === 'pickup' && state.pickupPaymentMethod) {
+      actions.setPickupPaymentMethod(state.pickupPaymentMethod);
+    }
+    setSelectedCategory('all');
   };
 
-  if (loading) {
-    return <CatalogSkeleton />;
-  }
+  // Permite ajustar el tipo de pedido desde catalogo manteniendo el flujo existente.
+  const handleChangeOrderType = (nextOrderType) => {
+    const normalized = String(nextOrderType || '').trim();
+    if (!normalized || normalized === orderType) return;
+
+    closeConfigSheet();
+    idempotencyRef.current = { fingerprint: '', key: '' };
+    actions.selectOrderType(normalized);
+    if (normalized === 'pickup' && !state.pickupPaymentMethod) {
+      actions.setPickupPaymentMethod('caja');
+    }
+    setSelectedCategory('all');
+  };
 
   if (error) {
     return (
@@ -467,7 +585,7 @@ const CatalogScreen = () => {
     );
   }
 
-  if (!products.length) {
+  if (!loading && branchId && !products.length) {
     return (
       <StateBlock
         variant="empty"
@@ -482,15 +600,25 @@ const CatalogScreen = () => {
       <PremiumCatalogHeader
         categories={topNavCategories}
         selectedCategory={selectedCategory}
-        onSelectCategory={setSelectedCategory}
+        onSelectCategory={handleSelectCategory}
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal'}
+        branchId={state.selectedBranch?.id}
         orderTypeLabel={orderTypeLabel}
+        orderType={orderType}
         onChangeBranch={handleChangeBranch}
+        onSelectBranch={handleSelectBranchFromHeader}
+        branches={branches}
+        branchesLoading={branchesLoading}
+        branchesError={branchesError}
+        onReloadBranches={reloadBranches}
         onChangeOrderType={handleChangeOrderType}
         onHomeClick={() => navigate('/menu-publico')}
-        onUserClick={() => navigate('/auth/login?from=public-menu')}
+        onUserClick={() => navigate('/auth/login?from=public-menu&intent=login')}
         onCartClick={() => setCartOpen(true)}
         cartCount={totalItems}
+        greetingName={greetingName}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
 
       <PremiumHero
@@ -515,7 +643,15 @@ const CatalogScreen = () => {
       ) : null}
 
       <div className="pm-category-content" ref={catalogAnchorRef}>
-        {stats.allFilteredSoldOut ? (
+        {categorySwitching ? (
+          <div className="pm-category-switch-loader" role="status" aria-label="Cargando categoria">
+            <div className="pm-category-switch-loader__ring" aria-hidden="true">
+              <img src={jonnysLogo} alt="" className="pm-category-switch-loader__logo" />
+            </div>
+          </div>
+        ) : null}
+
+        {!loading && !isCatalogLanding && stats.allFilteredSoldOut ? (
           <StateBlock
             variant="warning"
             title="Todo agotado por ahora"
@@ -523,28 +659,41 @@ const CatalogScreen = () => {
           />
         ) : null}
 
-        {!filteredProducts.length ? (
+        {!loading && !isCatalogLanding && !filteredProducts.length ? (
           <StateBlock
             variant="empty"
-            title="Sin resultados"
-            description="No encontramos productos en esta categoria."
+            title={selectedCategory === 'all' ? 'Sin productos disponibles' : 'Sin resultados'}
+            description={
+              selectedCategory === 'all'
+                ? 'No hay productos disponibles para ordenar en este momento.'
+                : 'No encontramos productos disponibles en esta categoria.'
+            }
             actionLabel="Ver todo"
             onAction={() => {
-              setSelectedCategory('all');
+              handleSelectCategory('all');
             }}
           />
-        ) : (
+        ) : null}
+
+        {!isCatalogLanding && filteredProducts.length ? (
           <PremiumProductSection
-            promoSections={promoSections}
+            categoryTitle={activeCategoryLabel}
             filteredProducts={filteredProducts}
             recentlyAddedId={recentlyAddedId}
             cartQuantityByDetail={cartQuantityByDetail}
-            onQuickAdd={handleCardAdd}
+            cartItems={cartItems}
+            total={total}
+            branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
+            confirmingOrder={confirmingOrder}
             onAdd={handleCardAdd}
             onIncrease={handleCardIncrease}
             onDecrease={handleCardDecrease}
+            onIncreaseLine={increaseItemByLine}
+            onDecreaseLine={decreaseItemByLine}
+            onRemoveLine={removeItemByLine}
+            onConfirmOrder={handleConfirmOrder}
           />
-        )}
+        ) : null}
       </div>
 
       <PremiumStickyCart
@@ -575,6 +724,22 @@ const CatalogScreen = () => {
         error=""
         onClose={closeConfigSheet}
         onAdd={handleConfiguredAdd}
+      />
+
+      <AuthRequiredModal
+        open={authRequired.open}
+        message={authRequired.message}
+        onLogin={goToLoginFromAuthModal}
+        onClose={closeAuthRequiredModal}
+      />
+
+      <OrderSuccessModal
+        open={orderSuccess.open}
+        order={orderSuccess.order}
+        branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
+        orderTypeLabel={orderTypeLabel}
+        onClose={closeOrderSuccessModal}
+        onNewOrder={startNewOrderAfterSuccess}
       />
     </section>
   );

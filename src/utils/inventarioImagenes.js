@@ -5,6 +5,8 @@ export const INVENTARIO_IMAGE_CONTEXT = Object.freeze({
   OC_EVIDENCIAS_PRIVADAS: 'OC_EVIDENCIAS_PRIVADAS'
 });
 
+const SUPABASE_PUBLIC_BUCKET = 'jonnys-assets';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const INVENTARIO_IMAGE_TYPES = Object.freeze(['image/jpeg', 'image/png', 'image/webp']);
 const INVENTARIO_OC_FILE_TYPES = Object.freeze(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
 
@@ -209,6 +211,10 @@ export const resolveInventarioImageUrl = (rawUrl) => {
   if (!normalized) return '';
   if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith('blob:') || normalized.startsWith('data:')) {
     return normalized;
+  }
+
+  if (normalized.startsWith(`${SUPABASE_PUBLIC_BUCKET}/`) && SUPABASE_URL) {
+    return `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public/${normalized}`;
   }
 
   return `${String(API_URL || '').replace(/\/+$/, '')}${normalized.startsWith('/') ? '' : '/'}${normalized}`;

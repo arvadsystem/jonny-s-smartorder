@@ -11,6 +11,18 @@ const recetasAdminService = {
   // Obtiene el detalle de una receta por ID.
   obtenerRecetaAdmin: async (id) => apiFetch(`${BASE_ENDPOINT}/${id}`, 'GET', null, { noCache: true }),
 
+  // Catalogo de insumos activos para armar detalle de receta.
+  listarInsumosDetalleReceta: async () =>
+    apiFetch(`${BASE_ENDPOINT}/catalogos/insumos`, 'GET', null, { noCache: true }),
+
+  // Obtiene los insumos/cantidades que componen una receta.
+  obtenerDetalleReceta: async (id) =>
+    apiFetch(`${BASE_ENDPOINT}/${id}/detalle`, 'GET', null, { noCache: true }),
+
+  // Reemplaza el detalle de insumos de una receta.
+  guardarDetalleReceta: async (id, detalleReceta) =>
+    apiFetch(`${BASE_ENDPOINT}/${id}/detalle`, 'PUT', { detalle_receta: detalleReceta }),
+
   // Crea una receta nueva.
   crearRecetaAdmin: async (data) => apiFetch(BASE_ENDPOINT, 'POST', data),
 

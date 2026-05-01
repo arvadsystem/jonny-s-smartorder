@@ -295,9 +295,33 @@
   font-size: 0.85rem;
 }
 
+.pm-detail-sheet__option-main {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.pm-detail-sheet__option-check {
+  width: 1.28rem;
+  height: 1.28rem;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(25, 29, 36, 0.28);
+  color: transparent;
+  flex: 0 0 auto;
+}
+
 .pm-detail-sheet__option.is-selected {
   border-color: #191d24;
   background: #f7f1e6;
+}
+
+.pm-detail-sheet__option.is-selected .pm-detail-sheet__option-check {
+  border-color: #b87342;
+  background: #b87342;
+  color: #fffaf2;
 }
 
 .pm-detail-sheet__qty {

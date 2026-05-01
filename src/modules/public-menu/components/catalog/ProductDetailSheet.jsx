@@ -255,8 +255,14 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
                         type="button"
                         className={`pm-detail-sheet__option ${isSelected ? 'is-selected' : ''}`}
                         onClick={() => toggleExtra(extra.id_extra)}
+                        aria-pressed={isSelected}
                       >
-                        <span>{extra.nombre}</span>
+                        <span className="pm-detail-sheet__option-main">
+                          <span className="pm-detail-sheet__option-check" aria-hidden="true">
+                            {isSelected ? <i className="bi bi-check-lg" /> : null}
+                          </span>
+                          <span>{extra.nombre}</span>
+                        </span>
                         <strong>+{currencyFormatter.format(extra.precio_adicional || 0)}</strong>
                       </button>
                     );
@@ -381,7 +387,7 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
 
             <section className="pm-detail-sheet__section">
               <div className="pm-detail-sheet__section-head">
-                <strong>Notas para este producto</strong>
+                <strong>Instrucciones para cocina</strong>
                 <span>{normalizeNote(lineNote).length}/{MAX_LINE_NOTE_LENGTH}</span>
               </div>
               <p className="pm-detail-sheet__hint">
@@ -391,7 +397,7 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
                 className="pm-detail-sheet__note-input"
                 value={lineNote}
                 onChange={(event) => setLineNote(normalizeNote(event.target.value))}
-                placeholder="Escribi las instrucciones que necesites."
+                placeholder="Ej: sin cebolla, sin mayonesa, bien tostado"
                 rows={3}
                 maxLength={MAX_LINE_NOTE_LENGTH}
               />

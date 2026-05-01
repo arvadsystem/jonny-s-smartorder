@@ -13,6 +13,7 @@ import {
   saveGlobalHeroCarouselCustomImages,
   saveGlobalHeroCarouselSelection
 } from '../../../modules/public-menu/utils/heroCarouselStorage';
+import MenuConfirmDialog from './components/MenuConfirmDialog';
 
 const MAX_CAROUSEL_ITEMS = 6;
 const MENU_PUBLIC_BUCKET = 'jonnys-assets';
@@ -30,6 +31,7 @@ const MenuCarruselAdmin = () => {
   const [customImages, setCustomImages] = useState([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [customImageConfirm, setCustomImageConfirm] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -113,6 +115,9 @@ const MenuCarruselAdmin = () => {
   );
 
   const selectedLookup = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const customImageCount = customImages.length;
+  const selectedTotal = Math.min(MAX_CAROUSEL_ITEMS, customImageCount + selectedIds.length);
+  const availableCatalogSlots = Math.max(0, MAX_CAROUSEL_ITEMS - customImageCount);
 
   const handleToggle = (idDetalleMenu) => {
     const id = Number(idDetalleMenu || 0);
@@ -124,7 +129,7 @@ const MenuCarruselAdmin = () => {
       if (exists) {
         return current.filter((value) => value !== id);
       }
-      if (current.length >= MAX_CAROUSEL_ITEMS) {
+      if (current.length >= availableCatalogSlots) {
         return current;
       }
       return [...current, id];
@@ -192,7 +197,12 @@ const MenuCarruselAdmin = () => {
       }
 
       if (uploadedRows.length > 0) {
-        setCustomImages((current) => [...uploadedRows, ...current].slice(0, MAX_CAROUSEL_ITEMS));
+        setCustomImages((current) => {
+          const next = [...uploadedRows, ...current].slice(0, MAX_CAROUSEL_ITEMS);
+          const nextCatalogSlots = Math.max(0, MAX_CAROUSEL_ITEMS - next.length);
+          setSelectedIds((ids) => ids.slice(0, nextCatalogSlots));
+          return next;
+        });
       }
     } catch (uploadError) {
       setError(uploadError?.message || 'No se pudo subir la imagen del carrusel.');
@@ -212,6 +222,17 @@ const MenuCarruselAdmin = () => {
   const removeCustomImage = (id) => {
     setSuccess('');
     setCustomImages((current) => current.filter((row) => row.id !== id));
+  };
+
+  const closeCustomImageConfirm = () => {
+    if (uploadingImages) return;
+    setCustomImageConfirm(null);
+  };
+
+  const confirmRemoveCustomImage = () => {
+    if (!customImageConfirm?.id) return;
+    removeCustomImage(customImageConfirm.id);
+    setCustomImageConfirm(null);
   };
 
   return (
@@ -239,7 +260,7 @@ const MenuCarruselAdmin = () => {
           </div>
           <div className="menu-carrusel-admin__kpi">
             <span className="menu-carrusel-admin__kpi-label">Seleccionadas</span>
-            <strong>{selectedIds.length} / {MAX_CAROUSEL_ITEMS}</strong>
+            <strong>{selectedTotal} / {MAX_CAROUSEL_ITEMS}</strong>
           </div>
           <button
             type="button"
@@ -284,7 +305,7 @@ const MenuCarruselAdmin = () => {
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-danger"
-                      onClick={() => removeCustomImage(row.id)}
+                      onClick={() => setCustomImageConfirm(row)}
                     >
                       Quitar
                     </button>
@@ -322,7 +343,7 @@ const MenuCarruselAdmin = () => {
                       type="button"
                       className={`btn btn-sm ${checked ? 'btn-warning' : 'btn-outline-secondary'}`}
                       onClick={() => handleToggle(id)}
-                      disabled={!checked && selectedIds.length >= MAX_CAROUSEL_ITEMS}
+                      disabled={!checked && selectedIds.length >= availableCatalogSlots}
                     >
                       {checked ? 'Quitar' : 'Agregar'}
                     </button>
@@ -349,6 +370,21 @@ const MenuCarruselAdmin = () => {
           </div>
         )}
       </div>
+
+      <MenuConfirmDialog
+        open={Boolean(customImageConfirm)}
+        title="Confirmar eliminacion"
+        subtitle="Esta imagen se quitara del carrusel"
+        question="Deseas quitar esta imagen personalizada?"
+        description="La imagen dejara de aparecer en el carrusel global cuando guardes la configuracion."
+        itemLabel={String(customImageConfirm?.title || 'Imagen personalizada')}
+        itemIcon="bi-image"
+        confirmLabel="Quitar"
+        confirmingLabel="Quitando..."
+        loading={uploadingImages}
+        onClose={closeCustomImageConfirm}
+        onConfirm={confirmRemoveCustomImage}
+      />
     </div>
   );
 };

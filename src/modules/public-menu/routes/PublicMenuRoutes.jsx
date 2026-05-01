@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import PublicMenuFlowShell from '../components/layout/PublicMenuFlowShell';
-import MenuLandingScreen from '../screens/MenuLandingScreen';
 import OrderTypeScreen from '../screens/OrderTypeScreen';
 import CatalogScreen from '../screens/CatalogScreen';
 import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
@@ -39,7 +38,7 @@ const PublicMenuRoutes = () => (
   <PublicMenuFlowProvider>
     <Routes>
       <Route element={<PublicMenuFlowShell />}>
-        <Route index element={<MenuLandingScreen />} />
+        <Route index element={<Navigate to="menu" replace />} />
         <Route path="sucursal" element={<Navigate to=".." replace />} />
 
         <Route
@@ -53,11 +52,7 @@ const PublicMenuRoutes = () => (
 
         <Route
           path="menu"
-          element={
-            <PublicMenuStepGuard>
-              <CatalogScreen />
-            </PublicMenuStepGuard>
-          }
+          element={<CatalogScreen />}
         />
 
         <Route path="*" element={<RedirectToBestStep />} />

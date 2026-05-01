@@ -3,7 +3,9 @@ import RecetasFormDrawer from './components/RecetasFormDrawer';
 import RecetasTable from './components/RecetasTable';
 import RecetasToolbar from './components/RecetasToolbar';
 import MenuActionToast from './components/MenuActionToast';
+import MenuConfirmDialog from './components/MenuConfirmDialog';
 import useRecetasAdmin from './hooks/useRecetasAdmin';
+import { resolveRecetaActiva } from './utils/recetasAdminUtils';
 
 const RecetasAdmin = () => {
   const {
@@ -18,6 +20,9 @@ const RecetasAdmin = () => {
       drawerMode,
       editingId,
       form,
+      detalleReceta,
+      insumosDetalleCatalog,
+      loadingDetalleCatalog,
       filtersOpen,
       filtersDraft,
       viewMode,
@@ -37,6 +42,9 @@ const RecetasAdmin = () => {
       setFiltersDraft,
       setFormPreviewError,
       onChangeField,
+      addDetalleRow,
+      removeDetalleRow,
+      updateDetalleRow,
       openCreateDrawer,
       closeCreateDrawer,
       openFiltersDrawer,
@@ -54,12 +62,27 @@ const RecetasAdmin = () => {
   } = useRecetasAdmin();
 
   const [toastMessage, setToastMessage] = useState('');
+  const [estadoConfirm, setEstadoConfirm] = useState(null);
 
   // Muestra confirmacion visible despues de crear/editar/cambiar estado de recetas.
   useEffect(() => {
     if (!success) return;
     setToastMessage(success);
   }, [success]);
+
+  const closeEstadoConfirm = () => {
+    if (togglingId) return;
+    setEstadoConfirm(null);
+  };
+
+  const confirmCambiarEstado = async () => {
+    if (!estadoConfirm) return;
+    await onCambiarEstado(estadoConfirm);
+    setEstadoConfirm(null);
+  };
+
+  const estadoConfirmActivo = estadoConfirm ? resolveRecetaActiva(estadoConfirm) : false;
+  const estadoConfirmNombre = String(estadoConfirm?.nombre_receta || 'Receta seleccionada');
 
   return (
     <>
@@ -125,7 +148,7 @@ const RecetasAdmin = () => {
               cardImageErrors={cardImageErrors}
               onCardImageError={setCardImageError}
               onEditar={onEditar}
-              onCambiarEstado={onCambiarEstado}
+              onCambiarEstado={setEstadoConfirm}
             />
           </div>
         </div>
@@ -223,8 +246,14 @@ const RecetasAdmin = () => {
         drawerMode={drawerMode}
         editingId={editingId}
         form={form}
+        detalleReceta={detalleReceta}
+        insumosDetalleCatalog={insumosDetalleCatalog}
+        loadingDetalleCatalog={loadingDetalleCatalog}
         saving={saving}
         onChangeField={onChangeField}
+        onAddDetalleRow={addDetalleRow}
+        onRemoveDetalleRow={removeDetalleRow}
+        onUpdateDetalleRow={updateDetalleRow}
         onSubmit={onSubmit}
         onClose={closeCreateDrawer}
         onClearImage={clearFormImage}
@@ -239,6 +268,21 @@ const RecetasAdmin = () => {
         title="Recetas"
         message={toastMessage}
         onClose={() => setToastMessage('')}
+      />
+
+      <MenuConfirmDialog
+        open={Boolean(estadoConfirm)}
+        title={estadoConfirmActivo ? 'Confirmar inactivacion' : 'Confirmar activacion'}
+        subtitle={estadoConfirmActivo ? 'La receta dejara de estar disponible' : 'La receta volvera a estar disponible'}
+        question={estadoConfirmActivo ? 'Deseas inactivar esta receta?' : 'Deseas activar esta receta?'}
+        description="El cambio afecta la disponibilidad de este item en el menu."
+        itemLabel={estadoConfirmNombre}
+        itemIcon={estadoConfirmActivo ? 'bi-slash-circle' : 'bi-check-circle'}
+        confirmLabel={estadoConfirmActivo ? 'Inactivar' : 'Activar'}
+        confirmingLabel="Procesando..."
+        loading={Boolean(togglingId)}
+        onClose={closeEstadoConfirm}
+        onConfirm={confirmCambiarEstado}
       />
     </>
   );

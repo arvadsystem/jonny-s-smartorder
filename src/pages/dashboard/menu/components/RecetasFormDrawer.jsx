@@ -7,8 +7,14 @@ const RecetasFormDrawer = ({
   drawerMode,
   editingId,
   form,
+  detalleReceta = [],
+  insumosDetalleCatalog = [],
+  loadingDetalleCatalog = false,
   saving,
   onChangeField,
+  onAddDetalleRow,
+  onRemoveDetalleRow,
+  onUpdateDetalleRow,
   onSubmit,
   onClose,
   onClearImage,
@@ -20,6 +26,7 @@ const RecetasFormDrawer = ({
 }) => {
   const requiresSpiceLevel = shouldRequireSpiceLevel(form?.nombre_receta);
   const imageInputRef = useRef(null);
+  const hasInsumosCatalog = Array.isArray(insumosDetalleCatalog) && insumosDetalleCatalog.length > 0;
 
   return (
     <aside
@@ -168,7 +175,7 @@ const RecetasFormDrawer = ({
                 onChange={onChangeField}
                 required
               />
-              <div className="form-text">Campo obligatorio solo para recetas de alitas o tenders.</div>
+              <div className="form-text">Campo obligatorio solo para recetas de alitas o Tenders.</div>
             </div>
           )}
 
@@ -186,6 +193,105 @@ const RecetasFormDrawer = ({
             />
           </div>
         </div>
+
+        <section className="menu-recetas-admin__detalle mt-3">
+          <div className="menu-recetas-admin__detalle-head">
+            <div>
+              <div className="menu-recetas-admin__detalle-title">Detalle receta</div>
+              <div className="menu-recetas-admin__detalle-sub">
+                Agrega los insumos y cantidades que cocina consume al vender esta receta.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn menu-recetas-admin__detalle-add"
+              onClick={onAddDetalleRow}
+              disabled={saving || loadingDetalleCatalog}
+            >
+              <i className="bi bi-plus-lg" aria-hidden="true" /> Insumo
+            </button>
+          </div>
+
+          {loadingDetalleCatalog ? (
+            <div className="menu-recetas-admin__detalle-empty">Cargando insumos...</div>
+          ) : null}
+
+          {!loadingDetalleCatalog && !hasInsumosCatalog ? (
+            <div className="menu-recetas-admin__detalle-empty">
+              No hay insumos activos para seleccionar.
+            </div>
+          ) : null}
+
+          <div className="menu-recetas-admin__detalle-list">
+            {(Array.isArray(detalleReceta) ? detalleReceta : []).map((row, index) => {
+              const selectedInsumo = insumosDetalleCatalog.find(
+                (item) => String(item.id_insumo) === String(row.id_insumo)
+              );
+              const unidadLabel = selectedInsumo?.unidad_simbolo || selectedInsumo?.unidad_nombre || 'Unidad';
+
+              return (
+                <div className="menu-recetas-admin__detalle-row" key={`detalle-receta-${index}`}>
+                  <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--insumo">
+                    <label className="form-label" htmlFor={`receta_detalle_insumo_${index}`}>Insumo</label>
+                    <select
+                      id={`receta_detalle_insumo_${index}`}
+                      className="form-select"
+                      value={row.id_insumo}
+                      onChange={(event) => onUpdateDetalleRow(index, 'id_insumo', event.target.value)}
+                      disabled={saving || loadingDetalleCatalog}
+                      required
+                    >
+                      <option value="">Seleccionar insumo</option>
+                      {insumosDetalleCatalog.map((insumo) => (
+                        <option key={insumo.id_insumo} value={insumo.id_insumo}>
+                          {insumo.nombre_insumo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="menu-recetas-admin__detalle-field">
+                    <label className="form-label" htmlFor={`receta_detalle_cant_${index}`}>Cantidad</label>
+                    <input
+                      id={`receta_detalle_cant_${index}`}
+                      type="number"
+                      min="0.0001"
+                      step="0.0001"
+                      className="form-control"
+                      value={row.cant}
+                      onChange={(event) => onUpdateDetalleRow(index, 'cant', event.target.value)}
+                      disabled={saving}
+                      required
+                    />
+                  </div>
+
+                  <div className="menu-recetas-admin__detalle-field">
+                    <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>Unidad</label>
+                    <input
+                      id={`receta_detalle_unidad_${index}`}
+                      className="form-control"
+                      value={unidadLabel}
+                      disabled
+                      readOnly
+                    />
+                    <input type="hidden" value={row.id_unidad_medida} readOnly />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn menu-recetas-admin__detalle-remove"
+                    onClick={() => onRemoveDetalleRow(index)}
+                    disabled={saving || detalleReceta.length <= 1}
+                    title="Quitar insumo"
+                    aria-label="Quitar insumo"
+                  >
+                    <i className="bi bi-trash3" aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
 
         <div className="d-flex gap-2 mt-3">
           <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={onClose} disabled={saving}>

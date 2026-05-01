@@ -1,48 +1,53 @@
-import ProductCarousel from './ProductCarousel';
-import PremiumProductCard from './PremiumProductCard';
+import CategoryHeader from './CategoryHeader';
+import MenuProductGrid from './MenuProductGrid';
+import OrderSummaryPanel from './OrderSummaryPanel';
 
-// PremiumProductSection: secciones destacadas + grid real de productos.
-// Props:
-// - promoSections: rails "lo mas pedido" del catalogo real.
-// - filteredProducts: listado filtrado actual.
-// - cartQuantityByDetail: mapa de cantidades en carrito por producto.
-// - handlers: mismos handlers existentes de add/increase/decrease.
+// PremiumProductSection: layout tipo menu con grid y resumen de orden.
+// Mantiene los handlers actuales; solo reorganiza la presentacion.
 const PremiumProductSection = ({
-  promoSections = [],
+  categoryTitle = 'Menu',
   filteredProducts = [],
   recentlyAddedId = null,
   cartQuantityByDetail = new Map(),
-  onQuickAdd,
+  cartItems = [],
+  total = 0,
+  branchName = '',
+  confirmingOrder = false,
   onAdd,
   onIncrease,
-  onDecrease
+  onDecrease,
+  onIncreaseLine,
+  onDecreaseLine,
+  onRemoveLine,
+  onConfirmOrder
 }) => (
-  <>
-    {promoSections.map((section) => (
-      <ProductCarousel
-        key={section.id}
-        title={section.title}
-        products={section.items}
-        badgeLabel={section.badgeLabel}
-        onQuickAdd={onQuickAdd}
-        recentlyAddedId={recentlyAddedId}
+  <div className="pm-menu-layout">
+    <main className="pm-menu-layout__main">
+      <CategoryHeader
+        title={categoryTitle}
+        count={filteredProducts.length}
+        availableCount={filteredProducts.filter((item) => item?.disponibilidad?.available).length}
       />
-    ))}
-
-    <div className="pm-product-grid">
-      {filteredProducts.map((product) => (
-        <PremiumProductCard
-          key={product.id_detalle_menu}
-          product={product}
-          cartQuantity={cartQuantityByDetail.get(Number(product?.id_detalle_menu || 0)) || 0}
-          onAdd={onAdd}
-          onIncrease={onIncrease}
-          onDecrease={onDecrease}
-          isRecentlyAdded={recentlyAddedId === Number(product?.id_detalle_menu || 0)}
-        />
-      ))}
-    </div>
-  </>
+      <MenuProductGrid
+        products={filteredProducts}
+        cartQuantityByDetail={cartQuantityByDetail}
+        recentlyAddedId={recentlyAddedId}
+        onAdd={onAdd}
+        onIncrease={onIncrease}
+        onDecrease={onDecrease}
+      />
+    </main>
+    <OrderSummaryPanel
+      branchName={branchName}
+      items={cartItems}
+      total={total}
+      confirming={confirmingOrder}
+      onIncrease={onIncreaseLine}
+      onDecrease={onDecreaseLine}
+      onRemove={onRemoveLine}
+      onConfirm={onConfirmOrder}
+    />
+  </div>
 );
 
 export default PremiumProductSection;

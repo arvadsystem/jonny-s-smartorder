@@ -28,6 +28,14 @@ const STEP_COPY = {
   }
 };
 
+const THEME_STORAGE_KEY = 'pm_menu_theme';
+
+const readInitialTheme = () => {
+  if (typeof window === 'undefined') return 'dark';
+  const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return saved === 'light' ? 'light' : 'dark';
+};
+
 // Shell keeps step navigation and sticky actions centralized.
 const PublicMenuFlowShell = () => {
   const navigate = useNavigate();
@@ -39,6 +47,7 @@ const PublicMenuFlowShell = () => {
   const normalizedPath = String(location.pathname || '').replace(/\/+$/, '');
   const isLandingView = normalizedPath === '/menu-publico' || normalizedPath === '';
   const [orderTypeActionArmed, setOrderTypeActionArmed] = useState(true);
+  const [theme, setTheme] = useState(readInitialTheme);
 
   const stepMeta = STEP_COPY[currentStep] || STEP_COPY[PUBLIC_MENU_STEPS.BRANCH];
   const hasPreviousStep = currentStepIndex > 0;
@@ -54,6 +63,15 @@ const PublicMenuFlowShell = () => {
     const timer = window.setTimeout(() => setOrderTypeActionArmed(true), 350);
     return () => window.clearTimeout(timer);
   }, [currentStep, state.orderType, state.pickupPaymentMethod]);
+
+  // Persiste el tema visual del menu publico entre visitas del cliente.
+  useEffect(() => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((current) => (current === 'light' ? 'dark' : 'light'));
+  };
 
   const getPrimaryAction = () => {
     if (currentStep === PUBLIC_MENU_STEPS.BRANCH) return null;
@@ -100,9 +118,11 @@ const PublicMenuFlowShell = () => {
     navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.BRANCH));
   };
 
+  const isMenuStep = currentStep === PUBLIC_MENU_STEPS.MENU;
+
   return (
-    <div className="pm-shell">
-      {!isLandingView && currentStep !== PUBLIC_MENU_STEPS.MENU ? (
+    <div className={`pm-shell pm-theme-${theme}`}>
+      {!isLandingView && !isMenuStep ? (
         <PublicHeader
           title={stepMeta.title}
           subtitle={stepMeta.subtitle}
@@ -154,9 +174,15 @@ const PublicMenuFlowShell = () => {
       ) : null}
 
       <main
-        className={`pm-shell__content ${currentStep === PUBLIC_MENU_STEPS.MENU ? 'pm-shell__content--catalog' : ''}`}
+        className={`pm-shell__content ${isMenuStep ? 'pm-shell__content--catalog menu-page-wrapper' : ''}`}
       >
-        <Outlet />
+        {isMenuStep ? (
+          <div className="menu-content-container">
+            <Outlet context={{ theme, onToggleTheme: toggleTheme }} />
+          </div>
+        ) : (
+          <Outlet context={{ theme, onToggleTheme: toggleTheme }} />
+        )}
       </main>
 
       {primaryAction ? (

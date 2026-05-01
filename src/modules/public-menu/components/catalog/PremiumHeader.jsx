@@ -10,13 +10,23 @@ const PremiumHeader = ({
   selectedCategory = 'all',
   onSelectCategory,
   branchName = 'Sucursal',
+  branchId = null,
   orderTypeLabel = 'Pedido',
+  orderType = '',
   onChangeBranch,
+  onSelectBranch,
+  branches = [],
+  branchesLoading = false,
+  branchesError = '',
+  onReloadBranches,
   onChangeOrderType,
   cartCount = 0,
   onHomeClick,
   onUserClick,
-  onCartClick
+  onCartClick,
+  greetingName = '',
+  theme = 'dark',
+  onToggleTheme
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -61,13 +71,23 @@ const PremiumHeader = ({
 
       <PremiumHeaderActions
         branchName={branchName}
+        branchId={branchId}
         cartCount={cartCount}
         orderTypeLabel={orderTypeLabel}
+        orderType={orderType}
         onChangeBranch={onChangeBranch}
+        onSelectBranch={onSelectBranch}
+        branches={branches}
+        branchesLoading={branchesLoading}
+        branchesError={branchesError}
+        onReloadBranches={onReloadBranches}
         onChangeOrderType={onChangeOrderType}
         onHomeClick={onHomeClick}
         onUserClick={onUserClick}
         onCartClick={onCartClick}
+        greetingName={greetingName}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
     </header>
   );

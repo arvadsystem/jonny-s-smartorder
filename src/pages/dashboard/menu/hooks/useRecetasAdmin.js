@@ -53,7 +53,7 @@ const validarFormulario = (form) => {
   }
   const requiresSpiceLevel = shouldRequireSpiceLevel(form.nombre_receta);
   if (requiresSpiceLevel && toNumberOrNull(form.id_nivel_picante) === null) {
-    return 'id_nivel_picante es obligatorio para alitas/tenders.';
+    return 'id_nivel_picante es obligatorio para alitas/Tenders.';
   }
   if (toNumberOrNull(form.id_tipo_departamento) === null) {
     return 'id_tipo_departamento es obligatorio.';
@@ -74,6 +74,42 @@ const validarFormulario = (form) => {
     }
   }
   return '';
+};
+
+const normalizeDetalleRows = (rows) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      id_insumo: toNumberOrNull(row?.id_insumo),
+      id_unidad_medida: toNumberOrNull(row?.id_unidad_medida),
+      cant: toNumberOrNull(row?.cant)
+    }))
+    .filter((row) => row.id_insumo !== null || row.id_unidad_medida !== null || row.cant !== null);
+
+const validarDetalleReceta = (rows) => {
+  const detalle = normalizeDetalleRows(rows);
+  if (detalle.length === 0) {
+    return { ok: false, message: 'Agrega al menos un insumo al detalle de receta.' };
+  }
+
+  const seen = new Set();
+  for (let index = 0; index < detalle.length; index += 1) {
+    const row = detalle[index];
+    if (row.id_insumo === null) {
+      return { ok: false, message: `Selecciona un insumo en la linea ${index + 1}.` };
+    }
+    if (row.id_unidad_medida === null) {
+      return { ok: false, message: `Selecciona unidad de medida en la linea ${index + 1}.` };
+    }
+    if (row.cant === null || row.cant <= 0) {
+      return { ok: false, message: `La cantidad de la linea ${index + 1} debe ser mayor a 0.` };
+    }
+    if (seen.has(row.id_insumo)) {
+      return { ok: false, message: 'No repitas el mismo insumo en el detalle de receta.' };
+    }
+    seen.add(row.id_insumo);
+  }
+
+  return { ok: true, detalle };
 };
 
 const buildPayloadBase = (form) => {
@@ -110,6 +146,29 @@ const extractArchivoId = (response) => {
   const parsed = Number(rawId);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
+
+const extractRecetaId = (response) => {
+  const rawId = response?.id_receta ?? response?.data?.id_receta ?? null;
+  const parsed = Number(rawId);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeInsumoCatalog = (response) => normalizeRows(response).map((row) => ({
+  id_insumo: Number(row?.id_insumo || 0),
+  nombre_insumo: String(row?.nombre_insumo || ''),
+  id_unidad_medida:
+    row?.id_unidad_medida === null || row?.id_unidad_medida === undefined
+      ? ''
+      : String(row.id_unidad_medida),
+  unidad_nombre: String(row?.unidad_nombre || ''),
+  unidad_simbolo: String(row?.unidad_simbolo || '').trim()
+})).filter((row) => row.id_insumo > 0);
+
+const normalizeDetalleFromApi = (response) => normalizeRows(response).map((row) => ({
+  id_insumo: String(row?.id_insumo ?? ''),
+  id_unidad_medida: String(row?.id_unidad_medida ?? ''),
+  cant: String(row?.cant ?? '')
+}));
 
 const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
   const payloadArchivo = {
@@ -195,6 +254,9 @@ const useRecetasAdmin = () => {
   const [formPreviewError, setFormPreviewError] = useState(false);
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
+  const [detalleReceta, setDetalleReceta] = useState([]);
+  const [insumosDetalleCatalog, setInsumosDetalleCatalog] = useState([]);
+  const [loadingDetalleCatalog, setLoadingDetalleCatalog] = useState(false);
   // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
     id_menu: ''
@@ -290,6 +352,40 @@ const useRecetasAdmin = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   }, []);
 
+  const cargarCatalogoDetalle = useCallback(async () => {
+    try {
+      setLoadingDetalleCatalog(true);
+      const response = await recetasAdminService.listarInsumosDetalleReceta();
+      setInsumosDetalleCatalog(normalizeInsumoCatalog(response));
+    } catch (e) {
+      setError(e?.message || 'No se pudo cargar el catalogo de insumos para detalle receta.');
+      setInsumosDetalleCatalog([]);
+    } finally {
+      setLoadingDetalleCatalog(false);
+    }
+  }, []);
+
+  const addDetalleRow = useCallback(() => {
+    setDetalleReceta((prev) => [...prev, { id_insumo: '', id_unidad_medida: '', cant: '' }]);
+  }, []);
+
+  const removeDetalleRow = useCallback((index) => {
+    setDetalleReceta((prev) => prev.filter((_, rowIndex) => rowIndex !== index));
+  }, []);
+
+  const updateDetalleRow = useCallback((index, field, value) => {
+    setDetalleReceta((prev) => prev.map((row, rowIndex) => {
+      if (rowIndex !== index) return row;
+
+      const next = { ...row, [field]: value };
+      if (field === 'id_insumo') {
+        const selected = insumosDetalleCatalog.find((item) => String(item.id_insumo) === String(value));
+        next.id_unidad_medida = selected?.id_unidad_medida || '';
+      }
+      return next;
+    }));
+  }, [insumosDetalleCatalog]);
+
   const openCreateDrawer = useCallback(() => {
     setFiltersOpen(false);
     setDrawerMode('create');
@@ -304,7 +400,9 @@ const useRecetasAdmin = () => {
     setFormPreviewError(false);
     setSelectedImageFile(null);
     setSelectedImagePreviewUrl('');
-  }, [defaultIds.id_menu]);
+    setDetalleReceta([{ id_insumo: '', id_unidad_medida: '', cant: '' }]);
+    void cargarCatalogoDetalle();
+  }, [cargarCatalogoDetalle, defaultIds.id_menu]);
 
   const closeCreateDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -336,16 +434,31 @@ const useRecetasAdmin = () => {
       setError(validationMessage);
       return;
     }
+    const detalleValidation = validarDetalleReceta(detalleReceta);
+    if (!detalleValidation.ok) {
+      setError(detalleValidation.message);
+      return;
+    }
 
     try {
       setSaving(true);
       const payload = await buildPayload({ form, editingId, selectedImageFile });
 
       if (editingId) {
-        await recetasAdminService.actualizarRecetaAdmin(editingId, payload);
+        await recetasAdminService.actualizarRecetaAdmin(editingId, {
+          ...payload,
+          detalle_receta: detalleValidation.detalle
+        });
         setSuccess('Receta actualizada correctamente.');
       } else {
-        await recetasAdminService.crearRecetaAdmin(payload);
+        const response = await recetasAdminService.crearRecetaAdmin({
+          ...payload,
+          detalle_receta: detalleValidation.detalle
+        });
+        const createdId = extractRecetaId(response);
+        if (!createdId) {
+          throw new Error('La receta se creo, pero no se pudo confirmar su id.');
+        }
         setSuccess('Receta creada correctamente.');
       }
 
@@ -359,13 +472,14 @@ const useRecetasAdmin = () => {
       setCardImageErrors({});
       setSelectedImageFile(null);
       setSelectedImagePreviewUrl('');
+      setDetalleReceta([]);
       await cargarRecetas();
     } catch (e) {
       setError(e?.message || 'No se pudo guardar la receta.');
     } finally {
       setSaving(false);
     }
-  }, [cargarRecetas, defaultIds.id_menu, editingId, form, selectedImageFile]);
+  }, [cargarRecetas, defaultIds.id_menu, detalleReceta, editingId, form, selectedImageFile]);
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {
@@ -373,9 +487,15 @@ const useRecetasAdmin = () => {
       setError('');
       setSuccess('');
       const receta = await recetasAdminService.obtenerRecetaAdmin(idReceta);
+      const [detalleResponse] = await Promise.all([
+        recetasAdminService.obtenerDetalleReceta(idReceta),
+        cargarCatalogoDetalle()
+      ]);
 
       setEditingId(Number(receta?.id_receta || idReceta));
       setForm(normalizeRecetaForForm(receta));
+      const detalleRows = normalizeDetalleFromApi(detalleResponse);
+      setDetalleReceta(detalleRows.length > 0 ? detalleRows : [{ id_insumo: '', id_unidad_medida: '', cant: '' }]);
       setDrawerMode('edit');
       setFiltersOpen(false);
       setDrawerOpen(true);
@@ -385,7 +505,7 @@ const useRecetasAdmin = () => {
     } catch (e) {
       setError(e?.message || 'No se pudo cargar la receta para edicion.');
     }
-  }, []);
+  }, [cargarCatalogoDetalle]);
 
   // Cambia estado activo/inactivo usando el endpoint PATCH del backend.
   const onCambiarEstado = useCallback(async (receta) => {
@@ -469,6 +589,9 @@ const useRecetasAdmin = () => {
       drawerMode,
       editingId,
       form,
+      detalleReceta,
+      insumosDetalleCatalog,
+      loadingDetalleCatalog,
       filtersOpen,
       filters,
       filtersDraft,
@@ -491,6 +614,9 @@ const useRecetasAdmin = () => {
       setFiltersDraft,
       setFormPreviewError,
       onChangeField,
+      addDetalleRow,
+      removeDetalleRow,
+      updateDetalleRow,
       openCreateDrawer,
       closeCreateDrawer,
       openFiltersDrawer,
