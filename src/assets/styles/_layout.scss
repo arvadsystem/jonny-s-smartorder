@@ -2,6 +2,8 @@ html,
 body,
 #root {
   background: var(--c-bg-soft) !important;
+  width: 100%;
+  max-width: 100%;
 }
 
 body {
@@ -11,6 +13,7 @@ body {
     linear-gradient(180deg, #faf7f4 0%, var(--shell-bg) 100%) !important;
   position: relative;
   isolation: isolate;
+  min-width: 100%;
 }
 
 body::before {
@@ -35,6 +38,8 @@ body::before {
   --sidebar-w-collapsed: 88px;
   --shell-sidebar-current: var(--sidebar-w);
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
   isolation: isolate;
 }
 
@@ -45,11 +50,19 @@ body::before {
 .dashboard-shell .main-content {
   min-height: 100vh;
   min-width: 0;
-  margin-left: calc(var(--shell-sidebar-current) + 20px);
+  box-sizing: border-box;
+  margin-left: calc(var(--shell-sidebar-current) + 10px);
+  width: auto;
+  max-width: none;
   padding: 10px 16px 32px 0;
   background: transparent !important;
   overflow-x: hidden;
   transition: margin-left 180ms ease, padding 180ms ease;
+}
+
+.dashboard-shell .main-content > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .container-fluid,
@@ -70,6 +83,8 @@ body::before {
 
   .dashboard-shell .main-content {
     margin-left: 0;
+    width: 100%;
+    max-width: 100%;
     padding: 10px 10px 92px;
   }
 }
