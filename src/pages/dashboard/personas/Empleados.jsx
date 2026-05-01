@@ -2260,7 +2260,55 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       setInlinePersonaSaving(true);
       try {
         await personaService.updatePersona(personaId, buildPersonaPayloadFromForm(personaFormState));
-        setInlinePersonaForm(normalizePersonaFormValues(personaFormState));
+        const normalizedPersona = normalizePersonaFormValues(personaFormState);
+        setInlinePersonaForm(normalizedPersona);
+        setPersonasCatalogo((prev) => {
+          const source = Array.isArray(prev) ? prev : [];
+          const idKey = String(personaId).trim();
+          const index = source.findIndex((item) => String(item?.id_persona ?? "").trim() === idKey);
+          const current = index >= 0 ? source[index] : { id_persona: personaId };
+          const rtnComplemento = String(normalizedPersona?.rtn ?? "").trim();
+          const telefono = String(normalizedPersona?.id_telefono ?? "").trim();
+          const direccion = String(normalizedPersona?.id_direccion ?? "").trim();
+          const correo = String(normalizedPersona?.id_correo ?? "").trim();
+
+          const patched = {
+            ...current,
+            id_persona: current?.id_persona ?? personaId,
+            nombre: String(normalizedPersona?.nombre ?? "").trim(),
+            apellido: String(normalizedPersona?.apellido ?? "").trim(),
+            dni: String(normalizedPersona?.dni ?? "").trim(),
+            genero: String(normalizedPersona?.genero ?? "").trim(),
+            fecha_nacimiento: String(normalizedPersona?.fecha_nacimiento ?? "").trim(),
+            rtn: rtnComplemento,
+            RTN: rtnComplemento,
+            persona_rtn: rtnComplemento,
+            persona_rtn_complemento: rtnComplemento,
+            rtn_persona: rtnComplemento,
+            rtn_complemento: rtnComplemento,
+            complemento_rtn: rtnComplemento,
+            numero_rtn: rtnComplemento,
+            texto_telefono: telefono,
+            telefono,
+            telefono_numero: telefono,
+            numero_telefono: telefono,
+            texto_direccion: direccion,
+            direccion,
+            direccion_detalle: direccion,
+            texto_correo: correo,
+            direccion_correo: correo,
+            correo,
+            email: correo,
+          };
+
+          if (index >= 0) {
+            const next = [...source];
+            next[index] = patched;
+            return next;
+          }
+
+          return [patched, ...source];
+        });
         setErrors((state) => ({ ...state, id_persona: undefined }));
         setShowPersonaEditModal(false);
         safeToast("OK", "Datos de persona actualizados");

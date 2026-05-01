@@ -41,13 +41,25 @@ const formatRtnDisplay = (value) => {
   return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8, 14)}`;
 };
 
-const buildPersonaRtnDisplay = (dniValue, complementoValue) => {
+const buildPersonaRtnDisplay = (dniValue, rtnValue) => {
   const dniDigits = String(dniValue ?? "").replace(/\D/g, "");
-  const complementoDigits = String(complementoValue ?? "").replace(/\D/g, "").slice(0, 1);
-  if (dniDigits.length === 13 && complementoDigits.length === 1) {
-    return formatRtnDisplay(`${dniDigits}${complementoDigits}`);
+  const rawRtn = String(rtnValue ?? "").trim();
+  if (!rawRtn) return "----";
+
+  const rtnDigits = rawRtn.replace(/\D/g, "");
+  if (rtnDigits.length === 14) {
+    return formatRtnDisplay(rtnDigits);
   }
-  return "----";
+
+  if (dniDigits.length === 13 && rtnDigits.length === 1) {
+    return formatRtnDisplay(`${dniDigits}${rtnDigits}`);
+  }
+
+  if (dniDigits.length === 13 && rtnDigits.length > 1 && rtnDigits.length < 14) {
+    return formatRtnDisplay(`${dniDigits}${rtnDigits.slice(-1)}`);
+  }
+
+  return rawRtn;
 };
 
 export default function ClienteCard({
@@ -82,11 +94,17 @@ export default function ClienteCard({
   const personaRtn = firstNonEmptyValue(
     personaRtnCatalog,
     cliente?.persona_rtn,
+    cliente?.persona_rtn_complemento,
     cliente?.rtn_persona,
+    cliente?.rtn_complemento,
+    cliente?.complemento_rtn,
     cliente?.numero_rtn,
     cliente?.persona?.rtn,
     cliente?.persona?.RTN,
+    cliente?.persona?.persona_rtn_complemento,
     cliente?.persona?.rtn_persona,
+    cliente?.persona?.rtn_complemento,
+    cliente?.persona?.complemento_rtn,
     cliente?.persona?.numero_rtn,
     cliente?.rtn,
     String(cliente?.documento_tipo ?? "").toLowerCase() === "rtn" ? cliente?.documento_valor : null

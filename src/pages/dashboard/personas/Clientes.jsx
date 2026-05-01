@@ -161,6 +161,8 @@ const ASYNC_SELECT_DEBOUNCE_MS = 300;
 const SUGGESTION_LIMIT = 8;
 const MAX_CLIENTES_PAGE_CACHE = 24;
 const GLOBAL_STATS_FETCH_LIMIT = 1;
+const PERSONAS_CATALOGO_PAGE_LIMIT = 200;
+const PERSONAS_CATALOGO_MAX_PAGES = 200;
 
 const isAbortError = (error) =>
   Boolean(error) && (
@@ -496,6 +498,7 @@ const Clientes = ({ openToast }) => {
   const listPrefetchAbortRef = useRef(null);
   const clientesListCacheRef = useRef(new Map());
   const catalogosCargadosRef = useRef(false);
+  const catalogosLoadingRef = useRef(false);
   const panelRef = useRef(null);
   const empresaSearchCacheRef = useRef(new Map());
   const tipoSearchCacheRef = useRef(new Map());
@@ -553,7 +556,15 @@ const Clientes = ({ openToast }) => {
         (Array.isArray(personasCatalogo) ? personasCatalogo : [])
           .map((p) => {
             const id = String(p?.id_persona ?? "").trim();
-            const rtn = firstNonEmptyValue(p?.rtn, p?.RTN, p?.rtn_persona, p?.numero_rtn);
+            const rtn = firstNonEmptyValue(
+              p?.rtn,
+              p?.RTN,
+              p?.persona_rtn_complemento,
+              p?.rtn_persona,
+              p?.rtn_complemento,
+              p?.complemento_rtn,
+              p?.numero_rtn
+            );
             return [id, rtn];
           })
           .filter(([id]) => id)
@@ -1025,26 +1036,87 @@ const Clientes = ({ openToast }) => {
     ]
   );
 
+  const cargarPersonasCatalogoCompleto = useCallback(async () => {
+    const personas = [];
+    let currentPage = 1;
+    let totalPages = 1;
+
+    while (currentPage <= totalPages && currentPage <= PERSONAS_CATALOGO_MAX_PAGES) {
+      const response = await personaService.getPersonas({
+        page: currentPage,
+        limit: PERSONAS_CATALOGO_PAGE_LIMIT,
+      });
+      const { items, total: totalItems } = normalizeListResponse(response);
+      if (Array.isArray(items) && items.length) {
+        personas.push(...items);
+      }
+
+      const safeTotal = Math.max(0, Number(totalItems) || 0);
+      totalPages = Math.max(1, Math.ceil(safeTotal / PERSONAS_CATALOGO_PAGE_LIMIT));
+      currentPage += 1;
+    }
+
+    return personas;
+  }, []);
+
   const cargarCatalogos = useCallback(async () => {
-    if (catalogosCargadosRef.current) return;
+    if (catalogosCargadosRef.current || catalogosLoadingRef.current) return;
+    catalogosLoadingRef.current = true;
 
     try {
-      const [personasResp, empresasResp, tiposResp] = await Promise.all([
-        personaService.getPersonasDetalle(1, 100),
+      const [personasTodas, empresasResp, tiposResp] = await Promise.all([
+        cargarPersonasCatalogoCompleto(),
         personaService.getEmpresas({ page: 1, limit: 100 }),
         parametrosService.listarCatalogo("tipo_cliente"),
       ]);
 
       if (!mountedRef.current) return;
 
-      setPersonasCatalogo(normalizeListResponse(personasResp).items);
+      const personasMap = new Map();
+      personasTodas.forEach((persona) => {
+        const id = String(persona?.id_persona ?? "").trim();
+        if (!id) return;
+        const previo = personasMap.get(id);
+        if (!previo) {
+          personasMap.set(id, persona);
+          return;
+        }
+        const rtnPrevio = firstNonEmptyValue(
+          previo?.rtn,
+          previo?.RTN,
+          previo?.persona_rtn_complemento,
+          previo?.rtn_persona,
+          previo?.rtn_complemento,
+          previo?.complemento_rtn,
+          previo?.numero_rtn
+        );
+        const rtnSiguiente = firstNonEmptyValue(
+          persona?.rtn,
+          persona?.RTN,
+          persona?.persona_rtn_complemento,
+          persona?.rtn_persona,
+          persona?.rtn_complemento,
+          persona?.complemento_rtn,
+          persona?.numero_rtn
+        );
+
+        if (!rtnPrevio && rtnSiguiente) {
+          personasMap.set(id, { ...previo, ...persona });
+        } else {
+          personasMap.set(id, { ...persona, ...previo });
+        }
+      });
+
+      setPersonasCatalogo(Array.from(personasMap.values()));
       setEmpresasCatalogo(normalizeListResponse(empresasResp).items);
       setTiposCliente(normalizeArrayPayload(tiposResp));
       catalogosCargadosRef.current = true;
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudieron cargar catalogos", "danger");
+    } finally {
+      catalogosLoadingRef.current = false;
     }
-  }, [safeToast]);
+  }, [cargarPersonasCatalogoCompleto, safeToast]);
 
   const cargarClientes = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
@@ -1162,6 +1234,10 @@ const Clientes = ({ openToast }) => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    cargarCatalogos();
+  }, [cargarCatalogos]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -1656,7 +1732,55 @@ const Clientes = ({ openToast }) => {
       setInlinePersonaSaving(true);
       try {
         await personaService.updatePersona(personaId, buildPersonaPayloadFromForm(personaFormState));
-        setInlinePersonaForm(normalizePersonaFormValues(personaFormState));
+        const normalizedPersona = normalizePersonaFormValues(personaFormState);
+        setInlinePersonaForm(normalizedPersona);
+        setPersonasCatalogo((prev) => {
+          const source = Array.isArray(prev) ? prev : [];
+          const idKey = String(personaId).trim();
+          const index = source.findIndex((item) => String(item?.id_persona ?? "").trim() === idKey);
+          const current = index >= 0 ? source[index] : { id_persona: personaId };
+          const rtnComplemento = String(normalizedPersona?.rtn ?? "").trim();
+          const telefono = String(normalizedPersona?.id_telefono ?? "").trim();
+          const direccion = String(normalizedPersona?.id_direccion ?? "").trim();
+          const correo = String(normalizedPersona?.id_correo ?? "").trim();
+
+          const patched = {
+            ...current,
+            id_persona: current?.id_persona ?? personaId,
+            nombre: String(normalizedPersona?.nombre ?? "").trim(),
+            apellido: String(normalizedPersona?.apellido ?? "").trim(),
+            dni: String(normalizedPersona?.dni ?? "").trim(),
+            genero: String(normalizedPersona?.genero ?? "").trim(),
+            fecha_nacimiento: String(normalizedPersona?.fecha_nacimiento ?? "").trim(),
+            rtn: rtnComplemento,
+            RTN: rtnComplemento,
+            persona_rtn: rtnComplemento,
+            persona_rtn_complemento: rtnComplemento,
+            rtn_persona: rtnComplemento,
+            rtn_complemento: rtnComplemento,
+            complemento_rtn: rtnComplemento,
+            numero_rtn: rtnComplemento,
+            texto_telefono: telefono,
+            telefono,
+            telefono_numero: telefono,
+            numero_telefono: telefono,
+            texto_direccion: direccion,
+            direccion,
+            direccion_detalle: direccion,
+            texto_correo: correo,
+            direccion_correo: correo,
+            correo,
+            email: correo,
+          };
+
+          if (index >= 0) {
+            const next = [...source];
+            next[index] = patched;
+            return next;
+          }
+
+          return [patched, ...source];
+        });
         setShowPersonaEditModal(false);
         safeToast("OK", "Datos de persona actualizados");
         clearClientesListCache();

@@ -87,11 +87,40 @@ export const formatPhone = (digits8) => {
 };
 
 const normalizeTextValue = (value) => String(value ?? "").trim();
+const normalizeComparableText = (value) =>
+  normalizeTextValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const UI_PLACEHOLDER_VALUES = new Set([
+  "no registrado",
+  "no registrada",
+  "sin registrar",
+  "sin registro",
+  "no disponible",
+  "sin correo",
+  "sin telefono",
+  "sin direccion",
+  "n/d",
+  "null",
+  "undefined",
+]);
+
+const isUiPlaceholderText = (value) => {
+  const normalized = normalizeComparableText(value);
+  if (!normalized) return false;
+  if (UI_PLACEHOLDER_VALUES.has(normalized)) return true;
+  if (/^no registrad[oa]$/.test(normalized)) return true;
+  return false;
+};
 
 const firstNonEmptyText = (...values) => {
   for (const value of values) {
     const text = normalizeTextValue(value);
-    if (text) return text;
+    if (!text) continue;
+    if (isUiPlaceholderText(text)) continue;
+    return text;
   }
   return "";
 };
