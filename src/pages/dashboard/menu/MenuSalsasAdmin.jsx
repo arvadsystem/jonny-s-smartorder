@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../../services/api';
 import MenuActionToast from './components/MenuActionToast';
+import MenuConfirmDialog from './components/MenuConfirmDialog';
 
 const createLocalRule = () => ({
   id_local: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
@@ -49,6 +50,7 @@ const MenuSalsasAdmin = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [toastMessage, setToastMessage] = useState('');
+  const [estadoConfirm, setEstadoConfirm] = useState(null);
 
   const [salsas, setSalsas] = useState([]);
   const [recetas, setRecetas] = useState([]);
@@ -143,6 +145,20 @@ const MenuSalsasAdmin = () => {
     if (!success) return;
     setToastMessage(success);
   }, [success]);
+
+  const closeEstadoConfirm = () => {
+    if (savingSalsa) return;
+    setEstadoConfirm(null);
+  };
+
+  const confirmToggleSalsaEstado = async () => {
+    if (!estadoConfirm) return;
+    await onToggleSalsaEstado(estadoConfirm);
+    setEstadoConfirm(null);
+  };
+
+  const estadoConfirmActivo = estadoConfirm ? isRowActive(estadoConfirm?.estado) : false;
+  const estadoConfirmNombre = String(estadoConfirm?.nombre || 'Salsa seleccionada');
 
   const resetForm = useCallback(() => {
     setForm(DEFAULT_FORM);
@@ -458,17 +474,23 @@ const MenuSalsasAdmin = () => {
                               <div className="d-inline-flex gap-2">
                                 <button
                                   type="button"
-                                  className="btn btn-sm btn-outline-secondary"
+                                  // Reutiliza el estilo de accion "Editar" del modulo Inventarios/Categorias.
+                                  className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action"
                                   onClick={() => onEditSalsa(row)}
+                                  title="Editar"
                                 >
-                                  Editar
+                                  <i className="bi bi-pencil-square" aria-hidden="true" />
+                                  <span className="inv-catpro-action-label">Editar</span>
                                 </button>
                                 <button
                                   type="button"
-                                  className={`btn btn-sm ${isActive ? 'btn-outline-danger' : 'btn-outline-success'}`}
-                                  onClick={() => void onToggleSalsaEstado(row)}
+                                  // Reutiliza la accion de estado de Inventarios/Categorias para inactivar/activar.
+                                  className={`inv-catpro-action ${isActive ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
+                                  onClick={() => setEstadoConfirm(row)}
+                                  title={isActive ? 'Inactivar' : 'Activar'}
                                 >
-                                  {isActive ? 'Inactivar' : 'Activar'}
+                                  <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
+                                  <span className="inv-catpro-action-label">{isActive ? 'Inactivar' : 'Activar'}</span>
                                 </button>
                               </div>
                             </td>
@@ -635,6 +657,21 @@ const MenuSalsasAdmin = () => {
         title="Salsas"
         message={toastMessage}
         onClose={() => setToastMessage('')}
+      />
+
+      <MenuConfirmDialog
+        open={Boolean(estadoConfirm)}
+        title={estadoConfirmActivo ? 'Confirmar inactivacion' : 'Confirmar activacion'}
+        subtitle={estadoConfirmActivo ? 'La salsa dejara de estar disponible' : 'La salsa volvera a estar disponible'}
+        question={estadoConfirmActivo ? 'Deseas inactivar esta salsa?' : 'Deseas activar esta salsa?'}
+        description="El cambio afecta las opciones disponibles para recetas configuradas."
+        itemLabel={estadoConfirmNombre}
+        itemIcon={estadoConfirmActivo ? 'bi-slash-circle' : 'bi-check-circle'}
+        confirmLabel={estadoConfirmActivo ? 'Inactivar' : 'Activar'}
+        confirmingLabel="Procesando..."
+        loading={savingSalsa}
+        onClose={closeEstadoConfirm}
+        onConfirm={confirmToggleSalsaEstado}
       />
     </>
   );

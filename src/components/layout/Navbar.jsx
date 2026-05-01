@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { usePermisos } from '../../context/PermisosContext';
@@ -509,7 +509,7 @@ const Navbar = () => {
                     onClick={handleGoEmailCampaigns}
                   >
                     <i className="bi bi-envelope-paper" />
-                    Campañas de correo
+                    CampaÃ±as de correo
                   </button>
                 ) : null}
                 <button
@@ -519,7 +519,7 @@ const Navbar = () => {
                   onClick={handleGoChangePassword}
                 >
                   <i className="bi bi-shield-lock" />
-                  Cambiar contraseña
+                  Cambiar contraseÃ±a
                 </button>
               </div>
             )}
@@ -566,7 +566,7 @@ const Navbar = () => {
 
               <button type="button" className="dropdown-menu-item" role="menuitem" onClick={handleLogout}>
                 <i className="bi bi-box-arrow-right" />
-                Cerrar sesion
+                Cerrar Sesión
               </button>
             </div>
           )}
@@ -577,3 +577,4 @@ const Navbar = () => {
 };
 
 export default Navbar;
+

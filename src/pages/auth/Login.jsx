@@ -31,6 +31,7 @@ const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, user } = useAuth();
+  const forceLoginView = searchParams.get('intent') === 'login';
 
   // ── Campo unificado (usuario o correo) ───────────────────────
   const [identifier, setIdentifier] = useState('');
@@ -58,6 +59,11 @@ const Login = () => {
     const isCliente = isClienteUser(user);
     const mustChange = Boolean(user?.must_change_password);
 
+    if (forceLoginView) {
+      setShowForcePasswordModal(false);
+      return;
+    }
+
     if (isCliente) {
       setShowForcePasswordModal(false);
       const from = searchParams.get('from');
@@ -72,7 +78,7 @@ const Login = () => {
 
     setShowForcePasswordModal(false);
     navigate('/dashboard', { replace: true });
-  }, [navigate, user, searchParams]);
+  }, [forceLoginView, navigate, user, searchParams]);
 
   // ── Submit unificado ─────────────────────────────────────────
   const handleSubmit = async (e) => {
@@ -112,7 +118,14 @@ const Login = () => {
       if (response?.usuario) {
         login(response);
         const usuario = response.usuario;
-        setShowForcePasswordModal(!isClienteUser(usuario) && Boolean(usuario?.must_change_password));
+        const isCliente = isClienteUser(usuario);
+        const mustChange = !isCliente && Boolean(usuario?.must_change_password);
+        setShowForcePasswordModal(mustChange);
+
+        if (!mustChange) {
+          const from = searchParams.get('from');
+          navigate(isCliente ? (from === 'carrito' ? '/carrito' : '/menu-publico') : '/dashboard', { replace: true });
+        }
       } else if (internalError) {
         throw internalError;
       }

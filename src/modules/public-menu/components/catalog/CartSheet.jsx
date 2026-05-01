@@ -72,7 +72,6 @@ const CartSheet = ({
                 <li key={item.line_key || item.id_detalle_menu} className="pm-cart-sheet__item">
                   <div className="pm-cart-sheet__item-main">
                     <strong>{item.nombre}</strong>
-                    <small>{item.tipo_item}</small>
                     {formatExtras(item.extras) ? (
                       <small className="pm-cart-sheet__line-meta">Extras: {formatExtras(item.extras)}</small>
                     ) : null}

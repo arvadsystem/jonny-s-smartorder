@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import RecetasImagePreview from './RecetasImagePreview';
 
 const CombosFormDrawer = ({
@@ -12,6 +12,8 @@ const CombosFormDrawer = ({
   onSubmit,
   onClose,
   onClearImage,
+  onPickImageFile,
+  selectedImageFileName,
   formPreviewUrl,
   formPreviewError,
   loadingRecetasCatalogo,
@@ -22,6 +24,7 @@ const CombosFormDrawer = ({
 }) => {
   const [recetaSearch, setRecetaSearch] = useState('');
   const [showRecipePicker, setShowRecipePicker] = useState(false);
+  const imageInputRef = useRef(null);
 
   useEffect(() => {
     // En crear se abre el selector; en editar queda cerrado por defecto.
@@ -160,58 +163,56 @@ const CombosFormDrawer = ({
             />
           </div>
 
-          <div className="col-12 col-md-6">
-            <label className="form-label" htmlFor="combo_id_usuario">ID usuario</label>
-            <input
-              id="combo_id_usuario"
-              type="number"
-              min="1"
-              className="form-control"
-              name="id_usuario"
-              value={form.id_usuario}
-              onChange={onChangeField}
-              required
-            />
-          </div>
-
-          <div className="col-12 col-md-6">
-            <label className="form-label" htmlFor="combo_estado">Estado</label>
-            <select
-              id="combo_estado"
-              className="form-select"
-              name="estado"
-              value={form.estado}
-              onChange={onChangeField}
-            >
-              <option value="true">Activo</option>
-              <option value="false">Inactivo</option>
-            </select>
-          </div>
-
           <div className="col-12">
-            <label className="form-label" htmlFor="combo_url_imagen">URL imagen publica (Drive)</label>
-            <input
-              id="combo_url_imagen"
-              className="form-control"
-              name="url_imagen_publica"
-              value={form.url_imagen_publica}
-              onChange={onChangeField}
-              placeholder="https://..."
-            />
-            <div className="form-text">
-              Puedes pegar el enlace compartido de Google Drive. Se registra en archivos y se usa id_archivo.
-            </div>
+            <label className="form-label">Imagen</label>
+            <div className="menu-recetas-admin__image-editor">
+              <RecetasImagePreview
+                imageUrl={formPreviewUrl}
+                hasError={formPreviewError}
+                onError={onPreviewError}
+                compact
+              />
 
-            <RecetasImagePreview
-              imageUrl={formPreviewUrl}
-              hasError={formPreviewError}
-              onError={onPreviewError}
-            />
+              <div className="menu-recetas-admin__image-controls">
+                <div
+                  className="menu-recetas-admin__status-pill menu-recetas-admin__status-pill--readonly"
+                  aria-label="Estado actual de combo"
+                >
+                  {String(form?.estado || 'true') === 'false' ? 'Inactivo' : 'Activo'}
+                </div>
 
-            <div className="d-flex justify-content-end mt-2">
-              <button type="button" className="btn inv-prod-btn-subtle btn-sm" onClick={onClearImage}>
-                Quitar URL
-              </button>
+                <div className="menu-recetas-admin__image-actions">
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="d-none"
+                    onChange={(event) => {
+                      onPickImageFile?.(event.target.files?.[0] || null);
+                      event.target.value = '';
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn menu-recetas-admin__image-btn menu-recetas-admin__image-btn--add"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    <i className="bi bi-upload" aria-hidden="true" /> Agregar imagen
+                  </button>
+                  <button
+                    type="button"
+                    className="btn menu-recetas-admin__image-btn menu-recetas-admin__image-btn--ghost menu-recetas-admin__image-btn--remove"
+                    onClick={onClearImage}
+                  >
+                    Quitar
+                  </button>
+                </div>
+
+                <small className="menu-recetas-admin__image-help">JPG, PNG o WEBP hasta 6 MB.</small>
+                {selectedImageFileName ? (
+                  <small className="menu-recetas-admin__image-file-name">Archivo: {selectedImageFileName}</small>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

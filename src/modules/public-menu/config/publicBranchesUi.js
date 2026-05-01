@@ -3,13 +3,21 @@ const BRANCH_UI_BY_SLUG = Object.freeze({
     id: 1,
     slug: '21-octubre',
     nombre: "Jonny's 21 Octubre",
-    foto: '/images/sucursal-21.jpg'
+    foto: '/images/sucursal-21.jpg',
+    // Numero de WhatsApp para validacion de transferencias (editable por sucursal).
+    whatsapp: '',
+    // Cuenta de destino para transferencias del menu publico (editable por sucursal).
+    cuenta_transferencia: ''
   },
   'el-carmen': {
     id: 2,
     slug: 'el-carmen',
     nombre: "Jonny's El Carmen",
-    foto: '/images/sucursal-carmen.jpg'
+    foto: '/images/sucursal-carmen.jpg',
+    // Numero de WhatsApp para validacion de transferencias (editable por sucursal).
+    whatsapp: '',
+    // Cuenta de destino para transferencias del menu publico (editable por sucursal).
+    cuenta_transferencia: ''
   }
 });
 

@@ -677,9 +677,11 @@ const MENU_TAB_BASE_PERMISSIONS = uniquePermissions([
 
 const MENU_TAB_PERMISSIONS_MAP = Object.freeze({
   recetas: MENU_TAB_BASE_PERMISSIONS,
+  extras: MENU_TAB_BASE_PERMISSIONS,
   combos: MENU_TAB_BASE_PERMISSIONS,
   salsas: MENU_TAB_BASE_PERMISSIONS,
   publicacion: MENU_TAB_BASE_PERMISSIONS,
+  carrusel: MENU_TAB_BASE_PERMISSIONS,
   'vista-previa': MENU_TAB_BASE_PERMISSIONS
 });
 
@@ -871,9 +873,11 @@ export const MODULE_TAB_CONFIG = Object.freeze({
   ],
   menu: [
     { key: 'recetas', label: 'Recetas', icon: 'bi bi-journal-richtext', required: MENU_TAB_PERMISSIONS_MAP.recetas },
+    { key: 'extras', label: 'Extras', icon: 'bi bi-plus-square-dotted', required: MENU_TAB_PERMISSIONS_MAP.extras },
     { key: 'combos', label: 'Combos', icon: 'bi bi-collection', required: MENU_TAB_PERMISSIONS_MAP.combos },
     { key: 'salsas', label: 'Salsas', icon: 'bi bi-droplet', required: MENU_TAB_PERMISSIONS_MAP.salsas },
     { key: 'publicacion', label: 'Publicacion', icon: 'bi bi-cloud-upload', required: MENU_TAB_PERMISSIONS_MAP.publicacion },
+    { key: 'carrusel', label: 'Carrusel', icon: 'bi bi-images', required: MENU_TAB_PERMISSIONS_MAP.carrusel },
     {
       key: 'vista-previa',
       label: 'Vista previa',

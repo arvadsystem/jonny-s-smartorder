@@ -1,0 +1,86 @@
+/* Wrapper real de /menu-publico/menu: centra el lienzo y bloquea overflow horizontal. */
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.pm-shell {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.menu-page-wrapper {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-inline: auto !important;
+  padding: 1rem 16px 1.5rem !important;
+  overflow-x: hidden !important;
+}
+
+.menu-content-container {
+  width: 100%;
+  max-width: 836px;
+  margin-inline: auto;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.menu-content-container > .pm-catalog-screen {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+  overflow-x: hidden !important;
+}
+
+.menu-content-container .pm-premium-header-stack,
+.menu-content-container .pm-premium-header,
+.menu-content-container .pm-hero-section,
+.menu-content-container .pm-menu-layout,
+.menu-content-container .pm-category-content {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-inline: 0 !important;
+}
+
+.menu-content-container .pm-premium-header,
+.menu-content-container .pm-hero-section {
+  overflow: hidden;
+}
+
+.menu-content-container .pm-hero-section__viewport,
+.menu-content-container .pm-hero-section__slide,
+.menu-content-container .pm-hero-section__image,
+.menu-content-container .pm-hero-section__placeholder {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 900px) {
+  .menu-page-wrapper {
+    padding-left: 16px !important;
+    padding-right: 34px !important;
+  }
+
+  .menu-content-container {
+    max-width: min(836px, 100%);
+    margin-left: 0;
+    margin-right: auto;
+  }
+}
+
+@media (max-width: 430px) {
+  .menu-page-wrapper {
+    padding-left: 12px !important;
+    padding-right: 30px !important;
+  }
+}
