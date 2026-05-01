@@ -115,17 +115,19 @@
 }
 
 .pm-category-chip {
-  width: 100%;
   width: auto;
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 0.2rem 0.2rem 0.45rem;
+  padding: 0.5rem 0.7rem 0.8rem;
   white-space: nowrap;
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.88);
-  font-weight: 800;
-  letter-spacing: 0.08em;
+
+  /* 🔥 TAMAÑO GRANDE */
+  font-size: 1.35rem;
+
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 900;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   transition: color 0.2s ease, transform 0.2s ease;
   position: relative;
@@ -178,12 +180,15 @@
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.8rem;
-  font-weight: 800;
-  padding: 0.35rem 0.5rem 0.55rem;
+  letter-spacing: 0.05em;
+
+  /* 🔥 MÁS GRANDE TODAVÍA */
+  font-size: 1.5rem;
+
+  font-weight: 900;
+  padding: 0.6rem 0.8rem 1rem;
   white-space: nowrap;
 }
 
@@ -330,4 +335,16 @@
   .pm-catalog-carousel__placeholder {
     min-height: 220px;
   }
+}
+
+/* 🔥 OVERRIDE FINAL - CATEGORÍAS GRANDES */
+.pm-category-chip {
+  font-size: 1.6rem !important;
+  font-weight: 900 !important;
+  padding: 0.6rem 0.9rem 1rem !important;
+}
+
+.pm-menu-showcase .pm-category-chip {
+  font-size: 1.8rem !important;
+  font-weight: 900 !important;
 }
