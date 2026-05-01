@@ -24,3 +24,41 @@
 @import './styles/components/public-menu-login-parity.css';
 @import './styles/components/public-menu-mobile-gutter-fix.css';
 
+/* 🔥 FORCE FULL SCREEN PUBLIC MENU */
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.menu-page-wrapper,
+.menu-content-container,
+.pm-shell,
+.pm-shell__content,
+.pm-catalog-screen,
+.pm-premium-header-stack,
+.pm-premium-header,
+.pm-hero-section,
+.pm-menu-layout,
+.pm-category-content {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.menu-page-wrapper,
+.pm-shell__content {
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+
+.pm-hero-section,
+.pm-premium-header {
+  border-radius: 24px;
+}
