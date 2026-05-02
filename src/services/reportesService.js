@@ -97,6 +97,25 @@ const exportPdf = async ({ reporte, filters = {} }) => {
   return { blob, filename };
 };
 
+const sendByEmail = async ({
+  reporte,
+  formato = 'pdf',
+  destinatarios = [],
+  asunto = '',
+  mensaje = '',
+  filtros = {}
+}) => {
+  return apiFetch('/reportes/enviar-correo', 'POST', {
+    reporte,
+    formato,
+    destinatarios,
+    asunto,
+    mensaje,
+    filtros,
+    confirmado: true
+  });
+};
+
 export const reportesService = {
   getVentasResumen: (filters = {}) => getReport('/reportes/ventas/resumen', filters),
   getVentasMetodosPago: (filters = {}) => getReport('/reportes/ventas/metodos-pago', filters),
@@ -107,7 +126,8 @@ export const reportesService = {
   getVentasDescuentos: (filters = {}) => getReport('/reportes/ventas/descuentos', filters),
   getVentasItems: (filters = {}) => getReport('/reportes/ventas/items', filters),
   exportExcel,
-  exportPdf
+  exportPdf,
+  sendByEmail
 };
 
 export default reportesService;

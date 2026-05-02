@@ -56,6 +56,8 @@ const INITIAL_FILTERS = {
   estado: ''
 };
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
 const money = (value) =>
   Number(value || 0).toLocaleString('es-HN', {
     minimumFractionDigits: 2,
@@ -70,6 +72,15 @@ const Reportes = () => {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    destinatarios: '',
+    formato: 'pdf',
+    asunto: '',
+    mensaje: 'Adjunto reporte solicitado.',
+    confirmado: false
+  });
   const [error, setError] = useState('');
   const [payload, setPayload] = useState(null);
 
@@ -83,6 +94,10 @@ const Reportes = () => {
   );
   const canExportPdf = useMemo(
     () => isSuperAdmin || (Array.isArray(permisos) && permisos.includes('REPORTES_EXPORTAR_PDF')),
+    [isSuperAdmin, permisos]
+  );
+  const canSendEmail = useMemo(
+    () => isSuperAdmin || (Array.isArray(permisos) && permisos.includes('REPORTES_ENVIAR_CORREO')),
     [isSuperAdmin, permisos]
   );
 
@@ -178,6 +193,73 @@ const Reportes = () => {
       setError(err?.message || 'No se pudo exportar el reporte.');
     } finally {
       setExportingPdf(false);
+    }
+  };
+
+  const openEmailModal = () => {
+    if (!activeTab) return;
+    const reporte = EXPORT_REPORT_KEYS[activeTab];
+    setEmailForm({
+      destinatarios: '',
+      formato: 'pdf',
+      asunto: `Reporte ${reporte || 'general'}`,
+      mensaje: 'Adjunto reporte solicitado.',
+      confirmado: false
+    });
+    setShowEmailModal(true);
+  };
+
+  const closeEmailModal = () => {
+    if (sendingEmail) return;
+    setShowEmailModal(false);
+  };
+
+  const handleSendEmail = async () => {
+    if (!activeTab) return;
+    const reporte = EXPORT_REPORT_KEYS[activeTab];
+    if (!reporte) return;
+
+    const recipients = emailForm.destinatarios
+      .split(/[,\n;]+/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (recipients.length < 1) {
+      setError('Debes indicar al menos un destinatario.');
+      return;
+    }
+    if (recipients.length > 10) {
+      setError('Solo se permiten hasta 10 destinatarios por envío.');
+      return;
+    }
+    const invalid = recipients.find((email) => !EMAIL_RE.test(email));
+    if (invalid) {
+      setError(`El correo ${invalid} no es válido.`);
+      return;
+    }
+    if (!emailForm.confirmado) {
+      setError('Debes confirmar el envío antes de continuar.');
+      return;
+    }
+
+    setSendingEmail(true);
+    setError('');
+
+    try {
+      await reportesService.sendByEmail({
+        reporte,
+        formato: emailForm.formato,
+        destinatarios: recipients,
+        asunto: emailForm.asunto,
+        mensaje: emailForm.mensaje,
+        filtros: filters
+      });
+      setShowEmailModal(false);
+      setError('Reporte enviado por correo correctamente.');
+    } catch (err) {
+      setError(err?.message || 'No se pudo enviar el reporte por correo.');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -365,6 +447,16 @@ const Reportes = () => {
                   disabled={exportingPdf || loading}
                 >
                   {exportingPdf ? 'Exportando...' : 'Exportar PDF'}
+                </button>
+              ) : null}
+              {canSendEmail ? (
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary ms-md-2 mt-2 mt-md-0"
+                  onClick={openEmailModal}
+                  disabled={sendingEmail || loading}
+                >
+                  {sendingEmail ? 'Enviando...' : 'Enviar por correo'}
                 </button>
               ) : null}
             </div>
@@ -920,6 +1012,85 @@ const Reportes = () => {
           ) : null}
         </div>
       </div>
+
+      {showEmailModal ? (
+        <div className="reportes-email-modal-backdrop" role="dialog" aria-modal="true" aria-label="Enviar reporte por correo">
+          <div className="reportes-email-modal card shadow">
+            <div className="card-body">
+              <div className="d-flex justify-content-between align-items-start mb-2">
+                <h5 className="mb-0">Enviar reporte por correo</h5>
+                <button type="button" className="btn-close" aria-label="Cerrar" onClick={closeEmailModal} />
+              </div>
+
+              <div className="mb-2">
+                <label className="form-label">Destinatarios</label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  placeholder="correo1@dominio.com, correo2@dominio.com"
+                  value={emailForm.destinatarios}
+                  onChange={(event) => setEmailForm((prev) => ({ ...prev, destinatarios: event.target.value }))}
+                />
+              </div>
+
+              <div className="row g-2">
+                <div className="col-12 col-md-4">
+                  <label className="form-label">Formato</label>
+                  <select
+                    className="form-select"
+                    value={emailForm.formato}
+                    onChange={(event) => setEmailForm((prev) => ({ ...prev, formato: event.target.value }))}
+                  >
+                    <option value="pdf">PDF</option>
+                    <option value="excel">Excel</option>
+                  </select>
+                </div>
+                <div className="col-12 col-md-8">
+                  <label className="form-label">Asunto</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={emailForm.asunto}
+                    onChange={(event) => setEmailForm((prev) => ({ ...prev, asunto: event.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-2">
+                <label className="form-label">Mensaje</label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={emailForm.mensaje}
+                  onChange={(event) => setEmailForm((prev) => ({ ...prev, mensaje: event.target.value }))}
+                />
+              </div>
+
+              <div className="form-check mt-3">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="confirmar-envio-reporte"
+                  checked={emailForm.confirmado}
+                  onChange={(event) => setEmailForm((prev) => ({ ...prev, confirmado: event.target.checked }))}
+                />
+                <label className="form-check-label" htmlFor="confirmar-envio-reporte">
+                  Confirmo que deseo enviar este reporte por correo.
+                </label>
+              </div>
+
+              <div className="d-flex justify-content-end gap-2 mt-3">
+                <button type="button" className="btn btn-light" onClick={closeEmailModal} disabled={sendingEmail}>
+                  Cancelar
+                </button>
+                <button type="button" className="btn btn-primary" onClick={handleSendEmail} disabled={sendingEmail}>
+                  {sendingEmail ? 'Enviando...' : 'Enviar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
