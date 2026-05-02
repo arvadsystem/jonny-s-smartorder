@@ -65,6 +65,7 @@ const Reportes = () => {
   const activeTab = allowedTabs.some((tab) => tab.key === normalizedTab) ? normalizedTab : fallbackTab;
   const isVentasResumenTab = activeTab === 'ventas-resumen';
   const isVentasMetodosTab = activeTab === 'ventas-metodos-pago';
+  const isCajaCierresTab = activeTab === 'caja-cierres';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -114,6 +115,7 @@ const Reportes = () => {
   const desgloseEstado = Array.isArray(payload?.data?.desglose_por_estado) ? payload.data.desglose_por_estado : [];
   const resumenMetodos = Array.isArray(payload?.data?.resumen_por_metodo) ? payload.data.resumen_por_metodo : [];
   const serieMetodo = Array.isArray(payload?.data?.serie_diaria_por_metodo) ? payload.data.serie_diaria_por_metodo : [];
+  const cierresCaja = Array.isArray(payload?.data?.cierres) ? payload.data.cierres : [];
 
   return (
     <div className="container-fluid p-3 reportes-page">
@@ -233,6 +235,17 @@ const Reportes = () => {
         </div>
       ) : null}
 
+      {isCajaCierresTab && kpis ? (
+        <div className="reportes-kpis-grid">
+          <article className="reportes-kpi-card"><span>Cierres</span><strong>{kpis.cantidad_cierres || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Total esperado</span><strong>L {money(kpis.total_esperado)}</strong></article>
+          <article className="reportes-kpi-card"><span>Total contado</span><strong>L {money(kpis.total_contado)}</strong></article>
+          <article className="reportes-kpi-card"><span>Diferencia total</span><strong>L {money(kpis.diferencia_total)}</strong></article>
+          <article className="reportes-kpi-card"><span>Con diferencia</span><strong>{kpis.cierres_con_diferencia || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Sin diferencia</span><strong>{kpis.cierres_sin_diferencia || 0}</strong></article>
+        </div>
+      ) : null}
+
       <div className="card border-0 shadow-sm reportes-result mt-2">
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
@@ -241,7 +254,9 @@ const Reportes = () => {
             <>
               <div className="reportes-meta mb-3">
                 <span className="badge text-bg-primary">{payload.reporte || activeTab}</span>
-                <span className="badge text-bg-light">{isVentasResumenTab ? 'Fase 2A' : 'Fase 1'}</span>
+                <span className="badge text-bg-light">
+                  {isVentasResumenTab ? 'Fase 2A' : isVentasMetodosTab ? 'Fase 2B' : isCajaCierresTab ? 'Fase 2C' : 'Fase 1'}
+                </span>
               </div>
 
               {isVentasResumenTab ? (
@@ -352,6 +367,39 @@ const Reportes = () => {
                       </table>
                     </div>
                   </div>
+                </div>
+              ) : isCajaCierresTab ? (
+                <div className="table-responsive reportes-table-wrap">
+                  <table className="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Fecha cierre</th>
+                        <th>Sucursal</th>
+                        <th>Caja</th>
+                        <th>Responsable</th>
+                        <th className="text-end">Esperado</th>
+                        <th className="text-end">Contado</th>
+                        <th className="text-end">Diferencia</th>
+                        <th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cierresCaja.length === 0 ? (
+                        <tr><td colSpan={8} className="text-center text-muted py-3">Sin cierres para los filtros aplicados.</td></tr>
+                      ) : cierresCaja.map((item) => (
+                        <tr key={item.id_cierre_caja}>
+                          <td>{item.fecha_cierre || item.fecha_apertura || '-'}</td>
+                          <td>{item.sucursal || '-'}</td>
+                          <td>{item.codigo_caja ? `${item.codigo_caja} - ${item.caja || ''}` : (item.caja || '-')}</td>
+                          <td>{item.responsable || item.usuario_cierre || '-'}</td>
+                          <td className="text-end">L {money(item.total_esperado)}</td>
+                          <td className="text-end">L {money(item.total_contado)}</td>
+                          <td className="text-end">L {money(item.diferencia)}</td>
+                          <td>{item.estado_cierre || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <pre className="reportes-json mb-0">{JSON.stringify(payload, null, 2)}</pre>
