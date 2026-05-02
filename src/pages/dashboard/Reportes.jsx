@@ -73,6 +73,7 @@ const Reportes = () => {
   const isCajaCierresTab = activeTab === 'caja-cierres';
   const isCajaDiferenciasTab = activeTab === 'caja-diferencias';
   const isStockCriticoTab = activeTab === 'inventario-stock-critico';
+  const isKardexTab = activeTab === 'inventario-kardex';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -125,6 +126,7 @@ const Reportes = () => {
   const cierresCaja = Array.isArray(payload?.data?.cierres) ? payload.data.cierres : [];
   const diferenciasCaja = Array.isArray(payload?.data?.diferencias) ? payload.data.diferencias : [];
   const stockCriticoItems = Array.isArray(payload?.data?.items) ? payload.data.items : [];
+  const kardexMovimientos = Array.isArray(payload?.data?.movimientos) ? payload.data.movimientos : [];
 
   return (
     <div className="container-fluid p-3 reportes-page">
@@ -333,6 +335,16 @@ const Reportes = () => {
         </div>
       ) : null}
 
+      {isKardexTab && kpis ? (
+        <div className="reportes-kpis-grid">
+          <article className="reportes-kpi-card"><span>Total movimientos</span><strong>{kpis.total_movimientos || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Entradas</span><strong>{kpis.entradas || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Salidas</span><strong>{kpis.salidas || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Ajustes/Otros</span><strong>{kpis.ajustes_otros || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Items únicos</span><strong>{kpis.items_unicos || 0}</strong></article>
+        </div>
+      ) : null}
+
       <div className="card border-0 shadow-sm reportes-result mt-2">
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
@@ -350,8 +362,10 @@ const Reportes = () => {
                         ? 'Fase 2C'
                         : isCajaDiferenciasTab
                           ? 'Fase 2D'
-                          : isStockCriticoTab
-                            ? 'Fase 3A'
+                        : isStockCriticoTab
+                          ? 'Fase 3A'
+                          : isKardexTab
+                            ? 'Fase 3B'
                           : 'Fase 1'}
                 </span>
               </div>
@@ -565,6 +579,45 @@ const Reportes = () => {
                           <td className="text-end">{item.stock_minimo ?? 0}</td>
                           <td className="text-end">{item.diferencia_minimo ?? 0}</td>
                           <td>{item.estado || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : isKardexTab ? (
+                <div className="table-responsive reportes-table-wrap">
+                  <table className="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Tipo mov.</th>
+                        <th>Tipo item</th>
+                        <th>Item</th>
+                        <th>Almacén</th>
+                        <th>Sucursal</th>
+                        <th className="text-end">Cantidad</th>
+                        <th className="text-end">Saldo antes</th>
+                        <th className="text-end">Saldo después</th>
+                        <th>Referencia</th>
+                        <th>Descripción</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kardexMovimientos.length === 0 ? (
+                        <tr><td colSpan={11} className="text-center text-muted py-3">Sin movimientos para los filtros aplicados.</td></tr>
+                      ) : kardexMovimientos.map((item) => (
+                        <tr key={item.id_movimiento}>
+                          <td>{item.fecha_mov || '-'}</td>
+                          <td>{item.tipo || '-'}</td>
+                          <td>{item.item_tipo || '-'}</td>
+                          <td>{item.item_nombre || '-'}</td>
+                          <td>{item.nombre_almacen || '-'}</td>
+                          <td>{item.nombre_sucursal || '-'}</td>
+                          <td className="text-end">{item.cantidad ?? 0}</td>
+                          <td className="text-end">{item.saldo_antes ?? 0}</td>
+                          <td className="text-end">{item.saldo_despues ?? 0}</td>
+                          <td>{item.ref_origen ? `${item.ref_origen}${item.id_ref ? ` #${item.id_ref}` : ''}` : '-'}</td>
+                          <td>{item.descripcion || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
