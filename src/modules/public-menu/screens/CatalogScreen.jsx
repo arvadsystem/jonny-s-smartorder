@@ -175,7 +175,7 @@ const formatWhatsAppNumber = (value) => {
 const CatalogScreen = () => {
   const navigate = useNavigate();
   const outletContext = useOutletContext() || {};
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { state, actions } = usePublicMenuFlow();
   const branchId = state.selectedBranch?.id;
   const orderType = state.orderType;
@@ -448,6 +448,13 @@ const CatalogScreen = () => {
     navigate('/menu-publico');
   };
 
+  const handleLogout = async () => {
+    await logout();
+    setCartOpen(false);
+    closeConfigSheet();
+    navigate('/menu-publico');
+  };
+
   // Guarda menu vigente en store para los siguientes pasos del flujo.
   useEffect(() => {
     actions.selectMenu(menuSummary);
@@ -634,6 +641,7 @@ const CatalogScreen = () => {
         onChangeOrderType={handleChangeOrderType}
         onHomeClick={handleHomeClick}
         onUserClick={() => navigate('/auth/login?from=public-menu&intent=login')}
+        onLogout={handleLogout}
         onCartClick={() => setCartOpen(true)}
         cartCount={totalItems}
         greetingName={greetingName}

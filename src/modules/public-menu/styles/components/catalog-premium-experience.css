@@ -1174,12 +1174,14 @@
   gap: 0.42rem;
 }
 
-.pm-premium-header__location-menu-wrap {
+.pm-premium-header__location-menu-wrap,
+.pm-premium-header__user-menu-wrap {
   position: relative;
 }
 
 .pm-premium-header__location-menu,
-.pm-premium-header__order-type-menu {
+.pm-premium-header__order-type-menu,
+.pm-premium-header__user-menu {
   position: absolute;
   top: calc(100% + 0.4rem);
   right: 0;
@@ -1198,6 +1200,12 @@
 
 .pm-premium-header__order-type-menu {
   width: min(78vw, 250px);
+}
+
+.pm-premium-header__user-menu {
+  width: max-content;
+  min-width: 148px;
+  max-width: min(78vw, 176px);
 }
 
 .pm-premium-header__location-menu-title {
@@ -1236,6 +1244,36 @@
   font-size: 0.78rem;
   font-weight: 700;
   width: 100%;
+}
+
+.pm-premium-header__user-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #ffe6bf;
+  padding: 0.48rem 0.55rem;
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.pm-premium-header__user-menu-item i {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: rgba(255, 174, 76, 0.12);
+  color: #ffb64d;
+  font-size: 0.9rem;
+}
+
+.pm-premium-header__user-menu-item:hover {
+  background: rgba(255, 167, 60, 0.14);
 }
 
 .pm-premium-header__location-menu-item i {
@@ -1489,7 +1527,8 @@
 
 @media (max-width: 520px) {
   .pm-premium-header__location-menu,
-  .pm-premium-header__order-type-menu {
+  .pm-premium-header__order-type-menu,
+  .pm-premium-header__user-menu {
     position: fixed;
     top: max(5.15rem, env(safe-area-inset-top, 0px));
     left: 0.75rem;

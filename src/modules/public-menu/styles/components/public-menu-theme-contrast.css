@@ -189,7 +189,8 @@
 }
 
 .pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu,
-.pm-shell:not(.pm-theme-light) .pm-premium-header__order-type-menu {
+.pm-shell:not(.pm-theme-light) .pm-premium-header__order-type-menu,
+.pm-shell:not(.pm-theme-light) .pm-premium-header__user-menu {
   background:
     radial-gradient(circle at 12% 0%, rgba(180, 95, 38, 0.2), transparent 34%),
     linear-gradient(180deg, rgba(31, 20, 13, 0.98), rgba(13, 7, 4, 0.99)) !important;
@@ -204,23 +205,28 @@
   color: #f0c896 !important;
 }
 
-.pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item {
+.pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item,
+.pm-shell:not(.pm-theme-light) .pm-premium-header__user-menu-item {
   background: transparent !important;
   color: #fff8ed !important;
 }
 
 .pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item *,
-.pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item span {
+.pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item span,
+.pm-shell:not(.pm-theme-light) .pm-premium-header__user-menu-item *,
+.pm-shell:not(.pm-theme-light) .pm-premium-header__user-menu-item span {
   color: #fff8ed !important;
 }
 
-.pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item i {
+.pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item i,
+.pm-shell:not(.pm-theme-light) .pm-premium-header__user-menu-item i {
   background: rgba(240, 200, 150, 0.1) !important;
   color: #f0c896 !important;
 }
 
 .pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item:hover,
-.pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item.is-current {
+.pm-shell:not(.pm-theme-light) .pm-premium-header__location-menu-item.is-current,
+.pm-shell:not(.pm-theme-light) .pm-premium-header__user-menu-item:hover {
   background: rgba(180, 95, 38, 0.26) !important;
 }
 
@@ -300,4 +306,14 @@
 
 .pm-shell.pm-theme-light .pm-confirm-modal__message {
   color: #6b5a4b !important;
+}
+
+@media (max-width: 900px) {
+  .pm-shell .pm-catalog-screen .pm-order-summary-panel {
+    display: none !important;
+  }
+
+  .pm-shell .pm-catalog-screen .pm-sticky-cart-bar {
+    display: grid !important;
+  }
 }

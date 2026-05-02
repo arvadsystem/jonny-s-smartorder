@@ -34,6 +34,7 @@ const PremiumHeaderActions = ({
   cartCount = 0,
   onHomeClick,
   onUserClick,
+  onLogout,
   onCartClick,
   greetingName = '',
   theme = 'dark',
@@ -41,6 +42,7 @@ const PremiumHeaderActions = ({
 }) => {
   const [locationMenuOpen, setLocationMenuOpen] = useState(false);
   const [orderTypeMenuOpen, setOrderTypeMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const orderTypeIcon = getOrderTypeIcon(orderTypeLabel);
   const hasBranchList = Array.isArray(branches) && branches.length > 0;
 
@@ -52,7 +54,19 @@ const PremiumHeaderActions = ({
   const handleUserClick = () => {
     setLocationMenuOpen(false);
     setOrderTypeMenuOpen(false);
-    onUserClick?.();
+    if (!greetingName) {
+      setUserMenuOpen(false);
+      onUserClick?.();
+      return;
+    }
+    setUserMenuOpen((prev) => !prev);
+  };
+
+  const handleLogout = () => {
+    setLocationMenuOpen(false);
+    setOrderTypeMenuOpen(false);
+    setUserMenuOpen(false);
+    onLogout?.();
   };
 
   return (
@@ -75,6 +89,7 @@ const PremiumHeaderActions = ({
           title={branchName}
           onClick={() => {
             setOrderTypeMenuOpen(false);
+            setUserMenuOpen(false);
             setLocationMenuOpen((prev) => !prev);
           }}
         >
@@ -145,6 +160,7 @@ const PremiumHeaderActions = ({
         className="pm-premium-header__icon-btn"
         onClick={() => {
           setLocationMenuOpen(false);
+          setUserMenuOpen(false);
           setOrderTypeMenuOpen((prev) => !prev);
         }}
         aria-label={`Tipo de pedido: ${orderTypeLabel}`}
@@ -184,6 +200,7 @@ const PremiumHeaderActions = ({
         onClick={() => {
           setLocationMenuOpen(false);
           setOrderTypeMenuOpen(false);
+          setUserMenuOpen(false);
           onHomeClick?.();
         }}
         aria-label="Inicio"
@@ -191,22 +208,49 @@ const PremiumHeaderActions = ({
         <i className="bi bi-house-door-fill" aria-hidden="true" />
       </button>
 
+      <div className="pm-premium-header__user-menu-wrap">
+        <button
+          type="button"
+          className={`pm-premium-header__icon-btn ${greetingName ? 'pm-premium-header__user-btn' : ''}`}
+          onClick={handleUserClick}
+          aria-label={greetingName ? `Usuario ${greetingName}` : 'Iniciar sesion'}
+          title={greetingName ? `Hola, ${greetingName}` : 'Iniciar sesion'}
+          aria-expanded={greetingName ? userMenuOpen : undefined}
+        >
+          {greetingName ? (
+            <span className="pm-premium-header__user-name">
+              Hola, {greetingName}
+            </span>
+          ) : null}
+          <i className="bi bi-person-fill" aria-hidden="true" />
+        </button>
+
+        {greetingName && userMenuOpen ? (
+          <div className="pm-premium-header__user-menu" role="menu" aria-label="Menu de usuario">
+            <button
+              type="button"
+              className="pm-premium-header__user-menu-item"
+              onClick={handleLogout}
+              role="menuitem"
+            >
+              <i className="bi bi-box-arrow-right" aria-hidden="true" />
+              <span>Cerrar Sesión</span>
+            </button>
+          </div>
+        ) : null}
+      </div>
+
       <button
         type="button"
-        className={`pm-premium-header__icon-btn ${greetingName ? 'pm-premium-header__user-btn' : ''}`}
-        onClick={handleUserClick}
-        aria-label={greetingName ? `Usuario ${greetingName}` : 'Iniciar sesion'}
-        title={greetingName ? `Hola, ${greetingName}` : 'Iniciar sesion'}
+        className="pm-premium-header__icon-btn pm-premium-header__cart-btn"
+        onClick={() => {
+          setLocationMenuOpen(false);
+          setOrderTypeMenuOpen(false);
+          setUserMenuOpen(false);
+          onCartClick?.();
+        }}
+        aria-label="Carrito"
       >
-        {greetingName ? (
-          <span className="pm-premium-header__user-name">
-            Hola, {greetingName}
-          </span>
-        ) : null}
-        <i className="bi bi-person-fill" aria-hidden="true" />
-      </button>
-
-      <button type="button" className="pm-premium-header__icon-btn pm-premium-header__cart-btn" onClick={onCartClick} aria-label="Carrito">
         <i className="bi bi-cart3" aria-hidden="true" />
         {cartCount > 0 ? <span className="pm-premium-header__cart-badge">{cartCount}</span> : null}
       </button>
