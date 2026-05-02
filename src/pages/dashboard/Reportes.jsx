@@ -34,9 +34,13 @@ const INITIAL_FILTERS = {
   fecha_inicio: '',
   fecha_fin: '',
   sucursal: '',
+  almacen: '',
   caja: '',
   usuario: '',
   tipo_diferencia: '',
+  tipo_item: '',
+  solo_criticos: '',
+  categoria: '',
   estado: ''
 };
 
@@ -68,6 +72,7 @@ const Reportes = () => {
   const isVentasMetodosTab = activeTab === 'ventas-metodos-pago';
   const isCajaCierresTab = activeTab === 'caja-cierres';
   const isCajaDiferenciasTab = activeTab === 'caja-diferencias';
+  const isStockCriticoTab = activeTab === 'inventario-stock-critico';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -119,6 +124,7 @@ const Reportes = () => {
   const serieMetodo = Array.isArray(payload?.data?.serie_diaria_por_metodo) ? payload.data.serie_diaria_por_metodo : [];
   const cierresCaja = Array.isArray(payload?.data?.cierres) ? payload.data.cierres : [];
   const diferenciasCaja = Array.isArray(payload?.data?.diferencias) ? payload.data.diferencias : [];
+  const stockCriticoItems = Array.isArray(payload?.data?.items) ? payload.data.items : [];
 
   return (
     <div className="container-fluid p-3 reportes-page">
@@ -171,6 +177,16 @@ const Reportes = () => {
               />
             </div>
             <div className="col-12 col-md-2">
+              <label className="form-label">Almacén</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="ID"
+                value={filters.almacen}
+                onChange={(event) => setFilters((prev) => ({ ...prev, almacen: event.target.value }))}
+              />
+            </div>
+            <div className="col-12 col-md-2">
               <label className="form-label">Usuario</label>
               <input
                 type="text"
@@ -191,6 +207,16 @@ const Reportes = () => {
               />
             </div>
             <div className="col-12 col-md-2">
+              <label className="form-label">Categoría</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="ID o nombre"
+                value={filters.categoria}
+                onChange={(event) => setFilters((prev) => ({ ...prev, categoria: event.target.value }))}
+              />
+            </div>
+            <div className="col-12 col-md-2">
               <label className="form-label">Tipo diferencia</label>
               <select
                 className="form-select"
@@ -200,6 +226,30 @@ const Reportes = () => {
                 <option value="">Todos</option>
                 <option value="faltante">Faltante</option>
                 <option value="sobrante">Sobrante</option>
+              </select>
+            </div>
+            <div className="col-12 col-md-2">
+              <label className="form-label">Tipo item</label>
+              <select
+                className="form-select"
+                value={filters.tipo_item}
+                onChange={(event) => setFilters((prev) => ({ ...prev, tipo_item: event.target.value }))}
+              >
+                <option value="">Todos</option>
+                <option value="producto">Producto</option>
+                <option value="insumo">Insumo</option>
+              </select>
+            </div>
+            <div className="col-12 col-md-2">
+              <label className="form-label">Solo críticos</label>
+              <select
+                className="form-select"
+                value={filters.solo_criticos}
+                onChange={(event) => setFilters((prev) => ({ ...prev, solo_criticos: event.target.value }))}
+              >
+                <option value="">Todos</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
               </select>
             </div>
             <div className="col-12 d-grid d-md-flex justify-content-md-end mt-2">
@@ -272,6 +322,17 @@ const Reportes = () => {
         </div>
       ) : null}
 
+      {isStockCriticoTab && kpis ? (
+        <div className="reportes-kpis-grid">
+          <article className="reportes-kpi-card"><span>Items revisados</span><strong>{kpis.total_items_revisados || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Total críticos</span><strong>{kpis.total_criticos || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Agotados</span><strong>{kpis.total_agotados || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Bajo stock</span><strong>{kpis.total_stock_bajo || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Productos críticos</span><strong>{kpis.productos_criticos || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Insumos críticos</span><strong>{kpis.insumos_criticos || 0}</strong></article>
+        </div>
+      ) : null}
+
       <div className="card border-0 shadow-sm reportes-result mt-2">
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
@@ -289,6 +350,8 @@ const Reportes = () => {
                         ? 'Fase 2C'
                         : isCajaDiferenciasTab
                           ? 'Fase 2D'
+                          : isStockCriticoTab
+                            ? 'Fase 3A'
                           : 'Fase 1'}
                 </span>
               </div>
@@ -467,6 +530,41 @@ const Reportes = () => {
                           <td>{item.tipo_diferencia || '-'}</td>
                           <td>{item.estado_resolucion || '-'}</td>
                           <td>{item.observacion || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : isStockCriticoTab ? (
+                <div className="table-responsive reportes-table-wrap">
+                  <table className="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Tipo</th>
+                        <th>Nombre</th>
+                        <th>Categoría</th>
+                        <th>Almacén</th>
+                        <th>Sucursal</th>
+                        <th className="text-end">Cantidad</th>
+                        <th className="text-end">Stock mínimo</th>
+                        <th className="text-end">Diferencia</th>
+                        <th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockCriticoItems.length === 0 ? (
+                        <tr><td colSpan={9} className="text-center text-muted py-3">Sin items para los filtros aplicados.</td></tr>
+                      ) : stockCriticoItems.map((item, index) => (
+                        <tr key={`${item.tipo_item}-${item.nombre}-${item.almacen}-${index}`}>
+                          <td>{item.tipo_item || '-'}</td>
+                          <td>{item.nombre || '-'}</td>
+                          <td>{item.categoria || '-'}</td>
+                          <td>{item.almacen || '-'}</td>
+                          <td>{item.sucursal || '-'}</td>
+                          <td className="text-end">{item.cantidad_actual ?? 0}</td>
+                          <td className="text-end">{item.stock_minimo ?? 0}</td>
+                          <td className="text-end">{item.diferencia_minimo ?? 0}</td>
+                          <td>{item.estado || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
