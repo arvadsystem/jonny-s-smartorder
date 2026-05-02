@@ -17,6 +17,12 @@ import MenuConfirmDialog from './components/MenuConfirmDialog';
 
 const MAX_CAROUSEL_ITEMS = 6;
 const MENU_PUBLIC_BUCKET = 'jonnys-assets';
+const MENU_CAROUSEL_UPLOAD_CONTEXT = 'carrusel';
+
+const isPersistentCarouselImageUrl = (rawUrl) => {
+  const value = String(rawUrl || '').trim();
+  return Boolean(value) && !value.startsWith('blob:') && !value.startsWith('data:');
+};
 
 // Submodulo administrativo para elegir que fotos reales del catalogo publico
 // se usan en el carrusel/hero del landing por sucursal.
@@ -91,7 +97,7 @@ const MenuCarruselAdmin = () => {
         setCatalogItems(rows);
         const saved = getGlobalHeroCarouselSelection();
         setSelectedIds(saved.filter((id) => rows.some((row) => row.id_detalle_menu === id)));
-        setCustomImages(getGlobalHeroCarouselCustomImages());
+        setCustomImages(getGlobalHeroCarouselCustomImages().filter((row) => isPersistentCarouselImageUrl(row.imageUrl)));
       } catch (e) {
         if (!isMounted) return;
         setCatalogItems([]);
@@ -182,7 +188,8 @@ const MenuCarruselAdmin = () => {
         const payload = await buildInventarioImageUploadPayload(optimized);
         const response = await inventarioService.crearArchivoImagen({
           ...payload,
-          bucket: MENU_PUBLIC_BUCKET
+          bucket: MENU_PUBLIC_BUCKET,
+          contexto: MENU_CAROUSEL_UPLOAD_CONTEXT
         });
 
         const idArchivo = Number(response?.id_archivo || response?.data?.id_archivo || 0);
