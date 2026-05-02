@@ -38,6 +38,7 @@ const INITIAL_FILTERS = {
   caja: '',
   usuario: '',
   tipo_diferencia: '',
+  tipo_descuento: '',
   tipo_item: '',
   solo_criticos: '',
   categoria: '',
@@ -74,6 +75,7 @@ const Reportes = () => {
   const isCajaDiferenciasTab = activeTab === 'caja-diferencias';
   const isStockCriticoTab = activeTab === 'inventario-stock-critico';
   const isKardexTab = activeTab === 'inventario-kardex';
+  const isVentasDescuentosTab = activeTab === 'ventas-descuentos';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -127,6 +129,8 @@ const Reportes = () => {
   const diferenciasCaja = Array.isArray(payload?.data?.diferencias) ? payload.data.diferencias : [];
   const stockCriticoItems = Array.isArray(payload?.data?.items) ? payload.data.items : [];
   const kardexMovimientos = Array.isArray(payload?.data?.movimientos) ? payload.data.movimientos : [];
+  const descuentosResumen = Array.isArray(payload?.data?.resumen_tipo_descuento) ? payload.data.resumen_tipo_descuento : [];
+  const descuentosDetalle = Array.isArray(payload?.data?.detalle) ? payload.data.detalle : [];
 
   return (
     <div className="container-fluid p-3 reportes-page">
@@ -229,6 +233,16 @@ const Reportes = () => {
                 <option value="faltante">Faltante</option>
                 <option value="sobrante">Sobrante</option>
               </select>
+            </div>
+            <div className="col-12 col-md-2">
+              <label className="form-label">Tipo descuento</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="ID o nombre"
+                value={filters.tipo_descuento}
+                onChange={(event) => setFilters((prev) => ({ ...prev, tipo_descuento: event.target.value }))}
+              />
             </div>
             <div className="col-12 col-md-2">
               <label className="form-label">Tipo item</label>
@@ -345,6 +359,15 @@ const Reportes = () => {
         </div>
       ) : null}
 
+      {isVentasDescuentosTab && kpis ? (
+        <div className="reportes-kpis-grid">
+          <article className="reportes-kpi-card"><span>Total descuento</span><strong>L {money(kpis.total_descuento)}</strong></article>
+          <article className="reportes-kpi-card"><span>Ventas con descuento</span><strong>{kpis.ventas_con_descuento || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Líneas con descuento</span><strong>{kpis.lineas_con_descuento || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Ticket promedio descuento</span><strong>L {money(kpis.ticket_promedio_descuento)}</strong></article>
+        </div>
+      ) : null}
+
       <div className="card border-0 shadow-sm reportes-result mt-2">
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
@@ -366,6 +389,8 @@ const Reportes = () => {
                           ? 'Fase 3A'
                           : isKardexTab
                             ? 'Fase 3B'
+                            : isVentasDescuentosTab
+                              ? 'Fase 4A'
                           : 'Fase 1'}
                 </span>
               </div>
@@ -622,6 +647,77 @@ const Reportes = () => {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              ) : isVentasDescuentosTab ? (
+                <div className="row g-3">
+                  <div className="col-12 col-xl-4">
+                    <div className="table-responsive reportes-table-wrap">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Tipo descuento</th>
+                            <th className="text-end">Líneas</th>
+                            <th className="text-end">Ventas</th>
+                            <th className="text-end">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {descuentosResumen.length === 0 ? (
+                            <tr><td colSpan={4} className="text-center text-muted py-3">Sin resumen por tipo.</td></tr>
+                          ) : descuentosResumen.map((item) => (
+                            <tr key={`${item.tipo_descuento}-${item.total_descuento}`}>
+                              <td>{item.tipo_descuento || '-'}</td>
+                              <td className="text-end">{item.cantidad_lineas || 0}</td>
+                              <td className="text-end">{item.ventas || 0}</td>
+                              <td className="text-end">L {money(item.total_descuento)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="col-12 col-xl-8">
+                    <div className="table-responsive reportes-table-wrap">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Fecha</th>
+                            <th>Sucursal</th>
+                            <th>Caja</th>
+                            <th>Usuario</th>
+                            <th>Factura</th>
+                            <th>Pedido</th>
+                            <th>Cliente</th>
+                            <th>Tipo descuento</th>
+                            <th className="text-end">Descuento</th>
+                            <th className="text-end">Subtotal línea</th>
+                            <th className="text-end">Total línea</th>
+                            <th>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {descuentosDetalle.length === 0 ? (
+                            <tr><td colSpan={12} className="text-center text-muted py-3">Sin descuentos aplicados para los filtros.</td></tr>
+                          ) : descuentosDetalle.map((item, index) => (
+                            <tr key={`${item.factura}-${item.pedido || 'na'}-${index}`}>
+                              <td>{item.fecha || '-'}</td>
+                              <td>{item.sucursal || '-'}</td>
+                              <td>{item.caja || '-'}</td>
+                              <td>{item.usuario || '-'}</td>
+                              <td>{item.factura || '-'}</td>
+                              <td>{item.pedido || '-'}</td>
+                              <td>{item.cliente || '-'}</td>
+                              <td>{item.tipo_descuento || '-'}</td>
+                              <td className="text-end">L {money(item.descuento)}</td>
+                              <td className="text-end">L {money(item.subtotal_linea)}</td>
+                              <td className="text-end">L {money(item.total_linea)}</td>
+                              <td>{item.estado || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <pre className="reportes-json mb-0">{JSON.stringify(payload, null, 2)}</pre>
