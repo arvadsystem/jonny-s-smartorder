@@ -22,13 +22,13 @@ body {
   width: 100% !important;
   max-width: 100% !important;
   margin-inline: auto !important;
-  padding: 1rem 16px 1.5rem !important;
+  padding: 1rem clamp(0.65rem, 1.6vw, 1.4rem) 1.5rem !important;
   overflow-x: hidden !important;
 }
 
 .menu-content-container {
   width: 100%;
-  max-width: 836px;
+  max-width: none;
   margin-inline: auto;
   overflow-x: hidden;
   overflow-y: visible;
@@ -65,23 +65,19 @@ body {
   max-width: 100% !important;
 }
 
-/* 🔥 FIX REAL: ESPACIADO SIMÉTRICO */
 @media (max-width: 900px) {
   .menu-page-wrapper {
-    padding-left: 16px !important;
-    padding-right: 16px !important;
+    padding-inline: 16px !important;
   }
 
   .menu-content-container {
-    max-width: min(836px, 100%);
-    margin-left: auto;
-    margin-right: auto;
+    max-width: none;
+    margin-inline: auto;
   }
 }
 
 @media (max-width: 430px) {
   .menu-page-wrapper {
-    padding-left: 12px !important;
-    padding-right: 12px !important;
+    padding-inline: 12px !important;
   }
 }

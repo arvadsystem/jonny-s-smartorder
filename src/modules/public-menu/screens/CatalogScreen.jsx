@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import CartSheet from '../components/catalog/CartSheet';
 import AuthRequiredModal from '../components/feedback/AuthRequiredModal';
+import ConfirmModal from '../components/feedback/ConfirmModal';
 import OrderSuccessModal from '../components/feedback/OrderSuccessModal';
 import PremiumCatalogHeader from '../components/catalog/PremiumCatalogHeader';
 import PremiumHero from '../components/catalog/PremiumHero';
@@ -210,6 +211,7 @@ const CatalogScreen = () => {
 
   const [cartOpen, setCartOpen] = useState(false);
   const [authRequired, setAuthRequired] = useState({ open: false, message: '' });
+  const [homeConfirmOpen, setHomeConfirmOpen] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState({ open: false, order: null });
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -428,6 +430,24 @@ const CatalogScreen = () => {
     handleScrollToCatalog();
   };
 
+  const handleHomeClick = () => {
+    if (cartItems.length > 0) {
+      setHomeConfirmOpen(true);
+      return;
+    }
+
+    navigate('/menu-publico');
+  };
+
+  const cancelHomeNavigation = () => {
+    setHomeConfirmOpen(false);
+  };
+
+  const confirmHomeNavigation = () => {
+    setHomeConfirmOpen(false);
+    navigate('/menu-publico');
+  };
+
   // Guarda menu vigente en store para los siguientes pasos del flujo.
   useEffect(() => {
     actions.selectMenu(menuSummary);
@@ -612,7 +632,7 @@ const CatalogScreen = () => {
         branchesError={branchesError}
         onReloadBranches={reloadBranches}
         onChangeOrderType={handleChangeOrderType}
-        onHomeClick={() => navigate('/menu-publico')}
+        onHomeClick={handleHomeClick}
         onUserClick={() => navigate('/auth/login?from=public-menu&intent=login')}
         onCartClick={() => setCartOpen(true)}
         cartCount={totalItems}
@@ -731,6 +751,16 @@ const CatalogScreen = () => {
         message={authRequired.message}
         onLogin={goToLoginFromAuthModal}
         onClose={closeAuthRequiredModal}
+      />
+
+      <ConfirmModal
+        open={homeConfirmOpen}
+        title="¿Volver al inicio?"
+        message="Tienes productos en tu pedido. Si vuelves al inicio, podrías perder tu selección actual."
+        cancelLabel="Cancelar"
+        confirmLabel="Volver al inicio"
+        onCancel={cancelHomeNavigation}
+        onConfirm={confirmHomeNavigation}
       />
 
       <OrderSuccessModal

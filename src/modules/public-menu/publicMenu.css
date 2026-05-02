@@ -23,42 +23,160 @@
 /* Paridad visual con el estilo del login, solo dentro del modulo public-menu. */
 @import './styles/components/public-menu-login-parity.css';
 @import './styles/components/public-menu-mobile-gutter-fix.css';
+@import './styles/components/public-menu-theme-contrast.css';
 
-/* 🔥 FORCE FULL SCREEN PUBLIC MENU */
-html,
-body,
-#root {
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  padding: 0;
-  overflow-x: hidden;
-}
-
-.menu-page-wrapper,
-.menu-content-container,
-.pm-shell,
-.pm-shell__content,
-.pm-catalog-screen,
-.pm-premium-header-stack,
-.pm-premium-header,
-.pm-hero-section,
-.pm-menu-layout,
-.pm-category-content {
-  width: 100% !important;
-  max-width: none !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  box-sizing: border-box !important;
-}
-
-.menu-page-wrapper,
-.pm-shell__content {
-  padding-left: 16px !important;
-  padding-right: 16px !important;
-}
-
-.pm-hero-section,
+/* FIX DROPDOWN SUCURSALES (VISIBILIDAD) */
 .pm-premium-header {
-  border-radius: 24px;
+  overflow: visible !important;
+}
+
+.pm-hero-section {
+  overflow: hidden !important;
+}
+
+.pm-branch-selector,
+.pm-branch-dropdown,
+.pm-branch-list,
+.pm-location-dropdown,
+.pm-location-menu,
+.pm-premium-header [role='listbox'],
+.pm-premium-header [role='menu'] {
+  position: absolute !important;
+  z-index: 999999 !important;
+  overflow: visible !important;
+}
+
+/* 🔥 FIX CONTRASTE DROPDOWN SUCURSALES */
+.pm-shell.pm-theme-light .pm-premium-header [role='menu'],
+.pm-shell.pm-theme-light .pm-premium-header [role='listbox'],
+.pm-shell.pm-theme-light .pm-branch-dropdown,
+.pm-shell.pm-theme-light .pm-location-dropdown,
+.pm-shell.pm-theme-light .pm-location-menu {
+  background: #fffaf3 !important;
+  color: #2b211b !important;
+}
+
+.pm-shell.pm-theme-light .pm-premium-header [role='menu'] *,
+.pm-shell.pm-theme-light .pm-premium-header [role='listbox'] *,
+.pm-shell.pm-theme-light .pm-branch-dropdown *,
+.pm-shell.pm-theme-light .pm-location-dropdown *,
+.pm-shell.pm-theme-light .pm-location-menu * {
+  color: #2b211b !important;
+  opacity: 1 !important;
+}
+
+.pm-shell.pm-theme-light .pm-premium-header [role='menu'] h3,
+.pm-shell.pm-theme-light .pm-premium-header [role='listbox'] h3,
+.pm-shell.pm-theme-light .pm-branch-dropdown h3,
+.pm-shell.pm-theme-light .pm-location-dropdown h3,
+.pm-shell.pm-theme-light .pm-location-menu h3 {
+  color: #9b4d1a !important;
+  font-weight: 900 !important;
+}
+
+.pm-shell.pm-theme-light .pm-premium-header [role='menu'] .is-selected,
+.pm-shell.pm-theme-light .pm-premium-header [role='listbox'] .is-selected,
+.pm-shell.pm-theme-light .pm-branch-dropdown .is-selected,
+.pm-shell.pm-theme-light .pm-location-dropdown .is-selected,
+.pm-shell.pm-theme-light .pm-location-menu .is-selected {
+  background: #eadbca !important;
+  color: #9b4d1a !important;
+  font-weight: 900 !important;
+}
+
+/* FIX TEXTO INVISIBLE EN TEMA BLANCO - TIPO DE PEDIDO */
+.pm-branch-order-selector,
+.pm-branch-order-selector * {
+  color: #2b211b !important;
+}
+
+.pm-branch-order-selector__title,
+.pm-branch-order-selector__label,
+.pm-branch-order-selector h3,
+.pm-branch-order-selector span {
+  color: #9b4d1a !important;
+  opacity: 1 !important;
+}
+
+.pm-branch-order-selector__option {
+  color: #2b211b !important;
+}
+
+.pm-branch-order-selector__option.is-selected {
+  color: #9b4d1a !important;
+}
+
+/* 🔥 FIX REAL TEXTO DETALLE DE ORDEN */
+.pm-shell.pm-theme-light .pm-order-summary-panel__item-main,
+.pm-shell.pm-theme-light .pm-order-summary-panel__item-main *,
+.pm-shell.pm-theme-light .pm-order-summary-panel__item,
+.pm-shell.pm-theme-light .pm-order-summary-panel__item *,
+.pm-shell.pm-theme-light .pm-order-summary-panel__list,
+.pm-shell.pm-theme-light .pm-order-summary-panel__list * {
+  color: #2b211b !important;
+  opacity: 1 !important;
+}
+
+/* Precio */
+.pm-shell.pm-theme-light .pm-order-summary-panel__item-main small {
+  color: #9b4d1a !important;
+  font-weight: 700 !important;
+}
+
+/* Nombre del producto */
+.pm-shell.pm-theme-light .pm-order-summary-panel__item-main strong {
+  color: #2b211b !important;
+  font-weight: 800 !important;
+}
+
+/* 🔥 CARD COMPLETA EN MODO CLARO */
+.pm-shell.pm-theme-light .pm-menu-product-card,
+.pm-shell.pm-theme-light .pm-menu-product-card__media,
+.pm-shell.pm-theme-light .pm-menu-product-card__body,
+.pm-shell.pm-theme-light .pm-menu-product-card__footer {
+  background: #fffaf3 !important;
+  color: #2b211b !important;
+}
+
+.pm-shell.pm-theme-light .pm-menu-product-card__media {
+  background: #f3e7da !important;
+  background-image: none !important;
+}
+
+.pm-shell.pm-theme-light .pm-menu-image-placeholder {
+  background: #f3e7da !important;
+  background-image: none !important;
+}
+
+.pm-shell.pm-theme-light .pm-menu-image-placeholder * {
+  color: #9b4d1a !important;
+  opacity: 1 !important;
+}
+
+.pm-shell.pm-theme-light .pm-menu-product-card__category {
+  background: #eadbca !important;
+  color: #9b4d1a !important;
+}
+
+.pm-shell.pm-theme-light .pm-menu-product-card__body *,
+.pm-shell.pm-theme-light .pm-menu-product-card__footer * {
+  color: #2b211b !important;
+  opacity: 1 !important;
+}
+
+.pm-shell.pm-theme-light .pm-menu-product-card__footer button {
+  color: #9b4d1a !important;
+  background: transparent !important;
+}
+
+/* 🔥 AUMENTAR LETRAS CATEGORÍAS HEADER */
+.pm-premium-header__nav-item {
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  padding: 0.75rem 0.9rem !important;
+  line-height: 1.1 !important;
+}
+
+.pm-premium-header__nav-item.is-active {
+  font-size: 1.3rem !important;
 }

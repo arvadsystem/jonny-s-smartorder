@@ -178,7 +178,16 @@ const PremiumHeaderActions = ({
         </div>
       ) : null}
 
-      <button type="button" className="pm-premium-header__icon-btn" onClick={onHomeClick} aria-label="Inicio">
+      <button
+        type="button"
+        className="pm-premium-header__icon-btn"
+        onClick={() => {
+          setLocationMenuOpen(false);
+          setOrderTypeMenuOpen(false);
+          onHomeClick?.();
+        }}
+        aria-label="Inicio"
+      >
         <i className="bi bi-house-door-fill" aria-hidden="true" />
       </button>
 
