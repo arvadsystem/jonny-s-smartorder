@@ -509,7 +509,7 @@ const Navbar = () => {
                     onClick={handleGoEmailCampaigns}
                   >
                     <i className="bi bi-envelope-paper" />
-                    CampaÃ±as de correo
+                    {"Campa\u00f1as de correo"}
                   </button>
                 ) : null}
                 <button
@@ -519,7 +519,7 @@ const Navbar = () => {
                   onClick={handleGoChangePassword}
                 >
                   <i className="bi bi-shield-lock" />
-                  Cambiar contraseÃ±a
+                  {"Cambiar contrase\u00f1a"}
                 </button>
               </div>
             )}
