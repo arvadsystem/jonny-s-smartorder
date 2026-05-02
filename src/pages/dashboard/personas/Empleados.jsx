@@ -2309,9 +2309,56 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
           return [patched, ...source];
         });
+        setEmpleados((prev) =>
+          (Array.isArray(prev) ? prev : []).map((item) => {
+            if (String(item?.id_empleado ?? "") !== String(editId)) return item;
+            const nextPersona = {
+              ...(item?.persona && typeof item.persona === "object" ? item.persona : {}),
+              id_persona: personaId,
+              nombre: String(normalizedPersona?.nombre ?? "").trim(),
+              apellido: String(normalizedPersona?.apellido ?? "").trim(),
+              dni: String(normalizedPersona?.dni ?? "").trim(),
+              genero: String(normalizedPersona?.genero ?? "").trim(),
+              fecha_nacimiento: String(normalizedPersona?.fecha_nacimiento ?? "").trim(),
+              rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              persona_rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              persona_rtn_complemento: String(normalizedPersona?.rtn ?? "").trim(),
+              texto_telefono: String(normalizedPersona?.id_telefono ?? "").trim(),
+              telefono: String(normalizedPersona?.id_telefono ?? "").trim(),
+              texto_direccion: String(normalizedPersona?.id_direccion ?? "").trim(),
+              direccion: String(normalizedPersona?.id_direccion ?? "").trim(),
+              texto_correo: String(normalizedPersona?.id_correo ?? "").trim(),
+              direccion_correo: String(normalizedPersona?.id_correo ?? "").trim(),
+              correo: String(normalizedPersona?.id_correo ?? "").trim(),
+              email: String(normalizedPersona?.id_correo ?? "").trim(),
+            };
+
+            return {
+              ...item,
+              persona_nombre: String(normalizedPersona?.nombre ?? "").trim(),
+              persona_apellido: String(normalizedPersona?.apellido ?? "").trim(),
+              persona_nombre_completo: `${String(normalizedPersona?.nombre ?? "").trim()} ${String(normalizedPersona?.apellido ?? "").trim()}`.trim(),
+              persona_dni: String(normalizedPersona?.dni ?? "").trim(),
+              dni: String(normalizedPersona?.dni ?? "").trim(),
+              persona_genero: String(normalizedPersona?.genero ?? "").trim(),
+              genero: String(normalizedPersona?.genero ?? "").trim(),
+              persona_rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              telefono: String(normalizedPersona?.id_telefono ?? "").trim(),
+              texto_telefono: String(normalizedPersona?.id_telefono ?? "").trim(),
+              correo: String(normalizedPersona?.id_correo ?? "").trim(),
+              texto_correo: String(normalizedPersona?.id_correo ?? "").trim(),
+              direccion: String(normalizedPersona?.id_direccion ?? "").trim(),
+              texto_direccion: String(normalizedPersona?.id_direccion ?? "").trim(),
+              persona: nextPersona,
+            };
+          })
+        );
         setErrors((state) => ({ ...state, id_persona: undefined }));
         setShowPersonaEditModal(false);
         safeToast("OK", "Datos de persona actualizados");
+        catalogosCargadosRef.current = false;
+        await cargarCatalogos();
         clearEmpleadosListCache();
         await cargarEmpleados({ force: true });
         await cargarEmpleadosGlobalStats();
@@ -2321,7 +2368,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         if (mountedRef.current) setInlinePersonaSaving(false);
       }
     },
-    [editId, empleados, form.id_persona, safeToast, clearEmpleadosListCache, cargarEmpleados, cargarEmpleadosGlobalStats]
+    [editId, empleados, form.id_persona, safeToast, clearEmpleadosListCache, cargarEmpleados, cargarEmpleadosGlobalStats, cargarCatalogos]
   );
 
   const openPersonaEditModal = useCallback(() => {

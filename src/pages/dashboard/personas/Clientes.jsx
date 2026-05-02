@@ -1100,7 +1100,7 @@ const Clientes = ({ openToast }) => {
           persona?.numero_rtn
         );
 
-        if (!rtnPrevio && rtnSiguiente) {
+        if (rtnSiguiente) {
           personasMap.set(id, { ...previo, ...persona });
         } else {
           personasMap.set(id, { ...persona, ...previo });
@@ -1781,8 +1781,33 @@ const Clientes = ({ openToast }) => {
 
           return [patched, ...source];
         });
+        setClientes((prev) =>
+          (Array.isArray(prev) ? prev : []).map((item) => {
+            if (String(item?.id_cliente ?? "") !== String(editId)) return item;
+            return {
+              ...item,
+              id_persona: item?.id_persona ?? personaId,
+              persona_dni: String(normalizedPersona?.dni ?? "").trim(),
+              persona_genero: String(normalizedPersona?.genero ?? "").trim(),
+              persona_rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              persona_rtn_complemento: String(normalizedPersona?.rtn ?? "").trim(),
+              rtn_persona: String(normalizedPersona?.rtn ?? "").trim(),
+              rtn_complemento: String(normalizedPersona?.rtn ?? "").trim(),
+              complemento_rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              numero_rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              telefono: String(normalizedPersona?.id_telefono ?? "").trim(),
+              persona_telefono: String(normalizedPersona?.id_telefono ?? "").trim(),
+              direccion: String(normalizedPersona?.id_direccion ?? "").trim(),
+              persona_direccion: String(normalizedPersona?.id_direccion ?? "").trim(),
+              correo: String(normalizedPersona?.id_correo ?? "").trim(),
+              persona_correo: String(normalizedPersona?.id_correo ?? "").trim(),
+            };
+          })
+        );
         setShowPersonaEditModal(false);
         safeToast("OK", "Datos de persona actualizados");
+        catalogosCargadosRef.current = false;
+        await cargarCatalogos();
         clearClientesListCache();
         await cargarClientes({ force: true });
       } catch (error) {
@@ -1791,7 +1816,7 @@ const Clientes = ({ openToast }) => {
         if (mountedRef.current) setInlinePersonaSaving(false);
       }
     },
-    [editId, clientes, form.id_persona, safeToast, clearClientesListCache, cargarClientes]
+    [editId, clientes, form.id_persona, safeToast, clearClientesListCache, cargarClientes, cargarCatalogos]
   );
 
   const handleInlineEmpresaEditSave = useCallback(

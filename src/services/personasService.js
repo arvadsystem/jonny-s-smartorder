@@ -296,7 +296,7 @@ export const personaService = {
   // PERSONAS
   // ==============================
 
-  getPersonas: (pageOrOptions = 1, limitArg = 10, searchArg = '', requestOptions = {}) => {
+  getPersonas: async (pageOrOptions = 1, limitArg = 10, searchArg = '', requestOptions = {}) => {
     const { page, limit, search, sort, genero, estado, suggest, signal } = resolvePersonasListArgs(
       pageOrOptions,
       limitArg,
@@ -311,11 +311,34 @@ export const personaService = {
     if (typeof genero === 'string' && genero.trim() && genero.trim().toLowerCase() !== 'todos') {
       params.set('genero', genero.trim());
     }
-    if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+    const hasEstadoFilter = estado !== undefined && estado !== null;
+    if (hasEstadoFilter) params.set('estado', String(estado));
     if (suggest) params.set('suggest', '1');
     const endpoint = `/personas?${params.toString()}`;
-    if (signal) return fetchGetWithSignal(endpoint, signal);
-    return apiFetch(endpoint, 'GET');
+    if (!hasEstadoFilter) {
+      if (signal) return fetchGetWithSignal(endpoint, signal);
+      return apiFetch(endpoint, 'GET');
+    }
+
+    const paramsWithoutEstado = new URLSearchParams(params);
+    paramsWithoutEstado.delete('estado');
+    const fallbackEndpoint = `/personas?${paramsWithoutEstado.toString()}`;
+
+    try {
+      if (signal) return await fetchGetWithSignal(endpoint, signal);
+      return await apiFetch(endpoint, 'GET');
+    } catch (error) {
+      const status = Number(error?.status);
+      const message = String(error?.message || '').toLowerCase();
+      const payloadMessage = String(error?.payload?.message || error?.payload?.mensaje || '').toLowerCase();
+      const shouldRetryWithoutEstado =
+        status === 400
+        && (message.includes('estado') || payloadMessage.includes('estado') || payloadMessage.includes('no soporta'));
+
+      if (!shouldRetryWithoutEstado) throw error;
+      if (signal) return fetchGetWithSignal(fallbackEndpoint, signal);
+      return apiFetch(fallbackEndpoint, 'GET');
+    }
   },
 
   getPersonaSuggestions: ({
