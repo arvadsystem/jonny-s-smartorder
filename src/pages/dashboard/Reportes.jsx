@@ -64,6 +64,7 @@ const Reportes = () => {
   const normalizedTab = REPORT_KEYS.includes(rawTab) ? rawTab : fallbackTab;
   const activeTab = allowedTabs.some((tab) => tab.key === normalizedTab) ? normalizedTab : fallbackTab;
   const isVentasResumenTab = activeTab === 'ventas-resumen';
+  const isVentasMetodosTab = activeTab === 'ventas-metodos-pago';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -111,6 +112,8 @@ const Reportes = () => {
   const kpis = payload?.data?.kpis || null;
   const serieDiaria = Array.isArray(payload?.data?.serie_diaria) ? payload.data.serie_diaria : [];
   const desgloseEstado = Array.isArray(payload?.data?.desglose_por_estado) ? payload.data.desglose_por_estado : [];
+  const resumenMetodos = Array.isArray(payload?.data?.resumen_por_metodo) ? payload.data.resumen_por_metodo : [];
+  const serieMetodo = Array.isArray(payload?.data?.serie_diaria_por_metodo) ? payload.data.serie_diaria_por_metodo : [];
 
   return (
     <div className="container-fluid p-3 reportes-page">
@@ -222,6 +225,14 @@ const Reportes = () => {
         </div>
       ) : null}
 
+      {isVentasMetodosTab && kpis ? (
+        <div className="reportes-kpis-grid">
+          <article className="reportes-kpi-card"><span>Total general</span><strong>L {money(kpis.total_general)}</strong></article>
+          <article className="reportes-kpi-card"><span>Total ventas</span><strong>{kpis.total_ventas || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Metodos activos</span><strong>{kpis.metodos_activos || 0}</strong></article>
+        </div>
+      ) : null}
+
       <div className="card border-0 shadow-sm reportes-result mt-2">
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
@@ -278,6 +289,63 @@ const Reportes = () => {
                               <td>{item.estado}</td>
                               <td className="text-end">{item.cantidad_ventas}</td>
                               <td className="text-end">L {money(item.total_neto)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : isVentasMetodosTab ? (
+                <div className="row g-3">
+                  <div className="col-12 col-xl-7">
+                    <div className="table-responsive reportes-table-wrap">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Metodo de pago</th>
+                            <th className="text-end">Ventas</th>
+                            <th className="text-end">Total vendido</th>
+                            <th className="text-end">%</th>
+                            <th className="text-end">Ticket promedio</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {resumenMetodos.length === 0 ? (
+                            <tr><td colSpan={5} className="text-center text-muted py-3">Sin datos por metodo.</td></tr>
+                          ) : resumenMetodos.map((item) => (
+                            <tr key={`${item.metodo_pago_codigo || item.metodo_pago}-${item.total_vendido}`}>
+                              <td>{item.metodo_pago}</td>
+                              <td className="text-end">{item.cantidad_ventas}</td>
+                              <td className="text-end">L {money(item.total_vendido)}</td>
+                              <td className="text-end">{money(item.porcentaje_sobre_total)}%</td>
+                              <td className="text-end">L {money(item.ticket_promedio)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="col-12 col-xl-5">
+                    <div className="table-responsive reportes-table-wrap">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Fecha</th>
+                            <th>Metodo</th>
+                            <th className="text-end">Ventas</th>
+                            <th className="text-end">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {serieMetodo.length === 0 ? (
+                            <tr><td colSpan={4} className="text-center text-muted py-3">Sin serie diaria por metodo.</td></tr>
+                          ) : serieMetodo.map((item) => (
+                            <tr key={`${item.fecha}-${item.metodo_pago_codigo || item.metodo_pago}`}>
+                              <td>{item.fecha}</td>
+                              <td>{item.metodo_pago}</td>
+                              <td className="text-end">{item.cantidad_ventas}</td>
+                              <td className="text-end">L {money(item.total_vendido)}</td>
                             </tr>
                           ))}
                         </tbody>
