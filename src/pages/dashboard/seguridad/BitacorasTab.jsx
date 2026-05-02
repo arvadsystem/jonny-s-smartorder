@@ -3,6 +3,7 @@ import InlineLoader from "../../../components/common/InlineLoader";
 import SinPermiso from "../../../components/common/SinPermiso";
 import { usePermisos } from "../../../context/PermisosContext";
 import { fmtHN } from "../../../utils/dateTime";
+import SecurityPaginationBar from "./components/SecurityPaginationBar";
 import { securityAuditApi } from "./services/securityAuditApi";
 import "./sesiones-ui.css";
 
@@ -65,9 +66,7 @@ const plainTextDetails = (value) => {
   if (!hasJsonPayload(normalized)) return "";
 
   if (Array.isArray(normalized)) {
-    return normalized
-      .map((item, idx) => `${idx + 1}. ${plainTextValue(item)}`)
-      .join("\n");
+    return normalized.map((item, idx) => `${idx + 1}. ${plainTextValue(item)}`).join("\n");
   }
 
   if (typeof normalized === "object") {
@@ -95,9 +94,7 @@ const changedFieldsLabel = (beforeValue, afterValue) => {
   if (Array.isArray(beforeJson) || Array.isArray(afterJson)) return "";
 
   const keys = new Set([...Object.keys(beforeJson), ...Object.keys(afterJson)]);
-  const changed = [...keys].filter(
-    (key) => JSON.stringify(beforeJson[key]) !== JSON.stringify(afterJson[key])
-  );
+  const changed = [...keys].filter((key) => JSON.stringify(beforeJson[key]) !== JSON.stringify(afterJson[key]));
 
   if (changed.length === 0) return "";
   return `Campos modificados: ${changed.join(", ")}`;
@@ -110,14 +107,14 @@ const descripcionDisplay = (row) => {
   const puntual = changedFieldsLabel(row?.datos_antes, row?.datos_despues);
   if (puntual) return puntual;
 
-  return `Accion ${toDisplay(row?.accion)} ejecutada por ${toDisplay(row?.usuario_display)}`;
+  return `Acción ${toDisplay(row?.accion)} ejecutada por ${toDisplay(row?.usuario_display)}`;
 };
 
 const friendlyError = (err) => {
   const raw = String(err?.message || "").trim();
-  if (!raw) return "No se pudo cargar bitacoras.";
+  if (!raw) return "No se pudo cargar bitácoras.";
   if (raw.includes("Cannot GET") || raw.includes("<!DOCTYPE")) {
-    return "No se pudo obtener bitacoras desde el endpoint de Seguridad.";
+    return "No se pudo obtener bitácoras desde el endpoint de Seguridad.";
   }
   return raw;
 };
@@ -127,27 +124,27 @@ const JsonModal = ({ title, value, onClose }) => {
   const details = plainTextDetails(value);
 
   return (
-    <div className="modal d-block" tabIndex="-1" role="dialog" aria-modal="true">
-      <div className="modal-dialog modal-lg modal-dialog-centered">
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">{title}</h5>
-            <button type="button" className="btn-close" onClick={onClose} aria-label="Close" />
-          </div>
-          <div className="modal-body">
-            {details ? (
-              <pre className="mb-0 small" style={{ maxHeight: 420, overflow: "auto", whiteSpace: "pre-wrap" }}>
-                {details}
-              </pre>
-            ) : (
-              <div className="text-muted">Sin datos registrados.</div>
-            )}
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-outline-secondary" onClick={onClose}>
-              Cerrar
-            </button>
-          </div>
+    <div className="sec-json-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="sec-json-modal-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="sec-json-modal-head">
+          <h5 className="sec-json-modal-title">{title}</h5>
+          <button type="button" className="sec-json-modal-close" onClick={onClose} aria-label="Cerrar">
+            <i className="bi bi-x-lg" />
+          </button>
+        </div>
+
+        <div className="sec-json-modal-body">
+          {details ? (
+            <pre className="sec-json-modal-pre">{details}</pre>
+          ) : (
+            <div className="text-muted">Sin datos registrados.</div>
+          )}
+        </div>
+
+        <div className="sec-json-modal-footer">
+          <button type="button" className="btn inv-prod-toolbar-btn sec-btn-ghost" onClick={onClose}>
+            Cerrar
+          </button>
         </div>
       </div>
     </div>
@@ -169,10 +166,6 @@ const BitacorasTab = () => {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [modalState, setModalState] = useState({ title: "", value: null });
-
-  const canPrev = offset > 0;
-  const canNext = offset + rows.length < total;
-  const shown = Math.min(offset + rows.length, total);
 
   const load = async ({ silent = false } = {}) => {
     if (!isSuperAdmin) return;
@@ -229,6 +222,8 @@ const BitacorasTab = () => {
     return () => clearInterval(t);
   }, [isSuperAdmin, permisosLoading]);
 
+  const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
+
   const onSearchInput = (value) => {
     setSearchInput(value);
     setOffset(0);
@@ -258,7 +253,7 @@ const BitacorasTab = () => {
       <div className="d-flex align-items-center">
         <button
           type="button"
-          className="btn btn-sm btn-outline-secondary"
+          className="btn btn-sm inv-prod-toolbar-btn sec-btn-ghost sec-audit-table-btn"
           onClick={() => openJsonModal(title, value)}
         >
           Ver
@@ -271,7 +266,7 @@ const BitacorasTab = () => {
     return (
       <SinPermiso
         permiso="SEGURIDAD_SESIONES_VER_GLOBAL"
-        detalle="Solo Super Admin puede consultar bitacoras."
+        detalle="Solo Super Admin puede consultar bitácoras."
       />
     );
   }
@@ -284,13 +279,16 @@ const BitacorasTab = () => {
             <div className="sec-panel-title-wrap">
               <div className="sec-panel-title-row">
                 <i className="bi bi-clipboard-data sec-panel-title-icon" />
-                <span className="sec-panel-title">BITACORAS</span>
+                <span className="sec-panel-title">Bitácoras</span>
               </div>
-              <div className="sec-panel-subtitle">Auditoria general de acciones administrativas</div>
+              <div className="sec-panel-subtitle">Auditoría general de acciones administrativas</div>
             </div>
 
             <div className="sec-panel-header-actions sec-sesiones-header-actions">
-              <label className="sec-toolbar-search sec-sesiones-search" aria-label="Buscar en bitacoras por usuario">
+              <label
+                className="sec-toolbar-search sec-sesiones-search inv-ins-search"
+                aria-label="Buscar en bitácoras por usuario"
+              >
                 <i className="bi bi-search" />
                 <input
                   type="search"
@@ -300,7 +298,11 @@ const BitacorasTab = () => {
                   onInput={(e) => onSearchInput(e.currentTarget.value)}
                 />
               </label>
-              <button className="btn btn-outline-secondary sec-sesiones-global-btn" type="button" onClick={clearSearch}>
+              <button
+                className="btn inv-prod-toolbar-btn sec-btn-ghost sec-sesiones-global-btn"
+                type="button"
+                onClick={clearSearch}
+              >
                 Limpiar
               </button>
             </div>
@@ -312,32 +314,36 @@ const BitacorasTab = () => {
 
             {!loading && !error ? (
               <>
-                <div className="sec-results-meta sec-sesiones-results-meta">
-                  <span>Mostrando {shown} de {total}</span>
-                  <span className="text-muted">
-                    Ultima actualizacion: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-"} (auto 5 s)
-                  </span>
+                <div className="sec-results-meta sec-sesiones-results-meta inv-inventory-results-meta">
+                  <span>{total} resultados</span>
+                  {search ? <span className="sec-filter-pill">Filtro activo</span> : null}
+                </div>
+
+                <div className="small text-muted mb-2">
+                  {`Última actualización: ${
+                    lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-"
+                  } (auto 5 s)`}
                 </div>
 
                 <div className="sec-sesiones-table-card">
                   <div className="table-responsive sec-sesiones-table-responsive">
-                    <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                    <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-bitacoras sec-mobile-card-table">
                       <thead>
                         <tr>
-                          <th>USUARIO</th>
-                          <th>ACCION</th>
-                          <th>DESCRIPCION</th>
-                          <th>IP_ORIGEN</th>
-                          <th>DATOS_ANTES</th>
-                          <th>DATOS_DESPUES</th>
-                          <th>FECHA/HORA</th>
+                          <th>Usuario</th>
+                          <th>Acción</th>
+                          <th>Descripción</th>
+                          <th>IP origen</th>
+                          <th>Datos antes</th>
+                          <th>Datos después</th>
+                          <th>Fecha y hora</th>
                         </tr>
                       </thead>
                       <tbody>
                         {rows.length === 0 ? (
                           <tr>
                             <td colSpan="7" className="text-center text-muted py-4">
-                              No hay registros para la busqueda actual.
+                              No hay registros para la búsqueda actual.
                             </td>
                           </tr>
                         ) : (
@@ -347,8 +353,8 @@ const BitacorasTab = () => {
                               <td>{toDisplay(row.accion)}</td>
                               <td>{descripcionDisplay(row)}</td>
                               <td>{toDisplay(row.ip_origen)}</td>
-                              <td>{renderJsonCell("DATOS_ANTES", row.datos_antes)}</td>
-                              <td>{renderJsonCell("DATOS_DESPUES", row.datos_despues)}</td>
+                              <td>{renderJsonCell("Datos antes", row.datos_antes)}</td>
+                              <td>{renderJsonCell("Datos después", row.datos_despues)}</td>
                               <td>{fmtDate(row.fecha_hora)}</td>
                             </tr>
                           ))
@@ -358,26 +364,12 @@ const BitacorasTab = () => {
                   </div>
                 </div>
 
-                <div className="d-flex justify-content-between align-items-center mt-3">
-                  <small className="text-muted">Mostrando {shown} de {total}</small>
-
-                  <div className="btn-group">
-                    <button
-                      className="btn btn-sm btn-outline-secondary"
-                      disabled={!canPrev}
-                      onClick={() => setOffset((v) => Math.max(0, v - PAGE_SIZE))}
-                    >
-                      Anterior
-                    </button>
-                    <button
-                      className="btn btn-sm btn-outline-secondary"
-                      disabled={!canNext}
-                      onClick={() => setOffset((v) => v + PAGE_SIZE)}
-                    >
-                      Siguiente
-                    </button>
-                  </div>
-                </div>
+                <SecurityPaginationBar
+                  totalItems={total}
+                  pageSize={PAGE_SIZE}
+                  currentPage={currentPage}
+                  onPageChange={(nextPage) => setOffset((nextPage - 1) * PAGE_SIZE)}
+                />
               </>
             ) : null}
           </div>

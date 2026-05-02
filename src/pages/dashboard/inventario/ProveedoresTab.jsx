@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
+import { normalizeVisualText } from '../../../utils/normalizeVisualText';
 import CompactHeaderSwitch from './CompactHeaderSwitch.jsx';
 
 const CUENTA_TIPOS = ['AHORRO', 'CHEQUES', 'OTRA'];
@@ -73,6 +74,23 @@ const parseEstado = (value) => {
 const cleanText = (value) => {
   const raw = String(value ?? '').trim();
   return raw ? raw : null;
+};
+
+const normalizeProveedorVisualField = (field, value) => {
+  const key = String(field || '');
+  if (key === 'nombre_proveedor' || key === 'contacto_principal' || key === 'ciudad') {
+    return normalizeVisualText(value, { mode: 'title' });
+  }
+  if (key === 'direccion' || key === 'observaciones') {
+    return normalizeVisualText(value, { mode: 'sentence' });
+  }
+  if (key === 'banco' || key === 'nombre_titular') {
+    return normalizeVisualText(value, { mode: 'title' });
+  }
+  if (key === 'observacion') {
+    return normalizeVisualText(value, { mode: 'sentence' });
+  }
+  return value;
 };
 
 const normalizeReasonList = (value) => {
@@ -364,15 +382,15 @@ const validateProveedorForm = (form) => {
 
 const buildCuentaPayload = (cuenta) => {
   const payload = {
-    banco: String(cuenta?.banco ?? '').trim(),
+    banco: normalizeVisualText(cuenta?.banco ?? '', { mode: 'title' }),
     tipo_cuenta: String(cuenta?.tipo_cuenta ?? 'AHORRO').trim().toUpperCase(),
     numero_cuenta: String(cuenta?.numero_cuenta ?? '').trim(),
-    nombre_titular: cleanText(cuenta?.nombre_titular),
+    nombre_titular: cleanText(normalizeVisualText(cuenta?.nombre_titular ?? '', { mode: 'title' })),
     identificacion_titular: cleanText(cuenta?.identificacion_titular),
     moneda: String(cuenta?.moneda ?? 'HNL').trim().toUpperCase(),
     es_principal: parseEstado(cuenta?.es_principal),
     estado: parseEstado(cuenta?.estado),
-    observacion: cleanText(cuenta?.observacion)
+    observacion: cleanText(normalizeVisualText(cuenta?.observacion ?? '', { mode: 'sentence' }))
   };
 
   const idCuenta = Number(cuenta?.id_cuenta_bancaria ?? 0);
@@ -385,16 +403,16 @@ const buildCuentaPayload = (cuenta) => {
 
 const buildProveedorPayload = (form) => {
   const payload = {
-    nombre_proveedor: String(form?.nombre_proveedor ?? '').trim(),
-    contacto_principal: cleanText(form?.contacto_principal),
+    nombre_proveedor: normalizeVisualText(form?.nombre_proveedor ?? '', { mode: 'title' }),
+    contacto_principal: cleanText(normalizeVisualText(form?.contacto_principal ?? '', { mode: 'title' })),
     correo_electronico: cleanText(form?.correo_electronico),
     telefono_principal: cleanText(form?.telefono_principal),
     telefono_secundario: cleanText(form?.telefono_secundario),
-    ciudad: cleanText(form?.ciudad),
-    direccion: cleanText(form?.direccion),
+    ciudad: cleanText(normalizeVisualText(form?.ciudad ?? '', { mode: 'title' })),
+    direccion: cleanText(normalizeVisualText(form?.direccion ?? '', { mode: 'sentence' })),
     rtn: cleanText(form?.rtn),
     plazo_pago_dias: Number.parseInt(String(form?.plazo_pago_dias ?? '0'), 10),
-    observaciones: cleanText(form?.observaciones),
+    observaciones: cleanText(normalizeVisualText(form?.observaciones ?? '', { mode: 'sentence' })),
     cuentas_bancarias: (Array.isArray(form?.cuentas_bancarias) ? form.cuentas_bancarias : []).map(buildCuentaPayload)
   };
 
@@ -406,14 +424,24 @@ const buildProveedorPayload = (form) => {
   return payload;
 };
 
+const serializeProveedorForm = (form) => JSON.stringify(buildProveedorPayload(form));
+
+const hasProveedorFormChanges = (currentForm, baselineForm) => {
+  return serializeProveedorForm(currentForm) !== serializeProveedorForm(baselineForm);
+};
+
 const ProveedoresTab = ({ openToast, onScopeChange }) => {
   const { can, canAny, loading: permisosLoading } = usePermisos();
-  const canVerProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_VER);
+  const canVerProveedores = canAny([
+    PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_DETALLE_VER
+  ]);
   const canCrearProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR);
   const canEditarProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR);
   const canCambiarEstadoProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_ESTADO_CAMBIAR);
   const canAccessProveedoresTab = canAny([
     PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_DETALLE_VER,
     PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR,
     PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR,
     PERMISSIONS.INVENTARIO_PROVEEDORES_ELIMINAR,
@@ -436,6 +464,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [form, setForm] = useState(PROVEEDOR_FORM_INITIAL);
+  const [createFormSnapshot, setCreateFormSnapshot] = useState(PROVEEDOR_FORM_INITIAL);
   const [createErrors, setCreateErrors] = useState({});
   const [savingCreate, setSavingCreate] = useState(false);
 
@@ -445,6 +474,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
 
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [editFormSnapshot, setEditFormSnapshot] = useState(null);
   const [editErrors, setEditErrors] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [editRemovedCuentas, setEditRemovedCuentas] = useState([]);
@@ -468,12 +498,50 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   const editRequestIdRef = useRef(0);
   const dependenciasRequestIdRef = useRef(0);
   const confirmActionRequestIdRef = useRef(0);
+  const createNombreInputRef = useRef(null);
+  const editNombreInputRef = useRef(null);
+  const modalFocusReturnRef = useRef(null);
+  const prevModalOpenRef = useRef(false);
   const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
   const showEditModal = Boolean(editForm && editId !== null);
+  const anyFormModalOpen = showCreateModal || showEditModal;
+
+  const captureActiveElement = useCallback(() => {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? active : null;
+  }, []);
+
+  const restoreFocusToElement = useCallback((element) => {
+    if (!(element instanceof HTMLElement) || typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!document.contains(element) || element.hasAttribute('disabled') || element.getAttribute('aria-hidden') === 'true') return;
+    window.requestAnimationFrame(() => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    });
+  }, []);
 
   const safeToast = (title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
   };
+
+  const hasCreateFormUnsavedChanges = useMemo(
+    () => hasProveedorFormChanges(form, createFormSnapshot),
+    [createFormSnapshot, form]
+  );
+
+  const hasEditFormUnsavedChanges = useMemo(() => {
+    if (!editForm || !editFormSnapshot) return false;
+    return hasProveedorFormChanges(editForm, editFormSnapshot);
+  }, [editForm, editFormSnapshot]);
+
+  const confirmDiscardProveedorChanges = useCallback(() => {
+    if (typeof window === 'undefined') return true;
+    return window.confirm('Hay cambios sin guardar. ¿Deseas cerrar y perderlos?');
+  }, []);
 
   const cargarProveedores = async ({ silent = false } = {}) => {
     if (!canVerProveedores) {
@@ -518,6 +586,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       setDetailData(null);
       setEditId(null);
       setEditForm(null);
+      setEditFormSnapshot(null);
       setEditRemovedCuentas([]);
       setConfirmModal({
         show: false,
@@ -568,6 +637,26 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       document.body.style.overflow = previousOverflow;
     };
   }, [showCreateModal, showEditModal]);
+
+  useEffect(() => {
+    if (!anyFormModalOpen || typeof window === 'undefined') return undefined;
+    const target = showEditModal ? editNombreInputRef.current : createNombreInputRef.current;
+    if (!target) return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [anyFormModalOpen, showCreateModal, showEditModal]);
+
+  useEffect(() => {
+    if (anyFormModalOpen && !prevModalOpenRef.current) {
+      modalFocusReturnRef.current = captureActiveElement();
+    } else if (!anyFormModalOpen && prevModalOpenRef.current) {
+      restoreFocusToElement(modalFocusReturnRef.current);
+      modalFocusReturnRef.current = null;
+    }
+    prevModalOpenRef.current = anyFormModalOpen;
+  }, [anyFormModalOpen, captureActiveElement, restoreFocusToElement]);
 
   const proveedoresFiltrados = useMemo(() => {
     const raw = String(search ?? '').trim().toLowerCase();
@@ -709,7 +798,12 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
   };
 
   const resetCreateForm = () => {
-    setForm(PROVEEDOR_FORM_INITIAL);
+    const initialForm = {
+      ...PROVEEDOR_FORM_INITIAL,
+      cuentas_bancarias: [createCuentaDraft()]
+    };
+    setForm(initialForm);
+    setCreateFormSnapshot(initialForm);
     setCreateErrors({});
   };
 
@@ -722,13 +816,15 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
     editRequestIdRef.current += 1;
     setEditId(null);
     setEditForm(null);
+    setEditFormSnapshot(null);
     setEditRemovedCuentas([]);
     resetCreateForm();
     setShowCreateModal(true);
   };
 
-  const closeCreate = () => {
-    if (savingCreate) return;
+  const closeCreate = (force = false) => {
+    if (savingCreate && !force) return;
+    if (!force && hasCreateFormUnsavedChanges && !confirmDiscardProveedorChanges()) return;
     setShowCreateModal(false);
     resetCreateForm();
   };
@@ -840,7 +936,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       const payload = buildProveedorPayload(form);
       await inventarioService.crearProveedor(payload);
       safeToast('PROVEEDORES', 'Proveedor creado correctamente.', 'success');
-      closeCreate();
+      closeCreate(true);
       await cargarProveedores({ silent: true });
     } catch (saveError) {
       safeToast('ERROR', resolveProveedoresRequestMessage(saveError, 'No se pudo crear el proveedor.'), 'danger');
@@ -864,6 +960,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
     setSavingEdit(false);
     setEditId(idProveedor);
     setEditForm(null);
+    setEditFormSnapshot(null);
     setEditRemovedCuentas([]);
 
     try {
@@ -875,24 +972,46 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
         setEditRemovedCuentas([]);
         return;
       }
-      setEditForm(normalizarProveedorAFormulario(detalle));
+      const normalizedForm = normalizarProveedorAFormulario(detalle);
+      setEditForm(normalizedForm);
+      setEditFormSnapshot(normalizedForm);
     } catch (editError) {
       if (requestId !== editRequestIdRef.current) return;
       safeToast('ERROR', resolveProveedoresRequestMessage(editError, 'No se pudo abrir la edicion.'), 'danger');
       setEditId(null);
       setEditForm(null);
+      setEditFormSnapshot(null);
       setEditRemovedCuentas([]);
     }
   };
 
-  const cancelarEdicion = () => {
-    if (savingEdit) return;
+  const cancelarEdicion = (force = false) => {
+    if (savingEdit && !force) return;
+    if (!force && hasEditFormUnsavedChanges && !confirmDiscardProveedorChanges()) return;
     editRequestIdRef.current += 1;
     setEditId(null);
     setEditForm(null);
+    setEditFormSnapshot(null);
     setEditErrors({});
     setEditRemovedCuentas([]);
   };
+
+  useEffect(() => {
+    if ((!showCreateModal && !showEditModal) || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (showEditModal) {
+        cancelarEdicion();
+        return;
+      }
+      if (showCreateModal) {
+        closeCreate();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cancelarEdicion, closeCreate, showCreateModal, showEditModal]);
 
   const guardarEdicion = async (event) => {
     event.preventDefault();
@@ -923,7 +1042,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
       const payload = buildProveedorPayload(editForm);
       await inventarioService.actualizarProveedor(editId, payload);
       safeToast('PROVEEDORES', 'Proveedor actualizado correctamente.', 'success');
-      cancelarEdicion();
+      cancelarEdicion(true);
       await cargarProveedores({ silent: true });
     } catch (updateError) {
       const isConcurrencyConflict =
@@ -1204,6 +1323,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                       className={`form-control ${rowErrors.banco ? 'is-invalid' : ''}`}
                       value={cuenta.banco}
                       onChange={(event) => onChange(index, { banco: event.target.value })}
+                      onBlur={(event) => onChange(index, { banco: normalizeProveedorVisualField('banco', event.target.value) })}
                       disabled={disabled}
                     />
                     {rowErrors.banco ? <div className="invalid-feedback">{rowErrors.banco}</div> : null}
@@ -1243,6 +1363,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                       className={`form-control ${rowErrors.nombre_titular ? 'is-invalid' : ''}`}
                       value={cuenta.nombre_titular}
                       onChange={(event) => onChange(index, { nombre_titular: event.target.value })}
+                      onBlur={(event) => onChange(index, { nombre_titular: normalizeProveedorVisualField('nombre_titular', event.target.value) })}
                       disabled={disabled}
                     />
                     {rowErrors.nombre_titular ? <div className="invalid-feedback">{rowErrors.nombre_titular}</div> : null}
@@ -1285,6 +1406,7 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                       rows="2"
                       value={cuenta.observacion}
                       onChange={(event) => onChange(index, { observacion: event.target.value })}
+                      onBlur={(event) => onChange(index, { observacion: normalizeProveedorVisualField('observacion', event.target.value) })}
                       disabled={disabled}
                     />
                     {rowErrors.observacion ? <div className="invalid-feedback">{rowErrors.observacion}</div> : null}
@@ -1568,10 +1690,14 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                           <div className="col-12">
                             <label className="form-label mb-1">Nombre proveedor</label>
                             <input
+                              ref={createNombreInputRef}
                               className={`form-control ${createErrors.nombre_proveedor ? 'is-invalid' : ''}`}
                               value={form.nombre_proveedor}
                               onChange={(event) =>
                                 setForm((current) => ({ ...current, nombre_proveedor: event.target.value }))
+                              }
+                              onBlur={(event) =>
+                                setForm((current) => ({ ...current, nombre_proveedor: normalizeProveedorVisualField('nombre_proveedor', event.target.value) }))
                               }
                               disabled={savingCreate}
                             />
@@ -1587,6 +1713,9 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                               value={form.contacto_principal}
                               onChange={(event) =>
                                 setForm((current) => ({ ...current, contacto_principal: event.target.value }))
+                              }
+                              onBlur={(event) =>
+                                setForm((current) => ({ ...current, contacto_principal: normalizeProveedorVisualField('contacto_principal', event.target.value) }))
                               }
                               disabled={savingCreate}
                             />
@@ -1702,6 +1831,9 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                               value={form.observaciones}
                               onChange={(event) =>
                                 setForm((current) => ({ ...current, observaciones: event.target.value }))
+                              }
+                              onBlur={(event) =>
+                                setForm((current) => ({ ...current, observaciones: normalizeProveedorVisualField('observaciones', event.target.value) }))
                               }
                               disabled={savingCreate}
                             />
@@ -1933,10 +2065,14 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                             <div className="col-12">
                               <label className="form-label mb-1">Nombre proveedor</label>
                               <input
+                                ref={editNombreInputRef}
                                 className={`form-control ${editErrors.nombre_proveedor ? 'is-invalid' : ''}`}
                                 value={editForm.nombre_proveedor}
                                 onChange={(event) =>
                                   setEditForm((current) => ({ ...current, nombre_proveedor: event.target.value }))
+                                }
+                                onBlur={(event) =>
+                                  setEditForm((current) => ({ ...current, nombre_proveedor: normalizeProveedorVisualField('nombre_proveedor', event.target.value) }))
                                 }
                                 disabled={savingEdit}
                               />
@@ -1951,6 +2087,9 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                                 value={editForm.contacto_principal}
                                 onChange={(event) =>
                                   setEditForm((current) => ({ ...current, contacto_principal: event.target.value }))
+                                }
+                                onBlur={(event) =>
+                                  setEditForm((current) => ({ ...current, contacto_principal: normalizeProveedorVisualField('contacto_principal', event.target.value) }))
                                 }
                                 disabled={savingEdit}
                               />
@@ -2058,6 +2197,9 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
                                 value={editForm.observaciones}
                                 onChange={(event) =>
                                   setEditForm((current) => ({ ...current, observaciones: event.target.value }))
+                                }
+                                onBlur={(event) =>
+                                  setEditForm((current) => ({ ...current, observaciones: normalizeProveedorVisualField('observaciones', event.target.value) }))
                                 }
                                 disabled={savingEdit}
                               />
@@ -2360,3 +2502,4 @@ const ProveedoresTab = ({ openToast, onScopeChange }) => {
 };
 
 export default ProveedoresTab;
+

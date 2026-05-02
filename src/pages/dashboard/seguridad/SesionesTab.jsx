@@ -3,10 +3,10 @@ import { securityService } from "../../../services/securityService";
 import SinPermiso from "../../../components/common/SinPermiso";
 import InlineLoader from "../../../components/common/InlineLoader";
 import SecurityConfirmAction from "./components/SecurityConfirmAction";
+import SecurityPaginationBar from "./components/SecurityPaginationBar";
 import { fmtHN } from "../../../utils/dateTime";
 import { usePermisos } from "../../../context/PermisosContext";
 import { PERMISSIONS } from "../../../utils/permissions";
-import "../perfil-toast.css";
 import "./sesiones-ui.css";
 
 const PAGE_SIZE = 10;
@@ -29,12 +29,35 @@ const isSesionFallida = (sesion) => {
   return false;
 };
 
-// ======================================================
-// PERSONAL (usuario normal) - HU79
-// ======================================================
+const ToastNotice = ({ alert, onClose }) => {
+  if (!alert?.visible) return null;
+
+  return (
+    <div className="inv-toast-wrap" role="status" aria-live="polite">
+      <article className={`inv-toast-card ${alert.variant || "info"}`.trim()}>
+        <div className="inv-toast-icon" aria-hidden="true">
+          <i className={`bi ${alert.icono}`} />
+        </div>
+
+        <div className="inv-toast-content">
+          <div className="inv-toast-title">{alert.titulo}</div>
+          <div className="inv-toast-message">{alert.mensaje}</div>
+        </div>
+
+        <button type="button" className="inv-toast-close" onClick={onClose} aria-label="Cerrar">
+          <i className="bi bi-x-lg" />
+        </button>
+
+        <div className="inv-toast-progress" aria-hidden="true" />
+      </article>
+    </div>
+  );
+};
+
 const SesionesTabPersonal = () => {
   const { canAny } = usePermisos();
   const canClosePersonal = canAny([PERMISSIONS.SEGURIDAD_SESIONES_CERRAR]);
+
   const [sesiones, setSesiones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [noPermiso, setNoPermiso] = useState(false);
@@ -57,7 +80,6 @@ const SesionesTabPersonal = () => {
     }
 
     try {
-      // cache-bust para evitar respuestas cacheadas del GET
       const qs = new URLSearchParams({ _ts: String(Date.now()) }).toString();
       const data = await securityService.getSesiones(qs);
       setSesiones(data?.sesiones || []);
@@ -83,25 +105,13 @@ const SesionesTabPersonal = () => {
     const t = setInterval(() => {
       cargarRef.current?.({ silent: true });
     }, AUTO_REFRESH_MS);
-
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sesionesActivas = useMemo(
-    () => sesiones.filter((s) => s.activa),
-    [sesiones]
-  );
-
-  const sesionesCerradas = useMemo(
-    () => sesiones.filter((s) => !s.activa),
-    [sesiones]
-  );
-
-  const sesionesFallidas = useMemo(
-    () => sesiones.filter((s) => isSesionFallida(s)),
-    [sesiones]
-  );
+  const sesionesActivas = useMemo(() => sesiones.filter((s) => s.activa), [sesiones]);
+  const sesionesCerradas = useMemo(() => sesiones.filter((s) => !s.activa), [sesiones]);
+  const sesionesFallidas = useMemo(() => sesiones.filter((s) => isSesionFallida(s)), [sesiones]);
 
   const sesionesFiltradas = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -149,7 +159,7 @@ const SesionesTabPersonal = () => {
       await securityService.cerrarSesion(id_sesion);
       await cargar({ silent: true });
     } catch (e) {
-      alert(e?.message || "No se pudo cerrar la sesión");
+      alert(e?.message || "No se pudo cerrar la sesión.");
     } finally {
       setClosingId(null);
     }
@@ -161,7 +171,7 @@ const SesionesTabPersonal = () => {
       await securityService.cerrarOtras();
       await cargar({ silent: true });
     } catch (e) {
-      alert(e?.message || "No se pudieron cerrar las otras sesiones");
+      alert(e?.message || "No se pudieron cerrar las otras sesiones.");
     } finally {
       setClosingOtras(false);
     }
@@ -182,7 +192,10 @@ const SesionesTabPersonal = () => {
           </div>
 
           <div className="sec-panel-header-actions sec-sesiones-header-actions">
-            <label className="sec-toolbar-search sec-sesiones-search" aria-label="Buscar sesiones">
+            <label
+              className="sec-toolbar-search sec-sesiones-search inv-ins-search"
+              aria-label="Buscar sesiones"
+            >
               <i className="bi bi-search" />
               <input
                 type="search"
@@ -194,7 +207,7 @@ const SesionesTabPersonal = () => {
 
             {canClosePersonal ? (
               <SecurityConfirmAction
-                className="btn btn-outline-danger"
+                className="btn inv-prod-toolbar-btn sec-btn-danger sec-sesiones-global-btn"
                 title="CONFIRMAR CIERRE GLOBAL"
                 subtitle="Se cerrarán todas las sesiones excepto la sesión actual."
                 question="¿Deseas cerrar las demás sesiones activas?"
@@ -203,12 +216,12 @@ const SesionesTabPersonal = () => {
               >
                 {closingOtras ? (
                   <>
-                    <span className="spinner-border spinner-border-sm me-2"></span>
+                    <span className="spinner-border spinner-border-sm me-2" />
                     Cerrando...
                   </>
                 ) : (
                   <>
-                    <i className="bi bi-x-circle me-2"></i>
+                    <i className="bi bi-x-circle me-2" />
                     Cerrar sesiones (menos la actual)
                   </>
                 )}
@@ -266,20 +279,20 @@ const SesionesTabPersonal = () => {
 
           {!loading && !error && (
             <>
-              <div className="sec-results-meta sec-sesiones-results-meta">
+              <div className="sec-results-meta sec-sesiones-results-meta inv-inventory-results-meta">
                 <span>{sesionesFiltradas.length} resultados</span>
-                <span>Total general: {sesiones.length}</span>
-                <span className="text-muted">
-                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15 s)
-                </span>
-                {segmento !== "todas" ? (
-                  <span className="sec-results-pill">Filtro activo</span>
-                ) : null}
+                {segmento !== "todas" ? <span className="sec-filter-pill">Filtro activo</span> : null}
+              </div>
+
+              <div className="small text-muted mb-2">
+                {`Última actualización: ${
+                  lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-"
+                } (auto 15 s)`}
               </div>
 
               <div className="sec-sesiones-table-card">
                 <div className="table-responsive sec-sesiones-table-responsive">
-                  <table className="table table-hover align-middle mb-0 sec-sesiones-table">
+                  <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-personal-sessions sec-mobile-card-table">
                     <thead>
                       <tr>
                         <th>Estado</th>
@@ -314,22 +327,22 @@ const SesionesTabPersonal = () => {
                                 <span className="badge bg-danger">Fallido</span>
                               ) : s.activa ? (
                                 <span className={`badge ${esActual ? "bg-primary" : "bg-success"}`}>
-                                  Activa{esActual ? " (Actual)" : ""}
+                                  Activa{esActual ? "(Usted)" : ""}
                                 </span>
                               ) : (
                                 <span className="badge bg-secondary">Cerrada</span>
                               )}
                             </td>
-                            <td>{s.dispositivo || "—"}</td>
-                            <td>{s.navegador || "—"}</td>
-                            <td>{s.sistema_operativo || "—"}</td>
-                            <td>{s.ip_origen || "—"}</td>
+                            <td>{s.dispositivo || "-"}</td>
+                            <td>{s.navegador || "-"}</td>
+                            <td>{s.sistema_operativo || "-"}</td>
+                            <td>{s.ip_origen || "-"}</td>
                             <td>{fmtDate(s.fecha_inicio)}</td>
                             <td>{fmtDate(s.ultima_actividad)}</td>
                             <td className="text-end">
                               {canClosePersonal ? (
                                 <SecurityConfirmAction
-                                  className="btn btn-sm btn-outline-danger"
+                                  className="btn btn-sm inv-prod-toolbar-btn sec-btn-soft-danger sec-action-btn"
                                   title="CONFIRMAR CIERRE DE SESIÓN"
                                   subtitle="La sesión seleccionada se finalizará de inmediato."
                                   question="¿Deseas cerrar esta sesión?"
@@ -352,42 +365,24 @@ const SesionesTabPersonal = () => {
                 </div>
               </div>
 
-              <div className="d-flex justify-content-between align-items-center mt-3">
-                <small className="text-muted">
-                  Mostrando {Math.min(page * PAGE_SIZE, sesionesFiltradas.length)} de {sesionesFiltradas.length}
-                </small>
-
-                <div className="btn-group">
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  >
-                    Siguiente
-                  </button>
-                </div>
-              </div>
+              <SecurityPaginationBar
+                totalItems={sesionesFiltradas.length}
+                pageSize={PAGE_SIZE}
+                currentPage={page}
+                onPageChange={setPage}
+              />
             </>
           )}
         </div>
       </div>
-      </div>
+    </div>
   );
 };
 
-// ======================================================
-// GLOBAL (Super Admin) - Sprint 3
-// ======================================================
 const SesionesTabGlobal = () => {
   const { canAny } = usePermisos();
   const canCloseGlobal = canAny([PERMISSIONS.SEGURIDAD_SESIONES_CERRAR_GLOBAL]);
+
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
 
@@ -407,24 +402,20 @@ const SesionesTabGlobal = () => {
     titulo: "AVISO",
     mensaje: "",
     icono: "bi-exclamation-triangle-fill",
+    variant: "info",
   });
 
   useEffect(() => {
     if (!alerta.visible) return undefined;
-
-    const timer = setTimeout(
-      () => setAlerta((prev) => ({ ...prev, visible: false })),
-      3200
-    );
-
+    const timer = setTimeout(() => setAlerta((prev) => ({ ...prev, visible: false })), 3200);
     return () => clearTimeout(timer);
   }, [alerta.visible]);
 
   const mostrarAlerta = (
     mensaje,
-    { titulo = "AVISO", icono = "bi-exclamation-triangle-fill" } = {}
+    { titulo = "AVISO", icono = "bi-exclamation-triangle-fill", variant = "info" } = {}
   ) => {
-    setAlerta({ visible: true, titulo, mensaje, icono });
+    setAlerta({ visible: true, titulo, mensaje, icono, variant });
   };
 
   const load = async ({ silent = false } = {}) => {
@@ -439,7 +430,7 @@ const SesionesTabGlobal = () => {
       if (buscar) qs.set("buscar", buscar);
       qs.set("limit", String(PAGE_SIZE));
       qs.set("offset", String(offset));
-      qs.set("_ts", String(Date.now())); // cache-bust
+      qs.set("_ts", String(Date.now()));
 
       const data = await securityService.getSesionesGlobal(qs.toString());
       setRows(data?.rows || []);
@@ -473,9 +464,7 @@ const SesionesTabGlobal = () => {
     return () => clearInterval(t);
   }, []);
 
-  const canPrev = offset > 0;
-  const canNext = offset + rows.length < total;
-  const shown = Math.min(offset + rows.length, total);
+  const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
 
   const handleBuscarInput = (value) => {
     setBuscarInput(value);
@@ -489,11 +478,12 @@ const SesionesTabGlobal = () => {
       setOffset(0);
       await load({ silent: true });
       mostrarAlerta("Sesiones cerradas correctamente.", {
-        titulo: "AVISO",
+        titulo: "ACTUALIZADO",
         icono: "bi-check-circle-fill",
+        variant: "success",
       });
     } catch (e) {
-      alert(e?.message || "No se pudieron cerrar las sesiones");
+      alert(e?.message || "No se pudieron cerrar las sesiones.");
     }
   };
 
@@ -504,12 +494,13 @@ const SesionesTabGlobal = () => {
     try {
       await securityService.cerrarSesionGlobal(id_sesion);
       await load({ silent: true });
-      mostrarAlerta("Sesion cerrada correctamente.", {
-        titulo: "AVISO",
+      mostrarAlerta("Sesión cerrada correctamente.", {
+        titulo: "ACTUALIZADO",
         icono: "bi-check-circle-fill",
+        variant: "success",
       });
     } catch (e) {
-      alert(e?.message || "No se pudo cerrar la sesión");
+      alert(e?.message || "No se pudo cerrar la sesión.");
     } finally {
       setClosingId(null);
     }
@@ -519,182 +510,156 @@ const SesionesTabGlobal = () => {
 
   return (
     <>
-      {alerta.visible && (
-        <div className="perfil-save-toast" role="status" aria-live="polite">
-          <div className="perfil-save-toast__body">
-            <div className="perfil-save-toast__icon" aria-hidden="true">
-              <i className={`bi ${alerta.icono}`} />
-            </div>
-            <div className="perfil-save-toast__copy">
-              <div className="perfil-save-toast__title">{alerta.titulo}</div>
-              <div className="perfil-save-toast__subtitle">{alerta.mensaje}</div>
-            </div>
-            <button
-              type="button"
-              className="perfil-save-toast__close"
-              onClick={() => setAlerta((prev) => ({ ...prev, visible: false }))}
-              aria-label="Cerrar"
-            >
-              <i className="bi bi-x-lg" />
-            </button>
-          </div>
-        </div>
-      )}
+      <ToastNotice alert={alerta} onClose={() => setAlerta((prev) => ({ ...prev, visible: false }))} />
 
       <div className="card shadow-sm sec-sesiones-shell" style={{ backgroundColor: "#fff" }}>
-      <div className="card-body p-0">
-        <div className="sec-panel-header sec-sesiones-header">
-          <div className="sec-panel-title-wrap">
-            <div className="sec-panel-title-row">
-              <i className="bi bi-shield-lock sec-panel-title-icon" />
-              <span className="sec-panel-title">SESIONES</span>
-            </div>
-            <div className="sec-panel-subtitle">Vista Super Admin</div>
-          </div>
-
-          <div className="sec-panel-header-actions sec-sesiones-header-actions">
-            <label className="sec-toolbar-search sec-sesiones-search" aria-label="Buscar sesiones globales">
-              <i className="bi bi-search" />
-              <input
-                type="search"
-                placeholder="Buscar por usuario / nombre / IP..."
-                value={buscarInput}
-                onChange={(e) => handleBuscarInput(e.target.value)}
-                onInput={(e) => handleBuscarInput(e.currentTarget.value)}
-              />
-            </label>
-
-            {canCloseGlobal ? (
-              <SecurityConfirmAction
-                className="btn btn-outline-danger sec-sesiones-global-btn"
-                title="CONFIRMAR CIERRE GLOBAL"
-                subtitle="Esta acción impactará sesiones activas del sistema."
-                question="¿Deseas cerrar todas las sesiones excepto la actual?"
-                onConfirm={onCerrarGlobalMenosActual}
-                disabled={total <= 1}
-              >
-                <i className="bi bi-x-circle me-2"></i>
-                Cerrar sesiones
-              </SecurityConfirmAction>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="sec-panel-body p-3 sec-sesiones-body">
-          {loading && <InlineLoader />}
-          {error && <div className="alert alert-danger">{error}</div>}
-
-          {!loading && !error && (
-            <>
-              <div className="sec-results-meta sec-sesiones-results-meta">
-                <span>Mostrando {shown} de {total}</span>
-                <span className="text-muted">
-                  Última actualización: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "—"} (auto 15 s)
-                </span>
+        <div className="card-body p-0">
+          <div className="sec-panel-header sec-sesiones-header">
+            <div className="sec-panel-title-wrap">
+              <div className="sec-panel-title-row">
+                <i className="bi bi-shield-lock sec-panel-title-icon" />
+                <span className="sec-panel-title">Sesiones</span>
               </div>
+              <div className="sec-panel-subtitle">Vista Super Admin</div>
+            </div>
 
-              <div className="sec-sesiones-table-card">
-                <div className="table-responsive sec-sesiones-table-responsive">
-                  <table className="table table-hover align-middle mb-0 sec-sesiones-table">
-                    <thead>
-                      <tr>
-                        <th>Estado</th>
-                        <th>Usuario</th>
-                        <th>Dispositivo</th>
-                        <th>Navegador</th>
-                        <th>SO</th>
-                        <th>IP</th>
-                        <th>Inicio de sesión</th>
-                        <th>Última actividad</th>
-                        <th className="text-end">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.length === 0 && (
+            <div className="sec-panel-header-actions sec-sesiones-header-actions sec-sesiones-header-actions--global">
+              <label
+                className="sec-toolbar-search sec-sesiones-search inv-ins-search"
+                aria-label="Buscar sesiones globales"
+              >
+                <i className="bi bi-search" />
+                <input
+                  type="search"
+                  placeholder="Buscar por usuario, nombre o IP..."
+                  value={buscarInput}
+                  onChange={(e) => handleBuscarInput(e.target.value)}
+                  onInput={(e) => handleBuscarInput(e.currentTarget.value)}
+                />
+              </label>
+
+              {canCloseGlobal ? (
+                <SecurityConfirmAction
+                  className="btn inv-prod-toolbar-btn sec-btn-danger sec-sesiones-global-btn"
+                  title="CONFIRMAR CIERRE GLOBAL"
+                  subtitle="Esta acción impactará sesiones activas del sistema."
+                  question="¿Deseas cerrar todas las sesiones excepto la actual?"
+                  onConfirm={onCerrarGlobalMenosActual}
+                  disabled={total <= 1}
+                >
+                  <i className="bi bi-x-circle me-2" />
+                  Cerrar sesiones
+                </SecurityConfirmAction>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="sec-panel-body p-3 sec-sesiones-body">
+            {loading && <InlineLoader />}
+            {error && <div className="alert alert-danger">{error}</div>}
+
+            {!loading && !error && (
+              <>
+                <div className="sec-meta-split-row">
+                  <div className="sec-results-meta sec-sesiones-results-meta inv-inventory-results-meta mb-0">
+                    <span>{total} resultados</span>
+                  </div>
+
+                  <div className="small text-muted sec-meta-split-row__right">
+                    {`Última actualización: ${
+                      lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : "-"
+                    } (auto 15 s)`}
+                  </div>
+                </div>
+
+                <div className="sec-sesiones-table-card">
+                  <div className="table-responsive sec-sesiones-table-responsive">
+                    <table className="table table-hover align-middle mb-0 sec-sesiones-table sec-table-global-sessions sec-mobile-card-table">
+                      <thead>
                         <tr>
-                          <td colSpan="9" className="text-center text-muted py-4">
-                            {buscar
-                              ? "No existe sesión activa para el dato ingresado."
-                              : "No hay sesiones activas para el filtro."}
-                          </td>
+                          <th>Estado</th>
+                          <th>Usuario</th>
+                          <th>Dispositivo</th>
+                          <th>Navegador</th>
+                          <th>SO</th>
+                          <th>IP</th>
+                          <th>Inicio de sesión</th>
+                          <th>Última actividad</th>
+                          <th className="text-end">Acciones</th>
                         </tr>
-                      )}
-
-                      {rows.map((s) => {
-                        const esActual = !!s.es_actual;
-
-                        return (
-                          <tr key={s.id_sesion} className={esActual ? "sec-sesion-row-current" : ""}>
-                            <td>
-                              <span className={`badge ${esActual ? "bg-primary" : "bg-success"}`}>
-                                Activa{esActual ? " (Actual)" : ""}
-                              </span>
-                            </td>
-                            <td>
-                              <div className="fw-semibold">{s.nombre_usuario || "—"}</div>
-                              <div className="small text-muted">
-                                {[s.nombre, s.apellido].filter(Boolean).join(" ") || "—"}
-                              </div>
-                            </td>
-                            <td>{s.dispositivo || "—"}</td>
-                            <td>{s.navegador || "—"}</td>
-                            <td>{s.sistema_operativo || "—"}</td>
-                            <td>{s.ip_origen || "—"}</td>
-                            <td>{fmtDate(s.fecha_inicio)}</td>
-                            <td>{fmtDate(s.ultima_actividad)}</td>
-                            <td className="text-end">
-                              {canCloseGlobal ? (
-                                <SecurityConfirmAction
-                                  className="btn btn-sm btn-outline-danger"
-                                  title="CONFIRMAR CIERRE DE SESIÓN"
-                                  subtitle="El usuario deberá iniciar sesión nuevamente."
-                                  question="¿Deseas cerrar esta sesión?"
-                                  centered
-                                  onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
-                                  disabled={esActual || closingId === s.id_sesion}
-                                >
-                                  {closingId === s.id_sesion ? (
-                                    <span className="spinner-border spinner-border-sm" />
-                                  ) : esActual ? (
-                                    "Actual"
-                                  ) : (
-                                    "Cerrar"
-                                  )}
-                                </SecurityConfirmAction>
-                              ) : null}
+                      </thead>
+                      <tbody>
+                        {rows.length === 0 && (
+                          <tr>
+                            <td colSpan="9" className="text-center text-muted py-4">
+                              {buscar
+                                ? "No existe una sesión activa para el dato ingresado."
+                                : "No hay sesiones activas para el filtro actual."}
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                        )}
 
-              <div className="d-flex justify-content-between align-items-center mt-3">
-                <small className="text-muted">Mostrando {shown} de {total}</small>
+                        {rows.map((s) => {
+                          const esActual = !!s.es_actual;
 
-                <div className="btn-group">
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={!canPrev}
-                    onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={!canNext}
-                    onClick={() => setOffset((o) => o + PAGE_SIZE)}
-                  >
-                    Siguiente
-                  </button>
+                          return (
+                            <tr key={s.id_sesion} className={esActual ? "sec-sesion-row-current" : ""}>
+                              <td>
+                                <span className={`badge ${esActual ? "bg-primary" : "bg-success"}`}>
+                                  Activa{esActual ? "(Usted)" : ""}
+                                </span>
+                              </td>
+                              <td>
+                                <div className="fw-semibold">{s.nombre_usuario || "-"}</div>
+                                <div className="small text-muted">
+                                  {[s.nombre, s.apellido].filter(Boolean).join(" ") || "-"}
+                                </div>
+                              </td>
+                              <td>{s.dispositivo || "-"}</td>
+                              <td>{s.navegador || "-"}</td>
+                              <td>{s.sistema_operativo || "-"}</td>
+                              <td>{s.ip_origen || "-"}</td>
+                              <td>{fmtDate(s.fecha_inicio)}</td>
+                              <td>{fmtDate(s.ultima_actividad)}</td>
+                              <td className="text-end">
+                                {canCloseGlobal ? (
+                                  <SecurityConfirmAction
+                                    className="btn btn-sm inv-prod-toolbar-btn sec-btn-soft-danger sec-action-btn"
+                                    title="CONFIRMAR CIERRE DE SESIÓN"
+                                    subtitle="El usuario deberá iniciar sesión nuevamente."
+                                    question="¿Deseas cerrar esta sesión?"
+                                    centered
+                                    onConfirm={() => onCerrarSesionGlobal(s.id_sesion, esActual)}
+                                    disabled={esActual || closingId === s.id_sesion}
+                                  >
+                                    {closingId === s.id_sesion ? (
+                                      <span className="spinner-border spinner-border-sm" />
+                                    ) : esActual ? (
+                                      "Usted"
+                                    ) : (
+                                      "Cerrar"
+                                    )}
+                                  </SecurityConfirmAction>
+                                ) : null}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
+
+                <SecurityPaginationBar
+                  totalItems={total}
+                  pageSize={PAGE_SIZE}
+                  currentPage={currentPage}
+                  onPageChange={(nextPage) => setOffset((nextPage - 1) * PAGE_SIZE)}
+                />
+              </>
+            )}
+          </div>
         </div>
-      </div>
       </div>
     </>
   );

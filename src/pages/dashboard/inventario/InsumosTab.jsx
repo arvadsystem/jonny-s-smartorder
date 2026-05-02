@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
-import { toUpperSafe } from '../../../utils/toUpperSafe';
+import { normalizeVisualText } from '../../../utils/normalizeVisualText';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
@@ -62,7 +62,7 @@ const INACTIVATE_CONFIRM_COPY = Object.freeze({
 // NEW: campos de texto elegibles para mayúsculas automáticas en formularios de Insumos.
 // WHY: aplicar la regla con whitelist local y evitar afectar números, fechas o selects.
 // IMPACT: `setField` usa esta whitelist en create/edit sin alterar validaciones ni payloads.
-const UPPERCASE_INSUMO_FIELDS = new Set(['nombre_insumo', 'descripcion']);
+const NORMALIZE_INSUMO_FIELDS = new Set(['nombre_insumo', 'descripcion']);
 
 const buildDrawerImageState = (previewUrl = '') => ({
   file: null,
@@ -89,6 +89,13 @@ const emptyForm = () => ({
   fecha_caducidad: '',
   descripcion: ''
 });
+
+const areInsumoFormsEqual = (left, right) => {
+  const base = emptyForm();
+  return Object.keys(base).every(
+    (field) => String(left?.[field] ?? '') === String(right?.[field] ?? '')
+  );
+};
 
 const cloneFilters = (f) => {
   const source = f || {};
@@ -220,6 +227,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const [form, setForm] = useState(emptyForm);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [editFormSnapshot, setEditFormSnapshot] = useState(null);
   const [createErrors, setCreateErrors] = useState({});
   const [editErrors, setEditErrors] = useState({});
   const [creating, setCreating] = useState(false);
@@ -235,7 +243,10 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const cantidadInputRef = useRef(null);
   const nombreInputRef = useRef(null);
+  const filtersFirstFieldRef = useRef(null);
   const drawerImageInputRef = useRef(null);
+  const drawerFocusReturnRef = useRef(null);
+  const prevDrawerOpenRef = useRef(false);
   // NEW: secuencia local de IDs temporales int32-safe para create sin respuesta con `id_insumo`.
   // WHY: evitar recargar la grilla completa solo para reflejar el nuevo insumo mientras llega una sync silenciosa.
   // IMPACT: los IDs temporales viven solo en frontend y se reemplazan al sincronizar.
@@ -243,6 +254,24 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const createSubmitLockRef = useRef(false);
   const editSubmitLockRef = useRef(false);
   const deleteSubmitLockRef = useRef(false);
+
+  const captureActiveElement = useCallback(() => {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? active : null;
+  }, []);
+
+  const restoreFocusToElement = useCallback((element) => {
+    if (!(element instanceof HTMLElement) || typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!document.contains(element) || element.hasAttribute('disabled') || element.getAttribute('aria-hidden') === 'true') return;
+    window.requestAnimationFrame(() => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    });
+  }, []);
 
   const categoriasMap = useMemo(() => {
     const m = new Map();
@@ -483,10 +512,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       if (!Array.isArray(data)) return false;
       setInsumos(data);
       return true;
-    } catch (syncError) {
-      if (import.meta.env.DEV) {
-        console.error('INSUMOS syncInsumosSilently error:', syncError);
-      }
+    } catch {
       return false;
     }
   }, []);
@@ -539,8 +565,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const validarInsumo = useCallback((data, options = {}) => {
     const includeCantidad = options.includeCantidad !== false;
     const errors = {};
-    const nombre = sanitizeSpaces(data?.nombre_insumo);
-    const descripcion = sanitizeSpaces(data?.descripcion);
+    const nombre = normalizeVisualText(data?.nombre_insumo, { mode: 'title' });
+    const descripcion = normalizeVisualText(data?.descripcion, { mode: 'sentence' });
     const precioRaw = String(data?.precio ?? '').trim();
     const cantidadRaw = String(data?.cantidad ?? '').trim();
     const stockRaw = String(data?.stock_minimo ?? '').trim();
@@ -747,9 +773,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const startEdit = useCallback((i) => {
     if (!i) return;
-    setEditId(i.id_insumo);
-    setEditErrors({});
-    setEditForm({
+    const nextEditForm = {
       nombre_insumo: String(i?.nombre_insumo ?? ''),
       precio: String(i?.precio ?? ''),
       cantidad: String(i?.cantidad ?? ''),
@@ -760,12 +784,17 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       id_unidad_medida: String(i?.id_unidad_medida ?? ''),
       fecha_caducidad: toDateInputValue(i?.fecha_caducidad),
       descripcion: String(i?.descripcion ?? '')
-    });
+    };
+    setEditId(i.id_insumo);
+    setEditErrors({});
+    setEditForm(nextEditForm);
+    setEditFormSnapshot(nextEditForm);
   }, []);
 
   const cancelEdit = useCallback(() => {
     setEditId(null);
     setEditForm(null);
+    setEditFormSnapshot(null);
     setEditErrors({});
   }, []);
 
@@ -802,12 +831,42 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setFocusCantidad(Boolean(opts.focusCantidad));
   }, [clearInsumoImageError, resetDrawerImage, startEdit]);
 
-  const closeDrawer = useCallback(() => {
+  const hasCreateFormUnsavedChanges = useMemo(() => {
+    return !areInsumoFormsEqual(form, emptyForm()) || Boolean(drawerImage?.file);
+  }, [drawerImage?.file, form]);
+
+  const hasEditFormUnsavedChanges = useMemo(() => {
+    if (!editForm || !editFormSnapshot) return false;
+    return !areInsumoFormsEqual(editForm, editFormSnapshot);
+  }, [editForm, editFormSnapshot]);
+
+  const confirmDiscardInsumoChanges = useCallback(() => {
+    if (typeof window === 'undefined') return true;
+    return window.confirm('Hay cambios sin guardar. ¿Deseas cerrar y perderlos?');
+  }, []);
+
+  const closeDrawer = useCallback(({ force = false } = {}) => {
+    if ((creating || savingEdit || togglingEstado) && !force) return;
+    if (drawer === 'form' && !force) {
+      const hasUnsavedChanges =
+        drawerMode === 'create' ? hasCreateFormUnsavedChanges : hasEditFormUnsavedChanges;
+      if (hasUnsavedChanges && !confirmDiscardInsumoChanges()) return;
+    }
     setDrawer(null);
     setDrawerMsg('');
     setFocusCantidad(false);
     resetDrawerImage();
-  }, [resetDrawerImage]);
+  }, [
+    confirmDiscardInsumoChanges,
+    creating,
+    drawer,
+    drawerMode,
+    hasCreateFormUnsavedChanges,
+    hasEditFormUnsavedChanges,
+    resetDrawerImage,
+    savingEdit,
+    togglingEstado
+  ]);
 
   const openDetailModal = useCallback((insumo) => {
     if (!insumo) return;
@@ -825,11 +884,21 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const node = focusCantidad ? cantidadInputRef.current : nombreInputRef.current;
     if (!node) return;
     const raf = window.requestAnimationFrame(() => {
-      node.focus();
+      node.focus({ preventScroll: true });
       if (focusCantidad && typeof node.select === 'function') node.select();
     });
     return () => window.cancelAnimationFrame(raf);
   }, [drawer, drawerMode, focusCantidad]);
+
+  useEffect(() => {
+    if (drawer !== 'filters' || typeof window === 'undefined') return;
+    const node = filtersFirstFieldRef.current;
+    if (!node) return;
+    const raf = window.requestAnimationFrame(() => {
+      node.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [drawer]);
 
   useEffect(() => {
     if ((drawer == null && detailInsumoId == null) || typeof document === 'undefined') return;
@@ -838,12 +907,37 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     return () => { document.body.style.overflow = prev; };
   }, [detailInsumoId, drawer]);
 
+  useEffect(() => {
+    if (drawer == null || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeDrawer();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [closeDrawer, drawer]);
+
+  useEffect(() => {
+    const drawerIsOpen = drawer === 'filters' || drawer === 'form';
+    if (drawerIsOpen && !prevDrawerOpenRef.current) {
+      drawerFocusReturnRef.current = captureActiveElement();
+    } else if (!drawerIsOpen && prevDrawerOpenRef.current) {
+      restoreFocusToElement(drawerFocusReturnRef.current);
+      drawerFocusReturnRef.current = null;
+    }
+    prevDrawerOpenRef.current = drawerIsOpen;
+  }, [captureActiveElement, drawer, restoreFocusToElement]);
+
+  const normalizeInsumoFieldOnBlur = useCallback((field, value) => {
+    if (field === 'nombre_insumo') return normalizeVisualText(value, { mode: 'title' });
+    if (field === 'descripcion') return normalizeVisualText(value, { mode: 'sentence' });
+    return value;
+  }, []);
+
   const setField = useCallback((field, value) => {
     setDrawerMsg('');
-    // NEW: normalización segura de mayúsculas centralizada para create/edit de Insumos.
-    // WHY: evitar duplicar lógica en cada `onChange` y mantener exclusiones por campo.
-    // IMPACT: solo transforma `nombre_insumo` y `descripcion`; demás campos permanecen igual.
-    const nextValue = UPPERCASE_INSUMO_FIELDS.has(String(field)) ? toUpperSafe(value, field) : value;
+    const nextValue = NORMALIZE_INSUMO_FIELDS.has(String(field)) ? String(value ?? '').replace(/\s+/g, ' ') : value;
     if (drawerMode === 'create') {
       setForm((s) => ({ ...s, [field]: nextValue }));
       setCreateErrors((s) => (s[field] ? { ...s, [field]: '' } : s));
@@ -1008,7 +1102,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
         void syncInsumosSilently();
       }
       resetCreate();
-      closeDrawer();
+      closeDrawer({ force: true });
       safeToast('CREADO', 'EL INSUMO SE CREO CORRECTAMENTE.', 'success');
     } catch (e) {
       const msg = apiError(e, 'ERROR CREANDO INSUMO', setCreateErrors);
@@ -1065,7 +1159,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       // NEW: cerrar el drawer inmediatamente despues de persistir la edicion.
       // WHY: el usuario pidio que al modificar un insumo el modal/drawer no quede abierto.
       // IMPACT: el card se actualiza con el parche local actual sin recargar la grilla ni la pagina.
-      closeDrawer();
+      closeDrawer({ force: true });
       setDrawerMsg('CAMBIOS GUARDADOS.');
       safeToast('ACTUALIZADO', 'EL INSUMO SE ACTUALIZO CORRECTAMENTE.', 'success');
     } catch (e) {
@@ -1098,7 +1192,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setError('');
     try {
       await inventarioService.eliminarInsumo(confirmModal.idToDelete);
-      if (Number(selectedId) === Number(confirmModal.idToDelete)) { closeDrawer(); cancelEdit(); }
+      if (Number(selectedId) === Number(confirmModal.idToDelete)) { closeDrawer({ force: true }); cancelEdit(); }
       if (estadoField) {
         patchInsumoLocalById(confirmModal.idToDelete, { [estadoField]: false });
       }
@@ -1160,7 +1254,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setDraftFilters(clean);
   }, []);
 
-  const applyFilters = useCallback(() => { setAppliedFilters(cloneFilters(draftFilters)); closeDrawer(); }, [draftFilters, closeDrawer]);
+  const applyFilters = useCallback(() => { setAppliedFilters(cloneFilters(draftFilters)); closeDrawer({ force: true }); }, [draftFilters, closeDrawer]);
 
   const categoriaOptions = useMemo(() => {
     if (!categoriaField && !categoriaLabelField) return [];
@@ -2101,7 +2195,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       {/* IMPACT: solo cambia la capa visual del drawer; formularios, filtros y handlers permanecen iguales. */}
       <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? 'show' : ''}`} onClick={closeDrawer} aria-hidden={!isAnyDrawerOpen} />
 
-      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer inv-ins-drawer--filters ${drawer === 'filters' ? 'show' : ''}`} id="inv-ins-filters-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'filters'}>
+      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer inv-ins-drawer--filters ${drawer === 'filters' ? 'show' : ''}`} id="inv-ins-filters-drawer" role="dialog" aria-modal="true" aria-labelledby="inv-ins-filters-title" aria-hidden={drawer !== 'filters'}>
         <div className="inv-prod-drawer-body inv-ins-filter-drawer-body">
           <div className="inv-ins-create-hero inv-ins-filter-hero">
             <button type="button" className="inv-prod-drawer-close inv-ins-create-hero__close" onClick={closeDrawer}>
@@ -2112,7 +2206,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
             </div>
             <div className="inv-ins-create-hero__copy">
               <div className="inv-ins-create-hero__kicker">Vista De Filtros</div>
-              <div className="inv-ins-create-hero__title">Ajusta estados, almacen y orden del inventario</div>
+              <div id="inv-ins-filters-title" className="inv-ins-create-hero__title">Ajusta estados, almacen y orden del inventario</div>
             </div>
             <div className="inv-ins-create-hero__chips">
               <span className="inv-ins-create-hero__chip">
@@ -2198,6 +2292,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 <div>
                   <label className="form-label">Categoria</label>
                   <select
+                    ref={filtersFirstFieldRef}
                     className="form-select"
                     value={String(draftFilters.categoria)}
                     onChange={(e) => setDraftFilters((s) => ({ ...s, categoria: e.target.value }))}
@@ -2226,7 +2321,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
         </div>
       </aside>
 
-      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer ${drawerMode === 'create' ? 'inv-ins-drawer--create' : 'inv-ins-drawer--edit'} ${drawer === 'form' ? 'show' : ''}`} id="inv-ins-form-drawer" role="dialog" aria-modal="true" aria-hidden={drawer !== 'form'}>
+      <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer ${drawerMode === 'create' ? 'inv-ins-drawer--create' : 'inv-ins-drawer--edit'} ${drawer === 'form' ? 'show' : ''}`} id="inv-ins-form-drawer" role="dialog" aria-modal="true" aria-labelledby="inv-ins-form-title" aria-hidden={drawer !== 'form'}>
         <form className={`inv-prod-drawer-body ${drawerMode === 'create' ? 'inv-ins-drawer-body--create' : 'inv-ins-drawer-body--edit'}`} onSubmit={submitDrawer}>
           {false ? (
             <div className="inv-ins-create-hero">
@@ -2261,7 +2356,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
             </div>
             <div className="inv-ins-create-hero__copy">
               <div className="inv-ins-create-hero__kicker">{drawerMode === 'create' ? 'Nuevo Registro' : 'Edicion Activa'}</div>
-              <div className="inv-ins-create-hero__title">{drawerMode === 'create' ? 'Alta Rapida de Insumo' : 'Actualiza Tu Insumo'}</div>
+              <div id="inv-ins-form-title" className="inv-ins-create-hero__title">{drawerMode === 'create' ? 'Alta Rapida de Insumo' : 'Actualiza Tu Insumo'}</div>
             </div>
             <div className="inv-ins-create-hero__chips">
               <span className="inv-ins-create-hero__chip"><i className="bi bi-cash-stack" aria-hidden="true" /> {fmtMoney(formValues?.precio || 0)}</span>
@@ -2281,7 +2376,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           <div className={`inv-ins-drawer-fields ${drawerMode === 'create' ? 'inv-ins-drawer-fields--create' : 'inv-ins-drawer-fields--edit'}`}>
             <div>
               <label className="form-label">Nombre Del Insumo</label>
-              <input ref={nombreInputRef} className={`form-control ${formErrors.nombre_insumo ? 'is-invalid' : ''}`} value={formValues.nombre_insumo ?? ''} onChange={(e) => setField('nombre_insumo', e.target.value)} placeholder="Ej: Queso mozzarella" />
+              <input ref={nombreInputRef} className={`form-control ${formErrors.nombre_insumo ? 'is-invalid' : ''}`} value={formValues.nombre_insumo ?? ''} onChange={(e) => setField('nombre_insumo', e.target.value)} onBlur={(e) => setField('nombre_insumo', normalizeInsumoFieldOnBlur('nombre_insumo', e.target.value))} placeholder="Ej: Queso mozzarella" />
               {fieldErr('nombre_insumo')}
             </div>
 
@@ -2401,7 +2496,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
             <div>
               <label className="form-label">Descripcion (Opcional)</label>
-              <textarea className={`form-control ${formErrors.descripcion ? 'is-invalid' : ''}`} rows="3" value={formValues.descripcion ?? ''} onChange={(e) => setField('descripcion', e.target.value)} />
+                <textarea className={`form-control ${formErrors.descripcion ? 'is-invalid' : ''}`} rows="3" value={formValues.descripcion ?? ''} onChange={(e) => setField('descripcion', e.target.value)} onBlur={(e) => setField('descripcion', normalizeInsumoFieldOnBlur('descripcion', e.target.value))} />
               {fieldErr('descripcion')}
               <div className="inv-ins-help">Se sanitizan espacios extra al guardar.</div>
             </div>
@@ -2546,3 +2641,4 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 };
 
 export default InsumosTab;
+
