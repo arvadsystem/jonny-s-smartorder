@@ -33,8 +33,17 @@ const REPORT_HANDLERS = {
 const INITIAL_FILTERS = {
   fecha_inicio: '',
   fecha_fin: '',
-  sucursal: ''
+  sucursal: '',
+  caja: '',
+  usuario: '',
+  estado: ''
 };
+
+const money = (value) =>
+  Number(value || 0).toLocaleString('es-HN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 
 const Reportes = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -54,6 +63,7 @@ const Reportes = () => {
   const rawTab = String(searchParams.get('tab') || fallbackTab || '').toLowerCase();
   const normalizedTab = REPORT_KEYS.includes(rawTab) ? rawTab : fallbackTab;
   const activeTab = allowedTabs.some((tab) => tab.key === normalizedTab) ? normalizedTab : fallbackTab;
+  const isVentasResumenTab = activeTab === 'ventas-resumen';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -98,53 +108,81 @@ const Reportes = () => {
     );
   }
 
+  const kpis = payload?.data?.kpis || null;
+  const serieDiaria = Array.isArray(payload?.data?.serie_diaria) ? payload.data.serie_diaria : [];
+  const desgloseEstado = Array.isArray(payload?.data?.desglose_por_estado) ? payload.data.desglose_por_estado : [];
+
   return (
     <div className="container-fluid p-3 reportes-page">
       <div className="reportes-header">
         <div>
           <h2 className="reportes-title">Reportes</h2>
-          <p className="reportes-subtitle">Base operativa de reporteria para Ventas, Caja e Inventario.</p>
+          <p className="reportes-subtitle">Analitica operativa para ventas, caja e inventario.</p>
         </div>
       </div>
 
       <div className="reportes-filters card border-0 shadow-sm">
         <div className="card-body">
           <div className="row g-2 align-items-end">
-            <div className="col-12 col-md-3">
+            <div className="col-12 col-md-2">
               <label className="form-label">Fecha inicio</label>
               <input
                 type="date"
                 className="form-control"
                 value={filters.fecha_inicio}
-                onChange={(event) =>
-                  setFilters((prev) => ({ ...prev, fecha_inicio: event.target.value }))
-                }
+                onChange={(event) => setFilters((prev) => ({ ...prev, fecha_inicio: event.target.value }))}
               />
             </div>
-            <div className="col-12 col-md-3">
+            <div className="col-12 col-md-2">
               <label className="form-label">Fecha fin</label>
               <input
                 type="date"
                 className="form-control"
                 value={filters.fecha_fin}
-                onChange={(event) =>
-                  setFilters((prev) => ({ ...prev, fecha_fin: event.target.value }))
-                }
+                onChange={(event) => setFilters((prev) => ({ ...prev, fecha_fin: event.target.value }))}
               />
             </div>
-            <div className="col-12 col-md-3">
+            <div className="col-12 col-md-2">
               <label className="form-label">Sucursal</label>
               <input
                 type="text"
                 className="form-control"
-                placeholder="ID o nombre"
+                placeholder="ID"
                 value={filters.sucursal}
-                onChange={(event) =>
-                  setFilters((prev) => ({ ...prev, sucursal: event.target.value }))
-                }
+                onChange={(event) => setFilters((prev) => ({ ...prev, sucursal: event.target.value }))}
               />
             </div>
-            <div className="col-12 col-md-3 d-grid">
+            <div className="col-12 col-md-2">
+              <label className="form-label">Caja</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="ID"
+                value={filters.caja}
+                onChange={(event) => setFilters((prev) => ({ ...prev, caja: event.target.value }))}
+              />
+            </div>
+            <div className="col-12 col-md-2">
+              <label className="form-label">Usuario</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="ID"
+                value={filters.usuario}
+                onChange={(event) => setFilters((prev) => ({ ...prev, usuario: event.target.value }))}
+              />
+            </div>
+            <div className="col-12 col-md-2">
+              <label className="form-label">Estado</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Ej. Cancelado"
+                value={filters.estado}
+                onChange={(event) => setFilters((prev) => ({ ...prev, estado: event.target.value }))}
+              />
+            </div>
+            <div className="col-12 d-grid d-md-flex justify-content-md-end mt-2">
               <button type="button" className="btn btn-primary" onClick={() => runReport(activeTab)} disabled={loading}>
                 {loading ? 'Consultando...' : 'Aplicar filtros'}
               </button>
@@ -171,7 +209,20 @@ const Reportes = () => {
         ))}
       </div>
 
-      <div className="card border-0 shadow-sm reportes-result">
+      {isVentasResumenTab && kpis ? (
+        <div className="reportes-kpis-grid">
+          <article className="reportes-kpi-card"><span>Total ventas</span><strong>L {money(kpis.total_ventas)}</strong></article>
+          <article className="reportes-kpi-card"><span>Cantidad ventas</span><strong>{kpis.cantidad_ventas || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Subtotal</span><strong>L {money(kpis.subtotal)}</strong></article>
+          <article className="reportes-kpi-card"><span>Descuentos</span><strong>L {money(kpis.descuentos)}</strong></article>
+          <article className="reportes-kpi-card"><span>Impuestos</span><strong>L {money(kpis.impuestos)}</strong></article>
+          <article className="reportes-kpi-card"><span>Total neto</span><strong>L {money(kpis.total_neto)}</strong></article>
+          <article className="reportes-kpi-card"><span>Promedio venta</span><strong>L {money(kpis.promedio_por_venta)}</strong></article>
+          <article className="reportes-kpi-card"><span>Canceladas/Anuladas</span><strong>{kpis.ventas_canceladas_o_anuladas || 0}</strong></article>
+        </div>
+      ) : null}
+
+      <div className="card border-0 shadow-sm reportes-result mt-2">
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
 
@@ -179,9 +230,64 @@ const Reportes = () => {
             <>
               <div className="reportes-meta mb-3">
                 <span className="badge text-bg-primary">{payload.reporte || activeTab}</span>
-                <span className="badge text-bg-light">Fase 1</span>
+                <span className="badge text-bg-light">{isVentasResumenTab ? 'Fase 2A' : 'Fase 1'}</span>
               </div>
-              <pre className="reportes-json mb-0">{JSON.stringify(payload, null, 2)}</pre>
+
+              {isVentasResumenTab ? (
+                <div className="row g-3">
+                  <div className="col-12 col-lg-6">
+                    <div className="table-responsive reportes-table-wrap">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Fecha</th>
+                            <th className="text-end">Ventas</th>
+                            <th className="text-end">Total neto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {serieDiaria.length === 0 ? (
+                            <tr><td colSpan={3} className="text-center text-muted py-3">Sin datos diarios.</td></tr>
+                          ) : serieDiaria.map((item) => (
+                            <tr key={item.fecha}>
+                              <td>{item.fecha}</td>
+                              <td className="text-end">{item.cantidad_ventas}</td>
+                              <td className="text-end">L {money(item.total_neto)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="col-12 col-lg-6">
+                    <div className="table-responsive reportes-table-wrap">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Estado</th>
+                            <th className="text-end">Ventas</th>
+                            <th className="text-end">Total neto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {desgloseEstado.length === 0 ? (
+                            <tr><td colSpan={3} className="text-center text-muted py-3">Sin desglose por estado.</td></tr>
+                          ) : desgloseEstado.map((item) => (
+                            <tr key={item.estado}>
+                              <td>{item.estado}</td>
+                              <td className="text-end">{item.cantidad_ventas}</td>
+                              <td className="text-end">L {money(item.total_neto)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <pre className="reportes-json mb-0">{JSON.stringify(payload, null, 2)}</pre>
+              )}
             </>
           ) : null}
 

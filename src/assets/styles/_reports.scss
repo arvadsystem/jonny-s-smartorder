@@ -60,4 +60,55 @@
       font-size: 0.83rem;
     }
   }
+
+  .reportes-kpis-grid {
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    margin-bottom: 0.75rem;
+  }
+
+  .reportes-kpi-card {
+    background: #fff;
+    border: 1px solid rgba(16, 33, 58, 0.1);
+    border-radius: 12px;
+    padding: 0.7rem 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+
+    span {
+      color: #5f6e84;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    strong {
+      color: #112746;
+      font-size: 1.06rem;
+      line-height: 1.2;
+    }
+  }
+
+  .reportes-table-wrap {
+    border: 1px solid rgba(16, 33, 58, 0.08);
+    border-radius: 10px;
+    overflow: hidden;
+
+    thead th {
+      background: #f3f6fb;
+      color: #233956;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    tbody td {
+      font-size: 0.84rem;
+      color: #243750;
+    }
+  }
 }
