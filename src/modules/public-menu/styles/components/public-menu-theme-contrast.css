@@ -298,7 +298,8 @@
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__popular,
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__option,
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__sauce-row,
-.pm-shell:not(.pm-theme-light) .pm-detail-sheet__note-input {
+.pm-shell:not(.pm-theme-light) .pm-detail-sheet__note-input,
+.pm-shell:not(.pm-theme-light) .pm-cart-sheet__item {
   background: rgba(24, 15, 10, 0.96) !important;
   border-color: rgba(240, 200, 150, 0.26) !important;
   color: #fff8ed !important;
@@ -308,7 +309,12 @@
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__popular *,
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__option *,
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__sauce-row *,
-.pm-shell:not(.pm-theme-light) .pm-detail-sheet__note-input::placeholder {
+.pm-shell:not(.pm-theme-light) .pm-detail-sheet__note-input::placeholder,
+.pm-shell:not(.pm-theme-light) .pm-cart-sheet__item-main strong,
+.pm-shell:not(.pm-theme-light) .pm-cart-sheet__item-main small,
+.pm-shell:not(.pm-theme-light) .pm-cart-sheet__line-meta,
+.pm-shell:not(.pm-theme-light) .pm-cart-sheet__item-side,
+.pm-shell:not(.pm-theme-light) .pm-cart-sheet__qty span {
   color: rgba(255, 248, 237, 0.82) !important;
 }
 
@@ -324,10 +330,15 @@
 }
 
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__qty button,
-.pm-shell:not(.pm-theme-light) .pm-detail-sheet__switch {
+.pm-shell:not(.pm-theme-light) .pm-detail-sheet__switch,
+.pm-shell:not(.pm-theme-light) .pm-cart-sheet__qty button {
   background: rgba(255, 248, 237, 0.08) !important;
   border-color: rgba(240, 200, 150, 0.34) !important;
   color: #fff8ed !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-cart-sheet__remove {
+  color: #f0c896 !important;
 }
 
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__radio {

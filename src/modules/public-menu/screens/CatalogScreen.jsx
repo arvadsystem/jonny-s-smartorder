@@ -308,6 +308,9 @@ const CatalogScreen = () => {
   );
   const activeCategoryLabel = selectedCategory === 'all' ? 'Todo el menu' : formatCategoryLabel(selectedCategory);
   const isCatalogLanding = selectedCategory === 'all';
+  const hasVisibleProducts = !isCatalogLanding && filteredProducts.length > 0;
+  const shouldShowSyncWarning = Boolean(syncWarning) && !hasVisibleProducts;
+  const [showJonnyExperience, setShowJonnyExperience] = useState(true);
   const heroSlides = useMemo(
     () =>
       buildCatalogHeroSlides({
@@ -319,6 +322,10 @@ const CatalogScreen = () => {
       }),
     [availableProducts, branchId, orderTypeLabel, state.selectedBranch?.displayName, state.selectedBranch?.name]
   );
+
+  useEffect(() => {
+    setShowJonnyExperience(!hasVisibleProducts);
+  }, [hasVisibleProducts]);
 
   useEffect(() => {
     const previous = Number(previousTotalItemsRef.current || 0);
@@ -717,7 +724,7 @@ const CatalogScreen = () => {
         onPrimaryAction={handleScrollToCatalog}
       />
 
-      <JonnyExperienceSection />
+      {showJonnyExperience ? <JonnyExperienceSection /> : null}
 
       {!selectedBranchOpen ? (
         <div className="pm-branch-hours-alert" role="status">
@@ -731,7 +738,7 @@ const CatalogScreen = () => {
         </div>
       ) : null}
 
-      {syncWarning ? (
+      {shouldShowSyncWarning ? (
         <StateBlock
           variant="warning"
           title="Conexion inestable"
@@ -774,7 +781,7 @@ const CatalogScreen = () => {
           />
         ) : null}
 
-        {!isCatalogLanding && filteredProducts.length ? (
+        {hasVisibleProducts ? (
           <PremiumProductSection
             categoryTitle={activeCategoryLabel}
             filteredProducts={filteredProducts}
@@ -873,4 +880,3 @@ const CatalogScreen = () => {
 };
 
 export default CatalogScreen;
-

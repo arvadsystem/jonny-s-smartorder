@@ -180,3 +180,12 @@
 .pm-premium-header__nav-item.is-active {
   font-size: 1.3rem !important;
 }
+
+/* quitar fondo blanco pegado después de cerrar modal */
+body.modal-open {
+  overflow: auto !important;
+}
+
+.modal-backdrop {
+  display: none !important;
+}
