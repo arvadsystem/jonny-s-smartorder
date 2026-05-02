@@ -76,6 +76,7 @@ const Reportes = () => {
   const isStockCriticoTab = activeTab === 'inventario-stock-critico';
   const isKardexTab = activeTab === 'inventario-kardex';
   const isVentasDescuentosTab = activeTab === 'ventas-descuentos';
+  const isVentasItemsTab = activeTab === 'ventas-items';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -131,6 +132,8 @@ const Reportes = () => {
   const kardexMovimientos = Array.isArray(payload?.data?.movimientos) ? payload.data.movimientos : [];
   const descuentosResumen = Array.isArray(payload?.data?.resumen_tipo_descuento) ? payload.data.resumen_tipo_descuento : [];
   const descuentosDetalle = Array.isArray(payload?.data?.detalle) ? payload.data.detalle : [];
+  const ventasItemsResumen = Array.isArray(payload?.data?.resumen_items) ? payload.data.resumen_items : [];
+  const ventasItemsDetalle = Array.isArray(payload?.data?.detalle) ? payload.data.detalle : [];
 
   return (
     <div className="container-fluid p-3 reportes-page">
@@ -253,7 +256,8 @@ const Reportes = () => {
               >
                 <option value="">Todos</option>
                 <option value="producto">Producto</option>
-                <option value="insumo">Insumo</option>
+                <option value="combo">Combo</option>
+                <option value="receta">Receta</option>
               </select>
             </div>
             <div className="col-12 col-md-2">
@@ -368,6 +372,16 @@ const Reportes = () => {
         </div>
       ) : null}
 
+      {isVentasItemsTab && kpis ? (
+        <div className="reportes-kpis-grid">
+          <article className="reportes-kpi-card"><span>Total vendido</span><strong>L {money(kpis.total_vendido)}</strong></article>
+          <article className="reportes-kpi-card"><span>Ventas</span><strong>{kpis.ventas || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Líneas</span><strong>{kpis.lineas || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Items únicos</span><strong>{kpis.cantidad_items || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Ticket promedio</span><strong>L {money(kpis.ticket_promedio)}</strong></article>
+        </div>
+      ) : null}
+
       <div className="card border-0 shadow-sm reportes-result mt-2">
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
@@ -387,11 +401,13 @@ const Reportes = () => {
                           ? 'Fase 2D'
                         : isStockCriticoTab
                           ? 'Fase 3A'
-                          : isKardexTab
-                            ? 'Fase 3B'
+                            : isKardexTab
+                              ? 'Fase 3B'
                             : isVentasDescuentosTab
                               ? 'Fase 4A'
-                          : 'Fase 1'}
+                            : isVentasItemsTab
+                              ? 'Fase 4B'
+                              : 'Fase 1'}
                 </span>
               </div>
 
@@ -711,6 +727,89 @@ const Reportes = () => {
                               <td className="text-end">L {money(item.descuento)}</td>
                               <td className="text-end">L {money(item.subtotal_linea)}</td>
                               <td className="text-end">L {money(item.total_linea)}</td>
+                              <td>{item.estado || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : isVentasItemsTab ? (
+                <div className="row g-3">
+                  <div className="col-12 col-xl-5">
+                    <div className="table-responsive reportes-table-wrap">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Tipo</th>
+                            <th>Item</th>
+                            <th>Categoría</th>
+                            <th className="text-end">Cantidad</th>
+                            <th className="text-end">Ventas</th>
+                            <th className="text-end">Subtotal</th>
+                            <th className="text-end">Descuento</th>
+                            <th className="text-end">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ventasItemsResumen.length === 0 ? (
+                            <tr><td colSpan={8} className="text-center text-muted py-3">Sin resumen por item.</td></tr>
+                          ) : ventasItemsResumen.map((item) => (
+                            <tr key={`${item.tipo_item}-${item.id_item}-${item.nombre_item}`}>
+                              <td>{item.tipo_item || '-'}</td>
+                              <td>{item.nombre_item || '-'}</td>
+                              <td>{item.categoria || '-'}</td>
+                              <td className="text-end">{item.cantidad_vendida ?? 0}</td>
+                              <td className="text-end">{item.ventas || 0}</td>
+                              <td className="text-end">L {money(item.subtotal)}</td>
+                              <td className="text-end">L {money(item.descuento)}</td>
+                              <td className="text-end">L {money(item.total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="col-12 col-xl-7">
+                    <div className="table-responsive reportes-table-wrap">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead>
+                          <tr>
+                            <th>Fecha</th>
+                            <th>Sucursal</th>
+                            <th>Caja</th>
+                            <th>Usuario</th>
+                            <th>Factura</th>
+                            <th>Pedido</th>
+                            <th>Tipo item</th>
+                            <th>Item</th>
+                            <th>Categoría</th>
+                            <th className="text-end">Cantidad</th>
+                            <th className="text-end">Subtotal</th>
+                            <th className="text-end">Descuento</th>
+                            <th className="text-end">Total</th>
+                            <th>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ventasItemsDetalle.length === 0 ? (
+                            <tr><td colSpan={14} className="text-center text-muted py-3">Sin detalle para los filtros aplicados.</td></tr>
+                          ) : ventasItemsDetalle.map((item, index) => (
+                            <tr key={`${item.factura}-${item.pedido || 'na'}-${item.tipo_item || 'na'}-${index}`}>
+                              <td>{item.fecha || '-'}</td>
+                              <td>{item.sucursal || '-'}</td>
+                              <td>{item.caja || '-'}</td>
+                              <td>{item.usuario || '-'}</td>
+                              <td>{item.factura || '-'}</td>
+                              <td>{item.pedido || '-'}</td>
+                              <td>{item.tipo_item || '-'}</td>
+                              <td>{item.item || '-'}</td>
+                              <td>{item.categoria || '-'}</td>
+                              <td className="text-end">{item.cantidad ?? 0}</td>
+                              <td className="text-end">L {money(item.subtotal)}</td>
+                              <td className="text-end">L {money(item.descuento)}</td>
+                              <td className="text-end">L {money(item.total)}</td>
                               <td>{item.estado || '-'}</td>
                             </tr>
                           ))}
