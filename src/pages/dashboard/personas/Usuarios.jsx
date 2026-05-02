@@ -111,12 +111,6 @@ const buildUsernamePreview = (empleado, usedSet) => {
 
 const parseBooleanField = (row) => parseEstadoUsuario(row);
 
-const resolveCardsPerPage = (width) => {
-  if (width >= 1200) return 6;
-  if (width >= 620) return 4;
-  return 2;
-};
-
 const readViewMode = (key) => {
   if (typeof window === 'undefined') return 'cards';
   try {
@@ -185,10 +179,6 @@ export default function Usuarios({ openToast }) {
       message: message || FOTO_PERFIL_TOO_LARGE_MESSAGE,
     });
   }, []);
-
-  const [cardsPerPage, setCardsPerPage] = useState(() =>
-    typeof window === 'undefined' ? 6 : resolveCardsPerPage(window.innerWidth)
-  );
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
@@ -367,12 +357,6 @@ export default function Usuarios({ openToast }) {
       // ignore storage errors
     }
   }, [viewMode]);
-
-  useEffect(() => {
-    const onResize = () => setCardsPerPage(resolveCardsPerPage(window.innerWidth));
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   useEffect(() => {
     if (!showModal || !editId) return;
@@ -676,7 +660,7 @@ export default function Usuarios({ openToast }) {
   }, [limit, page, usuariosFiltrados]);
 
   const hasActiveFilters = search.trim() !== '' || estadoFiltro !== 'todos' || sortBy !== 'recientes';
-  const colsClass = cardsPerPage >= 6 ? 'cols-3' : cardsPerPage >= 4 ? 'cols-2' : 'cols-1';
+  const colsClass = 'cols-3';
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;

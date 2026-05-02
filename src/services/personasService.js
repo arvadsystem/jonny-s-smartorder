@@ -330,7 +330,10 @@ export const personaService = {
     } catch (error) {
       const status = Number(error?.status);
       const message = String(error?.message || '').toLowerCase();
-      const payloadMessage = String(error?.payload?.message || error?.payload?.mensaje || '').toLowerCase();
+      const errorPayload = (error?.data && typeof error.data === 'object')
+        ? error.data
+        : (error?.payload && typeof error.payload === 'object' ? error.payload : null);
+      const payloadMessage = String(errorPayload?.message || errorPayload?.mensaje || '').toLowerCase();
       const shouldRetryWithoutEstado =
         status === 400
         && (message.includes('estado') || payloadMessage.includes('estado') || payloadMessage.includes('no soporta'));

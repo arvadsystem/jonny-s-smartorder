@@ -57,6 +57,7 @@ export default function EmpresaInlineCreateModal({
 
   useEffect(() => {
     if (!show) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local draft each time drawer opens.
     setForm(normalizeEmpresaFormValues(initialForm ?? createInitialEmpresaForm()));
     setErrors({});
     rtnCaretRef.current = null;
@@ -101,6 +102,7 @@ export default function EmpresaInlineCreateModal({
 
   useEffect(() => {
     if (!show) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- preload catalogs when drawer becomes visible.
     cargarCatalogos();
   }, [show, cargarCatalogos]);
 

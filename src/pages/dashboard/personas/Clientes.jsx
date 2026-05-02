@@ -1081,15 +1081,6 @@ const Clientes = ({ openToast }) => {
           personasMap.set(id, persona);
           return;
         }
-        const rtnPrevio = firstNonEmptyValue(
-          previo?.rtn,
-          previo?.RTN,
-          previo?.persona_rtn_complemento,
-          previo?.rtn_persona,
-          previo?.rtn_complemento,
-          previo?.complemento_rtn,
-          previo?.numero_rtn
-        );
         const rtnSiguiente = firstNonEmptyValue(
           persona?.rtn,
           persona?.RTN,
