@@ -69,6 +69,7 @@ const Reportes = () => {
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState('');
   const [payload, setPayload] = useState(null);
 
@@ -78,6 +79,10 @@ const Reportes = () => {
   );
   const canExportExcel = useMemo(
     () => isSuperAdmin || (Array.isArray(permisos) && permisos.includes('REPORTES_EXPORTAR_EXCEL')),
+    [isSuperAdmin, permisos]
+  );
+  const canExportPdf = useMemo(
+    () => isSuperAdmin || (Array.isArray(permisos) && permisos.includes('REPORTES_EXPORTAR_PDF')),
     [isSuperAdmin, permisos]
   );
 
@@ -148,6 +153,31 @@ const Reportes = () => {
       setError(err?.message || 'No se pudo exportar el reporte.');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!activeTab) return;
+    const reporte = EXPORT_REPORT_KEYS[activeTab];
+    if (!reporte) return;
+
+    setExportingPdf(true);
+    setError('');
+
+    try {
+      const { blob, filename } = await reportesService.exportPdf({ reporte, filters });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = downloadUrl;
+      anchor.download = filename || `reporte_${reporte}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      setError(err?.message || 'No se pudo exportar el reporte.');
+    } finally {
+      setExportingPdf(false);
     }
   };
 
@@ -325,6 +355,16 @@ const Reportes = () => {
                   disabled={exporting || loading}
                 >
                   {exporting ? 'Exportando...' : 'Exportar Excel'}
+                </button>
+              ) : null}
+              {canExportPdf ? (
+                <button
+                  type="button"
+                  className="btn btn-outline-danger ms-md-2 mt-2 mt-md-0"
+                  onClick={handleExportPdf}
+                  disabled={exportingPdf || loading}
+                >
+                  {exportingPdf ? 'Exportando...' : 'Exportar PDF'}
                 </button>
               ) : null}
             </div>

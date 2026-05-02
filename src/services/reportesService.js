@@ -64,6 +64,39 @@ const exportExcel = async ({ reporte, filters = {} }) => {
   return { blob, filename };
 };
 
+const exportPdf = async ({ reporte, filters = {} }) => {
+  const params = new URLSearchParams();
+  params.set('reporte', String(reporte || ''));
+
+  Object.entries(filters || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    const normalized = String(value).trim();
+    if (!normalized) return;
+    params.set(key, normalized);
+  });
+
+  const response = await fetch(`${API_URL}/reportes/exportar/pdf?${params.toString()}`, {
+    method: 'GET',
+    credentials: 'include'
+  });
+
+  if (!response.ok) {
+    let message = 'No se pudo exportar el reporte.';
+    try {
+      const payload = await response.json();
+      message = payload?.message || message;
+    } catch {
+      // mantener mensaje seguro por defecto
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition');
+  const filename = extractFilenameFromDisposition(disposition) || `reporte_${new Date().toISOString().slice(0, 10)}.pdf`;
+  return { blob, filename };
+};
+
 export const reportesService = {
   getVentasResumen: (filters = {}) => getReport('/reportes/ventas/resumen', filters),
   getVentasMetodosPago: (filters = {}) => getReport('/reportes/ventas/metodos-pago', filters),
@@ -73,7 +106,8 @@ export const reportesService = {
   getInventarioKardex: (filters = {}) => getReport('/reportes/inventario/kardex', filters),
   getVentasDescuentos: (filters = {}) => getReport('/reportes/ventas/descuentos', filters),
   getVentasItems: (filters = {}) => getReport('/reportes/ventas/items', filters),
-  exportExcel
+  exportExcel,
+  exportPdf
 };
 
 export default reportesService;
