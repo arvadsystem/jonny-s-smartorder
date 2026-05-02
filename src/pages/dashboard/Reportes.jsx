@@ -36,6 +36,7 @@ const INITIAL_FILTERS = {
   sucursal: '',
   caja: '',
   usuario: '',
+  tipo_diferencia: '',
   estado: ''
 };
 
@@ -66,6 +67,7 @@ const Reportes = () => {
   const isVentasResumenTab = activeTab === 'ventas-resumen';
   const isVentasMetodosTab = activeTab === 'ventas-metodos-pago';
   const isCajaCierresTab = activeTab === 'caja-cierres';
+  const isCajaDiferenciasTab = activeTab === 'caja-diferencias';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -116,6 +118,7 @@ const Reportes = () => {
   const resumenMetodos = Array.isArray(payload?.data?.resumen_por_metodo) ? payload.data.resumen_por_metodo : [];
   const serieMetodo = Array.isArray(payload?.data?.serie_diaria_por_metodo) ? payload.data.serie_diaria_por_metodo : [];
   const cierresCaja = Array.isArray(payload?.data?.cierres) ? payload.data.cierres : [];
+  const diferenciasCaja = Array.isArray(payload?.data?.diferencias) ? payload.data.diferencias : [];
 
   return (
     <div className="container-fluid p-3 reportes-page">
@@ -187,6 +190,18 @@ const Reportes = () => {
                 onChange={(event) => setFilters((prev) => ({ ...prev, estado: event.target.value }))}
               />
             </div>
+            <div className="col-12 col-md-2">
+              <label className="form-label">Tipo diferencia</label>
+              <select
+                className="form-select"
+                value={filters.tipo_diferencia}
+                onChange={(event) => setFilters((prev) => ({ ...prev, tipo_diferencia: event.target.value }))}
+              >
+                <option value="">Todos</option>
+                <option value="faltante">Faltante</option>
+                <option value="sobrante">Sobrante</option>
+              </select>
+            </div>
             <div className="col-12 d-grid d-md-flex justify-content-md-end mt-2">
               <button type="button" className="btn btn-primary" onClick={() => runReport(activeTab)} disabled={loading}>
                 {loading ? 'Consultando...' : 'Aplicar filtros'}
@@ -246,6 +261,17 @@ const Reportes = () => {
         </div>
       ) : null}
 
+      {isCajaDiferenciasTab && kpis ? (
+        <div className="reportes-kpis-grid">
+          <article className="reportes-kpi-card"><span>Diferencias</span><strong>{kpis.cantidad_diferencias || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Total absoluto</span><strong>L {money(kpis.total_diferencia_absoluta)}</strong></article>
+          <article className="reportes-kpi-card"><span>Total faltantes</span><strong>L {money(kpis.total_faltantes)}</strong></article>
+          <article className="reportes-kpi-card"><span>Total sobrantes</span><strong>L {money(kpis.total_sobrantes)}</strong></article>
+          <article className="reportes-kpi-card"><span>Cantidad faltantes</span><strong>{kpis.cantidad_faltantes || 0}</strong></article>
+          <article className="reportes-kpi-card"><span>Cantidad sobrantes</span><strong>{kpis.cantidad_sobrantes || 0}</strong></article>
+        </div>
+      ) : null}
+
       <div className="card border-0 shadow-sm reportes-result mt-2">
         <div className="card-body">
           {error ? <div className="alert alert-danger mb-0">{error}</div> : null}
@@ -255,7 +281,15 @@ const Reportes = () => {
               <div className="reportes-meta mb-3">
                 <span className="badge text-bg-primary">{payload.reporte || activeTab}</span>
                 <span className="badge text-bg-light">
-                  {isVentasResumenTab ? 'Fase 2A' : isVentasMetodosTab ? 'Fase 2B' : isCajaCierresTab ? 'Fase 2C' : 'Fase 1'}
+                  {isVentasResumenTab
+                    ? 'Fase 2A'
+                    : isVentasMetodosTab
+                      ? 'Fase 2B'
+                      : isCajaCierresTab
+                        ? 'Fase 2C'
+                        : isCajaDiferenciasTab
+                          ? 'Fase 2D'
+                          : 'Fase 1'}
                 </span>
               </div>
 
@@ -396,6 +430,43 @@ const Reportes = () => {
                           <td className="text-end">L {money(item.total_contado)}</td>
                           <td className="text-end">L {money(item.diferencia)}</td>
                           <td>{item.estado_cierre || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : isCajaDiferenciasTab ? (
+                <div className="table-responsive reportes-table-wrap">
+                  <table className="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Fecha cierre</th>
+                        <th>Sucursal</th>
+                        <th>Caja</th>
+                        <th>Responsable</th>
+                        <th className="text-end">Esperado</th>
+                        <th className="text-end">Contado</th>
+                        <th className="text-end">Diferencia</th>
+                        <th>Tipo</th>
+                        <th>Resolucion</th>
+                        <th>Observacion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diferenciasCaja.length === 0 ? (
+                        <tr><td colSpan={10} className="text-center text-muted py-3">Sin diferencias para los filtros aplicados.</td></tr>
+                      ) : diferenciasCaja.map((item) => (
+                        <tr key={`${item.id_cierre_caja}-${item.tipo_diferencia}`}>
+                          <td>{item.fecha_cierre || '-'}</td>
+                          <td>{item.sucursal || '-'}</td>
+                          <td>{item.codigo_caja ? `${item.codigo_caja} - ${item.caja || ''}` : (item.caja || '-')}</td>
+                          <td>{item.responsable || '-'}</td>
+                          <td className="text-end">L {money(item.total_esperado)}</td>
+                          <td className="text-end">L {money(item.total_contado)}</td>
+                          <td className="text-end">L {money(item.diferencia)}</td>
+                          <td>{item.tipo_diferencia || '-'}</td>
+                          <td>{item.estado_resolucion || '-'}</td>
+                          <td>{item.observacion || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
