@@ -30,6 +30,17 @@ const REPORT_HANDLERS = {
   'ventas-items': reportesService.getVentasItems
 };
 
+const EXPORT_REPORT_KEYS = Object.freeze({
+  'ventas-resumen': 'ventas_resumen',
+  'ventas-metodos-pago': 'ventas_metodos_pago',
+  'caja-cierres': 'caja_cierres',
+  'caja-diferencias': 'caja_diferencias',
+  'inventario-stock-critico': 'inventario_stock_critico',
+  'inventario-kardex': 'inventario_kardex',
+  'ventas-descuentos': 'ventas_descuentos',
+  'ventas-items': 'ventas_items'
+});
+
 const INITIAL_FILTERS = {
   fecha_inicio: '',
   fecha_fin: '',
@@ -57,11 +68,16 @@ const Reportes = () => {
 
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [payload, setPayload] = useState(null);
 
   const allowedTabs = useMemo(
     () => getAllowedTabs('reportes', permisos, { isSuperAdmin }),
+    [isSuperAdmin, permisos]
+  );
+  const canExportExcel = useMemo(
+    () => isSuperAdmin || (Array.isArray(permisos) && permisos.includes('REPORTES_EXPORTAR_EXCEL')),
     [isSuperAdmin, permisos]
   );
 
@@ -109,6 +125,31 @@ const Reportes = () => {
     runReport(activeTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  const handleExportExcel = async () => {
+    if (!activeTab) return;
+    const reporte = EXPORT_REPORT_KEYS[activeTab];
+    if (!reporte) return;
+
+    setExporting(true);
+    setError('');
+
+    try {
+      const { blob, filename } = await reportesService.exportExcel({ reporte, filters });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = downloadUrl;
+      anchor.download = filename || `reporte_${reporte}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      setError(err?.message || 'No se pudo exportar el reporte.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (permisosLoading) return null;
 
@@ -276,6 +317,16 @@ const Reportes = () => {
               <button type="button" className="btn btn-primary" onClick={() => runReport(activeTab)} disabled={loading}>
                 {loading ? 'Consultando...' : 'Aplicar filtros'}
               </button>
+              {canExportExcel ? (
+                <button
+                  type="button"
+                  className="btn btn-outline-success ms-md-2 mt-2 mt-md-0"
+                  onClick={handleExportExcel}
+                  disabled={exporting || loading}
+                >
+                  {exporting ? 'Exportando...' : 'Exportar Excel'}
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
