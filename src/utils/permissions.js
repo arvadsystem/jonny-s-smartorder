@@ -292,6 +292,18 @@ const PERMISSION_VALUES = Object.freeze({
   FIDELIZACION_CANJEAR_PRESENCIAL: 'FIDELIZACION_CANJEAR_PRESENCIAL',
   FIDELIZACION_VER_CANJES: 'FIDELIZACION_VER_CANJES',
   FIDELIZACION_VER_MULTISUCURSAL: 'FIDELIZACION_VER_MULTISUCURSAL',
+  REPORTES_VER: 'REPORTES_VER',
+  REPORTES_VENTAS_RESUMEN_VER: 'REPORTES_VENTAS_RESUMEN_VER',
+  REPORTES_VENTAS_METODOS_PAGO_VER: 'REPORTES_VENTAS_METODOS_PAGO_VER',
+  REPORTES_CAJA_CIERRES_VER: 'REPORTES_CAJA_CIERRES_VER',
+  REPORTES_CAJA_DIFERENCIAS_VER: 'REPORTES_CAJA_DIFERENCIAS_VER',
+  REPORTES_INVENTARIO_STOCK_CRITICO_VER: 'REPORTES_INVENTARIO_STOCK_CRITICO_VER',
+  REPORTES_INVENTARIO_KARDEX_VER: 'REPORTES_INVENTARIO_KARDEX_VER',
+  REPORTES_VENTAS_DESCUENTOS_VER: 'REPORTES_VENTAS_DESCUENTOS_VER',
+  REPORTES_VENTAS_ITEMS_VER: 'REPORTES_VENTAS_ITEMS_VER',
+  REPORTES_EXPORTAR_PDF: 'REPORTES_EXPORTAR_PDF',
+  REPORTES_EXPORTAR_EXCEL: 'REPORTES_EXPORTAR_EXCEL',
+  REPORTES_ENVIAR_CORREO: 'REPORTES_ENVIAR_CORREO',
   CONFIGURACION_EMAIL_CAMPAIGNS_VER: 'CONFIGURACION_EMAIL_CAMPAIGNS_VER',
   CONFIGURACION_EMAIL_CAMPAIGNS_GESTIONAR: 'CONFIGURACION_EMAIL_CAMPAIGNS_GESTIONAR'
 });
@@ -696,6 +708,41 @@ const FIDELIZACION_TAB_PERMISSIONS_MAP = Object.freeze({
   ])
 });
 
+const REPORTES_TAB_PERMISSIONS_MAP = Object.freeze({
+  'ventas-resumen': uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    PERMISSIONS.REPORTES_VENTAS_RESUMEN_VER
+  ]),
+  'ventas-metodos-pago': uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    PERMISSIONS.REPORTES_VENTAS_METODOS_PAGO_VER
+  ]),
+  'caja-cierres': uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    PERMISSIONS.REPORTES_CAJA_CIERRES_VER
+  ]),
+  'caja-diferencias': uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    PERMISSIONS.REPORTES_CAJA_DIFERENCIAS_VER
+  ]),
+  'inventario-stock-critico': uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    PERMISSIONS.REPORTES_INVENTARIO_STOCK_CRITICO_VER
+  ]),
+  'inventario-kardex': uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    PERMISSIONS.REPORTES_INVENTARIO_KARDEX_VER
+  ]),
+  'ventas-descuentos': uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    PERMISSIONS.REPORTES_VENTAS_DESCUENTOS_VER
+  ]),
+  'ventas-items': uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    PERMISSIONS.REPORTES_VENTAS_ITEMS_VER
+  ])
+});
+
 const MODULE_ROUTE_PERMISSIONS = Object.freeze({
   dashboard: uniquePermissions([PERMISSIONS.DASHBOARD_VER]),
   personas: uniquePermissions(Object.values(PERSONAS_TAB_PERMISSIONS_MAP).flat()),
@@ -747,6 +794,10 @@ const MODULE_ROUTE_PERMISSIONS = Object.freeze({
     PERMISSIONS.FIDELIZACION_VER_PANEL,
     ...Object.values(FIDELIZACION_TAB_PERMISSIONS_MAP).flat()
   ]),
+  reportes: uniquePermissions([
+    PERMISSIONS.REPORTES_VER,
+    ...Object.values(REPORTES_TAB_PERMISSIONS_MAP).flat()
+  ]),
   configuracion: uniquePermissions([PERMISSIONS.CONFIGURACION_VER]),
   fidelizacion: uniquePermissions([PERMISSIONS.DASHBOARD_VER]),
   configuracion: uniquePermissions([
@@ -776,6 +827,7 @@ export const NAV_ITEM_PERMISSIONS = Object.freeze({
   '/dashboard/seguridad': MODULE_ROUTE_PERMISSIONS.seguridad,
   '/dashboard/planillas': MODULE_ROUTE_PERMISSIONS.planillas,
   '/dashboard/fidelizacion': MODULE_ROUTE_PERMISSIONS.fidelizacion,
+  '/dashboard/reportes': MODULE_ROUTE_PERMISSIONS.reportes,
   '/dashboard/configuracion': MODULE_ROUTE_PERMISSIONS.configuracion,
   '/dashboard/perfil': MODULE_ROUTE_PERMISSIONS.perfil
 });
@@ -787,6 +839,7 @@ export const VENTAS_TAB_PERMISSIONS = Object.freeze(VENTAS_TAB_PERMISSIONS_MAP);
 export const CIERRES_CAJA_TAB_PERMISSIONS = Object.freeze(CIERRES_CAJA_TAB_PERMISSIONS_MAP);
 export const MENU_TAB_PERMISSIONS = Object.freeze(MENU_TAB_PERMISSIONS_MAP);
 export const FIDELIZACION_TAB_PERMISSIONS = Object.freeze(FIDELIZACION_TAB_PERMISSIONS_MAP);
+export const REPORTES_TAB_PERMISSIONS = Object.freeze(REPORTES_TAB_PERMISSIONS_MAP);
 
 export const MODULE_NAV_ITEMS = Object.freeze([
   { key: 'dashboard', name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
@@ -799,6 +852,7 @@ export const MODULE_NAV_ITEMS = Object.freeze([
   { key: 'cocina', name: 'Cocina', path: '/dashboard/cocina', icon: 'bi-display' },
   { key: 'menu', name: 'Menu', path: '/dashboard/menu', icon: 'bi-journal-text' },
   { key: 'fidelizacion', name: 'Fidelizacion', path: '/dashboard/fidelizacion', icon: 'bi-star' },
+  { key: 'reportes', name: 'Reportes', path: '/dashboard/reportes', icon: 'bi-bar-chart-line' },
   { key: 'seguridad', name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
   { key: 'configuracion', name: 'Configuracion', path: '/dashboard/configuracion', icon: 'bi-gear' }
 ]);
@@ -814,6 +868,7 @@ export const MODULE_PRIMARY_PERMISSION = Object.freeze({
   cocina: PERMISSIONS.COCINA_VER,
   menu: PERMISSIONS.MENU_VER,
   fidelizacion: PERMISSIONS.FIDELIZACION_VER_PANEL,
+  reportes: PERMISSIONS.REPORTES_VER,
   seguridad: PERMISSIONS.SEGURIDAD_VER,
   configuracion: PERMISSIONS.CONFIGURACION_VER,
   perfil: PERMISSIONS.PERFIL_VER
@@ -884,6 +939,16 @@ export const MODULE_TAB_CONFIG = Object.freeze({
   fidelizacion: [
     { key: 'panel', label: 'Resumen y Clientes', icon: 'bi bi-star', required: FIDELIZACION_TAB_PERMISSIONS_MAP.panel },
     { key: 'canjes', label: 'Canjes', icon: 'bi bi-gift', required: FIDELIZACION_TAB_PERMISSIONS_MAP.canjes }
+  ],
+  reportes: [
+    { key: 'ventas-resumen', label: 'Resumen de ventas', icon: 'bi bi-graph-up', required: REPORTES_TAB_PERMISSIONS_MAP['ventas-resumen'] },
+    { key: 'ventas-metodos-pago', label: 'Metodos de pago', icon: 'bi bi-credit-card-2-front', required: REPORTES_TAB_PERMISSIONS_MAP['ventas-metodos-pago'] },
+    { key: 'caja-cierres', label: 'Cierres de caja', icon: 'bi bi-safe2', required: REPORTES_TAB_PERMISSIONS_MAP['caja-cierres'] },
+    { key: 'caja-diferencias', label: 'Diferencias de caja', icon: 'bi bi-calculator', required: REPORTES_TAB_PERMISSIONS_MAP['caja-diferencias'] },
+    { key: 'inventario-stock-critico', label: 'Stock critico', icon: 'bi bi-exclamation-triangle', required: REPORTES_TAB_PERMISSIONS_MAP['inventario-stock-critico'] },
+    { key: 'inventario-kardex', label: 'Kardex', icon: 'bi bi-journal-text', required: REPORTES_TAB_PERMISSIONS_MAP['inventario-kardex'] },
+    { key: 'ventas-descuentos', label: 'Descuentos aplicados', icon: 'bi bi-tags', required: REPORTES_TAB_PERMISSIONS_MAP['ventas-descuentos'] },
+    { key: 'ventas-items', label: 'Ventas por item', icon: 'bi bi-bar-chart-steps', required: REPORTES_TAB_PERMISSIONS_MAP['ventas-items'] }
   ]
 });
 

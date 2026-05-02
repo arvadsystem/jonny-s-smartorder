@@ -33,6 +33,7 @@ const CierresCaja = lazy(() => import('./pages/dashboard/CierresCaja'));
 const Cocina = lazy(() => import('./pages/dashboard/Cocina'));
 const Planillas = lazy(() => import('./pages/dashboard/personas/Planillas'));
 const Fidelizacion = lazy(() => import('./pages/dashboard/Fidelizacion'));
+const Reportes = lazy(() => import('./pages/dashboard/Reportes'));
 const Menu = lazy(() => import('./pages/dashboard/menu/Menu'));
 const EmailCampaignsPage = lazy(() => import('./pages/dashboard/configuracion/EmailCampaignsPage'));
 
@@ -182,6 +183,14 @@ function App() {
               element={
                 <RequirePerm moduleKey="fidelizacion">
                   <Fidelizacion />
+                </RequirePerm>
+              }
+            />
+            <Route
+              path="reportes"
+              element={
+                <RequirePerm moduleKey="reportes">
+                  <Reportes />
                 </RequirePerm>
               }
             />
