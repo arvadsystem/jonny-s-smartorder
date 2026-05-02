@@ -228,7 +228,12 @@ export default function UsuariosTab({ openToast }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-  const [confirmModal, setConfirmModal] = useState({ show: false, idToDelete: null, nombre: '' });
+  const [confirmModal, setConfirmModal] = useState({
+    show: false,
+    idToDelete: null,
+    nombre: '',
+    estadoActual: true,
+  });
   const [photoErrorModal, setPhotoErrorModal] = useState({ show: false, message: '' });
   const [createCredentialsResult, setCreateCredentialsResult] = useState(null);
   const [tempPasswordModal, setTempPasswordModal] = useState({
@@ -779,7 +784,18 @@ export default function UsuariosTab({ openToast }) {
         }
         setImageDirty(false);
 
-        safeToast('OK', 'Usuario generado correctamente');
+        const emailNotification = response?.email_notification;
+        const emailSent = Boolean(emailNotification?.sent);
+        const destinationEmail = normalizeText(emailNotification?.to);
+        const createMessage = emailSent
+          ? (destinationEmail
+            ? `Usuario generado. Contrasena temporal enviada a ${destinationEmail}.`
+            : 'Usuario generado. Contrasena temporal enviada al correo registrado.')
+          : 'Usuario generado correctamente.';
+        safeToast('OK', createMessage);
+        if (!emailSent) {
+          safeToast('INFO', 'No se pudo enviar la contrasena temporal por correo. Usa la contrasena mostrada en pantalla.', 'info');
+        }
 
         await cargarUsuarios();
       } else {
@@ -874,7 +890,18 @@ export default function UsuariosTab({ openToast }) {
           username: normalizeText(response?.nombre_usuario) || fallbackUsername,
           revealed: false,
         });
-        safeToast('OK', 'Contraseña temporal regenerada');
+        const emailNotification = response?.email_notification;
+        const emailSent = Boolean(emailNotification?.sent);
+        const destinationEmail = normalizeText(emailNotification?.to);
+        const resetMessage = emailSent
+          ? (destinationEmail
+            ? `Contrasena temporal regenerada y enviada a ${destinationEmail}.`
+            : 'Contrasena temporal regenerada y enviada al correo registrado.')
+          : 'Contrasena temporal regenerada.';
+        safeToast('OK', resetMessage);
+        if (!emailSent) {
+          safeToast('INFO', 'No se pudo enviar la contrasena temporal por correo. Usa la contrasena mostrada en pantalla.', 'info');
+        }
       }
     } catch (error) {
       safeToast('ERROR', error?.message || 'No se pudo resetear la contraseña temporal', 'danger');
@@ -914,19 +941,22 @@ export default function UsuariosTab({ openToast }) {
       show: true,
       idToDelete: usuario?.id_usuario ?? null,
       nombre: getNombreCompleto(usuario),
+      estadoActual: parseBooleanField(usuario),
     });
   };
 
-  const closeConfirmDelete = () => setConfirmModal({ show: false, idToDelete: null, nombre: '' });
+  const closeConfirmDelete = () =>
+    setConfirmModal({ show: false, idToDelete: null, nombre: '', estadoActual: true });
 
   const eliminarConfirmado = async () => {
     if (!canDeleteUsuario) return;
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
+    const shouldActivate = confirmModal.estadoActual === false;
 
     setDeletingId(id);
     try {
-      await personaService.updateUsuarioV2(id, { estado: false });
+      await personaService.updateUsuarioV2(id, { estado: shouldActivate ? true : false });
       if (String(editId) === String(id)) {
         setShowModal(false);
         resetFormState();
@@ -935,10 +965,10 @@ export default function UsuariosTab({ openToast }) {
 
       await cargarUsuarios();
 
-      safeToast('OK', 'Usuario inactivado');
+      safeToast('OK', shouldActivate ? 'Usuario activado' : 'Usuario inactivado');
       closeConfirmDelete();
     } catch (error) {
-      safeToast('ERROR', error.message || 'No se pudo inactivar', 'danger');
+      safeToast('ERROR', error.message || (shouldActivate ? 'No se pudo activar' : 'No se pudo inactivar'), 'danger');
       await cargarUsuarios();
     } finally {
       if (mountedRef.current) setDeletingId(null);
@@ -1182,7 +1212,7 @@ export default function UsuariosTab({ openToast }) {
               <EntityTable>
                 <table className="table personas-page__table">
                   <thead><tr><th scope="col">Usuario</th><th scope="col">Sucursal</th><th scope="col">DNI</th><th scope="col">Telefono</th><th scope="col">Nombre usuario</th><th scope="col">Fecha creacion</th><th scope="col">Estado</th><th scope="col">Codigo</th><th scope="col" className="text-end">Acciones</th></tr></thead>
-                  <tbody>{usuariosPaginados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => openDetalle(usuario)} title="Ver detalle" disabled={actionLoading || deleting || !canVerDetalleUsuario}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting || !canEditUsuario}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title={active ? 'Inactivar' : 'Inactivo'} disabled={actionLoading || deleting || !canDeleteUsuario || !active}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-slash-circle'}`} /><span className="inv-catpro-action-label">{deleting ? 'Inactivando...' : 'Inactivar'}</span></button></div></td></tr>); })}</tbody>
+                  <tbody>{usuariosPaginados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => openDetalle(usuario)} title="Ver detalle" disabled={actionLoading || deleting || !canVerDetalleUsuario}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting || !canEditUsuario}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className={`inv-catpro-action ${active ? 'danger' : ''} inv-catpro-action-compact`.trim()} onClick={() => openConfirmDelete(usuario)} title={active ? 'Inactivar' : 'Activar'} disabled={actionLoading || deleting || !canDeleteUsuario}><i className={`bi ${deleting ? 'bi-hourglass-split' : (active ? 'bi-slash-circle' : 'bi-check-circle')}`} /><span className="inv-catpro-action-label">{deleting ? (active ? 'Inactivando...' : 'Activando...') : (active ? 'Inactivar' : 'Activar')}</span></button></div></td></tr>); })}</tbody>
                 </table>
               </EntityTable>
             ) : (
@@ -1336,7 +1366,46 @@ export default function UsuariosTab({ openToast }) {
       <UsuarioDetailModal open={Boolean(detailUsuario)} usuario={detailUsuario} onClose={() => setDetailUsuario(null)} />
 
       {confirmModal.show && (
-        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}><div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}><div className="inv-pro-confirm-head"><div className="inv-pro-confirm-head-icon"><i className="bi bi-exclamation-triangle-fill" /></div><div><div className="inv-pro-confirm-title">CONFIRMAR INACTIVACION</div><div className="inv-pro-confirm-sub">El usuario se ocultara del listado activo</div></div><button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar"><i className="bi bi-x-lg" /></button></div><div className="inv-pro-confirm-body"><div className="inv-pro-confirm-question">Deseas inactivar este usuario?</div><div className="inv-pro-confirm-name"><i className="bi bi-person-badge" /><span>{confirmModal.nombre || 'Usuario seleccionado'}</span></div></div><div className="inv-pro-confirm-footer"><button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>Cancelar</button><button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}><i className="bi bi-slash-circle" /><span>Inactivar</span></button></div></div></div>
+        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
+          <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="inv-pro-confirm-head">
+              <div className="inv-pro-confirm-head-icon">
+                <i className="bi bi-exclamation-triangle-fill" />
+              </div>
+              <div>
+                <div className="inv-pro-confirm-title">
+                  {confirmModal.estadoActual ? 'CONFIRMAR INACTIVACION' : 'CONFIRMAR ACTIVACION'}
+                </div>
+                <div className="inv-pro-confirm-sub">
+                  {confirmModal.estadoActual
+                    ? 'El usuario se ocultara del listado activo'
+                    : 'El usuario volvera al listado activo'}
+                </div>
+              </div>
+              <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+            <div className="inv-pro-confirm-body">
+              <div className="inv-pro-confirm-question">
+                {confirmModal.estadoActual ? 'Deseas inactivar este usuario?' : 'Deseas activar este usuario?'}
+              </div>
+              <div className="inv-pro-confirm-name">
+                <i className="bi bi-person-badge" />
+                <span>{confirmModal.nombre || 'Usuario seleccionado'}</span>
+              </div>
+            </div>
+            <div className="inv-pro-confirm-footer">
+              <button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>
+                Cancelar
+              </button>
+              <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
+                <i className={`bi ${confirmModal.estadoActual ? 'bi-slash-circle' : 'bi-check-circle'}`} />
+                <span>{confirmModal.estadoActual ? 'Inactivar' : 'Activar'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {tempPasswordModal.show && (

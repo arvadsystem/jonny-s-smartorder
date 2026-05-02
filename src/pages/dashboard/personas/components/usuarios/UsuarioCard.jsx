@@ -60,6 +60,13 @@ export default function UsuarioCard({
   const active = isActivo(usuario);
   const idUsuario = usuario?.id_usuario;
   const deleting = deletingId === idUsuario;
+  const isActivating = !active;
+  const statusActionLabel = deleting
+    ? (isActivating ? "Activando..." : "Inactivando...")
+    : (isActivating ? "Activar" : "Inactivar");
+  const statusActionIcon = deleting
+    ? "bi-hourglass-split"
+    : (isActivating ? "bi-check-circle" : "bi-slash-circle");
   const nombre = toDisplayValue(getNombreCompleto(usuario), "Usuario sin nombre");
   const sucursal = toDisplayValue(getSucursal(usuario));
   const username = toDisplayValue(usuario?.nombre_usuario, "Sin usuario");
@@ -132,14 +139,14 @@ export default function UsuarioCard({
           {canDelete ? (
             <button
               type="button"
-              className="inv-catpro-action danger inv-catpro-action-compact"
+              className={`inv-catpro-action ${active ? "danger" : ""} inv-catpro-action-compact`.trim()}
               onClick={() => onOpenDelete?.(usuario)}
-              disabled={actionLoading || deleting || !active}
-              title={active ? "Inactivar" : "Inactivo"}
-              aria-label={deleting ? "Inactivando..." : "Inactivar"}
+              disabled={actionLoading || deleting}
+              title={isActivating ? "Activar" : "Inactivar"}
+              aria-label={statusActionLabel}
             >
-              <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-slash-circle"}`} />
-              <span className="inv-catpro-action-label">{deleting ? "Inactivando..." : "Inactivar"}</span>
+              <i className={`bi ${statusActionIcon}`} />
+              <span className="inv-catpro-action-label">{statusActionLabel}</span>
             </button>
           ) : null}
         </>

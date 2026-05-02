@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import { useAuth } from '../../hooks/useAuth';
 import authService from '../../services/authService';
 import clientePublicoService from '../../services/clientePublicoService';
 import ForcePasswordChange from './ForcePasswordChange';
 import logo from '../../assets/images/logo-sin-fondo.png';
 import bgImage from '../../assets/images/imagen-fondo.png';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import './Login.scss';
+
 const normalizeRoleName = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -25,30 +26,31 @@ const isClienteUser = (authUser) => {
   return roles.map(normalizeRoleName).includes('CLIENTE');
 };
 
-const _MOTION = motion;
+const RESEND_GENERIC_MESSAGE =
+  'Si la cuenta existe y esta pendiente de verificacion, enviaremos un nuevo correo de verificacion.';
 
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, user } = useAuth();
 
-  // ── Campo unificado (usuario o correo) ───────────────────────
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // ── Estado general ───────────────────────────────────────────
   const [error, setError] = useState('');
   const [showForcePasswordModal, setShowForcePasswordModal] = useState(false);
   const [successMsg, setSuccessMsg] = useState(
     searchParams.get('verified') === '1'
-      ? '✅ ¡Correo verificado! Tu cuenta está activa. Ya puedes iniciar sesión.'
+      ? 'Cuenta verificada. Ya puedes iniciar sesion.'
       : ''
   );
+  const [canResendVerification, setCanResendVerification] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [resendTarget, setResendTarget] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Redirección al ya tener sesión
   useEffect(() => {
     if (!user) {
       setShowForcePasswordModal(false);
@@ -74,22 +76,22 @@ const Login = () => {
     navigate('/dashboard', { replace: true });
   }, [navigate, user, searchParams]);
 
-  // ── Submit unificado ─────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
+    setCanResendVerification(false);
 
     if (!identifier.trim() || !password.trim()) {
       setError('Por favor, ingresa tus credenciales.');
       return;
     }
 
+    const normalizedIdentifier = String(identifier || '').trim();
     setLoading(true);
     try {
       let response = null;
       let internalError = null;
-      const normalizedIdentifier = String(identifier || '').trim();
 
       try {
         response = await authService.login({ nombre_usuario: normalizedIdentifier, clave: password });
@@ -99,9 +101,7 @@ const Login = () => {
         const shouldFallbackToCliente =
           code === 'ACCOUNT_SCOPE_INVALID' || normalizedIdentifier.includes('@');
 
-        if (!shouldFallbackToCliente) {
-          throw err;
-        }
+        if (!shouldFallbackToCliente) throw err;
 
         response = await clientePublicoService.loginCliente({
           identifier: normalizedIdentifier,
@@ -113,24 +113,53 @@ const Login = () => {
         login(response);
         const usuario = response.usuario;
         setShowForcePasswordModal(!isClienteUser(usuario) && Boolean(usuario?.must_change_password));
-      } else if (internalError) {
-        throw internalError;
+        setResendTarget('');
+        return;
       }
+
+      if (internalError) throw internalError;
     } catch (err) {
-      let msg = err.message;
-      if (msg === 'Failed to fetch' || msg?.includes('NetworkError')) {
-        msg = 'Error de conexión con el servidor';
+      const errCode = String(err?.code || err?.data?.code || '').toUpperCase();
+      let msg = err?.message || '';
+      if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        msg = 'Error de conexion con el servidor';
       }
+
+      if (errCode === 'EMAIL_NOT_VERIFIED') {
+        setCanResendVerification(true);
+        setResendTarget(normalizedIdentifier);
+      } else {
+        setCanResendVerification(false);
+      }
+
       setError(msg || 'Credenciales incorrectas');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleResendVerification = async () => {
+    const target = String(resendTarget || identifier || '').trim();
+    if (!target) {
+      setError('Ingresa tu correo o usuario para reenviar la verificacion.');
+      return;
+    }
+
+    setResendingVerification(true);
+    setError('');
+    try {
+      const response = await clientePublicoService.resendVerification({ identifier: target });
+      setSuccessMsg(response?.message || RESEND_GENERIC_MESSAGE);
+      setCanResendVerification(false);
+    } catch (err) {
+      setError(err?.message || 'No se pudo reenviar el correo de verificacion.');
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
   return (
     <div className="login-root">
-
-      {/* ── PANEL IZQUIERDO ─────────────────────────────────────── */}
       <div className="panel-left">
         <img src={bgImage} alt="" className="bg-food" />
         <div className="vignette" />
@@ -138,13 +167,13 @@ const Login = () => {
         <div className="left-content">
           <div className="badge">
             <span className="dot" />
-            SISTEMA DE GESTIÓN · HONDURAS
+            SISTEMA DE GESTION - HONDURAS
           </div>
           <div className="brand">
             <div className="logo-ring">
               <div className="halo" />
               <div className="ring" />
-              <img src={logo} alt="Jonny's" className="logo-img" />
+              <img src={logo} alt="Jonnys" className="logo-img" />
             </div>
             <div className="brand-text">
               <span className="brand-sub">RESTAURANTE</span>
@@ -156,20 +185,17 @@ const Login = () => {
         </div>
       </div>
 
-      {/* ── PANEL DERECHO ───────────────────────────────────────── */}
       <motion.aside
         className="panel-right"
         initial={{ opacity: 0, x: 24 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.45, ease: 'easeOut' }}
       >
-        {/* Cabecera */}
         <div className="form-header">
           <h2>BIENVENIDO</h2>
           <p>Ingresa tus credenciales para continuar</p>
         </div>
 
-        {/* ══ FORMULARIO UNIFICADO ════════════════════════════════ */}
         <form onSubmit={handleSubmit} className="login-form">
           <div className="field">
             <label>USUARIO O CORREO</label>
@@ -187,18 +213,23 @@ const Login = () => {
           </div>
 
           <div className="field">
-            <label>CONTRASEÑA</label>
+            <label>CONTRASENA</label>
             <div className="input-wrap">
               <FiLock className="field-icon" />
               <input
                 id="login-password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••••"
+                placeholder="**********"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
               />
-              <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}>
+              <button
+                type="button"
+                className="eye-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+              >
                 {showPassword ? <FiEyeOff /> : <FiEye />}
               </button>
             </div>
@@ -206,32 +237,74 @@ const Login = () => {
 
           <div className="remember-row">
             <label className="check-label">
-              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-              <span>Recordar sesión</span>
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              <span>Recordar sesion</span>
             </label>
-            <button type="button" className="forgot-link" onClick={() => navigate('/recuperar-password')}>
-              ¿Olvidaste tu contraseña?
+            <button
+              type="button"
+              className="forgot-link"
+              onClick={() => navigate('/recuperar-password')}
+            >
+              Olvidaste tu contrasena?
             </button>
           </div>
 
           <AnimatePresence>
             {successMsg && (
-              <motion.div className="success-msg" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <motion.div
+                className="success-msg"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
                 {successMsg}
               </motion.div>
             )}
             {error && (
-              <motion.div className="error-msg" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <motion.div
+                className="error-msg"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+              >
                 {error}
               </motion.div>
             )}
           </AnimatePresence>
 
-          <motion.button type="submit" className="btn-cta" disabled={loading} whileHover={!loading ? { y: -1 } : {}} whileTap={!loading ? { scale: 0.98 } : {}}>
-            {loading ? <span className="loading-inner"><span className="spin" /> Iniciando sesión...</span> : 'INICIAR SESIÓN  →'}
+          {canResendVerification ? (
+            <motion.button
+              type="button"
+              className="btn-resend-verification"
+              disabled={resendingVerification}
+              onClick={handleResendVerification}
+              whileHover={!resendingVerification ? { y: -1 } : {}}
+              whileTap={!resendingVerification ? { scale: 0.98 } : {}}
+            >
+              {resendingVerification ? 'Enviando correo...' : 'Reenviar correo de verificacion'}
+            </motion.button>
+          ) : null}
+
+          <motion.button
+            type="submit"
+            className="btn-cta"
+            disabled={loading}
+            whileHover={!loading ? { y: -1 } : {}}
+            whileTap={!loading ? { scale: 0.98 } : {}}
+          >
+            {loading ? (
+              <span className="loading-inner">
+                <span className="spin" /> Iniciando sesion...
+              </span>
+            ) : (
+              'INICIAR SESION  ->'
+            )}
           </motion.button>
 
-          {/* Botón Registrarse */}
           <motion.button
             type="button"
             className="btn-register"
@@ -242,10 +315,13 @@ const Login = () => {
             REGISTRARSE
           </motion.button>
 
-          {/* Link menú público */}
           <div className="menu-link-row">
-            <button type="button" className="menu-publico-link" onClick={() => navigate('/menu-publico')}>
-              Ver menú sin iniciar sesión →
+            <button
+              type="button"
+              className="menu-publico-link"
+              onClick={() => navigate('/menu-publico')}
+            >
+              Ver menu sin iniciar sesion -&gt;
             </button>
           </div>
         </form>
@@ -257,4 +333,3 @@ const Login = () => {
 };
 
 export default Login;
-

@@ -819,6 +819,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     show: false,
     idToDelete: null,
     nombre: "",
+    estadoActual: true,
   });
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
@@ -2429,19 +2430,21 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       show: true,
       idToDelete: empleado?.id_empleado ?? null,
       nombre: getPersonaNombre(empleado) || "",
+      estadoActual: isActivo(empleado),
     });
   };
 
   const closeConfirmDelete = () =>
-    setConfirmModal({ show: false, idToDelete: null, nombre: "" });
+    setConfirmModal({ show: false, idToDelete: null, nombre: "", estadoActual: true });
 
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
+    const shouldActivate = confirmModal.estadoActual === false;
 
     setDeletingId(id);
     try {
-      await personaService.updateEmpleado(id, { estado: false });
+      await personaService.updateEmpleado(id, { estado: shouldActivate ? true : false });
       setEmployeeSignedImages((prev) => {
         const next = { ...prev };
         delete next[String(id)];
@@ -2479,11 +2482,11 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         await cargarEmpleados({ force: true });
       }
 
-      safeToast("OK", "Empleado inactivado");
+      safeToast("OK", shouldActivate ? "Empleado activado" : "Empleado inactivado");
       closeConfirmDelete();
       await cargarEmpleadosGlobalStats();
     } catch (error) {
-      safeToast("ERROR", error.message || "No se pudo inactivar", "danger");
+      safeToast("ERROR", error.message || (shouldActivate ? "No se pudo activar" : "No se pudo inactivar"), "danger");
       clearEmpleadosListCache();
       await cargarEmpleados({ force: true });
     } finally {
@@ -2874,13 +2877,15 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
                               <button
                                 type="button"
-                                className="inv-catpro-action danger inv-catpro-action-compact"
+                                className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
                                 onClick={() => openConfirmDelete(empleado)}
-                                title={isActive ? "Inactivar" : "Inactivo"}
-                                disabled={actionLoading || deleting || !isActive}
+                                title={isActive ? "Inactivar" : "Activar"}
+                                disabled={actionLoading || deleting}
                               >
-                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-slash-circle"}`} />
-                                <span className="inv-catpro-action-label">{deleting ? "Inactivando..." : "Inactivar"}</span>
+                                <i className={`bi ${deleting ? "bi-hourglass-split" : (isActive ? "bi-slash-circle" : "bi-check-circle")}`} />
+                                <span className="inv-catpro-action-label">
+                                  {deleting ? (isActive ? "Inactivando..." : "Activando...") : (isActive ? "Inactivar" : "Activar")}
+                                </span>
                               </button>
                             </div>
                           </td>
@@ -3439,8 +3444,14 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                 <i className="bi bi-exclamation-triangle-fill" />
               </div>
               <div>
-                <div className="inv-pro-confirm-title">CONFIRMAR INACTIVACION</div>
-                <div className="inv-pro-confirm-sub">El empleado se ocultara del listado activo</div>
+                <div className="inv-pro-confirm-title">
+                  {confirmModal.estadoActual ? "CONFIRMAR INACTIVACION" : "CONFIRMAR ACTIVACION"}
+                </div>
+                <div className="inv-pro-confirm-sub">
+                  {confirmModal.estadoActual
+                    ? "El empleado se ocultara del listado activo"
+                    : "El empleado volvera al listado activo"}
+                </div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
                 <i className="bi bi-x-lg" />
@@ -3448,7 +3459,9 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
             </div>
 
             <div className="inv-pro-confirm-body">
-              <div className="inv-pro-confirm-question">Deseas inactivar este empleado?</div>
+              <div className="inv-pro-confirm-question">
+                {confirmModal.estadoActual ? "Deseas inactivar este empleado?" : "Deseas activar este empleado?"}
+              </div>
               <div className="inv-pro-confirm-name">
                 <i className="bi bi-person-badge" />
                 <span>{confirmModal.nombre || "Empleado seleccionado"}</span>
@@ -3460,8 +3473,8 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                 Cancelar
               </button>
               <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
-                <i className="bi bi-slash-circle" />
-                <span>Inactivar</span>
+                <i className={`bi ${confirmModal.estadoActual ? "bi-slash-circle" : "bi-check-circle"}`} />
+                <span>{confirmModal.estadoActual ? "Inactivar" : "Activar"}</span>
               </button>
             </div>
           </div>

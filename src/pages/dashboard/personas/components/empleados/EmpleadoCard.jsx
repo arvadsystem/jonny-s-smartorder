@@ -214,6 +214,13 @@ export default function EmpleadoCard({
   const isActive = parseEstado(empleado);
   const idEmpleado = empleado?.id_empleado;
   const deleting = deletingId === idEmpleado;
+  const isActivating = !isActive;
+  const statusActionLabel = deleting
+    ? (isActivating ? "Activando..." : "Inactivando...")
+    : (isActivating ? "Activar" : "Inactivar");
+  const statusActionIcon = deleting
+    ? "bi-hourglass-split"
+    : (isActivating ? "bi-check-circle" : "bi-slash-circle");
   const personaNombre = typeof getPersonaNombre === "function" ? getPersonaNombre(empleado) : "No registrado";
   const sucursalNombre = typeof getSucursalNombre === "function" ? getSucursalNombre(empleado) : "No registrado";
   const telefono = getTelefono(empleado);
@@ -285,13 +292,13 @@ export default function EmpleadoCard({
 
           <button
             type="button"
-            className="inv-catpro-action danger inv-catpro-action-compact"
+            className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
             onClick={() => onOpenDelete(empleado)}
-            title={isActive ? "Inactivar" : "Inactivo"}
-            disabled={actionLoading || deleting || !isActive}
+            title={isActivating ? "Activar" : "Inactivar"}
+            disabled={actionLoading || deleting}
           >
-            <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-slash-circle"}`} />
-            <span className="inv-catpro-action-label">{deleting ? "Inactivando..." : "Inactivar"}</span>
+            <i className={`bi ${statusActionIcon}`} />
+            <span className="inv-catpro-action-label">{statusActionLabel}</span>
           </button>
         </>
       }

@@ -486,6 +486,7 @@ const Clientes = ({ openToast }) => {
     show: false,
     idToDelete: null,
     nombre: "",
+    estadoActual: true,
   });
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
@@ -1962,18 +1963,20 @@ const Clientes = ({ openToast }) => {
       show: true,
       idToDelete: cliente?.id_cliente ?? null,
       nombre: firstNonEmptyValue(cliente?.nombre_principal, getClientePrincipalNombre(cliente)),
+      estadoActual: isActivo(cliente),
     });
 
   const closeConfirmDelete = () =>
-    setConfirmModal({ show: false, idToDelete: null, nombre: "" });
+    setConfirmModal({ show: false, idToDelete: null, nombre: "", estadoActual: true });
 
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
+    const shouldActivate = confirmModal.estadoActual === false;
 
     setDeletingId(id);
     try {
-      await personaService.updateCliente(id, { estado: false });
+      await personaService.updateCliente(id, { estado: shouldActivate ? true : false });
 
       if (String(editId) === String(id)) {
         closeFormDrawer();
@@ -1989,11 +1992,11 @@ const Clientes = ({ openToast }) => {
         await cargarClientes({ force: true });
       }
 
-      safeToast("OK", "Cliente inactivado");
+      safeToast("OK", shouldActivate ? "Cliente activado" : "Cliente inactivado");
       closeConfirmDelete();
       await cargarClientesGlobalStats();
     } catch (error) {
-      safeToast("ERROR", error.message || "No se pudo inactivar", "danger");
+      safeToast("ERROR", error.message || (shouldActivate ? "No se pudo activar" : "No se pudo inactivar"), "danger");
       clearClientesListCache();
       await cargarClientes({ force: true });
     } finally {
@@ -2395,13 +2398,15 @@ const Clientes = ({ openToast }) => {
 
                               <button
                                 type="button"
-                                className="inv-catpro-action danger inv-catpro-action-compact"
+                                className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
                                 onClick={() => openConfirmDelete(cliente)}
-                                title={isActive ? "Inactivar" : "Inactivo"}
-                                disabled={actionLoading || deleting || !isActive}
+                                title={isActive ? "Inactivar" : "Activar"}
+                                disabled={actionLoading || deleting}
                               >
-                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-slash-circle"}`} />
-                                <span className="inv-catpro-action-label">{deleting ? "Inactivando..." : "Inactivar"}</span>
+                                <i className={`bi ${deleting ? "bi-hourglass-split" : (isActive ? "bi-slash-circle" : "bi-check-circle")}`} />
+                                <span className="inv-catpro-action-label">
+                                  {deleting ? (isActive ? "Inactivando..." : "Activando...") : (isActive ? "Inactivar" : "Activar")}
+                                </span>
                               </button>
                             </div>
                           </td>
@@ -2969,8 +2974,14 @@ const Clientes = ({ openToast }) => {
                 <i className="bi bi-exclamation-triangle-fill" />
               </div>
               <div>
-                <div className="inv-pro-confirm-title">CONFIRMAR INACTIVACION</div>
-                <div className="inv-pro-confirm-sub">El cliente se ocultara del listado activo</div>
+                <div className="inv-pro-confirm-title">
+                  {confirmModal.estadoActual ? "CONFIRMAR INACTIVACION" : "CONFIRMAR ACTIVACION"}
+                </div>
+                <div className="inv-pro-confirm-sub">
+                  {confirmModal.estadoActual
+                    ? "El cliente se ocultara del listado activo"
+                    : "El cliente volvera al listado activo"}
+                </div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
                 <i className="bi bi-x-lg" />
@@ -2978,7 +2989,9 @@ const Clientes = ({ openToast }) => {
             </div>
 
             <div className="inv-pro-confirm-body">
-              <div className="inv-pro-confirm-question">Deseas inactivar este cliente?</div>
+              <div className="inv-pro-confirm-question">
+                {confirmModal.estadoActual ? "Deseas inactivar este cliente?" : "Deseas activar este cliente?"}
+              </div>
               <div className="inv-pro-confirm-name">
                 <i className="bi bi-person-lines-fill" />
                 <span>{confirmModal.nombre || "Cliente seleccionado"}</span>
@@ -2990,8 +3003,8 @@ const Clientes = ({ openToast }) => {
                 Cancelar
               </button>
               <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
-                <i className="bi bi-slash-circle" />
-                <span>Inactivar</span>
+                <i className={`bi ${confirmModal.estadoActual ? "bi-slash-circle" : "bi-check-circle"}`} />
+                <span>{confirmModal.estadoActual ? "Inactivar" : "Activar"}</span>
               </button>
             </div>
           </div>

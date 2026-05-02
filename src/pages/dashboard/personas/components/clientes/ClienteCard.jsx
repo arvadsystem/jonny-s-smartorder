@@ -74,6 +74,13 @@ export default function ClienteCard({
   const isActive = parseEstado(cliente);
   const idCliente = cliente?.id_cliente;
   const deleting = deletingId === idCliente;
+  const isActivating = !isActive;
+  const statusActionLabel = deleting
+    ? (isActivating ? "Activando..." : "Inactivando...")
+    : (isActivating ? "Activar" : "Inactivar");
+  const statusActionIcon = deleting
+    ? "bi-hourglass-split"
+    : (isActivating ? "bi-check-circle" : "bi-slash-circle");
   const codigoCliente = toDisplayValue(cliente?.codigo_cliente, `CLI-${String(idCliente ?? "-")}`);
   const origenTipo = String(cliente?.origen_cliente ?? "").trim().toLowerCase() === "empresa" ? "empresa" : "persona";
   const isPersonaCliente = origenTipo !== "empresa";
@@ -183,13 +190,13 @@ export default function ClienteCard({
 
           <button
             type="button"
-            className="inv-catpro-action danger inv-catpro-action-compact"
+            className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
             onClick={() => onOpenDelete(cliente)}
-            title={isActive ? "Inactivar" : "Inactivo"}
-            disabled={actionLoading || deleting || !isActive}
+            title={isActivating ? "Activar" : "Inactivar"}
+            disabled={actionLoading || deleting}
           >
-            <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-slash-circle"}`} />
-            <span className="inv-catpro-action-label">{deleting ? "Inactivando..." : "Inactivar"}</span>
+            <i className={`bi ${statusActionIcon}`} />
+            <span className="inv-catpro-action-label">{statusActionLabel}</span>
           </button>
         </>
       }
