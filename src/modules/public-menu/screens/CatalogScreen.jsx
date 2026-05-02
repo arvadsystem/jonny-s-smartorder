@@ -6,6 +6,7 @@ import ConfirmModal from '../components/feedback/ConfirmModal';
 import OrderSuccessModal from '../components/feedback/OrderSuccessModal';
 import PremiumCatalogHeader from '../components/catalog/PremiumCatalogHeader';
 import PremiumHero from '../components/catalog/PremiumHero';
+import JonnyExperienceSection from '../components/catalog/JonnyExperienceSection';
 import PremiumProductSection from '../components/catalog/PremiumProductSection';
 import PremiumStickyCart from '../components/catalog/PremiumStickyCart';
 import ProductDetailSheet from '../components/catalog/ProductDetailSheet';
@@ -208,10 +209,16 @@ const CatalogScreen = () => {
     () => state.selectedBranch || branches.find((branch) => branch?.isOpen) || branches[0] || null,
     [branches, state.selectedBranch]
   );
+  const liveSelectedBranch = useMemo(() => {
+    if (!state.selectedBranch?.id) return state.selectedBranch || null;
+    return branches.find((branch) => Number(branch?.id) === Number(state.selectedBranch?.id)) || state.selectedBranch;
+  }, [branches, state.selectedBranch]);
 
   const [cartOpen, setCartOpen] = useState(false);
   const [authRequired, setAuthRequired] = useState({ open: false, message: '' });
   const [homeConfirmOpen, setHomeConfirmOpen] = useState(false);
+  const [closedHoursConfirmOpen, setClosedHoursConfirmOpen] = useState(false);
+  const [closedHoursDismissedBranchId, setClosedHoursDismissedBranchId] = useState(null);
   const [orderSuccess, setOrderSuccess] = useState({ open: false, order: null });
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -254,6 +261,22 @@ const CatalogScreen = () => {
   }, [actions, preferredBranch, state.selectedBranch?.id]);
 
   useEffect(() => {
+    if (!state.selectedBranch?.id || !liveSelectedBranch?.id) return;
+
+    const changed =
+      String(liveSelectedBranch?.name || '') !== String(state.selectedBranch?.name || '') ||
+      String(liveSelectedBranch?.displayName || '') !== String(state.selectedBranch?.displayName || '') ||
+      String(liveSelectedBranch?.schedule || '') !== String(state.selectedBranch?.schedule || '') ||
+      String(liveSelectedBranch?.statusLabel || '') !== String(state.selectedBranch?.statusLabel || '') ||
+      String(liveSelectedBranch?.closedReason || '') !== String(state.selectedBranch?.closedReason || '') ||
+      Boolean(liveSelectedBranch?.isOpen) !== Boolean(state.selectedBranch?.isOpen);
+
+    if (changed) {
+      actions.selectBranch(liveSelectedBranch);
+    }
+  }, [actions, liveSelectedBranch, state.selectedBranch]);
+
+  useEffect(() => {
     if (!state.orderType) {
       actions.selectOrderType(PUBLIC_MENU_ORDER_TYPES.DINE_IN);
     }
@@ -274,6 +297,11 @@ const CatalogScreen = () => {
   );
   const orderTypeLabel = getOrderTypeLabel(orderType);
   const greetingName = getGreetingName(user);
+  const selectedBranchOpen = liveSelectedBranch?.isOpen !== false;
+  const branchScheduleText = liveSelectedBranch?.schedule || 'Horario no configurado';
+  const branchClosedReason = liveSelectedBranch?.closedReason || `Disponible de ${branchScheduleText}`;
+  const orderDisabledReason = selectedBranchOpen ? '' : 'Sucursal cerrada';
+  const liveBranchId = Number(liveSelectedBranch?.id || 0);
   const topNavCategories = useMemo(
     () => categories.filter((category) => category !== 'all').slice(0, 8),
     [categories]
@@ -308,6 +336,16 @@ const CatalogScreen = () => {
     if (heroIndex <= heroSlides.length - 1) return;
     setHeroIndex(0);
   }, [heroIndex, heroSlides.length]);
+
+  useEffect(() => {
+    if (!liveBranchId || selectedBranchOpen) {
+      setClosedHoursConfirmOpen(false);
+      return;
+    }
+
+    if (Number(closedHoursDismissedBranchId || 0) === liveBranchId) return;
+    setClosedHoursConfirmOpen(true);
+  }, [closedHoursDismissedBranchId, liveBranchId, selectedBranchOpen]);
 
   useEffect(() => {
     if (heroTimerRef.current) {
@@ -448,6 +486,16 @@ const CatalogScreen = () => {
     navigate('/menu-publico');
   };
 
+  const continueBrowsingClosedMenu = () => {
+    setClosedHoursDismissedBranchId(liveBranchId || null);
+    setClosedHoursConfirmOpen(false);
+  };
+
+  const leaveClosedMenu = () => {
+    setClosedHoursConfirmOpen(false);
+    navigate('/menu-publico');
+  };
+
   const handleLogout = async () => {
     await logout();
     setCartOpen(false);
@@ -462,6 +510,15 @@ const CatalogScreen = () => {
 
   const handleConfirmOrder = async () => {
     if (confirmingOrder || confirmLockRef.current) return;
+    if (!selectedBranchOpen) {
+      actions.pushToast({
+        type: 'warning',
+        durationMs: 7000,
+        message: `La sucursal esta cerrada en este momento. ${branchClosedReason}`
+      });
+      return;
+    }
+
     const pickupPaymentMethod = String(state.pickupPaymentMethod || '')
       .trim()
       .toLowerCase();
@@ -660,6 +717,20 @@ const CatalogScreen = () => {
         onPrimaryAction={handleScrollToCatalog}
       />
 
+      <JonnyExperienceSection />
+
+      {!selectedBranchOpen ? (
+        <div className="pm-branch-hours-alert" role="status">
+          <span className="pm-branch-hours-alert__icon" aria-hidden="true">
+            <i className="bi bi-clock-history" />
+          </span>
+          <div className="pm-branch-hours-alert__copy">
+            <strong>Pedidos cerrados por ahora</strong>
+            <span>{branchClosedReason}. Puedes revisar el menú y preparar tu pedido.</span>
+          </div>
+        </div>
+      ) : null}
+
       {syncWarning ? (
         <StateBlock
           variant="warning"
@@ -713,6 +784,8 @@ const CatalogScreen = () => {
             total={total}
             branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
             confirmingOrder={confirmingOrder}
+            orderDisabled={!selectedBranchOpen}
+            orderDisabledReason={orderDisabledReason}
             onAdd={handleCardAdd}
             onIncrease={handleCardIncrease}
             onDecrease={handleCardDecrease}
@@ -723,6 +796,10 @@ const CatalogScreen = () => {
           />
         ) : null}
       </div>
+
+      <footer className="pm-public-footer" aria-label="Creditos del sistema">
+        <span>© 2026 ARVAD SYSTEM</span>
+      </footer>
 
       <PremiumStickyCart
         itemCount={totalItems}
@@ -737,6 +814,8 @@ const CatalogScreen = () => {
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
         items={cartItems}
         total={total}
+        disabled={!selectedBranchOpen}
+        disabledReason={orderDisabledReason}
         onClose={() => setCartOpen(false)}
         onIncrease={increaseItemByLine}
         onDecrease={decreaseItemByLine}
@@ -769,6 +848,16 @@ const CatalogScreen = () => {
         confirmLabel="Volver al inicio"
         onCancel={cancelHomeNavigation}
         onConfirm={confirmHomeNavigation}
+      />
+
+      <ConfirmModal
+        open={closedHoursConfirmOpen && !homeConfirmOpen}
+        title="Restaurante cerrado"
+        message={`En este momento no estamos recibiendo pedidos. ${branchClosedReason}. Puedes seguir viendo el menu, pero no podras confirmar un pedido hasta que abramos.`}
+        cancelLabel="Volver al inicio"
+        confirmLabel="Seguir viendo menu"
+        onCancel={leaveClosedMenu}
+        onConfirm={continueBrowsingClosedMenu}
       />
 
       <OrderSuccessModal

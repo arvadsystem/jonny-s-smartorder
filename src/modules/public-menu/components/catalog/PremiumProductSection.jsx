@@ -13,6 +13,8 @@ const PremiumProductSection = ({
   total = 0,
   branchName = '',
   confirmingOrder = false,
+  orderDisabled = false,
+  orderDisabledReason = '',
   onAdd,
   onIncrease,
   onDecrease,
@@ -42,6 +44,8 @@ const PremiumProductSection = ({
       items={cartItems}
       total={total}
       confirming={confirmingOrder}
+      disabled={orderDisabled}
+      disabledReason={orderDisabledReason}
       onIncrease={onIncreaseLine}
       onDecrease={onDecreaseLine}
       onRemove={onRemoveLine}

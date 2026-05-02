@@ -53,11 +53,134 @@
   color: rgba(255, 246, 232, 0.72) !important;
 }
 
+.pm-shell:has(.pm-catalog-screen) {
+  padding-bottom: 0 !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__card {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(240, 200, 150, 0.08), transparent 30%),
+    linear-gradient(180deg, #20140c 0%, #110805 100%) !important;
+  border: 1px solid rgba(240, 200, 150, 0.18) !important;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.34) !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__intro h2 {
+  color: #fff8ed !important;
+  background:
+    radial-gradient(circle at 16% 26%, transparent 0 1px, #fff8ed 1.4px),
+    radial-gradient(circle at 44% 70%, transparent 0 1.15px, #fff8ed 1.55px),
+    radial-gradient(circle at 78% 36%, transparent 0 0.95px, #fff8ed 1.35px),
+    linear-gradient(#fff8ed, #fff8ed) !important;
+  background-size: 9px 9px, 11px 11px, 13px 13px, 100% 100% !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__item h3 {
+  color: #fff8ed !important;
+  background: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__item h3 span {
+  color: #f5b400 !important;
+  -webkit-text-fill-color: #f5b400 !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__intro p,
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__item p {
+  color: rgba(255, 248, 237, 0.76) !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__item,
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__social {
+  border-color: rgba(240, 200, 150, 0.16) !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__icon {
+  background: rgba(240, 200, 150, 0.13) !important;
+  color: #fff8ed !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__social {
+  background:
+    radial-gradient(circle at 86% 0%, rgba(245, 180, 0, 0.1), transparent 38%),
+    linear-gradient(180deg, #080807, #020202) !important;
+  color: #fff8ed !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__social h3 {
+  color: #fff8ed !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__social-item {
+  background: rgba(255, 255, 255, 0.025) !important;
+  border-color: rgba(245, 180, 0, 0.82) !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__social-copy strong {
+  color: rgba(255, 248, 237, 0.76) !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-public-footer {
+  color: rgba(255, 248, 237, 0.66) !important;
+}
+
 .pm-shell.pm-theme-light {
   background:
     radial-gradient(circle at 12% 10%, rgba(177, 91, 31, 0.08), transparent 28%),
     linear-gradient(180deg, #faf7f1 0%, #f1ebe2 56%, #e8dfd3 100%) !important;
   color: #241b15 !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__card {
+  background: #f7f2ea !important;
+  border: 1px solid rgba(112, 83, 63, 0.12) !important;
+  box-shadow: 0 18px 42px rgba(55, 33, 19, 0.11) !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__intro h2,
+.pm-shell.pm-theme-light .pm-jonny-experience__item h3 {
+  color: #050505 !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__intro p,
+.pm-shell.pm-theme-light .pm-jonny-experience__item p {
+  color: #2f2923 !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__item,
+.pm-shell.pm-theme-light .pm-jonny-experience__social {
+  border-color: rgba(112, 83, 63, 0.13) !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__icon {
+  background: #f3e7d3 !important;
+  color: #050505 !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__social {
+  background: linear-gradient(135deg, #fffaf3, #f2e5d6) !important;
+  color: #241b15 !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__social h3 {
+  color: #241b15 !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__social-item {
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-color: rgba(181, 93, 32, 0.28) !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__social-copy strong {
+  color: rgba(36, 27, 21, 0.72) !important;
+}
+
+.pm-shell.pm-theme-light .pm-public-footer {
+  color: rgba(36, 27, 21, 0.58) !important;
 }
 
 .pm-shell.pm-theme-light .pm-menu-product-card {
@@ -141,6 +264,34 @@
   background: linear-gradient(135deg, #b86429, #9f4519) !important;
   color: #fffaf4 !important;
   border-color: rgba(159, 69, 25, 0.24) !important;
+}
+
+.pm-shell.pm-theme-light .pm-branch-hours-alert {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(177, 91, 31, 0.12), transparent 34%),
+    linear-gradient(135deg, #fffdf8, #f7ebdf) !important;
+  border-color: rgba(159, 69, 25, 0.22) !important;
+  color: #241b15 !important;
+  box-shadow: 0 16px 34px rgba(55, 33, 19, 0.12) !important;
+}
+
+.pm-shell.pm-theme-light .pm-branch-hours-alert__icon {
+  background: rgba(177, 91, 31, 0.08) !important;
+  border-color: rgba(159, 69, 25, 0.24) !important;
+  color: #a64f1b !important;
+}
+
+.pm-shell.pm-theme-light .pm-branch-hours-alert__copy strong {
+  color: #241b15 !important;
+}
+
+.pm-shell.pm-theme-light .pm-branch-hours-alert__copy span {
+  color: #65564b !important;
+}
+
+.pm-shell .pm-order-summary-panel__confirm:disabled,
+.pm-shell .pm-cart-sheet__confirm:disabled {
+  cursor: not-allowed !important;
 }
 
 .pm-shell:not(.pm-theme-light) .pm-detail-sheet__sauce-toggle,
@@ -316,4 +467,114 @@
   .pm-shell .pm-catalog-screen .pm-sticky-cart-bar {
     display: grid !important;
   }
+}
+
+/* ===== FIX TITULOS (no negrita + mejor look) ===== */
+
+/* JONNY'S */
+.pm-jonny-experience__intro h2 {
+  font-weight: 500 !important;
+  line-height: 1.1 !important;
+  transform: none !important;
+  letter-spacing: 2px;
+}
+
+/* TITULOS: INGREDIENTES, HECHO AL, etc */
+.pm-jonny-experience__item h3 {
+  font-weight: 500 !important;
+  letter-spacing: 1px;
+}
+
+/* PARTE AMARILLA (FRESCOS, MOMENTO, etc) */
+.pm-jonny-experience__item h3 span {
+  font-weight: 600;
+}
+
+.pm-jonny-experience__social h3 {
+  font-weight: 400 !important;
+}
+
+/* OVERRIDE FINAL COLOR ROJIZO */
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__item h3 span {
+  color: #b86429 !important;
+  -webkit-text-fill-color: #b86429 !important;
+}
+
+.pm-shell.pm-theme-light .pm-jonny-experience__item h3 span {
+  color: #b86429 !important;
+  -webkit-text-fill-color: #b86429 !important;
+}
+
+/* OVERRIDE FINAL - color rojizo también en modo oscuro */
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__card .pm-jonny-experience__item h3 span,
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__item h3 span,
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__item h3 span * {
+  color: #b86429 !important;
+  -webkit-text-fill-color: #b86429 !important;
+  background: none !important;
+}
+
+/* REDES SOCIALES - color rojizo en ambos temas */
+.pm-shell .pm-jonny-experience__social-item {
+  border-color: rgba(184, 100, 41, 0.5) !important;
+}
+
+.pm-shell .pm-jonny-experience__social-icon {
+  background: rgba(184, 100, 41, 0.18) !important;
+  color: #b86429 !important;
+}
+
+.pm-shell .pm-jonny-experience__social-icon i,
+.pm-shell .pm-jonny-experience__social-copy b {
+  color: #b86429 !important;
+}
+
+/* FIX texto redes sociales (letras cortadas) */
+.pm-jonny-experience__social-copy b {
+  line-height: 1.2 !important;
+  display: inline-block;
+}
+
+.pm-jonny-experience__social-item {
+  overflow: visible !important;
+}
+
+/* quitar corazón */
+.pm-jonny-experience__heart {
+  display: none !important;
+}
+
+/* botón estilo premium (sin amarillo) */
+.pm-jonny-experience__badge-row strong {
+  background: rgba(184, 100, 41, 0.15) !important; /* fondo suave rojizo */
+  color: #b86429 !important;
+  border: 1px solid rgba(184, 100, 41, 0.5) !important;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 500;
+}
+/* ocultar badge completo */
+.pm-jonny-experience__badge-row {
+  display: none !important;
+}
+
+/* ===== ROJIZO EN CLARO Y OSCURO ===== */
+
+/* línea debajo de JONNY'S */
+.pm-shell .pm-jonny-experience__underline {
+  background: #b86429 !important;
+}
+
+/* flechitas laterales (mantener forma, solo cambiar color) */
+.pm-shell .pm-jonny-experience__spark,
+.pm-shell .pm-jonny-experience__spark--left,
+.pm-shell .pm-jonny-experience__spark--right {
+  color: #b86429 !important;
+  background: none !important; /* 🔥 clave: evita los cuadros */
+}
+
+/* pseudo-elementos (si dibujan la flecha) */
+.pm-shell .pm-jonny-experience__spark::before,
+.pm-shell .pm-jonny-experience__spark::after {
+  background: #b86429 !important;
 }

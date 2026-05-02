@@ -277,7 +277,11 @@ const BranchSelectionScreen = () => {
       String(freshBranch?.name || '') !== String(state.selectedBranch?.name || '') ||
       String(freshBranch?.displayName || '') !== String(state.selectedBranch?.displayName || '') ||
       String(freshBranch?.slug || '') !== String(state.selectedBranch?.slug || '') ||
-      String(freshBranch?.imageUrl || '') !== String(state.selectedBranch?.imageUrl || '');
+      String(freshBranch?.imageUrl || '') !== String(state.selectedBranch?.imageUrl || '') ||
+      String(freshBranch?.schedule || '') !== String(state.selectedBranch?.schedule || '') ||
+      String(freshBranch?.statusLabel || '') !== String(state.selectedBranch?.statusLabel || '') ||
+      String(freshBranch?.closedReason || '') !== String(state.selectedBranch?.closedReason || '') ||
+      Boolean(freshBranch?.isOpen) !== Boolean(state.selectedBranch?.isOpen);
 
     if (changed) {
       actions.selectBranch(freshBranch);

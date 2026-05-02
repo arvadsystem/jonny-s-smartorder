@@ -69,31 +69,87 @@ const resolvePublicImageUrl = (rawUrl) => {
   return `${base}${path}`;
 };
 
+const normalizeTimeValue = (value) => {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+};
+
+const formatTimeLabel = (value) => {
+  const normalized = normalizeTimeValue(value);
+  if (!normalized) return '';
+  const [hourText, minuteText] = normalized.split(':');
+  const hour = Number(hourText);
+  if (!Number.isFinite(hour)) return normalized;
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minuteText} ${suffix}`;
+};
+
+const buildScheduleLabel = ({ opensAt, closesAt, fallback }) => {
+  const openLabel = formatTimeLabel(opensAt);
+  const closeLabel = formatTimeLabel(closesAt);
+  if (openLabel && closeLabel) return `${openLabel} - ${closeLabel}`;
+  return fallback || 'Horario no configurado';
+};
+
+const toBranchBoolean = (value, fallback = false) => {
+  if (value === undefined || value === null || value === '') return fallback;
+  return value === true || value === 'true' || value === 1 || value === '1';
+};
+
 // Normaliza estructura de sucursal para componentes de UI.
-const normalizeBranch = (raw) => ({
-  id: Number(raw?.id_sucursal ?? raw?.id),
-  name: raw?.nombre_sucursal || raw?.name || 'Sucursal',
-  address: raw?.direccion || raw?.address || 'Direccion no disponible',
-  whatsapp:
-    String(
-      raw?.whatsapp ??
-      raw?.telefono_whatsapp ??
-      raw?.telefono ??
-      raw?.phone ??
-      ''
-    ).trim(),
-  transferAccount:
-    String(
-      raw?.cuenta_transferencia ??
-      raw?.cuenta_bancaria ??
-      raw?.numero_cuenta ??
-      ''
-    ).trim(),
-  schedule: raw?.horario || raw?.schedule || 'Horario no disponible',
-  etaMinutes: raw?.tiempo_entrega || raw?.etaMinutes || '20-30 min',
-  imageUrl: resolvePublicImageUrl(raw?.url_imagen || raw?.imageUrl || ''),
-  isOpen: raw?.isOpen ?? raw?.estado ?? true
-});
+const normalizeBranch = (raw) => {
+  const opensAt = normalizeTimeValue(raw?.opensAt ?? raw?.hora_inicio);
+  const closesAt = normalizeTimeValue(raw?.closesAt ?? raw?.hora_final);
+  const isActive = toBranchBoolean(raw?.isActive ?? raw?.estado, true);
+  const hasSchedule = Boolean(opensAt && closesAt);
+  const hasExplicitOpenState =
+    raw?.isOpen !== undefined ||
+    raw?.abierto_por_horario !== undefined ||
+    raw?.acceptsOrders !== undefined;
+  const explicitOpenValue = raw?.isOpen ?? raw?.abierto_por_horario ?? raw?.acceptsOrders;
+  const isOpen = isActive && (
+    hasExplicitOpenState ? toBranchBoolean(explicitOpenValue, true) : true
+  );
+  const schedule = buildScheduleLabel({
+    opensAt,
+    closesAt,
+    fallback: raw?.horario || raw?.schedule || ''
+  });
+
+  return {
+    id: Number(raw?.id_sucursal ?? raw?.id),
+    name: raw?.nombre_sucursal || raw?.name || 'Sucursal',
+    address: raw?.direccion || raw?.address || 'Direccion no disponible',
+    whatsapp:
+      String(
+        raw?.whatsapp ??
+        raw?.telefono_whatsapp ??
+        raw?.telefono ??
+        raw?.phone ??
+        ''
+      ).trim(),
+    transferAccount:
+      String(
+        raw?.cuenta_transferencia ??
+        raw?.cuenta_bancaria ??
+        raw?.numero_cuenta ??
+        ''
+      ).trim(),
+    schedule,
+    etaMinutes: raw?.tiempo_entrega || raw?.etaMinutes || '20-30 min',
+    imageUrl: resolvePublicImageUrl(raw?.url_imagen || raw?.imageUrl || ''),
+    isActive,
+    isOpen,
+    acceptsOrders: toBranchBoolean(raw?.acceptsOrders, isOpen),
+    opensAt,
+    closesAt,
+    statusLabel: raw?.statusLabel || (isOpen ? (hasSchedule ? 'Abierto ahora' : 'Disponible') : 'Cerrado'),
+    closedReason: raw?.closedReason || (isOpen ? '' : `Disponible de ${schedule}`)
+  };
+};
 
 const normalizeBranchWithUi = (raw) => {
   const base = normalizeBranch(raw);
