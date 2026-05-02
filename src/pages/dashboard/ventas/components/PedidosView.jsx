@@ -20,6 +20,12 @@ const mapPedidoStateCode = (pedido) => {
   return 'PENDIENTE';
 };
 
+const cleanPedidoDescription = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.replace(/\s*\|\s*idem:[^\s|]+/i, '').trim();
+};
+
 export default function PedidosView() {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -58,10 +64,6 @@ export default function PedidosView() {
       setActionBusyId(null);
     }
   }, [loadPedidos]);
-
-  const handleConfirmarPago = useCallback((idPedido) => (
-    runPedidoAction(idPedido, () => ventasService.confirmarPagoPedido(idPedido))
-  ), [runPedidoAction]);
 
   const handleStateChange = useCallback((idPedido, estadoDestino) => (
     runPedidoAction(idPedido, () => ventasService.updatePedidoEstado(idPedido, estadoDestino))
@@ -156,7 +158,6 @@ export default function PedidosView() {
                       key={pedido.id_pedido}
                       pedido={pedido}
                       busy={actionBusyId === pedido.id_pedido}
-                      onConfirmarPago={() => handleConfirmarPago(pedido.id_pedido)}
                       onSendKitchen={() => handleStateChange(pedido.id_pedido, 'EN_COCINA')}
                     />
                   ))
@@ -221,7 +222,6 @@ export default function PedidosView() {
 function PedidoCard({
   pedido,
   busy = false,
-  onConfirmarPago,
   onSendKitchen,
   onSendReady,
   onComplete
@@ -229,13 +229,7 @@ function PedidoCard({
   const clienteName = pedido?.nombres_cliente
     ? `${pedido.nombres_cliente} ${pedido.apellidos_cliente || ''}`
     : 'Consumidor final';
-  const isMenu = String(pedido?.origen_pedido || '').toUpperCase() === 'MENU';
-  const isCaja = String(pedido?.origen_pedido || '').toUpperCase() === 'CAJA';
-  const pagoValidado = Boolean(pedido?.pago_validado);
-  const pagoExpirado = Boolean(pedido?.pago_expirado);
-  const minutosRestantesPago = Number.isFinite(Number(pedido?.minutos_restantes_pago))
-    ? Number(pedido.minutos_restantes_pago)
-    : null;
+  const cleanDescription = cleanPedidoDescription(pedido?.descripcion_pedido);
   const laneCode = mapPedidoStateCode(pedido);
 
   return (
@@ -243,45 +237,15 @@ function PedidoCard({
       <div className="ventas-create-modal__cart-item-head">
         <div>
           <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-            {isCaja ? (
-              <span className="badge" style={{ background: '#3b82f6', fontSize: '0.65rem', fontWeight: 'bold' }}>
-                <i className="bi bi-shop me-1" /> CAJA
-              </span>
-            ) : null}
-            {isMenu ? (
-              <span className="badge" style={{ background: '#f59e0b', fontSize: '0.65rem', fontWeight: 'bold' }}>
-                <i className="bi bi-phone me-1" /> MENU WEB
-              </span>
-            ) : null}
-            {!isCaja && !isMenu ? (
-              <span className="badge bg-secondary" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-                PEDIDO
-              </span>
-            ) : null}
-            {isMenu ? (
-              pagoExpirado ? (
-                <span className="badge bg-danger-subtle text-danger-emphasis" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-                  PAGO EXPIRADO
-                </span>
-              ) : pagoValidado ? (
-                <span className="badge bg-success-subtle text-success-emphasis" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-                  PAGO CONFIRMADO
-                </span>
-              ) : (
-                <span className="badge bg-warning-subtle text-warning-emphasis" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-                  PAGO PENDIENTE
-                </span>
-              )
-            ) : null}
+            <span className="badge bg-secondary" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
+              PEDIDO
+            </span>
           </div>
           <strong className="d-flex align-items-center gap-2">
             <span>#{pedido.id_pedido} - {clienteName}</span>
           </strong>
           <small className="text-muted">
             <i className="bi bi-clock" /> {new Date(pedido.fecha_hora_pedido).toLocaleTimeString()}
-            {isMenu && !pagoValidado && !pagoExpirado && minutosRestantesPago !== null ? (
-              <span className="ms-2">• vence en {minutosRestantesPago} min</span>
-            ) : null}
           </small>
         </div>
         <div className="ventas-create-modal__line-total" style={{ fontSize: '1.1rem' }}>
@@ -289,30 +253,19 @@ function PedidoCard({
         </div>
       </div>
 
-      {pedido.descripcion_pedido ? (
+      {cleanDescription ? (
         <div className="ventas-create-modal__cart-item-meta" style={{ fontSize: '0.85rem' }}>
-          <em>{pedido.descripcion_pedido}</em>
+          <em>{cleanDescription}</em>
         </div>
       ) : null}
 
       <div className="ventas-create-modal__cart-item-actions mt-2 justify-content-end">
         {laneCode === 'PENDIENTE' ? (
-          <div className="d-grid w-100 gap-2">
-            {isMenu && !pagoValidado && !pagoExpirado ? (
-              <button
-                className="ventas-create-modal__payment-btn w-100 py-2 d-flex align-items-center justify-content-center gap-2"
-                onClick={onConfirmarPago}
-                disabled={busy}
-                type="button"
-                style={{ minHeight: '36px', fontSize: '0.85rem' }}
-              >
-                {busy ? 'Procesando...' : 'Confirmar pago'}
-              </button>
-            ) : null}
+          <div className="d-grid w-100">
             <button
               className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
               onClick={onSendKitchen}
-              disabled={busy || (isMenu && !pagoValidado)}
+              disabled={busy}
               type="button"
               style={{ minHeight: '36px', fontSize: '0.85rem' }}
             >

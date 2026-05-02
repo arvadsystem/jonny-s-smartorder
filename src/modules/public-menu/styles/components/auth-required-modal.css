@@ -1,0 +1,143 @@
+.pm-auth-required-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 171, 64, 0.18), transparent 34%),
+    rgba(5, 2, 0, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.pm-auth-required-modal {
+  position: relative;
+  width: min(100%, 470px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 184, 89, 0.34);
+  border-radius: 26px;
+  padding: 1.35rem;
+  background:
+    linear-gradient(145deg, rgba(48, 22, 10, 0.98), rgba(10, 4, 2, 0.98)),
+    #140905;
+  color: #fffaf2;
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.58);
+  text-align: center;
+}
+
+.pm-auth-required-modal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 170, 64, 0.1), transparent),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 0,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 11px
+    );
+}
+
+.pm-auth-required-modal__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  width: 2.45rem;
+  height: 2.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff3df;
+}
+
+.pm-auth-required-modal__icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 4.25rem;
+  height: 4.25rem;
+  margin: 0 auto 1rem;
+  border: 1px solid rgba(255, 189, 102, 0.48);
+  border-radius: 22px;
+  background: linear-gradient(145deg, #ffb453, #a94e17);
+  color: #1a0802;
+  box-shadow: 0 18px 34px rgba(255, 133, 32, 0.24);
+  font-size: 2rem;
+}
+
+.pm-auth-required-modal__content,
+.pm-auth-required-modal__actions {
+  position: relative;
+  z-index: 1;
+}
+
+.pm-auth-required-modal__eyebrow {
+  display: inline-flex;
+  margin-bottom: 0.45rem;
+  color: #f3bd80;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.pm-auth-required-modal h2 {
+  margin: 0;
+  color: #ffffff;
+  font-family: var(--pm-font-display, inherit);
+  font-size: clamp(1.7rem, 5vw, 2.35rem);
+  font-weight: 900;
+  line-height: 1.02;
+}
+
+.pm-auth-required-modal p {
+  max-width: 34rem;
+  margin: 0.85rem auto 0;
+  color: rgba(255, 250, 242, 0.78);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.pm-auth-required-modal__actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin-top: 1.35rem;
+}
+
+.pm-auth-required-modal__primary,
+.pm-auth-required-modal__secondary {
+  min-height: 3.15rem;
+  border-radius: 999px;
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.pm-auth-required-modal__primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  border: 0;
+  background: linear-gradient(135deg, #ffb647, #b4571b);
+  color: #1a0802;
+  box-shadow: 0 18px 32px rgba(195, 86, 22, 0.34);
+}
+
+.pm-auth-required-modal__secondary {
+  border: 1px solid rgba(255, 196, 128, 0.42);
+  background: rgba(255, 255, 255, 0.04);
+  color: #ffe1b8;
+}
+
+@media (min-width: 560px) {
+  .pm-auth-required-modal__actions {
+    grid-template-columns: 1.15fr 0.85fr;
+  }
+}

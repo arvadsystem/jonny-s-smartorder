@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
+import { normalizeVisualText } from '../../../utils/normalizeVisualText';
 
 const resolveCardsPerPage = (width) => {
   if (width >= 1200) return 6;
@@ -20,6 +21,15 @@ const buildEmptyForm = () => ({
   id_empleado: '',
   fecha_asignacion: ''
 });
+const normalizeMobiliarioNombre = (value) => normalizeVisualText(value, { mode: 'title' });
+
+const areMobiliarioFormsEqual = (left, right) => {
+  return (
+    String(left?.nombre_bien ?? '') === String(right?.nombre_bien ?? '') &&
+    String(left?.id_empleado ?? '') === String(right?.id_empleado ?? '') &&
+    String(left?.fecha_asignacion ?? '') === String(right?.fecha_asignacion ?? '')
+  );
+};
 
 const parseDateUi = (value) => {
   if (!value) return '';
@@ -57,8 +67,11 @@ const getConfirmCopyByAction = (action) => {
 };
 
 const MobiliarioTab = ({ openToast }) => {
-  const { can, loading: permisosLoading } = usePermisos();
-  const canVer = can(PERMISSIONS.INVENTARIO_MOBILIARIO_VER);
+  const { can, canAny, loading: permisosLoading } = usePermisos();
+  const canVer = canAny([
+    PERMISSIONS.INVENTARIO_MOBILIARIO_VER,
+    PERMISSIONS.INVENTARIO_MOBILIARIO_DETALLE_VER
+  ]);
   const canCrear = can(PERMISSIONS.INVENTARIO_MOBILIARIO_CREAR);
   const canEditar = can(PERMISSIONS.INVENTARIO_MOBILIARIO_EDITAR);
   const canCambiarEstado = can(PERMISSIONS.INVENTARIO_MOBILIARIO_ESTADO_CAMBIAR);
@@ -79,6 +92,7 @@ const MobiliarioTab = ({ openToast }) => {
   const [editingId, setEditingId] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(buildEmptyForm);
+  const [formSnapshot, setFormSnapshot] = useState(buildEmptyForm);
   const [formErrors, setFormErrors] = useState({});
   const [empleadoSearch, setEmpleadoSearch] = useState('');
   const [cardsPerPage, setCardsPerPage] = useState(() =>
@@ -92,6 +106,27 @@ const MobiliarioTab = ({ openToast }) => {
     action: 'inactivar'
   });
   const [changingEstado, setChangingEstado] = useState(false);
+  const nombreBienInputRef = useRef(null);
+  const drawerFocusReturnRef = useRef(null);
+  const prevDrawerOpenRef = useRef(false);
+
+  const captureActiveElement = useCallback(() => {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? active : null;
+  }, []);
+
+  const restoreFocusToElement = useCallback((element) => {
+    if (!(element instanceof HTMLElement) || typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!document.contains(element) || element.hasAttribute('disabled') || element.getAttribute('aria-hidden') === 'true') return;
+    window.requestAnimationFrame(() => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    });
+  }, []);
 
   const empleadosMap = useMemo(() => {
     const map = new Map();
@@ -218,9 +253,11 @@ const MobiliarioTab = ({ openToast }) => {
   }, [cardsPerPage, rowsAll.length, search, showInactivos]);
 
   const resetModal = () => {
+    const initialForm = buildEmptyForm();
     setModalMode('create');
     setEditingId(null);
-    setForm(buildEmptyForm());
+    setForm(initialForm);
+    setFormSnapshot(initialForm);
     setFormErrors({});
     setEmpleadoSearch('');
     setShowModal(false);
@@ -228,7 +265,7 @@ const MobiliarioTab = ({ openToast }) => {
 
   const validateForm = () => {
     const nextErrors = {};
-    const nombre = String(form.nombre_bien ?? '').trim();
+    const nombre = normalizeMobiliarioNombre(form.nombre_bien ?? '');
     const idEmpleado = Number.parseInt(String(form.id_empleado ?? ''), 10);
     const fecha = String(form.fecha_asignacion ?? '').trim();
 
@@ -236,27 +273,34 @@ const MobiliarioTab = ({ openToast }) => {
     if (!Number.isInteger(idEmpleado) || idEmpleado <= 0) nextErrors.id_empleado = 'Selecciona un empleado valido.';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) nextErrors.fecha_asignacion = 'Selecciona una fecha valida.';
 
+    if (nombre !== String(form.nombre_bien ?? '')) {
+      setForm((prev) => ({ ...prev, nombre_bien: nombre }));
+    }
     setFormErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
 
   const openCreateModal = () => {
+    const initialForm = buildEmptyForm();
     setModalMode('create');
     setEditingId(null);
-    setForm(buildEmptyForm());
+    setForm(initialForm);
+    setFormSnapshot(initialForm);
     setFormErrors({});
     setEmpleadoSearch('');
     setShowModal(true);
   };
 
   const openEditModal = (row) => {
-    setModalMode('edit');
-    setEditingId(Number(row?.id_mobiliario));
-    setForm({
+    const nextForm = {
       nombre_bien: String(row?.nombre_bien ?? ''),
       id_empleado: String(row?.id_empleado ?? ''),
       fecha_asignacion: String(row?.fecha_asignacion ?? '').slice(0, 10)
-    });
+    };
+    setModalMode('edit');
+    setEditingId(Number(row?.id_mobiliario));
+    setForm(nextForm);
+    setFormSnapshot(nextForm);
     setFormErrors({});
     setEmpleadoSearch(String(row?.empleado_nombre ?? '').trim());
     setShowModal(true);
@@ -267,7 +311,7 @@ const MobiliarioTab = ({ openToast }) => {
     if (!validateForm()) return;
 
     const payload = {
-      nombre_bien: String(form.nombre_bien ?? '').trim(),
+      nombre_bien: normalizeMobiliarioNombre(form.nombre_bien ?? ''),
       id_empleado: Number.parseInt(String(form.id_empleado ?? ''), 10),
       fecha_asignacion: String(form.fecha_asignacion ?? '').trim()
     };
@@ -360,10 +404,50 @@ const MobiliarioTab = ({ openToast }) => {
   const safePageIndex = Math.min(carouselPageIndex, pageCount - 1);
   const pageStart = safePageIndex * cardsPerPage;
   const rowsPage = rows.slice(pageStart, pageStart + cardsPerPage);
-  const closeDrawer = () => {
+  const hasFormUnsavedChanges = useMemo(() => {
+    return !areMobiliarioFormsEqual(form, formSnapshot);
+  }, [form, formSnapshot]);
+
+  const confirmDiscardMobiliarioChanges = () => {
+    if (typeof window === 'undefined') return true;
+    return window.confirm('Hay cambios sin guardar. ¿Deseas cerrar y perderlos?');
+  };
+
+  const closeDrawer = (force = false) => {
+    if (saving && !force) return;
+    if (!force && hasFormUnsavedChanges && !confirmDiscardMobiliarioChanges()) return;
     setShowModal(false);
     setFormErrors({});
   };
+
+  useEffect(() => {
+    if (!showModal || typeof window === 'undefined') return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      if (nombreBienInputRef.current) {
+        nombreBienInputRef.current.focus({ preventScroll: true });
+      }
+    });
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeDrawer();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showModal, closeDrawer]);
+
+  useEffect(() => {
+    if (showModal && !prevDrawerOpenRef.current) {
+      drawerFocusReturnRef.current = captureActiveElement();
+    } else if (!showModal && prevDrawerOpenRef.current) {
+      restoreFocusToElement(drawerFocusReturnRef.current);
+      drawerFocusReturnRef.current = null;
+    }
+    prevDrawerOpenRef.current = showModal;
+  }, [captureActiveElement, restoreFocusToElement, showModal]);
 
   if (permisosLoading) return null;
 
@@ -606,6 +690,7 @@ const MobiliarioTab = ({ openToast }) => {
         className={`inv-prod-drawer inv-cat-v2__drawer ${modalMode === 'create' ? 'inv-cat-v2__drawer--create' : 'inv-cat-v2__drawer--edit'} ${showModal ? 'show' : ''}`}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="inv-mob-drawer-title"
         aria-hidden={!showModal}
       >
         <form
@@ -621,7 +706,7 @@ const MobiliarioTab = ({ openToast }) => {
             </div>
             <div className="inv-cat-create-hero__copy">
               <div className="inv-cat-create-hero__kicker">Inventario de mobiliario</div>
-              <div className="inv-cat-create-hero__title">{drawerTitle}</div>
+              <div id="inv-mob-drawer-title" className="inv-cat-create-hero__title">{drawerTitle}</div>
             </div>
             <div className="inv-cat-create-hero__chips">
               <span className="inv-cat-create-hero__chip">
@@ -637,9 +722,13 @@ const MobiliarioTab = ({ openToast }) => {
             <div className="mb-2">
               <label className="form-label">Nombre del bien</label>
               <input
+                ref={nombreBienInputRef}
                 className={`form-control ${formErrors.nombre_bien ? 'is-invalid' : ''}`}
                 value={form.nombre_bien}
                 onChange={(event) => setForm((prev) => ({ ...prev, nombre_bien: event.target.value }))}
+                onBlur={(event) =>
+                  setForm((prev) => ({ ...prev, nombre_bien: normalizeMobiliarioNombre(event.target.value) }))
+                }
                 maxLength={160}
                 placeholder="Ejemplo: Escritorio ejecutivo"
               />

@@ -57,4 +57,8 @@ export const securityService = {
   updatePasswordPolicies: async (payload) => {
     return apiFetch('/seguridad/configuracion/password', 'PUT', payload);
   },
+
+  getSecurityNotifications: async (qs = '') => {
+    return apiFetch(`/seguridad/notificaciones${qs ? `?${qs}` : ''}`, 'GET');
+  }
 };

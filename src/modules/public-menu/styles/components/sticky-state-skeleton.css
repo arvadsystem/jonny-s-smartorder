@@ -56,80 +56,51 @@
 
 .pm-skeleton {
   display: grid;
-  gap: 0.75rem;
+  place-items: center;
+  min-height: calc(100vh - 4rem);
+  padding: 2rem 1rem;
+  color: #f8c988;
 }
 
-.pm-skeleton__hero,
-.pm-skeleton__toolbar {
-  border-radius: 18px;
-  border: 1px solid #eadcca;
-  background: linear-gradient(90deg, #fff7eb 25%, #fff1df 38%, #fff7eb 55%);
-  background-size: 220% 100%;
-  animation: pmSkeletonShimmer 1.2s linear infinite;
-}
-
-.pm-skeleton__hero {
-  min-height: 180px;
-}
-
-.pm-skeleton__toolbar {
-  min-height: 62px;
-}
-
-.pm-skeleton__grid {
+.pm-skeleton__brand-ring {
+  position: relative;
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.7rem;
-}
-
-.pm-skeleton-card {
-  border-radius: 18px;
-  border: 1px solid #eadcca;
-  padding: 0.7rem;
-  background: #fffdf8;
-  box-shadow: 0 12px 24px rgba(32, 17, 8, 0.08);
-  display: grid;
-  gap: 0.5rem;
-}
-
-.pm-skeleton-card__media,
-.pm-skeleton-card__line,
-.pm-skeleton-card__button {
-  border-radius: 12px;
-  background: linear-gradient(90deg, #fff3e2 25%, #ffe9cf 38%, #fff3e2 55%);
-  background-size: 220% 100%;
-  animation: pmSkeletonShimmer 1.2s linear infinite;
-}
-
-.pm-skeleton-card__media {
-  height: 150px;
-}
-
-.pm-skeleton-card__line {
-  height: 12px;
-}
-
-.pm-skeleton-card__line.is-title {
-  height: 16px;
-  width: 74%;
-}
-
-.pm-skeleton-card__line.is-short {
-  width: 56%;
-}
-
-.pm-skeleton-card__button {
-  height: 40px;
+  place-items: center;
+  width: 8rem;
+  height: 8rem;
   border-radius: 999px;
-  margin-top: 0.2rem;
+  background:
+    radial-gradient(circle, rgba(255, 180, 83, 0.14), transparent 66%),
+    rgba(39, 16, 7, 0.36);
 }
 
-@keyframes pmSkeletonShimmer {
-  0% {
-    background-position: 120% 0;
-  }
+.pm-skeleton__brand-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0.35rem;
+  border-radius: 999px;
+  border: 2px dashed rgba(248, 201, 136, 0.48);
+  animation: pmSkeletonSpin 7s linear infinite;
+}
+
+.pm-skeleton__brand-logo {
+  position: relative;
+  z-index: 1;
+  width: 5.6rem;
+  height: 5.6rem;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
+}
+
+@keyframes pmSkeletonSpin {
   100% {
-    background-position: -120% 0;
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 575.98px) {
+  .pm-skeleton {
+    min-height: calc(100vh - 3rem);
   }
 }
 

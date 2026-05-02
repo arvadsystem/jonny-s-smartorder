@@ -64,18 +64,22 @@ const Seguridad = () => {
     return (
       <SinPermiso
         permiso={MODULE_PRIMARY_PERMISSION.seguridad}
-        detalle="No tienes acceso a ningun submodulo de Seguridad."
+        detalle="No tienes acceso a ningún submódulo de Seguridad."
       />
     );
   }
 
   return (
-    <div className="p-4">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <div>
-          <h3 className="mb-0">Seguridad</h3>
-          <small className="text-muted">Sesiones y auditoria</small>
+    <div className="p-4 sec-module-page">
+      <div className="sec-page-header">
+        <div className="sec-page-header__copy">
+          <h3 className="sec-page-header__title">Seguridad</h3>
+          <div className="sec-page-header__subtitle">Sesiones, auditoría y políticas de acceso</div>
         </div>
+        <span className="sec-page-header__chip">
+          <i className="bi bi-shield-lock" aria-hidden="true" />
+          Módulo de control
+        </span>
       </div>
 
       {activeTab === "sesiones" && <SesionesTab />}

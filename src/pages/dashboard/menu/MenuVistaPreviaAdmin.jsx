@@ -47,8 +47,10 @@ const MenuVistaPreviaAdmin = () => {
     String(STATIC_BRANCH_OPTIONS?.[0]?.id_sucursal || '')
   );
   const [preview, setPreview] = useState(null);
+  const [catalogItems, setCatalogItems] = useState([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -159,27 +161,38 @@ const MenuVistaPreviaAdmin = () => {
       const idSucursal = Number(selectedSucursalId || 0);
       if (!idSucursal) {
         setPreview(null);
+        setCatalogItems([]);
         return;
       }
 
       if (selectedSucursal && !Boolean(selectedSucursal?.estado)) {
         setPreview(null);
+        setCatalogItems([]);
         setError('La sucursal seleccionada esta inactiva y no tiene menu publico disponible.');
         return;
       }
 
       try {
         setLoadingPreview(true);
+        setLoadingCatalog(true);
         setError('');
-        const data = await menuPublicacionAdminService.getPreviewPublico(idSucursal);
+        const [previewData, catalogData] = await Promise.all([
+          menuPublicacionAdminService.getPreviewPublico(idSucursal),
+          menuPublicacionAdminService.getCatalogoPublicacion(idSucursal)
+        ]);
         if (!isMounted) return;
-        setPreview(data);
+        setPreview(previewData);
+        setCatalogItems(Array.isArray(catalogData?.items) ? catalogData.items : []);
       } catch (e) {
         if (!isMounted) return;
         setPreview(null);
+        setCatalogItems([]);
         setError(e?.message || 'No se pudo cargar la vista previa del menu publico.');
       } finally {
-        if (isMounted) setLoadingPreview(false);
+        if (isMounted) {
+          setLoadingPreview(false);
+          setLoadingCatalog(false);
+        }
       }
     };
 
@@ -230,9 +243,10 @@ const MenuVistaPreviaAdmin = () => {
         </div>
 
         <MenuPreviewPanel
-          loading={loadingPreview || loadingBranches}
-          error=""
+          loading={loadingPreview || loadingCatalog || loadingBranches}
+          error={error}
           preview={preview}
+          catalogItems={catalogItems}
           openAsClientUrl={openAsClientUrl}
         />
       </div>

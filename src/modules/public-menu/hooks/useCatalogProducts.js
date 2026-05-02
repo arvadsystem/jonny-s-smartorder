@@ -3,19 +3,28 @@ import { publicMenuBootstrapService } from '../services/publicMenuBootstrapServi
 import { toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
 
 const CATALOG_SNAPSHOT_TTL_MS = 10 * 60 * 1000;
+const CATALOG_PERSISTENT_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
 
 const buildSnapshotKey = ({ branchId, orderType }) =>
   `pm_catalog_snapshot::${Number(branchId) || 0}::${String(orderType || 'na').trim().toLowerCase()}`;
 
+const readStorageSnapshot = (storage, key, ttlMs) => {
+  if (!storage) return null;
+  const raw = storage.getItem(key);
+  if (!raw) return null;
+  const parsed = JSON.parse(raw);
+  if (!parsed?.savedAt || !parsed?.payload) return null;
+  if (Date.now() - Number(parsed.savedAt) > ttlMs) return null;
+  return parsed.payload;
+};
+
 const readCatalogSnapshot = (key) => {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.sessionStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed?.savedAt || !parsed?.payload) return null;
-    if (Date.now() - Number(parsed.savedAt) > CATALOG_SNAPSHOT_TTL_MS) return null;
-    return parsed.payload;
+    return (
+      readStorageSnapshot(window.sessionStorage, key, CATALOG_SNAPSHOT_TTL_MS) ||
+      readStorageSnapshot(window.localStorage, key, CATALOG_PERSISTENT_SNAPSHOT_TTL_MS)
+    );
   } catch {
     return null;
   }
@@ -24,13 +33,12 @@ const readCatalogSnapshot = (key) => {
 const writeCatalogSnapshot = (key, payload) => {
   if (typeof window === 'undefined') return;
   try {
-    window.sessionStorage.setItem(
-      key,
-      JSON.stringify({
-        savedAt: Date.now(),
-        payload
-      })
-    );
+    const value = JSON.stringify({
+      savedAt: Date.now(),
+      payload
+    });
+    window.sessionStorage.setItem(key, value);
+    window.localStorage.setItem(key, value);
   } catch {
     // Si sessionStorage falla (quota/politicas), no bloqueamos el flujo de menu.
   }
@@ -48,17 +56,78 @@ const normalizeText = (value) =>
 const toCategoryBucket = (rawCategoryName) => {
   const normalized = normalizeText(rawCategoryName).replace(/\s*\/\s*/g, '/');
 
+  if (normalized.includes('cerveza')) {
+    return 'Cervezas';
+  }
+
   if (
     normalized === 'refrescos/agua' ||
     normalized === 'gaseosas y refrescos' ||
     normalized === 'gaseosas/refrescos' ||
     normalized === 'aguas, isotonicos y energeticas' ||
-    normalized === 'aguas isotonicos y energeticas'
+    normalized === 'aguas isotonicos y energeticas' ||
+    normalized.includes('refresco') ||
+    normalized.includes('gaseosa') ||
+    normalized.includes('isotonico') ||
+    normalized.includes('energetica') ||
+    normalized.startsWith('agua')
   ) {
     return 'Refrescos / Agua';
   }
 
   return String(rawCategoryName || '').trim() || 'Sin categoria';
+};
+
+const productTextIncludesAny = (product, keywords = []) => {
+  const text = normalizeText(
+    [
+      product?.categoria?.nombre,
+      product?.nombre,
+      product?.descripcion
+    ].filter(Boolean).join(' ')
+  );
+
+  return keywords.some((keyword) => text.includes(keyword));
+};
+
+const isProductAvailable = (product) => Boolean(product?.disponibilidad?.available);
+
+const matchesCatalogFilters = ({ product, selectedCategory, normalizedSearch }) => {
+  const productCategory = toCategoryBucket(product?.categoria?.nombre);
+  const selectedBucket = toCategoryBucket(selectedCategory);
+  const sameCategory =
+    productCategory === selectedBucket ||
+    normalizeText(productCategory).replace(/\s*\/\s*/g, '/') ===
+      normalizeText(selectedBucket).replace(/\s*\/\s*/g, '/');
+
+  const inCategory =
+    selectedCategory === 'all' ||
+    sameCategory ||
+    (
+      selectedBucket === 'Cervezas' &&
+      productTextIncludesAny(product, ['cerveza', 'barena', 'coors', 'corona', 'gallo', 'imperial'])
+    ) ||
+    (
+      selectedBucket === 'Refrescos / Agua' &&
+      productTextIncludesAny(product, [
+        'refresco',
+        'gaseosa',
+        'agua',
+        'isotonico',
+        'energetica',
+        'banana',
+        'pepsi',
+        'coca',
+        'mirinda',
+        'fresca'
+      ])
+    );
+  if (!inCategory) return false;
+
+  if (!normalizedSearch) return true;
+  const name = normalizeText(product.nombre);
+  const description = normalizeText(product.descripcion);
+  return name.includes(normalizedSearch) || description.includes(normalizedSearch);
 };
 
 // Hook real de catalogo publico conectado al backend.
@@ -134,43 +203,41 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
     loadCatalog();
   }, [loadCatalog]);
 
-  // Categorias dinamicas desde el payload real.
+  const availableProducts = useMemo(
+    () => products.filter((product) => isProductAvailable(product)),
+    [products]
+  );
+
+  // Categorias dinamicas desde productos disponibles para no dejar pestañas vacias.
   const categories = useMemo(() => {
     const unique = new Set(
-      products.map((product) => toCategoryBucket(product?.categoria?.nombre))
+      availableProducts.map((product) => toCategoryBucket(product?.categoria?.nombre))
     );
     return ['all', ...Array.from(unique)];
-  }, [products]);
+  }, [availableProducts]);
 
-  // Filtrado por categoria y termino libre.
+  // Filtrado por categoria y termino libre, ocultando agotados del menu publico.
   const filteredProducts = useMemo(() => {
     const normalizedSearch = normalizeText(searchTerm);
 
-    return products.filter((product) => {
-      const productCategory = toCategoryBucket(product?.categoria?.nombre);
-      const inCategory = selectedCategory === 'all' || productCategory === selectedCategory;
-      if (!inCategory) return false;
+    return availableProducts.filter((product) =>
+      matchesCatalogFilters({ product, selectedCategory, normalizedSearch })
+    );
+  }, [availableProducts, searchTerm, selectedCategory]);
 
-      if (!normalizedSearch) return true;
-      const name = normalizeText(product.nombre);
-      const description = normalizeText(product.descripcion);
-      return name.includes(normalizedSearch) || description.includes(normalizedSearch);
-    });
-  }, [products, searchTerm, selectedCategory]);
-
-  // Estadisticas de disponibilidad para badges/resumen UI.
+  // Estadisticas de productos visibles; los agotados ya no se muestran al cliente.
   const stats = useMemo(() => {
-    const available = filteredProducts.filter((product) => product.disponibilidad.available).length;
     return {
       total: filteredProducts.length,
-      available,
-      soldOut: filteredProducts.length - available,
-      allFilteredSoldOut: filteredProducts.length > 0 && available === 0
+      available: filteredProducts.length,
+      soldOut: 0,
+      allFilteredSoldOut: false
     };
   }, [filteredProducts]);
 
   return {
     products,
+    availableProducts,
     filteredProducts,
     categories,
     menuSummary,

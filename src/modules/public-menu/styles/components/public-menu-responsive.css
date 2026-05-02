@@ -1,6 +1,10 @@
 /* Reglas responsivas del modulo public-menu. */
 
 @media (max-width: 767.98px) {
+  .pm-catalog-screen {
+    padding-bottom: 6.2rem;
+  }
+
   .pm-shell__content {
     /* Layout mobile casi full-bleed para evitar sensacion de columna angosta. */
     width: 100%;
@@ -64,17 +68,17 @@
     display: none;
   }
 
-  /* En movil el carrito ya no invade el bloque de titulo/subtitulo. */
-  .pm-cart-fab {
-    top: auto;
-    bottom: calc(0.9rem + env(safe-area-inset-bottom, 0px));
-    right: 0.85rem;
-    z-index: 45;
-  }
-
   .pm-branch-banner,
   .pm-catalog-header {
     position: static;
+  }
+
+  .pm-branch-screen {
+    padding-inline: 0.4rem;
+  }
+
+  .pm-branch-showcase {
+    border-radius: 16px;
   }
 }
 
@@ -93,6 +97,10 @@
 }
 
 @media (max-width: 575.98px) {
+  .pm-branch-screen {
+    padding-inline: 0.2rem;
+  }
+
   .pm-shell__content {
     /* Margen horizontal minimo en telefono. */
     padding: 0.58rem 0.22rem 1.25rem;
@@ -125,6 +133,37 @@
     font-size: 1.05rem;
   }
 
+  .pm-branch-hero-carousel__viewport {
+    min-height: 252px;
+  }
+
+  .pm-branch-screen__hero-content {
+    max-width: 100%;
+    gap: 0.36rem;
+  }
+
+  .pm-branch-screen__hero-title {
+    font-size: 1.22rem;
+  }
+
+  .pm-branch-hero-carousel__arrow {
+    width: 39px;
+    height: 39px;
+  }
+
+  .pm-option-card {
+    padding: 0.9rem;
+  }
+
+  .pm-branch-card__media {
+    margin: -0.9rem -0.9rem 0.75rem;
+    min-height: 168px;
+  }
+
+  .pm-branch-card__image {
+    height: 168px;
+  }
+
   .pm-branch-banner__change {
     width: 100%;
   }
@@ -138,18 +177,6 @@
   .pm-product-card__media {
     min-height: 150px;
     height: 150px;
-  }
-
-  .pm-cart-fab {
-    right: 0.7rem;
-    left: auto;
-    padding: 0.52rem 0.8rem;
-    min-height: 46px;
-    gap: 0.4rem;
-  }
-
-  .pm-cart-fab span {
-    font-size: 0.88rem;
   }
 
   .pm-cart-sheet__item {
@@ -168,32 +195,6 @@
 @media (max-width: 420px) {
   .pm-shell__content {
     padding: 0.52rem 0.14rem 1.2rem;
-  }
-
-  /* Boton de carrito compacto para no tapar contenido en anchos ultra estrechos. */
-  .pm-cart-fab {
-    width: 50px;
-    min-width: 50px;
-    height: 50px;
-    min-height: 50px;
-    border-radius: 999px;
-    padding: 0;
-    justify-content: center;
-    gap: 0;
-  }
-
-  .pm-cart-fab span {
-    display: none;
-  }
-
-  .pm-cart-fab__count {
-    position: absolute;
-    top: -5px;
-    right: -5px;
-    min-width: 1.15rem;
-    height: 1.15rem;
-    font-size: 0.66rem;
-    padding: 0 0.2rem;
   }
 
   .pm-sticky-bar__actions {
@@ -229,10 +230,6 @@
     border-top-right-radius: 16px;
   }
 
-  .pm-cart-fab {
-    right: calc(50% - 332px);
-  }
-
   .pm-branch-confirm-card__actions {
     grid-template-columns: 1fr 1fr;
   }
@@ -243,6 +240,14 @@
 
   .pm-screen__list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pm-branch-screen .pm-screen__list {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+
+  .pm-branch-hero-carousel__viewport {
+    min-height: 380px;
   }
 
   .pm-detail-sheet {
@@ -256,11 +261,36 @@
     width: min(100%, 1180px);
   }
 
+  /* Mantiene el catalogo en ancho completo tambien en escritorio grande. */
+  .pm-shell__content.pm-shell__content--catalog {
+    width: 100%;
+    max-width: none;
+    padding-inline: clamp(0.85rem, 2vw, 1.8rem);
+  }
+
   .pm-product-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .pm-skeleton__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-branch-hero-carousel__viewport {
+    min-height: 430px;
+  }
+
+  .pm-branch-screen {
+    padding-inline: clamp(1rem, 2.2vw, 2.6rem);
+  }
+}
+
+@media (min-width: 1280px) {
+  .pm-screen__list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pm-branch-screen .pm-screen__list {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   }
 }

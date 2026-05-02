@@ -1,0 +1,199 @@
+/* Flow premium: unifica Paso 1 y Paso 2 con el look dark cinematografico. */
+
+.pm-shell {
+  background:
+    radial-gradient(circle at 80% -10%, rgba(255, 126, 32, 0.16), transparent 34%),
+    radial-gradient(circle at 10% 10%, rgba(255, 159, 77, 0.1), transparent 28%),
+    linear-gradient(180deg, #060709 0%, #0d0f13 46%, #090a0d 100%);
+  color: #fff1dd;
+}
+
+.pm-shell__content {
+  width: min(100%, 1360px);
+}
+
+.pm-screen__eyebrow {
+  border-color: rgba(255, 170, 69, 0.35);
+  background: rgba(255, 157, 43, 0.14);
+  color: #ffc173;
+}
+
+.pm-screen__title {
+  color: #fff2de;
+}
+
+.pm-screen__subtitle {
+  color: rgba(255, 222, 183, 0.76);
+}
+
+.pm-branch-screen {
+  padding: 0 clamp(0.62rem, 2vw, 1.6rem);
+}
+
+.pm-branch-showcase {
+  border: 1px solid rgba(255, 160, 58, 0.26);
+  box-shadow: 0 26px 44px rgba(0, 0, 0, 0.45);
+}
+
+.pm-branch-showcase__topline {
+  height: 4px;
+  background: linear-gradient(90deg, #ff7f22, #ffbf58, #ff7f22);
+}
+
+.pm-branch-hero-carousel__viewport {
+  min-height: 420px;
+}
+
+.pm-branch-screen__hero-overlay {
+  background:
+    radial-gradient(circle at 68% 26%, rgba(255, 119, 19, 0.38), transparent 42%),
+    linear-gradient(108deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.5) 52%, rgba(0, 0, 0, 0.72)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.78));
+}
+
+.pm-branch-screen__hero-title {
+  font-size: clamp(2rem, 4.2vw, 3.2rem);
+  line-height: 0.97;
+  text-transform: uppercase;
+}
+
+.pm-branch-screen .pm-screen__intro {
+  margin-top: 0.24rem;
+}
+
+.pm-option-card {
+  border-color: rgba(255, 165, 62, 0.22);
+  background: linear-gradient(180deg, rgba(18, 18, 20, 0.98), rgba(10, 10, 12, 0.98));
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.34);
+}
+
+.pm-option-card::after {
+  border-color: rgba(255, 180, 90, 0.14);
+}
+
+.pm-option-card.is-selected {
+  border-color: rgba(255, 170, 72, 0.52);
+  box-shadow: 0 22px 36px rgba(0, 0, 0, 0.4);
+}
+
+.pm-option-card__title {
+  color: #fff1de;
+}
+
+.pm-option-card__description,
+.pm-option-card__meta {
+  color: rgba(255, 219, 177, 0.76);
+}
+
+.pm-status-pill.is-open {
+  background: rgba(68, 219, 120, 0.2);
+  color: #9af3bd;
+}
+
+.pm-status-pill.is-closed {
+  background: rgba(255, 85, 71, 0.2);
+  color: #ffb3ab;
+}
+
+.pm-selected-badge {
+  background: linear-gradient(135deg, #ffbe57, #ff8f21);
+  color: #1a1006;
+}
+
+.pm-branch-card__media {
+  border-bottom-color: rgba(255, 175, 79, 0.2);
+}
+
+.pm-branch-card__cta {
+  color: #ffc573;
+  border-top-color: rgba(255, 177, 84, 0.2);
+}
+
+.pm-order-type-card[data-order-type='dine-in'],
+.pm-order-type-card[data-order-type='pickup'],
+.pm-order-type-card[data-order-type='delivery'] {
+  background: linear-gradient(180deg, rgba(17, 17, 19, 0.98), rgba(9, 9, 11, 0.98));
+}
+
+.pm-order-type-card__icon-wrap {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 164, 62, 0.24);
+  box-shadow: none;
+}
+
+.pm-order-type-card__icon {
+  background: linear-gradient(160deg, rgba(255, 177, 82, 0.2), rgba(255, 147, 44, 0.08));
+  border-color: rgba(255, 175, 79, 0.28);
+  color: #ffc777;
+}
+
+.pm-order-type-card.is-selected .pm-order-type-card__icon-wrap {
+  border-color: rgba(255, 178, 81, 0.45);
+  box-shadow: 0 0 0 1px rgba(255, 178, 81, 0.25);
+}
+
+.pm-order-type-card__check {
+  color: #ffc35f;
+}
+
+.pm-info-highlight {
+  border-color: rgba(255, 169, 68, 0.24);
+  background: rgba(12, 12, 14, 0.92);
+}
+
+.pm-info-highlight__title {
+  color: #ffd196;
+}
+
+.pm-info-highlight__content,
+.pm-order-type-payment__hint,
+.pm-order-type-table__error {
+  color: rgba(255, 221, 181, 0.78);
+}
+
+.pm-order-type-payment {
+  margin-top: 0.7rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.pm-order-type-payment__option {
+  border: 1px solid rgba(255, 172, 70, 0.25);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #ffe4c0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.pm-order-type-payment__option.is-selected {
+  background: linear-gradient(135deg, #ffbf58, #ff9022);
+  color: #1c1208;
+  border-color: rgba(255, 192, 95, 0.65);
+}
+
+.pm-order-type-payment__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+}
+
+@media (max-width: 767.98px) {
+  .pm-branch-hero-carousel__viewport {
+    min-height: 300px;
+  }
+
+  .pm-branch-screen__hero-title {
+    font-size: clamp(1.6rem, 8vw, 2.2rem);
+  }
+
+  .pm-order-type-payment {
+    grid-template-columns: 1fr;
+  }
+}

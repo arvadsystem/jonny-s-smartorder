@@ -935,6 +935,16 @@
   gap: 8px;
 }
 
+/* Boton Editar de Menu: reutiliza el estilo compacto de Inventarios/Categorias sin forzar ancho completo. */
+.menu-recetas-admin__edit-action {
+  flex: 0 0 auto !important;
+}
+
+/* Boton Inactivar/Activar de Menu con patron de Inventarios, sin estirarse en filas/cards. */
+.menu-recetas-admin__state-action {
+  flex: 0 0 auto !important;
+}
+
 .menu-recetas-admin__cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
@@ -1060,7 +1070,8 @@
 
 .menu-recetas-card__meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Se adapta automaticamente segun cuantas metricas tenga la card (sin dejar huecos). */
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(157, 150, 112, 0.24);
@@ -1085,12 +1096,24 @@
 
 .menu-recetas-card__actions {
   display: flex;
+  /* Centra los botones de accion de card (Editar + Inactivar/Activar). */
+  justify-content: center;
   gap: 8px;
   padding: 0 12px 12px;
 }
 
 .menu-recetas-card__actions .btn {
   flex: 1 1 0;
+}
+
+/* Asegura que el boton Editar tipo Inventario no se estire en cards de Menu. */
+.menu-recetas-card__actions .menu-recetas-admin__edit-action {
+  flex: 0 0 auto !important;
+}
+
+/* Mantiene compacto el boton de estado tambien en cards. */
+.menu-recetas-card__actions .menu-recetas-admin__state-action {
+  flex: 0 0 auto !important;
 }
 
 .menu-recetas-admin__form-image-preview {
@@ -1119,6 +1142,336 @@
 
 .menu-recetas-admin__form-image-placeholder i {
   font-size: 1.4rem;
+}
+
+/* Bloque de imagen del drawer de Menu: replica layout compacto (preview + estado + acciones). */
+.menu-recetas-admin__image-editor {
+  margin-top: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.95), rgba(248, 244, 236, 0.9));
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.menu-recetas-admin__form-image-preview.is-compact {
+  margin-top: 0;
+  width: 110px;
+  min-width: 110px;
+  height: 110px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.menu-recetas-admin__form-image-preview.is-compact img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.menu-recetas-admin__form-image-preview.is-compact .menu-recetas-admin__form-image-placeholder {
+  min-height: 110px;
+  text-align: center;
+  padding: 8px;
+}
+
+.menu-recetas-admin__form-image-preview.is-compact .menu-recetas-admin__form-image-placeholder span {
+  font-size: 0.78rem;
+}
+
+.menu-recetas-admin__detalle {
+  border: 1px solid rgba(121, 75, 42, 0.18);
+  border-radius: 16px;
+  padding: 1rem;
+  background: rgba(255, 252, 246, 0.86);
+}
+
+.menu-recetas-admin__detalle-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+  margin-bottom: 0.9rem;
+}
+
+.menu-recetas-admin__detalle-title {
+  color: #2f160c;
+  font-weight: 900;
+}
+
+.menu-recetas-admin__detalle-sub {
+  color: #8c7666;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.menu-recetas-admin__detalle-add {
+  border: 1px solid rgba(181, 95, 31, 0.25);
+  border-radius: 999px;
+  background: #b5601f;
+  color: #fffaf2;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.menu-recetas-admin__detalle-add:hover,
+.menu-recetas-admin__detalle-add:focus {
+  background: #934715;
+  color: #fffaf2;
+}
+
+.menu-recetas-admin__detalle-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.menu-recetas-admin__detalle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(100px, 0.65fr) minmax(100px, 0.65fr) 42px;
+  gap: 0.65rem;
+  align-items: end;
+  padding: 0.75rem;
+  border: 1px solid rgba(121, 75, 42, 0.14);
+  border-radius: 14px;
+  background: #fffaf2;
+}
+
+.menu-recetas-admin__detalle-field--insumo {
+  min-width: 0;
+}
+
+.menu-recetas-admin__detalle-remove {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  color: #a32929;
+  background: rgba(185, 28, 28, 0.06);
+}
+
+.menu-recetas-admin__detalle-remove:hover,
+.menu-recetas-admin__detalle-remove:focus {
+  color: #fff;
+  background: #a32929;
+}
+
+.menu-recetas-admin__detalle-empty {
+  border: 1px dashed rgba(121, 75, 42, 0.2);
+  border-radius: 12px;
+  padding: 0.85rem;
+  color: #8c7666;
+  background: rgba(255, 255, 255, 0.58);
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .menu-recetas-admin__detalle-head {
+    flex-direction: column;
+  }
+
+  .menu-recetas-admin__detalle-add {
+    width: 100%;
+  }
+
+  .menu-recetas-admin__detalle-row {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-recetas-admin__detalle-remove {
+    width: 100%;
+  }
+}
+
+.menu-extras-admin__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.menu-extras-card {
+  border: 1px solid rgba(121, 75, 42, 0.16);
+  border-left: 5px solid #60a98f;
+  border-radius: 18px;
+  background: #fffdf8;
+  box-shadow: 0 16px 34px rgba(47, 22, 12, 0.08);
+  overflow: hidden;
+}
+
+.menu-extras-card.is-inactive {
+  opacity: 0.72;
+  border-left-color: #c7beb4;
+}
+
+.menu-extras-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.75rem;
+}
+
+.menu-extras-card__head strong {
+  color: #7a3f18;
+  font-weight: 900;
+}
+
+.menu-extras-card__body {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0 1rem 1rem;
+}
+
+.menu-extras-card__body h6 {
+  margin: 0;
+  color: #24120b;
+  font-size: 1.05rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.menu-extras-card__body p {
+  margin: 0;
+  color: #9b7b68;
+  font-weight: 800;
+}
+
+.menu-extras-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(121, 75, 42, 0.12);
+  padding-top: 0.55rem;
+}
+
+.menu-extras-card__meta span {
+  color: #9b7b68;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.menu-extras-card__meta strong {
+  color: #2f160c;
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.menu-extras-admin__recipes {
+  margin-top: 1rem;
+  border: 1px solid rgba(121, 75, 42, 0.18);
+  border-radius: 16px;
+  padding: 1rem;
+  background: rgba(255, 252, 246, 0.86);
+}
+
+.menu-extras-admin__recipe-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.menu-extras-admin__recipe-option {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(121, 75, 42, 0.12);
+  border-radius: 12px;
+  background: #fffaf2;
+  color: #2f160c;
+  font-weight: 800;
+}
+
+.menu-extras-admin__recipe-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: #b5601f;
+}
+
+.menu-recetas-admin__image-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.menu-recetas-admin__status-pill {
+  width: 100%;
+  max-width: 340px;
+  min-height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(114, 170, 160, 0.48);
+  background: rgba(225, 237, 234, 0.72);
+  color: #2a6c62;
+  font-weight: 900;
+  text-align: center;
+  padding: 0 16px;
+}
+
+.menu-recetas-admin__status-pill--readonly {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  cursor: default;
+}
+
+.menu-recetas-admin__image-actions {
+  /* Mantiene "Agregar imagen" y "Quitar" siempre en la misma fila, como el modal base. */
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.menu-recetas-admin__image-btn {
+  border-radius: 10px !important;
+  min-height: 46px;
+  border: 1px solid rgba(157, 150, 112, 0.42) !important;
+  background: #fff !important;
+  color: #6b463c !important;
+  font-weight: 700 !important;
+  padding: 0 16px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.menu-recetas-admin__image-btn:hover {
+  border-color: rgba(154, 83, 25, 0.44) !important;
+  color: #4d2e27 !important;
+}
+
+.menu-recetas-admin__image-btn--add {
+  flex: 1 1 auto;
+}
+
+.menu-recetas-admin__image-btn--ghost {
+  border-color: rgba(221, 162, 162, 0.7) !important;
+  color: #9a5f5f !important;
+}
+
+.menu-recetas-admin__image-btn--remove {
+  flex: 0 0 auto;
+  min-width: 102px;
+}
+
+.menu-recetas-admin__image-help {
+  color: rgba(106, 58, 42, 0.86);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* Muestra nombre del archivo local seleccionado para dar feedback inmediato de carga. */
+.menu-recetas-admin__image-file-name {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .menu-combos-receta-picker {
@@ -1300,6 +1653,29 @@
 
   .menu-combos-receta-picker__item-add {
     justify-self: start;
+  }
+
+  .menu-recetas-admin__image-editor {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .menu-recetas-admin__form-image-preview.is-compact {
+    width: 100%;
+    max-width: 120px;
+  }
+
+  /* Mantiene ambos botones en una sola fila en movil, igual al layout de referencia. */
+  .menu-recetas-admin__image-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .menu-recetas-admin__image-btn {
+    min-height: 42px;
+    padding: 0 12px !important;
+    font-size: 0.95rem !important;
   }
 }
 
@@ -1508,9 +1884,280 @@
   color: rgba(82, 44, 34, 0.66);
 }
 
+/* Layout espejo: render real de cliente en iframe + panel tecnico lateral para control operativo. */
+.menu-pub-admin__preview-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.menu-pub-admin__preview-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.menu-pub-admin__preview-mirror {
+  position: relative;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(247, 241, 231, 0.6));
+  min-height: 540px;
+}
+
+.menu-pub-admin__preview-iframe {
+  width: 100%;
+  min-height: 540px;
+  border: 0;
+  display: block;
+  background: #fff;
+}
+
+.menu-pub-admin__preview-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  color: rgba(82, 44, 34, 0.86);
+  font-weight: 700;
+}
+
+.menu-pub-admin__preview-overlay.is-error {
+  background: rgba(255, 240, 240, 0.9);
+  color: #8a2c2c;
+}
+
+.menu-pub-admin__preview-tech {
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.menu-pub-admin__preview-tech-title {
+  margin: 0;
+  font-weight: 900;
+}
+
+.menu-pub-admin__preview-tech-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(82, 44, 34, 0.72);
+}
+
+.menu-pub-admin__preview-tech-list {
+  display: grid;
+  gap: 7px;
+}
+
+.menu-pub-admin__preview-tech-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 10px;
+  padding: 0 10px;
+  background: rgba(249, 245, 240, 0.7);
+}
+
+.menu-pub-admin__preview-tech-row span {
+  font-size: 0.8rem;
+  color: rgba(82, 44, 34, 0.82);
+  font-weight: 700;
+}
+
+.menu-pub-admin__preview-tech-row strong {
+  font-size: 0.96rem;
+  color: #17080a;
+  font-weight: 900;
+}
+
+.menu-carrusel-admin__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.menu-carrusel-admin__toolbar--compact {
+  align-items: center;
+  border: 1px solid #eadfce;
+  background: linear-gradient(180deg, #fffdf9 0%, #faf5ed 100%);
+  border-radius: 12px;
+  padding: 0.75rem;
+}
+
+.menu-carrusel-admin__kpi {
+  min-width: 180px;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.menu-carrusel-admin__kpi-label {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8f7a66;
+}
+
+.menu-carrusel-admin__kpi strong {
+  color: #302117;
+  font-size: 0.98rem;
+}
+
+.menu-carrusel-admin__branch {
+  min-width: 260px;
+  flex: 1 1 320px;
+}
+
+.menu-carrusel-admin__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.2rem;
+  color: #6b5b4f;
+  font-size: 0.92rem;
+  margin-bottom: 0.9rem;
+}
+
+.menu-carrusel-admin__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.menu-carrusel-admin__card {
+  border: 1px solid #e6ded6;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fffdfa;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-carrusel-admin__card.is-selected {
+  border-color: #cc7a1d;
+  box-shadow: 0 0 0 2px rgba(204, 122, 29, 0.14);
+}
+
+.menu-carrusel-admin__media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: #f7f3ee;
+}
+
+.menu-carrusel-admin__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.menu-carrusel-admin__position {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #171512;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  padding: 0.22rem 0.52rem;
+}
+
+.menu-carrusel-admin__content {
+  padding: 0.65rem 0.75rem 0.4rem;
+}
+
+.menu-carrusel-admin__content h6 {
+  margin: 0;
+  font-size: 0.98rem;
+  color: #2f241b;
+}
+
+.menu-carrusel-admin__content small {
+  color: #7f7369;
+}
+
+.menu-carrusel-admin__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+.menu-carrusel-admin__upload {
+  border: 1px dashed #d8c9ba;
+  border-radius: 12px;
+  background: #fffdfa;
+  padding: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.menu-carrusel-admin__upload-head {
+  margin-bottom: 0.6rem;
+}
+
+.menu-carrusel-admin__upload-head h6 {
+  margin: 0 0 0.15rem;
+  color: #3b2c21;
+}
+
+.menu-carrusel-admin__upload-head small {
+  color: #7a6d63;
+}
+
+.menu-carrusel-admin__custom-grid {
+  margin-top: 0.7rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 0.75rem;
+}
+
+.menu-carrusel-admin__custom-card {
+  border: 1px solid #eadfd3;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.menu-carrusel-admin__custom-card img {
+  width: 100%;
+  height: 126px;
+  object-fit: cover;
+  display: block;
+}
+
+.menu-carrusel-admin__custom-body {
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
 @media (max-width: 991.98px) {
   .menu-module-head .menu-module-switch.menu-module-switch--ventas-like {
     width: min(100%, 760px);
+  }
+
+  .menu-pub-admin__preview-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-pub-admin__preview-mirror,
+  .menu-pub-admin__preview-iframe {
+    min-height: 460px;
   }
 }
 

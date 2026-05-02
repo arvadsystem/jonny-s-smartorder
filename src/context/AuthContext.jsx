@@ -5,7 +5,8 @@ import { perfilService } from '../services/perfilService';
 export const AuthContext = createContext();
 
 const AUTH_SESSION_HINT_KEY = 'smartorder_auth_session_hint';
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 2500;
+const PERFIL_ENRICH_TIMEOUT_MS = 2500;
 const BOOTSTRAP_STATES = Object.freeze({
   checking: 'checking',
   ready: 'ready',
@@ -35,6 +36,16 @@ const hasSessionHint = () => {
   } catch {
     return false;
   }
+};
+
+const shouldBlockRouteDuringBootstrap = () => {
+  if (typeof window === 'undefined') return true;
+  const pathname = String(window.location?.pathname || '/');
+  return (
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/perfil') ||
+    pathname.startsWith('/cambiar-password')
+  );
 };
 
 const normalizePhoto = (value) => {
@@ -71,7 +82,7 @@ const enrichUserWithPerfil = async (usuario) => {
   if (!usuario || typeof usuario !== 'object') return usuario ?? null;
 
   try {
-    const perfilData = await perfilService.getPerfil();
+    const perfilData = await perfilService.getPerfil({ timeoutMs: PERFIL_ENRICH_TIMEOUT_MS });
     const fotoPerfil = normalizePhoto(perfilData?.perfil?.foto_perfil);
     return { ...usuario, foto_perfil: fotoPerfil };
   } catch {
@@ -159,12 +170,22 @@ export const AuthProvider = ({ children }) => {
         if (!isCurrentRequest(requestId)) return;
 
         const baseUser = normalizeAuthPayloadUser(data);
-        const nextUser = await enrichUserWithPerfil(baseUser);
-        if (!isCurrentRequest(requestId)) return;
-
-        setUser(nextUser);
-        setSessionHint(Boolean(nextUser));
+        setUser(baseUser);
+        setSessionHint(Boolean(baseUser));
         setBootstrapState(BOOTSTRAP_STATES.ready);
+
+        if (baseUser) {
+          void (async () => {
+            const nextUser = await enrichUserWithPerfil(baseUser);
+            if (!isCurrentRequest(requestId)) return;
+
+            setUser((current) => {
+              if (!current || typeof current !== 'object') return current;
+              if (String(current.id_usuario ?? '') !== String(baseUser.id_usuario ?? '')) return current;
+              return nextUser;
+            });
+          })();
+        }
       } catch (error) {
         if (!isCurrentRequest(requestId)) return;
 
@@ -265,6 +286,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const loading = bootstrapState === BOOTSTRAP_STATES.checking;
+  const blockDuringBootstrap = loading && shouldBlockRouteDuringBootstrap();
 
   return (
     <AuthContext.Provider
@@ -279,7 +301,7 @@ export const AuthProvider = ({ children }) => {
         retryBootstrap
       }}
     >
-      {loading ? <AuthBootstrapScreen /> : children}
+      {blockDuringBootstrap ? <AuthBootstrapScreen /> : children}
     </AuthContext.Provider>
   );
 };

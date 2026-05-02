@@ -1,7 +1,7 @@
-/**
+﻿/**
  * PublicLayout.jsx
- * Layout para el mundo público del cliente.
- * Barra superior sencilla con logo, acceso al carrito y botón de login.
+ * Layout para el mundo pÃºblico del cliente.
+ * Barra superior sencilla con logo, acceso al carrito y botÃ³n de login.
  */
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useCarrito } from '../../hooks/useCarrito';
@@ -51,7 +51,7 @@ const PublicLayout = () => {
               className="public-nav__login-btn"
               onClick={() => navigate('/auth/login')}
             >
-              Iniciar sesión
+              Iniciar Sesión
             </button>
           )}
         </div>
@@ -64,10 +64,11 @@ const PublicLayout = () => {
 
       {/* FOOTER */}
       <footer className="public-footer">
-        <p>© {new Date().getFullYear()} Jonny's SmartOrder — Honduras</p>
+        <p>Â© {new Date().getFullYear()} Jonny's SmartOrder â€” Honduras</p>
       </footer>
     </div>
   );
 };
 
 export default PublicLayout;
+

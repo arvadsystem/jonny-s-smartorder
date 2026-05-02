@@ -975,7 +975,8 @@ a { text-decoration: none !important; }
 /* RESPONSIVE: BOTTOM SHEET */
 @media (max-width: 768px) {
   .inv-catpro-drawer {
-    width: 100vw;
+    width: 100%;
+    max-width: 100%;
     height: auto;
     max-height: 86vh;
 
@@ -1128,7 +1129,8 @@ a { text-decoration: none !important; }
 
   /* FUNCION: BOTTOM SHEET NO SE METE DEBAJO DEL BOTTOM NAV */
   .inv-catpro-drawer {
-    width: 100vw;
+    width: 100%;
+    max-width: 100%;
     right: 0;
     top: auto;
 
@@ -1524,7 +1526,7 @@ a { text-decoration: none !important; }
 
   /* FUNCIONALIDAD: MENU "MÁS" DENTRO DE LA PANTALLA */
   .inventory-more-menu {
-    max-width: calc(100vw - 24px);
+    max-width: calc(100% - 24px);
   }
 }
 
@@ -1998,8 +2000,8 @@ a { text-decoration: none !important; }
   .inv-catpro-drawer {
     z-index: 3700;
 
-    width: calc(100vw - 20px);
-    max-width: 460px;
+    width: min(460px, calc(100% - 20px));
+    max-width: calc(100% - 20px);
     height: auto;
     max-height: min(80vh, 700px);
 

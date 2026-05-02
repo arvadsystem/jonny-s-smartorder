@@ -19,6 +19,10 @@ const ConfirmModal = ({
         aria-labelledby="pm-confirm-title"
         onClick={(event) => event.stopPropagation()}
       >
+        <div className="pm-confirm-modal__icon" aria-hidden="true">
+          <i className="bi bi-exclamation-lg" />
+        </div>
+
         <h2 id="pm-confirm-title" className="pm-confirm-modal__title">
           {title}
         </h2>
@@ -38,4 +42,3 @@ const ConfirmModal = ({
 };
 
 export default ConfirmModal;
-
