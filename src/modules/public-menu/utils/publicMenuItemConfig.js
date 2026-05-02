@@ -1,15 +1,6 @@
 const HAMBURGUESA_KEYWORDS = ['hamburguesa', 'burger', 'smash'];
 const WINGS_SAUCE_KEYWORDS = ['alita', 'alitas', 'tender', 'tenders'];
 
-const FALLBACK_HAMBURGUESA_EXTRAS = [
-  {
-    id_extra: 'hamb-extra-bacon',
-    codigo: 'extra_bacon',
-    nombre: 'Extra bacon',
-    precio_adicional: 30
-  }
-];
-
 const normalizeText = (value) =>
   String(value || '')
     .normalize('NFD')
@@ -92,10 +83,6 @@ export const getItemExtraOptions = (item) => {
         precio_adicional: Number(extra?.precio_adicional || 0)
       }))
       .filter((extra) => extra.id_extra);
-  }
-
-  if (String(item?.tipo_item || '') === 'RECETA' && isHamburguesaItem(item)) {
-    return FALLBACK_HAMBURGUESA_EXTRAS.map((extra) => ({ ...extra }));
   }
 
   return [];

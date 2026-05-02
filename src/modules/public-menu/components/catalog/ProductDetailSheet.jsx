@@ -24,6 +24,14 @@ const normalizeNote = (value) =>
     .slice(0, MAX_LINE_NOTE_LENGTH)
     .replace(/\r/g, '');
 
+const normalizeText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
 const sumSauceCount = (rawMap = {}) =>
   Object.values(rawMap).reduce((sum, value) => sum + Number(value || 0), 0);
 
@@ -66,6 +74,9 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
   const unitBase = Number(item?.precio?.final || 0);
   const unitPrice = Number((unitBase + extraAmountPerUnit).toFixed(2));
   const subtotal = Number((unitPrice * quantity).toFixed(2));
+  const descriptionText = String(item?.descripcion || '').trim();
+  const shouldShowDescription =
+    descriptionText && normalizeText(descriptionText) !== normalizeText(item?.nombre);
   const requiredSauceCount = calculateRequiredSauces(item, quantity);
   const requiresSauceSelection =
     item?.salsas_requiere_seleccion === true ||
@@ -204,7 +215,9 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
               />
             ) : null}
 
-            <p className="pm-detail-sheet__description">{item.descripcion}</p>
+            {shouldShowDescription ? (
+              <p className="pm-detail-sheet__description">{descriptionText}</p>
+            ) : null}
 
             <div className="pm-detail-sheet__price-wrap">
               <span className="pm-detail-sheet__price-label">Precio unitario</span>

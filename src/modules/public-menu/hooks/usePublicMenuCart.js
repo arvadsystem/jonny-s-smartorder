@@ -332,7 +332,7 @@ export const usePublicMenuCart = ({ branch }) => {
       subtotal: toMoney(item.subtotal),
       extras: (Array.isArray(item.extras) ? item.extras : []).map((extra) => ({
         id_extra: String(extra?.id_extra || '').trim()
-      })),
+      })).filter((extra) => extra.id_extra),
       salsas_por_unidad: normalizeSelectedSauces(item.salsas_por_unidad),
       nota: normalizeLineNote(item?.nota, 100)
     })),
