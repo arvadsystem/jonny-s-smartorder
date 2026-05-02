@@ -7,6 +7,7 @@ import ModuleFiltros from './components/common/ModuleFiltros';
 import ModuleKPICards from './components/common/ModuleKPICards';
 import UsuarioCard from './components/usuarios/UsuarioCard';
 import UsuarioDetailModal from './components/usuarios/UsuarioDetailModal';
+import { parseEstadoUsuario } from './components/usuarios/estadoUtils';
 import {
   isUsuarioDataImageUrl,
   isUsuarioRenderableImageValue,
@@ -26,6 +27,9 @@ const createInitialFiltersDraft = () => ({
 const IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 const FOTO_PERFIL_MAX_LENGTH = 500;
+const USERS_PAGE_LIMIT = 9;
+const USERS_FETCH_BATCH_LIMIT = 100;
+const USERS_FETCH_MAX_PAGES = 40;
 const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'La imagen supera el limite de 20 MB.';
 const FOTO_PERFIL_INVALID_MESSAGE = 'Formato de foto no valido. Use una ruta /uploads/... o una imagen local.';
 
@@ -105,18 +109,7 @@ const buildUsernamePreview = (empleado, usedSet) => {
   return `${base2}9999`;
 };
 
-const parseBooleanField = (row) => {
-  if (Object.prototype.hasOwnProperty.call(row || {}, 'estado')) return Boolean(row.estado);
-  if (Object.prototype.hasOwnProperty.call(row || {}, 'activo')) return Boolean(row.activo);
-  if (Object.prototype.hasOwnProperty.call(row || {}, 'habilitado')) return Boolean(row.habilitado);
-  return true;
-};
-
-const resolveCardsPerPage = (width) => {
-  if (width >= 1200) return 6;
-  if (width >= 620) return 4;
-  return 2;
-};
+const parseBooleanField = (row) => parseEstadoUsuario(row);
 
 const readViewMode = (key) => {
   if (typeof window === 'undefined') return 'cards';
@@ -161,7 +154,7 @@ export default function Usuarios({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [limit] = useState(USERS_PAGE_LIMIT);
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
@@ -187,10 +180,6 @@ export default function Usuarios({ openToast }) {
     });
   }, []);
 
-  const [cardsPerPage, setCardsPerPage] = useState(() =>
-    typeof window === 'undefined' ? 6 : resolveCardsPerPage(window.innerWidth)
-  );
-
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const catalogLoadedRef = useRef(false);
@@ -204,7 +193,6 @@ export default function Usuarios({ openToast }) {
   const getTelefono = useCallback((u) => normalizeText(u?.empleado?.telefono || u?.telefono), []);
   const getCorreo = useCallback((u) => normalizeText(u?.empleado?.correo || u?.correo), []);
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
   const drawerMode = editId ? 'edit' : 'create';
   const isAnyDrawerOpen = showModal || filtersOpen;
 
@@ -299,12 +287,40 @@ export default function Usuarios({ openToast }) {
     const reqId = ++requestIdRef.current;
 
     try {
-      const response = await personaService.getUsuariosV2({ page, limit, q: search?.trim() || '' });
-      if (!mountedRef.current || reqId !== requestIdRef.current) return;
+      const allItems = [];
+      const searchTerm = search?.trim() || '';
+      let pageCursor = 1;
+      let expectedTotal = Number.POSITIVE_INFINITY;
 
-      const { items, total: totalResp } = normalizeListResponse(response);
-      setUsuarios(items);
-      setTotal(totalResp);
+      while (pageCursor <= USERS_FETCH_MAX_PAGES && allItems.length < expectedTotal) {
+        const response = await personaService.getUsuariosV2({
+          page: pageCursor,
+          limit: USERS_FETCH_BATCH_LIMIT,
+          q: searchTerm,
+        });
+        if (!mountedRef.current || reqId !== requestIdRef.current) return;
+
+        const { items, total: totalResp } = normalizeListResponse(response);
+        const batch = Array.isArray(items) ? items : [];
+        const parsedTotal = Number(totalResp);
+        if (Number.isFinite(parsedTotal) && parsedTotal >= 0) expectedTotal = parsedTotal;
+        if (batch.length === 0) break;
+        allItems.push(...batch);
+        if (batch.length < USERS_FETCH_BATCH_LIMIT) break;
+        pageCursor += 1;
+      }
+
+      const seen = new Set();
+      const deduped = allItems.filter((item) => {
+        const id = String(item?.id_usuario ?? '').trim();
+        if (!id) return true;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+
+      setUsuarios(deduped);
+      setTotal(deduped.length);
     } catch (error) {
       if (!mountedRef.current) return;
       setUsuarios([]);
@@ -313,7 +329,7 @@ export default function Usuarios({ openToast }) {
     } finally {
       if (mountedRef.current && reqId === requestIdRef.current) setLoading(false);
     }
-  }, [page, limit, search, safeToast]);
+  }, [search, safeToast]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -332,7 +348,7 @@ export default function Usuarios({ openToast }) {
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, estadoFiltro, sortBy]);
 
   useEffect(() => {
     try {
@@ -341,12 +357,6 @@ export default function Usuarios({ openToast }) {
       // ignore storage errors
     }
   }, [viewMode]);
-
-  useEffect(() => {
-    const onResize = () => setCardsPerPage(resolveCardsPerPage(window.innerWidth));
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   useEffect(() => {
     if (!showModal || !editId) return;
@@ -591,12 +601,7 @@ export default function Usuarios({ openToast }) {
       }
       if (String(detailUsuario?.id_usuario) === String(id)) setDetailUsuario(null);
 
-      const emptyPage = usuarios.length === 1 && page > 1;
-      if (emptyPage) {
-        setPage((prev) => Math.max(1, prev - 1));
-      } else {
-        await cargarUsuarios();
-      }
+      await cargarUsuarios();
 
       safeToast('OK', 'Usuario eliminado');
       closeConfirmDelete();
@@ -614,7 +619,9 @@ export default function Usuarios({ openToast }) {
 
     const filtered = list.filter((usuario) => {
       const active = parseBooleanField(usuario);
-      const matchEstado = estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? active : !active;
+      const matchEstado = viewMode === 'cards'
+        ? true
+        : (estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? active : !active);
       if (!matchEstado) return false;
 
       if (!needle) return true;
@@ -639,16 +646,21 @@ export default function Usuarios({ openToast }) {
     });
 
     return filtered;
-  }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo]);
+  }, [usuarios, search, estadoFiltro, sortBy, viewMode, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo]);
 
   const stats = useMemo(() => {
     const totalRows = usuariosFiltrados.length;
     const activas = usuariosFiltrados.filter((u) => parseBooleanField(u)).length;
     return { total: totalRows, activas, inactivas: totalRows - activas };
   }, [usuariosFiltrados]);
+  const totalPages = Math.max(1, Math.ceil(usuariosFiltrados.length / limit));
+  const usuariosPaginados = useMemo(() => {
+    const start = Math.max(0, (page - 1) * limit);
+    return usuariosFiltrados.slice(start, start + limit);
+  }, [limit, page, usuariosFiltrados]);
 
   const hasActiveFilters = search.trim() !== '' || estadoFiltro !== 'todos' || sortBy !== 'recientes';
-  const colsClass = cardsPerPage >= 6 ? 'cols-3' : cardsPerPage >= 4 ? 'cols-2' : 'cols-1';
+  const colsClass = 'cols-3';
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -675,6 +687,12 @@ export default function Usuarios({ openToast }) {
     setShowModal(false);
     setFiltersOpen(false);
   };
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const selectedUser = usuarios.find((item) => String(item.id_usuario) === String(editId)) || null;
 
@@ -707,12 +725,12 @@ export default function Usuarios({ openToast }) {
               <EntityTable>
                 <table className="table personas-page__table">
                   <thead><tr><th scope="col">Usuario</th><th scope="col">Sucursal</th><th scope="col">DNI</th><th scope="col">Telefono</th><th scope="col">Nombre usuario</th><th scope="col">Fecha creacion</th><th scope="col">Estado</th><th scope="col">Codigo</th><th scope="col" className="text-end">Acciones</th></tr></thead>
-                  <tbody>{usuariosFiltrados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => setDetailUsuario(usuario)} title="Ver detalle" disabled={actionLoading || deleting}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title="Eliminar" disabled={actionLoading || deleting}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} /><span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span></button></div></td></tr>); })}</tbody>
+                  <tbody>{usuariosPaginados.map((usuario, idx) => { const active = parseBooleanField(usuario); const idUsuario = usuario?.id_usuario; const deleting = deletingId === idUsuario; const tableIndex = (page - 1) * limit + idx; return (<tr key={usuario?.id_usuario ?? idx} className={active ? '' : 'is-inactive-state'}><td><strong>{tableIndex + 1}. {toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre')}</strong></td><td>{toDisplayValue(getSucursalNombre(usuario))}</td><td>{toDisplayValue(getDni(usuario), 'N/D')}</td><td>{toDisplayValue(getTelefono(usuario), 'Sin telefono')}</td><td>{toDisplayValue(usuario?.nombre_usuario, 'Sin usuario')}</td><td>{formatDateLabel(usuario?.fecha_creacion)}</td><td><span className={`inv-ins-card__badge ${active ? 'is-ok' : 'is-inactive'}`}>{active ? 'ACTIVO' : 'INACTIVO'}</span></td><td><div className="inv-catpro-code-wrap personas-page__table-code-wrap"><span className={`inv-catpro-state-dot ${active ? 'ok' : 'off'}`} /><span className="inv-catpro-code">USR-{String(idUsuario ?? '-')}</span></div></td><td className="text-end"><div className="personas-page__table-actions"><button type="button" className="inv-catpro-action inv-catpro-action-compact" onClick={() => setDetailUsuario(usuario)} title="Ver detalle" disabled={actionLoading || deleting}><i className="bi bi-eye" /><span className="inv-catpro-action-label">Detalle</span></button><button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => iniciarEdicion(usuario)} title="Editar" disabled={actionLoading || deleting}><i className="bi bi-pencil-square" /><span className="inv-catpro-action-label">Editar</span></button><button type="button" className="inv-catpro-action danger inv-catpro-action-compact" onClick={() => openConfirmDelete(usuario)} title="Eliminar" disabled={actionLoading || deleting}><i className={`bi ${deleting ? 'bi-hourglass-split' : 'bi-trash'}`} /><span className="inv-catpro-action-label">{deleting ? 'Eliminando...' : 'Eliminar'}</span></button></div></td></tr>); })}</tbody>
                 </table>
               </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
-                {usuariosFiltrados.map((usuario, idx) => (
+                {usuariosPaginados.map((usuario, idx) => (
                   <UsuarioCard key={usuario?.id_usuario ?? idx} usuario={usuario} index={(page - 1) * limit + idx}
                     onOpenEdit={iniciarEdicion} onOpenDelete={openConfirmDelete} onOpenDetail={setDetailUsuario}
                     actionLoading={actionLoading} deletingId={deletingId} />

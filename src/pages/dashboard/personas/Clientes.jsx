@@ -13,6 +13,7 @@ import useSearchSuggestionsDropdown, {
   MIN_CHARS_FOR_SUGGESTIONS,
   normalizeSearchText,
 } from "./components/common/useSearchSuggestionsDropdown";
+import { buildPageRangeLabel, buildVisiblePageNumbers } from "./components/common/paginationWindow";
 import SmartSelectEntity from "./components/common/SmartSelectEntity";
 import PersonaInlineCreateModal from "./components/common/PersonaInlineCreateModal";
 import EmpresaInlineCreateModal from "./components/common/EmpresaInlineCreateModal";
@@ -44,8 +45,17 @@ const emptyInlinePersonaForm = createInitialPersonaForm();
 
 const emptyInlineEmpresaForm = createInitialEmpresaForm();
 
+const createEmptyDuplicateResolution = () => ({
+  visible: false,
+  origin: null,
+  message: "",
+  suggestedId: null,
+  suggestedLabel: "",
+  requestPayload: null,
+});
+
 const createInitialFiltersDraft = () => ({
-  estadoFiltro: "todos",
+  estadoFiltro: "activo",
   sortBy: "recientes",
 });
 
@@ -150,6 +160,9 @@ const ASYNC_SELECT_LIMIT = 80;
 const ASYNC_SELECT_DEBOUNCE_MS = 300;
 const SUGGESTION_LIMIT = 8;
 const MAX_CLIENTES_PAGE_CACHE = 24;
+const GLOBAL_STATS_FETCH_LIMIT = 1;
+const PERSONAS_CATALOGO_PAGE_LIMIT = 200;
+const PERSONAS_CATALOGO_MAX_PAGES = 200;
 
 const isAbortError = (error) =>
   Boolean(error) && (
@@ -221,6 +234,56 @@ const firstNonEmptyValue = (...values) => {
     if (text) return text;
   }
   return "";
+};
+
+const resolveDuplicateBaseFromError = (error, origin) => {
+  const status = Number(error?.status);
+  const code = String(error?.code || error?.data?.code || "").trim().toUpperCase();
+  if (status !== 409 || code !== "DUPLICATE_BASE") return null;
+
+  const details =
+    error?.data && typeof error.data === "object" && error.data.details && typeof error.data.details === "object"
+      ? error.data.details
+      : null;
+  const suggestedRelation =
+    details && details.suggested_relation && typeof details.suggested_relation === "object"
+      ? details.suggested_relation
+      : details;
+
+  const suggestedId =
+    origin === "empresa"
+      ? extractPositiveIdFromAny(suggestedRelation, ["id_empresa_cliente", "id_empresa"])
+      : extractPositiveIdFromAny(suggestedRelation, ["id_persona"]);
+  if (!suggestedId) return null;
+
+  const base = details && details.base && typeof details.base === "object" ? details.base : null;
+  const suggestedLabel = String(
+    origin === "empresa"
+      ? firstNonEmptyValue(
+        base?.nombre_empresa,
+        base?.rtn ? `RTN: ${base.rtn}` : null,
+        `Empresa #${suggestedId}`
+      )
+      : firstNonEmptyValue(
+        base?.nombre_completo,
+        base?.dni ? `DNI: ${base.dni}` : null,
+        `Persona #${suggestedId}`
+      )
+  ).trim();
+
+  const message = String(
+    error?.message
+      || error?.data?.message
+      || (origin === "empresa"
+        ? "Ya existe una empresa con ese RTN. Puedes vincularla para continuar."
+        : "Ya existe una persona con ese DNI. Puedes vincularla para continuar.")
+  ).trim();
+
+  return {
+    suggestedId,
+    suggestedLabel,
+    message,
+  };
 };
 
 const resolveClienteOrigen = (cliente) => {
@@ -370,7 +433,7 @@ const isActivo = (record) => {
   return Boolean(record[field]);
 };
 
-const Clientes = ({ openToast, selectedSucursalId = "" }) => {
+const Clientes = ({ openToast }) => {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -388,19 +451,22 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [viewMode, setViewMode] = useState(() => readViewMode("clientesViewMode"));
 
-  const [estadoFiltro, setEstadoFiltro] = useState("todos");
+  const [estadoFiltro, setEstadoFiltro] = useState("activo");
   const [sortBy, setSortBy] = useState("recientes");
   const [filtersDraft, setFiltersDraft] = useState(createInitialFiltersDraft);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const limit = 10;
+  const isTableView = viewMode === "table";
+  const limit = isTableView ? 10 : 9;
   const [total, setTotal] = useState(0);
+  const [globalStats, setGlobalStats] = useState({ total: 0, activas: 0, inactivas: 0 });
 
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [clienteOriginType, setClienteOriginType] = useState("persona");
+  const [createStep, setCreateStep] = useState(1);
   const [errors, setErrors] = useState({});
   const [useInlinePersonaCreate, setUseInlinePersonaCreate] = useState(false);
   const [useInlineEmpresaCreate, setUseInlineEmpresaCreate] = useState(false);
@@ -408,6 +474,11 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const [inlineEmpresaForm, setInlineEmpresaForm] = useState(emptyInlineEmpresaForm);
   const [showPersonaCreateModal, setShowPersonaCreateModal] = useState(false);
   const [showEmpresaCreateModal, setShowEmpresaCreateModal] = useState(false);
+  const [showPersonaEditModal, setShowPersonaEditModal] = useState(false);
+  const [showEmpresaEditModal, setShowEmpresaEditModal] = useState(false);
+  const [inlinePersonaSaving, setInlinePersonaSaving] = useState(false);
+  const [inlineEmpresaSaving, setInlineEmpresaSaving] = useState(false);
+  const [duplicateResolution, setDuplicateResolution] = useState(createEmptyDuplicateResolution);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -415,6 +486,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     show: false,
     idToDelete: null,
     nombre: "",
+    estadoActual: true,
   });
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
@@ -422,10 +494,12 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const globalStatsRequestIdRef = useRef(0);
   const listAbortRef = useRef(null);
   const listPrefetchAbortRef = useRef(null);
   const clientesListCacheRef = useRef(new Map());
   const catalogosCargadosRef = useRef(false);
+  const catalogosLoadingRef = useRef(false);
   const panelRef = useRef(null);
   const empresaSearchCacheRef = useRef(new Map());
   const tipoSearchCacheRef = useRef(new Map());
@@ -434,10 +508,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const empresaAbortRef = useRef(null);
   const empresaAsyncReqSeqRef = useRef(0);
   const tipoAsyncReqSeqRef = useRef(0);
-  const sucursalFallbackNoticeRef = useRef('');
-
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
+  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
 
   const blurFocusedElementInside = useCallback((containerId) => {
     if (typeof document === "undefined") return;
@@ -449,12 +522,20 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     }
   }, []);
 
+  const resetDuplicateResolution = useCallback(() => {
+    setDuplicateResolution(createEmptyDuplicateResolution());
+  }, []);
+
   const closeFormDrawer = useCallback(() => {
     blurFocusedElementInside("cli-form-drawer");
     setShowPersonaCreateModal(false);
     setShowEmpresaCreateModal(false);
+    setShowPersonaEditModal(false);
+    setShowEmpresaEditModal(false);
+    setCreateStep(1);
+    resetDuplicateResolution();
     setShowModal(false);
-  }, [blurFocusedElementInside]);
+  }, [blurFocusedElementInside, resetDuplicateResolution]);
 
   const personaOptions = useMemo(
     () =>
@@ -463,10 +544,32 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         const nombreCompleto = `${p?.nombre || ""} ${p?.apellido || ""}`.trim();
         return {
           id: id ? String(id) : "",
-          label: nombreCompleto || `Persona #${id ?? "N/D"}`,
+          label: nombreCompleto || "Persona sin nombre",
           dni: p?.dni || "",
         };
       }),
+    [personasCatalogo]
+  );
+
+  const personaRtnById = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(personasCatalogo) ? personasCatalogo : [])
+          .map((p) => {
+            const id = String(p?.id_persona ?? "").trim();
+            const rtn = firstNonEmptyValue(
+              p?.rtn,
+              p?.RTN,
+              p?.persona_rtn_complemento,
+              p?.rtn_persona,
+              p?.rtn_complemento,
+              p?.complemento_rtn,
+              p?.numero_rtn
+            );
+            return [id, rtn];
+          })
+          .filter(([id]) => id)
+      ),
     [personasCatalogo]
   );
 
@@ -479,13 +582,13 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     [personaOptions]
   );
 
-  const personaSelectValue = useMemo(() => {
+  const _personaSelectValue = useMemo(() => {
     const selectedId = String(form.id_persona ?? "");
     if (!selectedId) return null;
     return personaSelectOptions.find((option) => option.value === selectedId) || null;
   }, [form.id_persona, personaSelectOptions]);
 
-  const personaSelectStyles = useMemo(
+  const _personaSelectStyles = useMemo(
     () => buildClientesSelectStyles(Boolean(errors.id_persona)),
     [errors.id_persona]
   );
@@ -494,7 +597,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     () =>
       (Array.isArray(empresasCatalogo) ? empresasCatalogo : []).map((e) => {
         const id = e?.id_empresa;
-        const nombreEmpresa = String(e?.nombre_empresa || `Empresa #${id ?? "N/D"}`).trim();
+        const nombreEmpresa = String(firstNonEmptyValue(e?.nombre_empresa, "Empresa sin nombre")).trim();
         const rtn = firstNonEmptyValue(e?.rtn);
         const correo = firstNonEmptyValue(e?.direccion_correo, e?.correo);
         const telefono = firstNonEmptyValue(e?.telefono);
@@ -536,7 +639,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     const selectedId = String(form.id_empresa ?? "").trim();
     if (!selectedId) return null;
     const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? ""));
-    const nombre = firstNonEmptyValue(clienteActual?.nombre_empresa, clienteActual?.nombre_principal, `Empresa #${selectedId}`);
+    const nombre = firstNonEmptyValue(clienteActual?.nombre_empresa, clienteActual?.nombre_principal, "Empresa seleccionada");
     const rtn = firstNonEmptyValue(clienteActual?.rtn, clienteActual?.documento_tipo === "rtn" ? clienteActual?.documento_valor : "");
     const correo = firstNonEmptyValue(clienteActual?.correo);
     const labelParts = [nombre];
@@ -549,7 +652,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     };
   }, [clientes, editId, form.id_empresa]);
 
-  const empresaSelectValue = useMemo(() => {
+  const _empresaSelectValue = useMemo(() => {
     const selectedId = String(form.id_empresa ?? "").trim();
     if (!selectedId) return null;
     return (
@@ -557,18 +660,18 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       || empresaSelectFallbackValue
       || {
         value: selectedId,
-        label: `Empresa #${selectedId}`,
+        label: "Empresa seleccionada",
         searchText: normalizeSearchKey(`empresa ${selectedId}`),
       }
     );
   }, [form.id_empresa, empresaSelectOptionsById, empresaSelectFallbackValue]);
 
-  const empresaSelectStyles = useMemo(
+  const _empresaSelectStyles = useMemo(
     () => buildClientesSelectStyles(Boolean(errors.id_empresa)),
     [errors.id_empresa]
   );
 
-  const empresaDefaultOptions = useMemo(
+  const _empresaDefaultOptions = useMemo(
     () => filterAsyncOptions(empresaSelectOptions, ""),
     [empresaSelectOptions]
   );
@@ -606,7 +709,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     const selectedId = String(form.id_tipo_cliente ?? "").trim();
     if (!selectedId) return null;
     const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? ""));
-    const label = firstNonEmptyValue(clienteActual?.tipo_cliente, `Tipo #${selectedId}`);
+    const label = firstNonEmptyValue(clienteActual?.tipo_cliente, "Tipo seleccionado");
     return {
       value: selectedId,
       label,
@@ -614,7 +717,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     };
   }, [clientes, editId, form.id_tipo_cliente]);
 
-  const tipoClienteSelectValue = useMemo(() => {
+  const _tipoClienteSelectValue = useMemo(() => {
     const selectedId = String(form.id_tipo_cliente ?? "").trim();
     if (!selectedId) return null;
     return (
@@ -622,18 +725,18 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       || tipoClienteSelectFallbackValue
       || {
         value: selectedId,
-        label: `Tipo #${selectedId}`,
+        label: "Tipo seleccionado",
         searchText: normalizeSearchKey(`tipo ${selectedId}`),
       }
     );
   }, [form.id_tipo_cliente, tipoClienteSelectOptionsById, tipoClienteSelectFallbackValue]);
 
-  const tipoClienteSelectStyles = useMemo(
+  const _tipoClienteSelectStyles = useMemo(
     () => buildClientesSelectStyles(Boolean(errors.id_tipo_cliente)),
     [errors.id_tipo_cliente]
   );
 
-  const tipoClienteDefaultOptions = useMemo(
+  const _tipoClienteDefaultOptions = useMemo(
     () => filterAsyncOptions(tipoClienteSelectOptions, ""),
     [tipoClienteSelectOptions]
   );
@@ -700,7 +803,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     tipoSearchCacheRef.current.clear();
   }, [tipoClienteSelectOptions]);
 
-  const loadEmpresaOptions = useCallback(
+  const _loadEmpresaOptions = useCallback(
     (inputValue = "") =>
       new Promise((resolve) => {
         const searchTerm = normalizeSearchKey(inputValue);
@@ -761,7 +864,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
               const fetchedOptions = (Array.isArray(fetchedItems) ? fetchedItems : []).map((item) => {
                 const id = String(item?.id_empresa ?? "").trim();
-                const nombreEmpresa = firstNonEmptyValue(item?.nombre_empresa, `Empresa #${id || "N/D"}`);
+                const nombreEmpresa = firstNonEmptyValue(item?.nombre_empresa, "Empresa sin nombre");
                 const rtn = firstNonEmptyValue(item?.rtn);
                 const correo = firstNonEmptyValue(item?.direccion_correo, item?.correo);
                 const telefono = firstNonEmptyValue(item?.telefono);
@@ -800,7 +903,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     [empresaSelectOptions]
   );
 
-  const loadTipoClienteOptions = useCallback(
+  const _loadTipoClienteOptions = useCallback(
     (inputValue = "") =>
       new Promise((resolve) => {
         const searchTerm = normalizeSearchKey(inputValue);
@@ -836,9 +939,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         page: Number(targetPage) || 1,
         limit,
         search: normalizeSearchText(debouncedSearch),
-        sucursal: parsePositiveInteger(selectedSucursalId) || null,
+        estado: estadoFiltro,
       }),
-    [limit, debouncedSearch, selectedSucursalId]
+    [limit, debouncedSearch, estadoFiltro]
   );
 
   const normalizeClientesPage = useCallback(
@@ -903,12 +1006,12 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       listPrefetchAbortRef.current = controller;
 
       try {
-        const normalizedSucursalId = parsePositiveInteger(selectedSucursalId);
+        const estadoQuery = estadoFiltro === "inactivo" ? false : true;
         const resp = await personaService.getClientes({
           page: nextPage,
           limit,
           nombre: debouncedSearch || undefined,
-          id_sucursal: normalizedSucursalId || undefined,
+          estado: estadoQuery,
           signal: controller.signal,
         });
 
@@ -927,37 +1030,88 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     [
       buildClientesCacheKey,
       debouncedSearch,
+      estadoFiltro,
       limit,
       normalizeClientesPage,
-      selectedSucursalId,
       setClientesCacheEntry,
     ]
   );
 
+  const cargarPersonasCatalogoCompleto = useCallback(async () => {
+    const personas = [];
+    let currentPage = 1;
+    let totalPages = 1;
+
+    while (currentPage <= totalPages && currentPage <= PERSONAS_CATALOGO_MAX_PAGES) {
+      const response = await personaService.getPersonas({
+        page: currentPage,
+        limit: PERSONAS_CATALOGO_PAGE_LIMIT,
+      });
+      const { items, total: totalItems } = normalizeListResponse(response);
+      if (Array.isArray(items) && items.length) {
+        personas.push(...items);
+      }
+
+      const safeTotal = Math.max(0, Number(totalItems) || 0);
+      totalPages = Math.max(1, Math.ceil(safeTotal / PERSONAS_CATALOGO_PAGE_LIMIT));
+      currentPage += 1;
+    }
+
+    return personas;
+  }, []);
+
   const cargarCatalogos = useCallback(async () => {
-    if (catalogosCargadosRef.current) return;
+    if (catalogosCargadosRef.current || catalogosLoadingRef.current) return;
+    catalogosLoadingRef.current = true;
 
     try {
-      const [personasResp, empresasResp, tiposResp] = await Promise.all([
-        personaService.getPersonasDetalle(1, 100),
+      const [personasTodas, empresasResp, tiposResp] = await Promise.all([
+        cargarPersonasCatalogoCompleto(),
         personaService.getEmpresas({ page: 1, limit: 100 }),
         parametrosService.listarCatalogo("tipo_cliente"),
       ]);
 
       if (!mountedRef.current) return;
 
-      setPersonasCatalogo(normalizeListResponse(personasResp).items);
+      const personasMap = new Map();
+      personasTodas.forEach((persona) => {
+        const id = String(persona?.id_persona ?? "").trim();
+        if (!id) return;
+        const previo = personasMap.get(id);
+        if (!previo) {
+          personasMap.set(id, persona);
+          return;
+        }
+        const rtnSiguiente = firstNonEmptyValue(
+          persona?.rtn,
+          persona?.RTN,
+          persona?.persona_rtn_complemento,
+          persona?.rtn_persona,
+          persona?.rtn_complemento,
+          persona?.complemento_rtn,
+          persona?.numero_rtn
+        );
+
+        if (rtnSiguiente) {
+          personasMap.set(id, { ...previo, ...persona });
+        } else {
+          personasMap.set(id, { ...persona, ...previo });
+        }
+      });
+
+      setPersonasCatalogo(Array.from(personasMap.values()));
       setEmpresasCatalogo(normalizeListResponse(empresasResp).items);
       setTiposCliente(normalizeArrayPayload(tiposResp));
       catalogosCargadosRef.current = true;
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudieron cargar catalogos", "danger");
+    } finally {
+      catalogosLoadingRef.current = false;
     }
-  }, [safeToast]);
+  }, [cargarPersonasCatalogoCompleto, safeToast]);
 
   const cargarClientes = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
-    const normalizedSucursalId = parsePositiveInteger(selectedSucursalId);
     const requestedPage = parsePositiveInteger(options?.page);
     const targetPage = requestedPage || page;
     const force = Boolean(options?.force);
@@ -982,30 +1136,16 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     listAbortRef.current = controller;
 
     try {
+      const estadoQuery = estadoFiltro === "inactivo" ? false : true;
       const resp = await personaService.getClientes({
         page: targetPage,
         limit,
         nombre: debouncedSearch || undefined,
-        id_sucursal: normalizedSucursalId || undefined,
+        estado: estadoQuery,
         signal: controller.signal,
       });
 
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
-
-      const scopeMode = String(resp?.scope_info?.mode ?? "").trim().toLowerCase();
-      if (normalizedSucursalId && scopeMode === "unsupported") {
-        const marker = String(normalizedSucursalId);
-        if (sucursalFallbackNoticeRef.current !== marker) {
-          sucursalFallbackNoticeRef.current = marker;
-          safeToast(
-            "INFO",
-            "El filtro estricto por sucursal requiere la tabla clientes_sucursales en backend.",
-            "info"
-          );
-        }
-      } else if (scopeMode !== "unsupported") {
-        sucursalFallbackNoticeRef.current = "";
-      }
 
       const { items, total: totalResp } = normalizeListResponse(resp);
       const normalizedItems = normalizeClientesPage(items);
@@ -1029,12 +1169,43 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     page,
     limit,
     debouncedSearch,
+    estadoFiltro,
     safeToast,
-    selectedSucursalId,
     normalizeClientesPage,
     setClientesCacheEntry,
     prefetchClientesPage,
   ]);
+
+  const cargarClientesGlobalStats = useCallback(async () => {
+    const reqId = ++globalStatsRequestIdRef.current;
+
+    try {
+      const [activosResp, inactivosResp] = await Promise.all([
+        personaService.getClientes({
+          page: 1,
+          limit: GLOBAL_STATS_FETCH_LIMIT,
+          estado: true,
+        }),
+        personaService.getClientes({
+          page: 1,
+          limit: GLOBAL_STATS_FETCH_LIMIT,
+          estado: false,
+        }),
+      ]);
+
+      if (!mountedRef.current || reqId !== globalStatsRequestIdRef.current) return;
+
+      const activosTotal = Math.max(0, Number(normalizeListResponse(activosResp).total) || 0);
+      const inactivosTotal = Math.max(0, Number(normalizeListResponse(inactivosResp).total) || 0);
+      setGlobalStats({
+        total: activosTotal + inactivosTotal,
+        activas: activosTotal,
+        inactivas: inactivosTotal,
+      });
+    } catch {
+      // Keep current KPI values when the stats refresh fails.
+    }
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1057,6 +1228,10 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   }, []);
 
   useEffect(() => {
+    cargarCatalogos();
+  }, [cargarCatalogos]);
+
+  useEffect(() => {
     if (!showModal) return;
     cargarCatalogos();
   }, [showModal, cargarCatalogos]);
@@ -1064,6 +1239,10 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   useEffect(() => {
     cargarClientes();
   }, [cargarClientes]);
+
+  useEffect(() => {
+    void cargarClientesGlobalStats();
+  }, [cargarClientesGlobalStats]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -1089,6 +1268,11 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   }, [viewMode]);
 
   useEffect(() => {
+    clearClientesListCache();
+    setPage(1);
+  }, [viewMode, clearClientesListCache]);
+
+  useEffect(() => {
     if (!showModal || !editId) return;
     const clienteActual = clientes.find((item) => String(item.id_cliente) === String(editId));
     if (!clienteActual) return;
@@ -1108,26 +1292,32 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const sanitizeForm = () => {
     const personaId = String(form.id_persona ?? "").trim();
     const empresaId = String(form.id_empresa ?? "").trim();
-    const contextSucursalId = parsePositiveInteger(selectedSucursalId);
 
     return {
       id_persona: personaId ? parseIntegerValue(personaId) : null,
       id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
       id_empresa_cliente: empresaId ? parseIntegerValue(empresaId) : null,
-      id_sucursal: contextSucursalId || null,
       estado: Boolean(form.estado),
     };
   };
 
   const validar = () => {
     const currentErrors = {};
-    const payload = sanitizeForm();
+    const isCreateMode = !editId;
     const hasPersona = Boolean(String(form.id_persona ?? "").trim());
     const hasEmpresa = Boolean(String(form.id_empresa ?? "").trim());
-    const usingInlinePersona = clienteOriginType === "persona" && useInlinePersonaCreate;
-    const usingInlineEmpresa = clienteOriginType === "empresa" && useInlineEmpresaCreate;
+    const usingInlinePersona = clienteOriginType === "persona" && (isCreateMode || useInlinePersonaCreate);
+    const usingInlineEmpresa = clienteOriginType === "empresa" && (isCreateMode || useInlineEmpresaCreate);
 
-    if (hasPersona && hasEmpresa) {
+    if (isCreateMode) {
+      if (clienteOriginType === "persona") {
+        if (hasEmpresa) currentErrors.id_empresa = "Este campo no aplica para Cliente Persona";
+        if (hasPersona) currentErrors.id_persona = "En alta nueva no debes seleccionar persona existente.";
+      } else if (clienteOriginType === "empresa") {
+        if (hasPersona) currentErrors.id_persona = "Este campo no aplica para Cliente Empresa";
+        if (hasEmpresa) currentErrors.id_empresa = "En alta nueva no debes seleccionar empresa existente.";
+      }
+    } else if (hasPersona && hasEmpresa) {
       currentErrors.id_persona = "Solo puedes seleccionar una opcion";
       currentErrors.id_empresa = "Solo puedes seleccionar una opcion";
     } else if (clienteOriginType === "persona") {
@@ -1138,21 +1328,19 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       if (hasPersona) currentErrors.id_persona = "Este campo no aplica para Cliente Empresa";
     }
 
-    if (usingInlinePersona) {
+    if (clienteOriginType === "persona" && usingInlinePersona) {
       const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
       if (Object.keys(personaValidationErrors).length > 0) {
-        currentErrors.id_persona = "Completa los datos de la persona nueva antes de continuar";
+        currentErrors.id_persona = "Completa los datos de la persona antes de continuar";
       }
     }
 
-    if (usingInlineEmpresa) {
+    if (clienteOriginType === "empresa" && usingInlineEmpresa) {
       const empresaValidationErrors = validateEmpresaForm(inlineEmpresaForm);
       if (Object.keys(empresaValidationErrors).length > 0) {
-        currentErrors.id_empresa = "Completa los datos de la empresa nueva antes de continuar";
+        currentErrors.id_empresa = "Completa los datos de la empresa antes de continuar";
       }
     }
-
-    void payload;
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
@@ -1161,11 +1349,6 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const guardar = async (event) => {
     event.preventDefault();
     if (!validar() || actionLoading) return;
-    const contextSucursalId = parsePositiveInteger(selectedSucursalId);
-    if (!editId && !contextSucursalId) {
-      safeToast("INFO", "Selecciona una sucursal antes de crear el cliente", "info");
-      return;
-    }
 
     const payloadLimpio = sanitizeForm();
     setActionLoading(true);
@@ -1207,17 +1390,65 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           safeToast("OK", "Cliente actualizado");
         }
       } else {
-        let createResult = null;
-        if (clienteOriginType === "persona" && useInlinePersonaCreate) {
-          try {
-            createResult = await personaService.createClienteAtomico({
-              origen: "persona",
-              persona: buildPersonaPayloadFromForm(inlinePersonaForm),
-              cliente: payloadLimpio,
-            });
-          } catch (atomicError) {
-            if (Number(atomicError?.status) !== 500) throw atomicError;
+        resetDuplicateResolution();
+        const atomicCreatePayload = {
+          origen: clienteOriginType,
+          strict_base_create: true,
+          cliente: payloadLimpio,
+          ...(clienteOriginType === "empresa"
+            ? { empresa: buildEmpresaPayloadFromForm(inlineEmpresaForm) }
+            : { persona: buildPersonaPayloadFromForm(inlinePersonaForm) }),
+        };
 
+        let createResult = null;
+        try {
+          createResult = await personaService.createClienteFull(atomicCreatePayload);
+        } catch (atomicError) {
+          const duplicateBase = resolveDuplicateBaseFromError(atomicError, clienteOriginType);
+          if (duplicateBase) {
+            setDuplicateResolution({
+              visible: true,
+              origin: clienteOriginType,
+              message: duplicateBase.message,
+              suggestedId: duplicateBase.suggestedId,
+              suggestedLabel: duplicateBase.suggestedLabel,
+              requestPayload: atomicCreatePayload,
+            });
+            safeToast("AVISO", duplicateBase.message, "warning");
+            return;
+          }
+
+          const atomicStatus = Number(atomicError?.status);
+          const atomicCode = String(atomicError?.code || atomicError?.data?.code || "").trim().toUpperCase();
+          const allowCompatibilityFallback =
+            atomicStatus === 500
+            || atomicCode === "DB_SCHEMA_ERROR"
+            || atomicCode === "DB_FUNCTION_ERROR"
+            || atomicCode === "INTERNAL_ERROR";
+
+          if (!allowCompatibilityFallback) throw atomicError;
+
+          // Fallback progresivo: mantiene UX de un solo flujo en frontend,
+          // pero usa rutas legacy cuando el backend atomico no puede resolver el esquema.
+          if (clienteOriginType === "empresa") {
+            const empresaCreada = await personaService.createEmpresa(
+              buildEmpresaPayloadFromForm(inlineEmpresaForm),
+              { context: "clientes" }
+            );
+            const idEmpresaFallback = extractPositiveIdFromAny(empresaCreada, [
+              "id_empresa",
+              "empresa_id",
+              "id",
+            ]);
+            if (!idEmpresaFallback) throw atomicError;
+
+            createResult = await personaService.createCliente({
+              ...payloadLimpio,
+              id_persona: null,
+              id_empresa: idEmpresaFallback,
+              id_empresa_cliente: idEmpresaFallback,
+            });
+          } else {
             const personaCreada = await personaService.createPersona(
               buildPersonaPayloadFromForm(inlinePersonaForm),
               { context: "clientes" }
@@ -1235,50 +1466,14 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               id_empresa: null,
               id_empresa_cliente: null,
             });
-            createResult = {
-              ...(createResult || {}),
-              message:
-                createResult?.message ||
-                "Cliente creado con ruta de respaldo.",
-            };
           }
-        } else if (clienteOriginType === "empresa" && useInlineEmpresaCreate) {
-          try {
-            createResult = await personaService.createClienteAtomico({
-              origen: "empresa",
-              empresa: buildEmpresaPayloadFromForm(inlineEmpresaForm),
-              cliente: payloadLimpio,
-            });
-          } catch (atomicError) {
-            if (Number(atomicError?.status) !== 500) throw atomicError;
 
-            const empresaCreada = await personaService.createEmpresa(
-              buildEmpresaPayloadFromForm(inlineEmpresaForm),
-              { context: "clientes" }
-            );
-            const idEmpresaFallback = extractPositiveIdFromAny(empresaCreada, [
-              "id_empresa",
-              "empresa_id",
-              "id",
-            ]);
-            if (!idEmpresaFallback) throw atomicError;
-
-            createResult = await personaService.createCliente({
-              ...payloadLimpio,
-              id_empresa: idEmpresaFallback,
-              id_empresa_cliente: idEmpresaFallback,
-              id_persona: null,
-            });
-            createResult = {
-              ...(createResult || {}),
-              message:
-                createResult?.message ||
-                "Cliente creado con ruta de respaldo.",
-            };
-          }
-        } else {
-          createResult = await personaService.createCliente(payloadLimpio);
+          createResult = {
+            ...(createResult || {}),
+            message: createResult?.message || "Cliente creado con ruta compatible.",
+          };
         }
+
         const backendMessage = String(
           createResult?.message || createResult?.data?.message || ""
         ).trim();
@@ -1296,6 +1491,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       setUseInlineEmpresaCreate(false);
       setInlinePersonaForm(emptyInlinePersonaForm);
       setInlineEmpresaForm(emptyInlineEmpresaForm);
+      resetDuplicateResolution();
       setShowPersonaCreateModal(false);
       setShowEmpresaCreateModal(false);
       clearClientesListCache();
@@ -1305,12 +1501,94 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       } else {
         await cargarClientes({ force: true });
       }
+      await cargarClientesGlobalStats();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo guardar", "danger");
     } finally {
       if (mountedRef.current) setActionLoading(false);
     }
   };
+
+  const handleVincularDuplicado = useCallback(async () => {
+    if (actionLoading) return;
+    if (!duplicateResolution?.visible) return;
+    const suggestedId = parsePositiveInteger(duplicateResolution.suggestedId);
+    if (!suggestedId) {
+      safeToast("ERROR", "No se encontro un registro valido para vincular.", "danger");
+      return;
+    }
+
+    const basePayload = duplicateResolution.requestPayload;
+    if (!basePayload || typeof basePayload !== "object") {
+      safeToast("ERROR", "No se pudo reconstruir la solicitud para vincular.", "danger");
+      return;
+    }
+
+    const origin = duplicateResolution.origin === "empresa" ? "empresa" : "persona";
+    const retryPayload = {
+      ...basePayload,
+      strict_base_create: false,
+      cliente: {
+        ...(basePayload.cliente || {}),
+      },
+    };
+
+    if (origin === "empresa") {
+      retryPayload.cliente.id_empresa = suggestedId;
+      retryPayload.cliente.id_empresa_cliente = suggestedId;
+      retryPayload.cliente.id_persona = null;
+    } else {
+      retryPayload.cliente.id_persona = suggestedId;
+      retryPayload.cliente.id_empresa = null;
+      retryPayload.cliente.id_empresa_cliente = null;
+    }
+
+    setActionLoading(true);
+    try {
+      const createResult = await personaService.createClienteFull(retryPayload);
+      const backendMessage = String(
+        createResult?.message || createResult?.data?.message || ""
+      ).trim();
+      safeToast(
+        createResult?.vinculado ? "INFO" : "OK",
+        backendMessage || "Cliente vinculado correctamente.",
+        createResult?.vinculado ? "info" : "success"
+      );
+
+      closeFormDrawer();
+      setEditId(null);
+      setForm(emptyForm);
+      setUseInlinePersonaCreate(false);
+      setUseInlineEmpresaCreate(false);
+      setInlinePersonaForm(emptyInlinePersonaForm);
+      setInlineEmpresaForm(emptyInlineEmpresaForm);
+      resetDuplicateResolution();
+      setShowPersonaCreateModal(false);
+      setShowEmpresaCreateModal(false);
+      clearClientesListCache();
+      if (page !== 1) {
+        setPage(1);
+        await cargarClientes({ page: 1, force: true });
+      } else {
+        await cargarClientes({ force: true });
+      }
+      await cargarClientesGlobalStats();
+    } catch (error) {
+      safeToast("ERROR", error.message || "No se pudo vincular el registro existente.", "danger");
+    } finally {
+      if (mountedRef.current) setActionLoading(false);
+    }
+  }, [
+    actionLoading,
+    closeFormDrawer,
+    duplicateResolution,
+    safeToast,
+    clearClientesListCache,
+    page,
+    cargarClientes,
+    cargarClientesGlobalStats,
+    resetDuplicateResolution
+  ]);
 
   const handleInlinePersonaModalSave = useCallback(async (_personaPayload, personaFormState) => {
     setInlinePersonaForm(normalizePersonaFormValues(personaFormState));
@@ -1324,9 +1602,292 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     setShowEmpresaCreateModal(false);
   }, []);
 
+  const buildInlinePersonaFormFromCliente = useCallback((cliente) => {
+    const personaId = parsePositiveInteger(cliente?.id_persona);
+    const personaCatalogo = personaId
+      ? (Array.isArray(personasCatalogo)
+          ? personasCatalogo.find((item) => Number(item?.id_persona) === personaId)
+          : null)
+      : null;
+
+    return normalizePersonaFormValues({
+      nombre: firstNonEmptyValue(personaCatalogo?.nombre, cliente?.persona_nombre, cliente?.nombre),
+      apellido: firstNonEmptyValue(personaCatalogo?.apellido, cliente?.persona_apellido, cliente?.apellido),
+      dni: firstNonEmptyValue(
+        personaCatalogo?.dni,
+        cliente?.persona_dni,
+        cliente?.dni,
+        String(cliente?.documento_tipo || "").toLowerCase() === "dni" ? cliente?.documento_valor : ""
+      ),
+      rtn: firstNonEmptyValue(
+        personaCatalogo?.rtn,
+        cliente?.persona_rtn,
+        String(cliente?.documento_tipo || "").toLowerCase() === "rtn" ? cliente?.documento_valor : ""
+      ),
+      genero: firstNonEmptyValue(personaCatalogo?.genero, cliente?.persona_genero, cliente?.genero),
+      fecha_nacimiento: firstNonEmptyValue(
+        personaCatalogo?.fecha_nacimiento,
+        cliente?.persona_fecha_nacimiento,
+        cliente?.fecha_nacimiento
+      ),
+      id_telefono: firstNonEmptyValue(
+        personaCatalogo?.texto_telefono,
+        personaCatalogo?.telefono,
+        personaCatalogo?.telefono_numero,
+        personaCatalogo?.numero_telefono,
+        cliente?.persona_telefono,
+        cliente?.telefono,
+        personaCatalogo?.id_telefono
+      ),
+      id_direccion: firstNonEmptyValue(
+        personaCatalogo?.texto_direccion,
+        personaCatalogo?.direccion,
+        personaCatalogo?.direccion_detalle,
+        cliente?.persona_direccion,
+        cliente?.direccion,
+        personaCatalogo?.id_direccion
+      ),
+      id_correo: firstNonEmptyValue(
+        personaCatalogo?.texto_correo,
+        personaCatalogo?.direccion_correo,
+        personaCatalogo?.correo,
+        personaCatalogo?.email,
+        cliente?.persona_correo,
+        cliente?.correo,
+        personaCatalogo?.id_correo
+      ),
+    });
+  }, [personasCatalogo]);
+
+  const buildInlineEmpresaFormFromCliente = useCallback((cliente) => {
+    const empresaId =
+      parsePositiveInteger(cliente?.id_empresa_cliente) || parsePositiveInteger(cliente?.id_empresa);
+    const empresaCatalogo = empresaId
+      ? (Array.isArray(empresasCatalogo)
+          ? empresasCatalogo.find((item) => Number(item?.id_empresa) === empresaId)
+          : null)
+      : null;
+
+    return normalizeEmpresaFormValues({
+      rtn: firstNonEmptyValue(
+        empresaCatalogo?.rtn,
+        cliente?.empresa_rtn,
+        cliente?.rtn,
+        String(cliente?.documento_tipo || "").toLowerCase() === "rtn" ? cliente?.documento_valor : ""
+      ),
+      nombre_empresa: firstNonEmptyValue(
+        empresaCatalogo?.nombre_empresa,
+        cliente?.nombre_empresa,
+        cliente?.empresa_nombre,
+        cliente?.nombre_principal
+      ),
+      id_telefono: firstNonEmptyValue(
+        empresaCatalogo?.texto_telefono,
+        empresaCatalogo?.telefono,
+        empresaCatalogo?.telefono_numero,
+        empresaCatalogo?.numero_telefono,
+        cliente?.empresa_telefono,
+        cliente?.telefono,
+        empresaCatalogo?.id_telefono
+      ),
+      id_direccion: firstNonEmptyValue(
+        empresaCatalogo?.texto_direccion,
+        empresaCatalogo?.direccion,
+        empresaCatalogo?.direccion_detalle,
+        cliente?.empresa_direccion,
+        cliente?.direccion,
+        empresaCatalogo?.id_direccion
+      ),
+      id_correo: firstNonEmptyValue(
+        empresaCatalogo?.texto_correo,
+        empresaCatalogo?.direccion_correo,
+        empresaCatalogo?.correo,
+        empresaCatalogo?.email,
+        cliente?.empresa_correo,
+        cliente?.correo,
+        empresaCatalogo?.id_correo
+      ),
+      estado: empresaCatalogo?.estado === undefined ? isActivo(cliente) : Boolean(empresaCatalogo?.estado),
+    });
+  }, [empresasCatalogo]);
+
+  const handleInlinePersonaEditSave = useCallback(
+    async (_personaPayload, personaFormState) => {
+      if (!editId) return;
+      const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId));
+      const personaId = parsePositiveInteger(form.id_persona) || parsePositiveInteger(clienteActual?.id_persona);
+      if (!personaId) {
+        safeToast("ERROR", "No se encontro la persona vinculada para actualizar.", "danger");
+        return;
+      }
+
+      setInlinePersonaSaving(true);
+      try {
+        await personaService.updatePersona(personaId, buildPersonaPayloadFromForm(personaFormState));
+        const normalizedPersona = normalizePersonaFormValues(personaFormState);
+        setInlinePersonaForm(normalizedPersona);
+        setPersonasCatalogo((prev) => {
+          const source = Array.isArray(prev) ? prev : [];
+          const idKey = String(personaId).trim();
+          const index = source.findIndex((item) => String(item?.id_persona ?? "").trim() === idKey);
+          const current = index >= 0 ? source[index] : { id_persona: personaId };
+          const rtnComplemento = String(normalizedPersona?.rtn ?? "").trim();
+          const telefono = String(normalizedPersona?.id_telefono ?? "").trim();
+          const direccion = String(normalizedPersona?.id_direccion ?? "").trim();
+          const correo = String(normalizedPersona?.id_correo ?? "").trim();
+
+          const patched = {
+            ...current,
+            id_persona: current?.id_persona ?? personaId,
+            nombre: String(normalizedPersona?.nombre ?? "").trim(),
+            apellido: String(normalizedPersona?.apellido ?? "").trim(),
+            dni: String(normalizedPersona?.dni ?? "").trim(),
+            genero: String(normalizedPersona?.genero ?? "").trim(),
+            fecha_nacimiento: String(normalizedPersona?.fecha_nacimiento ?? "").trim(),
+            rtn: rtnComplemento,
+            RTN: rtnComplemento,
+            persona_rtn: rtnComplemento,
+            persona_rtn_complemento: rtnComplemento,
+            rtn_persona: rtnComplemento,
+            rtn_complemento: rtnComplemento,
+            complemento_rtn: rtnComplemento,
+            numero_rtn: rtnComplemento,
+            texto_telefono: telefono,
+            telefono,
+            telefono_numero: telefono,
+            numero_telefono: telefono,
+            texto_direccion: direccion,
+            direccion,
+            direccion_detalle: direccion,
+            texto_correo: correo,
+            direccion_correo: correo,
+            correo,
+            email: correo,
+          };
+
+          if (index >= 0) {
+            const next = [...source];
+            next[index] = patched;
+            return next;
+          }
+
+          return [patched, ...source];
+        });
+        setClientes((prev) =>
+          (Array.isArray(prev) ? prev : []).map((item) => {
+            if (String(item?.id_cliente ?? "") !== String(editId)) return item;
+            return {
+              ...item,
+              id_persona: item?.id_persona ?? personaId,
+              persona_dni: String(normalizedPersona?.dni ?? "").trim(),
+              persona_genero: String(normalizedPersona?.genero ?? "").trim(),
+              persona_rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              persona_rtn_complemento: String(normalizedPersona?.rtn ?? "").trim(),
+              rtn_persona: String(normalizedPersona?.rtn ?? "").trim(),
+              rtn_complemento: String(normalizedPersona?.rtn ?? "").trim(),
+              complemento_rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              numero_rtn: String(normalizedPersona?.rtn ?? "").trim(),
+              telefono: String(normalizedPersona?.id_telefono ?? "").trim(),
+              persona_telefono: String(normalizedPersona?.id_telefono ?? "").trim(),
+              direccion: String(normalizedPersona?.id_direccion ?? "").trim(),
+              persona_direccion: String(normalizedPersona?.id_direccion ?? "").trim(),
+              correo: String(normalizedPersona?.id_correo ?? "").trim(),
+              persona_correo: String(normalizedPersona?.id_correo ?? "").trim(),
+            };
+          })
+        );
+        setShowPersonaEditModal(false);
+        safeToast("OK", "Datos de persona actualizados");
+        catalogosCargadosRef.current = false;
+        await cargarCatalogos();
+        clearClientesListCache();
+        await cargarClientes({ force: true });
+      } catch (error) {
+        safeToast("ERROR", error.message || "No se pudo actualizar la persona.", "danger");
+      } finally {
+        if (mountedRef.current) setInlinePersonaSaving(false);
+      }
+    },
+    [editId, clientes, form.id_persona, safeToast, clearClientesListCache, cargarClientes, cargarCatalogos]
+  );
+
+  const handleInlineEmpresaEditSave = useCallback(
+    async (_empresaPayload, empresaFormState) => {
+      if (!editId) return;
+      const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId));
+      const empresaId =
+        parsePositiveInteger(form.id_empresa)
+        || parsePositiveInteger(clienteActual?.id_empresa_cliente)
+        || parsePositiveInteger(clienteActual?.id_empresa);
+      if (!empresaId) {
+        safeToast("ERROR", "No se encontro la empresa vinculada para actualizar.", "danger");
+        return;
+      }
+
+      setInlineEmpresaSaving(true);
+      try {
+        await personaService.updateEmpresa(empresaId, buildEmpresaPayloadFromForm(empresaFormState));
+        setInlineEmpresaForm(normalizeEmpresaFormValues(empresaFormState));
+        setShowEmpresaEditModal(false);
+        safeToast("OK", "Datos de empresa actualizados");
+        clearClientesListCache();
+        await cargarClientes({ force: true });
+      } catch (error) {
+        safeToast("ERROR", error.message || "No se pudo actualizar la empresa.", "danger");
+      } finally {
+        if (mountedRef.current) setInlineEmpresaSaving(false);
+      }
+    },
+    [editId, clientes, form.id_empresa, safeToast, clearClientesListCache, cargarClientes]
+  );
+
+  const openPersonaEditModal = useCallback(() => {
+    if (!editId) return;
+    const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId));
+    if (!clienteActual) return;
+    setInlinePersonaForm(buildInlinePersonaFormFromCliente(clienteActual));
+    setShowPersonaEditModal(true);
+  }, [editId, clientes, buildInlinePersonaFormFromCliente]);
+
+  const openEmpresaEditModal = useCallback(() => {
+    if (!editId) return;
+    const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId));
+    if (!clienteActual) return;
+    setInlineEmpresaForm(buildInlineEmpresaFormFromCliente(clienteActual));
+    setShowEmpresaEditModal(true);
+  }, [editId, clientes, buildInlineEmpresaFormFromCliente]);
+
+  const handleNextCreateStep = useCallback(() => {
+    setCreateStep(2);
+    resetDuplicateResolution();
+    if (clienteOriginType === "persona") {
+      setUseInlineEmpresaCreate(false);
+      setInlineEmpresaForm(emptyInlineEmpresaForm);
+      setShowEmpresaCreateModal(false);
+      setUseInlinePersonaCreate(true);
+      setShowPersonaCreateModal(true);
+      setForm((state) => ({ ...state, id_persona: "", id_empresa: "" }));
+    } else {
+      setUseInlinePersonaCreate(false);
+      setInlinePersonaForm(emptyInlinePersonaForm);
+      setShowPersonaCreateModal(false);
+      setUseInlineEmpresaCreate(true);
+      setShowEmpresaCreateModal(true);
+      setForm((state) => ({ ...state, id_empresa: "", id_persona: "" }));
+    }
+  }, [clienteOriginType, resetDuplicateResolution]);
+
+  const handleBackToCreateStepOne = useCallback(() => {
+    setCreateStep(1);
+    setShowPersonaCreateModal(false);
+    setShowEmpresaCreateModal(false);
+    resetDuplicateResolution();
+  }, [resetDuplicateResolution]);
+
   const iniciarEdicion = (cliente) => {
     setFiltersOpen(false);
     setEditId(cliente.id_cliente);
+    setCreateStep(2);
     setErrors({});
     setUseInlinePersonaCreate(false);
     setUseInlineEmpresaCreate(false);
@@ -1334,9 +1895,18 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     setInlineEmpresaForm(emptyInlineEmpresaForm);
     setShowPersonaCreateModal(false);
     setShowEmpresaCreateModal(false);
+    setShowPersonaEditModal(false);
+    setShowEmpresaEditModal(false);
+    resetDuplicateResolution();
     const formValues = buildFormFromCliente(cliente);
+    const nextOrigin = formValues.id_empresa ? "empresa" : "persona";
     setForm(formValues);
-    setClienteOriginType(formValues.id_empresa ? "empresa" : "persona");
+    setClienteOriginType(nextOrigin);
+    if (nextOrigin === "empresa") {
+      setInlineEmpresaForm(buildInlineEmpresaFormFromCliente(cliente));
+    } else {
+      setInlinePersonaForm(buildInlinePersonaFormFromCliente(cliente));
+    }
     setShowModal(true);
   };
 
@@ -1344,6 +1914,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     if (actionLoading || deletingId) return;
     setFiltersOpen(false);
     setEditId(null);
+    setCreateStep(1);
     setErrors({});
     setForm(emptyForm);
     setClienteOriginType("persona");
@@ -1353,27 +1924,36 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     setInlineEmpresaForm(emptyInlineEmpresaForm);
     setShowPersonaCreateModal(false);
     setShowEmpresaCreateModal(false);
+    setShowPersonaEditModal(false);
+    setShowEmpresaEditModal(false);
+    resetDuplicateResolution();
     setShowModal(true);
   };
 
   const handleOriginTypeChange = (nextType) => {
     if (nextType !== "persona" && nextType !== "empresa") return;
     setClienteOriginType(nextType);
+    resetDuplicateResolution();
     setForm((state) =>
       nextType === "persona"
         ? { ...state, id_empresa: "" }
         : { ...state, id_persona: "" }
     );
+    const isCreateMode = !editId;
     if (nextType === "persona") {
       setUseInlineEmpresaCreate(false);
       setInlineEmpresaForm(emptyInlineEmpresaForm);
-      setShowPersonaCreateModal(false);
       setShowEmpresaCreateModal(false);
+      setShowEmpresaEditModal(false);
+      setUseInlinePersonaCreate(isCreateMode ? true : false);
+      setShowPersonaCreateModal(isCreateMode && createStep === 2);
     } else {
       setUseInlinePersonaCreate(false);
       setInlinePersonaForm(emptyInlinePersonaForm);
       setShowPersonaCreateModal(false);
-      setShowEmpresaCreateModal(false);
+      setShowPersonaEditModal(false);
+      setUseInlineEmpresaCreate(isCreateMode ? true : false);
+      setShowEmpresaCreateModal(isCreateMode && createStep === 2);
     }
     setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
   };
@@ -1383,18 +1963,20 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       show: true,
       idToDelete: cliente?.id_cliente ?? null,
       nombre: firstNonEmptyValue(cliente?.nombre_principal, getClientePrincipalNombre(cliente)),
+      estadoActual: isActivo(cliente),
     });
 
   const closeConfirmDelete = () =>
-    setConfirmModal({ show: false, idToDelete: null, nombre: "" });
+    setConfirmModal({ show: false, idToDelete: null, nombre: "", estadoActual: true });
 
   const eliminarConfirmado = async () => {
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
+    const shouldActivate = confirmModal.estadoActual === false;
 
     setDeletingId(id);
     try {
-      await personaService.deleteCliente(id);
+      await personaService.updateCliente(id, { estado: shouldActivate ? true : false });
 
       if (String(editId) === String(id)) {
         closeFormDrawer();
@@ -1410,10 +1992,11 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         await cargarClientes({ force: true });
       }
 
-      safeToast("OK", "Cliente eliminado");
+      safeToast("OK", shouldActivate ? "Cliente activado" : "Cliente inactivado");
       closeConfirmDelete();
+      await cargarClientesGlobalStats();
     } catch (error) {
-      safeToast("ERROR", error.message || "No se pudo eliminar", "danger");
+      safeToast("ERROR", error.message || (shouldActivate ? "No se pudo activar" : "No se pudo inactivar"), "danger");
       clearClientesListCache();
       await cargarClientes({ force: true });
     } finally {
@@ -1464,6 +2047,10 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
     return filtered;
   }, [clientes, search, estadoFiltro, sortBy, getClientePrincipalNombre]);
+  const pageWindowLabel = useMemo(
+    () => buildPageRangeLabel({ page, limit, total, currentLength: clientesFiltrados.length }),
+    [clientesFiltrados.length, limit, page, total]
+  );
 
   const predictiveSuggestions = useMemo(() => {
     const searchTerm = normalizeSearchText(search).toLowerCase();
@@ -1543,33 +2130,70 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     committedSearch: debouncedSearch,
     onSearchUpdate: handleSearchUpdate,
     predictiveSuggestions,
-    recentStorageKey: `clientesRecentSearchesV1::sucursal:${parsePositiveInteger(selectedSucursalId) || "none"}`,
+    recentStorageKey: "clientesRecentSearchesV2",
   });
 
-  const stats = useMemo(() => {
-    const totalFiltradas = clientesFiltrados.length;
-    const activas = clientesFiltrados.filter((item) => isActivo(item)).length;
-    return { total: totalFiltradas, activas, inactivas: totalFiltradas - activas };
-  }, [clientesFiltrados]);
+  const stats = useMemo(
+    () => ({
+      total: globalStats.total,
+      activas: globalStats.activas,
+      inactivas: globalStats.inactivas,
+    }),
+    [globalStats]
+  );
 
   const hasActiveFilters = useMemo(
-    () => search.trim() !== "" || estadoFiltro !== "todos" || sortBy !== "recientes",
+    () => search.trim() !== "" || estadoFiltro !== "activo" || sortBy !== "recientes",
     [search, estadoFiltro, sortBy]
   );
 
   const drawerMode = editId ? "edit" : "create";
+  const isCreateFlow = drawerMode === "create";
+  const isCreateStepOne = isCreateFlow && createStep === 1;
+  const isCreateStepTwo = !isCreateFlow || createStep === 2;
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
-  const personaDisabled = actionLoading || clienteOriginType === "empresa";
-  const empresaDisabled = actionLoading || clienteOriginType === "persona";
+  const _personaDisabled = actionLoading || clienteOriginType === "empresa";
+  const _empresaDisabled = actionLoading || clienteOriginType === "persona";
   const formOriginLabel = clienteOriginType === "empresa" ? "Cliente Empresa" : "Cliente Persona";
-  const todayDate = new Date().toISOString().split("T")[0];
   const isInlinePersonaFlow = drawerMode === "create" && clienteOriginType === "persona" && useInlinePersonaCreate;
   const isInlineEmpresaFlow = drawerMode === "create" && clienteOriginType === "empresa" && useInlineEmpresaCreate;
-  const createSubtitle = isInlinePersonaFlow
-    ? "Paso 1 de 2: completa la persona. Luego define los datos del cliente y guarda."
-    : isInlineEmpresaFlow
-      ? "Paso 1 de 2: completa la empresa. Luego define los datos del cliente y guarda."
-      : "Paso 1: elige Persona o Empresa. Paso 2: selecciona o crea el registro base y completa el cliente.";
+  const createSubtitle = isCreateStepOne
+    ? "Paso 1 de 2: elige si el cliente sera Persona o Empresa."
+    : isInlinePersonaFlow
+      ? "Paso 2 de 2: completa la persona y finaliza el cliente."
+      : isInlineEmpresaFlow
+        ? "Paso 2 de 2: completa la empresa y finaliza el cliente."
+        : "Paso 2 de 2: completa el registro base y guarda el cliente.";
+  const clienteEditando = useMemo(
+    () => (drawerMode === "edit"
+      ? clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? "")) || null
+      : null),
+    [drawerMode, clientes, editId]
+  );
+  const editPersonaSummary = useMemo(() => {
+    if (!clienteEditando) return emptyInlinePersonaForm;
+
+    const hasInlinePersonaData = Boolean(
+      String(inlinePersonaForm?.nombre ?? "").trim()
+      || String(inlinePersonaForm?.apellido ?? "").trim()
+      || String(inlinePersonaForm?.dni ?? "").trim()
+      || String(inlinePersonaForm?.rtn ?? "").trim()
+    );
+    if (hasInlinePersonaData) return inlinePersonaForm;
+    return buildInlinePersonaFormFromCliente(clienteEditando);
+  }, [clienteEditando, inlinePersonaForm, buildInlinePersonaFormFromCliente]);
+  const editEmpresaSummary = useMemo(() => {
+    if (!clienteEditando) return emptyInlineEmpresaForm;
+
+    const hasInlineEmpresaData = Boolean(
+      String(inlineEmpresaForm?.nombre_empresa ?? "").trim()
+      || String(inlineEmpresaForm?.rtn ?? "").trim()
+      || String(inlineEmpresaForm?.id_correo ?? "").trim()
+      || String(inlineEmpresaForm?.id_telefono ?? "").trim()
+    );
+    if (hasInlineEmpresaData) return inlineEmpresaForm;
+    return buildInlineEmpresaFormFromCliente(clienteEditando);
+  }, [clienteEditando, inlineEmpresaForm, buildInlineEmpresaFormFromCliente]);
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -1581,13 +2205,13 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const closeFiltersDrawer = () => setFiltersOpen(false);
 
   const applyFiltersDrawer = () => {
-    setEstadoFiltro(filtersDraft.estadoFiltro || "todos");
+    setEstadoFiltro(filtersDraft.estadoFiltro === "inactivo" ? "inactivo" : "activo");
     setSortBy(filtersDraft.sortBy || "recientes");
     setFiltersOpen(false);
   };
 
   const clearVisualFilters = () => {
-    setEstadoFiltro("todos");
+    setEstadoFiltro("activo");
     setSortBy("recientes");
     setFiltersDraft(createInitialFiltersDraft());
   };
@@ -1648,6 +2272,22 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           <div className="inv-prod-results-meta personas-page__results-meta">
             <span>{loading ? "Cargando clientes..." : `${clientesFiltrados.length} resultados`}</span>
             <span>{loading ? "" : `Total: ${total}`}</span>
+            <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                role="switch"
+                checked={estadoFiltro === "inactivo"}
+                onChange={(event) => {
+                  const nextEstado = event.target.checked ? "inactivo" : "activo";
+                  setEstadoFiltro(nextEstado);
+                  setFiltersDraft((state) => ({ ...state, estadoFiltro: nextEstado }));
+                  setPage((prev) => (prev === 1 ? prev : 1));
+                }}
+                aria-label="Ver inactivos"
+              />
+              <span className="form-check-label">Ver inactivos</span>
+            </label>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
           </div>
 
@@ -1678,7 +2318,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                   </button>
                 </div>
               </div>
-            ) : viewMode === "table" ? (
+            ) : isTableView ? (
               <EntityTable>
                 <table className="table personas-page__table">
                   <thead>
@@ -1758,13 +2398,15 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
                               <button
                                 type="button"
-                                className="inv-catpro-action danger inv-catpro-action-compact"
+                                className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
                                 onClick={() => openConfirmDelete(cliente)}
-                                title="Eliminar"
+                                title={isActive ? "Inactivar" : "Activar"}
                                 disabled={actionLoading || deleting}
                               >
-                                <i className={`bi ${deleting ? "bi-hourglass-split" : "bi-trash"}`} />
-                                <span className="inv-catpro-action-label">{deleting ? "Eliminando..." : "Eliminar"}</span>
+                                <i className={`bi ${deleting ? "bi-hourglass-split" : (isActive ? "bi-slash-circle" : "bi-check-circle")}`} />
+                                <span className="inv-catpro-action-label">
+                                  {deleting ? (isActive ? "Inactivando..." : "Activando...") : (isActive ? "Inactivar" : "Activar")}
+                                </span>
                               </button>
                             </div>
                           </td>
@@ -1785,34 +2427,60 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                     onOpenDelete={openConfirmDelete}
                     actionLoading={actionLoading}
                     deletingId={deletingId}
+                    personaRtnCatalog={personaRtnById.get(String(cliente?.id_persona ?? "").trim()) || ""}
                   />
                 ))}
               </div>
             )}
           </div>
 
-          <div className="personas-page__pagination">
-            <button
-              type="button"
-              className="btn btn-outline-secondary"
-              disabled={page === 1 || loading || actionLoading || !!deletingId}
-              onClick={() => setPage((prev) => prev - 1)}
-            >
-              <i className="bi bi-chevron-left me-1" />
-              Anterior
-            </button>
-            <span>
-              Pagina {page} de {totalPages}
-            </span>
-            <button
-              type="button"
-              className="btn btn-outline-secondary"
-              disabled={page >= totalPages || loading || actionLoading || !!deletingId}
-              onClick={() => setPage((prev) => prev + 1)}
-            >
-              Siguiente
-              <i className="bi bi-chevron-right ms-1" />
-            </button>
+          <div className="inv-warehouse-moves__pagination inv-ins-pagination">
+            <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
+              {`Mostrando ${pageWindowLabel} de ${total}`}
+            </div>
+
+            <div className="inv-warehouse-moves__pagination-controls">
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1 || loading || actionLoading || !!deletingId}
+                aria-label="Pagina anterior"
+              >
+                <i className="bi bi-chevron-left" aria-hidden="true" />
+                <span>Anterior</span>
+              </button>
+
+              <div className="inv-warehouse-moves__pagination-pages">
+                {visiblePageNumbers.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    className={`inv-warehouse-moves__page-number ${pageNumber === page ? "is-active" : ""}`.trim()}
+                    onClick={() => setPage(pageNumber)}
+                    aria-label={`Ir a la pagina ${pageNumber}`}
+                    aria-current={pageNumber === page ? "page" : undefined}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+              </div>
+
+              <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">
+                {`Pagina ${page} de ${totalPages}`}
+              </div>
+
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page >= totalPages || loading || actionLoading || !!deletingId}
+                aria-label="Pagina siguiente"
+              >
+                <span>Siguiente</span>
+                <i className="bi bi-chevron-right" aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1844,7 +2512,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         onClose={closeFiltersDrawer}
         onApply={applyFiltersDrawer}
         onClear={clearVisualFilters}
-        allLabel="Todos"
+        allowAll={false}
         activeLabel="Activos"
         inactiveLabel="Inactivos"
       />
@@ -1890,282 +2558,412 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         </div>
 
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
-          <div className="clientes-modal__origin-helper">
-            <div
-              className="personas-page__view-toggle clientes-modal__origin-toggle"
-              role="tablist"
-              aria-label="Tipo de cliente"
-            >
-              <button
-                type="button"
-                className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "persona" ? "is-active" : ""}`}
-                onClick={() => handleOriginTypeChange("persona")}
-                disabled={actionLoading}
-                aria-pressed={clienteOriginType === "persona"}
-                title="Cliente Persona"
-              >
-                Cliente Persona
-              </button>
-              <button
-                type="button"
-                className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "empresa" ? "is-active" : ""}`}
-                onClick={() => handleOriginTypeChange("empresa")}
-                disabled={actionLoading}
-                aria-pressed={clienteOriginType === "empresa"}
-                title="Cliente Empresa"
-              >
-                Cliente Empresa
-              </button>
-            </div>
+          {isCreateStepOne ? (
+            <>
+              <div className="clientes-modal__origin-helper">
+                <div
+                  className="personas-page__view-toggle clientes-modal__origin-toggle"
+                  role="tablist"
+                  aria-label="Tipo de cliente"
+                >
+                  <button
+                    type="button"
+                    className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "persona" ? "is-active" : ""}`}
+                    onClick={() => handleOriginTypeChange("persona")}
+                    disabled={actionLoading || !isCreateFlow}
+                    aria-pressed={clienteOriginType === "persona"}
+                    title="Cliente Persona"
+                  >
+                    Cliente Persona
+                  </button>
+                  <button
+                    type="button"
+                    className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "empresa" ? "is-active" : ""}`}
+                    onClick={() => handleOriginTypeChange("empresa")}
+                    disabled={actionLoading || !isCreateFlow}
+                    aria-pressed={clienteOriginType === "empresa"}
+                    title="Cliente Empresa"
+                  >
+                    Cliente Empresa
+                  </button>
+                </div>
 
-            <div className="clientes-modal__origin-row">
-              <span
-                className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}
-              >
-                {formOriginLabel}
-              </span>
-              <span className="clientes-modal__origin-caption">
-                {drawerMode === "edit" ? "Origen actual del cliente" : "Paso 1: define el origen del cliente"}
-              </span>
-            </div>
-            <p className="clientes-modal__origin-text">
-              Solo puedes trabajar con una opcion: Cliente Persona o Cliente Empresa.
-            </p>
-          </div>
+                <div className="clientes-modal__origin-row">
+                  <span
+                    className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}
+                  >
+                    {formOriginLabel}
+                  </span>
+                  <span className="clientes-modal__origin-caption">Paso 1: define el origen del cliente</span>
+                </div>
+                <p className="clientes-modal__origin-text">
+                  Primero selecciona si el cliente sera Persona o Empresa y luego presiona Siguiente.
+                </p>
+              </div>
 
-          <div className="row g-3 crud-modal__grid">
-            {clienteOriginType === "persona" ? (
-              <div className="col-12">
-                <SmartSelectEntity
-                  className="clientes-modal__entity-block"
-                  label="Persona"
-                  showToggle={drawerMode === "create"}
-                  isInlineCreate={drawerMode === "create" && useInlinePersonaCreate}
-                  onToggleInline={() => {
-                    setUseInlinePersonaCreate((prev) => {
-                      const next = !prev;
-                      if (next) {
-                        setShowPersonaCreateModal(true);
-                        setForm((state) => ({ ...state, id_persona: "" }));
-                      } else {
-                        setInlinePersonaForm(emptyInlinePersonaForm);
-                        setShowPersonaCreateModal(false);
-                      }
-                      return next;
-                    });
-                    setErrors((state) => ({ ...state, id_persona: undefined }));
-                  }}
-                  toggleVariant="dual"
-                  toggleCreateLabel="Crear persona nueva"
-                  toggleExistingLabel="Usar persona existente"
-                  toggleDisabled={actionLoading}
-                  selector={
-                    <Select
-                      inputId="cliente-persona-select"
-                      className={`clientes-persona-select ${errors.id_persona ? "is-invalid" : ""}`}
-                      classNamePrefix="clientes-persona-select"
-                      placeholder="Buscar y seleccionar persona"
-                      isSearchable
-                      isClearable
-                      options={personaSelectOptions}
-                      value={personaSelectValue}
-                      onChange={(option) => {
-                        setClienteOriginType("persona");
-                        setForm((state) => ({
-                          ...state,
-                          id_persona: option?.value ? String(option.value) : "",
-                          id_empresa: "",
-                        }));
-                        setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
-                      }}
-                      styles={personaSelectStyles}
-                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                      menuPosition="fixed"
-                      isDisabled={personaDisabled || useInlinePersonaCreate}
-                    />
-                  }
-                  error={errors.id_persona}
-                  helperText='Si necesitas registrar una empresa, cambia arriba a "Cliente Empresa".'
-                  inlineContent={
-                    <div className="smart-select-entity__summary clientes-inline-summary">
-                      <div className="clientes-inline-summary__text">
-                        {String(inlinePersonaForm.nombre ?? "").trim()
-                          ? "Persona lista. Ahora completa tipo de cliente, fecha de ingreso y puntos."
-                          : "Primero completa los datos de la persona para continuar."}
+              <div className="d-flex gap-2 mt-4 crud-modal__footer">
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+                  onClick={closeFormDrawer}
+                  disabled={actionLoading || !!deletingId}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
+                  onClick={handleNextCreateStep}
+                  disabled={actionLoading || !!deletingId}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="clientes-modal__origin-helper">
+                <div className="clientes-modal__origin-row">
+                  <span
+                    className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}
+                  >
+                    {formOriginLabel}
+                  </span>
+                  <span className="clientes-modal__origin-caption">
+                    {isCreateStepTwo && isCreateFlow ? "Paso 2: completa datos y finaliza el cliente" : "Origen actual del cliente"}
+                  </span>
+                </div>
+                <p className="clientes-modal__origin-text">
+                  {isCreateFlow
+                    ? "Completa una sola vez los datos base y el sistema creara persona/empresa + cliente automaticamente."
+                    : "Edita los datos del cliente y tambien los datos de la persona o empresa vinculada."}
+                </p>
+                <div
+                  className="personas-page__view-toggle clientes-modal__origin-toggle"
+                  role="tablist"
+                  aria-label="Tipo de cliente"
+                >
+                  <button
+                    type="button"
+                    className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "persona" ? "is-active" : ""}`}
+                    onClick={() => handleOriginTypeChange("persona")}
+                    disabled={actionLoading}
+                    aria-pressed={clienteOriginType === "persona"}
+                    title="Cliente Persona"
+                  >
+                    Cliente Persona
+                  </button>
+                  <button
+                    type="button"
+                    className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "empresa" ? "is-active" : ""}`}
+                    onClick={() => handleOriginTypeChange("empresa")}
+                    disabled={actionLoading}
+                    aria-pressed={clienteOriginType === "empresa"}
+                    title="Cliente Empresa"
+                  >
+                    Cliente Empresa
+                  </button>
+                </div>
+              </div>
+
+              <div className="row g-3 crud-modal__grid">
+                {clienteOriginType === "persona" ? (
+                  <div className="col-12">
+                    {isCreateFlow ? (
+                      <div className="smart-select-entity__summary clientes-inline-summary clientes-modal__entity-block">
+                        <div className="clientes-inline-summary__head">
+                          <span
+                            className={`clientes-inline-summary__status ${String(inlinePersonaForm.nombre ?? "").trim() ? "is-ready" : "is-pending"}`}
+                          >
+                            <i className={`bi ${String(inlinePersonaForm.nombre ?? "").trim() ? "bi-check2-circle" : "bi-info-circle"}`} />
+                            {String(inlinePersonaForm.nombre ?? "").trim() ? "Persona lista" : "Pendiente"}
+                          </span>
+                          <span className="clientes-inline-summary__kind">Base Persona</span>
+                        </div>
+                        <div className="clientes-inline-summary__text">
+                          {String(inlinePersonaForm.nombre ?? "").trim()
+                            ? "Excelente. Ya puedes completar y guardar el cliente."
+                            : "Primero completa los datos de la persona para continuar."}
+                        </div>
+                        <div className="clientes-inline-summary__meta-grid">
+                          <div className="clientes-inline-summary__meta-item">
+                            <span>Nombre</span>
+                            <strong>
+                              {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
+                              {String(inlinePersonaForm.apellido ?? "").trim()}
+                            </strong>
+                          </div>
+                          <div className="clientes-inline-summary__meta-item">
+                            <span>Documento</span>
+                            <strong>DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}</strong>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-sm clientes-inline-summary__action"
+                          onClick={() => setShowPersonaCreateModal(true)}
+                          disabled={actionLoading}
+                        >
+                          <i className="bi bi-pencil-square me-2" />
+                          {String(inlinePersonaForm.nombre ?? "").trim()
+                            ? "Editar formulario de persona"
+                            : "Abrir formulario de persona"}
+                        </button>
                       </div>
-                      <div className="clientes-inline-summary__chips">
-                        <span className="clientes-inline-summary__chip">
-                          {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
-                          {String(inlinePersonaForm.apellido ?? "").trim()}
-                        </span>
-                        <span className="clientes-inline-summary__chip">
-                          DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
-                        </span>
+                    ) : (
+                      <div className="smart-select-entity__summary clientes-inline-summary clientes-modal__entity-block">
+                        <div className="clientes-inline-summary__head">
+                          <span className="clientes-inline-summary__status is-ready">
+                            <i className="bi bi-check2-circle" />
+                            Persona vinculada
+                          </span>
+                          <span className="clientes-inline-summary__kind">Base Persona</span>
+                        </div>
+                        <div className="clientes-inline-summary__text">
+                          Edita los datos de la persona vinculada cuando lo necesites.
+                        </div>
+                        <div className="clientes-inline-summary__meta-grid">
+                          <div className="clientes-inline-summary__meta-item">
+                            <span>Nombre</span>
+                            <strong>
+                              {toDisplayValue(
+                                `${String(editPersonaSummary?.nombre ?? "").trim()} ${String(editPersonaSummary?.apellido ?? "").trim()}`.trim(),
+                                "Sin nombre"
+                              )}
+                            </strong>
+                          </div>
+                          <div className="clientes-inline-summary__meta-item">
+                            <span>Documento</span>
+                            <strong>DNI: {toDisplayValue(editPersonaSummary?.dni, "N/D")}</strong>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-sm clientes-inline-summary__action"
+                          onClick={openPersonaEditModal}
+                          disabled={actionLoading}
+                        >
+                          <i className="bi bi-pencil-square me-2" />
+                          Editar datos de persona
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        className="btn btn-sm clientes-inline-summary__action"
-                        onClick={() => setShowPersonaCreateModal(true)}
-                        disabled={actionLoading}
-                      >
-                        {String(inlinePersonaForm.nombre ?? "").trim()
-                          ? "Revisar persona creada"
-                          : "Abrir formulario de persona"}
-                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="col-12">
+                    {isCreateFlow ? (
+                      <div className="smart-select-entity__summary clientes-inline-summary clientes-modal__entity-block">
+                        <div className="clientes-inline-summary__head">
+                          <span
+                            className={`clientes-inline-summary__status ${String(inlineEmpresaForm.nombre_empresa ?? "").trim() ? "is-ready" : "is-pending"}`}
+                          >
+                            <i className={`bi ${String(inlineEmpresaForm.nombre_empresa ?? "").trim() ? "bi-check2-circle" : "bi-info-circle"}`} />
+                            {String(inlineEmpresaForm.nombre_empresa ?? "").trim() ? "Empresa lista" : "Pendiente"}
+                          </span>
+                          <span className="clientes-inline-summary__kind">Base Empresa</span>
+                        </div>
+                        <div className="clientes-inline-summary__text">
+                          {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
+                            ? "Excelente. Ya puedes completar y guardar el cliente."
+                            : "Primero completa los datos de la empresa para continuar."}
+                        </div>
+                        <div className="clientes-inline-summary__meta-grid">
+                          <div className="clientes-inline-summary__meta-item">
+                            <span>Empresa</span>
+                            <strong>{String(inlineEmpresaForm.nombre_empresa ?? "").trim() || "Sin nombre de empresa"}</strong>
+                          </div>
+                          <div className="clientes-inline-summary__meta-item">
+                            <span>Documento</span>
+                            <strong>RTN: {toDisplayValue(inlineEmpresaForm.rtn, "N/D")}</strong>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-sm clientes-inline-summary__action"
+                          onClick={() => setShowEmpresaCreateModal(true)}
+                          disabled={actionLoading}
+                        >
+                          <i className="bi bi-pencil-square me-2" />
+                          {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
+                            ? "Editar formulario de empresa"
+                            : "Abrir formulario de empresa"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="smart-select-entity__summary clientes-inline-summary clientes-modal__entity-block">
+                        <div className="clientes-inline-summary__head">
+                          <span className="clientes-inline-summary__status is-ready">
+                            <i className="bi bi-check2-circle" />
+                            Empresa vinculada
+                          </span>
+                          <span className="clientes-inline-summary__kind">Base Empresa</span>
+                        </div>
+                        <div className="clientes-inline-summary__text">
+                          Edita los datos de la empresa vinculada cuando lo necesites.
+                        </div>
+                        <div className="clientes-inline-summary__meta-grid">
+                          <div className="clientes-inline-summary__meta-item">
+                            <span>Empresa</span>
+                            <strong>{toDisplayValue(editEmpresaSummary?.nombre_empresa, "Sin nombre de empresa")}</strong>
+                          </div>
+                          <div className="clientes-inline-summary__meta-item">
+                            <span>Documento</span>
+                            <strong>RTN: {toDisplayValue(editEmpresaSummary?.rtn, "N/D")}</strong>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-sm clientes-inline-summary__action"
+                          onClick={openEmpresaEditModal}
+                          disabled={actionLoading}
+                        >
+                          <i className="bi bi-pencil-square me-2" />
+                          Editar datos de empresa
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isCreateFlow && duplicateResolution.visible ? (
+                  <div className="col-12">
+                    <div className="alert alert-warning mb-0">
+                      <div className="fw-semibold mb-1">Ya existe registro base</div>
+                      <div className="small">
+                        {duplicateResolution.message || "Ya existe un registro con el mismo documento y no se creara duplicado."}
+                      </div>
+                      {duplicateResolution.suggestedLabel ? (
+                        <div className="small mt-1">
+                          Sugerido: <strong>{duplicateResolution.suggestedLabel}</strong>
+                        </div>
+                      ) : null}
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-dark"
+                          onClick={handleVincularDuplicado}
+                          disabled={actionLoading}
+                        >
+                          Vincular existente
+                        </button>
+                      </div>
                     </div>
-                  }
-                />
-              </div>
-            ) : (
-              <div className="col-12">
-                <SmartSelectEntity
-                  className="clientes-modal__entity-block"
-                  label="Empresa"
-                  showToggle={drawerMode === "create"}
-                  isInlineCreate={drawerMode === "create" && useInlineEmpresaCreate}
-                  onToggleInline={() => {
-                    setUseInlineEmpresaCreate((prev) => {
-                      const next = !prev;
-                      if (next) {
-                        setShowEmpresaCreateModal(true);
-                        setForm((state) => ({ ...state, id_empresa: "" }));
-                      } else {
-                        setInlineEmpresaForm(emptyInlineEmpresaForm);
-                        setShowEmpresaCreateModal(false);
-                      }
-                      return next;
-                    });
-                    setErrors((state) => ({ ...state, id_empresa: undefined }));
-                  }}
-                  toggleVariant="dual"
-                  toggleCreateLabel="Crear empresa nueva"
-                  toggleExistingLabel="Usar empresa existente"
-                  toggleDisabled={actionLoading}
-                  selector={
-                    <AsyncSelect
-                      inputId="cliente-empresa-select"
-                      className={`clientes-persona-select ${errors.id_empresa ? "is-invalid" : ""}`}
-                      classNamePrefix="clientes-persona-select"
-                      placeholder="Buscar y seleccionar empresa"
-                      cacheOptions
-                      defaultOptions={empresaDefaultOptions}
-                      loadOptions={loadEmpresaOptions}
-                      isClearable
-                      value={empresaSelectValue}
-                      onChange={(option) => {
-                        setClienteOriginType("empresa");
-                        setForm((state) => ({
-                          ...state,
-                          id_empresa: option?.value ? String(option.value) : "",
-                          id_persona: "",
-                        }));
-                        setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
-                      }}
-                      styles={empresaSelectStyles}
-                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                      menuPosition="fixed"
-                      isDisabled={empresaDisabled || useInlineEmpresaCreate}
-                      noOptionsMessage={() => "No se encontraron resultados"}
-                      loadingMessage={() => "Buscando..."}
-                    />
-                  }
-                  error={errors.id_empresa}
-                  helperText='Si necesitas registrar una persona, cambia arriba a "Cliente Persona".'
-                  inlineContent={
-                    <div className="smart-select-entity__summary clientes-inline-summary">
-                      <div className="clientes-inline-summary__text">
-                        {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
-                          ? "Empresa lista. Ahora completa tipo de cliente, fecha de ingreso y puntos."
-                          : "Primero completa los datos de la empresa para continuar."}
-                      </div>
-                      <div className="clientes-inline-summary__chips">
-                        <span className="clientes-inline-summary__chip">
-                          {String(inlineEmpresaForm.nombre_empresa ?? "").trim() || "Sin nombre de empresa"}
-                        </span>
-                        <span className="clientes-inline-summary__chip">
-                          RTN: {toDisplayValue(inlineEmpresaForm.rtn, "N/D")}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-sm clientes-inline-summary__action"
-                        onClick={() => setShowEmpresaCreateModal(true)}
-                        disabled={actionLoading}
-                      >
-                        {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
-                          ? "Revisar empresa creada"
-                          : "Abrir formulario de empresa"}
-                      </button>
+                  </div>
+                ) : null}
+
+                {/* Sprint 5: tipo_cliente, fecha_ingreso y puntos se gestionan en backend/BD */}
+
+                {drawerMode === "edit" ? (
+                  <div className="col-12">
+                    <div className="form-check form-switch m-0">
+                      <input
+                        className="form-check-input"
+                        type="checkbox"
+                        id="cliente_estado"
+                        checked={Boolean(form.estado)}
+                        onChange={(event) => setForm((state) => ({ ...state, estado: event.target.checked }))}
+                      />
+                      <label className="form-check-label text-light text-opacity-75" htmlFor="cliente_estado">
+                        Registro activo
+                      </label>
                     </div>
-                  }
-                />
+                  </div>
+                ) : null}
               </div>
-            )}
 
-            {/* Sprint 5: tipo_cliente, fecha_ingreso y puntos se gestionan en backend/BD */}
-
-            <div className="col-12">
-              <div className="form-check form-switch m-0">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="cliente_estado"
-                  checked={Boolean(form.estado)}
-                  onChange={(event) => setForm((state) => ({ ...state, estado: event.target.checked }))}
-                />
-                <label className="form-check-label text-light text-opacity-75" htmlFor="cliente_estado">
-                  Registro activo
-                </label>
+              <div className="d-flex gap-2 mt-4 crud-modal__footer">
+                {isCreateFlow ? (
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+                    onClick={handleBackToCreateStepOne}
+                    disabled={actionLoading || !!deletingId}
+                  >
+                    Anterior
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+                    onClick={closeFormDrawer}
+                    disabled={actionLoading || !!deletingId}
+                  >
+                    Cancelar
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
+                  disabled={actionLoading || !!deletingId}
+                >
+                  {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear cliente" : "Guardar cambios"}
+                </button>
               </div>
-            </div>
-          </div>
-
-          <div className="d-flex gap-2 mt-4 crud-modal__footer">
-            <button
-              type="button"
-              className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
-              onClick={closeFormDrawer}
-              disabled={actionLoading || !!deletingId}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
-              disabled={actionLoading || !!deletingId}
-            >
-              {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear cliente" : "Guardar cambios"}
-            </button>
-          </div>
+            </>
+          )}
         </form>
       </aside>
 
       <PersonaInlineCreateModal
         show={
-          showModal &&
-          drawerMode === "create" &&
-          clienteOriginType === "persona" &&
-          useInlinePersonaCreate &&
-          showPersonaCreateModal
+          showModal
+          && (
+            (
+              drawerMode === "create"
+              && clienteOriginType === "persona"
+              && useInlinePersonaCreate
+              && showPersonaCreateModal
+            )
+            || (drawerMode === "edit" && showPersonaEditModal)
+          )
         }
         initialForm={inlinePersonaForm}
-        onClose={() => setShowPersonaCreateModal(false)}
-        onSave={handleInlinePersonaModalSave}
+        title={drawerMode === "edit" ? "Editar persona vinculada" : "Nueva persona"}
+        subtitle={
+          drawerMode === "edit"
+            ? "Actualiza los datos de la persona y guarda los cambios."
+            : "Completa los campos y guarda los cambios."
+        }
+        saving={inlinePersonaSaving}
+        onClose={() => {
+          if (drawerMode === "edit") {
+            setShowPersonaEditModal(false);
+            return;
+          }
+          setShowPersonaCreateModal(false);
+        }}
+        onSave={drawerMode === "edit" ? handleInlinePersonaEditSave : handleInlinePersonaModalSave}
       />
 
       <EmpresaInlineCreateModal
         show={
-          showModal &&
-          drawerMode === "create" &&
-          clienteOriginType === "empresa" &&
-          useInlineEmpresaCreate &&
-          showEmpresaCreateModal
+          showModal
+          && (
+            (
+              drawerMode === "create"
+              && clienteOriginType === "empresa"
+              && useInlineEmpresaCreate
+              && showEmpresaCreateModal
+            )
+            || (drawerMode === "edit" && showEmpresaEditModal)
+          )
         }
         initialForm={inlineEmpresaForm}
-        title="Crear empresa para este cliente"
-        subtitle="Completa este paso y luego regresa para terminar el registro del cliente."
-        onClose={() => setShowEmpresaCreateModal(false)}
-        onSave={handleInlineEmpresaModalSave}
+        title={drawerMode === "edit" ? "Editar empresa vinculada" : "Crear empresa para este cliente"}
+        subtitle={
+          drawerMode === "edit"
+            ? "Actualiza los datos de la empresa y guarda los cambios."
+            : "Completa este paso y luego regresa para terminar el registro del cliente."
+        }
+        saving={inlineEmpresaSaving}
+        onClose={() => {
+          if (drawerMode === "edit") {
+            setShowEmpresaEditModal(false);
+            return;
+          }
+          setShowEmpresaCreateModal(false);
+        }}
+        onSave={drawerMode === "edit" ? handleInlineEmpresaEditSave : handleInlineEmpresaModalSave}
       />
 
       {confirmModal.show && (
@@ -2176,8 +2974,14 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                 <i className="bi bi-exclamation-triangle-fill" />
               </div>
               <div>
-                <div className="inv-pro-confirm-title">CONFIRMAR ELIMINACION</div>
-                <div className="inv-pro-confirm-sub">Esta accion es permanente</div>
+                <div className="inv-pro-confirm-title">
+                  {confirmModal.estadoActual ? "CONFIRMAR INACTIVACION" : "CONFIRMAR ACTIVACION"}
+                </div>
+                <div className="inv-pro-confirm-sub">
+                  {confirmModal.estadoActual
+                    ? "El cliente se ocultara del listado activo"
+                    : "El cliente volvera al listado activo"}
+                </div>
               </div>
               <button type="button" className="inv-pro-confirm-close" onClick={closeConfirmDelete} aria-label="Cerrar">
                 <i className="bi bi-x-lg" />
@@ -2185,7 +2989,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
             </div>
 
             <div className="inv-pro-confirm-body">
-              <div className="inv-pro-confirm-question">Deseas eliminar este cliente?</div>
+              <div className="inv-pro-confirm-question">
+                {confirmModal.estadoActual ? "Deseas inactivar este cliente?" : "Deseas activar este cliente?"}
+              </div>
               <div className="inv-pro-confirm-name">
                 <i className="bi bi-person-lines-fill" />
                 <span>{confirmModal.nombre || "Cliente seleccionado"}</span>
@@ -2197,8 +3003,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                 Cancelar
               </button>
               <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
-                <i className="bi bi-trash3" />
-                <span>Eliminar</span>
+                <i className={`bi ${confirmModal.estadoActual ? "bi-slash-circle" : "bi-check-circle"}`} />
+                <span>{confirmModal.estadoActual ? "Inactivar" : "Activar"}</span>
               </button>
             </div>
           </div>

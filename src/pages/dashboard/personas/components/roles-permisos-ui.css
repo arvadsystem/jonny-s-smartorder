@@ -1011,3 +1011,141 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Personas modals aligned to Inventario modal system */
+.roles-preview-backdrop {
+  background: rgba(23, 8, 10, 0.24) !important;
+  backdrop-filter: blur(4px) saturate(118%) !important;
+  z-index: 2310 !important;
+}
+
+.roles-preview-modal {
+  background: linear-gradient(180deg, #ffffff, #fbfaf3) !important;
+  border: 1px solid rgba(237, 235, 179, 0.75) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 22px 46px rgba(var(--c-shadow-rgb), 0.22) !important;
+}
+
+.roles-preview-header {
+  background: rgba(255, 255, 255, 0.34) !important;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.7) !important;
+  backdrop-filter: blur(10px) saturate(135%);
+  -webkit-backdrop-filter: blur(10px) saturate(135%);
+  padding: 0.85rem 0.95rem !important;
+}
+
+.roles-preview-kicker {
+  color: rgba(82, 44, 34, 0.78) !important;
+  font-size: 0.68rem !important;
+}
+
+.roles-preview-meta {
+  color: rgba(82, 44, 34, 0.72) !important;
+  font-size: 0.76rem !important;
+}
+
+.roles-preview-tab {
+  border: 1px solid rgba(157, 150, 112, 0.36) !important;
+  color: #522c22 !important;
+  min-height: 40px !important;
+  padding: 0.5rem 0.8rem !important;
+}
+
+.roles-preview-tab:hover {
+  background: #faf7ef !important;
+  border-color: rgba(158, 105, 61, 0.52) !important;
+}
+
+.roles-preview-tab.is-active {
+  background: #f4ede1 !important;
+  border-color: rgba(158, 105, 61, 0.64) !important;
+  box-shadow: none !important;
+  color: #3e271e !important;
+}
+
+.roles-preview-tab__dot {
+  background: rgba(82, 44, 34, 0.28) !important;
+  height: 8px !important;
+  width: 8px !important;
+}
+
+.roles-preview-tab.is-active .roles-preview-tab__dot {
+  background: rgba(82, 44, 34, 0.8) !important;
+}
+
+.roles-preview-tab__label {
+  font-size: 0.84rem !important;
+}
+
+.roles-preview-tab__count {
+  background: rgba(82, 44, 34, 0.1) !important;
+  color: #654333 !important;
+  font-size: 0.7rem !important;
+  min-width: 28px !important;
+  padding: 0.15rem 0.45rem !important;
+}
+
+.roles-preview-tab.is-active .roles-preview-tab__count {
+  background: rgba(82, 44, 34, 0.14) !important;
+  color: #3e271e !important;
+}
+
+.roles-preview-close {
+  border: 1px solid rgba(157, 150, 112, 0.38) !important;
+  border-radius: 10px !important;
+  color: #522c22 !important;
+  height: 34px !important;
+  width: 34px !important;
+}
+
+.roles-preview-body {
+  gap: 0.72rem !important;
+  padding: 0.9rem !important;
+}
+
+.roles-preview-group {
+  border: 1px solid rgba(157, 150, 112, 0.3) !important;
+  border-radius: 12px !important;
+}
+
+.roles-preview-group__head {
+  background: #fff !important;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.26) !important;
+  color: #522c22 !important;
+  padding: 0.68rem 0.8rem !important;
+}
+
+.roles-preview-group__head span {
+  background: rgba(82, 44, 34, 0.1) !important;
+  color: #654333 !important;
+  font-size: 0.68rem !important;
+  min-width: 28px !important;
+  padding: 0.15rem 0.45rem !important;
+}
+
+.roles-preview-group__list {
+  gap: 0.48rem !important;
+  padding: 0.68rem !important;
+}
+
+.roles-preview-permiso {
+  border: 1px solid rgba(157, 150, 112, 0.26) !important;
+  border-radius: 10px !important;
+  padding: 0.62rem 0.72rem !important;
+}
+
+.roles-preview-permiso__label {
+  color: #2f1d17 !important;
+  font-size: 0.84rem !important;
+}
+
+.roles-preview-permiso__tech {
+  color: rgba(82, 44, 34, 0.64) !important;
+  font-size: 0.66rem !important;
+}
+
+.roles-preview-footer {
+  border-top: 1px solid rgba(237, 235, 179, 0.7) !important;
+  padding: 0.74rem 0.95rem 0.84rem !important;
+  background: rgba(255, 255, 255, 0.34) !important;
+}

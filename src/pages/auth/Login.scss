@@ -290,6 +290,29 @@ $input-border: rgba(255, 255, 255, 0.14);
             transition: color 0.2s;
             &:hover { color: rgba(255, 255, 255, 0.7); }
           }
+
+          &.input-wrap--select {
+            .field-icon {
+              z-index: 3;
+            }
+
+            .auth-gender-select {
+              width: 100%;
+            }
+
+            .auth-gender-select__value-container {
+              cursor: pointer;
+            }
+
+            .auth-gender-select__input-container {
+              margin: 0;
+              padding: 0;
+            }
+
+            .auth-gender-select__menu {
+              z-index: 40;
+            }
+          }
         }
       }
 
@@ -345,6 +368,31 @@ $input-border: rgba(255, 255, 255, 0.14);
         background: rgba(40, 167, 69, 0.12);
         border: 1px solid rgba(40, 167, 69, 0.3);
         color: #6fcf97;
+      }
+
+      .btn-resend-verification {
+        width: 100%;
+        padding: 0.7rem 0.95rem;
+        background: rgba(212, 165, 116, 0.1);
+        border: 1px solid rgba(212, 165, 116, 0.35);
+        color: rgba(240, 200, 150, 0.95);
+        border-radius: 10px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:hover:not(:disabled) {
+          background: rgba(212, 165, 116, 0.2);
+          border-color: rgba(240, 200, 150, 0.55);
+          color: #f6d9b6;
+        }
+
+        &:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
       }
     }
   }

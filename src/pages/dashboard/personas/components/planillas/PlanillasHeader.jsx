@@ -9,7 +9,11 @@
 
 export default function PlanillasHeader({
   periodo = '',
+  tipoPeriodo = 'mensual',
+  quincena = '1',
   onPeriodoChange,
+  onTipoPeriodoChange,
+  onQuincenaChange,
   selectedPlanilla = null,
   onGenerar,
   onRecalcular,
@@ -46,6 +50,10 @@ export default function PlanillasHeader({
     selectedPlanilla?.codigo_planilla ||
     selectedPlanilla?.correlativo ||
     (selectedPlanilla?.id_planilla ? `PLA-${selectedPlanilla.id_planilla}` : 'Sin planilla');
+  const periodoLabel =
+    String(tipoPeriodo).toLowerCase() === 'quincenal'
+      ? `${periodo || 'Sin periodo'} · ${String(quincena) === '2' ? 'Q2 (16-fin)' : 'Q1 (1-15)'}`
+      : `${periodo || 'Sin periodo'} · Mensual`;
   const hasActionButtons = Boolean(
     canExport || canGenerar || canRecalcular || canCerrar || canPagar || canAnular
   );
@@ -61,7 +69,7 @@ export default function PlanillasHeader({
               selectedPlanilla?.sucursal ||
               selectedPlanilla?.sucursal_nombre ||
               'Selecciona sucursal'}{' '}
-            · {periodo || 'Sin periodo'}
+            · {periodoLabel}
           </p>
         </div>
         <span className={`planillas-badge planillas-badge--${estadoRaw || 'na'}`}>{estadoLabel}</span>
@@ -82,6 +90,34 @@ export default function PlanillasHeader({
             />
           </div>
         </div>
+        <div className="planillas-header__field">
+          <label htmlFor="planillas-tipo-periodo">Tipo</label>
+          <select
+            id="planillas-tipo-periodo"
+            className="form-select"
+            value={tipoPeriodo}
+            onChange={(event) => onTipoPeriodoChange?.(event.target.value)}
+            disabled={loadingAction}
+          >
+            <option value="mensual">Mensual</option>
+            <option value="quincenal">Quincenal</option>
+          </select>
+        </div>
+        {String(tipoPeriodo).toLowerCase() === 'quincenal' ? (
+          <div className="planillas-header__field">
+            <label htmlFor="planillas-quincena">Quincena</label>
+            <select
+              id="planillas-quincena"
+              className="form-select"
+              value={quincena}
+              onChange={(event) => onQuincenaChange?.(event.target.value)}
+              disabled={loadingAction}
+            >
+              <option value="1">1 (1-15)</option>
+              <option value="2">2 (16-fin de mes)</option>
+            </select>
+          </div>
+        ) : null}
       </div>
 
       {hasActionButtons ? (

@@ -1,19 +1,18 @@
-.crud-modal.empleados-modal .crud-modal__header {
+﻿.crud-modal.empleados-modal .crud-modal__header {
   display: flex;
   align-items: flex-start;
-  gap: 0.7rem;
+  gap: 0.6rem;
   padding-top: 1rem;
-  padding-bottom: 0.9rem;
+  padding-bottom: 0.85rem;
   overflow: visible;
 }
 
-.crud-modal.empleados-modal .crud-modal__header-copy {
+.crud-modal.empleados-modal .crud-modal__header-copy:not(.crud-modal__header-copy--insumo) {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.14rem;
   flex: 1 1 auto;
   min-width: 0;
-  padding-right: 0.35rem;
 }
 
 .crud-modal.empleados-modal .crud-modal__title,
@@ -24,8 +23,8 @@
 
 .crud-modal.empleados-modal .crud-modal__subtitle {
   max-width: none;
-  line-height: 1.3;
-  font-size: 0.9rem;
+  line-height: 1.25;
+  font-size: 0.8rem;
 }
 
 .crud-modal.empleados-modal .crud-modal__close.inv-prod-drawer-close {
@@ -38,31 +37,31 @@
 }
 
 .empleados-modal .empleados-select__control {
-  min-height: 2.85rem;
-  border-radius: 0.9rem;
+  min-height: 38px;
+  border-radius: 10px;
 }
 
 .empleados-modal .empleados-select__value-container {
-  padding-top: 0.3rem;
-  padding-bottom: 0.3rem;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
 }
 
 .empleados-modal .empleados-select__indicator-separator {
-  background-color: rgba(191, 172, 161, 0.65);
+  background-color: rgba(157, 150, 112, 0.42);
 }
 
 .empleados-modal .empleados-select__menu {
   margin-top: 4px;
-  box-shadow: 0 14px 30px rgba(48, 30, 20, 0.16);
+  box-shadow: 0 14px 30px rgba(var(--c-shadow-rgb), 0.16);
 }
 
 .empleados-modal .empleados-select__menu-list {
   max-height: 240px;
-  padding: 0.35rem 0;
+  padding: 0.3rem 0;
 }
 
 .empleados-modal .empleados-select__option {
-  font-size: 0.94rem;
+  font-size: 0.9rem;
   line-height: 1.3;
 }
 
@@ -74,15 +73,15 @@
 .empleados-modal .empleados-modal__entity-block .smart-select-entity__head {
   flex-direction: column;
   align-items: stretch;
-  gap: 0.42rem;
-  margin-bottom: 0.5rem !important;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem !important;
 }
 
 .empleados-modal .empleados-modal__entity-block .smart-select-entity__label {
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.76rem;
+  font-weight: 800;
   letter-spacing: 0.01em;
-  color: rgba(86, 58, 43, 0.9) !important;
+  color: rgba(82, 44, 34, 0.78) !important;
 }
 
 .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-group {
@@ -90,41 +89,38 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: stretch;
   width: 100%;
-  gap: 0.34rem;
-  padding: 0.28rem;
-  border-radius: 14px;
-  border: 1px solid rgba(188, 166, 145, 0.55);
-  background: linear-gradient(180deg, rgba(255, 252, 247, 0.95) 0%, rgba(249, 242, 233, 0.9) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66);
+  gap: 0.3rem;
+  padding: 0.26rem;
+  border-radius: 10px;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  background: #fff;
 }
 
 .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-option {
   min-width: 0;
-  min-height: 40px;
-  border: 1px solid transparent;
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.82);
-  color: #624d3f;
-  font-size: 0.9rem;
+  min-height: 36px;
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  border-radius: 9px;
+  background: #fff;
+  color: #522c22;
+  font-size: 0.84rem;
   font-weight: 700;
   line-height: 1.15;
   text-align: center;
   white-space: normal;
-  padding: 0.42rem 0.5rem;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.62);
+  padding: 0.34rem 0.48rem;
 }
 
 .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-option:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(173, 141, 111, 0.35);
+  background: #faf7ef;
+  border-color: rgba(158, 105, 61, 0.52);
   color: #3f3026;
 }
 
 .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-option.is-active {
-  background: linear-gradient(135deg, #a4601f 0%, #bc7631 100%);
-  border-color: rgba(122, 72, 29, 0.58);
-  color: #fff;
-  box-shadow: 0 8px 18px rgba(149, 90, 36, 0.3);
+  background: #f4ede1;
+  border-color: rgba(158, 105, 61, 0.65);
+  color: #3e271e;
 }
 
 .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-option:disabled {
@@ -132,110 +128,96 @@
 }
 
 .empleados-modal .empleados-modal__entity-block .smart-select-entity__helper {
-  margin-top: 0.5rem;
-  padding-left: 0.15rem;
-  font-size: 0.83rem;
-  color: rgba(102, 76, 59, 0.84);
+  margin-top: 0.45rem;
+  padding-left: 0.1rem;
+  font-size: 0.78rem;
+  color: rgba(82, 44, 34, 0.78);
 }
 
 .empleados-inline-summary {
   display: grid;
-  gap: 0.62rem;
+  gap: 0.55rem;
 }
 
 .empleados-inline-summary__text {
-  color: rgba(78, 57, 44, 0.9);
-  font-size: 0.86rem;
-  line-height: 1.42;
+  color: rgba(82, 44, 34, 0.86);
+  font-size: 0.8rem;
+  line-height: 1.35;
 }
 
 .empleados-inline-summary__chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.42rem;
+  gap: 0.4rem;
 }
 
 .empleados-inline-summary__chip {
   display: inline-flex;
   align-items: center;
-  min-height: 30px;
-  padding: 0.28rem 0.72rem;
-  border-radius: 10px;
-  border: 1px solid rgba(188, 171, 153, 0.5);
-  background: rgba(255, 255, 255, 0.86);
+  min-height: 28px;
+  padding: 0.24rem 0.62rem;
+  border-radius: 9px;
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  background: #fff;
   color: #2e2620;
-  font-size: 0.79rem;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
 .empleados-inline-summary__action {
   justify-self: start;
-  min-height: 38px;
-  padding: 0.45rem 0.9rem;
+  min-height: 36px;
+  padding: 0.42rem 0.82rem;
   border-radius: 10px;
-  border: 1px solid rgba(133, 113, 97, 0.58);
-  color: #5a483c;
-  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  color: #522c22;
+  background: #fff;
   font-weight: 700;
 }
 
 .empleados-inline-summary__action:hover:not(:disabled) {
-  border-color: rgba(127, 87, 55, 0.62);
-  background: #fff;
+  border-color: rgba(158, 105, 61, 0.58);
+  background: #faf7ef;
   color: #3f3129;
 }
 
 @media (max-width: 767.98px) {
   .crud-modal.empleados-modal .crud-modal__header {
-    gap: 0.55rem;
-    padding-top: 0.92rem;
-    padding-bottom: 0.8rem;
-  }
-
-  .crud-modal.empleados-modal .crud-modal__title {
-    font-size: 1.22rem;
-    line-height: 1.12;
+    gap: 0.5rem;
+    padding-top: 0.8rem;
+    padding-bottom: 0.78rem;
   }
 
   .crud-modal.empleados-modal .crud-modal__subtitle {
-    font-size: 0.86rem;
+    font-size: 0.76rem;
   }
 
   .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-group {
-    gap: 0.26rem;
-    padding: 0.24rem;
+    gap: 0.24rem;
+    padding: 0.22rem;
   }
 
   .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-option {
-    min-height: 38px;
-    font-size: 0.84rem;
+    min-height: 34px;
+    font-size: 0.8rem;
   }
 }
 
 @media (max-width: 575.98px) {
   .crud-modal.empleados-modal .crud-modal__header {
-    padding-top: 0.84rem;
-    padding-bottom: 0.72rem;
-  }
-
-  .crud-modal.empleados-modal .crud-modal__title {
-    font-size: 1.14rem;
-  }
-
-  .crud-modal.empleados-modal .crud-modal__subtitle {
-    font-size: 0.84rem;
-    line-height: 1.3;
+    padding-top: 0.74rem;
+    padding-bottom: 0.7rem;
   }
 
   .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-group {
     grid-template-columns: 1fr;
-    gap: 0.22rem;
+    gap: 0.2rem;
   }
 
   .empleados-modal .empleados-modal__entity-block .smart-select-entity__toggle-option {
-    font-size: 0.84rem;
-    min-height: 36px;
+    font-size: 0.8rem;
+    min-height: 34px;
   }
 
   .empleados-inline-summary__action {
@@ -243,3 +225,4 @@
     justify-self: stretch;
   }
 }
+

@@ -1,5 +1,5 @@
-.usuarios-modal {
-  color: #111;
+﻿.usuarios-modal {
+  color: #17080a;
 }
 
 .usuarios-modal .usuarios-modal__header {
@@ -12,56 +12,61 @@
 }
 
 .usuarios-modal .usuarios-modal__title {
-  font-size: 1.35rem;
-  font-weight: 700;
-  line-height: 1.15;
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.18;
 }
 
 .usuarios-modal .usuarios-modal__subtitle {
-  margin-top: 0.25rem;
-  opacity: 0.82;
+  margin-top: 0;
+  opacity: 1;
+  font-size: 0.8rem;
 }
 
 .usuarios-modal .usuarios-modal__close {
-  width: 2.3rem;
-  height: 2.3rem;
-  border-radius: 999px;
-  font-size: 1rem;
-  border: 1px solid var(--bs-border-color-translucent);
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 14px;
+  font-size: 1.02rem;
+  border: 1px solid rgba(157, 150, 112, 0.38);
+  background: rgba(255, 255, 255, 0.84);
+  color: #522c22;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .usuarios-modal .usuarios-modal__body {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.16);
   border-radius: 0;
-  padding: 0.35rem 1rem 1rem;
+  padding: 0.9rem;
   overflow-y: auto;
 }
 
 .usuarios-modal .usuarios-modal__grid {
-  row-gap: 0.35rem;
-  padding-top: 0.5rem;
+  row-gap: 0.32rem;
+  padding-top: 0.3rem;
 }
 
 .usuarios-modal .usuarios-modal__section {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
 }
 
 .usuarios-modal .usuarios-modal__section--first {
-  margin-top: 0.35rem;
+  margin-top: 0.24rem;
 }
 
 .usuarios-modal .usuarios-modal__label {
-  margin-bottom: 0.45rem;
-  color: #000;
-  font-weight: 600;
+  margin-bottom: 0.34rem;
+  color: rgba(82, 44, 34, 0.78);
+  font-weight: 800;
+  font-size: 0.79rem;
+  letter-spacing: 0.12px;
 }
 
 .usuarios-modal .usuarios-modal__input {
-  min-height: 2.85rem;
-  border-radius: 0.9rem;
+  min-height: 38px;
+  border-radius: 10px;
 }
 
 .usuarios-modal .usuarios-empleado-select {
@@ -69,31 +74,31 @@
 }
 
 .usuarios-modal .usuarios-empleado-select__control {
-  min-height: 2.85rem;
-  border-radius: 0.9rem;
+  min-height: 38px;
+  border-radius: 10px;
 }
 
 .usuarios-modal .usuarios-empleado-select__value-container {
-  padding-top: 0.3rem;
-  padding-bottom: 0.3rem;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
 }
 
 .usuarios-modal .usuarios-empleado-select__indicator-separator {
-  background-color: rgba(191, 172, 161, 0.65);
+  background-color: rgba(157, 150, 112, 0.42);
 }
 
 .usuarios-modal .usuarios-empleado-select__menu {
   margin-top: 4px;
-  box-shadow: 0 14px 30px rgba(48, 30, 20, 0.16);
+  box-shadow: 0 14px 30px rgba(var(--c-shadow-rgb), 0.16);
 }
 
 .usuarios-modal .usuarios-empleado-select__menu-list {
   max-height: 240px;
-  padding: 0.35rem 0;
+  padding: 0.3rem 0;
 }
 
 .usuarios-modal .usuarios-empleado-select__option {
-  font-size: 0.94rem;
+  font-size: 0.9rem;
   line-height: 1.3;
 }
 
@@ -103,15 +108,15 @@
 }
 
 .usuarios-modal .usuarios-modal__roles-box {
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid var(--bs-border-color-translucent);
-  border-radius: 1rem;
+  background: #fff;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
+  gap: 0.55rem;
   max-height: 220px;
   overflow-y: auto;
-  padding: 0.8rem;
+  padding: 0.7rem;
 }
 
 .usuarios-modal .usuarios-modal__roles-box.is-invalid {
@@ -121,43 +126,43 @@
 .usuarios-modal .usuarios-modal__role-chip {
   align-items: center;
   background: #fff;
-  border: 1px solid rgba(217, 208, 188, 0.95);
+  border: 1px solid rgba(157, 150, 112, 0.36);
   border-radius: 999px;
   color: #4a372c;
   cursor: pointer;
   display: inline-flex;
-  gap: 0.55rem;
-  min-height: 42px;
-  padding: 0.55rem 0.9rem;
+  gap: 0.5rem;
+  min-height: 38px;
+  padding: 0.45rem 0.75rem;
   transition: all 0.18s ease;
 }
 
 .usuarios-modal .usuarios-modal__role-chip input {
-  accent-color: #b96d24;
+  accent-color: #9f5c23;
   margin: 0;
 }
 
 .usuarios-modal .usuarios-modal__role-chip span {
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   font-weight: 700;
 }
 
 .usuarios-modal .usuarios-modal__role-chip.is-active {
-  background: linear-gradient(145deg, #9f5c23, #c97c2d);
-  border-color: rgba(159, 92, 35, 0.74);
-  box-shadow: 0 10px 18px rgba(163, 101, 44, 0.16);
-  color: #fff;
+  background: #f4ede1;
+  border-color: rgba(158, 105, 61, 0.64);
+  color: #3e271e;
+  box-shadow: none;
 }
 
 .usuarios-modal .usuarios-modal__role-chip.is-disabled {
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.72;
 }
 
 .usuarios-modal .usuarios-modal__roles-hint {
-  color: #7b6a58;
-  font-size: 0.78rem;
-  margin-top: 0.45rem;
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.74rem;
+  margin-top: 0.42rem;
 }
 
 .usuarios-modal .usuarios-modal__password-group .usuarios-modal__input {
@@ -166,25 +171,25 @@
 }
 
 .usuarios-modal .usuarios-modal__password-toggle {
-  min-width: 2.85rem;
-  border-top-right-radius: 0.9rem;
-  border-bottom-right-radius: 0.9rem;
+  min-width: 2.5rem;
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
 }
 
 .usuarios-modal .usuarios-modal__password-rules {
-  background: var(--bs-body-bg);
+  background: transparent;
 }
 
 .usuarios-modal .usuarios-modal__switch-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.8rem;
+  gap: 0.7rem;
 }
 
 .usuarios-modal .usuarios-modal__switch-label {
   margin: 0;
-  color: #1d1d1d;
+  color: rgba(82, 44, 34, 0.78);
 }
 
 .usuarios-modal .usuarios-modal__switch {
@@ -201,11 +206,11 @@
 }
 
 .usuarios-modal .usuarios-modal__switch-track {
-  width: 58px;
-  height: 32px;
+  width: 52px;
+  height: 30px;
   border-radius: 999px;
-  border: 1px solid var(--bs-border-color-translucent);
-  background: var(--bs-secondary-bg);
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  background: #aeb4ab;
   display: inline-flex;
   align-items: center;
   padding: 3px;
@@ -213,8 +218,8 @@
 }
 
 .usuarios-modal .usuarios-modal__switch-thumb {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   background: #fff;
   display: inline-flex;
@@ -226,19 +231,19 @@
 }
 
 .usuarios-modal .usuarios-modal__switch-thumb i {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   opacity: 0;
   color: var(--bs-success);
   transition: opacity 0.2s ease;
 }
 
 .usuarios-modal .usuarios-modal__switch-input:checked + .usuarios-modal__switch-track {
-  background: var(--bs-success);
-  border-color: var(--bs-success);
+  background: #6c935b;
+  border-color: #5f8450;
 }
 
 .usuarios-modal .usuarios-modal__switch-input:checked + .usuarios-modal__switch-track .usuarios-modal__switch-thumb {
-  transform: translateX(26px);
+  transform: translateX(22px);
 }
 
 .usuarios-modal .usuarios-modal__switch-input:checked + .usuarios-modal__switch-track .usuarios-modal__switch-thumb i {
@@ -246,61 +251,62 @@
 }
 
 .usuarios-modal .usuarios-modal__image-box {
-  border: 1px dashed var(--bs-border-color-translucent);
-  border-radius: 16px;
-  background: var(--bs-light-bg-subtle, #f8f9fa);
-  padding: 0.8rem;
+  border: 1px dashed rgba(157, 150, 112, 0.42);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.75rem;
 }
 
 .usuarios-modal .usuarios-modal__image-preview {
-  min-height: 180px;
-  border-radius: 14px;
+  min-height: 160px;
+  border-radius: 10px;
 }
 
 .usuarios-modal .usuarios-modal__image-placeholder {
-  gap: 0.4rem;
+  gap: 0.32rem;
 }
 
 .usuarios-modal .usuarios-modal__image-actions {
-  margin-top: 0.6rem;
+  margin-top: 0.55rem;
 }
 
 .usuarios-modal .usuarios-modal__btn-upload,
 .usuarios-modal .usuarios-modal__btn-remove {
-  border-radius: 12px;
-  min-height: 2.5rem;
+  border-radius: 10px;
+  min-height: 2.35rem;
 }
 
 .usuarios-modal .usuarios-modal__url-label {
-  font-weight: 600;
-  margin-bottom: 0.35rem;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+  font-size: 0.79rem;
 }
 
 .usuarios-modal .usuarios-modal__hint {
-  margin-top: 0.35rem;
+  margin-top: 0.3rem;
 }
 
 .usuarios-modal .usuarios-modal__result-box {
-  border: 1px solid var(--bs-border-color-translucent);
-  border-radius: 14px;
-  padding: 0.75rem 0.9rem;
-  background: var(--bs-light-bg-subtle, #f8f9fa);
+  border: 1px solid rgba(157, 150, 112, 0.36);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  background: #fff;
 }
 
 .usuarios-modal .usuarios-modal__result-box.is-success {
-  border-color: color-mix(in srgb, var(--bs-success) 40%, var(--bs-border-color-translucent));
+  border-color: color-mix(in srgb, var(--bs-success) 38%, rgba(157, 150, 112, 0.36));
 }
 
 .usuarios-modal .usuarios-modal__result-box.is-warning {
-  border-color: color-mix(in srgb, var(--bs-warning) 45%, var(--bs-border-color-translucent));
+  border-color: color-mix(in srgb, var(--bs-warning) 45%, rgba(157, 150, 112, 0.36));
 }
 
 .usuarios-modal .usuarios-modal__result-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  margin-bottom: 0.25rem;
+  gap: 0.5rem;
+  margin-bottom: 0.22rem;
 }
 
 .usuarios-modal .usuarios-modal__result-row:last-child {
@@ -308,23 +314,23 @@
 }
 
 .usuarios-modal .usuarios-modal__result-note {
-  margin-top: 0.35rem;
-  font-size: 0.9rem;
+  margin-top: 0.32rem;
+  font-size: 0.84rem;
 }
 
 .usuarios-modal .usuarios-modal__footer {
-  padding-top: 0.15rem;
+  padding-top: 0.1rem;
 }
 
 .usuarios-modal .usuarios-modal__footer.crud-modal__footer {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
 }
 
 .usuarios-modal .usuarios-modal__btn-cancel,
 .usuarios-modal .usuarios-modal__btn-submit,
 .usuarios-modal .usuarios-modal__btn-reset {
-  min-height: 2.9rem;
-  border-radius: 14px;
+  min-height: 2.75rem;
+  border-radius: 10px;
 }
 
 @media (max-width: 767.98px) {
@@ -349,26 +355,26 @@
 
 @media (max-width: 576px) {
   .usuarios-modal .usuarios-modal__header {
-    padding: 0.9rem 0.9rem 0.75rem;
+    padding: 0.8rem 0.82rem;
   }
 
   .usuarios-modal .usuarios-modal__body {
-    padding: 0.3rem 0.9rem 0.9rem;
+    padding: 0.82rem;
   }
 
   .usuarios-modal .usuarios-modal__grid {
-    row-gap: 0.25rem;
-    padding-top: 0.35rem;
+    row-gap: 0.24rem;
+    padding-top: 0.24rem;
   }
 
   .usuarios-modal .usuarios-modal__section--first {
-    margin-top: 0.2rem;
+    margin-top: 0.14rem;
   }
 
   .usuarios-modal .usuarios-modal__switch-row {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.55rem;
+    gap: 0.5rem;
   }
 
   .usuarios-modal .usuarios-modal__switch {
@@ -381,9 +387,7 @@
   }
 
   .usuarios-modal .usuarios-modal__image-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.55rem;
+    flex-direction: column;
   }
 
   .usuarios-modal .usuarios-modal__btn-upload,

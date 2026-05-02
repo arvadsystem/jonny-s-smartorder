@@ -53,12 +53,67 @@ export const formatPhone = (digits8) => {
   return `${part1}-${part2}`;
 };
 
+const firstNonEmptyText = (...values) => {
+  for (const value of values) {
+    const text = normalizeText(value);
+    if (text) return text;
+  }
+  return "";
+};
+
+const isLikelyForeignId = (value) => /^\d{1,6}$/.test(normalizeText(value));
+
+const resolvePhoneDisplayValue = (value = {}) => {
+  const preferredPhone = firstNonEmptyText(
+    value?.texto_telefono,
+    value?.telefono,
+    value?.telefono_numero,
+    value?.numero_telefono,
+    value?.empresa_telefono
+  );
+  if (preferredPhone) return preferredPhone;
+
+  const idPhone = firstNonEmptyText(value?.id_telefono);
+  const idPhoneDigits = digitsOnly(idPhone);
+  return idPhoneDigits.length === PHONE_DIGITS_LENGTH ? idPhone : "";
+};
+
+const resolveAddressDisplayValue = (value = {}) => {
+  const preferredAddress = firstNonEmptyText(
+    value?.texto_direccion,
+    value?.direccion,
+    value?.direccion_detalle,
+    value?.empresa_direccion
+  );
+  if (preferredAddress) return preferredAddress;
+
+  const idAddress = firstNonEmptyText(value?.id_direccion);
+  return isLikelyForeignId(idAddress) ? "" : idAddress;
+};
+
+const resolveEmailDisplayValue = (value = {}) => {
+  const preferredEmail = firstNonEmptyText(
+    value?.texto_correo,
+    value?.correo,
+    value?.direccion_correo,
+    value?.email,
+    value?.empresa_correo
+  );
+  if (preferredEmail) return preferredEmail;
+
+  const idEmail = firstNonEmptyText(value?.id_correo);
+  if (!idEmail || isLikelyForeignId(idEmail)) return "";
+  return idEmail;
+};
+
 export const normalizeEmpresaFormValues = (value = {}) => ({
   rtn: formatRtn(value?.rtn),
   nombre_empresa: normalizeText(value?.nombre_empresa),
-  id_telefono: formatPhone(limitText(digitsOnly(value?.id_telefono ?? value?.texto_telefono ?? value?.telefono ?? ""), PHONE_DIGITS_LENGTH)),
-  id_direccion: normalizeText(value?.id_direccion ?? value?.texto_direccion ?? value?.direccion),
-  id_correo: normalizeText(value?.id_correo ?? value?.texto_correo ?? value?.correo ?? value?.direccion_correo),
+  id_telefono: formatPhone(
+    limitText(digitsOnly(resolvePhoneDisplayValue(value)), PHONE_DIGITS_LENGTH)
+  ),
+  id_direccion: resolveAddressDisplayValue(value),
+  id_correo: resolveEmailDisplayValue(value),
   estado: value?.estado === undefined ? true : Boolean(value.estado),
 });
 
@@ -104,4 +159,3 @@ export const validateEmpresaForm = (form = {}) => {
 
   return currentErrors;
 };
-

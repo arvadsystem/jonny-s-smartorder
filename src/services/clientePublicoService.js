@@ -63,6 +63,14 @@ const clientePublicoService = {
    */
   verifyEmail: async (data) => {
     return await apiFetch('/api/public/verify-email', 'POST', data);
+  },
+
+  /**
+   * Reenviar correo de verificacion para cuenta pendiente.
+   * @param {{ identifier?: string, email?: string }} data
+   */
+  resendVerification: async (data) => {
+    return await apiFetch('/api/public/resend-verification', 'POST', data);
   }
 };
 

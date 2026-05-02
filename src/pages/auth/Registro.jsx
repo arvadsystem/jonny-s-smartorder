@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import clientePublicoService from '../../services/clientePublicoService';
 import logo from '../../assets/images/logo-sin-fondo.png';
 import bgImage from '../../assets/images/imagen-fondo.png';
 import { AnimatePresence, motion as Motion } from 'framer-motion';
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff, FiCheck } from 'react-icons/fi';
+import Select from 'react-select';
 import './Login.scss';
 
 const Registro = () => {
@@ -22,6 +23,95 @@ const Registro = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const generoOptions = useMemo(
+    () => [
+      { value: 'M', label: 'Masculino' },
+      { value: 'F', label: 'Femenino' },
+      { value: 'O', label: 'Otro' }
+    ],
+    []
+  );
+
+  const generoValue = useMemo(
+    () => generoOptions.find((option) => option.value === genero) || null,
+    [genero, generoOptions]
+  );
+
+  const generoSelectStyles = useMemo(
+    () => ({
+      control: (base, state) => ({
+        ...base,
+        minHeight: '50px',
+        borderRadius: '10px',
+        borderColor: state.isFocused ? 'rgba(212, 165, 116, 0.5)' : 'rgba(255, 255, 255, 0.14)',
+        backgroundColor: '#1a1108',
+        boxShadow: state.isFocused ? '0 0 0 3px rgba(212, 165, 116, 0.1)' : 'none',
+        paddingLeft: '2.75rem',
+        transition: 'border-color 0.25s, box-shadow 0.25s',
+        '&:hover': {
+          borderColor: 'rgba(212, 165, 116, 0.5)'
+        }
+      }),
+      valueContainer: (base) => ({
+        ...base,
+        padding: '0 0.35rem 0 0'
+      }),
+      singleValue: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.85)'
+      }),
+      placeholder: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.22)'
+      }),
+      input: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.85)'
+      }),
+      indicatorSeparator: (base) => ({
+        ...base,
+        backgroundColor: 'rgba(255, 255, 255, 0.12)'
+      }),
+      dropdownIndicator: (base, state) => ({
+        ...base,
+        color: state.isFocused ? 'rgba(240, 200, 150, 0.9)' : 'rgba(255, 255, 255, 0.45)',
+        '&:hover': {
+          color: 'rgba(240, 200, 150, 0.95)'
+        }
+      }),
+      clearIndicator: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.45)',
+        '&:hover': {
+          color: '#f0c896'
+        }
+      }),
+      menu: (base) => ({
+        ...base,
+        backgroundColor: '#1a1108',
+        border: '1px solid rgba(255, 255, 255, 0.14)',
+        borderRadius: '10px',
+        overflow: 'hidden',
+        boxShadow: '0 10px 24px rgba(0, 0, 0, 0.35)'
+      }),
+      option: (base, state) => ({
+        ...base,
+        color: state.isSelected ? '#0e0704' : 'rgba(255, 255, 255, 0.85)',
+        backgroundColor: state.isSelected
+          ? '#d4a574'
+          : state.isFocused
+            ? 'rgba(212, 165, 116, 0.22)'
+            : '#1a1108',
+        cursor: 'pointer'
+      }),
+      noOptionsMessage: (base) => ({
+        ...base,
+        color: 'rgba(255, 255, 255, 0.55)'
+      })
+    }),
+    []
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -185,18 +275,21 @@ const Registro = () => {
 
             <div className="field">
               <label>GENERO</label>
-              <div className="input-wrap">
+              <div className="input-wrap input-wrap--select">
                 <FiUser className="field-icon" />
-                <select
+                <Select
                   id="register-genero"
-                  value={genero}
-                  onChange={(e) => setGenero(e.target.value)}
-                >
-                  <option value="">Selecciona genero</option>
-                  <option value="MASCULINO">Masculino</option>
-                  <option value="FEMENINO">Femenino</option>
-                  <option value="OTRO">Otro</option>
-                </select>
+                  inputId="register-genero"
+                  className="auth-gender-select"
+                  classNamePrefix="auth-gender-select"
+                  options={generoOptions}
+                  value={generoValue}
+                  onChange={(option) => setGenero(option?.value || '')}
+                  isSearchable={false}
+                  isClearable
+                  placeholder="Selecciona genero"
+                  styles={generoSelectStyles}
+                />
               </div>
             </div>
 
