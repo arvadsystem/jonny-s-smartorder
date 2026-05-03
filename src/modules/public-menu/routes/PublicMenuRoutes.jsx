@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import PublicMenuFlowShell from '../components/layout/PublicMenuFlowShell';
-import BranchSelectionScreen from '../screens/BranchSelectionScreen';
 import OrderTypeScreen from '../screens/OrderTypeScreen';
 import CatalogScreen from '../screens/CatalogScreen';
 import { usePublicMenuFlow } from '../hooks/usePublicMenuFlow';
@@ -17,7 +16,11 @@ const RedirectToBestStep = () => {
 
   const targetStep = selectors.hasBranchSelected
     ? (selectors.hasOrderTypeSelected ? PUBLIC_MENU_STEPS.MENU : PUBLIC_MENU_STEPS.ORDER_TYPE)
-    : PUBLIC_MENU_STEPS.BRANCH;
+    : null;
+
+  if (!targetStep) {
+    return <Navigate to={{ pathname: '.', search: location.search }} replace />;
+  }
 
   return (
     <Navigate
@@ -35,8 +38,8 @@ const PublicMenuRoutes = () => (
   <PublicMenuFlowProvider>
     <Routes>
       <Route element={<PublicMenuFlowShell />}>
-        <Route index element={<RedirectToBestStep />} />
-        <Route path="sucursal" element={<BranchSelectionScreen />} />
+        <Route index element={<Navigate to="menu" replace />} />
+        <Route path="sucursal" element={<Navigate to=".." replace />} />
 
         <Route
           path="tipo-pedido"
@@ -49,11 +52,7 @@ const PublicMenuRoutes = () => (
 
         <Route
           path="menu"
-          element={
-            <PublicMenuStepGuard>
-              <CatalogScreen />
-            </PublicMenuStepGuard>
-          }
+          element={<CatalogScreen />}
         />
 
         <Route path="*" element={<RedirectToBestStep />} />

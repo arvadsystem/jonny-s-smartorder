@@ -16,6 +16,10 @@ export default function SucursalFormDrawer({
 }) {
   if (!open) return null;
 
+  const handleImageChange = (event) => {
+    onImageUpload?.(event);
+  };
+
   const nombreError = fieldErrors.nombre_sucursal || duplicateErrors.nombre_sucursal || '';
   const direccionError = fieldErrors.texto_direccion || duplicateErrors.texto_direccion || '';
 
@@ -32,10 +36,13 @@ export default function SucursalFormDrawer({
           <form className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create" onSubmit={onSubmit}>
             <div className="inv-prod-pmodal__body">
               <div className="inv-ins-create-hero">
+                <div className="inv-ins-create-hero__icon suc-form-hero__icon" aria-hidden="true">
+                  <i className="bi bi-shop-window" />
+                </div>
                 <div className="inv-ins-create-hero__copy">
                   <div className="inv-ins-create-hero__eyebrow">Sucursales</div>
                   <h3 id="suc-form-title">{mode === 'create' ? 'Nueva sucursal' : 'Editar sucursal'}</h3>
-                  <p>Completa los datos generales, horario e imagen de la sucursal.</p>
+                  <p>Registra la información general, contacto, operación e imagen de la sucursal.</p>
                 </div>
                 <button
                   type="button"
@@ -51,12 +58,12 @@ export default function SucursalFormDrawer({
               <div className="inv-prod-pmodal__sections">
                 <section className="inv-prod-pmodal__section">
                   <div className="inv-prod-pmodal__section-head">
-                    <div className="inv-prod-pmodal__section-title">Datos principales</div>
-                    <div className="inv-prod-pmodal__section-sub">Identificacion y contacto base de la sucursal.</div>
+                    <div className="inv-prod-pmodal__section-title">Datos generales</div>
+                    <div className="inv-prod-pmodal__section-sub">Identificación base de la sucursal.</div>
                   </div>
 
                   <div className="row g-3">
-                    <div className="col-12 col-md-6">
+                    <div className="col-12">
                       <label className="form-label" htmlFor="suc_nombre">Nombre</label>
                       <input
                         id="suc_nombre"
@@ -68,8 +75,17 @@ export default function SucursalFormDrawer({
                       />
                       {nombreError ? <div className="invalid-feedback d-block">{nombreError}</div> : null}
                     </div>
+                  </div>
+                </section>
 
-                    <div className="col-12 col-md-6">
+                <section className="inv-prod-pmodal__section">
+                  <div className="inv-prod-pmodal__section-head">
+                    <div className="inv-prod-pmodal__section-title">Ubicación</div>
+                    <div className="inv-prod-pmodal__section-sub">Dirección principal de la sucursal.</div>
+                  </div>
+
+                  <div className="row g-3">
+                    <div className="col-12">
                       <label className="form-label" htmlFor="suc_direccion">Direccion</label>
                       <input
                         id="suc_direccion"
@@ -81,7 +97,16 @@ export default function SucursalFormDrawer({
                       />
                       {direccionError ? <div className="invalid-feedback d-block">{direccionError}</div> : null}
                     </div>
+                  </div>
+                </section>
 
+                <section className="inv-prod-pmodal__section">
+                  <div className="inv-prod-pmodal__section-head">
+                    <div className="inv-prod-pmodal__section-title">Contacto</div>
+                    <div className="inv-prod-pmodal__section-sub">Medios de contacto básicos de la sucursal.</div>
+                  </div>
+
+                  <div className="row g-3">
                     <div className="col-12 col-md-6">
                       <label className="form-label" htmlFor="suc_telefono">Telefono (opcional)</label>
                       <input
@@ -114,33 +139,10 @@ export default function SucursalFormDrawer({
                 <section className="inv-prod-pmodal__section">
                   <div className="inv-prod-pmodal__section-head">
                     <div className="inv-prod-pmodal__section-title">Operacion</div>
-                    <div className="inv-prod-pmodal__section-sub">Horario de atencion y fecha base.</div>
+                    <div className="inv-prod-pmodal__section-sub">Estado y fecha de inauguración.</div>
                   </div>
                   <div className="row g-3">
-                    <div className="col-12 col-md-4">
-                      <label className="form-label" htmlFor="suc_hora_inicio">Hora inicio</label>
-                      <input
-                        id="suc_hora_inicio"
-                        type="time"
-                        name="hora_inicio"
-                        className={`form-control ${fieldErrors.hora_inicio ? 'is-invalid' : ''}`}
-                        value={form.hora_inicio || ''}
-                        onChange={onFieldChange}
-                      />
-                    </div>
-                    <div className="col-12 col-md-4">
-                      <label className="form-label" htmlFor="suc_hora_final">Hora final</label>
-                      <input
-                        id="suc_hora_final"
-                        type="time"
-                        name="hora_final"
-                        className={`form-control ${fieldErrors.hora_final ? 'is-invalid' : ''}`}
-                        value={form.hora_final || ''}
-                        onChange={onFieldChange}
-                      />
-                      {fieldErrors.hora_final ? <div className="invalid-feedback d-block">{fieldErrors.hora_final}</div> : null}
-                    </div>
-                    <div className="col-12 col-md-4">
+                    <div className="col-12 col-md-6">
                       <label className="form-label" htmlFor="suc_fecha">Fecha de inauguracion (opcional)</label>
                       <input
                         id="suc_fecha"
@@ -152,7 +154,7 @@ export default function SucursalFormDrawer({
                       />
                       {fieldErrors.fecha_inauguracion ? <div className="invalid-feedback">{fieldErrors.fecha_inauguracion}</div> : null}
                     </div>
-                    <div className="col-12">
+                    <div className="col-12 col-md-6 d-flex align-items-end">
                       <div className="form-check mt-1">
                         <input
                           className="form-check-input"
@@ -173,24 +175,29 @@ export default function SucursalFormDrawer({
                 <section className="inv-prod-pmodal__section">
                   <div className="inv-prod-pmodal__section-head">
                     <div className="inv-prod-pmodal__section-title">Imagen</div>
-                    <div className="inv-prod-pmodal__section-sub">La imagen se guarda en Supabase Storage (bucket jonnys-assets).</div>
+                    <div className="inv-prod-pmodal__section-sub">Carga una imagen.</div>
                   </div>
-                  <div className="row g-3">
-                    <div className="col-12 col-lg-6">
+                  <div className="suc-image-block">
+                    <div className="suc-image-block__upload">
                       <label className="form-label" htmlFor="suc_imagen">Imagen de sucursal (opcional)</label>
+                      <label className={`suc-image-file-btn ${uploadingImage || saving ? 'is-disabled' : ''}`} htmlFor="suc_imagen">
+                        <i className="bi bi-upload" />
+                        <span>Seleccionar archivo</span>
+                      </label>
                       <input
                         id="suc_imagen"
                         type="file"
-                        className="form-control"
-                        accept="image/png,image/jpeg,image/webp"
-                        onChange={onImageUpload}
+                        className="suc-image-file-input"
+                        accept="image/png,image/jpeg"
+                        onChange={handleImageChange}
                         disabled={uploadingImage || saving}
                       />
                       {uploadingImage ? <div className="text-muted small mt-1">Subiendo imagen...</div> : null}
                     </div>
-                    <div className="col-12 col-lg-6">
+
+                    <div className="suc-image-block__preview">
                       {form.imagen_url_publica ? (
-                        <div className="border rounded-3 p-2 bg-white">
+                        <div className="suc-form-image-preview">
                           <img
                             src={form.imagen_url_publica}
                             alt="Sucursal"
@@ -198,7 +205,7 @@ export default function SucursalFormDrawer({
                           />
                         </div>
                       ) : (
-                        <div className="border rounded-3 p-3 bg-light text-muted small h-100 d-flex align-items-center">
+                        <div className="suc-form-image-placeholder h-100 d-flex align-items-center justify-content-center text-center px-3">
                           Sin imagen cargada.
                         </div>
                       )}

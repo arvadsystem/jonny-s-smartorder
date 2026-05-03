@@ -498,19 +498,95 @@ const OrdenesCompraTab = ({ openToast }) => {
   const { can, canAny, loading: permisosLoading } = usePermisos();
   const { user } = useAuth();
 
-  // AM: permisos del submodulo OC para visibilidad y transiciones de workflow.
-  const canCrear = can(PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR);
+  // AM: permisos OC granulares con fallback legacy durante la transicion 4B.
+  const canCrear = canAny([
+    PERMISSIONS.INVENTARIO_OC_CREAR_SOLICITUD,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR
+  ]);
+  const canVerFlujo = canAny([
+    PERMISSIONS.INVENTARIO_OC_VER_FLUJO,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS
+  ]);
+  const canVerDetalle = canAny([
+    PERMISSIONS.INVENTARIO_OC_VER_DETALLE,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS
+  ]);
   const canVer = canAny([
+    PERMISSIONS.INVENTARIO_OC_VER_FLUJO,
+    PERMISSIONS.INVENTARIO_OC_VER_DETALLE,
+    PERMISSIONS.INVENTARIO_OC_CREAR_SOLICITUD,
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR,
     PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS
   ]);
   const canVerTodas = can(PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS);
-  const canGestionar = can(PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR);
-  const canConvertir = can(PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR);
-  const canAbastecer = can(PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER);
+  const canGestionar = canAny([
+    PERMISSIONS.INVENTARIO_OC_EDITAR_SOLICITUD,
+    PERMISSIONS.INVENTARIO_OC_APROBAR,
+    PERMISSIONS.INVENTARIO_OC_RECHAZAR,
+    PERMISSIONS.INVENTARIO_OC_CANCELAR,
+    PERMISSIONS.INVENTARIO_OC_REVISAR_SOLICITUD_ITEM,
+    PERMISSIONS.INVENTARIO_OC_ATENDER_SOLICITUD_ITEM,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR
+  ]);
+  const canEditarSolicitud = canAny([
+    PERMISSIONS.INVENTARIO_OC_EDITAR_SOLICITUD,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR
+  ]);
+  const canAprobar = canAny([
+    PERMISSIONS.INVENTARIO_OC_APROBAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR
+  ]);
+  const canRechazar = canAny([
+    PERMISSIONS.INVENTARIO_OC_RECHAZAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR
+  ]);
+  const canCancelar = canAny([
+    PERMISSIONS.INVENTARIO_OC_CANCELAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR
+  ]);
+  const canConvertir = canAny([
+    PERMISSIONS.INVENTARIO_OC_CONVERTIR_CONTINUAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR
+  ]);
+  const canAbastecer = canAny([
+    PERMISSIONS.INVENTARIO_OC_ABASTECER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER
+  ]);
+  const canSubirFactura = canAny([
+    PERMISSIONS.INVENTARIO_OC_SUBIR_FACTURA,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR
+  ]);
+  const canSubirDeposito = canAny([
+    PERMISSIONS.INVENTARIO_OC_SUBIR_DEPOSITO,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR
+  ]);
+  const canVerEvidencias = canAny([
+    PERMISSIONS.INVENTARIO_OC_VER_EVIDENCIAS,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS
+  ]);
+  const canVerHistorial = canAny([
+    PERMISSIONS.INVENTARIO_OC_VER_HISTORIAL,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS
+  ]);
+  const canRevisarSolicitudItem = canAny([
+    PERMISSIONS.INVENTARIO_OC_REVISAR_SOLICITUD_ITEM,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR
+  ]);
+  const canAtenderSolicitudItem = canAny([
+    PERMISSIONS.INVENTARIO_OC_ATENDER_SOLICITUD_ITEM,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR
+  ]);
   // AM: recepcion operativa solo con permiso dedicado; evita habilitarla por permiso de crear.
-  const canRecepcionar = can(PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR);
+  const canRecepcionar = canAny([
+    PERMISSIONS.INVENTARIO_OC_RECEPCIONAR,
+    PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR
+  ]);
   // AM: solicitud de item nuevo solo para perfiles operativos sin alta directa de catalogo.
   const canCrearProductos = can(PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR);
   const canCrearInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_CREAR);
@@ -534,7 +610,7 @@ const OrdenesCompraTab = ({ openToast }) => {
         .includes('SUPER_ADMIN')
     : false;
   // AM: cancelacion administrativa reservada para Admin/Super Admin.
-  const canCancelarOrden = canVerTodas || isSuperAdmin;
+  const canCancelarOrden = canCancelar || isSuperAdmin;
   const toast = useCallback(
     (title, message, variant = 'success') => {
       if (typeof openToast === 'function') openToast(title, message, variant);
@@ -1013,10 +1089,10 @@ const flowDotItems = useMemo(() => {
 }, [ordenesVisibles, resolveEstadoVisual]);
 
   // AM: layout operativo: arriba solicitud + flujo (si ambos permisos); abajo detalle de solicitud.
-  const showDualTopPanels = canCrear && canVer;
+  const showDualTopPanels = canCrear && canVerFlujo;
 
   const loadCatalogs = useCallback(async (options = {}) => {
-    if (!(canCrear || canConvertir || canGestionar)) return;
+    if (!(canCrear || canConvertir || canGestionar || canAtenderSolicitudItem)) return;
     if (!options?.silent) setLoadingCatalog(true);
     try {
       // AM: primero resuelve contexto de creacion para derivar filtros seguros de catalogo operativo.
@@ -1024,9 +1100,9 @@ const flowDotItems = useMemo(() => {
         canConvertir ? inventarioService.getProveedores() : Promise.resolve([]),
         canCrear || canGestionar ? inventarioService.getAlmacenes() : Promise.resolve([]),
         canCrear ? inventarioService.getOrdenCompraWorkflowContextoCreacion() : Promise.resolve(null),
-        canGestionar ? inventarioService.getCategorias() : Promise.resolve([]),
-        canGestionar ? inventarioService.getCategoriasInsumos() : Promise.resolve([]),
-        canGestionar ? inventarioService.getUnidadesMedida() : Promise.resolve([])
+        canAtenderSolicitudItem ? inventarioService.getCategorias() : Promise.resolve([]),
+        canAtenderSolicitudItem ? inventarioService.getCategoriasInsumos() : Promise.resolve([]),
+        canAtenderSolicitudItem ? inventarioService.getUnidadesMedida() : Promise.resolve([])
       ]);
 
       const contextData = contextoCreacion?.data || {};
@@ -1047,8 +1123,8 @@ const flowDotItems = useMemo(() => {
           : undefined;
 
       const [p, i] = await Promise.all([
-        canCrear || canGestionar ? inventarioService.getProductos(catalogOptions) : Promise.resolve([]),
-        canCrear || canGestionar ? inventarioService.getInsumos(catalogOptions) : Promise.resolve([])
+      canCrear || canEditarSolicitud ? inventarioService.getProductos(catalogOptions) : Promise.resolve([]),
+      canCrear || canEditarSolicitud ? inventarioService.getInsumos(catalogOptions) : Promise.resolve([])
       ]);
 
       setProductos(Array.isArray(p) ? p : []);
@@ -1069,7 +1145,7 @@ const flowDotItems = useMemo(() => {
     } finally {
       if (!options?.silent) setLoadingCatalog(false);
     }
-  }, [canConvertir, canCrear, canGestionar, isSucursalOperativeActor, toast]);
+  }, [canAtenderSolicitudItem, canConvertir, canCrear, canEditarSolicitud, canGestionar, isSucursalOperativeActor, toast]);
 
   useEffect(() => {
     if (permisosLoading) return;
@@ -1077,7 +1153,7 @@ const flowDotItems = useMemo(() => {
   }, [loadCatalogs, permisosLoading]);
 
   const loadOrdenes = useCallback(async (options = {}) => {
-    if (!canVer) return;
+    if (!canVerFlujo) return;
     if (!options?.silent) setLoadingOrdenes(true);
     try {
       const response = await inventarioService.getOrdenesCompraWorkflow({
@@ -1101,7 +1177,7 @@ const flowDotItems = useMemo(() => {
     } finally {
       if (!options?.silent) setLoadingOrdenes(false);
     }
-  }, [canVer, estadoFiltro, flowSucursalFilter, page, scope, search, toast]);
+  }, [canVerFlujo, estadoFiltro, flowSucursalFilter, page, scope, search, toast]);
 
   useEffect(() => {
     if (permisosLoading) return;
@@ -1109,14 +1185,14 @@ const flowDotItems = useMemo(() => {
   }, [loadOrdenes, permisosLoading]);
 
   useEffect(() => {
-    if (permisosLoading || !canVer) return undefined;
+    if (permisosLoading || !canVerFlujo) return undefined;
     // AM: polling moderado del flujo para reflejar cambios externos sin sobrecargar UI/API.
     const intervalId = window.setInterval(() => {
       if (document?.visibilityState === 'hidden' || hasBusyRows) return;
       void loadOrdenes({ silent: true });
     }, ORDERS_POLLING_MS);
     return () => window.clearInterval(intervalId);
-  }, [canVer, hasBusyRows, loadOrdenes, permisosLoading]);
+  }, [canVerFlujo, hasBusyRows, loadOrdenes, permisosLoading]);
 
   const addToDraft = (item) => {
     setDraft((prev) => {
@@ -2518,11 +2594,14 @@ const flowDotItems = useMemo(() => {
       Number(row?.total_solicitudes_item_en_revision || 0) > 0;
     const busy = Boolean(rowBusy[row.id_orden_compra]);
     const actionClass = compact ? 'inv-oc-action-btn is-compact' : 'inv-oc-action-btn';
-    const canShowApproveAction = estado === 'PENDIENTE' && canGestionar;
-    const canShowRejectAction = canShowApproveAction;
+    const canShowApproveAction = estado === 'PENDIENTE' && canAprobar;
+    const canShowRejectAction = estado === 'PENDIENTE' && canRechazar;
     const canShowRegisterReceptionAction =
-      isSucursalOperativeActor && (estado === 'APROBADA' || (estado === 'EN_COMPRA' && !recepcionRegistrada));
-    const canShowConvertAction = estado === 'EN_COMPRA' && isAdminFlowActor && canConvertir && recepcionRegistrada;
+      isSucursalOperativeActor &&
+      canSubirFactura &&
+      (estado === 'APROBADA' || (estado === 'EN_COMPRA' && !recepcionRegistrada));
+    const canShowConvertAction =
+      estado === 'EN_COMPRA' && isAdminFlowActor && canConvertir && canSubirDeposito && recepcionRegistrada;
     const canShowCancelAction =
       canCancelarOrden &&
       (estado === 'PENDIENTE' ||
@@ -2531,13 +2610,17 @@ const flowDotItems = useMemo(() => {
 
     return (
       <div className="inv-oc-actions">
-        <button className={`${actionClass} is-neutral`} onClick={() => verDetalle(row)} disabled={busy}>
+        <button
+          className={`${actionClass} is-neutral`}
+          onClick={() => verDetalle(row)}
+          disabled={busy || !canVerDetalle}
+        >
           <i className="bi bi-eye" aria-hidden="true" />
           <span>Ver</span>
         </button>
         {canShowApproveAction && (
           <>
-            {!isItemRequestOnlyCard && (
+            {!isItemRequestOnlyCard && canEditarSolicitud && (
               <button
                 className={`${actionClass} is-neutral`}
                 onClick={() => openEditDetallesModal(row)}
@@ -2597,7 +2680,7 @@ const flowDotItems = useMemo(() => {
 
   if (permisosLoading) return null;
 
-  if (!canCrear && !canVer) {
+  if (!canCrear && !canVerFlujo) {
     return <div className="alert alert-warning mb-0">No tienes permisos para Ordenes de compra.</div>;
   }
 
@@ -2659,7 +2742,7 @@ const flowDotItems = useMemo(() => {
       </section>
 
       {/* AM: layout principal: Nueva solicitud + Flujo en la franja superior para operacion rapida. */}
-      {(canCrear || canVer) && (
+          {(canCrear || canVerFlujo) && (
         <div className={`inv-oc-top-panels ${showDualTopPanels ? 'is-dual' : ''}`}>
           {canCrear && (
              <section className="card shadow-sm inv-oc-card inv-oc-create-shell">
@@ -2858,7 +2941,7 @@ const flowDotItems = useMemo(() => {
           )}
 
           
-          {canVer && (
+                {canVerFlujo && (
             <section className="card shadow-sm inv-oc-card inv-oc-flow-shell">
               <div className="card-header inv-oc-card__header inv-oc-card__header--stacked">
                 <div className="inv-oc-panel-head">
@@ -3390,7 +3473,8 @@ const flowDotItems = useMemo(() => {
                         : [];
                       const estadoOrden = resolveEstadoVisual(orden);
                       const estadoOrdenReal = resolveEstado(orden);
-                      const canViewEvidenciasAbastecida = isSuperAdmin && estadoOrdenReal === 'ABASTECIDA';
+                      const canViewEvidenciasAbastecida =
+                        canVerEvidencias && canVerHistorial && estadoOrdenReal === 'ABASTECIDA';
                       return (
                         <div className="inv-oc-detail-modal">
                           <section className="inv-oc-detail-hero-card">
@@ -3613,12 +3697,12 @@ const flowDotItems = useMemo(() => {
                                   const estadoSolicitud = parseItemRequestState(row?.estado);
                                   const idSolicitud = parsePositiveInt(row?.id_solicitud_item);
                                   const canReviewRequest =
-                                    canGestionar &&
+                                    canRevisarSolicitudItem &&
                                     estadoOrdenReal === 'PENDIENTE' &&
                                     (estadoSolicitud === ITEM_REQUEST_STATE_PENDIENTE ||
                                       estadoSolicitud === ITEM_REQUEST_STATE_EN_REVISION);
                                   const canOpenQuickCreate =
-                                    canGestionar &&
+                                    canAtenderSolicitudItem &&
                                     estadoOrdenReal === 'PENDIENTE' &&
                                     estadoSolicitud === ITEM_REQUEST_STATE_EN_REVISION &&
                                     ((String(row?.tipo_item || '').toLowerCase() === 'producto' && canCrearProductos) ||
@@ -3680,7 +3764,9 @@ const flowDotItems = useMemo(() => {
                                           </button>
                                         </div>
                                       )}
-                                      {!canOpenQuickCreate && estadoSolicitud === ITEM_REQUEST_STATE_EN_REVISION && canGestionar && (
+                                      {!canOpenQuickCreate &&
+                                        estadoSolicitud === ITEM_REQUEST_STATE_EN_REVISION &&
+                                        canAtenderSolicitudItem && (
                                         <small className="text-muted">
                                           Sin permiso para crear este tipo de item en catalogo.
                                         </small>

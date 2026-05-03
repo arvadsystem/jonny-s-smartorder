@@ -5,7 +5,6 @@ import { useAuth } from "../../hooks/useAuth";
 import { validatePassword } from "../../utils/passwordValidator";
 import SecurityConfirmAction from "./seguridad/components/SecurityConfirmAction";
 import "./cambio-contrasena.css";
-import "./perfil-toast.css";
 import "./seguridad/sesiones-ui.css";
 
 const PASSWORD_CHANGE_DATE_CANDIDATE_PATHS = [
@@ -44,16 +43,6 @@ const getDaysSince = (dateValue) => {
   return Math.floor(diff / 86400000);
 };
 
-const sideCardOkStyle = {
-  background: "rgba(229, 244, 236, 0.92)",
-  borderColor: "rgba(45, 107, 102, 0.24)",
-};
-
-const sideCardWarnStyle = {
-  background: "rgba(251, 240, 228, 0.92)",
-  borderColor: "rgba(197, 111, 67, 0.28)",
-};
-
 const CambioContrasena = () => {
   const { user } = useAuth();
   const [pw, setPw] = useState({
@@ -72,6 +61,7 @@ const CambioContrasena = () => {
     titulo: "AVISO",
     mensaje: "",
     icono: "bi-exclamation-triangle-fill",
+    variant: "info",
   });
   const [lastPasswordChangeDays, setLastPasswordChangeDays] = useState(null);
 
@@ -149,14 +139,16 @@ const CambioContrasena = () => {
 
   const mostrarAlerta = (
     mensaje,
-    { titulo = "AVISO", icono = "bi-exclamation-triangle-fill" } = {}
+    { titulo = "AVISO", icono = "bi-exclamation-triangle-fill", variant = "info" } = {}
   ) => {
-    setAlerta({ visible: true, titulo, mensaje, icono });
+    setAlerta({ visible: true, titulo, mensaje, icono, variant });
   };
 
   const onChangePassword = async () => {
     if (pw.nueva !== pw.confirmacion) {
-      mostrarAlerta("La nueva contrase\u00f1a y la confirmaci\u00f3n no coinciden.");
+      mostrarAlerta("La nueva contrase\u00f1a y la confirmaci\u00f3n no coinciden.", {
+        variant: "warning",
+      });
       return;
     }
 
@@ -169,36 +161,43 @@ const CambioContrasena = () => {
       mostrarAlerta("Contrase\u00f1a actualizada.", {
         titulo: "ACTUALIZADO",
         icono: "bi-check-circle-fill",
+        variant: "success",
       });
       setPw({ actual: "", nueva: "", confirmacion: "" });
       setShowPw({ actual: false, nueva: false, confirmacion: false });
       await cargarUltimoCambioClave();
     } catch (e) {
-      mostrarAlerta(e?.message || "No se pudo cambiar la contrase\u00f1a");
+      mostrarAlerta(e?.message || "No se pudo cambiar la contrase\u00f1a", {
+        variant: "danger",
+      });
     }
   };
 
   return (
     <div className="p-4 password-page">
       {alerta.visible && (
-        <div className="perfil-save-toast" role="status" aria-live="polite">
-          <div className="perfil-save-toast__body">
-            <div className="perfil-save-toast__icon" aria-hidden="true">
+        <div className="inv-toast-wrap" role="status" aria-live="polite">
+          <article className={`inv-toast-card ${alerta.variant || "info"}`.trim()}>
+            <div className="inv-toast-icon" aria-hidden="true">
               <i className={`bi ${alerta.icono}`} />
             </div>
-            <div className="perfil-save-toast__copy">
-              <div className="perfil-save-toast__title">{alerta.titulo}</div>
-              <div className="perfil-save-toast__subtitle">{alerta.mensaje}</div>
+
+            <div className="inv-toast-content">
+              <div className="inv-toast-title">{alerta.titulo}</div>
+              <div className="inv-toast-message">{alerta.mensaje}</div>
             </div>
+
             <button
               type="button"
-              className="perfil-save-toast__close"
+              className="inv-toast-close"
               onClick={() => setAlerta((prev) => ({ ...prev, visible: false }))}
               aria-label="Cerrar"
             >
               <i className="bi bi-x-lg" />
             </button>
-          </div>
+
+            <div className="inv-toast-progress" aria-hidden="true" />
+          </article>
         </div>
       )}
 
@@ -359,7 +358,7 @@ const CambioContrasena = () => {
           </div>
 
           <div className="col-12 col-xl-4">
-            <div className="card shadow-sm password-page__side-card password-page__side-card--ok" style={sideCardOkStyle}>
+            <div className="card shadow-sm password-page__side-card password-page__side-card--ok">
               <div className="card-body">
                 <h6 className="mb-2"><i className="bi bi-shield-check me-2" aria-hidden="true"></i>Recomendaciones</h6>
                 <p className="mb-3 text-muted small">
@@ -373,7 +372,7 @@ const CambioContrasena = () => {
               </div>
             </div>
 
-            <div className="card shadow-sm password-page__side-card password-page__side-card--warn password-page__advice-card mt-3" style={sideCardWarnStyle}>
+            <div className="card shadow-sm password-page__side-card password-page__side-card--warn password-page__advice-card mt-3">
               <div className="card-body">
                 <h6 className="mb-2"><i className="bi bi-patch-check me-2" aria-hidden="true"></i>Consejo de seguridad</h6>
                 <p className="mb-0 small">

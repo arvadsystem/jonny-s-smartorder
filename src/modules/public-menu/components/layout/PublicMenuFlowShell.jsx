@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import PublicHeader from './PublicHeader';
 import StickyActionBar from './StickyActionBar';
@@ -14,7 +15,7 @@ import {
 
 const STEP_COPY = {
   [PUBLIC_MENU_STEPS.BRANCH]: {
-    title: 'Menú',
+    title: 'Menu',
     subtitle: 'Elige la sucursal donde deseas pedir.'
   },
   [PUBLIC_MENU_STEPS.ORDER_TYPE]: {
@@ -27,6 +28,14 @@ const STEP_COPY = {
   }
 };
 
+const THEME_STORAGE_KEY = 'pm_menu_theme';
+
+const readInitialTheme = () => {
+  if (typeof window === 'undefined') return 'dark';
+  const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return saved === 'light' ? 'light' : 'dark';
+};
+
 // Shell keeps step navigation and sticky actions centralized.
 const PublicMenuFlowShell = () => {
   const navigate = useNavigate();
@@ -35,18 +44,50 @@ const PublicMenuFlowShell = () => {
   const { state, actions, selectors } = usePublicMenuFlow();
   const currentStep = getPublicMenuStepFromPath(location.pathname);
   const currentStepIndex = PUBLIC_MENU_STEP_ORDER.indexOf(currentStep);
+  const normalizedPath = String(location.pathname || '').replace(/\/+$/, '');
+  const isLandingView = normalizedPath === '/menu-publico' || normalizedPath === '';
+  const [orderTypeActionArmed, setOrderTypeActionArmed] = useState(true);
+  const [theme, setTheme] = useState(readInitialTheme);
 
   const stepMeta = STEP_COPY[currentStep] || STEP_COPY[PUBLIC_MENU_STEPS.BRANCH];
   const hasPreviousStep = currentStepIndex > 0;
+
+  // Evita salto accidental en movil cuando el boton "Continuar" se habilita
+  // en el mismo toque que selecciona metodo de pago.
+  useEffect(() => {
+    if (currentStep !== PUBLIC_MENU_STEPS.ORDER_TYPE) {
+      setOrderTypeActionArmed(true);
+      return;
+    }
+    setOrderTypeActionArmed(false);
+    const timer = window.setTimeout(() => setOrderTypeActionArmed(true), 350);
+    return () => window.clearTimeout(timer);
+  }, [currentStep, state.orderType, state.pickupPaymentMethod]);
+
+  // Persiste el tema visual del menu publico entre visitas del cliente.
+  useEffect(() => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((current) => (current === 'light' ? 'dark' : 'light'));
+  };
 
   const getPrimaryAction = () => {
     if (currentStep === PUBLIC_MENU_STEPS.BRANCH) return null;
 
     if (currentStep === PUBLIC_MENU_STEPS.ORDER_TYPE) {
+      const needsPickupPaymentMethod =
+        state.orderType === 'pickup' &&
+        !['caja', 'transferencia'].includes(
+          String(state.pickupPaymentMethod || '').trim().toLowerCase()
+        );
       return {
         label: 'Continuar',
-        disabled: !selectors.hasOrderTypeSelected,
-        helper: selectors.hasOrderTypeSelected ? '' : 'Selecciona un tipo de pedido',
+        disabled: !selectors.hasRequiredOrderContext || !orderTypeActionArmed,
+        helper: !selectors.hasOrderTypeSelected
+          ? 'Selecciona un tipo de pedido'
+          : (needsPickupPaymentMethod ? 'Selecciona metodo de pago para retiro en local' : ''),
         onClick: () => navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.MENU))
       };
     }
@@ -77,59 +118,71 @@ const PublicMenuFlowShell = () => {
     navigate(getPublicMenuPathByStep(PUBLIC_MENU_STEPS.BRANCH));
   };
 
+  const isMenuStep = currentStep === PUBLIC_MENU_STEPS.MENU;
+
   return (
-    <div className="pm-shell">
-      <PublicHeader
-        title={stepMeta.title}
-        subtitle={stepMeta.subtitle}
-        onBack={hasPreviousStep ? handleBack : null}
-        branchName={state.selectedBranch?.name}
-        actions={
-          <div className="pm-shell__header-actions">
-            {user ? (
-              <button
-                type="button"
-                className="pm-shell__header-btn"
-                onClick={() => {
-                  logout();
-                  navigate('/menu-publico');
-                }}
-              >
-                <i className="bi bi-box-arrow-right" aria-hidden="true" />
-                <span>Cerrar sesion</span>
-              </button>
-            ) : (
+    <div className={`pm-shell pm-theme-${theme}`}>
+      {!isLandingView && !isMenuStep ? (
+        <PublicHeader
+          title={stepMeta.title}
+          subtitle={stepMeta.subtitle}
+          onBack={hasPreviousStep ? handleBack : null}
+          branchName={state.selectedBranch?.name}
+          actions={
+            <div className="pm-shell__header-actions">
+              {user ? (
+                <button
+                  type="button"
+                  className="pm-shell__header-btn"
+                  onClick={() => {
+                    logout();
+                    navigate('/menu-publico');
+                  }}
+                >
+                  <i className="bi bi-box-arrow-right" aria-hidden="true" />
+                  <span>Cerrar Sesion</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="pm-shell__header-btn pm-shell__header-btn--wide"
+                  onClick={() => navigate('/auth/login?from=public-menu')}
+                >
+                  <i className="bi bi-person-fill" aria-hidden="true" />
+                  <span>Iniciar Sesion</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 className="pm-shell__header-btn pm-shell__header-btn--wide"
-                onClick={() => navigate('/auth/login?from=public-menu')}
+                onClick={() =>
+                  actions.openConfirm({
+                    title: 'Volver al inicio',
+                    message:
+                      'Si vuelves al inicio se perderan la sucursal, el tipo de pedido y los productos agregados al carrito.',
+                    confirmLabel: 'Si, volver al inicio'
+                  })
+                }
               >
-                <i className="bi bi-person-fill" aria-hidden="true" />
-                <span>Iniciar sesión</span>
+                <i className="bi bi-house-door-fill" aria-hidden="true" />
+                <span>Inicio</span>
               </button>
-            )}
+            </div>
+          }
+        />
+      ) : null}
 
-            <button
-              type="button"
-              className="pm-shell__header-btn pm-shell__header-btn--wide"
-              onClick={() =>
-                actions.openConfirm({
-                  title: 'Volver al inicio',
-                  message:
-                    'Si vuelves al inicio se perderan la sucursal, el tipo de pedido y los productos agregados al carrito.',
-                  confirmLabel: 'Si, volver al inicio'
-                })
-              }
-            >
-              <i className="bi bi-house-door-fill" aria-hidden="true" />
-              <span>Inicio</span>
-            </button>
+      <main
+        className={`pm-shell__content ${isMenuStep ? 'pm-shell__content--catalog menu-page-wrapper' : ''}`}
+      >
+        {isMenuStep ? (
+          <div className="menu-content-container">
+            <Outlet context={{ theme, onToggleTheme: toggleTheme }} />
           </div>
-        }
-      />
-
-      <main className="pm-shell__content">
-        <Outlet />
+        ) : (
+          <Outlet context={{ theme, onToggleTheme: toggleTheme }} />
+        )}
       </main>
 
       {primaryAction ? (

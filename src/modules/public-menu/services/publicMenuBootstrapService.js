@@ -4,6 +4,29 @@ import { API_URL } from '../../../utils/constants';
 
 const CATALOG_CACHE_TTL_MS = 20_000;
 const catalogCache = new Map();
+const PUBLIC_ORDER_TYPES = new Set(['dine-in', 'pickup', 'delivery']);
+const SUPABASE_PUBLIC_BUCKET = 'jonnys-assets';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const LEGACY_GOOGLE_IMAGE_RE = /(?:drive\.google\.com|drive\.usercontent\.google\.com|googleusercontent\.com)/i;
+
+const toPositiveIntOrNull = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const assertValidBranchId = (idSucursal) => {
+  if (!toPositiveIntOrNull(idSucursal)) {
+    throw new Error('La sucursal seleccionada no es valida. Vuelve a seleccionar una sucursal.');
+  }
+};
+
+const assertValidOrderType = (orderType) => {
+  const normalized = String(orderType || '').trim().toLowerCase();
+  if (!normalized || !PUBLIC_ORDER_TYPES.has(normalized)) {
+    throw new Error('El tipo de pedido no es valido. Selecciona nuevamente como deseas ordenar.');
+  }
+  return normalized;
+};
 
 // Construye querystring segura evitando repetir concatenacion manual.
 const withQueryParams = (endpoint, params = {}) => {
@@ -28,51 +51,17 @@ const readValidCatalogCache = (key) => {
   return null;
 };
 
-const getDriveFileIdFromUrl = (rawUrl) => {
-  const safeUrl = String(rawUrl || '').trim();
-  if (!safeUrl) return '';
-
-  try {
-    const parsed = new URL(safeUrl);
-    const host = String(parsed.hostname || '').toLowerCase();
-    const isDriveHost =
-      host.includes('drive.google.com') ||
-      host.includes('drive.usercontent.google.com') ||
-      host.includes('lh3.googleusercontent.com');
-
-    if (!isDriveHost) return '';
-
-    const path = String(parsed.pathname || '');
-    const fromPath =
-      path.match(/\/file\/d\/([^/?#]+)/i)?.[1] ||
-      path.match(/\/d\/([^/?#]+)/i)?.[1] ||
-      path.match(/^\/d\/([^/?#]+)/i)?.[1] ||
-      '';
-
-    const fromQuery = String(parsed.searchParams.get('id') || '').trim();
-    return String(fromPath || fromQuery).trim();
-  } catch {
-    return '';
-  }
-};
-
-const normalizeDriveImageUrl = (rawUrl) => {
-  const safeUrl = String(rawUrl || '').trim();
-  if (!safeUrl) return '';
-
-  const fileId = getDriveFileIdFromUrl(safeUrl);
-  if (!fileId) return safeUrl;
-
-  // Evita redirecciones de drive.google.com/thumbnail y mejora tiempos de render.
-  return `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}=w1200`;
-};
-
 const resolvePublicImageUrl = (rawUrl) => {
-  const normalized = normalizeDriveImageUrl(rawUrl);
+  const normalized = String(rawUrl || '').trim();
   if (!normalized) return '';
+  if (LEGACY_GOOGLE_IMAGE_RE.test(normalized)) return '';
 
   if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith('blob:') || normalized.startsWith('data:')) {
     return normalized;
+  }
+
+  if (normalized.startsWith(`${SUPABASE_PUBLIC_BUCKET}/`) && SUPABASE_URL) {
+    return `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public/${normalized}`;
   }
 
   const base = String(API_URL || '').replace(/\/+$/, '');
@@ -80,15 +69,38 @@ const resolvePublicImageUrl = (rawUrl) => {
   return `${base}${path}`;
 };
 
+const toBoolean = (value, fallback = true) => {
+  if (value === true || value === false) return value;
+  if (value === 1 || value === '1' || String(value || '').toLowerCase() === 'true') return true;
+  if (value === 0 || value === '0' || String(value || '').toLowerCase() === 'false') return false;
+  return fallback;
+};
+
 // Normaliza estructura de sucursal para componentes de UI.
 const normalizeBranch = (raw) => ({
   id: Number(raw?.id_sucursal ?? raw?.id),
   name: raw?.nombre_sucursal || raw?.name || 'Sucursal',
   address: raw?.direccion || raw?.address || 'Direccion no disponible',
+  whatsapp:
+    String(
+      raw?.whatsapp ??
+      raw?.telefono_whatsapp ??
+      raw?.telefono ??
+      raw?.phone ??
+      ''
+    ).trim(),
+  transferAccount:
+    String(
+      raw?.cuenta_transferencia ??
+      raw?.cuenta_bancaria ??
+      raw?.numero_cuenta ??
+      ''
+    ).trim(),
   schedule: raw?.horario || raw?.schedule || 'Horario no disponible',
   etaMinutes: raw?.tiempo_entrega || raw?.etaMinutes || '20-30 min',
   imageUrl: resolvePublicImageUrl(raw?.url_imagen || raw?.imageUrl || ''),
-  isOpen: raw?.isOpen ?? raw?.estado ?? true
+  statusLabel: raw?.status_label || '',
+  isOpen: toBoolean(raw?.is_open ?? raw?.isOpen ?? raw?.estado, true)
 });
 
 const normalizeBranchWithUi = (raw) => {
@@ -108,6 +120,10 @@ const normalizeBranchWithUi = (raw) => {
     slug: String(raw?.slug || ui.slug || '').trim(),
     // Priorizamos imagen de BD/API; el asset local queda como respaldo visual.
     imageUrl: base.imageUrl || ui.foto || '',
+    // Preferimos telefono real de API y dejamos config UI como fallback por sucursal.
+    whatsapp: base.whatsapp || String(ui?.whatsapp || '').trim(),
+    // Preferimos cuenta real de API y dejamos config UI como fallback por sucursal.
+    transferAccount: base.transferAccount || String(ui?.cuenta_transferencia || '').trim(),
     displayName: base.name
   };
 };
@@ -156,11 +172,12 @@ const normalizeCatalogItem = (raw) => ({
       precio_adicional: Number(extra?.precio_adicional || 0)
     }))
     : [],
-  salsas_componentes: Array.isArray(raw?.salsas_componentes)
+      salsas_componentes: Array.isArray(raw?.salsas_componentes)
     ? raw.salsas_componentes.map((component) => ({
       id_receta: Number(component?.id_receta || 0) || null,
       nombre_receta: String(component?.nombre_receta || ''),
       multiplicador: Math.max(1, Number(component?.multiplicador || 1)),
+      unidades_base: Math.max(1, Number(component?.unidades_base || 1)),
       salsas_permitidas: Array.isArray(component?.salsas_permitidas)
         ? component.salsas_permitidas.map((sauce) => ({
           id_salsa: Number(sauce?.id_salsa || 0) || null,
@@ -211,6 +228,8 @@ export const publicMenuBootstrapService = {
 
   // Obtiene menu vigente de la sucursal seleccionada.
   async getBranchActiveMenu(idSucursal) {
+    assertValidBranchId(idSucursal);
+
     const response = await apiFetch(
       `/api/public-menu/sucursales/${idSucursal}/menu-vigente`,
       'GET',
@@ -223,7 +242,10 @@ export const publicMenuBootstrapService = {
 
   // Obtiene catalogo real publicado para sucursal/tipo de pedido.
   async getCatalog({ idSucursal, orderType }) {
-    const cacheKey = buildCatalogCacheKey({ idSucursal, orderType });
+    assertValidBranchId(idSucursal);
+    const normalizedOrderType = assertValidOrderType(orderType);
+
+    const cacheKey = buildCatalogCacheKey({ idSucursal, orderType: normalizedOrderType });
     const cached = readValidCatalogCache(cacheKey);
     if (cached) return cached;
 
@@ -232,7 +254,7 @@ export const publicMenuBootstrapService = {
 
     const endpoint = withQueryParams('/api/public-menu/catalogo', {
       id_sucursal: idSucursal,
-      tipo_pedido: orderType
+      tipo_pedido: normalizedOrderType
     });
 
     const requestPromise = (async () => {
@@ -281,6 +303,11 @@ export const publicMenuBootstrapService = {
 
   // Obtiene detalle real de un item puntual para HU-133.
   async getCatalogItemDetail({ idSucursal, idDetalleMenu }) {
+    assertValidBranchId(idSucursal);
+    if (!toPositiveIntOrNull(idDetalleMenu)) {
+      throw new Error('El item solicitado no es valido. Recarga el menu e intenta nuevamente.');
+    }
+
     const endpoint = withQueryParams(`/api/public-menu/items/${idDetalleMenu}`, {
       id_sucursal: idSucursal
     });

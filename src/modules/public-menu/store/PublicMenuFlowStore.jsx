@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react';
+import { useLocation } from 'react-router-dom';
 import { PUBLIC_MENU_ACTIONS, publicMenuFlowReducer } from './publicMenuFlowReducer';
 import { createPublicMenuInitialState, toPublicMenuSnapshot } from './publicMenuInitialState';
 import {
@@ -11,8 +12,15 @@ const PublicMenuFlowContext = createContext(null);
 
 // Provider isolated for this module so no other module depends on this state.
 export const PublicMenuFlowProvider = ({ children }) => {
-  const [state, dispatch] = useReducer(publicMenuFlowReducer, undefined, () => {
+  const location = useLocation();
+  const isPreviewAdmin = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return String(params.get('preview_admin') || '').trim() === '1';
+  }, [location.search]);
+
+  const [state, dispatch] = useReducer(publicMenuFlowReducer, { isPreviewAdmin }, ({ isPreviewAdmin: isPreview }) => {
     const base = createPublicMenuInitialState();
+    if (isPreview) return base;
     const snapshot = loadPublicMenuSnapshot();
 
     if (!snapshot) return base;
@@ -23,14 +31,20 @@ export const PublicMenuFlowProvider = ({ children }) => {
   });
 
   useEffect(() => {
+    // En iframe de admin evitamos mutar el snapshot global del cliente.
+    if (isPreviewAdmin) return;
     savePublicMenuSnapshot(toPublicMenuSnapshot(state));
-  }, [state]);
+  }, [isPreviewAdmin, state]);
 
   const actions = useMemo(
     () => ({
       selectBranch: (branch) => dispatch({ type: PUBLIC_MENU_ACTIONS.SELECT_BRANCH, payload: branch }),
       selectOrderType: (orderType) =>
         dispatch({ type: PUBLIC_MENU_ACTIONS.SELECT_ORDER_TYPE, payload: orderType }),
+      setDineInTable: (table) =>
+        dispatch({ type: PUBLIC_MENU_ACTIONS.SET_DINE_IN_TABLE, payload: table }),
+      setPickupPaymentMethod: (method) =>
+        dispatch({ type: PUBLIC_MENU_ACTIONS.SET_PICKUP_PAYMENT_METHOD, payload: method }),
       selectMenu: (menu) => dispatch({ type: PUBLIC_MENU_ACTIONS.SELECT_MENU, payload: menu }),
       resetFlow: () => {
         clearPublicMenuSnapshot();

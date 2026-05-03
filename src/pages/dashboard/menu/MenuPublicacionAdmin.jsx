@@ -417,6 +417,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
                 loading={loadingPreview}
                 error={previewError}
                 preview={preview}
+                catalogItems={items}
                 openAsClientUrl={openAsClientUrl}
               />
             </div>

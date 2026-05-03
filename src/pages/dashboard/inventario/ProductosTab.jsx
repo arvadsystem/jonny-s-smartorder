@@ -4,8 +4,8 @@ import { inventarioService } from '../../../services/inventarioService';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
 import { useAuth } from '../../../hooks/useAuth';
-import { toUpperSafe } from '../../../utils/toUpperSafe';
 import { PERMISSIONS } from '../../../utils/permissions';
+import { normalizeVisualText } from '../../../utils/normalizeVisualText';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
@@ -62,6 +62,18 @@ const buildCreateImageState = () => ({
   previewUrl: '',
   loading: false,
   error: ''
+});
+
+const buildCreateProductoInitialForm = () => ({
+  nombre_producto: '',
+  precio: '',
+  stock_minimo: '0',
+  descripcion_producto: '',
+  fecha_ingreso_producto: '',
+  fecha_caducidad: '',
+  id_categoria_producto: '',
+  id_almacen: '',
+  id_tipo_departamento: ''
 });
 
 const buildDrawerImageActionState = () => ({
@@ -198,18 +210,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   // FORM CREAR
   // ==============================
-  const [form, setForm] = useState({
-    nombre_producto: '',
-    precio: '',
-    // NUEVO: se agrega stock_minimo al formulario de alta para alinear payload con backend.
-    stock_minimo: '0',
-    descripcion_producto: '',
-    fecha_ingreso_producto: '',
-    fecha_caducidad: '',
-    id_categoria_producto: '',
-    id_almacen: '',
-    id_tipo_departamento: '' // OPCIONAL
-  });
+  const [form, setForm] = useState(buildCreateProductoInitialForm);
 
   const [createErrors, setCreateErrors] = useState({});
   const [creating, setCreating] = useState(false);
@@ -220,6 +221,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [editFormSnapshot, setEditFormSnapshot] = useState(null);
   const [editErrors, setEditErrors] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -270,6 +272,60 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // WHY: al quitar imagen se debe vaciar tambien el valor del `<input type="file">` para evitar estados colgados.
   // IMPACT: solo sincroniza UI local del formulario de alta; el flujo de upload no cambia.
   const createImageInputRef = useRef(null);
+  const createModalFocusReturnRef = useRef(null);
+  const filtersFocusReturnRef = useRef(null);
+  const editDrawerFocusReturnRef = useRef(null);
+  const prevCreateModalOpenRef = useRef(false);
+  const prevFiltersOpenRef = useRef(false);
+  const prevDrawerOpenRef = useRef(false);
+
+  const captureActiveElement = useCallback(() => {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? active : null;
+  }, []);
+
+  const restoreFocusToElement = useCallback((element) => {
+    if (!(element instanceof HTMLElement) || typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!document.contains(element) || element.hasAttribute('disabled') || element.getAttribute('aria-hidden') === 'true') return;
+    window.requestAnimationFrame(() => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    });
+  }, []);
+
+  const pickVisibleContainer = useCallback((selectors) => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return null;
+    const list = Array.isArray(selectors) ? selectors : [selectors];
+    for (const selector of list) {
+      const candidate = document.querySelector(selector);
+      if (!(candidate instanceof HTMLElement)) continue;
+      const styles = window.getComputedStyle(candidate);
+      const rect = candidate.getBoundingClientRect();
+      if (styles.display === 'none' || styles.visibility === 'hidden') continue;
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      return candidate;
+    }
+    return null;
+  }, []);
+
+  const focusFirstEditableField = useCallback((container) => {
+    if (!(container instanceof HTMLElement) || typeof window === 'undefined') return;
+    const firstField = container.querySelector(
+      'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'
+    );
+    if (!(firstField instanceof HTMLElement)) return;
+    window.requestAnimationFrame(() => {
+      try {
+        firstField.focus({ preventScroll: true });
+      } catch {
+        firstField.focus();
+      }
+    });
+  }, []);
 
   useEffect(() => {
     // NEW: escucha el ancho del viewport para recalcular paginas 4x2/2x2/1x2 sin remount del modulo.
@@ -298,10 +354,32 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // NEW: cierre unificado del modal de Nuevo producto (desktop y flujo mobile legacy).
   // WHY: reutilizar un solo shell centrado sin tocar `onCrear`, validaciones ni payloads.
   // IMPACT: solo centraliza el cierre visual del modal de alta en Productos.
-  const closeCreateProductoModal = useCallback(() => {
+  const hasCreateProductoUnsavedChanges = useMemo(() => {
+    const initialForm = buildCreateProductoInitialForm();
+    const formHasChanges = Object.keys(initialForm).some(
+      (field) => String(form?.[field] ?? '') !== String(initialForm[field] ?? '')
+    );
+    return formHasChanges || Boolean(createImage?.file);
+  }, [createImage?.file, form]);
+
+  const hasEditProductoUnsavedChanges = useMemo(() => {
+    if (!editForm || !editFormSnapshot) return false;
+    return Object.keys(editFormSnapshot).some(
+      (field) => String(editForm?.[field] ?? '') !== String(editFormSnapshot?.[field] ?? '')
+    );
+  }, [editForm, editFormSnapshot]);
+
+  const confirmDiscardProductoChanges = useCallback(() => {
+    if (typeof window === 'undefined') return true;
+    return window.confirm('Hay cambios sin guardar. ¿Deseas cerrar y perderlos?');
+  }, []);
+
+  const closeCreateProductoModal = useCallback((force = false) => {
+    if (creating && !force) return;
+    if (!force && hasCreateProductoUnsavedChanges && !confirmDiscardProductoChanges()) return;
     setCreatePanelOpen(false);
     setShowCreateProductoSheet(false);
-  }, []);
+  }, [confirmDiscardProductoChanges, creating, hasCreateProductoUnsavedChanges]);
 
   // ==============================
   // HELPERS
@@ -374,7 +452,13 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // IMPACT: se reutiliza en create/edit; handlers, validaciones y submit permanecen iguales.
   const normalizeProductoTextInput = useCallback((field, value) => {
     if (field !== 'nombre_producto' && field !== 'descripcion_producto') return value;
-    return toUpperSafe(value, field);
+    return String(value ?? '').replace(/\s+/g, ' ');
+  }, []);
+
+  const normalizeProductoFieldOnBlur = useCallback((field, value) => {
+    if (field === 'nombre_producto') return normalizeVisualText(value, { mode: 'title' });
+    if (field === 'descripcion_producto') return normalizeVisualText(value, { mode: 'sentence' });
+    return value;
   }, []);
 
   // NEW: valida IDs de productos persistidos contra el rango INT32 usado por la BD.
@@ -451,14 +535,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     // NEW: conserva el detalle interno de error solo en desarrollo cuando se oculta en UI.
     // WHY: facilitar diagnóstico sin exponer mensajes de BD al usuario final.
     // IMPACT: solo logs en consola DEV; producción permanece sin cambios visuales.
-    if (import.meta.env.DEV && rawMessage !== message) {
-      console.error('PRODUCTOS API ERROR (detalle interno oculto en UI):', {
-        status,
-        rawMessage,
-        apiError
-      });
-    }
-
+    
     if (typeof setFieldErrors === 'function') {
       const fieldErrors = mapApiFieldErrors(backendData);
       if (Object.keys(fieldErrors).length > 0) {
@@ -746,13 +823,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       setTotalPages(1);
       if (currentPage !== 1) setCurrentPage(1);
       return true;
-    } catch (syncError) {
-      // NEW: logging solo en DEV para diagnosticar fallos de sincronizacion sin ensuciar la UI.
-      // WHY: este refresh se usa para mutaciones secundarias y no debe interrumpir la experiencia.
-      // IMPACT: no altera flujos; solo agrega diagnostico en desarrollo.
-      if (import.meta.env.DEV) {
-        console.error('PRODUCTOS syncProductosSilently error:', syncError);
-      }
+    } catch {
       return false;
     }
   }, [currentPage, fetchProductosDataset]);
@@ -920,10 +991,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         reason: String(reason || 'productos_cleanup')
       });
       return true;
-    } catch (cleanupError) {
-      if (import.meta.env.DEV) {
-        console.error('PRODUCTOS cleanupArchivoTemporal error:', cleanupError);
-      }
+    } catch {
       return false;
     }
   }, []);
@@ -933,8 +1001,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // ==============================
   const validarProducto = (data) => {
     // === LIMPIEZA ===
-    const nombre = String(data.nombre_producto ?? '').trim();
-    const descripcion = String(data.descripcion_producto ?? '').trim();
+    const nombre = normalizeVisualText(data.nombre_producto ?? '', { mode: 'title' });
+    const descripcion = normalizeVisualText(data.descripcion_producto ?? '', { mode: 'sentence' });
 
     const precioRaw = String(data.precio ?? '').trim();
     // NUEVO: se valida stock_minimo para enviar valor compatible con backend.
@@ -1148,18 +1216,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   // RESET FORM CREAR
   // ==============================
   const resetForm = () => {
-    setForm({
-      nombre_producto: '',
-      precio: '',
-      // AJUSTE: reset consistente del nuevo campo stock_minimo.
-      stock_minimo: '0',
-      descripcion_producto: '',
-      fecha_ingreso_producto: '',
-      fecha_caducidad: '',
-      id_categoria_producto: '',
-      id_almacen: '',
-      id_tipo_departamento: ''
-    });
+    setForm(buildCreateProductoInitialForm());
     setCreateErrors({});
     clearCreateImage();
   };
@@ -1222,7 +1279,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       uploadedArchivoId = null;
 
       resetForm();
-      closeCreateProductoModal();
+      closeCreateProductoModal(true);
 
       safeToast('CREADO', 'EL PRODUCTO SE CREÓ CORRECTAMENTE.', 'success');
     } catch (e2) {
@@ -1247,7 +1304,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setEditErrors({});
     setEditId(p.id_producto);
 
-    setEditForm({
+    const nextEditForm = {
       nombre_producto: p.nombre_producto ?? '',
       precio: p.precio ?? '',
       // AJUSTE: el form de edicion conserva stock_minimo para validacion homogenea.
@@ -1258,12 +1315,15 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       id_categoria_producto: String(p.id_categoria_producto ?? ''),
       id_almacen: String(p.id_almacen ?? ''),
       id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && p.id_tipo_departamento ? String(p.id_tipo_departamento) : ''
-    });
+    };
+    setEditForm(nextEditForm);
+    setEditFormSnapshot(nextEditForm);
   };
 
   const cancelarEdicion = () => {
     setEditId(null);
     setEditForm(null);
+    setEditFormSnapshot(null);
     setEditErrors({});
     setSavingEdit(false);
   };
@@ -1279,13 +1339,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setDrawerOpen(true);
   };
 
-  const cerrarDrawerProducto = () => {
+  const cerrarDrawerProducto = useCallback((force = false) => {
+    if ((savingEdit || togglingEstado) && !force) return;
+    if (!force && hasEditProductoUnsavedChanges && !confirmDiscardProductoChanges()) return;
     setDrawerOpen(false);
     setDrawerEditMode(false);
     setDrawerMessage('');
     setSelectedProductoId(null);
     cancelarEdicion();
-  };
+  }, [
+    cancelarEdicion,
+    confirmDiscardProductoChanges,
+    hasEditProductoUnsavedChanges,
+    savingEdit,
+    togglingEstado
+  ]);
 
   const clearProductoImageError = useCallback((productoId) => {
     if (!productoId) return;
@@ -1805,7 +1873,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       });
       const shouldCloseDrawerAfterEdit = drawerOpen && Number(selectedProductoId) === Number(persistedEditId);
       if (shouldCloseDrawerAfterEdit) {
-        cerrarDrawerProducto();
+        cerrarDrawerProducto(true);
       } else {
         setDrawerMessage('Cambios guardados.');
         setDrawerEditMode(false);
@@ -1853,7 +1921,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         if (showInactiveProductos) {
           setDrawerMessage(resp.message || 'Producto inactivado.');
         } else {
-          cerrarDrawerProducto();
+          cerrarDrawerProducto(true);
         }
       }
       patchProductoLocalById(persistedDeleteId, { estado: false });
@@ -2124,25 +2192,86 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!filtersOpen || typeof window === 'undefined') return undefined;
     const rafId = window.requestAnimationFrame(() => {
       if (filtersBodyRef.current) filtersBodyRef.current.scrollTop = 0;
+      const container = pickVisibleContainer([
+        '.inv-prod-pmodal--filters.show .inv-prod-pmodal__panel',
+        '.inv-prod-filters.open.show'
+      ]);
+      focusFirstEditableField(container);
     });
     return () => window.cancelAnimationFrame(rafId);
-  }, [filtersOpen]);
+  }, [filtersOpen, focusFirstEditableField, pickVisibleContainer]);
 
   useEffect(() => {
     if (!createProductoModalOpen || typeof window === 'undefined') return undefined;
     const rafId = window.requestAnimationFrame(() => {
       if (createBodyRef.current) createBodyRef.current.scrollTop = 0;
+      const container = pickVisibleContainer([
+        '.inv-prod-pmodal--create.show .inv-prod-pmodal__panel',
+        '.inv-prod-create-wrap.open.show',
+        '#inv-prod-create-panel'
+      ]);
+      focusFirstEditableField(container);
     });
     return () => window.cancelAnimationFrame(rafId);
-  }, [createProductoModalOpen]);
+  }, [createProductoModalOpen, focusFirstEditableField, pickVisibleContainer]);
 
   useEffect(() => {
     if (!drawerOpen || typeof window === 'undefined') return undefined;
     const rafId = window.requestAnimationFrame(() => {
       if (drawerBodyRef.current) drawerBodyRef.current.scrollTop = 0;
+      const container = pickVisibleContainer('.inv-ins-drawer--edit.show');
+      focusFirstEditableField(container);
     });
     return () => window.cancelAnimationFrame(rafId);
-  }, [drawerOpen]);
+  }, [drawerOpen, focusFirstEditableField, pickVisibleContainer]);
+
+  useEffect(() => {
+    if (createProductoModalOpen && !prevCreateModalOpenRef.current) {
+      createModalFocusReturnRef.current = captureActiveElement();
+    } else if (!createProductoModalOpen && prevCreateModalOpenRef.current) {
+      restoreFocusToElement(createModalFocusReturnRef.current);
+      createModalFocusReturnRef.current = null;
+    }
+    prevCreateModalOpenRef.current = createProductoModalOpen;
+  }, [captureActiveElement, createProductoModalOpen, restoreFocusToElement]);
+
+  useEffect(() => {
+    if (filtersOpen && !prevFiltersOpenRef.current) {
+      filtersFocusReturnRef.current = captureActiveElement();
+    } else if (!filtersOpen && prevFiltersOpenRef.current) {
+      restoreFocusToElement(filtersFocusReturnRef.current);
+      filtersFocusReturnRef.current = null;
+    }
+    prevFiltersOpenRef.current = filtersOpen;
+  }, [captureActiveElement, filtersOpen, restoreFocusToElement]);
+
+  useEffect(() => {
+    if (drawerOpen && !prevDrawerOpenRef.current) {
+      editDrawerFocusReturnRef.current = captureActiveElement();
+    } else if (!drawerOpen && prevDrawerOpenRef.current) {
+      restoreFocusToElement(editDrawerFocusReturnRef.current);
+      editDrawerFocusReturnRef.current = null;
+    }
+    prevDrawerOpenRef.current = drawerOpen;
+  }, [captureActiveElement, drawerOpen, restoreFocusToElement]);
+
+  useEffect(() => {
+    if ((!createProductoModalOpen && !drawerOpen) || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (createProductoModalOpen) {
+        event.preventDefault();
+        closeCreateProductoModal();
+        return;
+      }
+      if (drawerOpen) {
+        event.preventDefault();
+        cerrarDrawerProducto();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cerrarDrawerProducto, closeCreateProductoModal, createProductoModalOpen, drawerOpen]);
 
   const resetFiltros = () => {
     setSearch('');
@@ -2504,7 +2633,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </div>
 
             <div className={`inv-prod-pmodal inv-prod-pmodal--create ${createProductoModalOpen ? 'show' : ''}`} aria-hidden={!createProductoModalOpen}>
-              <div className="inv-prod-pmodal__overlay" onClick={closeCreateProductoModal} />
+            <div className="inv-prod-pmodal__overlay" onClick={() => closeCreateProductoModal()} />
 
               <div className="inv-prod-pmodal__viewport">
                 <section
@@ -2523,7 +2652,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         <button
                           type="button"
                           className="inv-prod-drawer-close inv-ins-create-hero__close"
-                          onClick={closeCreateProductoModal}
+                          onClick={() => closeCreateProductoModal()}
                           aria-label="Cerrar nuevo producto"
                         >
                           <i className="bi bi-x-lg" />
@@ -2561,6 +2690,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 placeholder="Ej: Hamburguesa clásica"
                                 value={form.nombre_producto}
                                 onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                                 required
                               />
                               {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -2593,6 +2723,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 placeholder="Ej: Incluye papas y bebida"
                                 value={form.descripcion_producto}
                                 onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
                               />
                               {createErrors.descripcion_producto && (
                                 <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
@@ -2729,7 +2860,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       <button className="btn inv-prod-btn-subtle" type="button" onClick={resetForm} disabled={creating}>
                         Limpiar
                       </button>
-                      <button className="btn inv-prod-btn-subtle" type="button" onClick={closeCreateProductoModal} disabled={creating}>
+                      <button className="btn inv-prod-btn-subtle" type="button" onClick={() => closeCreateProductoModal()} disabled={creating}>
                         Cancelar
                       </button>
                       <button className="btn inv-prod-btn-primary" type="submit" disabled={creating}>
@@ -2779,7 +2910,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               <div className="inv-prod-drawer-title">Nuevo producto</div>
               <div className="inv-prod-drawer-sub">Registro de producto</div>
             </div>
-            <button type="button" className="inv-prod-drawer-close" onClick={() => setCreatePanelOpen(false)} aria-label="Cerrar nuevo producto">
+            <button type="button" className="inv-prod-drawer-close" onClick={() => closeCreateProductoModal()} aria-label="Cerrar nuevo producto">
               <i className="bi bi-x-lg" />
             </button>
           </div>
@@ -2802,6 +2933,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     placeholder="Ej: Hamburguesa clásica"
                     value={form.nombre_producto}
                     onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                     required
                   />
                   {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -2898,6 +3030,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     placeholder="Ej: Incluye papas y bebida"
                     value={form.descripcion_producto}
                     onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
                   />
                   {createErrors.descripcion_producto && (
                     <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
@@ -2957,6 +3090,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 placeholder="Ej: Hamburguesa clásica"
                 value={form.nombre_producto}
                 onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                 required
               />
               {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -3077,6 +3211,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 placeholder="Ej: Incluye papas y bebida"
                 value={form.descripcion_producto}
                 onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
               />
               {createErrors.descripcion_producto && (
                 <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
@@ -3461,6 +3596,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               className={`form-control form-control-sm ${editErrors.nombre_producto ? 'is-invalid' : ''}`}
                               value={editForm.nombre_producto}
                               onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                              onBlur={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                             />
                             {editErrors.nombre_producto && <div className="invalid-feedback">{editErrors.nombre_producto}</div>}
                           </>
@@ -3565,6 +3701,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 className={`form-control form-control-sm ${editErrors.descripcion_producto ? 'is-invalid' : ''}`}
                                 value={editForm.descripcion_producto}
                                 onChange={(e) => setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                              onBlur={(e) => setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
                               />
                               {editErrors.descripcion_producto && (
                                 <div className="invalid-feedback">{editErrors.descripcion_producto}</div>
@@ -3652,6 +3789,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                 className={`form-control form-control-sm ${editErrors.nombre_producto ? 'is-invalid' : ''}`}
                                 value={editForm.nombre_producto}
                                 onChange={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                              onBlur={(e) => setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                               />
                               {editErrors.nombre_producto && <div className="invalid-feedback">{editErrors.nombre_producto}</div>}
                             </>
@@ -3792,8 +3930,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         {/* NEW: shell glass del drawer de Categorias aplicado al drawer de detalle/edicion de Productos. */}
         {/* WHY: unificar overlay, blur y animacion lateral en todo Inventario sin tocar el contenido del formulario. */}
         {/* IMPACT: cambio solo visual del contenedor del drawer; la logica del detalle/edicion permanece igual. */}
-        <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${drawerOpen ? 'show' : ''}`} onClick={cerrarDrawerProducto} />
-        <aside className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer inv-ins-drawer--edit ${drawerOpen ? 'show' : ''}`} aria-hidden={!drawerOpen}>
+        <div className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${drawerOpen ? 'show' : ''}`} onClick={() => cerrarDrawerProducto()} />
+        <aside
+          className={`inv-prod-drawer inv-cat-v2__drawer inv-ins-drawer inv-ins-drawer--edit ${drawerOpen ? 'show' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="inv-prod-edit-title"
+          aria-hidden={!drawerOpen}
+        >
           {selectedProducto ? (
             <>
               <div ref={drawerBodyRef} className="inv-prod-drawer-body inv-ins-drawer-body--edit">
@@ -3801,7 +3945,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   <button
                     type="button"
                     className="inv-prod-drawer-close inv-ins-create-hero__close"
-                    onClick={cerrarDrawerProducto}
+                    onClick={() => cerrarDrawerProducto()}
                     aria-label="Cerrar detalle"
                   >
                     <i className="bi bi-x-lg" />
@@ -3811,7 +3955,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   </div>
                   <div className="inv-ins-create-hero__copy">
                     <div className="inv-ins-create-hero__kicker">Edicion Activa</div>
-                    <div className="inv-ins-create-hero__title">{editForm.nombre_producto || selectedProducto.nombre_producto || 'Producto'}</div>
+                    <div id="inv-prod-edit-title" className="inv-ins-create-hero__title">{editForm.nombre_producto || selectedProducto.nombre_producto || 'Producto'}</div>
                   </div>
                   <div className="inv-ins-create-hero__chips">
                     <span className="inv-ins-create-hero__chip">
@@ -3906,6 +4050,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       onChange={(e) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }));
+                      }}
+                      onBlur={(e) => {
+                        setEditForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }));
                       }}
                     />
                     {editErrors.nombre_producto ? <div className="invalid-feedback d-block">{editErrors.nombre_producto}</div> : null}
@@ -4026,6 +4173,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         setDrawerEditMode(true);
                         setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }));
                       }}
+                      onBlur={(e) => {
+                        setEditForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }));
+                      }}
                     />
                     {editErrors.descripcion_producto ? <div className="invalid-feedback d-block">{editErrors.descripcion_producto}</div> : null}
                   </div>
@@ -4070,7 +4220,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2500 }}
             role="dialog"
             aria-modal="true"
-            onClick={() => setShowCreateProductoSheet(false)}
+            onClick={() => closeCreateProductoModal()}
           >
             <div className="modal-dialog modal-dialog-centered inv-prod-modal-dialog" onClick={(e) => e.stopPropagation()}>
               <div className="modal-content shadow inv-prod-modal-content">
@@ -4079,7 +4229,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     <div className="fw-semibold">Agregar producto</div>
                     <div className="small text-muted">Completa los campos y guarda</div>
                   </div>
-                  <button type="button" className="btn btn-sm btn-light inv-prod-modal-close" onClick={() => setShowCreateProductoSheet(false)}>
+                  <button type="button" className="btn btn-sm btn-light inv-prod-modal-close" onClick={() => closeCreateProductoModal()}>
                     <i className="bi bi-x-lg" />
                   </button>
                 </div>
@@ -4092,6 +4242,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         className={`form-control ${createErrors.nombre_producto ? 'is-invalid' : ''}`}
                         value={form.nombre_producto}
                         onChange={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoTextInput('nombre_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, nombre_producto: normalizeProductoFieldOnBlur('nombre_producto', e.target.value) }))}
                         required
                       />
                       {createErrors.nombre_producto && <div className="invalid-feedback">{createErrors.nombre_producto}</div>}
@@ -4186,6 +4337,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         className={`form-control ${createErrors.descripcion_producto ? 'is-invalid' : ''}`}
                         value={form.descripcion_producto}
                         onChange={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoTextInput('descripcion_producto', e.target.value) }))}
+                                onBlur={(e) => setForm((s) => ({ ...s, descripcion_producto: normalizeProductoFieldOnBlur('descripcion_producto', e.target.value) }))}
                       />
                       {createErrors.descripcion_producto && (
                         <div className="invalid-feedback">{createErrors.descripcion_producto}</div>
@@ -4222,7 +4374,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       <button className="btn btn-primary inv-prod-btn-primary" type="submit" disabled={creating}>
                         {creating ? 'Guardando...' : 'Guardar'}
                       </button>
-                      <button className="btn btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={() => setShowCreateProductoSheet(false)} disabled={creating}>
+                      <button className="btn btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={() => closeCreateProductoModal()} disabled={creating}>
                         Cancelar
                       </button>
                     </div>
@@ -4306,4 +4458,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 };
 
 export default ProductosTab;
+
+
 

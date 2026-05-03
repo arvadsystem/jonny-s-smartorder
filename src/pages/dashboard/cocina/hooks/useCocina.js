@@ -184,7 +184,15 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
       try {
         const response = await cocinaApi.updateEstado(idPedido, estadoDestino);
         setPedidos((current) => applyKitchenTransition(current, idPedido, estadoDestino));
-        openToast('PEDIDO ACTUALIZADO', response?.message || 'Estado actualizado correctamente.', 'success');
+        if (response?.warning?.code === 'FALTANTE_COCINA') {
+          openToast(
+            'PEDIDO LISTO CON FALTANTE',
+            'Pedido marcado como listo. Inventario descontado con faltantes auditados.',
+            'warning'
+          );
+        } else {
+          openToast('PEDIDO ACTUALIZADO', response?.message || 'Estado actualizado correctamente.', 'success');
+        }
         refreshBoard({ silent: true }).catch(() => {});
         return response;
       } catch (saveError) {

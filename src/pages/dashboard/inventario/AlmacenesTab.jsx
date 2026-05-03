@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { inventarioService } from '../../../services/inventarioService';
 import sucursalesService from '../../../services/sucursalesService';
@@ -6,6 +6,7 @@ import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
 import { useAuth } from '../../../hooks/useAuth';
+import { normalizeVisualText } from '../../../utils/normalizeVisualText';
 import MovimientosTab from './MovimientosTab.jsx';
 import CompactHeaderSwitch from './CompactHeaderSwitch.jsx';
 import ProveedoresTab from './ProveedoresTab.jsx';
@@ -35,6 +36,8 @@ const ALMACENES_SCOPE_BLOCKED_MESSAGE =
   'No tienes acceso al recurso solicitado dentro de tu alcance de sucursal.';
 const ALMACENES_SCOPE_NOT_FOUND_MESSAGE =
   'El almacen solicitado no esta disponible en tu alcance actual o no existe.';
+const ALMACEN_CREATE_FORM_INITIAL = Object.freeze({ nombre: '', id_sucursal: '' });
+const normalizeAlmacenNombre = (value) => normalizeVisualText(value, { mode: 'title' });
 
 const resolveAlmacenesRequestMessage = (error, fallbackMessage) => {
   const status = Number(error?.status ?? 0);
@@ -187,6 +190,13 @@ const toFiniteNonNegativeNumber = (value) => {
   return numeric;
 };
 
+const areAlmacenFormsEqual = (left, right) => {
+  return (
+    String(left?.nombre ?? '') === String(right?.nombre ?? '') &&
+    String(left?.id_sucursal ?? '') === String(right?.id_sucursal ?? '')
+  );
+};
+
 const normalizeAlmacenDependencies = (payload) => {
   const countsRaw = payload?.counts && typeof payload.counts === 'object' ? payload.counts : {};
   const stockRaw = payload?.stock && typeof payload.stock === 'object' ? payload.stock : {};
@@ -312,18 +322,26 @@ const normalizeAlmacenDependencies = (payload) => {
 const AlmacenesTab = ({ openToast }) => {
   const { user } = useAuth();
   const { can, canAny, loading: permisosLoading } = usePermisos();
-  const canVerAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_VER);
+  const canVerAlmacenes = canAny([
+    PERMISSIONS.INVENTARIO_ALMACENES_VER,
+    PERMISSIONS.INVENTARIO_ALMACENES_DETALLE_VER
+  ]);
   const canCrearAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_CREAR);
   const canEditarAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_EDITAR);
   const canCambiarEstadoAlmacenes = can(PERMISSIONS.INVENTARIO_ALMACENES_ESTADO_CAMBIAR);
-  const canVerProveedores = can(PERMISSIONS.INVENTARIO_PROVEEDORES_VER);
+  const canVerProveedores = canAny([
+    PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_DETALLE_VER
+  ]);
   const canAccessAlmacenesTab = canAny([
     PERMISSIONS.INVENTARIO_ALMACENES_VER,
+    PERMISSIONS.INVENTARIO_ALMACENES_DETALLE_VER,
     PERMISSIONS.INVENTARIO_ALMACENES_CREAR,
     PERMISSIONS.INVENTARIO_ALMACENES_EDITAR,
     PERMISSIONS.INVENTARIO_ALMACENES_ELIMINAR,
     PERMISSIONS.INVENTARIO_ALMACENES_ESTADO_CAMBIAR,
     PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_DETALLE_VER,
     PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR,
     PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR,
     PERMISSIONS.INVENTARIO_PROVEEDORES_ELIMINAR,
@@ -358,13 +376,15 @@ const AlmacenesTab = ({ openToast }) => {
   const [selectedAlmacenId, setSelectedAlmacenId] = useState('');
 
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [form, setForm] = useState({ nombre: '', id_sucursal: '' });
+  const [form, setForm] = useState(ALMACEN_CREATE_FORM_INITIAL);
+  const [createFormSnapshot, setCreateFormSnapshot] = useState(ALMACEN_CREATE_FORM_INITIAL);
   const [createErrors, setCreateErrors] = useState({});
   const [savingCreate, setSavingCreate] = useState(false);
 
   const [detailId, setDetailId] = useState(null);
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [editFormSnapshot, setEditFormSnapshot] = useState(null);
   const [editErrors, setEditErrors] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -387,11 +407,49 @@ const AlmacenesTab = ({ openToast }) => {
   const almacenesRequestIdRef = useRef(0);
   const dependenciasRequestIdRef = useRef(0);
   const editDependenciasRequestIdRef = useRef(0);
+  const createNombreInputRef = useRef(null);
+  const editNombreInputRef = useRef(null);
+  const modalFocusReturnRef = useRef(null);
+  const prevModalOpenRef = useRef(false);
   const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
   const showEditModal = Boolean(editForm && editId !== null);
+  const anyFormModalOpen = showCreateModal || showEditModal;
+
+  const captureActiveElement = useCallback(() => {
+    if (typeof document === 'undefined') return null;
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? active : null;
+  }, []);
+
+  const restoreFocusToElement = useCallback((element) => {
+    if (!(element instanceof HTMLElement) || typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!document.contains(element) || element.hasAttribute('disabled') || element.getAttribute('aria-hidden') === 'true') return;
+    window.requestAnimationFrame(() => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    });
+  }, []);
 
   const safeToast = (title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
+  };
+
+  const hasCreateFormUnsavedChanges = useMemo(
+    () => !areAlmacenFormsEqual(form, createFormSnapshot),
+    [createFormSnapshot, form]
+  );
+
+  const hasEditFormUnsavedChanges = useMemo(() => {
+    if (!editForm || !editFormSnapshot) return false;
+    return !areAlmacenFormsEqual(editForm, editFormSnapshot);
+  }, [editForm, editFormSnapshot]);
+
+  const confirmDiscardAlmacenChanges = () => {
+    if (typeof window === 'undefined') return true;
+    return window.confirm('Hay cambios sin guardar. ¿Deseas cerrar y perderlos?');
   };
 
   const isSuperAdminUser = useMemo(
@@ -514,7 +572,7 @@ const AlmacenesTab = ({ openToast }) => {
 
   const validarAlmacen = (data, { allowLegacyId = null } = {}) => {
     const errors = {};
-    const nombre = String(data?.nombre ?? '').trim();
+    const nombre = normalizeAlmacenNombre(data?.nombre ?? '');
     const sucRaw = String(data?.id_sucursal ?? '').trim();
     const id_sucursal = Number.parseInt(sucRaw, 10);
 
@@ -624,6 +682,7 @@ const AlmacenesTab = ({ openToast }) => {
       setDetailId(null);
       setEditId(null);
       setEditForm(null);
+      setEditFormSnapshot(null);
       setConfirmModal({
         show: false,
         idToDelete: null,
@@ -664,10 +723,32 @@ const AlmacenesTab = ({ openToast }) => {
     };
   }, [showCreateModal, showEditModal]);
 
+  useEffect(() => {
+    if (!anyFormModalOpen || typeof window === 'undefined') return undefined;
+    const target = showEditModal ? editNombreInputRef.current : createNombreInputRef.current;
+    if (!target) return undefined;
+    const rafId = window.requestAnimationFrame(() => {
+      target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [anyFormModalOpen, showCreateModal, showEditModal]);
+
+  useEffect(() => {
+    if (anyFormModalOpen && !prevModalOpenRef.current) {
+      modalFocusReturnRef.current = captureActiveElement();
+    } else if (!anyFormModalOpen && prevModalOpenRef.current) {
+      restoreFocusToElement(modalFocusReturnRef.current);
+      modalFocusReturnRef.current = null;
+    }
+    prevModalOpenRef.current = anyFormModalOpen;
+  }, [anyFormModalOpen, captureActiveElement, restoreFocusToElement]);
+
   const resetCreateForm = () => {
     // AJUSTE: el alta debe obligar a elegir la sucursal manualmente.
     // IMPACT: solo cambia el valor inicial del select; validacion y persistencia siguen iguales.
-    setForm({ nombre: '', id_sucursal: '' });
+    const initialForm = { ...ALMACEN_CREATE_FORM_INITIAL };
+    setForm(initialForm);
+    setCreateFormSnapshot(initialForm);
     setCreateErrors({});
   };
 
@@ -682,6 +763,7 @@ const AlmacenesTab = ({ openToast }) => {
 
   const closeCreate = (force = false) => {
     if (savingCreate && !force) return;
+    if (!force && hasCreateFormUnsavedChanges && !confirmDiscardAlmacenChanges()) return;
     setShowCreateModal(false);
     resetCreateForm();
   };
@@ -729,11 +811,13 @@ const AlmacenesTab = ({ openToast }) => {
     setDetailId(null);
     setEditErrors({});
     setEditId(idAlmacen || null);
-    setEditForm({
+    const nextEditForm = {
       nombre: almacen?.nombre ?? '',
       id_sucursal: String(almacen?.id_sucursal ?? ''),
       concurrency_token: String(almacen?.concurrency_token ?? '')
-    });
+    };
+    setEditForm(nextEditForm);
+    setEditFormSnapshot(nextEditForm);
     if (idAlmacen) {
       void loadEditDependencyRule(idAlmacen);
     }
@@ -741,12 +825,31 @@ const AlmacenesTab = ({ openToast }) => {
 
   const cancelarEdicion = (force = false) => {
     if (savingEdit && !force) return;
+    if (!force && hasEditFormUnsavedChanges && !confirmDiscardAlmacenChanges()) return;
     editDependenciasRequestIdRef.current += 1;
     setLoadingEditDependencies(false);
     setEditId(null);
     setEditForm(null);
+    setEditFormSnapshot(null);
     setEditErrors({});
   };
+
+  useEffect(() => {
+    if ((!showCreateModal && !showEditModal) || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (showEditModal) {
+        cancelarEdicion();
+        return;
+      }
+      if (showCreateModal) {
+        closeCreate();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cancelarEdicion, closeCreate, showCreateModal, showEditModal]);
 
   const guardarEdicion = async (event) => {
     event.preventDefault();
@@ -1374,10 +1477,17 @@ const AlmacenesTab = ({ openToast }) => {
                               Nombre del almacen
                             </label>
                             <input
+                              ref={createNombreInputRef}
                               id="inv-warehouse-create-nombre"
                               className={`form-control ${createErrors.nombre ? 'is-invalid' : ''}`}
                               value={form.nombre}
                               onChange={(event) => setForm((current) => ({ ...current, nombre: event.target.value }))}
+                              onBlur={(event) =>
+                                setForm((current) => ({
+                                  ...current,
+                                  nombre: normalizeAlmacenNombre(event.target.value)
+                                }))
+                              }
                               placeholder="Ej: Bodega Norte"
                               disabled={savingCreate}
                             />
@@ -1596,10 +1706,17 @@ const AlmacenesTab = ({ openToast }) => {
                               Nombre del almacen
                             </label>
                             <input
+                              ref={editNombreInputRef}
                               id="inv-warehouse-edit-nombre"
                               className={`form-control ${editErrors.nombre ? 'is-invalid' : ''}`}
                               value={editForm.nombre}
                               onChange={(event) => setEditForm((current) => ({ ...current, nombre: event.target.value }))}
+                              onBlur={(event) =>
+                                setEditForm((current) => ({
+                                  ...current,
+                                  nombre: normalizeAlmacenNombre(event.target.value)
+                                }))
+                              }
                               placeholder="Ej: Bodega Norte"
                               disabled={savingEdit}
                             />

@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
 import { usePermisos } from '../../context/PermisosContext';
 import {
   getAllowedTabs,
@@ -10,7 +9,6 @@ import {
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
   const { isSuperAdmin, loading, permisos } = usePermisos();
   const [showInventarioSheet, setShowInventarioSheet] = useState(false);
 
@@ -18,7 +16,10 @@ const BottomNav = () => {
   const currentTab = String(new URLSearchParams(location.search || '').get('tab') || '').toLowerCase();
 
   const visibleMenuItems = useMemo(
-    () => getVisibleModuleItems(permisos, { isSuperAdmin }),
+    () =>
+      getVisibleModuleItems(permisos, { isSuperAdmin }).filter(
+        (item) => item.key !== 'configuracion'
+      ),
     [isSuperAdmin, permisos]
   );
 
@@ -26,11 +27,6 @@ const BottomNav = () => {
     () => getAllowedTabs('inventario', permisos, { isSuperAdmin }),
     [isSuperAdmin, permisos]
   );
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/', { replace: true });
-  };
 
   const goInventario = (tab) => {
     setShowInventarioSheet(false);
@@ -90,11 +86,6 @@ const BottomNav = () => {
                 </NavLink>
               );
             })}
-
-          <button type="button" className="bottom-nav-item" onClick={handleLogout} title="Salir">
-            <i className="bi bi-box-arrow-right" />
-            <span>Salir</span>
-          </button>
         </div>
       </div>
 

@@ -33,6 +33,7 @@ const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, user } = useAuth();
+  const forceLoginView = searchParams.get('intent') === 'login';
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -60,6 +61,11 @@ const Login = () => {
     const isCliente = isClienteUser(user);
     const mustChange = Boolean(user?.must_change_password);
 
+    if (forceLoginView) {
+      setShowForcePasswordModal(false);
+      return;
+    }
+
     if (isCliente) {
       setShowForcePasswordModal(false);
       const from = searchParams.get('from');
@@ -74,7 +80,7 @@ const Login = () => {
 
     setShowForcePasswordModal(false);
     navigate('/dashboard', { replace: true });
-  }, [navigate, user, searchParams]);
+  }, [forceLoginView, navigate, user, searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -89,12 +95,16 @@ const Login = () => {
 
     const normalizedIdentifier = String(identifier || '').trim();
     setLoading(true);
+
     try {
       let response = null;
       let internalError = null;
 
       try {
-        response = await authService.login({ nombre_usuario: normalizedIdentifier, clave: password });
+        response = await authService.login({
+          nombre_usuario: normalizedIdentifier,
+          clave: password
+        });
       } catch (err) {
         internalError = err;
         // apiFetch marca 403 de POST como CSRF por defecto, pero conserva el code real en err.data.code.
@@ -115,16 +125,37 @@ const Login = () => {
 
       if (response?.usuario) {
         login(response);
+
         const usuario = response.usuario;
-        setShowForcePasswordModal(!isClienteUser(usuario) && Boolean(usuario?.must_change_password));
+        const isCliente = isClienteUser(usuario);
+        const mustChange = !isCliente && Boolean(usuario?.must_change_password);
+
+        setShowForcePasswordModal(mustChange);
         setResendTarget('');
+
+        if (!mustChange) {
+          const from = searchParams.get('from');
+
+          navigate(
+            isCliente
+              ? from === 'carrito'
+                ? '/carrito'
+                : '/menu-publico'
+              : '/dashboard',
+            { replace: true }
+          );
+        }
+
         return;
+      } else if (internalError) {
+        throw internalError;
       }
 
       if (internalError) throw internalError;
     } catch (err) {
       const errCode = String(err?.code || err?.data?.code || '').toUpperCase();
       let msg = err?.message || '';
+
       if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
         msg = 'Error de conexion con el servidor';
       }
@@ -144,6 +175,7 @@ const Login = () => {
 
   const handleResendVerification = async () => {
     const target = String(resendTarget || identifier || '').trim();
+
     if (!target) {
       setError('Ingresa tu correo o usuario para reenviar la verificacion.');
       return;
@@ -151,8 +183,12 @@ const Login = () => {
 
     setResendingVerification(true);
     setError('');
+
     try {
-      const response = await clientePublicoService.resendVerification({ identifier: target });
+      const response = await clientePublicoService.resendVerification({
+        identifier: target
+      });
+
       setSuccessMsg(response?.message || RESEND_GENERIC_MESSAGE);
       setCanResendVerification(false);
     } catch (err) {
@@ -168,17 +204,20 @@ const Login = () => {
         <img src={bgImage} alt="" className="bg-food" />
         <div className="vignette" />
         <div className="side-fade" />
+
         <div className="left-content">
           <div className="badge">
             <span className="dot" />
             SISTEMA DE GESTION - HONDURAS
           </div>
+
           <div className="brand">
             <div className="logo-ring">
               <div className="halo" />
               <div className="ring" />
               <img src={logo} alt="Jonnys" className="logo-img" />
             </div>
+
             <div className="brand-text">
               <span className="brand-sub">RESTAURANTE</span>
               <h1 className="brand-name">JONNY'S</h1>
@@ -228,6 +267,7 @@ const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
               />
+
               <button
                 type="button"
                 className="eye-btn"
@@ -248,6 +288,7 @@ const Login = () => {
               />
               <span>Recordar sesion</span>
             </label>
+
             <button
               type="button"
               className="forgot-link"
@@ -268,6 +309,7 @@ const Login = () => {
                 {successMsg}
               </motion.div>
             )}
+
             {error && (
               <motion.div
                 className="error-msg"
@@ -289,7 +331,9 @@ const Login = () => {
               whileHover={!resendingVerification ? { y: -1 } : {}}
               whileTap={!resendingVerification ? { scale: 0.98 } : {}}
             >
-              {resendingVerification ? 'Enviando correo...' : 'Reenviar correo de verificacion'}
+              {resendingVerification
+                ? 'Enviando correo...'
+                : 'Reenviar correo de verificacion'}
             </motion.button>
           ) : null}
 
@@ -305,7 +349,7 @@ const Login = () => {
                 <span className="spin" /> Iniciando sesion...
               </span>
             ) : (
-              'INICIAR SESION  ->'
+              'INICIAR SESION'
             )}
           </motion.button>
 

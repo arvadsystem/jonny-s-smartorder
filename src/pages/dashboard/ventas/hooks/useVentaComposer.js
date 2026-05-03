@@ -42,6 +42,51 @@ const normalizeDiscountType = (value) =>
     .trim()
     .toUpperCase();
 
+const normalizeDiscountScope = (value) => {
+  const normalized = String(value || 'FACTURA_COMPLETA')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+
+  if (normalized === 'PRODUCTOS') return 'PRODUCTO';
+  if (normalized === 'RECETAS') return 'RECETA';
+  if (normalized === 'COMBOS') return 'COMBO';
+  return normalized || 'FACTURA_COMPLETA';
+};
+
+const toNormalizedId = (value) => {
+  if (value === null || value === undefined) return null;
+  const asString = String(value).trim();
+  if (!asString || asString.toLowerCase() === 'null' || asString.toLowerCase() === 'undefined') {
+    return null;
+  }
+  const parsed = Number.parseInt(asString, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parseDiscountDate = (value) => {
+  if (!value) return null;
+  const source = String(value).trim();
+  if (!source) return null;
+
+  const parsedNative = new Date(source);
+  if (Number.isFinite(parsedNative.getTime())) return parsedNative;
+
+  const match = source.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (!match) return null;
+
+  const asLocal = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4] || 0),
+    Number(match[5] || 0),
+    Number(match[6] || 0)
+  );
+  return Number.isFinite(asLocal.getTime()) ? asLocal : null;
+};
+
 const buildCatalogLine = (kind, row) => {
   if (kind === 'PRODUCTO') {
     return {
@@ -139,6 +184,46 @@ const computeDiscountAmount = (subtotal, selectedDiscount) => {
   return roundMoney(Math.min(subtotal, discountValue));
 };
 
+const isDiscountActiveAtDate = (discount, now = new Date()) => {
+  const start = parseDiscountDate(discount?.fecha_inicio);
+  const end = parseDiscountDate(discount?.fecha_fin);
+  if (start && Number.isFinite(start.getTime()) && now < start) return false;
+  if (end && Number.isFinite(end.getTime()) && now > end) return false;
+  return true;
+};
+
+const isDiscountAllowedForSucursal = (discount, idSucursal) => {
+  const idSucursalDiscount = toNormalizedId(discount?.id_sucursal);
+  if (!idSucursalDiscount) return true;
+  if (!idSucursal) return false;
+  return Number(idSucursalDiscount) === Number(idSucursal);
+};
+
+const resolveBestDiscountForLine = ({ discounts, line, selectedSucursalId }) => {
+  const lineSubtotal = roundMoney(Number(line?.precio_unitario ?? 0) * Number(line?.cantidad ?? 0));
+  if (lineSubtotal <= 0) return null;
+
+  let best = null;
+  for (const discount of discounts) {
+    const scope = normalizeDiscountScope(discount.alcance);
+    if (scope === 'FACTURA_COMPLETA') continue;
+    if (scope !== String(line.kind || '').toUpperCase()) continue;
+    if (!isDiscountAllowedForSucursal(discount, selectedSucursalId)) continue;
+    if (scope === 'PRODUCTO' && toNormalizedId(discount.id_producto) !== toNormalizedId(line.id_producto)) continue;
+    if (scope === 'RECETA' && toNormalizedId(discount.id_receta) !== toNormalizedId(line.id_receta)) continue;
+    if (scope === 'COMBO' && toNormalizedId(discount.id_combo) !== toNormalizedId(line.id_combo)) continue;
+
+    const benefit = computeDiscountAmount(lineSubtotal, discount);
+    if (benefit <= 0) continue;
+
+    if (!best || benefit > best.benefit) {
+      best = { discount, benefit };
+    }
+  }
+
+  return best?.discount || null;
+};
+
 export const useVentaComposer = ({
   productos,
   categorias,
@@ -151,7 +236,8 @@ export const useVentaComposer = ({
   recetas,
   descuentosCatalogo,
   onSubmit,
-  resetKey
+  resetKey,
+  canApplyDiscount = false
 }) => {
   const [state, setState] = useState(() => buildInitialState({ isSuperAdmin, defaultSucursalId }));
   const deferredSearch = useDeferredValue(state.search);
@@ -180,21 +266,55 @@ export const useVentaComposer = ({
   }, [clientes, state.selectedClient]);
 
   const normalizedDescuentosCatalogo = useMemo(
-    () => (Array.isArray(descuentosCatalogo) ? descuentosCatalogo : []),
+    () =>
+      (Array.isArray(descuentosCatalogo) ? descuentosCatalogo : []).filter(
+        (row) => row?.estado !== false && isDiscountActiveAtDate(row)
+      ),
     [descuentosCatalogo]
   );
 
+  const selectedSucursalId = toNormalizedId(state.selectedSucursal);
+  const hasSelectedSucursal = Boolean(selectedSucursalId);
+
+  const descuentoGlobalOptions = useMemo(
+    () =>
+      normalizedDescuentosCatalogo.filter((discount) => {
+        const scope = normalizeDiscountScope(discount.alcance);
+        if (scope !== 'FACTURA_COMPLETA') return false;
+        return isDiscountAllowedForSucursal(discount, selectedSucursalId);
+      }),
+    [normalizedDescuentosCatalogo, selectedSucursalId]
+  );
+
   const selectedDiscount = useMemo(
-    () => normalizedDescuentosCatalogo.find(
+    () => descuentoGlobalOptions.find(
       (discount) => String(discount.id_descuento_catalogo) === String(state.selectedDiscountId)
     ) || null,
-    [normalizedDescuentosCatalogo, state.selectedDiscountId]
+    [descuentoGlobalOptions, state.selectedDiscountId]
   );
+
+  useEffect(() => {
+    if (!state.selectedDiscountId) return;
+    if (selectedDiscount) return;
+    setState((current) => ({ ...current, selectedDiscountId: '' }));
+  }, [selectedDiscount, state.selectedDiscountId]);
 
   const normalizedSucursales = useMemo(
     () => (Array.isArray(sucursales) ? sucursales : []),
     [sucursales]
   );
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    if (!normalizedSucursales.length) return;
+    setState((current) => {
+      if (String(current.selectedSucursal || '').trim()) return current;
+      return {
+        ...current,
+        selectedSucursal: String(normalizedSucursales[0].id_sucursal)
+      };
+    });
+  }, [isSuperAdmin, normalizedSucursales]);
 
   useEffect(() => {
     if (isSuperAdmin) return;
@@ -276,11 +396,38 @@ export const useVentaComposer = ({
   );
 
   const discountValue = useMemo(
-    () => computeDiscountAmount(subtotal, selectedDiscount),
-    [selectedDiscount, subtotal]
+    () => (canApplyDiscount ? computeDiscountAmount(subtotal, selectedDiscount) : 0),
+    [canApplyDiscount, selectedDiscount, subtotal]
   );
 
-  const taxableSubtotal = roundMoney(Math.max(subtotal - discountValue, 0));
+  const lineDiscountValue = useMemo(() => {
+    if (!canApplyDiscount) return 0;
+    return roundMoney(
+      state.cart.reduce((acc, line) => {
+        const discount = normalizedDescuentosCatalogo.find(
+          (row) => String(row.id_descuento_catalogo) === String(line.id_descuento_catalogo_linea || '')
+        );
+        if (!discount) return acc;
+        const scope = normalizeDiscountScope(discount.alcance);
+        if (
+          (scope === 'PRODUCTO' && line.kind !== 'PRODUCTO') ||
+          (scope === 'RECETA' && line.kind !== 'RECETA') ||
+          (scope === 'COMBO' && line.kind !== 'COMBO')
+        ) return acc;
+        const lineSubtotal = roundMoney(Number(line.precio_unitario ?? 0) * Number(line.cantidad ?? 0));
+        return acc + computeDiscountAmount(lineSubtotal, discount);
+      }, 0)
+    );
+  }, [canApplyDiscount, normalizedDescuentosCatalogo, state.cart]);
+
+  const usesLineDiscount = useMemo(
+    () => state.cart.some((line) => Number(line.id_descuento_catalogo_linea || 0) > 0),
+    [state.cart]
+  );
+  const usesGlobalDiscount = Boolean(state.selectedDiscountId);
+  const totalDiscount = usesLineDiscount ? lineDiscountValue : discountValue;
+
+  const taxableSubtotal = roundMoney(Math.max(subtotal - totalDiscount, 0));
   const isv = roundMoney(taxableSubtotal * 0.15);
   const total = roundMoney(taxableSubtotal + isv);
 
@@ -290,8 +437,6 @@ export const useVentaComposer = ({
     return Number.isFinite(numeric) && numeric >= 0 ? roundMoney(numeric) : 0;
   }, [state.cashReceived, total]);
 
-  const selectedSucursalId = Number.parseInt(String(state.selectedSucursal || ''), 10);
-  const hasSelectedSucursal = Number.isInteger(selectedSucursalId) && selectedSucursalId > 0;
   const change = roundMoney(Math.max(cashValue - total, 0));
   const canSubmit = hasSelectedSucursal
     && state.cart.length > 0
@@ -334,7 +479,19 @@ export const useVentaComposer = ({
       if (index >= 0) {
         return current; // Ya esta en carrito, forzar uso del boton '+'
       } else {
-        nextCart.push(catalogLine);
+        const shouldAutoApplyLineDiscount = canApplyDiscount && !current.selectedDiscountId;
+        const autoDiscount = shouldAutoApplyLineDiscount
+          ? resolveBestDiscountForLine({
+            discounts: normalizedDescuentosCatalogo,
+            line: catalogLine,
+            selectedSucursalId
+          })
+          : null;
+
+        nextCart.push({
+          ...catalogLine,
+          id_descuento_catalogo_linea: autoDiscount ? String(autoDiscount.id_descuento_catalogo) : ''
+        });
       }
 
       return {
@@ -440,8 +597,11 @@ export const useVentaComposer = ({
         id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
         id_sucursal: selectedSucursalId,
         metodo_pago: 'efectivo',
-        id_descuento_catalogo: state.selectedDiscountId ? Number(state.selectedDiscountId) : null,
-        descuento: state.selectedDiscountId ? 0 : discountValue,
+        id_descuento_catalogo:
+          canApplyDiscount && !usesLineDiscount && state.selectedDiscountId
+            ? Number(state.selectedDiscountId)
+            : null,
+        descuento: canApplyDiscount && !usesLineDiscount && !state.selectedDiscountId ? discountValue : 0,
         efectivo_entregado: cashValue,
         descripcion_pedido: null,
         items: state.cart.map((line) => ({
@@ -449,6 +609,10 @@ export const useVentaComposer = ({
           id_combo: line.id_combo,
           id_receta: line.id_receta,
           cantidad: Number(line.cantidad),
+          id_descuento_catalogo:
+            canApplyDiscount && !usesGlobalDiscount && line.id_descuento_catalogo_linea
+              ? Number(line.id_descuento_catalogo_linea)
+              : null,
           observacion:
             line.kind === 'PRODUCTO'
               ? undefined
@@ -480,7 +644,9 @@ export const useVentaComposer = ({
     paymentMethod: state.paymentMethod,
     selectedDiscountId: state.selectedDiscountId,
     selectedDiscount,
+    canApplyDiscount,
     descuentosCatalogo: normalizedDescuentosCatalogo,
+    descuentoGlobalOptions,
     descuentoPickerOpen: state.descuentoPickerOpen,
     cashReceived: state.cashReceived,
     cart: state.cart,
@@ -489,7 +655,11 @@ export const useVentaComposer = ({
     resultsLabel,
     cartCount,
     subtotal,
-    discountValue,
+    discountValue: totalDiscount,
+    globalDiscountValue: discountValue,
+    lineDiscountValue,
+    usesGlobalDiscount,
+    usesLineDiscount,
     isv,
     total,
     cashValue,
@@ -526,11 +696,57 @@ export const useVentaComposer = ({
         submitError: ''
       }),
     setSelectedDiscountId: (value) =>
-      setPartialState({
-        selectedDiscountId: value,
-        descuentoPickerOpen: false,
-        submitError: ''
+      setPartialState(
+        state.cart.some((line) => Number(line.id_descuento_catalogo_linea || 0) > 0)
+          ? {
+              descuentoPickerOpen: false,
+              submitError: 'No se puede combinar descuento global con descuentos por producto/receta/combo.'
+            }
+          : {
+              selectedDiscountId: value,
+              descuentoPickerOpen: false,
+              submitError: ''
+            }
+      ),
+    getAvailableLineDiscounts: (line) =>
+      normalizedDescuentosCatalogo.filter((discount) => {
+        const scope = normalizeDiscountScope(discount.alcance);
+        if (scope === 'FACTURA_COMPLETA') return false;
+        if (scope !== String(line.kind || '').toUpperCase()) return false;
+        if (!isDiscountAllowedForSucursal(discount, selectedSucursalId)) return false;
+        if (state.selectedDiscountId) return false;
+        if (scope === 'PRODUCTO' && toNormalizedId(discount.id_producto) !== toNormalizedId(line.id_producto)) return false;
+        if (scope === 'RECETA' && toNormalizedId(discount.id_receta) !== toNormalizedId(line.id_receta)) return false;
+        if (scope === 'COMBO' && toNormalizedId(discount.id_combo) !== toNormalizedId(line.id_combo)) return false;
+        return true;
       }),
+    getBestCatalogDiscount: (kind, row) =>
+      resolveBestDiscountForLine({
+        discounts: normalizedDescuentosCatalogo,
+        selectedSucursalId,
+        line: {
+          kind,
+          id_producto: row?.id_producto ?? null,
+          id_receta: row?.id_receta ?? null,
+          id_combo: row?.id_combo ?? null,
+          precio_unitario: Number(row?.precio ?? 0) || 0,
+          cantidad: 1
+        }
+      }),
+    setLineDiscount: (cartKey, discountId) =>
+      setState((current) => ({
+        ...current,
+        selectedDiscountId: discountId ? '' : current.selectedDiscountId,
+        cart: current.cart.map((line) =>
+          line.cartKey === cartKey
+            ? { ...line, id_descuento_catalogo_linea: discountId || '' }
+            : line
+        ),
+        submitError:
+          current.selectedDiscountId && discountId
+            ? 'No se puede combinar descuento global con descuentos por producto/receta/combo.'
+            : ''
+      })),
     setCashReceived: (value) => setPartialState({ cashReceived: value }),
     addCatalogItem,
     updateLine,
