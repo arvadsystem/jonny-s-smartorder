@@ -13,7 +13,7 @@ ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
 ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
 
 COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --include=dev --no-audit --no-fund; else npm install --include=dev --no-audit --no-fund; fi
+RUN if [ -f package-lock.json ]; then npm ci --production=false --no-audit --no-fund; else npm install --production=false --no-audit --no-fund; fi
 
 COPY . .
 RUN npm run build
