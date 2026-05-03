@@ -14,7 +14,7 @@ ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
 ENV NODE_ENV=production
 
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
 
 COPY . .
 RUN npm run build
@@ -36,6 +36,10 @@ server {
         expires 7d;
         add_header Cache-Control "public, immutable";
         try_files $uri =404;
+    }
+
+    location ~ /\.(?!well-known) {
+        deny all;
     }
 
     location / {
