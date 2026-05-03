@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
 
+const BRANCH_STATUS_REFRESH_MS = 60_000;
+
 // Retrieves branches for the initial selection step.
 export const useBranches = () => {
   const [branches, setBranches] = useState([]);
@@ -25,6 +27,12 @@ export const useBranches = () => {
 
   useEffect(() => {
     loadBranches();
+
+    const interval = window.setInterval(() => {
+      loadBranches();
+    }, BRANCH_STATUS_REFRESH_MS);
+
+    return () => window.clearInterval(interval);
   }, [loadBranches]);
 
   return {

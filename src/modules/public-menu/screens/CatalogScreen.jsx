@@ -6,6 +6,7 @@ import ConfirmModal from '../components/feedback/ConfirmModal';
 import OrderSuccessModal from '../components/feedback/OrderSuccessModal';
 import PremiumCatalogHeader from '../components/catalog/PremiumCatalogHeader';
 import PremiumHero from '../components/catalog/PremiumHero';
+import JonnyExperienceSection from '../components/catalog/JonnyExperienceSection';
 import PremiumProductSection from '../components/catalog/PremiumProductSection';
 import PremiumStickyCart from '../components/catalog/PremiumStickyCart';
 import ProductDetailSheet from '../components/catalog/ProductDetailSheet';
@@ -30,14 +31,12 @@ import {
   getHeroCarouselCustomImagesByBranch,
   getHeroCarouselSelectionByBranch
 } from '../utils/heroCarouselStorage';
+import { formatPublicMenuCategoryLabel } from '../utils/publicMenuCategoryLabels';
 import { resolveInventarioImageUrl } from '../../../utils/inventarioImagenes';
 import jonnysLogo from '../../../assets/images/logo-sin-fondo.png';
 
 const getOrderTypeLabel = (orderTypeId) =>
   PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === orderTypeId)?.title || 'Pedido';
-
-const formatCategoryLabel = (category) =>
-  String(category || '').replace(/\btenders\b/gi, 'Tenders');
 
 const HERO_AUTOPLAY_MS = 5000;
 
@@ -175,7 +174,7 @@ const formatWhatsAppNumber = (value) => {
 const CatalogScreen = () => {
   const navigate = useNavigate();
   const outletContext = useOutletContext() || {};
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { state, actions } = usePublicMenuFlow();
   const branchId = state.selectedBranch?.id;
   const orderType = state.orderType;
@@ -208,10 +207,16 @@ const CatalogScreen = () => {
     () => state.selectedBranch || branches.find((branch) => branch?.isOpen) || branches[0] || null,
     [branches, state.selectedBranch]
   );
+  const liveSelectedBranch = useMemo(() => {
+    if (!state.selectedBranch?.id) return state.selectedBranch || null;
+    return branches.find((branch) => Number(branch?.id) === Number(state.selectedBranch?.id)) || state.selectedBranch;
+  }, [branches, state.selectedBranch]);
 
   const [cartOpen, setCartOpen] = useState(false);
   const [authRequired, setAuthRequired] = useState({ open: false, message: '' });
   const [homeConfirmOpen, setHomeConfirmOpen] = useState(false);
+  const [closedHoursConfirmOpen, setClosedHoursConfirmOpen] = useState(false);
+  const [closedHoursDismissedBranchId, setClosedHoursDismissedBranchId] = useState(null);
   const [orderSuccess, setOrderSuccess] = useState({ open: false, order: null });
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -254,6 +259,22 @@ const CatalogScreen = () => {
   }, [actions, preferredBranch, state.selectedBranch?.id]);
 
   useEffect(() => {
+    if (!state.selectedBranch?.id || !liveSelectedBranch?.id) return;
+
+    const changed =
+      String(liveSelectedBranch?.name || '') !== String(state.selectedBranch?.name || '') ||
+      String(liveSelectedBranch?.displayName || '') !== String(state.selectedBranch?.displayName || '') ||
+      String(liveSelectedBranch?.schedule || '') !== String(state.selectedBranch?.schedule || '') ||
+      String(liveSelectedBranch?.statusLabel || '') !== String(state.selectedBranch?.statusLabel || '') ||
+      String(liveSelectedBranch?.closedReason || '') !== String(state.selectedBranch?.closedReason || '') ||
+      Boolean(liveSelectedBranch?.isOpen) !== Boolean(state.selectedBranch?.isOpen);
+
+    if (changed) {
+      actions.selectBranch(liveSelectedBranch);
+    }
+  }, [actions, liveSelectedBranch, state.selectedBranch]);
+
+  useEffect(() => {
     if (!state.orderType) {
       actions.selectOrderType(PUBLIC_MENU_ORDER_TYPES.DINE_IN);
     }
@@ -274,12 +295,27 @@ const CatalogScreen = () => {
   );
   const orderTypeLabel = getOrderTypeLabel(orderType);
   const greetingName = getGreetingName(user);
+  const selectedBranchOpen = liveSelectedBranch?.isOpen !== false;
+  const branchScheduleText = liveSelectedBranch?.schedule || 'Horario no configurado';
+  const branchClosedReason = liveSelectedBranch?.closedReason || `Disponible de ${branchScheduleText}`;
+  const orderDisabledReason = selectedBranchOpen ? '' : 'Sucursal cerrada';
+  const liveBranchId = Number(liveSelectedBranch?.id || 0);
   const topNavCategories = useMemo(
-    () => categories.filter((category) => category !== 'all').slice(0, 8),
+    () => {
+      const visibleCategories = categories.filter((category) => category !== 'all');
+      ['Snacks', 'Helados'].forEach((category) => {
+        if (!visibleCategories.includes(category)) visibleCategories.push(category);
+      });
+      return visibleCategories.slice(0, 10);
+    },
     [categories]
   );
-  const activeCategoryLabel = selectedCategory === 'all' ? 'Todo el menu' : formatCategoryLabel(selectedCategory);
+  const activeCategoryLabel = selectedCategory === 'all' ? 'Todo el menu' : formatPublicMenuCategoryLabel(selectedCategory);
   const isCatalogLanding = selectedCategory === 'all';
+  const hasVisibleProducts = !isCatalogLanding && filteredProducts.length > 0;
+  const hasSelectedCategory = !isCatalogLanding;
+  const shouldShowSyncWarning = Boolean(syncWarning) && !hasVisibleProducts;
+  const [showJonnyExperience, setShowJonnyExperience] = useState(true);
   const heroSlides = useMemo(
     () =>
       buildCatalogHeroSlides({
@@ -291,6 +327,10 @@ const CatalogScreen = () => {
       }),
     [availableProducts, branchId, orderTypeLabel, state.selectedBranch?.displayName, state.selectedBranch?.name]
   );
+
+  useEffect(() => {
+    setShowJonnyExperience(!hasSelectedCategory && !hasVisibleProducts);
+  }, [hasSelectedCategory, hasVisibleProducts]);
 
   useEffect(() => {
     const previous = Number(previousTotalItemsRef.current || 0);
@@ -308,6 +348,17 @@ const CatalogScreen = () => {
     if (heroIndex <= heroSlides.length - 1) return;
     setHeroIndex(0);
   }, [heroIndex, heroSlides.length]);
+
+  useEffect(() => {
+    if (!liveBranchId || selectedBranchOpen) {
+      setClosedHoursConfirmOpen(false);
+      setClosedHoursDismissedBranchId(null);
+      return;
+    }
+
+    if (Number(closedHoursDismissedBranchId || 0) === liveBranchId) return;
+    setClosedHoursConfirmOpen(true);
+  }, [closedHoursDismissedBranchId, liveBranchId, selectedBranchOpen]);
 
   useEffect(() => {
     if (heroTimerRef.current) {
@@ -448,6 +499,23 @@ const CatalogScreen = () => {
     navigate('/menu-publico');
   };
 
+  const continueBrowsingClosedMenu = () => {
+    setClosedHoursDismissedBranchId(liveBranchId || null);
+    setClosedHoursConfirmOpen(false);
+  };
+
+  const leaveClosedMenu = () => {
+    setClosedHoursConfirmOpen(false);
+    navigate('/menu-publico');
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setCartOpen(false);
+    closeConfigSheet();
+    navigate('/menu-publico');
+  };
+
   // Guarda menu vigente en store para los siguientes pasos del flujo.
   useEffect(() => {
     actions.selectMenu(menuSummary);
@@ -455,6 +523,11 @@ const CatalogScreen = () => {
 
   const handleConfirmOrder = async () => {
     if (confirmingOrder || confirmLockRef.current) return;
+    if (!selectedBranchOpen) {
+      setClosedHoursConfirmOpen(true);
+      return;
+    }
+
     const pickupPaymentMethod = String(state.pickupPaymentMethod || '')
       .trim()
       .toLowerCase();
@@ -634,6 +707,7 @@ const CatalogScreen = () => {
         onChangeOrderType={handleChangeOrderType}
         onHomeClick={handleHomeClick}
         onUserClick={() => navigate('/auth/login?from=public-menu&intent=login')}
+        onLogout={handleLogout}
         onCartClick={() => setCartOpen(true)}
         cartCount={totalItems}
         greetingName={greetingName}
@@ -652,7 +726,21 @@ const CatalogScreen = () => {
         onPrimaryAction={handleScrollToCatalog}
       />
 
-      {syncWarning ? (
+      {showJonnyExperience ? <JonnyExperienceSection /> : null}
+
+      {!selectedBranchOpen ? (
+        <div className="pm-branch-hours-alert" role="status">
+          <span className="pm-branch-hours-alert__icon" aria-hidden="true">
+            <i className="bi bi-clock-history" />
+          </span>
+          <div className="pm-branch-hours-alert__copy">
+            <strong>Pedidos cerrados por ahora</strong>
+            <span>{branchClosedReason}. Puedes revisar el menú y preparar tu pedido.</span>
+          </div>
+        </div>
+      ) : null}
+
+      {shouldShowSyncWarning ? (
         <StateBlock
           variant="warning"
           title="Conexion inestable"
@@ -695,7 +783,7 @@ const CatalogScreen = () => {
           />
         ) : null}
 
-        {!isCatalogLanding && filteredProducts.length ? (
+        {hasVisibleProducts ? (
           <PremiumProductSection
             categoryTitle={activeCategoryLabel}
             filteredProducts={filteredProducts}
@@ -705,6 +793,8 @@ const CatalogScreen = () => {
             total={total}
             branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
             confirmingOrder={confirmingOrder}
+            orderDisabled={!selectedBranchOpen}
+            orderDisabledReason={orderDisabledReason}
             onAdd={handleCardAdd}
             onIncrease={handleCardIncrease}
             onDecrease={handleCardDecrease}
@@ -715,6 +805,10 @@ const CatalogScreen = () => {
           />
         ) : null}
       </div>
+
+      <footer className="pm-public-footer" aria-label="Creditos del sistema">
+        <span>© 2026 ARVAD SYSTEM</span>
+      </footer>
 
       <PremiumStickyCart
         itemCount={totalItems}
@@ -729,6 +823,8 @@ const CatalogScreen = () => {
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
         items={cartItems}
         total={total}
+        disabled={!selectedBranchOpen}
+        disabledReason={orderDisabledReason}
         onClose={() => setCartOpen(false)}
         onIncrease={increaseItemByLine}
         onDecrease={decreaseItemByLine}
@@ -763,6 +859,16 @@ const CatalogScreen = () => {
         onConfirm={confirmHomeNavigation}
       />
 
+      <ConfirmModal
+        open={closedHoursConfirmOpen && !homeConfirmOpen}
+        title="RESTAURANTE CERRADO"
+        message={`En este momento no estamos recibiendo pedidos. ${branchClosedReason}. Puedes seguir viendo el menu.`}
+        cancelLabel="Volver al inicio"
+        confirmLabel="Seguir viendo menu"
+        onCancel={leaveClosedMenu}
+        onConfirm={continueBrowsingClosedMenu}
+      />
+
       <OrderSuccessModal
         open={orderSuccess.open}
         order={orderSuccess.order}
@@ -776,4 +882,3 @@ const CatalogScreen = () => {
 };
 
 export default CatalogScreen;
-

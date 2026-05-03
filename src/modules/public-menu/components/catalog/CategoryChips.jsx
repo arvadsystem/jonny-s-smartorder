@@ -1,4 +1,8 @@
-const toCategoryLabel = (category) => (category === 'all' ? 'Todas' : category);
+import { formatPublicMenuCategoryLabel } from '../../utils/publicMenuCategoryLabels';
+
+const toCategoryLabel = (category) => (
+  category === 'all' ? 'Todas' : formatPublicMenuCategoryLabel(category)
+);
 
 // Horizontal chip selector for quick category filtering.
 // Props:
