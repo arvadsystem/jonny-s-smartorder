@@ -346,7 +346,7 @@ const Login = () => {
                 <span className="spin" /> Iniciando sesion...
               </span>
             ) : (
-              'INICIAR SESION  ->'
+              'INICIAR SESION'
             )}
           </motion.button>
 

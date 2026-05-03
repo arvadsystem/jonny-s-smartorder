@@ -424,6 +424,7 @@
   color: #533623;
   font-weight: 600;
   text-align: left;
+  white-space: nowrap;
   transition:
     background-color var(--nav-motion-fast) ease,
     color var(--nav-motion-fast) ease,
