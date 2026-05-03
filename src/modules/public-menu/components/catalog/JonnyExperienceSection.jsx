@@ -79,7 +79,7 @@ const JonnyExperienceSection = () => (
       ))}
 
       <aside className="pm-jonny-experience__social" aria-label="Redes sociales de Jonny's">
-        <h3>SEGUINOS EN NUESTRAS REDES</h3>
+        <h3>SIGUENOS EN NUESTRAS REDES</h3>
         <div className="pm-jonny-experience__social-list">
           {socialLinks.map((item) => (
             <div key={item.label} className="pm-jonny-experience__social-item">

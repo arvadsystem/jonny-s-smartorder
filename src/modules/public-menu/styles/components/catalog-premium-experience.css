@@ -874,8 +874,9 @@
 
 .pm-jonny-experience__social-item {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto max-content;
   align-items: center;
+  justify-content: center;
   gap: 0.66rem;
   min-height: 3.25rem;
   padding: 0.44rem 0.62rem;

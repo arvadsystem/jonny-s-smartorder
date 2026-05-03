@@ -1,5 +1,18 @@
 const HAMBURGUESA_KEYWORDS = ['hamburguesa', 'burger', 'smash'];
 const WINGS_SAUCE_KEYWORDS = ['alita', 'alitas', 'tender', 'tenders'];
+const KITCHEN_NOTE_KEYWORDS = [
+  'combo',
+  'combos',
+  'taco birria',
+  'tacos birria',
+  'taco de birria',
+  'tacos de birria',
+  'birria',
+  'hot dog',
+  'hot dogs',
+  'hotdog',
+  'hotdogs'
+];
 
 const normalizeText = (value) =>
   String(value || '')
@@ -86,6 +99,12 @@ export const isWingsOrTendersItem = (item) => {
   );
 };
 
+export const isKitchenNoteItem = (item) =>
+  hasAnyKeyword(item?.nombre, KITCHEN_NOTE_KEYWORDS) ||
+  hasAnyKeyword(item?.descripcion, KITCHEN_NOTE_KEYWORDS) ||
+  hasAnyKeyword(item?.categoria?.nombre, KITCHEN_NOTE_KEYWORDS) ||
+  hasAnyKeyword(item?.categoria?.nombre_producto, KITCHEN_NOTE_KEYWORDS);
+
 export const getItemExtraOptions = (item) => {
   const backendOptions = Array.isArray(item?.extras_opciones) ? item.extras_opciones : [];
   if (backendOptions.length > 0) {
@@ -136,6 +155,7 @@ export const calculateRequiredSauces = (item, quantity = 1) => {
 };
 
 export const requiresItemConfiguration = (item) =>
+  isKitchenNoteItem(item) ||
   getItemExtraOptions(item).length > 0 ||
   item?.salsas_requiere_seleccion === true ||
   getItemAllowedSauces(item).length > 0 ||
