@@ -9,6 +9,7 @@ import DescuentosView from './components/DescuentosView';
 import PedidosView from './components/PedidosView';
 import VentaDetalleModal from './components/VentaDetalleModal';
 import VentaOverviewView from './components/VentaOverviewView';
+import VentaReversionModal from './components/VentaReversionModal';
 import VentasToast from './components/VentasToast';
 import { useVentas } from './hooks/useVentas';
 import {
@@ -27,6 +28,10 @@ export default function VentasPage() {
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
   const {
     ventas,
+    summary,
+    pagination,
+    scopeInfo,
+    ventasFilters,
     sucursales,
     categorias,
     productos,
@@ -42,13 +47,20 @@ export default function VentasPage() {
     error,
     toast,
     closeToast,
+    setVentasSearch,
+    setVentasPage,
+    setVentasPageSize,
+    setVentasSucursal,
     createVenta,
-    getVentaDetail
+    getVentaDetail,
+    refreshVentas
   } = useVentas();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [detailOpen, setDetailOpen] = useState(false);
+  const [reversionOpen, setReversionOpen] = useState(false);
   const [selectedVenta, setSelectedVenta] = useState(null);
+  const [selectedVentaReversion, setSelectedVentaReversion] = useState(null);
 
   const allowedTabs = useMemo(
     () => getAllowedTabs('ventas', permisos, { isSuperAdmin }).map((tab) => tab.key),
@@ -56,13 +68,18 @@ export default function VentasPage() {
   );
   const fallbackTab = allowedTabs[0] || null;
   const canCreateVenta = canAny([PERMISSIONS.VENTAS_CREAR]);
+  const canApplyDiscount = canAny([PERMISSIONS.VENTAS_DESCUENTO_APLICAR]);
   const canExportVenta = canAny([PERMISSIONS.VENTAS_EXPORTAR]);
   const canPrintVenta = canAny([PERMISSIONS.VENTAS_IMPRIMIR]);
   const canViewDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_VER]);
+  const canCreateReversion = canAny(['VENTAS_REVERSION_CREAR']);
   const canCreateDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_CREAR]);
   const canEditDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_EDITAR]);
   const canToggleDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR]);
-  const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
+  const userSucursalId = Number.parseInt(
+    String(scopeInfo?.userSucursalId ?? user?.id_sucursal ?? ''),
+    10
+  );
   const statsVisibility = useMemo(
     () => resolveVentasStatsVisibility(user?.roles, { isSuperAdmin }),
     [isSuperAdmin, user?.roles]
@@ -131,6 +148,17 @@ export default function VentasPage() {
     }
   };
 
+  const openReversionFromDetail = async (ventaBase) => {
+    if (!ventaBase?.id_factura) return;
+    try {
+      const detail = await getVentaDetail(ventaBase.id_factura);
+      setSelectedVentaReversion(detail);
+      setReversionOpen(true);
+    } catch {
+      // El hook ya muestra error.
+    }
+  };
+
   const handleCreateVenta = async (payload) => {
     const response = await createVenta(payload);
 
@@ -164,12 +192,26 @@ export default function VentasPage() {
       {activeTab === 'ventas' ? (
         <VentaOverviewView
           ventas={ventas}
+          summary={summary}
+          pagination={pagination}
+          scopeInfo={scopeInfo}
+          ventasFilters={ventasFilters}
+          sucursales={sucursales}
           loading={loading}
           error={error}
           statsVisibility={statsVisibility}
+          onSearchChange={setVentasSearch}
+          onPageChange={setVentasPage}
+          onPageSizeChange={setVentasPageSize}
+          onSucursalChange={setVentasSucursal}
           onOpenDetail={openDetail}
           onGoToCaja={() => goToTab('caja')}
           canCreate={canCreateVenta}
+          onOpenReversion={() => {
+            setSelectedVentaReversion(null);
+            setReversionOpen(true);
+          }}
+          canReversion={canCreateReversion}
         />
       ) : null}
 
@@ -185,6 +227,7 @@ export default function VentasPage() {
           combos={combos}
           recetas={recetas}
           descuentosCatalogo={descuentosCatalogo}
+          canApplyDiscount={canApplyDiscount}
           catalogLoading={catalogLoading}
           saving={saving}
           onSubmit={handleCreateVenta}
@@ -198,6 +241,12 @@ export default function VentasPage() {
           canCreate={canCreateDescuentos}
           canEdit={canEditDescuentos}
           canToggle={canToggleDescuentos}
+          productos={productos}
+          recetas={recetas}
+          combos={combos}
+          sucursales={sucursales}
+          isSuperAdmin={isSuperAdmin}
+          defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
         />
       ) : null}
 
@@ -205,9 +254,28 @@ export default function VentasPage() {
         open={detailOpen}
         venta={selectedVenta}
         loading={detailLoading}
+        canReversion={canCreateReversion}
+        onOpenReversion={(ventaDetail) => {
+          openReversionFromDetail(ventaDetail);
+        }}
         canExport={canExportVenta}
         canPrint={canPrintVenta}
         onClose={() => setDetailOpen(false)}
+      />
+
+      <VentaReversionModal
+        open={reversionOpen}
+        onClose={() => {
+          setReversionOpen(false);
+          setSelectedVentaReversion(null);
+        }}
+        getVentaDetail={getVentaDetail}
+        scopeInfo={scopeInfo}
+        sucursales={sucursales}
+        selectedVenta={selectedVentaReversion}
+        onSuccess={() => {
+          refreshVentas?.();
+        }}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />

@@ -15,12 +15,13 @@ function StatCard({ icon, label, value, accent = 'default' }) {
 }
 
 export default function VentasStats({ stats, visibleKeys = [] }) {
+  const safeStats = stats || {};
   const cards = [
-    { key: 'totalVentas', icon: 'bi-receipt-cutoff', label: 'Ventas', value: stats.totalVentas, accent: 'default' },
-    { key: 'totalFacturado', icon: 'bi-cash-stack', label: 'Total vendido', value: formatCurrency(stats.totalFacturado), accent: 'accent' },
-    { key: 'ticketPromedio', icon: 'bi-currency-dollar', label: 'Ticket promedio', value: formatCurrency(stats.ticketPromedio), accent: 'info' },
-    { key: 'completadas', icon: 'bi-check-circle', label: 'Completadas', value: stats.completadas, accent: 'success' },
-    { key: 'pendientes', icon: 'bi-clock-history', label: 'Pendientes', value: stats.pendientes, accent: 'warning' }
+    { key: 'totalVentas', icon: 'bi-receipt-cutoff', label: 'Ventas', value: safeStats.totalVentas ?? 0, accent: 'default' },
+    { key: 'totalFacturado', icon: 'bi-cash-stack', label: 'Total vendido', value: formatCurrency(safeStats.totalFacturado ?? 0), accent: 'accent' },
+    { key: 'ticketPromedio', icon: 'bi-currency-dollar', label: 'Ticket promedio', value: formatCurrency(safeStats.ticketPromedio ?? 0), accent: 'info' },
+    { key: 'completadas', icon: 'bi-check-circle', label: 'Completadas', value: safeStats.completadas ?? 0, accent: 'success' },
+    { key: 'pendientes', icon: 'bi-clock-history', label: 'Pendientes', value: safeStats.pendientes ?? 0, accent: 'warning' }
   ];
 
   const visibleSet = new Set(Array.isArray(visibleKeys) ? visibleKeys : []);

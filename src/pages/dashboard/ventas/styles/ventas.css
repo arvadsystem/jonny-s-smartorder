@@ -1089,6 +1089,28 @@
   gap: 10px;
 }
 
+.ventas-detail-modal__footer-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.ventas-reversion-modal__footer {
+  border-top: 1px solid rgba(157, 150, 112, 0.2);
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.ventas-reversion-modal__footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .ventas-caja-card {
   overflow: visible;
 }
@@ -1453,6 +1475,15 @@
     flex: 1 1 0;
   }
 
+  .ventas-reversion-modal__footer-actions {
+    justify-content: stretch;
+  }
+
+  .ventas-reversion-modal__footer-actions .btn,
+  .ventas-reversion-modal__footer-actions .form-select {
+    flex: 1 1 0;
+  }
+
   .ventas-pedidos__meta {
     flex-direction: column;
     align-items: flex-start;
@@ -1607,6 +1638,10 @@
   min-width: 0;
 }
 
+.ventas-summary__sucursal-wrap.is-super-admin {
+  min-width: clamp(260px, 34vw, 420px);
+}
+
 .ventas-summary__sucursal-btn {
   width: 100%;
   display: flex;
@@ -1622,6 +1657,7 @@
   text-align: left;
   min-height: 42px;
   transition: border-color 160ms ease;
+  overflow: hidden;
 }
 
 .ventas-summary__sucursal-btn:hover {
@@ -1634,6 +1670,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 700;
+  min-width: 0;
+}
+
+.ventas-summary__sucursal-btn .ventas-summary__chevron {
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 .ventas-summary__payment-btn {
@@ -2119,5 +2161,98 @@
 @keyframes spin-ring {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.ventas-cart__line-discount-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.ventas-cart__line-discount-row .form-label {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: rgba(82, 44, 34, 0.82);
+}
+
+.ventas-cart__line-discount-select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+@media (max-width: 767.98px) {
+  .ventas-cart__line-discount-row {
+    flex-wrap: wrap;
+  }
+}
+
+/* Fase 6.1.4 overrides: caja controls + badges + responsive */
+.ventas-summary__fields-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.ventas-summary__sucursal-wrap.is-super-admin {
+  min-width: 0;
+}
+
+.ventas-summary__sucursal-wrap.is-super-admin .ventas-summary__sucursal-btn {
+  min-height: 42px;
+  max-width: 100%;
+}
+
+.ventas-summary__sucursal-wrap.is-super-admin .ventas-summary__dropdown {
+  min-width: clamp(280px, 34vw, 460px);
+  width: max-content;
+  max-width: min(520px, 80vw);
+}
+
+.ventas-summary__discount-wrap {
+  min-width: 0;
+}
+
+.ventas-summary__discount-btn,
+.ventas-summary__sucursal-btn {
+  max-width: 100%;
+}
+
+.vcp-card__discount-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #b86821, #9a5319);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(18, 7, 3, 0.25);
+  white-space: nowrap;
+}
+
+.ventas-create-modal__body,
+.ventas-caja__body,
+.ventas-caja-card {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+@media (max-width: 1024px) {
+  .ventas-summary__fields-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ventas-summary__sucursal-wrap.is-super-admin .ventas-summary__dropdown {
+    min-width: min(92vw, 420px);
+    max-width: 92vw;
   }
 }

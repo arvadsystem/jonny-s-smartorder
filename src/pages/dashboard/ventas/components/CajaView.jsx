@@ -13,6 +13,7 @@ export default function CajaView({
   combos,
   recetas,
   descuentosCatalogo,
+  canApplyDiscount,
   catalogLoading,
   saving,
   onSubmit
@@ -25,6 +26,7 @@ export default function CajaView({
     combos,
     recetas,
     descuentosCatalogo,
+    canApplyDiscount,
     sucursales,
     isSuperAdmin,
     defaultSucursalId,
