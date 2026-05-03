@@ -199,7 +199,8 @@ const normalizeCatalogItem = (raw) => ({
   descripcion: raw?.descripcion || '',
   categoria: {
     id_tipo_departamento: raw?.categoria?.id_tipo_departamento ?? null,
-    nombre: raw?.categoria?.nombre || 'Sin categoria'
+    nombre: raw?.categoria?.nombre || 'Sin categoria',
+    nombre_producto: raw?.categoria?.nombre_producto || ''
   },
   imagen_url: resolvePublicImageUrl(raw?.imagen_url || ''),
   precio: {

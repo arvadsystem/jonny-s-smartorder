@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   calculateRequiredSauces,
   getItemAllowedSauces,
-  getItemExtraOptions
+  getItemExtraOptions,
+  isWingsOrTendersItem
 } from '../../utils/publicMenuItemConfig';
 
 const currencyFormatter = new Intl.NumberFormat('es-HN', {
@@ -86,6 +87,7 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
   const canIncreaseSauce = requiredSauceCount <= 0 || selectedSauceCount < requiredSauceCount;
   const isSingleSauceSelection = requiresSauceSelection && requiredSauceCount === 1;
   const popularSauce = availableSauces[0] || null;
+  const shouldShowWingOrderNotice = isWingsOrTendersItem(item);
 
   if (!open) return null;
 
@@ -227,6 +229,12 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
                   : currencyFormatter.format(unitPrice)}
               </strong>
             </div>
+
+            {shouldShowWingOrderNotice ? (
+              <div className="pm-detail-sheet__order-includes" role="note">
+                TODAS LAS ORDENES INCLUYEN PAPAS SAZONADAS Y SALSA RANCH
+              </div>
+            ) : null}
 
             <section className="pm-detail-sheet__section">
               <div className="pm-detail-sheet__section-head">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import EmptyProductImagePlaceholder from './EmptyProductImagePlaceholder';
 import SoldOutBadge from './SoldOutBadge';
 import { requiresItemConfiguration } from '../../utils/publicMenuItemConfig';
+import { formatPublicMenuCategoryLabel } from '../../utils/publicMenuCategoryLabels';
 
 const currencyFormatter = new Intl.NumberFormat('es-HN', {
   style: 'currency',
@@ -63,7 +64,9 @@ const MenuProductCard = ({
         ) : (
           <EmptyProductImagePlaceholder label={productName || "JONNY'S"} />
         )}
-        <span className="pm-menu-product-card__category">{product?.categoria?.nombre || 'Categoria'}</span>
+        <span className="pm-menu-product-card__category">
+          {formatPublicMenuCategoryLabel(product?.categoria?.nombre) || 'Categoria'}
+        </span>
       </div>
 
       <div className="pm-menu-product-card__body">
