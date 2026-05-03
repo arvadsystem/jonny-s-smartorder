@@ -11,10 +11,9 @@ ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_APP_URL=${VITE_APP_URL}
 ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
 ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
-ENV NODE_ENV=production
 
 COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+RUN if [ -f package-lock.json ]; then npm ci --production=false --no-audit --no-fund; else npm install --production=false --no-audit --no-fund; fi
 
 COPY . .
 RUN npm run build
