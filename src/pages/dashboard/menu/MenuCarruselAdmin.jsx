@@ -7,22 +7,56 @@ import {
   optimizeInventarioImageForUpload,
   resolveInventarioImageUrl
 } from '../../../utils/inventarioImagenes';
-import {
-  getGlobalHeroCarouselCustomImages,
-  getGlobalHeroCarouselSelection,
-  saveGlobalHeroCarouselCustomImages,
-  saveGlobalHeroCarouselSelection
-} from '../../../modules/public-menu/utils/heroCarouselStorage';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
 
 const MAX_CAROUSEL_ITEMS = 6;
 const MENU_PUBLIC_BUCKET = 'jonnys-assets';
 const MENU_CAROUSEL_UPLOAD_CONTEXT = 'carrusel';
+const GLOBAL_BRANCH_KEY = '0';
 
 const isPersistentCarouselImageUrl = (rawUrl) => {
   const value = String(rawUrl || '').trim();
   return Boolean(value) && !value.startsWith('blob:') && !value.startsWith('data:');
 };
+
+const normalizeCarouselConfig = (value) => {
+  if (!value || typeof value !== 'object') return { byBranch: {}, customByBranch: {} };
+  return {
+    byBranch: value.byBranch && typeof value.byBranch === 'object' ? value.byBranch : {},
+    customByBranch:
+      value.customByBranch && typeof value.customByBranch === 'object'
+        ? value.customByBranch
+        : {}
+  };
+};
+
+const toPositiveUniqueIds = (values = []) => {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const normalized = [];
+
+  source.forEach((value) => {
+    const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+    if (!Number.isInteger(parsed) || parsed <= 0 || seen.has(parsed)) return;
+    seen.add(parsed);
+    normalized.push(parsed);
+  });
+
+  return normalized.slice(0, MAX_CAROUSEL_ITEMS);
+};
+
+const normalizeCustomSlides = (rows = []) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row, index) => ({
+      id: String(row?.id || `custom-${index}`),
+      imageUrl: String(row?.imageUrl || '').trim(),
+      title: String(row?.title || '').trim()
+    }))
+    .filter((row) => isPersistentCarouselImageUrl(row.imageUrl))
+    .slice(0, MAX_CAROUSEL_ITEMS);
+
+const readBranchIdsFromConfig = (config, branchKey) => toPositiveUniqueIds(config?.byBranch?.[branchKey]);
+const readBranchCustomFromConfig = (config, branchKey) => normalizeCustomSlides(config?.customByBranch?.[branchKey]);
 
 // Submodulo administrativo para elegir que fotos reales del catalogo publico
 // se usan en el carrusel/hero del landing por sucursal.
@@ -31,10 +65,12 @@ const MenuCarruselAdmin = () => {
   const [catalogBranchId, setCatalogBranchId] = useState('');
   const [catalogItems, setCatalogItems] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
-  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [_loadingBranches, setLoadingBranches] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [customImages, setCustomImages] = useState([]);
+  const [serverConfig, setServerConfig] = useState({ byBranch: {}, customByBranch: {} });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [customImageConfirm, setCustomImageConfirm] = useState(null);
@@ -83,7 +119,10 @@ const MenuCarruselAdmin = () => {
         setLoadingCatalog(true);
         setError('');
         setSuccess('');
-        const response = await menuPublicacionAdminService.getCatalogoPublicacion(idSucursal);
+        const [response, remoteConfigRaw] = await Promise.all([
+          menuPublicacionAdminService.getCatalogoPublicacion(idSucursal),
+          menuPublicacionAdminService.getCarruselConfig()
+        ]);
         if (!isMounted) return;
 
         const rows = (Array.isArray(response?.items) ? response.items : [])
@@ -94,15 +133,20 @@ const MenuCarruselAdmin = () => {
           }))
           .filter((row) => row.id_detalle_menu > 0);
 
+        const remoteConfig = normalizeCarouselConfig(remoteConfigRaw);
+        const savedIds = readBranchIdsFromConfig(remoteConfig, GLOBAL_BRANCH_KEY);
+        const savedCustom = readBranchCustomFromConfig(remoteConfig, GLOBAL_BRANCH_KEY);
+
         setCatalogItems(rows);
-        const saved = getGlobalHeroCarouselSelection();
-        setSelectedIds(saved.filter((id) => rows.some((row) => row.id_detalle_menu === id)));
-        setCustomImages(getGlobalHeroCarouselCustomImages().filter((row) => isPersistentCarouselImageUrl(row.imageUrl)));
+        setServerConfig(remoteConfig);
+        setSelectedIds(savedIds.filter((id) => rows.some((row) => row.id_detalle_menu === id)));
+        setCustomImages(savedCustom);
       } catch (e) {
         if (!isMounted) return;
         setCatalogItems([]);
         setSelectedIds([]);
         setCustomImages([]);
+        setServerConfig({ byBranch: {}, customByBranch: {} });
         setError(e?.message || 'No se pudo cargar el catalogo de la sucursal.');
       } finally {
         if (isMounted) setLoadingCatalog(false);
@@ -115,7 +159,7 @@ const MenuCarruselAdmin = () => {
     };
   }, [catalogBranchId]);
 
-  const selectedSucursal = useMemo(
+  const _selectedSucursal = useMemo(
     () => sucursales.find((row) => String(row?.id_sucursal || '') === String(catalogBranchId || '')) || null,
     [catalogBranchId, sucursales]
   );
@@ -160,10 +204,34 @@ const MenuCarruselAdmin = () => {
     });
   };
 
-  const handleSave = () => {
-    saveGlobalHeroCarouselSelection(selectedIds);
-    saveGlobalHeroCarouselCustomImages(customImages);
-    setSuccess('Carrusel global guardado correctamente.');
+  const handleSave = async () => {
+    try {
+      setSavingConfig(true);
+      setError('');
+      setSuccess('');
+
+      const nextConfig = {
+        byBranch: {
+          ...(serverConfig?.byBranch || {}),
+          [GLOBAL_BRANCH_KEY]: toPositiveUniqueIds(selectedIds)
+        },
+        customByBranch: {
+          ...(serverConfig?.customByBranch || {}),
+          [GLOBAL_BRANCH_KEY]: normalizeCustomSlides(customImages)
+        }
+      };
+
+      const saved = await menuPublicacionAdminService.saveCarruselConfig(nextConfig);
+      const normalizedSaved = normalizeCarouselConfig(saved);
+      setServerConfig(normalizedSaved);
+      setSelectedIds(readBranchIdsFromConfig(normalizedSaved, GLOBAL_BRANCH_KEY));
+      setCustomImages(readBranchCustomFromConfig(normalizedSaved, GLOBAL_BRANCH_KEY));
+      setSuccess('Carrusel global guardado correctamente.');
+    } catch (saveError) {
+      setError(saveError?.message || 'No se pudo guardar la configuracion del carrusel.');
+    } finally {
+      setSavingConfig(false);
+    }
   };
 
   const handleUploadCustomImages = async (event) => {
@@ -273,9 +341,9 @@ const MenuCarruselAdmin = () => {
             type="button"
             className="btn inv-prod-btn-primary"
             onClick={handleSave}
-            disabled={loadingCatalog}
+            disabled={loadingCatalog || savingConfig || uploadingImages}
           >
-            Guardar carrusel
+            {savingConfig ? 'Guardando...' : 'Guardar carrusel'}
           </button>
         </div>
 

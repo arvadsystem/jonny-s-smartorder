@@ -306,6 +306,21 @@ export const publicMenuBootstrapService = {
       .filter((branch) => Number.isInteger(branch.id) && branch.id > 0);
   },
 
+  // Obtiene configuracion global del carrusel hero (persistida en backend).
+  async getHeroCarouselConfig() {
+    const response = await apiFetch('/api/public-menu/carrusel-config', 'GET', null, { noCache: true });
+    const payload = response?.data;
+    if (!payload || typeof payload !== 'object') {
+      return { byBranch: {}, customByBranch: {} };
+    }
+
+    return {
+      byBranch: payload.byBranch && typeof payload.byBranch === 'object' ? payload.byBranch : {},
+      customByBranch:
+        payload.customByBranch && typeof payload.customByBranch === 'object' ? payload.customByBranch : {}
+    };
+  },
+
   // Obtiene menu vigente de la sucursal seleccionada.
   async getBranchActiveMenu(idSucursal) {
     assertValidBranchId(idSucursal);

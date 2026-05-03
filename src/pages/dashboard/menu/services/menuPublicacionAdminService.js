@@ -73,6 +73,32 @@ const menuPublicacionAdminService = {
     };
   },
 
+  async getCarruselConfig() {
+    const response = await apiFetch(`${BASE_ENDPOINT}/carrusel-config`, 'GET', null, { noCache: true });
+    const payload = response?.data;
+    if (!payload || typeof payload !== 'object') {
+      return { byBranch: {}, customByBranch: {} };
+    }
+    return {
+      byBranch: payload.byBranch && typeof payload.byBranch === 'object' ? payload.byBranch : {},
+      customByBranch:
+        payload.customByBranch && typeof payload.customByBranch === 'object' ? payload.customByBranch : {}
+    };
+  },
+
+  async saveCarruselConfig(config = {}) {
+    const response = await apiFetch(`${BASE_ENDPOINT}/carrusel-config`, 'PUT', config);
+    const payload = response?.data;
+    if (!payload || typeof payload !== 'object') {
+      return { byBranch: {}, customByBranch: {} };
+    }
+    return {
+      byBranch: payload.byBranch && typeof payload.byBranch === 'object' ? payload.byBranch : {},
+      customByBranch:
+        payload.customByBranch && typeof payload.customByBranch === 'object' ? payload.customByBranch : {}
+    };
+  },
+
   async saveCatalogoPublicacion({ idSucursal, idMenu = null, items }) {
     const endpoint = withQueryParams(`${BASE_ENDPOINT}/catalogo`, {
       id_sucursal: idSucursal,
