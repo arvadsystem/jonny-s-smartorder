@@ -398,46 +398,49 @@
 
 .personas-branch-context--enhanced {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 680px);
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 460px);
   align-items: center;
-  gap: 1rem;
-  padding: 0.72rem;
-  border: 1px solid rgba(189, 154, 124, 0.42);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 251, 244, 0.96) 0%, rgba(249, 244, 235, 0.92) 100%);
+  gap: 0.58rem;
+  padding: 0.42rem 0.6rem;
+  border: 1px solid rgba(201, 174, 148, 0.42);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(252, 247, 240, 0.95) 100%);
 }
 
 .personas-branch-context--enhanced .personas-branch-context__title-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 0.78rem;
+  gap: 0.52rem;
   min-width: 0;
 }
 
 .personas-branch-context--enhanced .personas-branch-context__title-icon {
-  width: 52px;
-  height: 52px;
-  min-width: 52px;
-  border-radius: 14px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
+  font-size: 0.88rem;
   color: #fff;
-  background: linear-gradient(145deg, #9f581c, #c77931);
-  box-shadow: 0 12px 24px rgba(159, 88, 28, 0.28);
+  background: linear-gradient(145deg, #ae6a2a, #c98240);
+  box-shadow: 0 6px 14px rgba(159, 88, 28, 0.18);
 }
 
 .personas-branch-context--enhanced .personas-branch-context__title {
   color: var(--c-text, #2f1a10);
-  font-size: clamp(1.18rem, 1vw + 1rem, 2.1rem);
-  font-weight: 800;
-  line-height: 1.12;
+  font-size: clamp(0.94rem, 0.22vw + 0.9rem, 1.26rem);
+  font-weight: 780;
+  line-height: 1.06;
   letter-spacing: 0.01em;
 }
 
 .personas-branch-context--enhanced .personas-branch-context__field--enhanced {
   min-width: 0;
+  width: 100%;
+  max-width: 460px;
+  justify-self: end;
 }
 
 .personas-branch-context--enhanced .personas-branch-context__rs {
@@ -445,10 +448,10 @@
 }
 
 .personas-branch-context--enhanced .personas-sucursal-rs__control {
-  min-height: 64px;
-  border-radius: 17px;
+  min-height: 42px;
+  border-radius: 10px;
   border: 1px solid rgba(188, 154, 125, 0.56);
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
   transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
@@ -463,13 +466,13 @@
 }
 
 .personas-branch-context--enhanced .personas-sucursal-rs__value-container {
-  padding: 0.5rem 0.8rem;
+  padding: 0.16rem 0.62rem;
 }
 
 .personas-branch-context--enhanced .personas-sucursal-rs__single-value,
 .personas-branch-context--enhanced .personas-sucursal-rs__placeholder {
-  font-size: 1.06rem;
-  font-weight: 700;
+  font-size: 0.9rem;
+  font-weight: 650;
   color: #2f1a10;
 }
 
@@ -485,7 +488,7 @@
 .personas-branch-context--enhanced .personas-sucursal-rs__clear-indicator,
 .personas-branch-context--enhanced .personas-sucursal-rs__dropdown-indicator {
   color: rgba(138, 104, 79, 0.88);
-  padding: 0 10px;
+  padding: 0 8px;
 }
 
 .personas-branch-context--enhanced .personas-sucursal-rs__clear-indicator:hover,
@@ -545,21 +548,21 @@
 
   .personas-branch-context--enhanced {
     grid-template-columns: 1fr;
-    gap: 0.72rem;
+    gap: 0.56rem;
   }
 
   .personas-branch-context--enhanced .personas-branch-context__title {
-    font-size: 1.72rem;
+    font-size: 1.04rem;
   }
 
   .personas-branch-context--enhanced .personas-sucursal-rs__control {
-    min-height: 56px;
-    border-radius: 15px;
+    min-height: 40px;
+    border-radius: 10px;
   }
 
   .personas-branch-context--enhanced .personas-sucursal-rs__single-value,
   .personas-branch-context--enhanced .personas-sucursal-rs__placeholder {
-    font-size: 0.98rem;
+    font-size: 0.86rem;
   }
 }
 
@@ -733,6 +736,13 @@
 
 .personas-page .personas-page__results-meta {
   margin-bottom: 0.7rem;
+}
+
+.personas-page .personas-page__inactive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
 }
 
 .personas-page .personas-page__pagination {
@@ -1035,6 +1045,15 @@
     justify-self: start;
   }
 
+  .personas-page.personas-page--personas .personas-page__results-meta > .personas-page__inactive-toggle,
+  .personas-page.personas-page--empresas .personas-page__results-meta > .personas-page__inactive-toggle,
+  .personas-page.personas-page--clientes .personas-page__results-meta > .personas-page__inactive-toggle,
+  .personas-page.personas-page--empleados .personas-page__results-meta > .personas-page__inactive-toggle,
+  .personas-page.personas-page--usuarios .personas-page__results-meta > .personas-page__inactive-toggle {
+    grid-column: 2;
+    justify-self: end;
+  }
+
   .personas-page.personas-page--personas .personas-page__pagination,
   .personas-page.personas-page--empresas .personas-page__pagination,
   .personas-page.personas-page--clientes .personas-page__pagination,
@@ -1089,6 +1108,15 @@
   .personas-page.personas-page--usuarios .personas-page__results-meta > :nth-child(2) {
     justify-self: start;
     text-align: left;
+  }
+
+  .personas-page.personas-page--personas .personas-page__results-meta > .personas-page__inactive-toggle,
+  .personas-page.personas-page--empresas .personas-page__results-meta > .personas-page__inactive-toggle,
+  .personas-page.personas-page--clientes .personas-page__results-meta > .personas-page__inactive-toggle,
+  .personas-page.personas-page--empleados .personas-page__results-meta > .personas-page__inactive-toggle,
+  .personas-page.personas-page--usuarios .personas-page__results-meta > .personas-page__inactive-toggle {
+    grid-column: 1;
+    justify-self: start;
   }
 }
 
@@ -1459,41 +1487,43 @@
 }
 
 .personas-page.personas-page--planillas .planillas-toolbar--sucursal {
-  grid-template-columns: minmax(260px, 1fr) minmax(300px, 560px);
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 460px);
   align-items: center;
-  gap: 0.95rem;
-  padding: 0.98rem 1.08rem;
+  gap: 0.58rem;
+  padding: 0.42rem 0.6rem;
   margin-bottom: 1rem;
-  border-color: rgba(203, 180, 156, 0.72);
-  background: linear-gradient(145deg, rgba(255, 248, 239, 0.92), rgba(251, 242, 230, 0.88));
-  box-shadow: 0 10px 20px rgba(66, 43, 30, 0.08);
+  border-color: rgba(201, 174, 148, 0.42);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(252, 247, 240, 0.95) 100%);
+  box-shadow: none;
 }
 
 .personas-page.personas-page--planillas .planillas-toolbar__title-wrap {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.52rem;
   min-width: 0;
 }
 
 .personas-page.personas-page--planillas .planillas-toolbar__title-icon {
-  width: 2.7rem;
-  height: 2.7rem;
-  border-radius: 0.9rem;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: 0.88rem;
   color: #fff;
-  background: linear-gradient(145deg, #c1703a, #a85a2a);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 6px 14px rgba(80, 42, 18, 0.24);
+  background: linear-gradient(145deg, #ae6a2a, #c98240);
+  box-shadow: 0 6px 14px rgba(159, 88, 28, 0.18);
 }
 
 .personas-page.personas-page--planillas .planillas-toolbar__title {
-  font-size: clamp(1.48rem, 2.6vw, 2.02rem);
-  line-height: 1.08;
-  font-weight: 900;
-  letter-spacing: -0.015em;
+  font-size: clamp(0.94rem, 0.22vw + 0.9rem, 1.26rem);
+  line-height: 1.06;
+  font-weight: 780;
+  letter-spacing: 0.01em;
   color: var(--planillas-ink);
 }
 
@@ -1510,10 +1540,14 @@
 
 .personas-page.personas-page--planillas .planillas-toolbar__field--sucursal {
   min-width: 0;
+  width: 100%;
+  max-width: 460px;
+  justify-self: end;
 }
 
 .personas-page.personas-page--planillas .planillas-sucursal-select {
   min-width: 0;
+  width: 100%;
 }
 
 .personas-page.personas-page--planillas .planillas-toolbar__audit {
@@ -4378,7 +4412,7 @@
 
 .personas-page.personas-page--planillas .planillas-export__formats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 0.55rem;
   margin-bottom: 0.7rem;
 }
@@ -4534,7 +4568,7 @@
   }
 
   .personas-page.personas-page--planillas .planillas-toolbar__title {
-    font-size: 1.55rem;
+    font-size: 1.04rem;
   }
 
   .personas-page.personas-page--planillas .planillas-toolbar__subtitle {
@@ -4542,14 +4576,15 @@
   }
 
   .personas-page.personas-page--planillas .planillas-toolbar__title-icon {
-    width: 2.3rem;
-    height: 2.3rem;
-    border-radius: 0.72rem;
-    font-size: 1.02rem;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 0.62rem;
+    font-size: 0.88rem;
   }
 
   .personas-page.personas-page--planillas .planillas-toolbar--sucursal {
-    gap: 0.62rem;
+    gap: 0.56rem;
+    padding: 0.48rem 0.56rem;
   }
 
   .personas-page.personas-page--planillas .planillas-header__actions {
@@ -4601,7 +4636,7 @@
   }
 
   .personas-page.personas-page--planillas .planillas-toolbar__title {
-    font-size: 1.35rem;
+    font-size: 1.04rem;
   }
 
   .personas-page.personas-page--planillas .planillas-toolbar__subtitle {

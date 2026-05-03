@@ -128,9 +128,6 @@ export default function UsuarioModal({
   canEdit = true,
   canResetPassword = true,
   canEditPhoto = true,
-  onOpenCreateEmpleado,
-  onOpenCreateCliente,
-  onRefreshCatalogs,
 }) {
   const isCreate = mode === 'create';
   const isOpen = Boolean(open);
@@ -306,7 +303,7 @@ export default function UsuarioModal({
       return [String(form.id_rol)];
     }
     return [];
-  }, [form?.id_roles, form?.id_rol]);
+  }, [form]);
 
   const createDisabled =
     actionLoading
@@ -391,9 +388,6 @@ export default function UsuarioModal({
                   >
                     Cliente
                   </button>
-                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onRefreshCatalogs}>
-                    Refrescar
-                  </button>
                 </div>
               </div>
 
@@ -420,11 +414,6 @@ export default function UsuarioModal({
                       noOptionsMessage={() => 'Sin coincidencias'}
                       loadingMessage={() => 'Buscando clientes...'}
                     />
-                    <div className="mt-2">
-                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={onOpenCreateCliente}>
-                        Crear cliente
-                      </button>
-                    </div>
                     {errors?.id_cliente ? <div className="invalid-feedback d-block">{errors.id_cliente}</div> : null}
                   </>
                 ) : (
@@ -449,11 +438,6 @@ export default function UsuarioModal({
                       noOptionsMessage={() => 'Sin coincidencias'}
                       loadingMessage={() => 'Buscando empleados...'}
                     />
-                    <div className="mt-2">
-                      <button type="button" className="btn btn-sm btn-outline-primary" onClick={onOpenCreateEmpleado}>
-                        Crear empleado
-                      </button>
-                    </div>
                     {errors?.id_empleado ? <div className="invalid-feedback d-block">{errors.id_empleado}</div> : null}
                   </>
                 )}

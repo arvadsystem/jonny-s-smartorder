@@ -57,7 +57,7 @@ const AuthCallback = () => {
           await clientePublicoService.verifyEmail({ token: verifyToken });
           setIsSuccess(true);
           setStatus('Cuenta verificada exitosamente');
-          setTimeout(() => navigate('/?verified=1', { replace: true }), 2500);
+          setTimeout(() => navigate('/auth/login?verified=1', { replace: true }), 2500);
           return;
         }
 
@@ -77,7 +77,7 @@ const AuthCallback = () => {
           setStatus('¡Cuenta verificada exitosamente!');
 
           // Redirigir al login con mensaje de éxito
-          setTimeout(() => navigate('/?verified=1', { replace: true }), 2500);
+          setTimeout(() => navigate('/auth/login?verified=1', { replace: true }), 2500);
           return;
         }
 
@@ -117,7 +117,7 @@ const AuthCallback = () => {
 
           setIsSuccess(true);
           setStatus('¡Cuenta verificada exitosamente!');
-          setTimeout(() => navigate('/?verified=1', { replace: true }), 2500);
+          setTimeout(() => navigate('/auth/login?verified=1', { replace: true }), 2500);
           return;
         }
 

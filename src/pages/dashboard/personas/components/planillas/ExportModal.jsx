@@ -7,13 +7,12 @@ const formatMoney = (value) => {
 };
 
 const FORMATS = [
-  { value: 'excel', title: 'Excel (CSV)', icon: 'bi-file-earmark-spreadsheet', helper: 'Descarga inmediata en CSV.' },
   { value: 'pdf', title: 'PDF', icon: 'bi-file-earmark-pdf', helper: 'Usa la vista imprimible para guardar PDF.' },
   { value: 'print', title: 'Imprimir', icon: 'bi-printer', helper: 'Abre la ficha para impresion directa.' }
 ];
 
 const initialOptions = {
-  format: 'excel',
+  format: 'pdf',
   includeDetalle: true,
   includeMovimientos: false,
   includeCorreo: true

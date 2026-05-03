@@ -31,15 +31,40 @@ const normalizeTextKey = (value) =>
 
 export const formatCurrency = (value) => `L ${roundMoney(value).toFixed(2)}`;
 
+const HN_TIMEZONE = 'America/Tegucigalpa';
+const SQL_DATE_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
+
+const parseSqlDateTimeText = (value) => {
+  const source = String(value || '').trim();
+  const match = source.match(SQL_DATE_TIME_RE);
+  if (!match) return null;
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4] || 0),
+    minute: Number(match[5] || 0)
+  };
+};
+
+const hasTimezoneInfo = (value) => /Z$|[+-]\d{2}:\d{2}$/.test(String(value || '').trim());
+
 export const formatDateLabel = (value) => {
   if (!value) return 'Sin fecha';
 
-  const source = String(value);
-  const normalized = source.includes('T') ? source : source.replace(' ', 'T');
-  const date = new Date(normalized);
+  const source = String(value).trim();
+  if (!hasTimezoneInfo(source)) {
+    const parsed = parseSqlDateTimeText(source);
+    if (parsed) {
+      return `${String(parsed.day).padStart(2, '0')}/${String(parsed.month).padStart(2, '0')}/${parsed.year}`;
+    }
+  }
+
+  const date = new Date(source);
   if (Number.isNaN(date.getTime())) return source.slice(0, 10);
 
   return date.toLocaleDateString('es-HN', {
+    timeZone: HN_TIMEZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'
@@ -49,16 +74,22 @@ export const formatDateLabel = (value) => {
 export const formatTimeLabel = (value) => {
   if (!value) return '--:--';
 
-  const source = String(value);
-  const normalized = source.includes('T') ? source : source.replace(' ', 'T');
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) {
-    return source.slice(11, 16) || '--:--';
+  const source = String(value).trim();
+  if (!hasTimezoneInfo(source)) {
+    const parsed = parseSqlDateTimeText(source);
+    if (parsed) {
+      return `${String(parsed.hour).padStart(2, '0')}:${String(parsed.minute).padStart(2, '0')}`;
+    }
   }
 
+  const date = new Date(source);
+  if (Number.isNaN(date.getTime())) return source.slice(11, 16) || '--:--';
+
   return date.toLocaleTimeString('es-HN', {
+    timeZone: HN_TIMEZONE,
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: false
   });
 };
 

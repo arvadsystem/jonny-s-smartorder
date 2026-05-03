@@ -46,6 +46,7 @@ export default function PlanillaAdelantosModal({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient modal state every time it opens.
     setSelectedId('');
     setMonto('');
     setRegisterMonto('');

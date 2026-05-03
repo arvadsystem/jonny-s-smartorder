@@ -34,6 +34,7 @@ import PlanillaAdelantoRegistroGlobalModal from './components/planillas/Planilla
 import PlanillaBonosDeduccionesHistorialModal from './components/planillas/PlanillaBonosDeduccionesHistorialModal';
 import PayrollFilters from './components/planillas/PayrollFilters';
 import ExportModal from './components/planillas/ExportModal';
+import { buildPageRangeLabel, buildVisiblePageNumbers } from './components/common/paginationWindow';
 
 const LIST_LIMIT = 20;
 const DETAIL_LIMIT = 10;
@@ -53,28 +54,50 @@ const MOVIMIENTO_ESTADO = Object.freeze({
   vigente: 'vigente',
   anulada: 'anulada'
 });
+const TIPO_PERIODO = Object.freeze({
+  mensual: 'mensual',
+  quincenal: 'quincenal'
+});
+const QUINCENA_DEFAULT = '1';
 
 const currentMonth = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
+const normalizeTipoPeriodo = (value) => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === TIPO_PERIODO.quincenal) return TIPO_PERIODO.quincenal;
+  return TIPO_PERIODO.mensual;
+};
+
+const normalizeQuincena = (value) => {
+  const normalized = String(value ?? '').trim();
+  return normalized === '2' ? '2' : '1';
+};
+
+const resolvePeriodoOperativoLabel = ({ periodo, tipoPeriodo, quincena }) => {
+  const periodoLabel = String(periodo || '').trim() || 'Sin periodo';
+  if (normalizeTipoPeriodo(tipoPeriodo) !== TIPO_PERIODO.quincenal) return `${periodoLabel} (Mensual)`;
+  const quincenaLabel = normalizeQuincena(quincena) === '2' ? 'Q2 (16-fin)' : 'Q1 (1-15)';
+  return `${periodoLabel} · ${quincenaLabel}`;
+};
+
 const buildPlanillasSucursalSelectStyles = () => ({
   control: (base, state) => ({
     ...base,
-    minHeight: 52,
-    borderRadius: 14,
-    borderColor: state.isFocused ? 'rgba(163, 103, 63, 0.76)' : 'rgba(195, 167, 142, 0.72)',
-    boxShadow: state.isFocused ? '0 0 0 0.22rem rgba(170, 118, 82, 0.2)' : 'none',
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: state.isFocused ? 'rgba(158, 105, 61, 0.72)' : 'rgba(206, 196, 177, 0.9)',
+    boxShadow: state.isFocused ? '0 0 0 0.2rem rgba(158, 105, 61, 0.18)' : 'none',
     backgroundColor: '#fff',
     '&:hover': {
-      borderColor: 'rgba(163, 103, 63, 0.76)'
+      borderColor: 'rgba(158, 105, 61, 0.72)'
     }
   }),
   valueContainer: (base) => ({
     ...base,
-    minHeight: 52,
-    padding: '0 14px'
+    padding: '2px 12px'
   }),
   input: (base) => ({
     ...base,
@@ -83,27 +106,23 @@ const buildPlanillasSucursalSelectStyles = () => ({
   }),
   placeholder: (base) => ({
     ...base,
-    color: 'rgba(90, 60, 42, 0.72)',
-    fontSize: '1.03rem',
-    fontWeight: 500
+    color: 'rgba(98, 83, 73, 0.75)'
   }),
   singleValue: (base) => ({
     ...base,
-    color: '#2f1a10',
-    fontSize: '1.08rem',
-    fontWeight: 700
+    color: '#2f1a10'
   }),
   indicatorsContainer: (base) => ({
     ...base,
-    paddingRight: 6
+    paddingRight: 4
   }),
   dropdownIndicator: (base, state) => ({
     ...base,
-    color: state.isFocused ? 'rgba(118, 71, 43, 0.95)' : 'rgba(118, 71, 43, 0.7)'
+    color: state.isFocused ? 'rgba(99, 58, 37, 0.9)' : 'rgba(99, 58, 37, 0.65)'
   }),
   clearIndicator: (base) => ({
     ...base,
-    color: 'rgba(130, 89, 66, 0.72)'
+    color: 'rgba(120, 84, 66, 0.72)'
   }),
   menuPortal: (base) => ({
     ...base,
@@ -111,15 +130,15 @@ const buildPlanillasSucursalSelectStyles = () => ({
   }),
   menu: (base) => ({
     ...base,
-    borderRadius: 14,
-    border: '1px solid rgba(195, 167, 142, 0.72)',
+    borderRadius: 12,
+    border: '1px solid rgba(206, 196, 177, 0.9)',
     overflow: 'hidden',
-    marginTop: 8,
+    marginTop: 6,
     boxShadow: '0 14px 30px rgba(60, 36, 22, 0.2)'
   }),
   option: (base, state) => ({
     ...base,
-    padding: '11px 14px',
+    padding: '10px 12px',
     backgroundColor: state.isFocused
       ? 'rgba(245, 235, 221, 0.95)'
       : state.isSelected
@@ -453,6 +472,94 @@ const resolveAdelantoPeriodo = (row = {}) => {
   return '';
 };
 
+const resolveDatePartsFromAny = (value = '') => {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+
+  const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/);
+  if (isoMatch) {
+    const year = Number.parseInt(isoMatch[1], 10);
+    const month = Number.parseInt(isoMatch[2], 10);
+    const day = Number.parseInt(isoMatch[3], 10);
+    const maxDay = new Date(year, month, 0).getDate();
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= maxDay
+    ) {
+      return { year, month, day };
+    }
+  }
+
+  const dayFirstMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[T\s].*)?$/);
+  if (dayFirstMatch) {
+    const day = Number.parseInt(dayFirstMatch[1], 10);
+    const month = Number.parseInt(dayFirstMatch[2], 10);
+    const year = Number.parseInt(dayFirstMatch[3], 10);
+    const maxDay = new Date(year, month, 0).getDate();
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= maxDay
+    ) {
+      return { year, month, day };
+    }
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return {
+    year: parsed.getUTCFullYear(),
+    month: parsed.getUTCMonth() + 1,
+    day: parsed.getUTCDate()
+  };
+};
+
+const matchesAdelantoContext = ({
+  row = {},
+  periodoScope = '',
+  tipoPeriodoScope = TIPO_PERIODO.mensual,
+  quincenaScope = QUINCENA_DEFAULT
+} = {}) => {
+  const normalizedTipo = normalizeTipoPeriodo(tipoPeriodoScope);
+  if (normalizedTipo !== TIPO_PERIODO.quincenal) return true;
+
+  const dateCandidates = [
+    row?.fecha,
+    row?.fecha_registro,
+    row?.created_at,
+    row?.fecha_aplicacion,
+    row?.fecha_periodo,
+    row?.fecha_inicio_periodo,
+    row?.fecha_inicio
+  ];
+
+  let dateParts = null;
+  for (const candidate of dateCandidates) {
+    dateParts = resolveDatePartsFromAny(candidate);
+    if (dateParts) break;
+  }
+  if (!dateParts) return false;
+
+  const targetPeriodo = normalizePeriodoMonth(periodoScope);
+  if (targetPeriodo) {
+    const rowPeriodo = `${dateParts.year}-${String(dateParts.month).padStart(2, '0')}`;
+    if (rowPeriodo !== targetPeriodo) return false;
+  }
+
+  const targetQuincena = normalizeQuincena(quincenaScope);
+  if (targetQuincena === '1') return dateParts.day >= 1 && dateParts.day <= 15;
+  return dateParts.day >= 16;
+};
+
 const resolveMovimientoPlanillaOwnerId = (row = {}) =>
   safeNumber(
     row?.id_planilla ??
@@ -583,7 +690,9 @@ const normalizeAdelantosDataset = ({
   movimientos = [],
   detalleRows = [],
   onlyEmpleadoId = 0,
-  periodoScope = ''
+  periodoScope = '',
+  tipoPeriodoScope = TIPO_PERIODO.mensual,
+  quincenaScope = QUINCENA_DEFAULT
 } = {}) => {
   const normalizedPeriodoScope = normalizePeriodoMonth(periodoScope);
   const matchesPeriodoScope = (row = {}) => {
@@ -640,7 +749,15 @@ const normalizeAdelantosDataset = ({
       if (onlyEmpleadoId > 0) return safeNumber(item?.id_empleado, 0) === onlyEmpleadoId;
       return true;
     })
-    .filter((item) => matchesPeriodoScope(item?.raw || item));
+    .filter((item) => matchesPeriodoScope(item?.raw || item))
+    .filter((item) =>
+      matchesAdelantoContext({
+        row: item?.raw || item,
+        periodoScope,
+        tipoPeriodoScope,
+        quincenaScope
+      })
+    );
 
   const movimientoRows = (Array.isArray(movimientos) ? movimientos : [])
     .filter((row) => isMovimientoAdelanto(row))
@@ -682,7 +799,15 @@ const normalizeAdelantosDataset = ({
       if (onlyEmpleadoId > 0) return safeNumber(item?.id_empleado, 0) === onlyEmpleadoId;
       return true;
     })
-    .filter((item) => matchesPeriodoScope(item?.raw || item));
+    .filter((item) => matchesPeriodoScope(item?.raw || item))
+    .filter((item) =>
+      matchesAdelantoContext({
+        row: item?.raw || item,
+        periodoScope,
+        tipoPeriodoScope,
+        quincenaScope
+      })
+    );
 
   const merged = [...pendingRows, ...movimientoRows];
   merged.sort(sortByDateDesc);
@@ -900,9 +1025,114 @@ const normalizePeriodoMonth = (value = '') => {
     }
   }
 
+  const dayFirstMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[T\s].*)?$/);
+  if (dayFirstMatch) {
+    const day = Number.parseInt(dayFirstMatch[1], 10);
+    const month = Number.parseInt(dayFirstMatch[2], 10);
+    const year = Number.parseInt(dayFirstMatch[3], 10);
+    const maxDay = new Date(year, month, 0).getDate();
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= maxDay
+    ) {
+      return `${year}-${String(month).padStart(2, '0')}`;
+    }
+  }
+
   const parsed = new Date(text);
   if (Number.isNaN(parsed.getTime())) return '';
   return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+const parseDateParts = (value = '') => {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+
+  const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (isoMatch) {
+    const year = Number.parseInt(isoMatch[1], 10);
+    const month = Number.parseInt(isoMatch[2], 10);
+    const day = Number.parseInt(isoMatch[3], 10);
+    const maxDay = new Date(year, month, 0).getDate();
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= maxDay
+    ) {
+      return {
+        year,
+        month,
+        day,
+        iso: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      };
+    }
+  }
+
+  const dayFirstMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dayFirstMatch) {
+    const day = Number.parseInt(dayFirstMatch[1], 10);
+    const month = Number.parseInt(dayFirstMatch[2], 10);
+    const year = Number.parseInt(dayFirstMatch[3], 10);
+    const maxDay = new Date(year, month, 0).getDate();
+    if (
+      Number.isInteger(year) &&
+      Number.isInteger(month) &&
+      Number.isInteger(day) &&
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      day <= maxDay
+    ) {
+      return {
+        year,
+        month,
+        day,
+        iso: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      };
+    }
+  }
+
+  return null;
+};
+
+const resolveAdelantoFechaEnContexto = ({
+  rawFecha = '',
+  periodo = '',
+  tipoPeriodo = TIPO_PERIODO.mensual,
+  quincena = QUINCENA_DEFAULT
+} = {}) => {
+  const periodoNormalizado = normalizePeriodoMonth(periodo);
+  if (!periodoNormalizado) return null;
+
+  const [yearText, monthText] = periodoNormalizado.split('-');
+  const year = Number.parseInt(yearText, 10);
+  const month = Number.parseInt(monthText, 10);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return null;
+
+  const lastDay = new Date(year, month, 0).getDate();
+  const tipoNormalizado = normalizeTipoPeriodo(tipoPeriodo);
+  const quincenaNormalizada = normalizeQuincena(quincena);
+  const minDay = tipoNormalizado === TIPO_PERIODO.quincenal && quincenaNormalizada === '2' ? 16 : 1;
+  const maxDay = tipoNormalizado === TIPO_PERIODO.quincenal && quincenaNormalizada === '1' ? 15 : lastDay;
+  const fallbackDay = Math.min(Math.max(minDay, 1), maxDay);
+  const fallbackIso = `${yearText}-${monthText}-${String(fallbackDay).padStart(2, '0')}`;
+
+  const parsed = parseDateParts(rawFecha);
+  if (!parsed) return fallbackIso;
+
+  if (parsed.year !== year || parsed.month !== month) return fallbackIso;
+  if (parsed.day < minDay || parsed.day > maxDay) return fallbackIso;
+
+  return parsed.iso;
 };
 
 const resolvePlanillaId = (planilla = {}) => safeNumber(planilla?.id_planilla, 0);
@@ -938,25 +1168,119 @@ const resolvePlanillaPeriodo = (planilla = {}) => {
   );
 };
 
-const scopePlanillasByPeriodo = (items = [], periodoTarget = '') => {
-  const rows = Array.isArray(items) ? items : [];
-  const normalizedTarget = normalizePeriodoMonth(periodoTarget);
-  if (!normalizedTarget) return rows;
+const resolvePlanillaTipoPeriodo = (planilla = {}) => {
+  const rawTipo = String(
+    planilla?.tipo_periodo ??
+      planilla?.periodo_tipo ??
+      planilla?.tipoPeriodo ??
+      ''
+  )
+    .trim()
+    .toLowerCase();
 
-  const rowsWithPeriodo = rows.map((row) => ({
-    row,
-    periodo: resolvePlanillaPeriodo(row)
-  }));
-  const hasAtLeastOnePeriodo = rowsWithPeriodo.some((entry) => Boolean(entry.periodo));
-  if (!hasAtLeastOnePeriodo) return rows;
+  if (rawTipo === TIPO_PERIODO.quincenal) return TIPO_PERIODO.quincenal;
+  if (rawTipo === TIPO_PERIODO.mensual) return TIPO_PERIODO.mensual;
 
-  return rowsWithPeriodo
-    .filter((entry) => entry.periodo === normalizedTarget)
-    .map((entry) => entry.row);
+  const rawQuincena = String(
+    planilla?.quincena ??
+      planilla?.numero_quincena ??
+      planilla?.id_quincena ??
+      planilla?.subperiodo ??
+      ''
+  )
+    .trim()
+    .toLowerCase();
+
+  if (rawQuincena === '1' || rawQuincena === '2' || rawQuincena.includes('q1') || rawQuincena.includes('q2')) {
+    return TIPO_PERIODO.quincenal;
+  }
+
+  return TIPO_PERIODO.mensual;
 };
 
-const pickContextPlanilla = (items = [], periodoTarget = '') =>
-  scopePlanillasByPeriodo(items, periodoTarget).find((planilla) => resolvePlanillaId(planilla) > 0) || null;
+const resolvePlanillaQuincena = (planilla = {}) => {
+  const numericCandidates = [planilla?.quincena, planilla?.numero_quincena, planilla?.id_quincena];
+  for (const candidate of numericCandidates) {
+    const parsed = Number.parseInt(String(candidate ?? '').trim(), 10);
+    if (parsed === 1 || parsed === 2) return String(parsed);
+  }
+
+  const textCandidates = [
+    planilla?.subperiodo,
+    planilla?.periodo_subtipo,
+    planilla?.periodo_label,
+    planilla?.descripcion_periodo,
+    planilla?.codigo_planilla
+  ];
+  for (const candidate of textCandidates) {
+    const text = String(candidate ?? '').trim().toLowerCase();
+    if (!text) continue;
+    if (/(^|\b)q\s*1(\b|$)/i.test(text) || /quincena\s*1/i.test(text)) return '1';
+    if (/(^|\b)q\s*2(\b|$)/i.test(text) || /quincena\s*2/i.test(text)) return '2';
+  }
+
+  const inicioPeriodo = String(planilla?.periodo_inicio ?? planilla?.fecha_inicio_periodo ?? '').trim();
+  if (inicioPeriodo) {
+    const parsed = new Date(inicioPeriodo);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.getUTCDate() <= 15 ? '1' : '2';
+    }
+  }
+
+  return null;
+};
+
+const scopePlanillasByContext = ({
+  items = [],
+  periodoTarget = '',
+  tipoPeriodoTarget = TIPO_PERIODO.mensual,
+  quincenaTarget = null
+} = {}) => {
+  const rows = Array.isArray(items) ? items : [];
+  const normalizedTarget = normalizePeriodoMonth(periodoTarget);
+  const normalizedTipo = normalizeTipoPeriodo(tipoPeriodoTarget);
+  const normalizedQuincena =
+    normalizedTipo === TIPO_PERIODO.quincenal ? normalizeQuincena(quincenaTarget) : null;
+
+  const rowsWithContext = rows.map((row) => ({
+    row,
+    periodo: resolvePlanillaPeriodo(row),
+    tipo: resolvePlanillaTipoPeriodo(row),
+    quincena: resolvePlanillaQuincena(row)
+  }));
+
+  let filtered = rowsWithContext;
+  if (normalizedTarget) {
+    const hasAtLeastOnePeriodo = rowsWithContext.some((entry) => Boolean(entry.periodo));
+    if (hasAtLeastOnePeriodo) {
+      filtered = filtered.filter((entry) => entry.periodo === normalizedTarget);
+    }
+  }
+
+  if (normalizedTipo === TIPO_PERIODO.quincenal) {
+    filtered = filtered.filter((entry) => entry.tipo === TIPO_PERIODO.quincenal);
+    if (normalizedQuincena) {
+      filtered = filtered.filter((entry) => entry.quincena === String(normalizedQuincena));
+    }
+  } else {
+    filtered = filtered.filter((entry) => entry.tipo === TIPO_PERIODO.mensual);
+  }
+
+  return filtered.map((entry) => entry.row);
+};
+
+const pickContextPlanilla = ({
+  items = [],
+  periodoTarget = '',
+  tipoPeriodoTarget = TIPO_PERIODO.mensual,
+  quincenaTarget = null
+} = {}) =>
+  scopePlanillasByContext({
+    items,
+    periodoTarget,
+    tipoPeriodoTarget,
+    quincenaTarget
+  }).find((planilla) => resolvePlanillaId(planilla) > 0) || null;
 
 const buildEmpleadoOption = (item = {}) => {
   const idEmpleado = safeNumber(item?.id_empleado ?? item?.id_empleado_planilla ?? item?.id_persona_empleado, 0);
@@ -975,9 +1299,40 @@ const buildEmpleadoOption = (item = {}) => {
   };
 };
 
-const openPrintWindow = (html) => {
+const createPrintWindow = () => {
   const popup = window.open('', '_blank', 'width=1150,height=900');
   if (!popup) throw new Error('No se pudo abrir la vista imprimible. Habilita ventanas emergentes.');
+  return popup;
+};
+
+const showPendingPrintWindow = (popup) => {
+  if (!popup || popup.closed) return;
+  popup.document.open();
+  popup.document.write(`<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Generando vista imprimible...</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; color: #2f1a10; background: #fff; }
+    .box { text-align: center; padding: 28px 32px; border: 1px solid rgba(129,103,84,.28); border-radius: 14px; }
+    .box h1 { margin: 0 0 8px; font-size: 1.1rem; }
+    .box p { margin: 0; color: #6e5a4d; }
+  </style>
+</head>
+<body>
+  <section class="box">
+    <h1>Generando vista imprimible...</h1>
+    <p>Espera un momento, estamos preparando el documento.</p>
+  </section>
+</body>
+</html>`);
+  popup.document.close();
+};
+
+const openPrintWindow = (html, popupRef = null) => {
+  const popup = popupRef && !popupRef.closed ? popupRef : createPrintWindow();
   popup.document.open();
   popup.document.write(html);
   popup.document.close();
@@ -985,8 +1340,58 @@ const openPrintWindow = (html) => {
   setTimeout(() => popup.print(), 220);
 };
 
+const buildDetalleLookupMaps = (rows = []) => {
+  const byDetalle = new Map();
+  const byEmpleado = new Map();
+
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const detalleId = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+    if (detalleId > 0 && !byDetalle.has(String(detalleId))) {
+      byDetalle.set(String(detalleId), row);
+    }
+
+    const empleadoId = safeNumber(row?.id_empleado ?? row?.id_empleado_planilla ?? row?.id_persona_empleado, 0);
+    if (empleadoId > 0 && !byEmpleado.has(String(empleadoId))) {
+      byEmpleado.set(String(empleadoId), row);
+    }
+  });
+
+  return { byDetalle, byEmpleado };
+};
+
+const resolveMovimientoEmpleadoNombre = (row = {}, detalleLookup = { byDetalle: new Map(), byEmpleado: new Map() }) => {
+  const inlineName = toText(
+    row?.empleado_nombre ||
+      row?.nombre_completo ||
+      row?.nombre_empleado ||
+      `${toText(row?.nombre)} ${toText(row?.apellido)}`.trim()
+  );
+  if (inlineName) return inlineName;
+
+  const detalleId = safeNumber(row?.id_detalle_planilla ?? row?.id_detalle, 0);
+  if (detalleId > 0) {
+    const detalleRow = detalleLookup.byDetalle?.get?.(String(detalleId));
+    if (detalleRow) return extractEmpleadoNombre(detalleRow);
+  }
+
+  const empleadoId = safeNumber(row?.id_empleado ?? row?.id_empleado_planilla ?? row?.id_persona_empleado, 0);
+  if (empleadoId > 0) {
+    const detalleRow = detalleLookup.byEmpleado?.get?.(String(empleadoId));
+    if (detalleRow) return extractEmpleadoNombre(detalleRow);
+    return `Empleado ID ${empleadoId}`;
+  }
+
+  return 'Empleado no identificado';
+};
+
 const buildPrintTemplate = ({ planillaLabel, periodo, resumen, rows, includeCorreo, movimientos }) => {
   const totalColumns = includeCorreo ? 18 : 17;
+  const detalleLookup = buildDetalleLookupMaps(rows);
+  const generatedAt = new Date().toLocaleString('es-HN', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+
   const resumenCards = [
     { label: 'Total salario base', value: formatMoney(resumen.total_salario_base ?? resumen.salario_base_total) },
     { label: 'Total bonos', value: formatMoney(resumen.total_bonos) },
@@ -1026,6 +1431,7 @@ const buildPrintTemplate = ({ planillaLabel, periodo, resumen, rows, includeCorr
     .map(
       (row) => `<tr>
         <td>${escapeHtml(toText(row?.tipo_movimiento || row?.tipo, '-'))}</td>
+        <td class="employee-col">${escapeHtml(resolveMovimientoEmpleadoNombre(row, detalleLookup))}</td>
         <td>${escapeHtml(toText(row?.concepto, '-'))}</td>
         <td>${escapeHtml(formatMovimientoMonto(row))}</td>
         <td>${escapeHtml(toText(row?.observacion, '-'))}</td>
@@ -1041,22 +1447,25 @@ const buildPrintTemplate = ({ planillaLabel, periodo, resumen, rows, includeCorr
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Ficha de planilla</title>
   <style>
-    :root { --bg:#f7f4ef; --ink:#2f1a10; --muted:#6e5a4d; --line:rgba(129,103,84,.28); --panel:#fff; --head:#3d2817; }
+    :root { --bg:#ffffff; --ink:#1f2937; --muted:#4b5563; --line:#d1d5db; --panel:#ffffff; --head:#f3f4f6; --accent:#111827; }
     * { box-sizing: border-box; }
     body { margin: 0; padding: 12px; background: var(--bg); color: var(--ink); font-family: "Segoe UI", system-ui, sans-serif; }
-    .sheet { width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
-    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
-    .head h1 { margin: 0; font-size: 20px; }
-    .head p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
-    .badge { border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 12px; background: rgba(61, 40, 23, .08); border: 1px solid var(--line); }
+    .sheet { width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 2px 10px rgba(17,24,39,.06); }
+    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+    .head h1 { margin: 0; font-size: 24px; line-height: 1.2; color: var(--accent); }
+    .head p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .head .meta { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .badge { border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 11px; background: #f9fafb; border: 1px solid var(--line); color: #111827; }
     .summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
-    .summary > div { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #fffefb; }
+    .summary > div { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #fff; }
     .summary span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-    .summary strong { font-size: 16px; }
+    .summary strong { font-size: 17px; color: #111827; }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10px; table-layout: fixed; }
-    th { background: var(--head); color: #fff; padding: 6px; border: 1px solid rgba(255,255,255,.12); text-transform: uppercase; letter-spacing: .04em; font-size: 8.5px; text-align: left; }
+    th { background: var(--head); color: #111827; padding: 7px 6px; border: 1px solid var(--line); text-transform: uppercase; letter-spacing: .04em; font-size: 8.4px; text-align: left; }
     td { border: 1px solid var(--line); padding: 6px; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; white-space: normal; }
-    .section-title { margin: 18px 0 6px; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+    tbody tr:nth-child(even) td { background: #fbfbfc; }
+    .section-title { margin: 18px 0 6px; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+    .employee-col { font-weight: 600; color: #0f172a; }
     @media print {
       body { padding: 0; background: #fff; }
       .sheet { border: 0; box-shadow: none; border-radius: 0; padding: 0; }
@@ -1071,6 +1480,7 @@ const buildPrintTemplate = ({ planillaLabel, periodo, resumen, rows, includeCorr
       <div>
         <h1>${escapeHtml(planillaLabel)}</h1>
         <p>Periodo: ${escapeHtml(periodo || 'Sin periodo')} - Empleados: ${rows.length}</p>
+        <div class="meta">Generado: ${escapeHtml(generatedAt)}</div>
       </div>
       <span class="badge">Ficha imprimible</span>
     </header>
@@ -1093,7 +1503,7 @@ const buildPrintTemplate = ({ planillaLabel, periodo, resumen, rows, includeCorr
     </table>
     ${
       movimientosHtml
-        ? `<div class="section-title">Movimientos</div><table><thead><tr><th>Tipo</th><th>Concepto</th><th>Monto</th><th>Observacion</th><th>Fecha</th></tr></thead><tbody>${movimientosHtml}</tbody></table>`
+        ? `<div class="section-title">Movimientos</div><table><thead><tr><th>Tipo</th><th>Empleado</th><th>Concepto</th><th>Monto</th><th>Observacion</th><th>Fecha</th></tr></thead><tbody>${movimientosHtml}</tbody></table>`
         : ''
     }
   </section>
@@ -1169,6 +1579,8 @@ export default function Planillas({
   const [sucursales, setSucursales] = useState([]);
   const [selectedSucursal, setSelectedSucursal] = useState('');
   const [periodo, setPeriodo] = useState(currentMonth());
+  const [tipoPeriodo, setTipoPeriodo] = useState(TIPO_PERIODO.mensual);
+  const [quincena, setQuincena] = useState(QUINCENA_DEFAULT);
   const [estadoFiltro, setEstadoFiltro] = useState('');
   const [listPage, setListPage] = useState(1);
   const [filters, setFilters] = useState(buildInitialFilters(''));
@@ -1353,13 +1765,13 @@ export default function Planillas({
   }, [selectedPlanilla?.id_sucursal, selectedPlanilla?.id_sucursal_planilla, selectedSucursal]);
 
   const planillaEstadoRaw = useMemo(() => extractEstadoPlanilla(selectedPlanilla), [selectedPlanilla]);
-  const planillaEstadoId = useMemo(
-    () => safeNumber(selectedPlanilla?.id_estado_planilla || selectedPlanilla?.id_estado, 0),
-    [selectedPlanilla]
-  );
   const isPlanillaPagada = useMemo(
-    () => planillaEstadoRaw.includes('pagad') || planillaEstadoId === 3,
-    [planillaEstadoId, planillaEstadoRaw]
+    () => planillaEstadoRaw.includes('pagad'),
+    [planillaEstadoRaw]
+  );
+  const periodoOperativoLabel = useMemo(
+    () => resolvePeriodoOperativoLabel({ periodo, tipoPeriodo, quincena }),
+    [periodo, tipoPeriodo, quincena]
   );
 
   const filteredDetalle = useMemo(
@@ -1382,6 +1794,23 @@ export default function Planillas({
     const start = (detallePage - 1) * DETAIL_LIMIT;
     return filteredDetalle.slice(start, start + DETAIL_LIMIT);
   }, [detallePage, filteredDetalle]);
+  const totalPagesPlanillas = useMemo(() => Math.max(1, Math.ceil(planillasTotal / LIST_LIMIT)), [planillasTotal]);
+  const visiblePlanillaPageNumbers = useMemo(
+    () => buildVisiblePageNumbers(listPage, totalPagesPlanillas),
+    [listPage, totalPagesPlanillas]
+  );
+  const visibleDetallePageNumbers = useMemo(
+    () => buildVisiblePageNumbers(detallePage, totalPagesDetalle),
+    [detallePage, totalPagesDetalle]
+  );
+  const planillasPageWindowLabel = useMemo(
+    () => buildPageRangeLabel({ page: listPage, limit: LIST_LIMIT, total: planillasTotal, currentLength: planillas.length }),
+    [listPage, planillas.length, planillasTotal]
+  );
+  const detallePageWindowLabel = useMemo(
+    () => buildPageRangeLabel({ page: detallePage, limit: DETAIL_LIMIT, total: filteredDetalle.length, currentLength: pagedDetalle.length }),
+    [detallePage, filteredDetalle.length, pagedDetalle.length]
+  );
   const detalleEmpleadoOptions = useMemo(
     () => (Array.isArray(detalle) ? detalle : []).map((row) => buildEmpleadoOption(row)).filter(Boolean),
     [detalle]
@@ -1429,9 +1858,11 @@ export default function Planillas({
         pendientes: adelantosPendientes,
         movimientos: adelantosHistorialMovimientosScoped,
         detalleRows: detalle,
-        periodoScope: periodo
+        periodoScope: periodo,
+        tipoPeriodoScope: tipoPeriodo,
+        quincenaScope: quincena
       }),
-    [adelantosHistorialMovimientosScoped, adelantosPendientes, detalle, periodo]
+    [adelantosHistorialMovimientosScoped, adelantosPendientes, detalle, periodo, quincena, tipoPeriodo]
   );
   const adelantosStatusTotals = useMemo(
     () =>
@@ -1645,20 +2076,30 @@ export default function Planillas({
   }, [searchParams, selectedSucursal, setSearchParams]);
 
   const loadPlanillasByContext = useCallback(
-    async ({ idSucursal, periodoTarget } = {}) => {
+    async ({ idSucursal, periodoTarget, tipoPeriodoTarget, quincenaTarget } = {}) => {
       const normalizedSucursal = normalizeSucursalId(idSucursal ?? selectedSucursal);
       const normalizedPeriodo = toText(periodoTarget ?? periodo, '');
+      const normalizedTipoPeriodo = normalizeTipoPeriodo(tipoPeriodoTarget ?? tipoPeriodo);
+      const normalizedQuincena =
+        normalizedTipoPeriodo === TIPO_PERIODO.quincenal ? normalizeQuincena(quincenaTarget ?? quincena) : null;
       if (!normalizedSucursal || !normalizedPeriodo) return [];
 
       const response = await planillasService.listarPlanillas({
         page: 1,
         limit: DETAIL_FETCH_LIMIT,
         id_sucursal: normalizedSucursal,
-        periodo: normalizedPeriodo
+        periodo: normalizedPeriodo,
+        tipo_periodo: normalizedTipoPeriodo,
+        quincena: normalizedQuincena || undefined
       });
-      return scopePlanillasByPeriodo(normalizeListResponse(response).items, normalizedPeriodo);
+      return scopePlanillasByContext({
+        items: normalizeListResponse(response).items,
+        periodoTarget: normalizedPeriodo,
+        tipoPeriodoTarget: normalizedTipoPeriodo,
+        quincenaTarget: normalizedQuincena
+      });
     },
-    [periodo, selectedSucursal]
+    [periodo, quincena, selectedSucursal, tipoPeriodo]
   );
 
   const loadEmpleadosActivos = useCallback(async () => {
@@ -1704,12 +2145,19 @@ export default function Planillas({
         limit: LIST_LIMIT,
         id_sucursal: selectedSucursal,
         periodo,
-        estado: estadoFiltro || undefined
+        estado: estadoFiltro || undefined,
+        tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+        quincena: normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal ? normalizeQuincena(quincena) : undefined
       });
 
       const parsed = normalizeListResponse(response);
       if (requestId !== planillasRequestRef.current) return;
-      const scopedItems = scopePlanillasByPeriodo(parsed.items, periodo);
+      const scopedItems = scopePlanillasByContext({
+        items: parsed.items,
+        periodoTarget: periodo,
+        tipoPeriodoTarget: tipoPeriodo,
+        quincenaTarget: quincena
+      });
       setPlanillas(scopedItems);
       setPlanillasTotal(scopedItems.length !== parsed.items.length ? scopedItems.length : parsed.total);
 
@@ -1736,7 +2184,7 @@ export default function Planillas({
         setLoadingPlanillas(false);
       }
     }
-  }, [canView, estadoFiltro, listPage, periodo, selectedPlanillaId, selectedSucursal]);
+  }, [canView, estadoFiltro, listPage, periodo, quincena, selectedPlanillaId, selectedSucursal, tipoPeriodo]);
 
   const loadDetalleAndResumen = useCallback(async () => {
     const requestId = detalleRequestRef.current + 1;
@@ -1768,14 +2216,24 @@ export default function Planillas({
     try {
       const [resumenResp, detalleItems] = await Promise.all([
         planillasService.obtenerResumenPlanilla(selectedPlanilla.id_planilla, {
-          id_sucursal: activePlanillaSucursalId || undefined
+          id_sucursal: activePlanillaSucursalId || undefined,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         }),
         collectPaginatedApiRows(
           ({ page, limit }) =>
             planillasService.listarDetallePlanilla(selectedPlanilla.id_planilla, {
               page,
               limit,
-              id_sucursal: activePlanillaSucursalId || undefined
+              id_sucursal: activePlanillaSucursalId || undefined,
+              tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+              quincena:
+                normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                  ? normalizeQuincena(quincena)
+                  : undefined
             }),
           { pageSize: 100, maxPages: 80 }
         )
@@ -1802,10 +2260,12 @@ export default function Planillas({
   }, [
     activePlanillaSucursalId,
     canViewDetalle,
+    quincena,
     safeToast,
     selectedPlanilla?.id_planilla,
     selectedPlanilla?.id_sucursal,
-    selectedPlanilla?.id_sucursal_planilla
+    selectedPlanilla?.id_sucursal_planilla,
+    tipoPeriodo
   ]);
 
   const fetchPlanillaMovimientos = useCallback(async ({ idPlanilla, idSucursal, idDetalle = 0 } = {}) => {
@@ -1819,18 +2279,28 @@ export default function Planillas({
           return planillasService.listarMovimientosPlanillaDetalle(safePlanillaId, safeDetalleId, {
             page,
             limit,
-            id_sucursal: idSucursal || undefined
+            id_sucursal: idSucursal || undefined,
+            tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+            quincena:
+              normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                ? normalizeQuincena(quincena)
+                : undefined
           });
         }
         return planillasService.listarMovimientosPlanilla(safePlanillaId, {
           page,
           limit,
-          id_sucursal: idSucursal || undefined
+          id_sucursal: idSucursal || undefined,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
       },
       { pageSize: 100, maxPages: 80 }
     );
-  }, []);
+  }, [quincena, tipoPeriodo]);
 
   const loadAdelantosPendientes = useCallback(async () => {
     if (!selectedSucursal || !canViewDetalle) {
@@ -1850,13 +2320,22 @@ export default function Planillas({
           }),
         { pageSize: 100, maxPages: 80 }
       );
-      setAdelantosPendientes(rows);
-    } catch {
+      const scopedRows = (Array.isArray(rows) ? rows : []).filter((row) =>
+        matchesAdelantoContext({
+          row,
+          periodoScope: periodo,
+          tipoPeriodoScope: tipoPeriodo,
+          quincenaScope: quincena
+        })
+      );
+      setAdelantosPendientes(scopedRows);
+    } catch (error) {
+      safeToast('ERROR', error?.message || 'No se pudieron cargar los adelantos pendientes.', 'danger');
       setAdelantosPendientes([]);
     } finally {
       setLoadingAdelantosPendientes(false);
     }
-  }, [canViewDetalle, periodo, selectedSucursal]);
+  }, [canViewDetalle, periodo, quincena, safeToast, selectedSucursal, tipoPeriodo]);
 
   const loadAdelantosHistorial = useCallback(async () => {
     const requestId = adelantosHistorialRequestRef.current + 1;
@@ -1971,9 +2450,16 @@ export default function Planillas({
     try {
       const items = await loadPlanillasByContext({
         idSucursal: selectedSucursal,
-        periodoTarget: periodo
+        periodoTarget: periodo,
+        tipoPeriodoTarget: tipoPeriodo,
+        quincenaTarget: quincena
       });
-      const planilla = pickContextPlanilla(items, periodo);
+      const planilla = pickContextPlanilla({
+        items,
+        periodoTarget: periodo,
+        tipoPeriodoTarget: tipoPeriodo,
+        quincenaTarget: quincena
+      });
       const idPlanilla = resolvePlanillaId(planilla);
       setPlanillaPeriodoLookup({
         loading: false,
@@ -1987,7 +2473,7 @@ export default function Planillas({
         idPlanilla: 0
       });
     }
-  }, [canView, loadPlanillasByContext, periodo, selectedSucursal]);
+  }, [canView, loadPlanillasByContext, periodo, quincena, selectedSucursal, tipoPeriodo]);
 
   useEffect(() => {
     loadSucursales();
@@ -1995,7 +2481,7 @@ export default function Planillas({
 
   useEffect(() => {
     setListPage(1);
-  }, [selectedSucursal, periodo, estadoFiltro]);
+  }, [selectedSucursal, periodo, estadoFiltro, tipoPeriodo, quincena]);
 
   useEffect(() => {
     if (!selectedSucursal) return;
@@ -2006,7 +2492,7 @@ export default function Planillas({
     setDetallePage(1);
     setAdelantosHistorialMovimientos([]);
     setBonosDeduccionesHistorial([]);
-  }, [periodo, selectedSucursal]);
+  }, [periodo, quincena, selectedSucursal, tipoPeriodo]);
 
   useEffect(() => {
     setSelectedPlanillaId('');
@@ -2053,6 +2539,12 @@ export default function Planillas({
       setDetallePage(totalPagesDetalle);
     }
   }, [detallePage, totalPagesDetalle]);
+
+  useEffect(() => {
+    if (listPage > totalPagesPlanillas) {
+      setListPage(totalPagesPlanillas);
+    }
+  }, [listPage, totalPagesPlanillas]);
 
   useEffect(() => {
     if (hasSucursalSelected) return;
@@ -2109,6 +2601,8 @@ export default function Planillas({
     async ({ notifyOnCreate = true } = {}) => {
       const idSucursal = safeNumber(selectedSucursal, 0);
       const periodoValue = toText(periodo, '');
+      const tipoPeriodoValue = normalizeTipoPeriodo(tipoPeriodo);
+      const quincenaValue = tipoPeriodoValue === TIPO_PERIODO.quincenal ? normalizeQuincena(quincena) : null;
 
       if (!(idSucursal > 0)) {
         safeToast('ERROR', 'Selecciona una sucursal valida antes de registrar movimientos.', 'warning');
@@ -2120,9 +2614,24 @@ export default function Planillas({
         return null;
       }
 
+      if (tipoPeriodoValue === TIPO_PERIODO.quincenal && !quincenaValue) {
+        safeToast('ERROR', 'Selecciona una quincena valida antes de continuar.', 'warning');
+        return null;
+      }
+
       const resolveExistingPlanilla = async () => {
-        const items = await loadPlanillasByContext({ idSucursal, periodoTarget: periodoValue });
-        const planilla = pickContextPlanilla(items, periodoValue);
+        const items = await loadPlanillasByContext({
+          idSucursal,
+          periodoTarget: periodoValue,
+          tipoPeriodoTarget: tipoPeriodoValue,
+          quincenaTarget: quincenaValue
+        });
+        const planilla = pickContextPlanilla({
+          items,
+          periodoTarget: periodoValue,
+          tipoPeriodoTarget: tipoPeriodoValue,
+          quincenaTarget: quincenaValue
+        });
         return {
           planilla,
           idPlanilla: resolvePlanillaId(planilla)
@@ -2137,7 +2646,9 @@ export default function Planillas({
           try {
             await planillasService.generarPlanilla({
               id_sucursal: idSucursal,
-              periodo: periodoValue
+              periodo: periodoValue,
+              tipo_periodo: tipoPeriodoValue,
+              quincena: quincenaValue || undefined
             });
             generatedNow = true;
           } catch (error) {
@@ -2180,7 +2691,7 @@ export default function Planillas({
         return null;
       }
     },
-    [loadPlanillasByContext, periodo, safeToast, selectedSucursal]
+    [loadPlanillasByContext, periodo, quincena, safeToast, selectedSucursal, tipoPeriodo]
   );
 
   const resolveDetalleIdForEmpleado = useCallback(
@@ -2198,7 +2709,12 @@ export default function Planillas({
           planillasService.listarDetallePlanilla(idPlanilla, {
             page,
             limit,
-            id_sucursal: idSucursal || undefined
+            id_sucursal: idSucursal || undefined,
+            tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+            quincena:
+              normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                ? normalizeQuincena(quincena)
+                : undefined
           }),
         { pageSize: 100, maxPages: 80 }
       )).map((row) => normalizeDetalleRowForDisplay(row));
@@ -2209,7 +2725,7 @@ export default function Planillas({
       const remoteDetalle = rows.find((row) => safeNumber(row?.id_empleado, 0) === safeNumber(idEmpleado, 0));
       return safeNumber(remoteDetalle?.id_detalle_planilla ?? remoteDetalle?.id_detalle, 0);
     },
-    [detalle]
+    [detalle, quincena, tipoPeriodo]
   );
 
   const refreshPlanillaData = useCallback(
@@ -2294,6 +2810,7 @@ export default function Planillas({
 
   const buildCsvContent = useCallback((rows, resumenData, movimientos, options) => {
     const includeCorreo = Boolean(options?.includeCorreo);
+    const detalleLookup = buildDetalleLookupMaps(rows);
 
     const header = [
       'Nombre completo',
@@ -2354,10 +2871,11 @@ export default function Planillas({
     if (Array.isArray(movimientos) && movimientos.length > 0) {
       lines.push([]);
       lines.push(['Movimientos']);
-      lines.push(['Tipo', 'Concepto', 'Monto', 'Observacion', 'Fecha']);
+      lines.push(['Tipo', 'Empleado', 'Concepto', 'Monto', 'Observacion', 'Fecha']);
       movimientos.forEach((row) => {
         lines.push([
           toText(row.tipo_movimiento || row.tipo, '-'),
+          resolveMovimientoEmpleadoNombre(row, detalleLookup),
           toText(row.concepto, '-'),
           formatMovimientoMonto(row),
           toText(row.observacion, '-'),
@@ -2373,30 +2891,38 @@ export default function Planillas({
     let summaryData = normalizeResumenForDisplay(resumen);
     let rows = filteredDetalle.map((row) => normalizeDetalleRowForDisplay(row));
     let movimientos = [];
+    const normalizedTipoPeriodo = normalizeTipoPeriodo(tipoPeriodo);
+    const normalizedQuincena =
+      normalizedTipoPeriodo === TIPO_PERIODO.quincenal ? normalizeQuincena(quincena) : undefined;
+    const isQuincenalContext = normalizedTipoPeriodo === TIPO_PERIODO.quincenal;
 
     if (!selectedPlanilla?.id_planilla) {
       return { summaryData, rows, movimientos };
     }
 
-    try {
-      const response = await planillasService.obtenerPlanillaCompleta(selectedPlanilla.id_planilla, {
-        id_sucursal: activePlanillaSucursalId || undefined
-      });
-      const parsed = normalizePlanillaCompleta(response);
-      if (parsed.detalle.length > 0) {
-        const normalizedRows = parsed.detalle.map((row) => normalizeDetalleRowForDisplay(row));
-        rows = filterDetalleRows({
-          rows: normalizedRows,
-          filters,
-          selectedSucursal,
-          selectedPlanilla
+    if (!isQuincenalContext) {
+      try {
+        const response = await planillasService.obtenerPlanillaCompleta(selectedPlanilla.id_planilla, {
+          id_sucursal: activePlanillaSucursalId || undefined,
+          tipo_periodo: normalizedTipoPeriodo,
+          quincena: normalizedQuincena
         });
+        const parsed = normalizePlanillaCompleta(response);
+        if (parsed.detalle.length > 0) {
+          const normalizedRows = parsed.detalle.map((row) => normalizeDetalleRowForDisplay(row));
+          rows = filterDetalleRows({
+            rows: normalizedRows,
+            filters,
+            selectedSucursal,
+            selectedPlanilla
+          });
+        }
+        if (Object.keys(parsed.resumen || {}).length > 0) {
+          summaryData = normalizeResumenForDisplay(parsed.resumen);
+        }
+      } catch {
+        // fallback
       }
-      if (Object.keys(parsed.resumen || {}).length > 0) {
-        summaryData = normalizeResumenForDisplay(parsed.resumen);
-      }
-    } catch {
-      // fallback
     }
 
     if (options.includeMovimientos) {
@@ -2411,7 +2937,9 @@ export default function Planillas({
           const response = await planillasService.listarMovimientosPlanilla(selectedPlanilla.id_planilla, {
             page,
             limit,
-            id_sucursal: activePlanillaSucursalId || undefined
+            id_sucursal: activePlanillaSucursalId || undefined,
+            tipo_periodo: normalizedTipoPeriodo,
+            quincena: normalizedQuincena
           });
           const parsed = normalizeListResponse(response);
           const chunk = Array.isArray(parsed.items) ? parsed.items : [];
@@ -2434,13 +2962,31 @@ export default function Planillas({
       rows: rows.map((row) => normalizeDetalleRowForDisplay(row)),
       movimientos
     };
-  }, [activePlanillaSucursalId, filters, filteredDetalle, resumen, safeToast, selectedPlanilla, selectedSucursal]);
+  }, [
+    activePlanillaSucursalId,
+    filters,
+    filteredDetalle,
+    quincena,
+    resumen,
+    safeToast,
+    selectedPlanilla,
+    selectedSucursal,
+    tipoPeriodo
+  ]);
 
   const handleExportSubmit = useCallback(async (options) => {
     if (!selectedPlanilla?.id_planilla) return;
 
+    let printPopup = null;
     setLoadingExport(true);
     try {
+      if (options?.format !== 'excel') {
+        // Reservamos la ventana dentro del gesto de usuario para evitar bloqueo del navegador
+        // cuando la carga de datos tarda y se ejecuta asincrónicamente.
+        printPopup = createPrintWindow();
+        showPendingPrintWindow(printPopup);
+      }
+
       const { summaryData, rows, movimientos } = await resolveExportDataset(options);
 
       if (!Array.isArray(rows) || rows.length === 0) {
@@ -2466,17 +3012,33 @@ export default function Planillas({
           includeCorreo: options.includeCorreo,
           movimientos
         });
-        openPrintWindow(html);
+        openPrintWindow(html, printPopup);
+        printPopup = null;
         safeToast('OK', 'Vista imprimible abierta. Puedes guardarla como PDF.', 'success');
       }
 
       setExportModalOpen(false);
     } catch (error) {
+      if (printPopup && !printPopup.closed) {
+        printPopup.close();
+      }
       safeToast('ERROR', error.message || 'No se pudo generar la exportacion.', 'danger');
     } finally {
       setLoadingExport(false);
     }
   }, [buildCsvContent, periodo, resolveExportDataset, safeToast, selectedPlanilla?.id_planilla, selectedPlanillaLabel]);
+
+  const handleTipoPeriodoChange = useCallback((nextValue) => {
+    const normalized = normalizeTipoPeriodo(nextValue);
+    setTipoPeriodo(normalized);
+    if (normalized !== TIPO_PERIODO.quincenal) {
+      setQuincena(QUINCENA_DEFAULT);
+    }
+  }, []);
+
+  const handleQuincenaChange = useCallback((nextValue) => {
+    setQuincena(normalizeQuincena(nextValue));
+  }, []);
 
   const handleGenerar = () => {
     if (!selectedSucursal || !periodo) {
@@ -2495,13 +3057,15 @@ export default function Planillas({
       question: 'Deseas generar la planilla para esta sucursal?',
       description:
         'La generacion toma el detalle actual de empleados, bonos, deducciones y adelantos para construir la planilla del periodo.',
-      detail: `${selectedSucursalLabel} - ${periodo || 'Sin periodo'}`,
+      detail: `${selectedSucursalLabel} - ${periodoOperativoLabel}`,
       detailIconClass: 'bi bi-calendar2-check',
       confirmText: 'Generar',
       confirmIconClass: 'bi bi-plus-circle',
       payload: {
         idSucursal: Number(selectedSucursal),
-        periodo
+        periodo,
+        tipoPeriodo: normalizeTipoPeriodo(tipoPeriodo),
+        quincena: normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal ? normalizeQuincena(quincena) : null
       }
     });
   };
@@ -2603,7 +3167,12 @@ export default function Planillas({
           page: 1,
           limit: 50,
           id_detalle: item.id_detalle_planilla || item.id_detalle,
-          id_sucursal: activePlanillaSucursalId || undefined
+          id_sucursal: activePlanillaSucursalId || undefined,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
         setMovimientosModal({ open: true, item, loading: false, items: normalizeListResponse(response).items });
       } catch (error) {
@@ -2611,7 +3180,7 @@ export default function Planillas({
         safeToast('ERROR', error.message || 'No se pudieron cargar movimientos', 'danger');
       }
     },
-    [activePlanillaSucursalId, safeToast, selectedPlanilla?.id_planilla]
+    [activePlanillaSucursalId, quincena, safeToast, selectedPlanilla?.id_planilla, tipoPeriodo]
   );
 
   const openBonosDeduccionesRegistroGlobal = useCallback(async () => {
@@ -2643,7 +3212,12 @@ export default function Planillas({
       const response = await planillasService.listarMovimientosPlanilla(context.idPlanilla, {
         page: 1,
         limit: DETAIL_FETCH_LIMIT,
-        id_sucursal: context.idSucursal || undefined
+        id_sucursal: context.idSucursal || undefined,
+        tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+        quincena:
+          normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+            ? normalizeQuincena(quincena)
+            : undefined
       });
       const items = normalizeListResponse(response).items;
       const filtered = items.filter((row) => {
@@ -2669,7 +3243,7 @@ export default function Planillas({
       });
       safeToast('ERROR', error.message || 'No se pudo cargar el historial de movimientos.', 'danger');
     }
-  }, [detalle, ensurePlanillaForRegistro, safeToast]);
+  }, [detalle, ensurePlanillaForRegistro, quincena, safeToast, tipoPeriodo]);
 
   const handleAnularBonoDeduccion = useCallback(
     async (row) => {
@@ -2721,20 +3295,28 @@ export default function Planillas({
           id_detalle: item.id_detalle_planilla || item.id_detalle,
           id_sucursal: context.idSucursal || undefined
         });
+        const scopedItems = normalizeListResponse(response).items.filter((row) =>
+          matchesAdelantoContext({
+            row,
+            periodoScope: periodo,
+            tipoPeriodoScope: tipoPeriodo,
+            quincenaScope: quincena
+          })
+        );
         setAdelantosModal({
           open: true,
           item,
           loading: false,
           applying: false,
           registering: false,
-          items: normalizeListResponse(response).items
+          items: scopedItems
         });
       } catch (error) {
         setAdelantosModal({ open: true, item, loading: false, applying: false, registering: false, items: [] });
         safeToast('ERROR', error.message || 'No se pudieron cargar adelantos', 'danger');
       }
     },
-    [ensurePlanillaForRegistro, safeToast]
+    [ensurePlanillaForRegistro, periodo, quincena, safeToast, tipoPeriodo]
   );
 
   const openAdelantosHistorial = useCallback(
@@ -2793,7 +3375,9 @@ export default function Planillas({
           movimientos,
           detalleRows: detalle,
           onlyEmpleadoId,
-          periodoScope: periodo
+          periodoScope: periodo,
+          tipoPeriodoScope: tipoPeriodo,
+          quincenaScope: quincena
         });
 
         setAdelantosHistorialModal({
@@ -2811,7 +3395,9 @@ export default function Planillas({
           movimientos: adelantosHistorialMovimientosScoped,
           detalleRows: detalle,
           onlyEmpleadoId,
-          periodoScope: periodo
+          periodoScope: periodo,
+          tipoPeriodoScope: tipoPeriodo,
+          quincenaScope: quincena
         });
         setAdelantosHistorialModal({
           open: true,
@@ -2832,7 +3418,9 @@ export default function Planillas({
       ensurePlanillaForRegistro,
       fetchPlanillaMovimientos,
       periodo,
+      quincena,
       safeToast,
+      tipoPeriodo,
     ]
   );
 
@@ -2861,7 +3449,12 @@ export default function Planillas({
           page: 1,
           limit: 200,
           id_empleado: idEmpleado || undefined,
-          id_sucursal: context.idSucursal || undefined
+          id_sucursal: context.idSucursal || undefined,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
         const parsed = normalizeHorasExtraResponse(response);
         setHorasExtraModal((previous) => ({
@@ -2888,7 +3481,7 @@ export default function Planillas({
         safeToast('ERROR', error.message || 'No se pudieron cargar horas extra.', 'danger');
       }
     },
-    [ensurePlanillaForRegistro, safeToast]
+    [ensurePlanillaForRegistro, quincena, safeToast, tipoPeriodo]
   );
 
   const openHorasExtraRegistro = useCallback(
@@ -2918,7 +3511,12 @@ export default function Planillas({
       try {
         await planillasService.compensarHoraExtraPlanilla(context.idPlanilla, idHoraExtra, {
           observacion,
-          id_sucursal: context.idSucursal || undefined
+          id_sucursal: context.idSucursal || undefined,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
         safeToast('OK', 'Hora extra compensada correctamente.', 'success');
         await Promise.all([loadPlanillas(), loadDetalleAndResumen()]);
@@ -2934,8 +3532,10 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openHorasExtra,
+      quincena,
       ensurePlanillaForRegistro,
       safeToast,
+      tipoPeriodo
     ]
   );
 
@@ -2962,7 +3562,12 @@ export default function Planillas({
 
         await planillasService.compensarHoraExtraPlanilla(context.idPlanilla, idHoraExtra, {
           observacion: '[CORREGIDA_HE] Registro anterior compensado automaticamente por correccion de hora extra.',
-          id_sucursal: idSucursal
+          id_sucursal: idSucursal,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
 
         await planillasService.registrarHoraExtraPlanilla(context.idPlanilla, {
@@ -2970,7 +3575,12 @@ export default function Planillas({
           fecha,
           horas,
           observacion: observacion || undefined,
-          id_sucursal: idSucursal
+          id_sucursal: idSucursal,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
 
         safeToast('OK', 'Hora extra actualizada correctamente.', 'success');
@@ -2988,8 +3598,10 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openHorasExtra,
+      quincena,
       ensurePlanillaForRegistro,
       safeToast,
+      tipoPeriodo
     ]
   );
 
@@ -3032,7 +3644,12 @@ export default function Planillas({
       try {
         await planillasService.registrarHoraExtraPlanilla(context.idPlanilla, {
           ...payload,
-          id_sucursal: context.idSucursal || undefined
+          id_sucursal: context.idSucursal || undefined,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
         safeToast('OK', 'Hora extra registrada correctamente.', 'success');
         await Promise.all([loadPlanillas(), loadDetalleAndResumen()]);
@@ -3055,8 +3672,10 @@ export default function Planillas({
       loadDetalleAndResumen,
       loadPlanillas,
       openHorasExtra,
+      quincena,
       ensurePlanillaForRegistro,
       safeToast,
+      tipoPeriodo
     ]
   );
 
@@ -3067,8 +3686,15 @@ export default function Planillas({
 
       setAdelantosModal((previous) => ({ ...previous, registering: true }));
       try {
+        const fechaContexto = resolveAdelantoFechaEnContexto({
+          rawFecha: payload?.fecha,
+          periodo,
+          tipoPeriodo,
+          quincena
+        });
         await planillasService.registrarAdelantoPlanilla(context.idPlanilla, {
           ...payload,
+          fecha: fechaContexto || undefined,
           id_sucursal: context.idSucursal || undefined
         });
         safeToast('OK', 'Adelanto registrado correctamente.', 'success');
@@ -3093,7 +3719,10 @@ export default function Planillas({
       loadPlanillas,
       openAdelantos,
       ensurePlanillaForRegistro,
+      periodo,
+      quincena,
       safeToast,
+      tipoPeriodo,
     ]
   );
 
@@ -3273,7 +3902,12 @@ export default function Planillas({
           await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
             id_adelanto_salario: idAdelanto,
             monto_aplicar: montoAplicar,
-            id_sucursal: idSucursal
+            id_sucursal: idSucursal,
+            tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+            quincena:
+              normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                ? normalizeQuincena(quincena)
+                : undefined
           });
         } else {
           if (!(idDetalle > 0)) {
@@ -3286,7 +3920,12 @@ export default function Planillas({
             concepto: 'Ajuste de adelanto aplicado',
             monto: montoAplicar,
             observacion: `[CORREGIDO_AD] ${markerBase}`,
-            id_sucursal: idSucursal
+            id_sucursal: idSucursal,
+            tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+            quincena:
+              normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                ? normalizeQuincena(quincena)
+                : undefined
           });
         }
 
@@ -3317,7 +3956,7 @@ export default function Planillas({
         setAdelantosHistorialModal((previous) => ({ ...previous, updatingId: null }));
       }
     },
-    [ensurePlanillaForRegistro, refreshPlanillaData, safeToast]
+    [ensurePlanillaForRegistro, quincena, refreshPlanillaData, safeToast, tipoPeriodo]
   );
 
   const handleRegistrarAdelantoGlobal = useCallback(
@@ -3327,8 +3966,15 @@ export default function Planillas({
 
       setAdelantoRegistroGlobalModal({ open: true, registering: true });
       try {
+        const fechaContexto = resolveAdelantoFechaEnContexto({
+          rawFecha: payload?.fecha,
+          periodo,
+          tipoPeriodo,
+          quincena
+        });
         await planillasService.registrarAdelantoPlanilla(context.idPlanilla, {
           ...payload,
+          fecha: fechaContexto || undefined,
           id_sucursal: context.idSucursal || undefined
         });
         safeToast('OK', 'Adelanto registrado correctamente.', 'success');
@@ -3356,7 +4002,10 @@ export default function Planillas({
       loadPlanillas,
       openAdelantosHistorial,
       ensurePlanillaForRegistro,
+      periodo,
+      quincena,
       safeToast,
+      tipoPeriodo,
     ]
   );
 
@@ -3421,7 +4070,12 @@ export default function Planillas({
         const detalleResponse = await planillasService.listarDetallePlanilla(context.idPlanilla, {
           page: 1,
           limit: DETAIL_FETCH_LIMIT,
-          id_sucursal: context.idSucursal || undefined
+          id_sucursal: context.idSucursal || undefined,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
         const parsed = normalizeListResponse(detalleResponse);
         detalleRows = parsed.items.map((row) => normalizeDetalleRowForDisplay(row));
@@ -3449,13 +4103,18 @@ export default function Planillas({
           if (!idAdelanto) continue;
           await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
             id_adelanto_salario: idAdelanto,
-            id_sucursal: context.idSucursal || undefined
+            id_sucursal: context.idSucursal || undefined,
+            tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+            quincena:
+              normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                ? normalizeQuincena(quincena)
+                : undefined
           });
         }
       },
       `Se aplicaron ${itemsAplicables.length} adelanto(s) pendientes.`
     );
-  }, [adelantosPendientes, detalle, ensurePlanillaForRegistro, safeToast, withAction]);
+  }, [adelantosPendientes, detalle, ensurePlanillaForRegistro, quincena, safeToast, tipoPeriodo, withAction]);
 
   const openAuditoria = async () => {
     if (!selectedPlanilla?.id_planilla) return;
@@ -3508,7 +4167,12 @@ export default function Planillas({
         () =>
           planillasService.generarPlanilla({
             id_sucursal: payload.idSucursal,
-            periodo: payload.periodo
+            periodo: payload.periodo,
+            tipo_periodo: normalizeTipoPeriodo(payload.tipoPeriodo),
+            quincena:
+              normalizeTipoPeriodo(payload.tipoPeriodo) === TIPO_PERIODO.quincenal
+                ? normalizeQuincena(payload.quincena)
+                : undefined
           }),
         'Planilla generada correctamente'
       );
@@ -3531,7 +4195,12 @@ export default function Planillas({
         () =>
           planillasService.actualizarEstadoPlanilla(payload.idPlanilla, {
             estado: payload.estado,
-            id_sucursal: payload.idSucursal
+            id_sucursal: payload.idSucursal,
+            tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+            quincena:
+              normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                ? normalizeQuincena(quincena)
+                : undefined
           }),
         `Planilla marcada como ${payload.label}`
       );
@@ -3557,7 +4226,12 @@ export default function Planillas({
             id_adelanto_salario: payload.idAdelanto,
             id_adelanto: payload.idAdelanto,
             monto_aplicar: payload.montoAplicar,
-            id_sucursal: payload.idSucursal
+            id_sucursal: payload.idSucursal,
+            tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+            quincena:
+              normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                ? normalizeQuincena(quincena)
+                : undefined
           }),
         'Adelanto aplicado correctamente'
       );
@@ -3573,7 +4247,12 @@ export default function Planillas({
         }`;
         await planillasService.compensarHoraExtraPlanilla(payload.idPlanilla, payload.idHoraExtra, {
           observacion: observacionEliminacion,
-          id_sucursal: payload.idSucursal
+          id_sucursal: payload.idSucursal,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
         });
       }, 'Hora extra eliminada correctamente');
       if (horasExtraModal.open) {
@@ -3748,7 +4427,9 @@ export default function Planillas({
     movimientosModal.item,
     openHorasExtra,
     openMovimientos,
+    quincena,
     refreshPlanillaData,
+    tipoPeriodo,
     withAction
   ]);
 
@@ -3811,7 +4492,11 @@ export default function Planillas({
 
           <PlanillasHeader
             periodo={periodo}
+            tipoPeriodo={tipoPeriodo}
+            quincena={quincena}
             onPeriodoChange={setPeriodo}
+            onTipoPeriodoChange={handleTipoPeriodoChange}
+            onQuincenaChange={handleQuincenaChange}
             selectedPlanilla={selectedPlanilla}
             onGenerar={handleGenerar}
             onRecalcular={handleRecalcular}
@@ -3964,13 +4649,62 @@ export default function Planillas({
             <span>
               {loadingPlanillas
                 ? 'Cargando planillas...'
-                : `Planillas: ${planillas.length} (total: ${planillasTotal})`}
+                : `Planillas: ${planillas.length} (total: ${planillasTotal}) · ${periodoOperativoLabel}`}
             </span>
             <span>
               {loadingDetalle
                 ? 'Cargando detalle...'
                 : `Detalle visible: ${pagedDetalle.length} (filtrado: ${filteredDetalle.length} - total: ${detalleTotal})`}
             </span>
+          </div>
+
+          <div className="inv-warehouse-moves__pagination inv-ins-pagination mt-2">
+            <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
+              {`Mostrando ${planillasPageWindowLabel} de ${planillasTotal}`}
+            </div>
+
+            <div className="inv-warehouse-moves__pagination-controls">
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                onClick={() => setListPage((current) => Math.max(1, current - 1))}
+                disabled={listPage <= 1 || loadingPlanillas || planillasTotal === 0}
+                aria-label="Pagina anterior de planillas"
+              >
+                <i className="bi bi-chevron-left" aria-hidden="true" />
+                <span>Anterior</span>
+              </button>
+
+              <div className="inv-warehouse-moves__pagination-pages">
+                {visiblePlanillaPageNumbers.map((pageNumber) => (
+                  <button
+                    key={`planillas-page-${pageNumber}`}
+                    type="button"
+                    className={`inv-warehouse-moves__page-number ${pageNumber === listPage ? 'is-active' : ''}`.trim()}
+                    onClick={() => setListPage(pageNumber)}
+                    aria-label={`Ir a la pagina ${pageNumber} de planillas`}
+                    aria-current={pageNumber === listPage ? 'page' : undefined}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+              </div>
+
+              <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">
+                {`Pagina ${listPage} de ${totalPagesPlanillas}`}
+              </div>
+
+              <button
+                type="button"
+                className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                onClick={() => setListPage((current) => Math.min(totalPagesPlanillas, current + 1))}
+                disabled={listPage >= totalPagesPlanillas || loadingPlanillas || planillasTotal === 0}
+                aria-label="Pagina siguiente de planillas"
+              >
+                <span>Siguiente</span>
+                <i className="bi bi-chevron-right" aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           {loadingPlanillas ? (
@@ -4020,28 +4754,53 @@ export default function Planillas({
                 />
               )}
 
-              <div className="personas-page__pagination">
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  disabled={detallePage <= 1 || loadingDetalle}
-                  onClick={() => setDetallePage((prev) => prev - 1)}
-                >
-                  <i className="bi bi-chevron-left me-1" />
-                  Anterior
-                </button>
-                <span>
-                  Pagina {detallePage} de {totalPagesDetalle}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  disabled={detallePage >= totalPagesDetalle || loadingDetalle}
-                  onClick={() => setDetallePage((prev) => prev + 1)}
-                >
-                  Siguiente
-                  <i className="bi bi-chevron-right ms-1" />
-                </button>
+              <div className="inv-warehouse-moves__pagination inv-ins-pagination">
+                <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
+                  {`Mostrando ${detallePageWindowLabel} de ${filteredDetalle.length}`}
+                </div>
+
+                <div className="inv-warehouse-moves__pagination-controls">
+                  <button
+                    type="button"
+                    className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                    onClick={() => setDetallePage((current) => Math.max(1, current - 1))}
+                    disabled={detallePage <= 1 || loadingDetalle}
+                    aria-label="Pagina anterior de detalle"
+                  >
+                    <i className="bi bi-chevron-left" aria-hidden="true" />
+                    <span>Anterior</span>
+                  </button>
+
+                  <div className="inv-warehouse-moves__pagination-pages">
+                    {visibleDetallePageNumbers.map((pageNumber) => (
+                      <button
+                        key={`detalle-page-${pageNumber}`}
+                        type="button"
+                        className={`inv-warehouse-moves__page-number ${pageNumber === detallePage ? 'is-active' : ''}`.trim()}
+                        onClick={() => setDetallePage(pageNumber)}
+                        aria-label={`Ir a la pagina ${pageNumber} del detalle`}
+                        aria-current={pageNumber === detallePage ? 'page' : undefined}
+                      >
+                        {pageNumber}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">
+                    {`Pagina ${detallePage} de ${totalPagesDetalle}`}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
+                    onClick={() => setDetallePage((current) => Math.min(totalPagesDetalle, current + 1))}
+                    disabled={detallePage >= totalPagesDetalle || loadingDetalle}
+                    aria-label="Pagina siguiente de detalle"
+                  >
+                    <span>Siguiente</span>
+                    <i className="bi bi-chevron-right" aria-hidden="true" />
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -4149,6 +4908,11 @@ export default function Planillas({
                 await planillasService.registrarMovimientoPlanilla(context.idPlanilla, {
                   id_detalle: idDetalle,
                   id_sucursal: context.idSucursal || undefined,
+                  tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+                  quincena:
+                    normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                      ? normalizeQuincena(quincena)
+                      : undefined,
                   ...payloadSinEmpleado
                 });
                 setMovimientoFormModal({
@@ -4203,6 +4967,11 @@ export default function Planillas({
               setAdelantosModal((state) => ({ ...state, applying: true }));
               await planillasService.aplicarAdelantoPlanilla(context.idPlanilla, {
                 id_sucursal: context.idSucursal || undefined,
+                tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+                quincena:
+                  normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+                    ? normalizeQuincena(quincena)
+                    : undefined,
                 ...payload
               });
               setAdelantosModal({

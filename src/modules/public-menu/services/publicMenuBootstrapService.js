@@ -96,7 +96,15 @@ const buildScheduleLabel = ({ opensAt, closesAt, fallback }) => {
 
 const toBranchBoolean = (value, fallback = false) => {
   if (value === undefined || value === null || value === '') return fallback;
-  return value === true || value === 'true' || value === 1 || value === '1';
+  if (value === true || value === false) return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+
+  return fallback;
 };
 
 // Normaliza estructura de sucursal para componentes de UI.
@@ -104,20 +112,37 @@ const normalizeBranch = (raw) => {
   const opensAt = normalizeTimeValue(raw?.opensAt ?? raw?.hora_inicio);
   const closesAt = normalizeTimeValue(raw?.closesAt ?? raw?.hora_final);
   const isActive = toBranchBoolean(raw?.isActive ?? raw?.estado, true);
+
   const hasSchedule = Boolean(opensAt && closesAt);
+
   const hasExplicitOpenState =
     raw?.isOpen !== undefined ||
+    raw?.is_open !== undefined ||
     raw?.abierto_por_horario !== undefined ||
-    raw?.acceptsOrders !== undefined;
-  const explicitOpenValue = raw?.isOpen ?? raw?.abierto_por_horario ?? raw?.acceptsOrders;
+    raw?.acceptsOrders !== undefined ||
+    raw?.accepts_orders !== undefined;
+
+  const explicitOpenValue =
+    raw?.isOpen ??
+    raw?.is_open ??
+    raw?.abierto_por_horario ??
+    raw?.acceptsOrders ??
+    raw?.accepts_orders;
+
   const isOpen = isActive && (
     hasExplicitOpenState ? toBranchBoolean(explicitOpenValue, true) : true
   );
+
   const schedule = buildScheduleLabel({
     opensAt,
     closesAt,
     fallback: raw?.horario || raw?.schedule || ''
   });
+
+  const acceptsOrders = isActive && toBranchBoolean(
+    raw?.acceptsOrders ?? raw?.accepts_orders,
+    isOpen
+  );
 
   return {
     id: Number(raw?.id_sucursal ?? raw?.id),
@@ -143,11 +168,17 @@ const normalizeBranch = (raw) => {
     imageUrl: resolvePublicImageUrl(raw?.url_imagen || raw?.imageUrl || ''),
     isActive,
     isOpen,
-    acceptsOrders: toBranchBoolean(raw?.acceptsOrders, isOpen),
+    acceptsOrders,
     opensAt,
     closesAt,
-    statusLabel: raw?.statusLabel || (isOpen ? (hasSchedule ? 'Abierto ahora' : 'Disponible') : 'Cerrado'),
-    closedReason: raw?.closedReason || (isOpen ? '' : `Disponible de ${schedule}`)
+    statusLabel:
+      raw?.statusLabel ||
+      raw?.status_label ||
+      (isOpen ? (hasSchedule ? 'Abierto ahora' : 'Disponible') : 'Cerrado'),
+    closedReason:
+      raw?.closedReason ||
+      raw?.closed_reason ||
+      (isOpen ? '' : `Disponible de ${schedule}`)
   };
 };
 
@@ -221,7 +252,7 @@ const normalizeCatalogItem = (raw) => ({
       precio_adicional: Number(extra?.precio_adicional || 0)
     }))
     : [],
-      salsas_componentes: Array.isArray(raw?.salsas_componentes)
+  salsas_componentes: Array.isArray(raw?.salsas_componentes)
     ? raw.salsas_componentes.map((component) => ({
       id_receta: Number(component?.id_receta || 0) || null,
       nombre_receta: String(component?.nombre_receta || ''),

@@ -16,6 +16,7 @@ import {
   validateEmpresaForm,
 } from "./empresa-form-shared";
 import "../empresas/empresas-modal.css";
+import "./crud-modal-theme.css";
 import "./empresa-inline-create-modal.css";
 
 const toDisplayValue = (value, fallback = "") => {
@@ -56,6 +57,7 @@ export default function EmpresaInlineCreateModal({
 
   useEffect(() => {
     if (!show) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local draft each time drawer opens.
     setForm(normalizeEmpresaFormValues(initialForm ?? createInitialEmpresaForm()));
     setErrors({});
     rtnCaretRef.current = null;
@@ -100,6 +102,7 @@ export default function EmpresaInlineCreateModal({
 
   useEffect(() => {
     if (!show) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- preload catalogs when drawer becomes visible.
     cargarCatalogos();
   }, [show, cargarCatalogos]);
 
@@ -216,15 +219,29 @@ export default function EmpresaInlineCreateModal({
 
       <aside
         ref={drawerRef}
-        className={`inv-prod-drawer inv-cat-v2__drawer empresas-modal empresa-inline-create-modal ${show ? "show" : ""}`}
+        className={`inv-prod-drawer inv-cat-v2__drawer crud-modal empresas-modal empresa-inline-create-modal ${show ? "show" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-hidden={!show}
       >
         <div className="inv-prod-drawer-head empresas-modal__header">
-          <div className="empresas-modal__header-copy">
-            <div className="inv-prod-drawer-title empresas-modal__title">{title}</div>
-            <div className="inv-prod-drawer-sub empresas-modal__subtitle">{subtitle}</div>
+          <div className="empresas-modal__header-copy crud-modal__header-copy crud-modal__header-copy--insumo">
+            <div className="crud-modal__hero-icon" aria-hidden="true">
+              <i className="bi bi-building" />
+            </div>
+            <div className="crud-modal__hero-main">
+              <div className="crud-modal__hero-kicker">Catalogo de Empresas</div>
+              <div className="inv-prod-drawer-title empresas-modal__title crud-modal__title">{title}</div>
+              <div className="inv-prod-drawer-sub empresas-modal__subtitle crud-modal__subtitle">{subtitle}</div>
+            </div>
+            <div className="crud-modal__hero-chips">
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-building" /> Empresa
+              </span>
+              <span className="crud-modal__hero-chip">
+                <i className="bi bi-check2-circle" /> Alta controlada
+              </span>
+            </div>
           </div>
           <button
             type="button"

@@ -160,6 +160,7 @@ export default function useSearchSuggestionsDropdown({
 
   useEffect(() => {
     if (!committedSearch) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- persisting recent searches is an intentional side effect of commit.
     pushRecentSearch(committedSearch);
   }, [committedSearch, pushRecentSearch]);
 
@@ -245,6 +246,7 @@ export default function useSearchSuggestionsDropdown({
         window.clearTimeout(searchDropdownCloseTimerRef.current);
         searchDropdownCloseTimerRef.current = null;
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mount dropdown when suggestion mode is enabled.
       setIsSearchDropdownMounted(true);
       if (searchDropdownOpenFrameRef.current) {
         window.cancelAnimationFrame(searchDropdownOpenFrameRef.current);
@@ -278,6 +280,7 @@ export default function useSearchSuggestionsDropdown({
   useEffect(() => {
     if (!isSearchDropdownMounted) return undefined;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- recalculate popover position after mount/layout changes.
     syncSearchDropdownPosition();
     const handleLayoutChange = () => syncSearchDropdownPosition();
 
@@ -290,6 +293,7 @@ export default function useSearchSuggestionsDropdown({
   }, [isSearchDropdownMounted, syncSearchDropdownPosition, searchSuggestionItems.length]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- keep highlighted index bounded to current suggestions.
     setActiveSuggestionIndex((prev) =>
       searchSuggestionItems.length === 0 ? -1 : Math.min(prev, searchSuggestionItems.length - 1)
     );

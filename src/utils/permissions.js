@@ -123,6 +123,7 @@ const PERMISSION_VALUES = Object.freeze({
   SUCURSALES_EDITAR: 'SUCURSALES_EDITAR',
   SUCURSALES_ELIMINAR: 'SUCURSALES_ELIMINAR',
   SUCURSALES_ESTADO_CAMBIAR: 'SUCURSALES_ESTADO_CAMBIAR',
+  SUCURSALES_HORARIOS_GESTIONAR: 'SUCURSALES_HORARIOS_GESTIONAR',
 
   INVENTARIO_VER: 'INVENTARIO_VER',
   INVENTARIO_CATEGORIAS_VER: 'INVENTARIO_CATEGORIAS_VER',
@@ -522,6 +523,19 @@ const PERSONAS_TAB_PERMISSIONS_MAP = Object.freeze({
   ])
 });
 
+const SUCURSALES_TAB_PERMISSIONS_MAP = Object.freeze({
+  sucursales: uniquePermissions([
+    PERMISSIONS.SUCURSALES_VER,
+    PERMISSIONS.SUCURSALES_CREAR,
+    PERMISSIONS.SUCURSALES_EDITAR,
+    PERMISSIONS.SUCURSALES_ELIMINAR,
+    PERMISSIONS.SUCURSALES_ESTADO_CAMBIAR
+  ]),
+  horarios: uniquePermissions([
+    PERMISSIONS.SUCURSALES_HORARIOS_GESTIONAR
+  ])
+});
+
 const PLANILLAS_MODULE_PERMISSIONS = uniquePermissions([
   PERMISSIONS.PLANILLAS_MODULO_VER,
   PERMISSIONS.PLANILLAS_LISTADO_VER,
@@ -707,7 +721,8 @@ const MODULE_ROUTE_PERMISSIONS = Object.freeze({
     PERMISSIONS.SUCURSALES_CREAR,
     PERMISSIONS.SUCURSALES_EDITAR,
     PERMISSIONS.SUCURSALES_ELIMINAR,
-    PERMISSIONS.SUCURSALES_ESTADO_CAMBIAR
+    PERMISSIONS.SUCURSALES_ESTADO_CAMBIAR,
+    PERMISSIONS.SUCURSALES_HORARIOS_GESTIONAR
   ]),
   inventario: uniquePermissions([
     PERMISSIONS.INVENTARIO_VER,
@@ -738,19 +753,10 @@ const MODULE_ROUTE_PERMISSIONS = Object.freeze({
     PERMISSIONS.SEGURIDAD_VER,
     ...Object.values(SEGURIDAD_TAB_PERMISSIONS_MAP).flat()
   ]),
-  planillas: uniquePermissions([
-    PERMISSIONS.PLANILLAS_MODULO_VER,
-    PERMISSIONS.PLANILLAS_LISTADO_VER,
-    PERMISSIONS.PLANILLAS_DETALLE_VER,
-    PERMISSIONS.PLANILLAS_GENERAR,
-    PERMISSIONS.PLANILLAS_RECALCULAR
-  ]),
   fidelizacion: uniquePermissions([
     PERMISSIONS.FIDELIZACION_VER_PANEL,
     ...Object.values(FIDELIZACION_TAB_PERMISSIONS_MAP).flat()
   ]),
-  configuracion: uniquePermissions([PERMISSIONS.CONFIGURACION_VER]),
-  fidelizacion: uniquePermissions([PERMISSIONS.DASHBOARD_VER]),
   configuracion: uniquePermissions([
     PERMISSIONS.CONFIGURACION_VER,
     PERMISSIONS.CONFIGURACION_EMAIL_CAMPAIGNS_VER,
@@ -822,6 +828,10 @@ export const MODULE_PRIMARY_PERMISSION = Object.freeze({
 });
 
 export const MODULE_TAB_CONFIG = Object.freeze({
+  sucursales: [
+    { key: 'sucursales', label: 'Sucursales', icon: 'bi bi-shop', required: SUCURSALES_TAB_PERMISSIONS_MAP.sucursales },
+    { key: 'horarios', label: 'Horarios', icon: 'bi bi-calendar-week', required: SUCURSALES_TAB_PERMISSIONS_MAP.horarios }
+  ],
   inventario: [
     { key: 'categorias', label: 'Categorias', icon: 'bi bi-tag', required: INVENTARIO_TAB_PERMISSIONS_MAP.categorias },
     { key: 'insumos', label: 'Insumos', icon: 'bi bi-box-seam', required: INVENTARIO_TAB_PERMISSIONS_MAP.insumos },

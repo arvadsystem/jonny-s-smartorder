@@ -66,17 +66,25 @@ const safeUiErrorMessage = (rawMessage, fallback) => {
 const getCookie = (name) => {
   if (typeof document === 'undefined') return null;
 
-  const match = document.cookie
+  const matches = document.cookie
     .split('; ')
-    .find((row) => row.startsWith(`${name}=`));
+    .filter((row) => row.startsWith(`${name}=`));
 
-  if (!match) return null;
+  if (matches.length === 0) return null;
 
-  const value = match.split('=').slice(1).join('=');
+  // Preferimos la ultima coincidencia para evitar tomar cookies viejas
+  // mas especificas por path/domain que no aplican al endpoint actual.
+  const selected = matches[matches.length - 1];
+  const value = selected.split('=').slice(1).join('=');
+
+  const unquoted = value.startsWith('"') && value.endsWith('"')
+    ? value.slice(1, -1)
+    : value;
+
   try {
-    return decodeURIComponent(value);
+    return decodeURIComponent(unquoted);
   } catch {
-    return value;
+    return unquoted;
   }
 };
 
