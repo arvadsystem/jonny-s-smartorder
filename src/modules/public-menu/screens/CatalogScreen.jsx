@@ -90,10 +90,6 @@ const buildCatalogHeroSlides = ({
     if (found) preferredRows.push(found);
   });
 
-  const preferredSet = new Set(preferredRows.map((row) => Number(row?.id_detalle_menu || 0)));
-  const fallbackRows = unique.filter((row) => !preferredSet.has(Number(row?.id_detalle_menu || 0)));
-  const sortedRows = [...preferredRows, ...fallbackRows];
-
   const customSlides = (Array.isArray(customImages) ? customImages : [])
     .map((row, index) => ({
       id: `hero-custom-${row?.id || index}`,
@@ -103,7 +99,17 @@ const buildCatalogHeroSlides = ({
     }))
     .filter((row) => Boolean(row.imageUrl));
 
-  const catalogSlides = sortedRows.map((row, index) => ({
+  const hasConfiguredCatalogSelection = preferredOrder.length > 0;
+  const hasConfiguredCustomSlides = customSlides.length > 0;
+
+  let catalogSourceRows = [];
+  if (hasConfiguredCatalogSelection) {
+    catalogSourceRows = preferredRows;
+  } else if (!hasConfiguredCustomSlides) {
+    catalogSourceRows = unique;
+  }
+
+  const catalogSlides = catalogSourceRows.map((row, index) => ({
     id: `hero-${row?.id_detalle_menu || index}`,
     imageUrl: row.imagen_url,
     title: row?.nombre || 'Platillo',
