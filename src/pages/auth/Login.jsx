@@ -97,9 +97,13 @@ const Login = () => {
         response = await authService.login({ nombre_usuario: normalizedIdentifier, clave: password });
       } catch (err) {
         internalError = err;
-        const code = String(err?.code || err?.data?.code || '').toUpperCase();
+        // apiFetch marca 403 de POST como CSRF por defecto, pero conserva el code real en err.data.code.
+        const code = String(err?.data?.code || err?.code || '').toUpperCase();
+        const message = String(err?.message || '').toLowerCase();
         const shouldFallbackToCliente =
-          code === 'ACCOUNT_SCOPE_INVALID' || normalizedIdentifier.includes('@');
+          code === 'ACCOUNT_SCOPE_INVALID'
+          || message.includes('cuentas de cliente')
+          || normalizedIdentifier.includes('@');
 
         if (!shouldFallbackToCliente) throw err;
 
