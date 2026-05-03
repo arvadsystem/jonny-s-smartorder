@@ -16,7 +16,10 @@ const buildQuery = (params = {}) => {
 
 const ventasService = {
   list: (params = {}) => apiFetch(`/ventas${buildQuery(params)}`, 'GET'),
+  buscarVenta: (params = {}) => apiFetch(`/ventas/buscar${buildQuery(params)}`, 'GET'),
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
+  createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload),
+  listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
   create: (payload) => createVentaNative(payload),
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
   getCombosCatalog: () => apiFetch('/ventas/catalogos/combos', 'GET'),
