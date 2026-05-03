@@ -23,8 +23,51 @@ const initialToast = {
 const isTruthyState = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
+const normalizeDiscountScope = (value) => {
+  const normalized = String(value ?? 'FACTURA_COMPLETA')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+  if (normalized === 'PRODUCTOS') return 'PRODUCTO';
+  if (normalized === 'RECETAS') return 'RECETA';
+  if (normalized === 'COMBOS') return 'COMBO';
+  return normalized || 'FACTURA_COMPLETA';
+};
+
 export const useVentas = () => {
   const [ventas, setVentas] = useState([]);
+  const [summary, setSummary] = useState({
+    totalVentas: 0,
+    totalFacturado: 0,
+    ticketPromedio: 0,
+    completadas: 0,
+    pendientes: 0
+  });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 30,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false
+  });
+  const [scopeInfo, setScopeInfo] = useState({
+    canSelectSucursal: false,
+    selectedSucursalId: null,
+    userSucursalId: null,
+    limitedByRole: false,
+    limitedToLast72Hours: false,
+    allowedSucursalIds: []
+  });
+  const [ventasFilters, setVentasFilters] = useState({
+    search: '',
+    idSucursal: null,
+    fechaDesde: '',
+    fechaHasta: '',
+    page: 1,
+    pageSize: 30
+  });
   const [sucursales, setSucursales] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -67,9 +110,53 @@ export const useVentas = () => {
     setError('');
 
     try {
-      const response = await ventasService.list();
-      const rows = Array.isArray(response) ? response.map(normalizeVentaRecord) : [];
+      const response = await ventasService.list({
+        page: ventasFilters.page,
+        pageSize: ventasFilters.pageSize,
+        search: ventasFilters.search,
+        idSucursal: ventasFilters.idSucursal,
+        fechaDesde: ventasFilters.fechaDesde,
+        fechaHasta: ventasFilters.fechaHasta
+      });
+
+      const rowsPayload = Array.isArray(response)
+        ? response
+        : (Array.isArray(response?.data) ? response.data : []);
+      const rows = rowsPayload.map(normalizeVentaRecord);
+
+      const serverPagination = response?.pagination || {};
+      const resolvedPage = Number.parseInt(String(serverPagination.page ?? ventasFilters.page), 10) || 1;
+      const resolvedPageSize = Number.parseInt(String(serverPagination.pageSize ?? ventasFilters.pageSize), 10) || 30;
+      const resolvedTotal = Number.parseInt(String(serverPagination.total ?? rows.length), 10) || 0;
+      const resolvedTotalPages = Number.parseInt(String(serverPagination.totalPages ?? 1), 10) || 1;
+      const backendSummary = response?.summary || {};
+
       setVentas(rows);
+      setPagination({
+        page: resolvedPage,
+        pageSize: resolvedPageSize,
+        total: resolvedTotal,
+        totalPages: Math.max(1, resolvedTotalPages),
+        hasNextPage: Boolean(serverPagination.hasNextPage ?? (resolvedPage < resolvedTotalPages)),
+        hasPreviousPage: Boolean(serverPagination.hasPreviousPage ?? (resolvedPage > 1))
+      });
+      setScopeInfo({
+        canSelectSucursal: Boolean(response?.filters?.scope?.canSelectSucursal),
+        selectedSucursalId: response?.filters?.scope?.selectedSucursalId ?? null,
+        userSucursalId: response?.filters?.scope?.userSucursalId ?? null,
+        limitedByRole: Boolean(response?.filters?.scope?.limitedByRole),
+        limitedToLast72Hours: Boolean(response?.filters?.scope?.limitedToLast72Hours),
+        allowedSucursalIds: Array.isArray(response?.filters?.scope?.allowedSucursalIds)
+          ? response.filters.scope.allowedSucursalIds
+          : []
+      });
+      setSummary({
+        totalVentas: Number.parseInt(String(backendSummary?.ventas ?? 0), 10) || 0,
+        totalFacturado: Number(backendSummary?.totalVendido ?? 0) || 0,
+        ticketPromedio: Number(backendSummary?.ticketPromedio ?? 0) || 0,
+        completadas: Number.parseInt(String(backendSummary?.completadas ?? 0), 10) || 0,
+        pendientes: Number.parseInt(String(backendSummary?.pendientes ?? 0), 10) || 0
+      });
       return rows;
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar las ventas.');
@@ -79,7 +166,7 @@ export const useVentas = () => {
     } finally {
       setLoading(false);
     }
-  }, [openToast]);
+  }, [openToast, ventasFilters]);
 
   const loadCatalogs = useCallback(async () => {
     setCatalogLoading(true);
@@ -106,13 +193,6 @@ export const useVentas = () => {
         ventasService.getTipoDepartamentos(),
         sucursalesService.getAll()
       ]);
-
-      console.log('DEBUG: loadCatalogs Raw Responses:', {
-        categorias: Array.isArray(categoriasResponse) ? categoriasResponse.length : 'not an array',
-        productos: Array.isArray(productosResponse) ? productosResponse.length : 'not an array',
-        combos: Array.isArray(combosResponse) ? combosResponse.length : 'not an array',
-        recetas: Array.isArray(recetasResponse) ? recetasResponse.length : 'not an array',
-      });
 
       const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
         .map(normalizeCategoriaRecord)
@@ -179,11 +259,18 @@ export const useVentas = () => {
           nombre_descuento: String(row.nombre_descuento ?? 'Descuento'),
           descripcion: String(row.descripcion ?? ''),
           valor_descuento: Number(row.valor_descuento ?? 0) || 0,
+          alcance: normalizeDiscountScope(row.alcance),
+          id_producto: Number(row.id_producto ?? 0) || null,
+          id_receta: Number(row.id_receta ?? 0) || null,
+          id_combo: Number(row.id_combo ?? 0) || null,
+          id_sucursal: Number(row.id_sucursal ?? 0) || null,
+          fecha_inicio: row.fecha_inicio ?? null,
+          fecha_fin: row.fecha_fin ?? null,
           id_tipo_descuento: Number(row.id_tipo_descuento ?? 0) || null,
           nombre_tipo_descuento: String(row.nombre_tipo_descuento ?? ''),
-          estado: true
+          estado: isTruthyState(row.estado ?? true)
         }))
-        .filter((row) => row.id_descuento_catalogo && row.valor_descuento > 0);
+        .filter((row) => row.id_descuento_catalogo && row.valor_descuento > 0 && row.estado);
 
       // El SQL ya filtra estado=true, por lo que todos los registros que
       // lleguen aqui son departamentos activos – omitimos el filtro de estado
@@ -228,6 +315,40 @@ export const useVentas = () => {
     Promise.allSettled([loadVentas(), loadCatalogs()]);
   }, [loadCatalogs, loadVentas]);
 
+  const setVentasSearch = useCallback((search) => {
+    setVentasFilters((prev) => ({
+      ...prev,
+      search: String(search || ''),
+      page: 1
+    }));
+  }, []);
+
+  const setVentasPage = useCallback((page) => {
+    const parsed = Number.parseInt(String(page ?? ''), 10);
+    setVentasFilters((prev) => ({
+      ...prev,
+      page: Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+    }));
+  }, []);
+
+  const setVentasPageSize = useCallback((pageSize) => {
+    const parsed = Number.parseInt(String(pageSize ?? ''), 10);
+    setVentasFilters((prev) => ({
+      ...prev,
+      pageSize: Number.isInteger(parsed) && parsed > 0 ? parsed : prev.pageSize,
+      page: 1
+    }));
+  }, []);
+
+  const setVentasSucursal = useCallback((idSucursal) => {
+    const parsed = Number.parseInt(String(idSucursal ?? ''), 10);
+    setVentasFilters((prev) => ({
+      ...prev,
+      idSucursal: Number.isInteger(parsed) && parsed > 0 ? parsed : null,
+      page: 1
+    }));
+  }, []);
+
   const getVentaDetail = useCallback(async (idFactura) => {
     setDetailLoading(true);
 
@@ -271,6 +392,10 @@ export const useVentas = () => {
 
   return {
     ventas,
+    summary,
+    pagination,
+    scopeInfo,
+    ventasFilters,
     sucursales,
     categorias,
     tiposDepartamento,
@@ -289,6 +414,10 @@ export const useVentas = () => {
     closeToast,
     refreshVentas: loadVentas,
     refreshCatalogs: loadCatalogs,
+    setVentasSearch,
+    setVentasPage,
+    setVentasPageSize,
+    setVentasSucursal,
     getVentaDetail,
     createVenta
   };

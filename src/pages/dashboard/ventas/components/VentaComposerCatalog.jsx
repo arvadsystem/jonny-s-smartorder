@@ -2,6 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { FaImage } from 'react-icons/fa';
 import { CATALOG_TABS } from '../hooks/useVentaComposer';
 
+const buildDiscountBadgeLabel = (discount) => {
+  if (!discount) return null;
+  const type = String(discount.nombre_tipo_descuento || '').toUpperCase();
+  const value = Number(discount.valor_descuento ?? 0);
+  if (value <= 0) return 'Promo';
+  if (type.includes('PORCENTAJE')) return `-${value.toFixed(0)}%`;
+  return `L ${value.toFixed(0)} OFF`;
+};
+
 export default function VentaComposerCatalog({ composer, catalogLoading }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef(null);
@@ -161,12 +170,15 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
           composer.currentCatalogRows.map((row) => {
             const isProducto = composer.activeCatalog === 'PRODUCTOS';
             const isCombo = composer.activeCatalog === 'COMBOS';
+            const kind = isProducto ? 'PRODUCTO' : isCombo ? 'COMBO' : 'RECETA';
             const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : row.id_receta;
             const itemName = isProducto ? row.nombre_producto : isCombo ? row.descripcion : row.nombre_receta;
             const imageSrc = resolveImageUrl(row);
             const precio = Number(row.precio || 0);
             const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
             const isOutOfStock = isProducto ? stockDisponible <= 0 : false;
+            const badgeDiscount = composer.getBestCatalogDiscount(kind, row);
+            const badgeLabel = buildDiscountBadgeLabel(badgeDiscount);
 
             return (
               <div
@@ -181,6 +193,9 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
                 }}
               >
                 <div className="vcp-card__media">
+                  {badgeLabel ? (
+                    <span className="vcp-card__discount-badge">{badgeLabel}</span>
+                  ) : null}
                   {imageSrc ? (
                     <img
                       src={imageSrc}

@@ -11,6 +11,12 @@ const buildDiscountLabel = (discount) => {
   return `${discount.nombre_descuento} (L ${value.toFixed(2)})`;
 };
 
+const resolveLineDiscountLabel = (kind) => {
+  if (kind === 'RECETA') return 'Descuento por receta';
+  if (kind === 'COMBO') return 'Descuento por combo';
+  return 'Descuento por producto';
+};
+
 export default function VentaComposerSummary({ composer, saving }) {
   const clientPickerRef = useRef(null);
   const paymentPickerRef = useRef(null);
@@ -171,7 +177,7 @@ export default function VentaComposerSummary({ composer, saving }) {
           <span title="Sucursal operativa">
             <i className="bi bi-shop" /> Sucursal
           </span>
-          <div className="ventas-summary__sucursal-wrap" ref={sucursalPickerRef}>
+          <div className={`ventas-summary__sucursal-wrap ${composer.isSuperAdmin ? 'is-super-admin' : ''}`} ref={sucursalPickerRef}>
             {composer.isSuperAdmin ? (
               <>
                 <button
@@ -217,6 +223,7 @@ export default function VentaComposerSummary({ composer, saving }) {
           </div>
         </label>
 
+        {composer.canApplyDiscount ? (
         <div className="ventas-summary__discount-wrap" ref={discountPickerRef}>
           <button
             type="button"
@@ -241,7 +248,7 @@ export default function VentaComposerSummary({ composer, saving }) {
                 {!composer.selectedDiscountId ? <i className="bi bi-check2" aria-hidden="true" /> : null}
               </button>
 
-              {composer.descuentosCatalogo.map((discount) => {
+              {composer.descuentoGlobalOptions.map((discount) => {
                 const key = String(discount.id_descuento_catalogo);
                 const isSelected = key === String(composer.selectedDiscountId);
                 return (
@@ -259,6 +266,7 @@ export default function VentaComposerSummary({ composer, saving }) {
             </div>
           ) : null}
         </div>
+        ) : null}
 
         <label className="ventas-create-modal__field ventas-create-modal__field--inline">
           <span title="Efectivo">
@@ -371,6 +379,23 @@ export default function VentaComposerSummary({ composer, saving }) {
                         }
                       />
                     ) : null}
+                    {composer.canApplyDiscount ? (
+                      <div className="mt-2 ventas-cart__line-discount-row">
+                        <label className="form-label mb-0">{resolveLineDiscountLabel(line.kind)}:</label>
+                        <select
+                          className="form-select form-select-sm ventas-cart__line-discount-select"
+                          value={line.id_descuento_catalogo_linea || ''}
+                          onChange={(event) => composer.setLineDiscount(line.cartKey, event.target.value)}
+                        >
+                          <option value="">Sin descuento</option>
+                          {composer.getAvailableLineDiscounts(line).map((discount) => (
+                            <option key={discount.id_descuento_catalogo} value={String(discount.id_descuento_catalogo)}>
+                              {buildDiscountLabel(discount)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -400,6 +425,12 @@ export default function VentaComposerSummary({ composer, saving }) {
               <span>Descuento</span>
               <strong>{composer.formatCurrency(composer.discountValue)}</strong>
             </div>
+            {composer.canApplyDiscount ? (
+              <div className="ventas-totals__row">
+                <span>Tipo descuento</span>
+                <strong>{composer.usesLineDiscount ? 'Por linea' : composer.usesGlobalDiscount ? 'Global' : 'Sin descuento'}</strong>
+              </div>
+            ) : null}
             <div className="ventas-totals__row">
               <span>ISV (15%)</span>
               <strong>{composer.formatCurrency(composer.isv)}</strong>

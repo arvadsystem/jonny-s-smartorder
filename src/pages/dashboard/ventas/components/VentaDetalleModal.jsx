@@ -1,10 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   downloadVentaDetail,
   formatCurrency,
   formatDateLabel,
   formatTimeLabel
 } from '../utils/ventasHelpers';
+import VentaTicketPrint from './VentaTicketPrint';
+import './VentaTicketPrint.css';
+
+const DEFAULT_TICKET_WIDTH_MM = 80;
 
 const InfoCard = ({ icon, label, value }) => (
   <div className="ventas-detail-modal__info-card">
@@ -20,9 +24,13 @@ export default function VentaDetalleModal({
   venta,
   loading,
   onClose,
+  onOpenReversion,
+  canReversion = false,
   canExport = true,
   canPrint = true
 }) {
+  const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
+
   useEffect(() => {
     if (!open) return undefined;
 
@@ -37,6 +45,23 @@ export default function VentaDetalleModal({
   if (!open) return null;
 
   const statusLabel = venta?.statusLabel || 'Pendiente';
+  const ticketDateTime = venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido;
+
+  const handlePrintTicket = () => {
+    if (typeof window === 'undefined' || !venta) return;
+
+    document.body.classList.add('venta-ticket-printing');
+    const cleanup = () => {
+      document.body.classList.remove('venta-ticket-printing');
+      window.removeEventListener('afterprint', cleanup);
+    };
+
+    window.addEventListener('afterprint', cleanup);
+    window.requestAnimationFrame(() => {
+      window.print();
+      window.setTimeout(cleanup, 1200);
+    });
+  };
 
   return (
     <div className="ventas-modal-backdrop" role="presentation" onClick={onClose}>
@@ -77,8 +102,8 @@ export default function VentaDetalleModal({
           ) : (
             <>
               <div className="ventas-detail-modal__info-grid">
-                <InfoCard icon="bi-calendar-event" label="Fecha" value={formatDateLabel(venta?.fecha_hora_pedido)} />
-                <InfoCard icon="bi-clock" label="Hora" value={formatTimeLabel(venta?.fecha_hora_pedido)} />
+                <InfoCard icon="bi-calendar-event" label="Fecha" value={formatDateLabel(ticketDateTime)} />
+                <InfoCard icon="bi-clock" label="Hora" value={formatTimeLabel(ticketDateTime)} />
                 <InfoCard icon="bi-hash" label="Numero" value={venta?.numero_venta || '--'} />
                 <InfoCard icon="bi-person" label="Cliente" value={venta?.cliente_nombre || 'Consumidor final'} />
                 <InfoCard icon="bi-geo-alt" label="Sucursal" value={venta?.nombre_sucursal || '--'} />
@@ -141,6 +166,10 @@ export default function VentaDetalleModal({
                   <strong>{formatCurrency(venta?.sub_total)}</strong>
                 </div>
                 <div>
+                  <span>Descuento</span>
+                  <strong>{formatCurrency(venta?.descuento_total)}</strong>
+                </div>
+                <div>
                   <span>ISV (15%)</span>
                   <strong>{formatCurrency(venta?.isv)}</strong>
                 </div>
@@ -156,6 +185,16 @@ export default function VentaDetalleModal({
                 </div>
 
                 <div className="ventas-detail-modal__footer-actions">
+                  {canReversion ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger"
+                      onClick={() => onOpenReversion?.(venta)}
+                      disabled={!venta?.id_factura}
+                    >
+                      <i className="bi bi-arrow-counterclockwise" /> Registrar reversión
+                    </button>
+                  ) : null}
                   {canExport ? (
                     <button
                       type="button"
@@ -167,15 +206,35 @@ export default function VentaDetalleModal({
                     </button>
                   ) : null}
                   {canPrint ? (
-                    <button type="button" className="btn btn-primary" onClick={() => window.print()}>
-                      <i className="bi bi-printer" /> Imprimir
-                    </button>
+                    <>
+                      <select
+                        className="form-select form-select-sm"
+                        value={ticketWidthMm}
+                        onChange={(event) => setTicketWidthMm(Number(event.target.value) === 58 ? 58 : 80)}
+                        aria-label="Ancho de ticket"
+                        style={{ maxWidth: 94 }}
+                      >
+                        <option value={80}>80mm</option>
+                        <option value={58}>58mm</option>
+                      </select>
+                      <button type="button" className="btn btn-primary" onClick={handlePrintTicket}>
+                        <i className="bi bi-printer" /> Imprimir ticket
+                      </button>
+                    </>
                   ) : null}
                 </div>
               </footer>
             </>
           )}
         </div>
+        {canPrint ? (
+          <VentaTicketPrint
+            venta={venta}
+            paperWidth={ticketWidthMm}
+            showLogo
+            businessName={venta?.nombre_emisor || "JONNY'S WINGS"}
+          />
+        ) : null}
       </section>
     </div>
   );
