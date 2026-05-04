@@ -5,17 +5,18 @@ import {
   resolveSessionStatusBadge
 } from '../../utils/cajasHelpers';
 
-const InfoCard = ({ icon, label, value, accent = false }) => (
-  <article className={`ventas-detail-modal__info-card ${accent ? 'cierres-caja-detail__info-card--accent' : ''}`}>
-    <span className="ventas-detail-modal__info-icon">
-      <i className={icon} />
-    </span>
-    <div>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  </article>
-);
+const resolveRolCobroLabel = (row = {}) => {
+  if (row.es_responsable || row.rol_participacion === 'RESPONSABLE') return 'Responsable';
+  if (row.es_auxiliar || row.rol_participacion === 'AUXILIAR') return 'Auxiliar';
+  return 'Ejecutor';
+};
+
+const resolveParticipantRole = (row = {}) => {
+  const code = String(row.rol_codigo || row.rol_participacion || '').trim().toUpperCase();
+  if (code === 'RESPONSABLE') return 'Responsable';
+  if (code === 'AUXILIAR') return 'Auxiliar';
+  return 'Ejecutor';
+};
 
 export default function CierreCajaDetalleModal({
   open,
@@ -31,10 +32,8 @@ export default function CierreCajaDetalleModal({
   if (!open) return null;
 
   const sesion = detalle?.sesion;
-  const responsable = detalle?.responsable;
   const resumen = detalle?.resumen_operativo ?? {};
-  const participantes = Array.isArray(detalle?.participantes) ? detalle.participantes : [];
-  const auxiliares = participantes.filter((item) => item.rol_codigo !== 'RESPONSABLE');
+  const participantes = Array.isArray(detalle?.equipo_caja) ? detalle.equipo_caja : (Array.isArray(detalle?.participantes) ? detalle.participantes : []);
   const cierre = detalle?.cierre ?? null;
   const statusBadge = resolveSessionStatusBadge(sesion);
   const differenceBadge = resolveDifferenceBadge(
@@ -112,69 +111,110 @@ export default function CierreCajaDetalleModal({
                 ) : null}
               </div>
 
-              <div className="ventas-detail-modal__info-grid">
-                <InfoCard icon="bi bi-shop" label="Caja" value={sesion?.nombre_caja || 'Sin caja'} />
-                <InfoCard icon="bi bi-building" label="Sucursal" value={sesion?.nombre_sucursal || 'Sin sucursal'} />
-                <InfoCard icon="bi bi-cash-stack" label="Monto apertura" value={`L. ${formatCajaCurrency(sesion?.monto_apertura)}`} />
-                <InfoCard
-                  icon="bi bi-activity"
-                  label="Diferencia"
-                  value={`L. ${formatCajaCurrency(cierre?.diferencia ?? resumen?.diferencia_cierre ?? 0)}`}
-                  accent
-                />
-              </div>
+              <section className="ventas-page__table-card">
+                <div className="p-3 pb-0">
+                  <div className="inv-prod-title-row mb-2">
+                    <i className="bi bi-layout-text-window-reverse text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
+                    <span className="inv-prod-title">Detalle global</span>
+                  </div>
+                </div>
+                <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap">
+                  <table className="table ventas-page__table">
+                    <thead>
+                      <tr>
+                        <th>Caja</th>
+                        <th>Sucursal</th>
+                        <th className="text-end">Apertura</th>
+                        <th>Cierre</th>
+                        <th>Estado</th>
+                        <th className="text-end">Diferencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>{sesion?.nombre_caja || 'Sin caja'}</td>
+                        <td>{sesion?.nombre_sucursal || 'Sin sucursal'}</td>
+                        <td className="text-end">L. {formatCajaCurrency(sesion?.monto_apertura)}</td>
+                        <td>{formatCajaDateTime(sesion?.fecha_cierre || cierre?.fecha_cierre)}</td>
+                        <td>{statusBadge.label}</td>
+                        <td className="text-end">L. {formatCajaCurrency(cierre?.diferencia ?? resumen?.diferencia_cierre ?? 0)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
-              <div className="cierres-caja-detail__two-column">
-                <section className="ventas-page__table-card p-3">
+              <section className="ventas-page__table-card">
+                <div className="p-3 pb-0">
                   <div className="inv-prod-title-row mb-2">
                     <i className="bi bi-person-badge text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
                     <span className="inv-prod-title">Equipo de caja</span>
                   </div>
+                </div>
+                <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap">
+                  <table className="table ventas-page__table">
+                    <thead>
+                      <tr>
+                        <th>Usuario</th>
+                        <th>Rol</th>
+                        <th>Inicio</th>
+                        <th>Fin</th>
+                        <th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {participantes.length === 0 ? (
+                        <tr><td colSpan="5" className="text-center py-4 text-muted">No hay registros.</td></tr>
+                      ) : participantes.map((row) => (
+                        <tr key={row.id_participacion_caja || row.id_usuario}>
+                          <td>{row.nombre_completo || row.nombre_usuario || 'Usuario no disponible'}</td>
+                          <td>{resolveParticipantRole(row)}</td>
+                          <td>{formatCajaDateTime(row.fecha_inicio)}</td>
+                          <td>{formatCajaDateTime(row.fecha_fin)}</td>
+                          <td>{row.activo ? 'Activo' : 'Inactivo'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
-                  <div className="cierres-caja-detail__team-grid">
-                    <article className="cierres-caja-detail__team-card">
-                      <span className="cierres-caja-detail__team-label">Responsable</span>
-                      <strong>{responsable?.nombre_completo || sesion?.responsable_nombre || 'Sin responsable'}</strong>
-                      <small>{responsable?.nombre_usuario ? `@${responsable.nombre_usuario}` : 'Usuario no disponible'}</small>
-                    </article>
-
-                    <article className="cierres-caja-detail__team-card">
-                      <span className="cierres-caja-detail__team-label">Auxiliares</span>
-                      {auxiliares.length === 0 ? (
-                        <strong>Sin auxiliares</strong>
-                      ) : (
-                        <div className="cierres-caja-detail__team-list">
-                          {auxiliares.map((auxiliar) => (
-                            <span key={auxiliar.id_participacion_caja}>
-                              {auxiliar.nombre_completo || auxiliar.nombre_usuario}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </article>
-                  </div>
-                </section>
-
-                <section className="ventas-page__table-card p-3">
+              <section className="ventas-page__table-card">
+                <div className="p-3 pb-0">
                   <div className="inv-prod-title-row mb-2">
                     <i className="bi bi-clipboard-data text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
                     <span className="inv-prod-title">Resumen operativo</span>
                   </div>
-
-                  <div className="d-grid gap-2">
-                    <InfoCard icon="bi bi-cash-coin" label="Ventas efectivo" value={`L. ${formatCajaCurrency(resumen.ventas_efectivo)}`} />
-                    <InfoCard icon="bi bi-credit-card-2-front" label="Ventas no efectivo" value={`L. ${formatCajaCurrency(resumen.ventas_no_efectivo)}`} />
-                    <InfoCard icon="bi bi-plus-circle" label="Ingresos manuales" value={`L. ${formatCajaCurrency(resumen.ingresos_manuales)}`} />
-                    <InfoCard icon="bi bi-dash-circle" label="Egresos manuales" value={`L. ${formatCajaCurrency(resumen.egresos_manuales)}`} />
-                    <InfoCard icon="bi bi-calculator" label="Monto teorico" value={`L. ${formatCajaCurrency(resumen.efectivo_teorico)}`} accent />
-                    <InfoCard
-                      icon="bi bi-journal-check"
-                      label="Monto declarado"
-                      value={`L. ${formatCajaCurrency(cierre?.monto_declarado_cierre ?? resumen.monto_declarado_cierre ?? 0)}`}
-                    />
-                  </div>
-                </section>
-              </div>
+                </div>
+                <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap">
+                  <table className="table ventas-page__table">
+                    <thead>
+                      <tr>
+                        <th className="text-end">Ventas efectivo</th>
+                        <th className="text-end">Ventas no efectivo</th>
+                        <th className="text-end">Ingresos manuales</th>
+                        <th className="text-end">Egresos manuales</th>
+                        <th className="text-end">Total responsable</th>
+                        <th className="text-end">Total auxiliares</th>
+                        <th className="text-end">Monto teorico</th>
+                        <th className="text-end">Monto declarado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="text-end">L. {formatCajaCurrency(resumen.ventas_efectivo)}</td>
+                        <td className="text-end">L. {formatCajaCurrency(resumen.ventas_no_efectivo)}</td>
+                        <td className="text-end">L. {formatCajaCurrency(resumen.ingresos_manuales)}</td>
+                        <td className="text-end">L. {formatCajaCurrency(resumen.egresos_manuales)}</td>
+                        <td className="text-end">L. {formatCajaCurrency(resumen.total_responsable)}</td>
+                        <td className="text-end">L. {formatCajaCurrency(resumen.total_auxiliares)}</td>
+                        <td className="text-end">L. {formatCajaCurrency(resumen.monto_teorico ?? resumen.efectivo_teorico)}</td>
+                        <td className="text-end">L. {formatCajaCurrency(resumen.monto_declarado ?? cierre?.monto_declarado_cierre ?? resumen.monto_declarado_cierre)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
               <section className="ventas-page__table-card">
                 <div className="p-3 pb-0">
@@ -188,15 +228,18 @@ export default function CierreCajaDetalleModal({
                     <thead>
                       <tr>
                         <th>Usuario</th>
+                        <th className="text-center">Rol</th>
                         <th className="text-center">Cobros</th>
+                        <th className="text-end">Total efectivo</th>
+                        <th className="text-end">Total no efectivo</th>
                         <th className="text-end">Total cobrado</th>
                       </tr>
                     </thead>
                     <tbody>
                       {detalle.cobros_por_usuario.length === 0 ? (
                         <tr>
-                          <td colSpan="3" className="text-center py-4 text-muted">
-                            No hay cobros registrados en esta sesion.
+                          <td colSpan="6" className="text-center py-4 text-muted">
+                            No hay registros.
                           </td>
                         </tr>
                       ) : (
@@ -208,7 +251,10 @@ export default function CierreCajaDetalleModal({
                                 <span>{row.nombre_usuario ? `@${row.nombre_usuario}` : 'Usuario sin alias'}</span>
                               </div>
                             </td>
+                            <td className="text-center align-middle">{resolveRolCobroLabel(row)}</td>
                             <td className="text-center align-middle">{row.cobros_registrados}</td>
+                            <td className="text-end align-middle">L. {formatCajaCurrency(row.total_efectivo)}</td>
+                            <td className="text-end align-middle">L. {formatCajaCurrency(row.total_no_efectivo)}</td>
                             <td className="text-end align-middle ventas-page__table-total">
                               L. {formatCajaCurrency(row.total_cobrado)}
                             </td>
@@ -241,7 +287,7 @@ export default function CierreCajaDetalleModal({
                       {detalle.arqueos.length === 0 ? (
                         <tr>
                           <td colSpan="4" className="text-center py-4 text-muted">
-                            No hay arqueos registrados.
+                            No hay registros.
                           </td>
                         </tr>
                       ) : (

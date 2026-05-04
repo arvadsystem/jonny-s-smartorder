@@ -293,15 +293,17 @@ export default function CierresCajaView() {
     }
   };
 
-  const handleRequestUsuarios = useCallback(async (idSucursal) => {
+  const handleRequestUsuarios = useCallback(async (idSucursal, rolOperativo = 'AUXILIAR') => {
     const idSucursalParsed = Number.parseInt(String(idSucursal || ''), 10);
+    const rolOperativoNormalized = String(rolOperativo || 'AUXILIAR').trim().toUpperCase() || 'AUXILIAR';
     if (!Number.isInteger(idSucursalParsed) || idSucursalParsed <= 0) {
       setUsuariosOperativos([]);
       setLoadingUsuariosOperativos(false);
       return;
     }
 
-    const cached = usuariosBySucursalRef.current.get(idSucursalParsed);
+    const cacheKey = `${idSucursalParsed}:${rolOperativoNormalized}`;
+    const cached = usuariosBySucursalRef.current.get(cacheKey);
     if (cached) {
       setUsuariosOperativos(cached);
       setLoadingUsuariosOperativos(false);
@@ -312,10 +314,13 @@ export default function CierresCajaView() {
     usuariosRequestIdRef.current = requestId;
     setLoadingUsuariosOperativos(true);
     try {
-      const response = await listUsuariosOperativos({ id_sucursal: idSucursalParsed });
+      const response = await listUsuariosOperativos({
+        id_sucursal: idSucursalParsed,
+        rol_operativo: rolOperativoNormalized
+      });
       if (usuariosRequestIdRef.current !== requestId) return;
       const rows = Array.isArray(response) ? response : [];
-      usuariosBySucursalRef.current.set(idSucursalParsed, rows);
+      usuariosBySucursalRef.current.set(cacheKey, rows);
       setUsuariosOperativos(rows);
     } catch {
       if (usuariosRequestIdRef.current !== requestId) return;
