@@ -69,39 +69,118 @@ const resolvePublicImageUrl = (rawUrl) => {
   return `${base}${path}`;
 };
 
-const toBoolean = (value, fallback = true) => {
+const normalizeTimeValue = (value) => {
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+};
+
+const formatTimeLabel = (value) => {
+  const normalized = normalizeTimeValue(value);
+  if (!normalized) return '';
+  const [hourText, minuteText] = normalized.split(':');
+  const hour = Number(hourText);
+  if (!Number.isFinite(hour)) return normalized;
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minuteText} ${suffix}`;
+};
+
+const buildScheduleLabel = ({ opensAt, closesAt, fallback }) => {
+  const openLabel = formatTimeLabel(opensAt);
+  const closeLabel = formatTimeLabel(closesAt);
+  if (openLabel && closeLabel) return `${openLabel} - ${closeLabel}`;
+  return fallback || 'Horario no configurado';
+};
+
+const toBranchBoolean = (value, fallback = false) => {
+  if (value === undefined || value === null || value === '') return fallback;
   if (value === true || value === false) return value;
-  if (value === 1 || value === '1' || String(value || '').toLowerCase() === 'true') return true;
-  if (value === 0 || value === '0' || String(value || '').toLowerCase() === 'false') return false;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+
   return fallback;
 };
 
 // Normaliza estructura de sucursal para componentes de UI.
-const normalizeBranch = (raw) => ({
-  id: Number(raw?.id_sucursal ?? raw?.id),
-  name: raw?.nombre_sucursal || raw?.name || 'Sucursal',
-  address: raw?.direccion || raw?.address || 'Direccion no disponible',
-  whatsapp:
-    String(
-      raw?.whatsapp ??
-      raw?.telefono_whatsapp ??
-      raw?.telefono ??
-      raw?.phone ??
-      ''
-    ).trim(),
-  transferAccount:
-    String(
-      raw?.cuenta_transferencia ??
-      raw?.cuenta_bancaria ??
-      raw?.numero_cuenta ??
-      ''
-    ).trim(),
-  schedule: raw?.horario || raw?.schedule || 'Horario no disponible',
-  etaMinutes: raw?.tiempo_entrega || raw?.etaMinutes || '20-30 min',
-  imageUrl: resolvePublicImageUrl(raw?.url_imagen || raw?.imageUrl || ''),
-  statusLabel: raw?.status_label || '',
-  isOpen: toBoolean(raw?.is_open ?? raw?.isOpen ?? raw?.estado, true)
-});
+const normalizeBranch = (raw) => {
+  const opensAt = normalizeTimeValue(raw?.opensAt ?? raw?.hora_inicio);
+  const closesAt = normalizeTimeValue(raw?.closesAt ?? raw?.hora_final);
+  const isActive = toBranchBoolean(raw?.isActive ?? raw?.estado, true);
+
+  const hasSchedule = Boolean(opensAt && closesAt);
+
+  const hasExplicitOpenState =
+    raw?.isOpen !== undefined ||
+    raw?.is_open !== undefined ||
+    raw?.abierto_por_horario !== undefined ||
+    raw?.acceptsOrders !== undefined ||
+    raw?.accepts_orders !== undefined;
+
+  const explicitOpenValue =
+    raw?.isOpen ??
+    raw?.is_open ??
+    raw?.abierto_por_horario ??
+    raw?.acceptsOrders ??
+    raw?.accepts_orders;
+
+  const isOpen = isActive && (
+    hasExplicitOpenState ? toBranchBoolean(explicitOpenValue, true) : true
+  );
+
+  const schedule = buildScheduleLabel({
+    opensAt,
+    closesAt,
+    fallback: raw?.horario || raw?.schedule || ''
+  });
+
+  const acceptsOrders = isActive && toBranchBoolean(
+    raw?.acceptsOrders ?? raw?.accepts_orders,
+    isOpen
+  );
+
+  return {
+    id: Number(raw?.id_sucursal ?? raw?.id),
+    name: raw?.nombre_sucursal || raw?.name || 'Sucursal',
+    address: raw?.direccion || raw?.address || 'Direccion no disponible',
+    whatsapp:
+      String(
+        raw?.whatsapp ??
+        raw?.telefono_whatsapp ??
+        raw?.telefono ??
+        raw?.phone ??
+        ''
+      ).trim(),
+    transferAccount:
+      String(
+        raw?.cuenta_transferencia ??
+        raw?.cuenta_bancaria ??
+        raw?.numero_cuenta ??
+        ''
+      ).trim(),
+    schedule,
+    etaMinutes: raw?.tiempo_entrega || raw?.etaMinutes || '20-30 min',
+    imageUrl: resolvePublicImageUrl(raw?.url_imagen || raw?.imageUrl || ''),
+    isActive,
+    isOpen,
+    acceptsOrders,
+    opensAt,
+    closesAt,
+    statusLabel:
+      raw?.statusLabel ||
+      raw?.status_label ||
+      (isOpen ? (hasSchedule ? 'Abierto ahora' : 'Disponible') : 'Cerrado'),
+    closedReason:
+      raw?.closedReason ||
+      raw?.closed_reason ||
+      (isOpen ? '' : `Disponible de ${schedule}`)
+  };
+};
 
 const normalizeBranchWithUi = (raw) => {
   const base = normalizeBranch(raw);
@@ -151,7 +230,8 @@ const normalizeCatalogItem = (raw) => ({
   descripcion: raw?.descripcion || '',
   categoria: {
     id_tipo_departamento: raw?.categoria?.id_tipo_departamento ?? null,
-    nombre: raw?.categoria?.nombre || 'Sin categoria'
+    nombre: raw?.categoria?.nombre || 'Sin categoria',
+    nombre_producto: raw?.categoria?.nombre_producto || ''
   },
   imagen_url: resolvePublicImageUrl(raw?.imagen_url || ''),
   precio: {
@@ -172,7 +252,7 @@ const normalizeCatalogItem = (raw) => ({
       precio_adicional: Number(extra?.precio_adicional || 0)
     }))
     : [],
-      salsas_componentes: Array.isArray(raw?.salsas_componentes)
+  salsas_componentes: Array.isArray(raw?.salsas_componentes)
     ? raw.salsas_componentes.map((component) => ({
       id_receta: Number(component?.id_receta || 0) || null,
       nombre_receta: String(component?.nombre_receta || ''),
@@ -224,6 +304,21 @@ export const publicMenuBootstrapService = {
     return rows
       .map(normalizeBranchWithUi)
       .filter((branch) => Number.isInteger(branch.id) && branch.id > 0);
+  },
+
+  // Obtiene configuracion global del carrusel hero (persistida en backend).
+  async getHeroCarouselConfig() {
+    const response = await apiFetch('/api/public-menu/carrusel-config', 'GET', null, { noCache: true });
+    const payload = response?.data;
+    if (!payload || typeof payload !== 'object') {
+      return { byBranch: {}, customByBranch: {} };
+    }
+
+    return {
+      byBranch: payload.byBranch && typeof payload.byBranch === 'object' ? payload.byBranch : {},
+      customByBranch:
+        payload.customByBranch && typeof payload.customByBranch === 'object' ? payload.customByBranch : {}
+    };
   },
 
   // Obtiene menu vigente de la sucursal seleccionada.

@@ -12,7 +12,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
   const GROUPS = [
     { key: 'operacion', label: 'Operacion', itemKeys: ['dashboard', 'ventas', 'cierres-caja', 'cocina'] },
     { key: 'inventario', label: 'Inventario', itemKeys: ['inventario', 'sucursales', 'menu'] },
-    { key: 'gestion', label: 'Gestion', itemKeys: ['personas', 'planillas', 'fidelizacion'] },
+    { key: 'gestion', label: 'Gestion', itemKeys: ['personas', 'planillas', 'fidelizacion', 'reportes'] },
     { key: 'sistema', label: 'Sistema', itemKeys: ['seguridad', 'configuracion'] }
   ];
 

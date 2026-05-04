@@ -23,6 +23,7 @@ const PremiumHeader = ({
   cartCount = 0,
   onHomeClick,
   onUserClick,
+  onLogout,
   onCartClick,
   greetingName = '',
   theme = 'dark',
@@ -84,6 +85,7 @@ const PremiumHeader = ({
         onChangeOrderType={onChangeOrderType}
         onHomeClick={onHomeClick}
         onUserClick={onUserClick}
+        onLogout={onLogout}
         onCartClick={onCartClick}
         greetingName={greetingName}
         theme={theme}

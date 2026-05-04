@@ -444,6 +444,11 @@
   margin-top: 0.2rem;
 }
 
+.pm-option-card__meta--warning {
+  color: #9b4d1a;
+  font-weight: 800;
+}
+
 .pm-option-card__meta i {
   margin-right: 0.24rem;
 }

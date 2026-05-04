@@ -6,6 +6,7 @@ import ConfirmModal from '../components/feedback/ConfirmModal';
 import OrderSuccessModal from '../components/feedback/OrderSuccessModal';
 import PremiumCatalogHeader from '../components/catalog/PremiumCatalogHeader';
 import PremiumHero from '../components/catalog/PremiumHero';
+import JonnyExperienceSection from '../components/catalog/JonnyExperienceSection';
 import PremiumProductSection from '../components/catalog/PremiumProductSection';
 import PremiumStickyCart from '../components/catalog/PremiumStickyCart';
 import ProductDetailSheet from '../components/catalog/ProductDetailSheet';
@@ -26,20 +27,70 @@ import { isPublicMenuAuthError, toPublicMenuUiErrorMessage } from '../utils/publ
 import { requiresItemConfiguration } from '../utils/publicMenuItemConfig';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import useOrderSuccessSound from '../hooks/useOrderSuccessSound';
-import {
-  getHeroCarouselCustomImagesByBranch,
-  getHeroCarouselSelectionByBranch
-} from '../utils/heroCarouselStorage';
+import { formatPublicMenuCategoryLabel } from '../utils/publicMenuCategoryLabels';
 import { resolveInventarioImageUrl } from '../../../utils/inventarioImagenes';
 import jonnysLogo from '../../../assets/images/logo-sin-fondo.png';
 
 const getOrderTypeLabel = (orderTypeId) =>
   PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === orderTypeId)?.title || 'Pedido';
 
-const formatCategoryLabel = (category) =>
-  String(category || '').replace(/\btenders\b/gi, 'Tenders');
-
 const HERO_AUTOPLAY_MS = 5000;
+const HERO_CONFIG_GLOBAL_BRANCH_KEY = '0';
+
+const normalizeHeroCarouselConfig = (value) => {
+  if (!value || typeof value !== 'object') return { byBranch: {}, customByBranch: {} };
+  return {
+    byBranch: value.byBranch && typeof value.byBranch === 'object' ? value.byBranch : {},
+    customByBranch:
+      value.customByBranch && typeof value.customByBranch === 'object'
+        ? value.customByBranch
+        : {}
+  };
+};
+
+const toBranchKey = (branchId) => {
+  const parsed = Number.parseInt(String(branchId ?? '').trim(), 10);
+  if (!Number.isInteger(parsed) || parsed < 0) return HERO_CONFIG_GLOBAL_BRANCH_KEY;
+  return String(parsed);
+};
+
+const toPositiveUniqueIds = (values = []) => {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const normalized = [];
+
+  source.forEach((value) => {
+    const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+    if (!Number.isInteger(parsed) || parsed <= 0 || seen.has(parsed)) return;
+    seen.add(parsed);
+    normalized.push(parsed);
+  });
+
+  return normalized.slice(0, 6);
+};
+
+const toCustomSlides = (rows = []) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row, index) => ({
+      id: String(row?.id || `custom-${index}`),
+      imageUrl: resolveInventarioImageUrl(String(row?.imageUrl || '').trim()),
+      title: String(row?.title || '').trim()
+    }))
+    .filter((row) => Boolean(row.imageUrl))
+    .slice(0, 6);
+
+const resolveHeroSelectionByBranch = (config, branchId) => {
+  const branchKey = toBranchKey(branchId);
+  const ids = config?.byBranch?.[branchKey] ?? config?.byBranch?.[HERO_CONFIG_GLOBAL_BRANCH_KEY];
+  return toPositiveUniqueIds(ids);
+};
+
+const resolveHeroCustomByBranch = (config, branchId) => {
+  const branchKey = toBranchKey(branchId);
+  const rows =
+    config?.customByBranch?.[branchKey] ?? config?.customByBranch?.[HERO_CONFIG_GLOBAL_BRANCH_KEY];
+  return toCustomSlides(rows);
+};
 
 const getGreetingName = (user) => {
   const candidates = [
@@ -64,37 +115,10 @@ const getGreetingName = (user) => {
 };
 
 const buildCatalogHeroSlides = ({
-  products = [],
   branchName = 'Sucursal',
   orderTypeLabel = 'Pedido',
-  preferredDetailIds = [],
   customImages = []
 }) => {
-  const withImage = (Array.isArray(products) ? products : []).filter((row) => Boolean(row?.imagen_url));
-  const unique = [];
-  const seen = new Set();
-
-  withImage.forEach((row) => {
-    const imageUrl = String(row?.imagen_url || '').trim();
-    if (!imageUrl || seen.has(imageUrl)) return;
-    seen.add(imageUrl);
-    unique.push(row);
-  });
-
-  const preferredOrder = Array.isArray(preferredDetailIds)
-    ? preferredDetailIds.map((value) => Number(value || 0)).filter((value) => value > 0)
-    : [];
-
-  const preferredRows = [];
-  preferredOrder.forEach((idDetalle) => {
-    const found = unique.find((row) => Number(row?.id_detalle_menu || 0) === idDetalle);
-    if (found) preferredRows.push(found);
-  });
-
-  const preferredSet = new Set(preferredRows.map((row) => Number(row?.id_detalle_menu || 0)));
-  const fallbackRows = unique.filter((row) => !preferredSet.has(Number(row?.id_detalle_menu || 0)));
-  const sortedRows = [...preferredRows, ...fallbackRows];
-
   const customSlides = (Array.isArray(customImages) ? customImages : [])
     .map((row, index) => ({
       id: `hero-custom-${row?.id || index}`,
@@ -102,26 +126,10 @@ const buildCatalogHeroSlides = ({
       title: String(row?.title || '').trim() || 'Especialidad de la casa',
       subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
     }))
-    .filter((row) => Boolean(row.imageUrl));
+    .filter((row) => Boolean(row.imageUrl))
+    .slice(0, 6);
 
-  const catalogSlides = sortedRows.map((row, index) => ({
-    id: `hero-${row?.id_detalle_menu || index}`,
-    imageUrl: row.imagen_url,
-    title: row?.nombre || 'Platillo',
-    subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
-  }));
-  const slides = [...customSlides, ...catalogSlides].slice(0, 6);
-
-  if (!slides.length) {
-    slides.push({
-      id: 'hero-fallback',
-      imageUrl: '',
-      title: 'Menu',
-      subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
-    });
-  }
-
-  return slides;
+  return customSlides;
 };
 
 const buildOrderPayloadFingerprint = (payload) => {
@@ -175,7 +183,7 @@ const formatWhatsAppNumber = (value) => {
 const CatalogScreen = () => {
   const navigate = useNavigate();
   const outletContext = useOutletContext() || {};
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { state, actions } = usePublicMenuFlow();
   const branchId = state.selectedBranch?.id;
   const orderType = state.orderType;
@@ -208,15 +216,22 @@ const CatalogScreen = () => {
     () => state.selectedBranch || branches.find((branch) => branch?.isOpen) || branches[0] || null,
     [branches, state.selectedBranch]
   );
+  const liveSelectedBranch = useMemo(() => {
+    if (!state.selectedBranch?.id) return state.selectedBranch || null;
+    return branches.find((branch) => Number(branch?.id) === Number(state.selectedBranch?.id)) || state.selectedBranch;
+  }, [branches, state.selectedBranch]);
 
   const [cartOpen, setCartOpen] = useState(false);
   const [authRequired, setAuthRequired] = useState({ open: false, message: '' });
   const [homeConfirmOpen, setHomeConfirmOpen] = useState(false);
+  const [closedHoursConfirmOpen, setClosedHoursConfirmOpen] = useState(false);
+  const [closedHoursDismissedBranchId, setClosedHoursDismissedBranchId] = useState(null);
   const [orderSuccess, setOrderSuccess] = useState({ open: false, order: null });
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [heroCarouselConfig, setHeroCarouselConfig] = useState({ byBranch: {}, customByBranch: {} });
   const [cartFabPulse, setCartFabPulse] = useState(false);
   const [recentlyAddedId, setRecentlyAddedId] = useState(null);
   const [categorySwitching, setCategorySwitching] = useState(false);
@@ -254,10 +269,46 @@ const CatalogScreen = () => {
   }, [actions, preferredBranch, state.selectedBranch?.id]);
 
   useEffect(() => {
+    if (!state.selectedBranch?.id || !liveSelectedBranch?.id) return;
+
+    const changed =
+      String(liveSelectedBranch?.name || '') !== String(state.selectedBranch?.name || '') ||
+      String(liveSelectedBranch?.displayName || '') !== String(state.selectedBranch?.displayName || '') ||
+      String(liveSelectedBranch?.schedule || '') !== String(state.selectedBranch?.schedule || '') ||
+      String(liveSelectedBranch?.statusLabel || '') !== String(state.selectedBranch?.statusLabel || '') ||
+      String(liveSelectedBranch?.closedReason || '') !== String(state.selectedBranch?.closedReason || '') ||
+      Boolean(liveSelectedBranch?.isOpen) !== Boolean(state.selectedBranch?.isOpen);
+
+    if (changed) {
+      actions.selectBranch(liveSelectedBranch);
+    }
+  }, [actions, liveSelectedBranch, state.selectedBranch]);
+
+  useEffect(() => {
     if (!state.orderType) {
       actions.selectOrderType(PUBLIC_MENU_ORDER_TYPES.DINE_IN);
     }
   }, [actions, state.orderType]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadHeroCarouselConfig = async () => {
+      try {
+        const response = await publicMenuBootstrapService.getHeroCarouselConfig();
+        if (!isMounted) return;
+        setHeroCarouselConfig(normalizeHeroCarouselConfig(response));
+      } catch {
+        if (!isMounted) return;
+        setHeroCarouselConfig({ byBranch: {}, customByBranch: {} });
+      }
+    };
+
+    void loadHeroCarouselConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const cartQuantityByDetail = useMemo(
     () => {
@@ -274,23 +325,57 @@ const CatalogScreen = () => {
   );
   const orderTypeLabel = getOrderTypeLabel(orderType);
   const greetingName = getGreetingName(user);
+  const selectedBranchOpen = liveSelectedBranch?.isOpen !== false;
+  const branchScheduleText = liveSelectedBranch?.schedule || 'Horario no configurado';
+  const branchClosedReason = liveSelectedBranch?.closedReason || `Disponible de ${branchScheduleText}`;
+  const orderDisabledReason = selectedBranchOpen ? '' : 'Sucursal cerrada';
+  const liveBranchId = Number(liveSelectedBranch?.id || 0);
   const topNavCategories = useMemo(
-    () => categories.filter((category) => category !== 'all').slice(0, 8),
+    () => {
+      const visibleCategories = categories.filter((category) => category !== 'all');
+      ['Snacks', 'Helados'].forEach((category) => {
+        if (!visibleCategories.includes(category)) visibleCategories.push(category);
+      });
+      return visibleCategories.slice(0, 10);
+    },
     [categories]
   );
-  const activeCategoryLabel = selectedCategory === 'all' ? 'Todo el menu' : formatCategoryLabel(selectedCategory);
+  const activeCategoryLabel = selectedCategory === 'all' ? 'Todo el menu' : formatPublicMenuCategoryLabel(selectedCategory);
   const isCatalogLanding = selectedCategory === 'all';
+  const hasVisibleProducts = !isCatalogLanding && filteredProducts.length > 0;
+  const hasSelectedCategory = !isCatalogLanding;
+  const shouldShowSyncWarning = Boolean(syncWarning) && !hasVisibleProducts;
+  const [showJonnyExperience, setShowJonnyExperience] = useState(true);
+  const preferredHeroDetailIds = useMemo(
+    () => resolveHeroSelectionByBranch(heroCarouselConfig, branchId),
+    [branchId, heroCarouselConfig]
+  );
+  const customHeroSlides = useMemo(
+    () => resolveHeroCustomByBranch(heroCarouselConfig, branchId),
+    [branchId, heroCarouselConfig]
+  );
   const heroSlides = useMemo(
     () =>
       buildCatalogHeroSlides({
         products: availableProducts,
         branchName: state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal',
         orderTypeLabel,
-        preferredDetailIds: getHeroCarouselSelectionByBranch(branchId),
-        customImages: getHeroCarouselCustomImagesByBranch(branchId)
+        preferredDetailIds: preferredHeroDetailIds,
+        customImages: customHeroSlides
       }),
-    [availableProducts, branchId, orderTypeLabel, state.selectedBranch?.displayName, state.selectedBranch?.name]
+    [
+      availableProducts,
+      customHeroSlides,
+      orderTypeLabel,
+      preferredHeroDetailIds,
+      state.selectedBranch?.displayName,
+      state.selectedBranch?.name
+    ]
   );
+
+  useEffect(() => {
+    setShowJonnyExperience(!hasSelectedCategory && !hasVisibleProducts);
+  }, [hasSelectedCategory, hasVisibleProducts]);
 
   useEffect(() => {
     const previous = Number(previousTotalItemsRef.current || 0);
@@ -308,6 +393,17 @@ const CatalogScreen = () => {
     if (heroIndex <= heroSlides.length - 1) return;
     setHeroIndex(0);
   }, [heroIndex, heroSlides.length]);
+
+  useEffect(() => {
+    if (!liveBranchId || selectedBranchOpen) {
+      setClosedHoursConfirmOpen(false);
+      setClosedHoursDismissedBranchId(null);
+      return;
+    }
+
+    if (Number(closedHoursDismissedBranchId || 0) === liveBranchId) return;
+    setClosedHoursConfirmOpen(true);
+  }, [closedHoursDismissedBranchId, liveBranchId, selectedBranchOpen]);
 
   useEffect(() => {
     if (heroTimerRef.current) {
@@ -448,6 +544,23 @@ const CatalogScreen = () => {
     navigate('/menu-publico');
   };
 
+  const continueBrowsingClosedMenu = () => {
+    setClosedHoursDismissedBranchId(liveBranchId || null);
+    setClosedHoursConfirmOpen(false);
+  };
+
+  const leaveClosedMenu = () => {
+    setClosedHoursConfirmOpen(false);
+    navigate('/menu-publico');
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setCartOpen(false);
+    closeConfigSheet();
+    navigate('/menu-publico');
+  };
+
   // Guarda menu vigente en store para los siguientes pasos del flujo.
   useEffect(() => {
     actions.selectMenu(menuSummary);
@@ -455,6 +568,11 @@ const CatalogScreen = () => {
 
   const handleConfirmOrder = async () => {
     if (confirmingOrder || confirmLockRef.current) return;
+    if (!selectedBranchOpen) {
+      setClosedHoursConfirmOpen(true);
+      return;
+    }
+
     const pickupPaymentMethod = String(state.pickupPaymentMethod || '')
       .trim()
       .toLowerCase();
@@ -634,6 +752,7 @@ const CatalogScreen = () => {
         onChangeOrderType={handleChangeOrderType}
         onHomeClick={handleHomeClick}
         onUserClick={() => navigate('/auth/login?from=public-menu&intent=login')}
+        onLogout={handleLogout}
         onCartClick={() => setCartOpen(true)}
         cartCount={totalItems}
         greetingName={greetingName}
@@ -641,18 +760,34 @@ const CatalogScreen = () => {
         onToggleTheme={onToggleTheme}
       />
 
-      <PremiumHero
-        slides={heroSlides}
-        heroIndex={heroIndex}
-        branchName={state.selectedBranch?.displayName || state.selectedBranch?.name || ''}
-        orderTypeLabel={orderTypeLabel}
-        onPrev={() => goToHeroSlide(heroIndex - 1)}
-        onNext={() => goToHeroSlide(heroIndex + 1)}
-        onSelectSlide={goToHeroSlide}
-        onPrimaryAction={handleScrollToCatalog}
-      />
+      {heroSlides.length > 0 ? (
+        <PremiumHero
+          slides={heroSlides}
+          heroIndex={heroIndex}
+          branchName={state.selectedBranch?.displayName || state.selectedBranch?.name || ''}
+          orderTypeLabel={orderTypeLabel}
+          onPrev={() => goToHeroSlide(heroIndex - 1)}
+          onNext={() => goToHeroSlide(heroIndex + 1)}
+          onSelectSlide={goToHeroSlide}
+          onPrimaryAction={handleScrollToCatalog}
+        />
+      ) : null}
 
-      {syncWarning ? (
+      {showJonnyExperience ? <JonnyExperienceSection /> : null}
+
+      {!selectedBranchOpen ? (
+        <div className="pm-branch-hours-alert" role="status">
+          <span className="pm-branch-hours-alert__icon" aria-hidden="true">
+            <i className="bi bi-clock-history" />
+          </span>
+          <div className="pm-branch-hours-alert__copy">
+            <strong>Pedidos cerrados por ahora</strong>
+            <span>{branchClosedReason}. Puedes revisar el menú y preparar tu pedido.</span>
+          </div>
+        </div>
+      ) : null}
+
+      {shouldShowSyncWarning ? (
         <StateBlock
           variant="warning"
           title="Conexion inestable"
@@ -695,7 +830,7 @@ const CatalogScreen = () => {
           />
         ) : null}
 
-        {!isCatalogLanding && filteredProducts.length ? (
+        {hasVisibleProducts ? (
           <PremiumProductSection
             categoryTitle={activeCategoryLabel}
             filteredProducts={filteredProducts}
@@ -705,6 +840,8 @@ const CatalogScreen = () => {
             total={total}
             branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
             confirmingOrder={confirmingOrder}
+            orderDisabled={!selectedBranchOpen}
+            orderDisabledReason={orderDisabledReason}
             onAdd={handleCardAdd}
             onIncrease={handleCardIncrease}
             onDecrease={handleCardDecrease}
@@ -715,6 +852,10 @@ const CatalogScreen = () => {
           />
         ) : null}
       </div>
+
+      <footer className="pm-public-footer" aria-label="Creditos del sistema">
+        <span>© 2026 ARVAD SYSTEM</span>
+      </footer>
 
       <PremiumStickyCart
         itemCount={totalItems}
@@ -729,6 +870,8 @@ const CatalogScreen = () => {
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
         items={cartItems}
         total={total}
+        disabled={!selectedBranchOpen}
+        disabledReason={orderDisabledReason}
         onClose={() => setCartOpen(false)}
         onIncrease={increaseItemByLine}
         onDecrease={decreaseItemByLine}
@@ -763,6 +906,16 @@ const CatalogScreen = () => {
         onConfirm={confirmHomeNavigation}
       />
 
+      <ConfirmModal
+        open={closedHoursConfirmOpen && !homeConfirmOpen}
+        title="RESTAURANTE CERRADO"
+        message={`En este momento no estamos recibiendo pedidos. ${branchClosedReason}. Puedes seguir viendo el menu.`}
+        cancelLabel="Volver al inicio"
+        confirmLabel="Seguir viendo menu"
+        onCancel={leaveClosedMenu}
+        onConfirm={continueBrowsingClosedMenu}
+      />
+
       <OrderSuccessModal
         open={orderSuccess.open}
         order={orderSuccess.order}
@@ -776,4 +929,3 @@ const CatalogScreen = () => {
 };
 
 export default CatalogScreen;
-

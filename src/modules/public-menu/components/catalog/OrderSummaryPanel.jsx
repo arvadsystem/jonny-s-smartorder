@@ -14,7 +14,9 @@ const OrderSummaryPanel = ({
   onDecrease,
   onRemove,
   onConfirm,
-  confirming = false
+  confirming = false,
+  disabled = false,
+  disabledReason = ''
 }) => (
   <aside className="pm-order-summary-panel" aria-label="Detalle de orden">
     <header className="pm-order-summary-panel__header">
@@ -69,10 +71,10 @@ const OrderSummaryPanel = ({
       <button
         type="button"
         className="pm-order-summary-panel__confirm"
-        disabled={items.length === 0 || confirming}
+        disabled={items.length === 0 || confirming || disabled}
         onClick={onConfirm}
       >
-        {confirming ? 'Enviando...' : 'Continuar'}
+        {confirming ? 'Enviando...' : (disabled && items.length > 0 ? disabledReason || 'Sucursal cerrada' : 'Continuar')}
       </button>
     </footer>
   </aside>

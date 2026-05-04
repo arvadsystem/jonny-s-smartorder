@@ -3,8 +3,7 @@
 // - categories: lista de categorias visibles en el header.
 // - selectedCategory: categoria activa actual.
 // - onSelectCategory: handler existente para filtrar categoria.
-const formatCategoryLabel = (category) =>
-  String(category || '').replace(/\btenders\b/gi, 'Tenders');
+import { formatPublicMenuCategoryLabel } from '../../utils/publicMenuCategoryLabels';
 
 const PremiumNavCategories = ({
   categories = [],
@@ -21,7 +20,7 @@ const PremiumNavCategories = ({
           className={`pm-premium-header__nav-item ${isActive ? 'is-active' : ''}`}
           onClick={() => onSelectCategory?.(category)}
         >
-          {formatCategoryLabel(category)}
+          {formatPublicMenuCategoryLabel(category)}
         </button>
       );
     })}

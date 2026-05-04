@@ -19,6 +19,7 @@ const PremiumCatalogHeader = ({
   onChangeOrderType,
   onHomeClick,
   onUserClick,
+  onLogout,
   onCartClick,
   cartCount = 0,
   greetingName = '',
@@ -43,6 +44,7 @@ const PremiumCatalogHeader = ({
     cartCount={cartCount}
     onHomeClick={onHomeClick}
     onUserClick={onUserClick}
+    onLogout={onLogout}
     onCartClick={onCartClick}
     greetingName={greetingName}
     theme={theme}

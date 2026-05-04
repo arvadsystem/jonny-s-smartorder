@@ -56,6 +56,14 @@ const normalizeText = (value) =>
 const toCategoryBucket = (rawCategoryName) => {
   const normalized = normalizeText(rawCategoryName).replace(/\s*\/\s*/g, '/');
 
+  if (normalized.includes('snack')) {
+    return 'Snacks';
+  }
+
+  if (normalized.includes('helado')) {
+    return 'Helados';
+  }
+
   if (normalized.includes('cerveza')) {
     return 'Cervezas';
   }
@@ -78,10 +86,22 @@ const toCategoryBucket = (rawCategoryName) => {
   return String(rawCategoryName || '').trim() || 'Sin categoria';
 };
 
+const getProductCategoryBucket = (product) => {
+  const productCategory = product?.categoria?.nombre_producto;
+  const productBucket = toCategoryBucket(productCategory);
+
+  if (productBucket === 'Snacks' || productBucket === 'Helados') {
+    return productBucket;
+  }
+
+  return toCategoryBucket(product?.categoria?.nombre);
+};
+
 const productTextIncludesAny = (product, keywords = []) => {
   const text = normalizeText(
     [
       product?.categoria?.nombre,
+      product?.categoria?.nombre_producto,
       product?.nombre,
       product?.descripcion
     ].filter(Boolean).join(' ')
@@ -93,7 +113,7 @@ const productTextIncludesAny = (product, keywords = []) => {
 const isProductAvailable = (product) => Boolean(product?.disponibilidad?.available);
 
 const matchesCatalogFilters = ({ product, selectedCategory, normalizedSearch }) => {
-  const productCategory = toCategoryBucket(product?.categoria?.nombre);
+  const productCategory = getProductCategoryBucket(product);
   const selectedBucket = toCategoryBucket(selectedCategory);
   const sameCategory =
     productCategory === selectedBucket ||
@@ -121,6 +141,14 @@ const matchesCatalogFilters = ({ product, selectedCategory, normalizedSearch }) 
         'mirinda',
         'fresca'
       ])
+    ) ||
+    (
+      selectedBucket === 'Snacks' &&
+      productTextIncludesAny(product, ['snack', 'snacks'])
+    ) ||
+    (
+      selectedBucket === 'Helados' &&
+      productTextIncludesAny(product, ['helado', 'helados'])
     );
   if (!inCategory) return false;
 
@@ -211,7 +239,7 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
   // Categorias dinamicas desde productos disponibles para no dejar pestañas vacias.
   const categories = useMemo(() => {
     const unique = new Set(
-      availableProducts.map((product) => toCategoryBucket(product?.categoria?.nombre))
+      availableProducts.map((product) => getProductCategoryBucket(product))
     );
     return ['all', ...Array.from(unique)];
   }, [availableProducts]);
