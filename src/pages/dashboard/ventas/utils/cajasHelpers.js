@@ -121,6 +121,20 @@ export const normalizeSesionDetalle = (payload = {}) => {
   const movimientos = Array.isArray(payload.movimientos) ? payload.movimientos : [];
   const resumen = payload.resumen_operativo ?? {};
 
+  const equipoCaja = participantes.map((row) => ({
+    id_participacion_caja: toNumber(row.id_participacion_caja, 0) || null,
+    id_usuario: toNumber(row.id_usuario, 0) || null,
+    rol_codigo: String(row.rol_codigo ?? '').trim().toUpperCase(),
+    rol_participacion: String(row.rol_codigo ?? row.rol_participacion ?? '').trim().toUpperCase(),
+    rol_nombre: String(row.rol_nombre ?? '').trim(),
+    nombre_usuario: String(row.nombre_usuario ?? '').trim(),
+    nombre_completo: String(row.nombre_completo ?? '').trim(),
+    activo: truthy(row.activo),
+    observacion: String(row.observacion ?? '').trim(),
+    fecha_inicio: row.fecha_inicio ?? null,
+    fecha_fin: row.fecha_fin ?? null
+  }));
+
   return {
     sesion: normalizeSesion(payload.sesion ?? {}),
     responsable: payload.responsable
@@ -130,23 +144,21 @@ export const normalizeSesionDetalle = (payload = {}) => {
           nombre_completo: String(payload.responsable.nombre_completo ?? '').trim()
         }
       : null,
-    participantes: participantes.map((row) => ({
-      id_participacion_caja: toNumber(row.id_participacion_caja, 0) || null,
-      id_usuario: toNumber(row.id_usuario, 0) || null,
-      rol_codigo: String(row.rol_codigo ?? '').trim().toUpperCase(),
-      rol_nombre: String(row.rol_nombre ?? '').trim(),
-      nombre_usuario: String(row.nombre_usuario ?? '').trim(),
-      nombre_completo: String(row.nombre_completo ?? '').trim(),
-      activo: truthy(row.activo),
-      observacion: String(row.observacion ?? '').trim(),
-      fecha_inicio: row.fecha_inicio ?? null,
-      fecha_fin: row.fecha_fin ?? null
-    })),
+    participantes: equipoCaja,
+    equipo_caja: equipoCaja,
     cobros_por_usuario: cobrosPorUsuario.map((row) => ({
       ...row,
       id_usuario_ejecutor: toNumber(row.id_usuario_ejecutor, 0) || null,
       total_cobrado: toNumber(row.total_cobrado, 0),
-      cobros_registrados: toNumber(row.cobros_registrados, 0),
+      cobros_registrados: toNumber(
+        row.cobros_registrados ?? row.cantidad_cobros ?? row.total_cobros,
+        0
+      ),
+      total_efectivo: toNumber(row.total_efectivo, 0),
+      total_no_efectivo: toNumber(row.total_no_efectivo, 0),
+      rol_participacion: String(row.rol_participacion ?? '').trim().toUpperCase() || 'EJECUTOR',
+      es_responsable: truthy(row.es_responsable),
+      es_auxiliar: truthy(row.es_auxiliar),
       nombre_usuario: String(row.nombre_usuario ?? '').trim(),
       nombre_completo: String(row.nombre_completo ?? '').trim()
     })),
@@ -172,6 +184,8 @@ export const normalizeSesionDetalle = (payload = {}) => {
         : null,
       total_responsable: toNumber(resumen.total_responsable, 0),
       total_auxiliares: toNumber(resumen.total_auxiliares, 0),
+      monto_teorico: toNumber(resumen.monto_teorico ?? resumen.efectivo_teorico, 0),
+      monto_declarado: toNumber(resumen.monto_declarado ?? resumen.monto_declarado_cierre, 0),
       responsabilidad_final_id_usuario: toNumber(resumen.responsabilidad_final_id_usuario, 0) || null
     },
     arqueos: arqueos.map((row) => ({

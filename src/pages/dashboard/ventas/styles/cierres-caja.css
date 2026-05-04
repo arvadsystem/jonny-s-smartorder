@@ -202,6 +202,11 @@
   gap: 10px;
 }
 
+.cierres-caja-detail__table-wrap {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
 .cierres-caja-detail__two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -236,6 +241,12 @@
   gap: 4px;
   color: rgba(82, 44, 34, 0.8);
   font-weight: 700;
+}
+
+.cierres-caja-detail__summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .cierres-caja-action-modal {
@@ -282,6 +293,7 @@
 
   .cierres-caja-detail__two-column,
   .cierres-caja-detail__team-grid,
+  .cierres-caja-detail__summary-grid,
   .cierres-caja-action-modal__grid {
     grid-template-columns: 1fr;
   }

@@ -39,6 +39,19 @@ export function useCierresCaja() {
     setToast({ show: true, title, message, variant });
   }, []);
 
+  const openConflictToast = useCallback((errorResponse, fallbackMessage) => {
+    const message = extractCajasApiMessage(errorResponse, fallbackMessage);
+    const isConflict = Number(errorResponse?.status) === 409;
+    const conflictCode = String(errorResponse?.code || '').trim().toUpperCase();
+    const isAssignmentConflict = conflictCode === 'VENTAS_CAJAS_ASSIGN_USER_ACTIVE_DUPLICATE';
+
+    if (isConflict || isAssignmentConflict) {
+      openToast('CONFLICTO DE ASIGNACION', message, 'danger');
+      return;
+    }
+    openToast('ERROR', message, 'danger');
+  }, [openToast]);
+
   const closeToast = useCallback(() => {
     setToast((current) => ({ ...current, show: false }));
   }, []);
@@ -217,17 +230,13 @@ export function useCierresCaja() {
         );
         return response;
       } catch (errorResponse) {
-        openToast(
-          'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo crear la caja.'),
-          'danger'
-        );
+        openConflictToast(errorResponse, 'No se pudo crear la caja.');
         throw errorResponse;
       } finally {
         setSaving(false);
       }
     },
-    [openToast]
+    [openConflictToast, openToast]
   );
 
   const createCajaAsignacion = useCallback(
@@ -242,17 +251,13 @@ export function useCierresCaja() {
         );
         return response;
       } catch (errorResponse) {
-        openToast(
-          'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo registrar la asignacion.'),
-          'danger'
-        );
+        openConflictToast(errorResponse, 'No se pudo registrar la asignacion.');
         throw errorResponse;
       } finally {
         setSaving(false);
       }
     },
-    [openToast]
+    [openConflictToast, openToast]
   );
 
   const updateCajaAsignacion = useCallback(

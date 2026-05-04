@@ -23,8 +23,7 @@ const countActiveFilters = ({ id_caja = '', solo_activas = true, sucursal = '' }
 const initialForm = Object.freeze({
   id_caja: '',
   id_usuario: '',
-  puede_responsable: true,
-  puede_auxiliar: true,
+  rol_operativo: 'RESPONSABLE',
   estado: true,
   observacion: ''
 });
@@ -73,6 +72,7 @@ export default function CierresCajaAsignacionesView() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(initialForm);
   const usuariosRequestIdRef = useRef(0);
+  const lastUsersLoadKeyRef = useRef('');
 
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
   const canSelectSucursal = isSuperAdmin || canAny([PERMISSIONS.VENTAS_CAJAS_MULTISUCURSAL_VER]);
@@ -159,7 +159,7 @@ export default function CierresCajaAsignacionesView() {
     void loadData();
   }, [loadData]);
 
-  const loadUsersByCaja = useCallback(async (idCajaRaw) => {
+  const loadUsersByCaja = useCallback(async (idCajaRaw, rolOperativo = 'AUXILIAR') => {
     const requestId = usuariosRequestIdRef.current + 1;
     usuariosRequestIdRef.current = requestId;
     const idCaja = Number.parseInt(String(idCajaRaw || ''), 10);
@@ -168,11 +168,18 @@ export default function CierresCajaAsignacionesView() {
     if (!idSucursal) {
       setUsuarios([]);
       setLoadingUsuarios(false);
+      if (idCaja > 0) {
+        openToast('ERROR', 'La caja seleccionada no tiene sucursal asociada.', 'danger');
+      }
       return;
     }
+    setUsuarios([]);
     setLoadingUsuarios(true);
     try {
-      const response = await listUsuariosOperativos({ id_sucursal: idSucursal });
+      const response = await listUsuariosOperativos({
+        id_sucursal: idSucursal,
+        rol_operativo: String(rolOperativo || 'AUXILIAR').trim().toUpperCase()
+      });
       if (usuariosRequestIdRef.current !== requestId) return;
       setUsuarios(Array.isArray(response) ? response : []);
     } catch (errorResponse) {
@@ -180,7 +187,7 @@ export default function CierresCajaAsignacionesView() {
       setUsuarios([]);
       openToast(
         'ERROR',
-        extractCajasApiMessage(errorResponse, 'No se pudo cargar el listado de cajeros disponibles.'),
+        extractCajasApiMessage(errorResponse, 'No se pudo cargar el listado de usuarios disponibles.'),
         'danger'
       );
     } finally {
@@ -222,7 +229,8 @@ export default function CierresCajaAsignacionesView() {
   const openCreate = () => {
     setEditing(null);
     setForm({ ...initialForm, id_caja: filters.id_caja || '' });
-    if (filters.id_caja) void loadUsersByCaja(filters.id_caja);
+    setUsuarios([]);
+    lastUsersLoadKeyRef.current = '';
     setModalOpen(true);
   };
 
@@ -231,39 +239,90 @@ export default function CierresCajaAsignacionesView() {
     setForm({
       id_caja: String(row.id_caja || ''),
       id_usuario: String(row.id_usuario || ''),
-      puede_responsable: Boolean(row.puede_responsable),
-      puede_auxiliar: Boolean(row.puede_auxiliar),
+      rol_operativo: row.puede_responsable ? 'RESPONSABLE' : 'AUXILIAR',
       estado: Boolean(row.estado),
       observacion: String(row.observacion || '')
     });
-    void loadUsersByCaja(row.id_caja);
+    setUsuarios([]);
+    lastUsersLoadKeyRef.current = '';
     setModalOpen(true);
   };
 
   const formValid = useMemo(() => {
     const idCaja = Number.parseInt(String(form.id_caja || ''), 10);
     const idUsuario = Number.parseInt(String(form.id_usuario || ''), 10);
-    return idCaja > 0 && idUsuario > 0 && (form.puede_responsable || form.puede_auxiliar);
+    const singleRole = ['RESPONSABLE', 'AUXILIAR'].includes(String(form.rol_operativo || '').trim().toUpperCase());
+    return idCaja > 0 && idUsuario > 0 && singleRole;
   }, [form]);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    const idCaja = Number.parseInt(String(form.id_caja || ''), 10);
+    const rolOperativo = String(form.rol_operativo || '').trim().toUpperCase();
+    if (!Number.isInteger(idCaja) || idCaja <= 0) {
+      lastUsersLoadKeyRef.current = '';
+      setUsuarios([]);
+      setLoadingUsuarios(false);
+      return;
+    }
+    if (!['RESPONSABLE', 'AUXILIAR'].includes(rolOperativo)) {
+      setUsuarios([]);
+      setLoadingUsuarios(false);
+      return;
+    }
+    const requestKey = `${idCaja}:${rolOperativo}`;
+    if (lastUsersLoadKeyRef.current === requestKey) return;
+    lastUsersLoadKeyRef.current = requestKey;
+    setUsuarios([]);
+    void loadUsersByCaja(idCaja, rolOperativo);
+  }, [form.id_caja, form.rol_operativo, loadUsersByCaja, modalOpen]);
+
+  useEffect(() => {
+    if (modalOpen) return;
+    lastUsersLoadKeyRef.current = '';
+    setUsuarios([]);
+    setLoadingUsuarios(false);
+  }, [modalOpen]);
+
+  const selectedCaja = useMemo(() => {
+    const idCaja = Number.parseInt(String(form.id_caja || ''), 10);
+    if (!Number.isInteger(idCaja) || idCaja <= 0) return null;
+    return cajas.find((item) => Number(item.id_caja) === idCaja) || null;
+  }, [cajas, form.id_caja]);
+
+  const selectedCajaSucursalId = Number(selectedCaja?.id_sucursal || 0) || null;
+  const selectedCajaSucursalNombre = String(selectedCaja?.nombre_sucursal || '').trim();
+  const hasRolOperativo = ['RESPONSABLE', 'AUXILIAR'].includes(String(form.rol_operativo || '').trim().toUpperCase());
+  const canPickUsuario = Boolean(selectedCajaSucursalId) && hasRolOperativo && !loadingUsuarios && !editing;
+  const userPlaceholder = !selectedCaja
+    ? 'Selecciona una caja primero'
+    : !selectedCajaSucursalId
+      ? 'La caja seleccionada no tiene sucursal asociada'
+      : !hasRolOperativo
+        ? 'Selecciona un rol operativo'
+        : loadingUsuarios
+          ? 'Cargando usuarios...'
+          : 'Selecciona un usuario';
 
   const submitModal = async (event) => {
     event.preventDefault();
     if (!formValid) return;
     try {
+      const payload = {
+        puede_responsable: form.rol_operativo === 'RESPONSABLE',
+        puede_auxiliar: form.rol_operativo === 'AUXILIAR',
+        observacion: form.observacion.trim() || null
+      };
       if (editing) {
         await updateCajaAsignacion(editing.id_caja_usuario_autorizado, {
-          puede_responsable: form.puede_responsable,
-          puede_auxiliar: form.puede_auxiliar,
+          ...payload,
           estado: form.estado,
-          observacion: form.observacion.trim() || null
         });
       } else {
         await createCajaAsignacion({
           id_caja: Number(form.id_caja),
           id_usuario: Number(form.id_usuario),
-          puede_responsable: form.puede_responsable,
-          puede_auxiliar: form.puede_auxiliar,
-          observacion: form.observacion.trim() || null
+          ...payload
         });
       }
       setModalOpen(false);
@@ -275,6 +334,10 @@ export default function CierresCajaAsignacionesView() {
 
   const toggleState = async (row) => {
     if (!row?.id_caja_usuario_autorizado) return;
+    if (row.estado) {
+      const confirmed = window.confirm('¿Deseas desactivar esta asignación de caja? El usuario ya no podrá operar con este rol en esta caja.');
+      if (!confirmed) return;
+    }
     try {
       if (row.estado) await inactivateCajaAsignacion(row.id_caja_usuario_autorizado);
       else await updateCajaAsignacion(row.id_caja_usuario_autorizado, { estado: true });
@@ -456,16 +519,15 @@ export default function CierresCajaAsignacionesView() {
             <header className="ventas-modal__header"><div className="ventas-modal__title-wrap"><span className="ventas-modal__icon"><i className="bi bi-person-plus" /></span><div><h3>{editing ? 'Editar asignacion' : 'Nueva asignacion'}</h3><p>Define roles permanentes del usuario en la caja.</p></div></div><button type="button" className="ventas-modal__close-btn" onClick={() => setModalOpen(false)}><i className="bi bi-x-lg" /></button></header>
             <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={submitModal}>
               <div className="cierres-caja-action-modal__grid">
-                <label className="ventas-create-modal__field"><span>Caja</span><select className="ventas-create-modal__select" value={form.id_caja} disabled={Boolean(editing)} onChange={(event) => { const idCaja = event.target.value; setForm((current) => ({ ...current, id_caja: idCaja, id_usuario: '' })); void loadUsersByCaja(idCaja); }}><option value="">Selecciona una caja</option>{cajas.map((caja) => <option key={caja.id_caja} value={caja.id_caja}>{caja.nombre_caja} ({caja.codigo_caja || 'Sin codigo'})</option>)}</select></label>
-                <label className="ventas-create-modal__field"><span>Usuario</span><select className="ventas-create-modal__select" value={form.id_usuario} disabled={loadingUsuarios || Boolean(editing)} onChange={(event) => setForm((current) => ({ ...current, id_usuario: event.target.value }))}><option value="">{loadingUsuarios ? 'Cargando usuarios...' : 'Selecciona un usuario'}</option>{usuarios.map((u) => <option key={u.id_usuario} value={u.id_usuario}>{u.nombre_completo || u.nombre_usuario}</option>)}</select></label>
+                <label className="ventas-create-modal__field"><span>Caja</span><select className="ventas-create-modal__select" value={form.id_caja} disabled={Boolean(editing)} onChange={(event) => { const idCaja = event.target.value; lastUsersLoadKeyRef.current = ''; setUsuarios([]); setForm((current) => ({ ...current, id_caja: idCaja, id_usuario: '' })); }}><option value="">Selecciona una caja</option>{cajas.map((caja) => <option key={caja.id_caja} value={caja.id_caja}>{caja.nombre_caja} ({caja.codigo_caja || 'Sin codigo'})</option>)}</select></label>
+                <label className="ventas-create-modal__field"><span>Rol operativo</span><select className="ventas-create-modal__select" value={form.rol_operativo} onChange={(event) => { lastUsersLoadKeyRef.current = ''; setUsuarios([]); setForm((current) => ({ ...current, rol_operativo: event.target.value, id_usuario: '' })); }}><option value="RESPONSABLE">Responsable</option><option value="AUXILIAR">Auxiliar</option></select></label>
+                <label className="ventas-create-modal__field"><span>Usuario</span><select className="ventas-create-modal__select" value={form.id_usuario} disabled={!canPickUsuario} onChange={(event) => setForm((current) => ({ ...current, id_usuario: event.target.value }))}><option value="">{userPlaceholder}</option>{usuarios.map((u) => <option key={u.id_usuario} value={u.id_usuario}>{u.nombre_completo || u.nombre_usuario}</option>)}</select></label>
               </div>
-              <div className="d-flex flex-wrap gap-3">
-                <label className="form-check"><input className="form-check-input" type="checkbox" checked={form.puede_responsable} onChange={(event) => setForm((current) => ({ ...current, puede_responsable: event.target.checked }))} /><span className="form-check-label">Responsable</span></label>
-                <label className="form-check"><input className="form-check-input" type="checkbox" checked={form.puede_auxiliar} onChange={(event) => setForm((current) => ({ ...current, puede_auxiliar: event.target.checked }))} /><span className="form-check-label">Auxiliar</span></label>
-                {editing ? <label className="form-check"><input className="form-check-input" type="checkbox" checked={form.estado} onChange={(event) => setForm((current) => ({ ...current, estado: event.target.checked }))} /><span className="form-check-label">Activa</span></label> : null}
-              </div>
+              {selectedCaja ? <div className="text-muted small">Sucursal operativa: <strong>{selectedCajaSucursalNombre || 'Sin sucursal'}</strong></div> : null}
+              <div className="d-flex flex-wrap gap-3">{editing ? <label className="form-check"><input className="form-check-input" type="checkbox" checked={form.estado} onChange={(event) => setForm((current) => ({ ...current, estado: event.target.checked }))} /><span className="form-check-label">Activa</span></label> : null}</div>
+              {!formValid ? <div className="ventas-create-modal__error">Debe seleccionar solo un rol operativo: responsable o auxiliar.</div> : null}
               <label className="ventas-create-modal__field"><span>Observacion</span><textarea className="ventas-create-modal__note-input" rows="3" value={form.observacion} onChange={(event) => setForm((current) => ({ ...current, observacion: event.target.value }))} /></label>
-              <footer className="ventas-detail-modal__footer"><div className="ventas-detail-modal__footer-actions"><button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)} disabled={saving}>Cancelar</button><button type="submit" className="btn btn-danger" disabled={!formValid || saving}>{saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear asignacion'}</button></div></footer>
+              <footer className="ventas-detail-modal__footer"><div className="ventas-detail-modal__footer-actions"><button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)} disabled={saving}>Cancelar</button>{editing && form.rol_operativo === 'AUXILIAR' ? <button type="button" className="btn btn-outline-danger" disabled={saving || !editing?.id_caja_usuario_autorizado || !editing?.estado} onClick={async () => { const confirmed = window.confirm('¿Deseas desactivar esta asignación de auxiliar? El usuario ya no podrá operar como auxiliar permanente en esta caja.'); if (!confirmed) return; try { await inactivateCajaAsignacion(editing.id_caja_usuario_autorizado); setModalOpen(false); await loadData(); } catch { /* no-op: hook toast */ } }}>Desactivar auxiliar</button> : null}<button type="submit" className="btn btn-danger" disabled={!formValid || saving}>{saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear asignacion'}</button></div></footer>
             </form>
           </section>
         </div>

@@ -17,6 +17,13 @@ const resolveLineDiscountLabel = (kind) => {
   return 'Descuento por producto';
 };
 
+const buildComplementSummaryLabel = (line) => {
+  const count = Array.isArray(line?.complementos) ? line.complementos.length : 0;
+  if (count <= 0) return 'Sin complementos';
+  if (count === 1) return '1 complemento';
+  return `${count} complementos`;
+};
+
 export default function VentaComposerSummary({ composer, saving }) {
   const clientPickerRef = useRef(null);
   const paymentPickerRef = useRef(null);
@@ -379,21 +386,45 @@ export default function VentaComposerSummary({ composer, saving }) {
                         }
                       />
                     ) : null}
-                    {composer.canApplyDiscount ? (
-                      <div className="mt-2 ventas-cart__line-discount-row">
-                        <label className="form-label mb-0">{resolveLineDiscountLabel(line.kind)}:</label>
-                        <select
-                          className="form-select form-select-sm ventas-cart__line-discount-select"
-                          value={line.id_descuento_catalogo_linea || ''}
-                          onChange={(event) => composer.setLineDiscount(line.cartKey, event.target.value)}
-                        >
-                          <option value="">Sin descuento</option>
-                          {composer.getAvailableLineDiscounts(line).map((discount) => (
-                            <option key={discount.id_descuento_catalogo} value={String(discount.id_descuento_catalogo)}>
-                              {buildDiscountLabel(discount)}
-                            </option>
-                          ))}
-                        </select>
+                    {(composer.canApplyDiscount || line.kind !== 'PRODUCTO') ? (
+                      <div className="ventas-cart__line-actions-row">
+                        {composer.canApplyDiscount ? (
+                          <div className="ventas-cart__line-discount-row">
+                            <label className="form-label mb-0">{resolveLineDiscountLabel(line.kind)}:</label>
+                            <select
+                              className="form-select form-select-sm ventas-cart__line-discount-select"
+                              value={line.id_descuento_catalogo_linea || ''}
+                              onChange={(event) => composer.setLineDiscount(line.cartKey, event.target.value)}
+                            >
+                              <option value="">Sin descuento</option>
+                              {composer.getAvailableLineDiscounts(line).map((discount) => (
+                                <option key={discount.id_descuento_catalogo} value={String(discount.id_descuento_catalogo)}>
+                                  {buildDiscountLabel(discount)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : null}
+
+                        {line.kind !== 'PRODUCTO' ? (
+                          <div className="ventas-cart__line-complement-row">
+                            <span className="ventas-cart__line-complement-label">Complementos</span>
+                            <div className="ventas-cart__line-complement-actions">
+                              <small>{line.complementos_requiere ? buildComplementSummaryLabel(line) : 'No aplica'}</small>
+                              {line.complementos_requiere ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-link btn-sm p-0"
+                                  onClick={() => composer.openComplementModalForLine(line.cartKey)}
+                                >
+                                  {Array.isArray(line.complementos) && line.complementos.length > 0
+                                    ? 'Editar'
+                                    : 'Seleccionar'}
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>

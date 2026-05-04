@@ -13,8 +13,7 @@ const buildInitialCreateForm = (defaultSucursalId = '') => ({
   nombre_caja: '',
   observacion: '',
   id_usuario: '',
-  puede_responsable: true,
-  puede_auxiliar: true
+  rol_operativo: 'RESPONSABLE'
 });
 
 export default function CierreCajaAbrirModal({
@@ -39,7 +38,7 @@ export default function CierreCajaAbrirModal({
     id_sucursal: selectedSucursalId || ''
   }));
   const [createForm, setCreateForm] = useState(() => buildInitialCreateForm(selectedSucursalId));
-  const lastRequestedSucursalRef = useRef(null);
+  const lastRequestedUsuariosKeyRef = useRef(null);
   const lastRequestedCajasRef = useRef(null);
 
   useEffect(() => {
@@ -56,17 +55,19 @@ export default function CierreCajaAbrirModal({
   useEffect(() => {
     if (!open || mode !== 'nueva') return;
     const idSucursalTarget = Number.parseInt(String(createForm.id_sucursal || ''), 10);
+    const rolOperativo = String(createForm.rol_operativo || 'RESPONSABLE').trim().toUpperCase();
     if (!Number.isInteger(idSucursalTarget) || idSucursalTarget <= 0) return;
-    if (lastRequestedSucursalRef.current === idSucursalTarget) return;
-    lastRequestedSucursalRef.current = idSucursalTarget;
+    const requestKey = `${idSucursalTarget}:${rolOperativo}`;
+    if (lastRequestedUsuariosKeyRef.current === requestKey) return;
+    lastRequestedUsuariosKeyRef.current = requestKey;
     if (typeof onRequestUsuarios === 'function') {
-      void Promise.resolve(onRequestUsuarios(idSucursalTarget)).catch(() => {});
+      void Promise.resolve(onRequestUsuarios(idSucursalTarget, rolOperativo)).catch(() => {});
     }
-  }, [createForm.id_sucursal, mode, onRequestUsuarios, open]);
+  }, [createForm.id_sucursal, createForm.rol_operativo, mode, onRequestUsuarios, open]);
 
   useEffect(() => {
     if (open) return;
-    lastRequestedSucursalRef.current = null;
+    lastRequestedUsuariosKeyRef.current = null;
     lastRequestedCajasRef.current = null;
   }, [open]);
 
@@ -80,7 +81,7 @@ export default function CierreCajaAbrirModal({
   const isCreateValid = useMemo(() => {
     const hasNombre = String(createForm.nombre_caja || '').trim().length > 0;
     const hasUsuario = Number.parseInt(String(createForm.id_usuario || ''), 10) > 0;
-    const hasRole = Boolean(createForm.puede_responsable || createForm.puede_auxiliar);
+    const hasRole = ['RESPONSABLE', 'AUXILIAR'].includes(String(createForm.rol_operativo || '').trim().toUpperCase());
     const hasSucursal = !canSelectSucursal || Number.parseInt(String(createForm.id_sucursal || ''), 10) > 0;
     return hasNombre && hasUsuario && hasRole && hasSucursal;
   }, [canSelectSucursal, createForm]);
@@ -118,8 +119,8 @@ export default function CierreCajaAbrirModal({
         observacion: createForm.observacion.trim() || null,
         asignacion_inicial: {
           id_usuario: idUsuario,
-          puede_responsable: Boolean(createForm.puede_responsable),
-          puede_auxiliar: Boolean(createForm.puede_auxiliar),
+          puede_responsable: createForm.rol_operativo === 'RESPONSABLE',
+          puede_auxiliar: createForm.rol_operativo === 'AUXILIAR',
           observacion: 'Asignacion inicial desde nueva caja'
         }
       });
@@ -292,6 +293,24 @@ export default function CierreCajaAbrirModal({
               </label>
 
               <label className="ventas-create-modal__field">
+                <span>Rol operativo</span>
+                <select
+                  className="ventas-create-modal__select"
+                  value={createForm.rol_operativo}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      rol_operativo: event.target.value,
+                      id_usuario: ''
+                    }))
+                  }
+                >
+                  <option value="RESPONSABLE">Responsable</option>
+                  <option value="AUXILIAR">Auxiliar</option>
+                </select>
+              </label>
+
+              <label className="ventas-create-modal__field">
                 <span>Usuario asignado</span>
                 <select
                   className="ventas-create-modal__select"
@@ -325,31 +344,6 @@ export default function CierreCajaAbrirModal({
                 placeholder="Notas administrativas opcionales..."
               />
             </label>
-
-            <div className="d-flex flex-wrap gap-3">
-              <label className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  checked={createForm.puede_responsable}
-                  onChange={(event) =>
-                    setCreateForm((current) => ({ ...current, puede_responsable: event.target.checked }))
-                  }
-                />
-                <span className="form-check-label">Permitir como responsable</span>
-              </label>
-              <label className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  checked={createForm.puede_auxiliar}
-                  onChange={(event) =>
-                    setCreateForm((current) => ({ ...current, puede_auxiliar: event.target.checked }))
-                  }
-                />
-                <span className="form-check-label">Permitir como auxiliar</span>
-              </label>
-            </div>
 
             <footer className="ventas-detail-modal__footer">
               <div className="ventas-detail-modal__footer-actions">
