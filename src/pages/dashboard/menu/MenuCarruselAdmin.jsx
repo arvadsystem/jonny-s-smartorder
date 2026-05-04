@@ -13,10 +13,41 @@ const MAX_CAROUSEL_ITEMS = 6;
 const MENU_PUBLIC_BUCKET = 'jonnys-assets';
 const MENU_CAROUSEL_UPLOAD_CONTEXT = 'carrusel';
 const GLOBAL_BRANCH_KEY = '0';
+const SUPABASE_PUBLIC_OBJECT_MARKER = '/storage/v1/object/public/';
+const MENU_CAROUSEL_STORAGE_PREFIX = `${MENU_PUBLIC_BUCKET}/${MENU_CAROUSEL_UPLOAD_CONTEXT}/`;
 
 const isPersistentCarouselImageUrl = (rawUrl) => {
   const value = String(rawUrl || '').trim();
   return Boolean(value) && !value.startsWith('blob:') && !value.startsWith('data:');
+};
+
+const toCarouselStoragePath = (rawValue) => {
+  const value = String(rawValue || '').trim();
+  if (!value) return '';
+  if (!isPersistentCarouselImageUrl(value)) return '';
+
+  let candidate = value;
+  if (/^https?:\/\//i.test(candidate)) {
+    try {
+      const parsed = new URL(candidate);
+      const pathName = decodeURIComponent(String(parsed.pathname || ''));
+      const markerIndex = pathName.indexOf(SUPABASE_PUBLIC_OBJECT_MARKER);
+      if (markerIndex < 0) return '';
+      candidate = pathName.slice(markerIndex + SUPABASE_PUBLIC_OBJECT_MARKER.length);
+    } catch {
+      return '';
+    }
+  } else if (candidate.startsWith('/')) {
+    const pathName = decodeURIComponent(candidate);
+    const markerIndex = pathName.indexOf(SUPABASE_PUBLIC_OBJECT_MARKER);
+    if (markerIndex >= 0) {
+      candidate = pathName.slice(markerIndex + SUPABASE_PUBLIC_OBJECT_MARKER.length);
+    }
+  }
+
+  const normalized = String(candidate || '').trim().replace(/^\/+/, '');
+  if (!normalized.startsWith(MENU_CAROUSEL_STORAGE_PREFIX)) return '';
+  return normalized;
 };
 
 const normalizeCarouselConfig = (value) => {
@@ -30,32 +61,16 @@ const normalizeCarouselConfig = (value) => {
   };
 };
 
-const toPositiveUniqueIds = (values = []) => {
-  const source = Array.isArray(values) ? values : [];
-  const seen = new Set();
-  const normalized = [];
-
-  source.forEach((value) => {
-    const parsed = Number.parseInt(String(value ?? '').trim(), 10);
-    if (!Number.isInteger(parsed) || parsed <= 0 || seen.has(parsed)) return;
-    seen.add(parsed);
-    normalized.push(parsed);
-  });
-
-  return normalized.slice(0, MAX_CAROUSEL_ITEMS);
-};
-
 const normalizeCustomSlides = (rows = []) =>
   (Array.isArray(rows) ? rows : [])
     .map((row, index) => ({
       id: String(row?.id || `custom-${index}`),
-      imageUrl: String(row?.imageUrl || '').trim(),
+      imageUrl: toCarouselStoragePath(row?.imageUrl),
       title: String(row?.title || '').trim()
     }))
     .filter((row) => isPersistentCarouselImageUrl(row.imageUrl))
     .slice(0, MAX_CAROUSEL_ITEMS);
 
-const readBranchIdsFromConfig = (config, branchKey) => toPositiveUniqueIds(config?.byBranch?.[branchKey]);
 const readBranchCustomFromConfig = (config, branchKey) => normalizeCustomSlides(config?.customByBranch?.[branchKey]);
 
 // Submodulo administrativo para elegir que fotos reales del catalogo publico
@@ -134,12 +149,11 @@ const MenuCarruselAdmin = () => {
           .filter((row) => row.id_detalle_menu > 0);
 
         const remoteConfig = normalizeCarouselConfig(remoteConfigRaw);
-        const savedIds = readBranchIdsFromConfig(remoteConfig, GLOBAL_BRANCH_KEY);
         const savedCustom = readBranchCustomFromConfig(remoteConfig, GLOBAL_BRANCH_KEY);
 
         setCatalogItems(rows);
         setServerConfig(remoteConfig);
-        setSelectedIds(savedIds.filter((id) => rows.some((row) => row.id_detalle_menu === id)));
+        setSelectedIds([]);
         setCustomImages(savedCustom);
       } catch (e) {
         if (!isMounted) return;
@@ -166,7 +180,7 @@ const MenuCarruselAdmin = () => {
 
   const selectedLookup = useMemo(() => new Set(selectedIds), [selectedIds]);
   const customImageCount = customImages.length;
-  const selectedTotal = Math.min(MAX_CAROUSEL_ITEMS, customImageCount + selectedIds.length);
+  const selectedTotal = Math.min(MAX_CAROUSEL_ITEMS, customImageCount);
   const availableCatalogSlots = Math.max(0, MAX_CAROUSEL_ITEMS - customImageCount);
 
   const handleToggle = (idDetalleMenu) => {
@@ -213,7 +227,7 @@ const MenuCarruselAdmin = () => {
       const nextConfig = {
         byBranch: {
           ...(serverConfig?.byBranch || {}),
-          [GLOBAL_BRANCH_KEY]: toPositiveUniqueIds(selectedIds)
+          [GLOBAL_BRANCH_KEY]: []
         },
         customByBranch: {
           ...(serverConfig?.customByBranch || {}),
@@ -224,7 +238,7 @@ const MenuCarruselAdmin = () => {
       const saved = await menuPublicacionAdminService.saveCarruselConfig(nextConfig);
       const normalizedSaved = normalizeCarouselConfig(saved);
       setServerConfig(normalizedSaved);
-      setSelectedIds(readBranchIdsFromConfig(normalizedSaved, GLOBAL_BRANCH_KEY));
+      setSelectedIds([]);
       setCustomImages(readBranchCustomFromConfig(normalizedSaved, GLOBAL_BRANCH_KEY));
       setSuccess('Carrusel global guardado correctamente.');
     } catch (saveError) {
@@ -261,12 +275,14 @@ const MenuCarruselAdmin = () => {
         });
 
         const idArchivo = Number(response?.id_archivo || response?.data?.id_archivo || 0);
+        const storagePathRaw = String(response?.storage_path || response?.data?.storage_path || '').trim();
         const storedUrl = String(response?.url_publica || response?.data?.url_publica || '').trim();
-        if (!storedUrl) continue;
+        const storagePath = toCarouselStoragePath(storagePathRaw || storedUrl);
+        if (!storagePath) continue;
 
         uploadedRows.push({
           id: idArchivo > 0 ? `archivo-${idArchivo}` : `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          imageUrl: storedUrl,
+          imageUrl: storagePath,
           title: String(file?.name || '').replace(/\.[^.]+$/, '')
         });
       }
