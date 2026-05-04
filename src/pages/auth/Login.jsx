@@ -220,11 +220,6 @@ const Login = () => {
         <div className="side-fade" />
 
         <div className="left-content">
-          <div className="badge">
-            <span className="dot" />
-            SISTEMA DE GESTION - HONDURAS
-          </div>
-
           <div className="brand">
             <div className="logo-ring">
               <div className="halo" />
