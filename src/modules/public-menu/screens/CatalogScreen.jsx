@@ -115,33 +115,10 @@ const getGreetingName = (user) => {
 };
 
 const buildCatalogHeroSlides = ({
-  products = [],
   branchName = 'Sucursal',
   orderTypeLabel = 'Pedido',
-  preferredDetailIds = [],
   customImages = []
 }) => {
-  const withImage = (Array.isArray(products) ? products : []).filter((row) => Boolean(row?.imagen_url));
-  const unique = [];
-  const seen = new Set();
-
-  withImage.forEach((row) => {
-    const imageUrl = String(row?.imagen_url || '').trim();
-    if (!imageUrl || seen.has(imageUrl)) return;
-    seen.add(imageUrl);
-    unique.push(row);
-  });
-
-  const preferredOrder = Array.isArray(preferredDetailIds)
-    ? preferredDetailIds.map((value) => Number(value || 0)).filter((value) => value > 0)
-    : [];
-
-  const preferredRows = [];
-  preferredOrder.forEach((idDetalle) => {
-    const found = unique.find((row) => Number(row?.id_detalle_menu || 0) === idDetalle);
-    if (found) preferredRows.push(found);
-  });
-
   const customSlides = (Array.isArray(customImages) ? customImages : [])
     .map((row, index) => ({
       id: `hero-custom-${row?.id || index}`,
@@ -149,36 +126,10 @@ const buildCatalogHeroSlides = ({
       title: String(row?.title || '').trim() || 'Especialidad de la casa',
       subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
     }))
-    .filter((row) => Boolean(row.imageUrl));
+    .filter((row) => Boolean(row.imageUrl))
+    .slice(0, 6);
 
-  const hasConfiguredCatalogSelection = preferredOrder.length > 0;
-  const hasConfiguredCustomSlides = customSlides.length > 0;
-
-  let catalogSourceRows = [];
-  if (hasConfiguredCatalogSelection) {
-    catalogSourceRows = preferredRows;
-  } else if (!hasConfiguredCustomSlides) {
-    catalogSourceRows = unique;
-  }
-
-  const catalogSlides = catalogSourceRows.map((row, index) => ({
-    id: `hero-${row?.id_detalle_menu || index}`,
-    imageUrl: row.imagen_url,
-    title: row?.nombre || 'Platillo',
-    subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
-  }));
-  const slides = [...customSlides, ...catalogSlides].slice(0, 6);
-
-  if (!slides.length) {
-    slides.push({
-      id: 'hero-fallback',
-      imageUrl: '',
-      title: 'Menu',
-      subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
-    });
-  }
-
-  return slides;
+  return customSlides;
 };
 
 const buildOrderPayloadFingerprint = (payload) => {
@@ -809,16 +760,18 @@ const CatalogScreen = () => {
         onToggleTheme={onToggleTheme}
       />
 
-      <PremiumHero
-        slides={heroSlides}
-        heroIndex={heroIndex}
-        branchName={state.selectedBranch?.displayName || state.selectedBranch?.name || ''}
-        orderTypeLabel={orderTypeLabel}
-        onPrev={() => goToHeroSlide(heroIndex - 1)}
-        onNext={() => goToHeroSlide(heroIndex + 1)}
-        onSelectSlide={goToHeroSlide}
-        onPrimaryAction={handleScrollToCatalog}
-      />
+      {heroSlides.length > 0 ? (
+        <PremiumHero
+          slides={heroSlides}
+          heroIndex={heroIndex}
+          branchName={state.selectedBranch?.displayName || state.selectedBranch?.name || ''}
+          orderTypeLabel={orderTypeLabel}
+          onPrev={() => goToHeroSlide(heroIndex - 1)}
+          onNext={() => goToHeroSlide(heroIndex + 1)}
+          onSelectSlide={goToHeroSlide}
+          onPrimaryAction={handleScrollToCatalog}
+        />
+      ) : null}
 
       {showJonnyExperience ? <JonnyExperienceSection /> : null}
 
