@@ -229,6 +229,31 @@
   gap: 10px;
 }
 
+.dashboard-shell .navbar-right-tabs {
+  max-width: min(48vw, 620px);
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+  border-right: 1px solid rgba(143, 110, 82, 0.16);
+}
+
+.dashboard-shell .navbar-right-tabs .inventory-tabs-fixed {
+  gap: 4px;
+}
+
+.dashboard-shell .navbar-right-tabs .inventory-tab-btn {
+  min-height: 35px;
+  padding: 6px 10px;
+  border-radius: 12px !important;
+  font-size: 0.9rem;
+  gap: 6px;
+}
+
+.dashboard-shell .navbar-right-tabs .inventory-tab-btn i {
+  font-size: 0.98rem;
+}
+
 .dashboard-shell .navbar-icon-group {
   display: flex;
   align-items: center;
@@ -734,6 +759,7 @@
     width: 36px;
     height: 36px;
   }
+
 }
 
 @media (max-width: 768px) {

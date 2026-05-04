@@ -27,10 +27,6 @@ import { isPublicMenuAuthError, toPublicMenuUiErrorMessage } from '../utils/publ
 import { requiresItemConfiguration } from '../utils/publicMenuItemConfig';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import useOrderSuccessSound from '../hooks/useOrderSuccessSound';
-import {
-  getHeroCarouselCustomImagesByBranch,
-  getHeroCarouselSelectionByBranch
-} from '../utils/heroCarouselStorage';
 import { formatPublicMenuCategoryLabel } from '../utils/publicMenuCategoryLabels';
 import { resolveInventarioImageUrl } from '../../../utils/inventarioImagenes';
 import jonnysLogo from '../../../assets/images/logo-sin-fondo.png';
@@ -39,6 +35,62 @@ const getOrderTypeLabel = (orderTypeId) =>
   PUBLIC_MENU_ORDER_TYPE_OPTIONS.find((option) => option.id === orderTypeId)?.title || 'Pedido';
 
 const HERO_AUTOPLAY_MS = 5000;
+const HERO_CONFIG_GLOBAL_BRANCH_KEY = '0';
+
+const normalizeHeroCarouselConfig = (value) => {
+  if (!value || typeof value !== 'object') return { byBranch: {}, customByBranch: {} };
+  return {
+    byBranch: value.byBranch && typeof value.byBranch === 'object' ? value.byBranch : {},
+    customByBranch:
+      value.customByBranch && typeof value.customByBranch === 'object'
+        ? value.customByBranch
+        : {}
+  };
+};
+
+const toBranchKey = (branchId) => {
+  const parsed = Number.parseInt(String(branchId ?? '').trim(), 10);
+  if (!Number.isInteger(parsed) || parsed < 0) return HERO_CONFIG_GLOBAL_BRANCH_KEY;
+  return String(parsed);
+};
+
+const toPositiveUniqueIds = (values = []) => {
+  const source = Array.isArray(values) ? values : [];
+  const seen = new Set();
+  const normalized = [];
+
+  source.forEach((value) => {
+    const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+    if (!Number.isInteger(parsed) || parsed <= 0 || seen.has(parsed)) return;
+    seen.add(parsed);
+    normalized.push(parsed);
+  });
+
+  return normalized.slice(0, 6);
+};
+
+const toCustomSlides = (rows = []) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row, index) => ({
+      id: String(row?.id || `custom-${index}`),
+      imageUrl: resolveInventarioImageUrl(String(row?.imageUrl || '').trim()),
+      title: String(row?.title || '').trim()
+    }))
+    .filter((row) => Boolean(row.imageUrl))
+    .slice(0, 6);
+
+const resolveHeroSelectionByBranch = (config, branchId) => {
+  const branchKey = toBranchKey(branchId);
+  const ids = config?.byBranch?.[branchKey] ?? config?.byBranch?.[HERO_CONFIG_GLOBAL_BRANCH_KEY];
+  return toPositiveUniqueIds(ids);
+};
+
+const resolveHeroCustomByBranch = (config, branchId) => {
+  const branchKey = toBranchKey(branchId);
+  const rows =
+    config?.customByBranch?.[branchKey] ?? config?.customByBranch?.[HERO_CONFIG_GLOBAL_BRANCH_KEY];
+  return toCustomSlides(rows);
+};
 
 const getGreetingName = (user) => {
   const candidates = [
@@ -63,33 +115,10 @@ const getGreetingName = (user) => {
 };
 
 const buildCatalogHeroSlides = ({
-  products = [],
   branchName = 'Sucursal',
   orderTypeLabel = 'Pedido',
-  preferredDetailIds = [],
   customImages = []
 }) => {
-  const withImage = (Array.isArray(products) ? products : []).filter((row) => Boolean(row?.imagen_url));
-  const unique = [];
-  const seen = new Set();
-
-  withImage.forEach((row) => {
-    const imageUrl = String(row?.imagen_url || '').trim();
-    if (!imageUrl || seen.has(imageUrl)) return;
-    seen.add(imageUrl);
-    unique.push(row);
-  });
-
-  const preferredOrder = Array.isArray(preferredDetailIds)
-    ? preferredDetailIds.map((value) => Number(value || 0)).filter((value) => value > 0)
-    : [];
-
-  const preferredRows = [];
-  preferredOrder.forEach((idDetalle) => {
-    const found = unique.find((row) => Number(row?.id_detalle_menu || 0) === idDetalle);
-    if (found) preferredRows.push(found);
-  });
-
   const customSlides = (Array.isArray(customImages) ? customImages : [])
     .map((row, index) => ({
       id: `hero-custom-${row?.id || index}`,
@@ -97,36 +126,10 @@ const buildCatalogHeroSlides = ({
       title: String(row?.title || '').trim() || 'Especialidad de la casa',
       subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
     }))
-    .filter((row) => Boolean(row.imageUrl));
+    .filter((row) => Boolean(row.imageUrl))
+    .slice(0, 6);
 
-  const hasConfiguredCatalogSelection = preferredOrder.length > 0;
-  const hasConfiguredCustomSlides = customSlides.length > 0;
-
-  let catalogSourceRows = [];
-  if (hasConfiguredCatalogSelection) {
-    catalogSourceRows = preferredRows;
-  } else if (!hasConfiguredCustomSlides) {
-    catalogSourceRows = unique;
-  }
-
-  const catalogSlides = catalogSourceRows.map((row, index) => ({
-    id: `hero-${row?.id_detalle_menu || index}`,
-    imageUrl: row.imagen_url,
-    title: row?.nombre || 'Platillo',
-    subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
-  }));
-  const slides = [...customSlides, ...catalogSlides].slice(0, 6);
-
-  if (!slides.length) {
-    slides.push({
-      id: 'hero-fallback',
-      imageUrl: '',
-      title: 'Menu',
-      subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
-    });
-  }
-
-  return slides;
+  return customSlides;
 };
 
 const buildOrderPayloadFingerprint = (payload) => {
@@ -228,6 +231,7 @@ const CatalogScreen = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [heroCarouselConfig, setHeroCarouselConfig] = useState({ byBranch: {}, customByBranch: {} });
   const [cartFabPulse, setCartFabPulse] = useState(false);
   const [recentlyAddedId, setRecentlyAddedId] = useState(null);
   const [categorySwitching, setCategorySwitching] = useState(false);
@@ -286,6 +290,26 @@ const CatalogScreen = () => {
     }
   }, [actions, state.orderType]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadHeroCarouselConfig = async () => {
+      try {
+        const response = await publicMenuBootstrapService.getHeroCarouselConfig();
+        if (!isMounted) return;
+        setHeroCarouselConfig(normalizeHeroCarouselConfig(response));
+      } catch {
+        if (!isMounted) return;
+        setHeroCarouselConfig({ byBranch: {}, customByBranch: {} });
+      }
+    };
+
+    void loadHeroCarouselConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const cartQuantityByDetail = useMemo(
     () => {
       const map = new Map();
@@ -322,16 +346,31 @@ const CatalogScreen = () => {
   const hasSelectedCategory = !isCatalogLanding;
   const shouldShowSyncWarning = Boolean(syncWarning) && !hasVisibleProducts;
   const [showJonnyExperience, setShowJonnyExperience] = useState(true);
+  const preferredHeroDetailIds = useMemo(
+    () => resolveHeroSelectionByBranch(heroCarouselConfig, branchId),
+    [branchId, heroCarouselConfig]
+  );
+  const customHeroSlides = useMemo(
+    () => resolveHeroCustomByBranch(heroCarouselConfig, branchId),
+    [branchId, heroCarouselConfig]
+  );
   const heroSlides = useMemo(
     () =>
       buildCatalogHeroSlides({
         products: availableProducts,
         branchName: state.selectedBranch?.displayName || state.selectedBranch?.name || 'Sucursal',
         orderTypeLabel,
-        preferredDetailIds: getHeroCarouselSelectionByBranch(branchId),
-        customImages: getHeroCarouselCustomImagesByBranch(branchId)
+        preferredDetailIds: preferredHeroDetailIds,
+        customImages: customHeroSlides
       }),
-    [availableProducts, branchId, orderTypeLabel, state.selectedBranch?.displayName, state.selectedBranch?.name]
+    [
+      availableProducts,
+      customHeroSlides,
+      orderTypeLabel,
+      preferredHeroDetailIds,
+      state.selectedBranch?.displayName,
+      state.selectedBranch?.name
+    ]
   );
 
   useEffect(() => {
@@ -721,16 +760,18 @@ const CatalogScreen = () => {
         onToggleTheme={onToggleTheme}
       />
 
-      <PremiumHero
-        slides={heroSlides}
-        heroIndex={heroIndex}
-        branchName={state.selectedBranch?.displayName || state.selectedBranch?.name || ''}
-        orderTypeLabel={orderTypeLabel}
-        onPrev={() => goToHeroSlide(heroIndex - 1)}
-        onNext={() => goToHeroSlide(heroIndex + 1)}
-        onSelectSlide={goToHeroSlide}
-        onPrimaryAction={handleScrollToCatalog}
-      />
+      {heroSlides.length > 0 ? (
+        <PremiumHero
+          slides={heroSlides}
+          heroIndex={heroIndex}
+          branchName={state.selectedBranch?.displayName || state.selectedBranch?.name || ''}
+          orderTypeLabel={orderTypeLabel}
+          onPrev={() => goToHeroSlide(heroIndex - 1)}
+          onNext={() => goToHeroSlide(heroIndex + 1)}
+          onSelectSlide={goToHeroSlide}
+          onPrimaryAction={handleScrollToCatalog}
+        />
+      ) : null}
 
       {showJonnyExperience ? <JonnyExperienceSection /> : null}
 

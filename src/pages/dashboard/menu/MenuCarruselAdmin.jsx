@@ -7,22 +7,71 @@ import {
   optimizeInventarioImageForUpload,
   resolveInventarioImageUrl
 } from '../../../utils/inventarioImagenes';
-import {
-  getGlobalHeroCarouselCustomImages,
-  getGlobalHeroCarouselSelection,
-  saveGlobalHeroCarouselCustomImages,
-  saveGlobalHeroCarouselSelection
-} from '../../../modules/public-menu/utils/heroCarouselStorage';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
 
 const MAX_CAROUSEL_ITEMS = 6;
 const MENU_PUBLIC_BUCKET = 'jonnys-assets';
 const MENU_CAROUSEL_UPLOAD_CONTEXT = 'carrusel';
+const GLOBAL_BRANCH_KEY = '0';
+const SUPABASE_PUBLIC_OBJECT_MARKER = '/storage/v1/object/public/';
+const MENU_CAROUSEL_STORAGE_PREFIX = `${MENU_PUBLIC_BUCKET}/${MENU_CAROUSEL_UPLOAD_CONTEXT}/`;
 
 const isPersistentCarouselImageUrl = (rawUrl) => {
   const value = String(rawUrl || '').trim();
   return Boolean(value) && !value.startsWith('blob:') && !value.startsWith('data:');
 };
+
+const toCarouselStoragePath = (rawValue) => {
+  const value = String(rawValue || '').trim();
+  if (!value) return '';
+  if (!isPersistentCarouselImageUrl(value)) return '';
+
+  let candidate = value;
+  if (/^https?:\/\//i.test(candidate)) {
+    try {
+      const parsed = new URL(candidate);
+      const pathName = decodeURIComponent(String(parsed.pathname || ''));
+      const markerIndex = pathName.indexOf(SUPABASE_PUBLIC_OBJECT_MARKER);
+      if (markerIndex < 0) return '';
+      candidate = pathName.slice(markerIndex + SUPABASE_PUBLIC_OBJECT_MARKER.length);
+    } catch {
+      return '';
+    }
+  } else if (candidate.startsWith('/')) {
+    const pathName = decodeURIComponent(candidate);
+    const markerIndex = pathName.indexOf(SUPABASE_PUBLIC_OBJECT_MARKER);
+    if (markerIndex >= 0) {
+      candidate = pathName.slice(markerIndex + SUPABASE_PUBLIC_OBJECT_MARKER.length);
+    }
+  }
+
+  const normalized = String(candidate || '').trim().replace(/^\/+/, '');
+  if (!normalized.startsWith(MENU_CAROUSEL_STORAGE_PREFIX)) return '';
+  return normalized;
+};
+
+const normalizeCarouselConfig = (value) => {
+  if (!value || typeof value !== 'object') return { byBranch: {}, customByBranch: {} };
+  return {
+    byBranch: value.byBranch && typeof value.byBranch === 'object' ? value.byBranch : {},
+    customByBranch:
+      value.customByBranch && typeof value.customByBranch === 'object'
+        ? value.customByBranch
+        : {}
+  };
+};
+
+const normalizeCustomSlides = (rows = []) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row, index) => ({
+      id: String(row?.id || `custom-${index}`),
+      imageUrl: toCarouselStoragePath(row?.imageUrl),
+      title: String(row?.title || '').trim()
+    }))
+    .filter((row) => isPersistentCarouselImageUrl(row.imageUrl))
+    .slice(0, MAX_CAROUSEL_ITEMS);
+
+const readBranchCustomFromConfig = (config, branchKey) => normalizeCustomSlides(config?.customByBranch?.[branchKey]);
 
 // Submodulo administrativo para elegir que fotos reales del catalogo publico
 // se usan en el carrusel/hero del landing por sucursal.
@@ -31,10 +80,12 @@ const MenuCarruselAdmin = () => {
   const [catalogBranchId, setCatalogBranchId] = useState('');
   const [catalogItems, setCatalogItems] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
-  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [_loadingBranches, setLoadingBranches] = useState(false);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [customImages, setCustomImages] = useState([]);
+  const [serverConfig, setServerConfig] = useState({ byBranch: {}, customByBranch: {} });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [customImageConfirm, setCustomImageConfirm] = useState(null);
@@ -83,7 +134,10 @@ const MenuCarruselAdmin = () => {
         setLoadingCatalog(true);
         setError('');
         setSuccess('');
-        const response = await menuPublicacionAdminService.getCatalogoPublicacion(idSucursal);
+        const [response, remoteConfigRaw] = await Promise.all([
+          menuPublicacionAdminService.getCatalogoPublicacion(idSucursal),
+          menuPublicacionAdminService.getCarruselConfig()
+        ]);
         if (!isMounted) return;
 
         const rows = (Array.isArray(response?.items) ? response.items : [])
@@ -94,15 +148,19 @@ const MenuCarruselAdmin = () => {
           }))
           .filter((row) => row.id_detalle_menu > 0);
 
+        const remoteConfig = normalizeCarouselConfig(remoteConfigRaw);
+        const savedCustom = readBranchCustomFromConfig(remoteConfig, GLOBAL_BRANCH_KEY);
+
         setCatalogItems(rows);
-        const saved = getGlobalHeroCarouselSelection();
-        setSelectedIds(saved.filter((id) => rows.some((row) => row.id_detalle_menu === id)));
-        setCustomImages(getGlobalHeroCarouselCustomImages().filter((row) => isPersistentCarouselImageUrl(row.imageUrl)));
+        setServerConfig(remoteConfig);
+        setSelectedIds([]);
+        setCustomImages(savedCustom);
       } catch (e) {
         if (!isMounted) return;
         setCatalogItems([]);
         setSelectedIds([]);
         setCustomImages([]);
+        setServerConfig({ byBranch: {}, customByBranch: {} });
         setError(e?.message || 'No se pudo cargar el catalogo de la sucursal.');
       } finally {
         if (isMounted) setLoadingCatalog(false);
@@ -115,14 +173,14 @@ const MenuCarruselAdmin = () => {
     };
   }, [catalogBranchId]);
 
-  const selectedSucursal = useMemo(
+  const _selectedSucursal = useMemo(
     () => sucursales.find((row) => String(row?.id_sucursal || '') === String(catalogBranchId || '')) || null,
     [catalogBranchId, sucursales]
   );
 
   const selectedLookup = useMemo(() => new Set(selectedIds), [selectedIds]);
   const customImageCount = customImages.length;
-  const selectedTotal = Math.min(MAX_CAROUSEL_ITEMS, customImageCount + selectedIds.length);
+  const selectedTotal = Math.min(MAX_CAROUSEL_ITEMS, customImageCount);
   const availableCatalogSlots = Math.max(0, MAX_CAROUSEL_ITEMS - customImageCount);
 
   const handleToggle = (idDetalleMenu) => {
@@ -160,10 +218,34 @@ const MenuCarruselAdmin = () => {
     });
   };
 
-  const handleSave = () => {
-    saveGlobalHeroCarouselSelection(selectedIds);
-    saveGlobalHeroCarouselCustomImages(customImages);
-    setSuccess('Carrusel global guardado correctamente.');
+  const handleSave = async () => {
+    try {
+      setSavingConfig(true);
+      setError('');
+      setSuccess('');
+
+      const nextConfig = {
+        byBranch: {
+          ...(serverConfig?.byBranch || {}),
+          [GLOBAL_BRANCH_KEY]: []
+        },
+        customByBranch: {
+          ...(serverConfig?.customByBranch || {}),
+          [GLOBAL_BRANCH_KEY]: normalizeCustomSlides(customImages)
+        }
+      };
+
+      const saved = await menuPublicacionAdminService.saveCarruselConfig(nextConfig);
+      const normalizedSaved = normalizeCarouselConfig(saved);
+      setServerConfig(normalizedSaved);
+      setSelectedIds([]);
+      setCustomImages(readBranchCustomFromConfig(normalizedSaved, GLOBAL_BRANCH_KEY));
+      setSuccess('Carrusel global guardado correctamente.');
+    } catch (saveError) {
+      setError(saveError?.message || 'No se pudo guardar la configuracion del carrusel.');
+    } finally {
+      setSavingConfig(false);
+    }
   };
 
   const handleUploadCustomImages = async (event) => {
@@ -193,12 +275,14 @@ const MenuCarruselAdmin = () => {
         });
 
         const idArchivo = Number(response?.id_archivo || response?.data?.id_archivo || 0);
+        const storagePathRaw = String(response?.storage_path || response?.data?.storage_path || '').trim();
         const storedUrl = String(response?.url_publica || response?.data?.url_publica || '').trim();
-        if (!storedUrl) continue;
+        const storagePath = toCarouselStoragePath(storagePathRaw || storedUrl);
+        if (!storagePath) continue;
 
         uploadedRows.push({
           id: idArchivo > 0 ? `archivo-${idArchivo}` : `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          imageUrl: storedUrl,
+          imageUrl: storagePath,
           title: String(file?.name || '').replace(/\.[^.]+$/, '')
         });
       }
@@ -273,9 +357,9 @@ const MenuCarruselAdmin = () => {
             type="button"
             className="btn inv-prod-btn-primary"
             onClick={handleSave}
-            disabled={loadingCatalog}
+            disabled={loadingCatalog || savingConfig || uploadingImages}
           >
-            Guardar carrusel
+            {savingConfig ? 'Guardando...' : 'Guardar carrusel'}
           </button>
         </div>
 
