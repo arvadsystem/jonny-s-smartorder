@@ -207,10 +207,15 @@ export default function EmpleadoCard({
   onOpenDetail,
   actionLoading = false,
   deletingId = null,
+  canEdit = true,
+  canInactivate = true,
+  canDelete = false,
+  canView = true,
   getPersonaNombre,
   getSucursalNombre,
   getGeneroLabel,
 }) {
+  void canDelete;
   const isActive = parseEstado(empleado);
   const idEmpleado = empleado?.id_empleado;
   const deleting = deletingId === idEmpleado;
@@ -268,38 +273,44 @@ export default function EmpleadoCard({
       }
       footerActions={
         <>
-          <button
-            type="button"
-            className="inv-catpro-action inv-catpro-action-compact"
-            onClick={() => onOpenDetail?.(empleado)}
-            title="Detalle"
-            disabled={actionLoading || deleting}
-          >
-            <i className="bi bi-eye" />
-            <span className="inv-catpro-action-label">Detalle</span>
-          </button>
+          {canView ? (
+            <button
+              type="button"
+              className="inv-catpro-action inv-catpro-action-compact"
+              onClick={() => onOpenDetail?.(empleado)}
+              title="Detalle"
+              disabled={actionLoading || deleting || !canView}
+            >
+              <i className="bi bi-eye" />
+              <span className="inv-catpro-action-label">Detalle</span>
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            className="inv-catpro-action edit inv-catpro-action-compact"
-            onClick={() => onOpenEdit(empleado)}
-            title="Editar"
-            disabled={actionLoading || deleting}
-          >
-            <i className="bi bi-pencil-square" />
-            <span className="inv-catpro-action-label">Editar</span>
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              className="inv-catpro-action edit inv-catpro-action-compact"
+              onClick={() => onOpenEdit(empleado)}
+              title="Editar"
+              disabled={actionLoading || deleting || !canEdit}
+            >
+              <i className="bi bi-pencil-square" />
+              <span className="inv-catpro-action-label">Editar</span>
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
-            onClick={() => onOpenDelete(empleado)}
-            title={isActivating ? "Activar" : "Inactivar"}
-            disabled={actionLoading || deleting}
-          >
-            <i className={`bi ${statusActionIcon}`} />
-            <span className="inv-catpro-action-label">{statusActionLabel}</span>
-          </button>
+          {canInactivate ? (
+            <button
+              type="button"
+              className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
+              onClick={() => onOpenDelete(empleado)}
+              title={isActivating ? "Activar" : "Inactivar"}
+              disabled={actionLoading || deleting || !canInactivate}
+            >
+              <i className={`bi ${statusActionIcon}`} />
+              <span className="inv-catpro-action-label">{statusActionLabel}</span>
+            </button>
+          ) : null}
         </>
       }
     >

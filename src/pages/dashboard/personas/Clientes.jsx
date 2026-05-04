@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Select from "react-select";
-import AsyncSelect from "react-select/async";
+import { usePermisos } from "../../../context/PermisosContext";
 import { personaService } from "../../../services/personasService";
-import { parametrosService } from "../../../services/parametrosService";
+import { PERMISSIONS } from "../../../utils/permissions";
 import EntityTable from "../../../components/ui/EntityTable";
 import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
@@ -14,18 +13,25 @@ import useSearchSuggestionsDropdown, {
   normalizeSearchText,
 } from "./components/common/useSearchSuggestionsDropdown";
 import { buildPageRangeLabel, buildVisiblePageNumbers } from "./components/common/paginationWindow";
-import SmartSelectEntity from "./components/common/SmartSelectEntity";
 import PersonaInlineCreateModal from "./components/common/PersonaInlineCreateModal";
 import EmpresaInlineCreateModal from "./components/common/EmpresaInlineCreateModal";
 import {
   buildPersonaPayloadFromForm,
+  digitsOnly as digitsOnlyPersona,
   createInitialPersonaForm,
+  formatDNI,
+  formatPhone as formatPersonaPhone,
+  limit as limitPersonaDigits,
   normalizePersonaFormValues,
   validatePersonaForm,
 } from "./components/common/persona-form-shared";
 import {
   buildEmpresaPayloadFromForm,
   createInitialEmpresaForm,
+  digitsOnly as digitsOnlyEmpresa,
+  formatPhone as formatEmpresaPhone,
+  formatRtn,
+  limitText as limitEmpresaDigits,
   normalizeEmpresaFormValues,
   validateEmpresaForm,
 } from "./components/common/empresa-form-shared";
@@ -35,9 +41,6 @@ import "./components/clientes/clientes-persona-select.css";
 const emptyForm = {
   id_persona: "",
   id_empresa: "",
-  id_tipo_cliente: "",
-  fecha_ingreso: "",
-  puntos: "",
   estado: true,
 };
 
@@ -59,76 +62,6 @@ const createInitialFiltersDraft = () => ({
   sortBy: "recientes",
 });
 
-const buildClientesSelectStyles = (hasError = false) => ({
-  control: (base, state) => ({
-    ...base,
-    minHeight: 42,
-    borderRadius: 12,
-    borderColor: hasError
-      ? "var(--bs-danger, #dc3545)"
-      : state.isFocused
-        ? "rgba(158, 105, 61, 0.72)"
-        : "rgba(206, 196, 177, 0.9)",
-    boxShadow: state.isFocused
-      ? "0 0 0 0.2rem rgba(158, 105, 61, 0.18)"
-      : "none",
-    backgroundColor: "#fff",
-    "&:hover": {
-      borderColor: hasError
-        ? "var(--bs-danger, #dc3545)"
-        : "rgba(158, 105, 61, 0.72)",
-    },
-  }),
-  valueContainer: (base) => ({
-    ...base,
-    padding: "2px 12px",
-  }),
-  input: (base) => ({
-    ...base,
-    margin: 0,
-    padding: 0,
-  }),
-  placeholder: (base) => ({
-    ...base,
-    color: "rgba(98, 83, 73, 0.75)",
-  }),
-  singleValue: (base) => ({
-    ...base,
-    color: "#2f1a10",
-  }),
-  indicatorsContainer: (base) => ({
-    ...base,
-    paddingRight: 4,
-  }),
-  dropdownIndicator: (base, state) => ({
-    ...base,
-    color: state.isFocused ? "rgba(99, 58, 37, 0.9)" : "rgba(99, 58, 37, 0.65)",
-  }),
-  clearIndicator: (base) => ({
-    ...base,
-    color: "rgba(120, 84, 66, 0.72)",
-  }),
-  menuPortal: (base) => ({
-    ...base,
-    zIndex: 3000,
-  }),
-  menu: (base) => ({
-    ...base,
-    borderRadius: 12,
-    border: "1px solid rgba(206, 196, 177, 0.9)",
-    overflow: "hidden",
-  }),
-  option: (base, state) => ({
-    ...base,
-    backgroundColor: state.isFocused
-      ? "rgba(243, 238, 226, 0.95)"
-      : state.isSelected
-        ? "rgba(236, 222, 205, 0.95)"
-        : "#fff",
-    color: "#2f1a10",
-  }),
-});
-
 const normalizeListResponse = (resp) => {
   if (Array.isArray(resp)) {
     return { items: resp, total: resp.length };
@@ -141,16 +74,6 @@ const normalizeListResponse = (resp) => {
     (Array.isArray(items) ? items.length : 0);
 
   return { items: Array.isArray(items) ? items : [], total: Number(total) || 0 };
-};
-
-const normalizeArrayPayload = (resp) => {
-  if (Array.isArray(resp)) return resp;
-  if (Array.isArray(resp?.data)) return resp.data;
-  if (Array.isArray(resp?.items)) return resp.items;
-  if (Array.isArray(resp?.rows)) return resp.rows;
-  if (Array.isArray(resp?.resultados)) return resp.resultados;
-  if (Array.isArray(resp?.resultado)) return resp.resultado;
-  return [];
 };
 
 const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
@@ -183,16 +106,6 @@ const filterAsyncOptions = (options, needle, limit = ASYNC_SELECT_LIMIT) => {
     : source;
 
   return filtered.slice(0, limit);
-};
-
-const toDateInputValue = (value) => {
-  if (!value) return "";
-  const raw = String(value);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
 };
 
 const resolveCardsPerPage = (width) => {
@@ -350,7 +263,8 @@ const normalizeClienteForView = (cliente) => {
     tipo_cliente: firstNonEmptyValue(
       tipoCliente,
       cliente?.tipo_cliente_nombre,
-      cliente?.nombre_tipo_cliente
+      cliente?.nombre_tipo_cliente,
+      "General"
     ) || null,
     telefono: telefono || null,
     correo: correo || null,
@@ -434,6 +348,13 @@ const isActivo = (record) => {
 };
 
 const Clientes = ({ openToast }) => {
+  const { canAny } = usePermisos();
+  const canCreateCliente = canAny([PERMISSIONS.CLIENTES_CREAR]);
+  const canEditCliente = canAny([PERMISSIONS.CLIENTES_EDITAR]);
+  const canInactivateCliente = canAny([PERMISSIONS.CLIENTES_EDITAR]);
+  const canDeleteCliente = canAny([PERMISSIONS.CLIENTES_ELIMINAR]);
+  const canViewCliente = canAny([PERMISSIONS.CLIENTES_DETALLE_VER]);
+
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -443,8 +364,6 @@ const Clientes = ({ openToast }) => {
 
   const [personasCatalogo, setPersonasCatalogo] = useState([]);
   const [empresasCatalogo, setEmpresasCatalogo] = useState([]);
-  const [tiposCliente, setTiposCliente] = useState([]);
-
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -501,13 +420,6 @@ const Clientes = ({ openToast }) => {
   const catalogosCargadosRef = useRef(false);
   const catalogosLoadingRef = useRef(false);
   const panelRef = useRef(null);
-  const empresaSearchCacheRef = useRef(new Map());
-  const tipoSearchCacheRef = useRef(new Map());
-  const empresaDebounceTimerRef = useRef(null);
-  const tipoDebounceTimerRef = useRef(null);
-  const empresaAbortRef = useRef(null);
-  const empresaAsyncReqSeqRef = useRef(0);
-  const tipoAsyncReqSeqRef = useRef(0);
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
   const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
@@ -573,26 +485,6 @@ const Clientes = ({ openToast }) => {
     [personasCatalogo]
   );
 
-  const personaSelectOptions = useMemo(
-    () =>
-      personaOptions.map((item) => ({
-        value: item.id,
-        label: item.dni ? `${item.label} | DNI: ${item.dni}` : item.label,
-      })),
-    [personaOptions]
-  );
-
-  const _personaSelectValue = useMemo(() => {
-    const selectedId = String(form.id_persona ?? "");
-    if (!selectedId) return null;
-    return personaSelectOptions.find((option) => option.value === selectedId) || null;
-  }, [form.id_persona, personaSelectOptions]);
-
-  const _personaSelectStyles = useMemo(
-    () => buildClientesSelectStyles(Boolean(errors.id_persona)),
-    [errors.id_persona]
-  );
-
   const empresaOptions = useMemo(
     () =>
       (Array.isArray(empresasCatalogo) ? empresasCatalogo : []).map((e) => {
@@ -618,127 +510,6 @@ const Clientes = ({ openToast }) => {
         };
       }),
     [empresasCatalogo]
-  );
-
-  const empresaSelectOptions = useMemo(
-    () =>
-      empresaOptions.map((item) => ({
-        value: item.id,
-        label: item.label,
-        searchText: item.searchText,
-      })),
-    [empresaOptions]
-  );
-
-  const empresaSelectOptionsById = useMemo(
-    () => new Map(empresaSelectOptions.map((option) => [option.value, option])),
-    [empresaSelectOptions]
-  );
-
-  const empresaSelectFallbackValue = useMemo(() => {
-    const selectedId = String(form.id_empresa ?? "").trim();
-    if (!selectedId) return null;
-    const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? ""));
-    const nombre = firstNonEmptyValue(clienteActual?.nombre_empresa, clienteActual?.nombre_principal, "Empresa seleccionada");
-    const rtn = firstNonEmptyValue(clienteActual?.rtn, clienteActual?.documento_tipo === "rtn" ? clienteActual?.documento_valor : "");
-    const correo = firstNonEmptyValue(clienteActual?.correo);
-    const labelParts = [nombre];
-    if (rtn) labelParts.push(`RTN: ${rtn}`);
-    if (correo) labelParts.push(correo);
-    return {
-      value: selectedId,
-      label: labelParts.join(" | "),
-      searchText: normalizeSearchKey(`${nombre} ${rtn} ${correo}`),
-    };
-  }, [clientes, editId, form.id_empresa]);
-
-  const _empresaSelectValue = useMemo(() => {
-    const selectedId = String(form.id_empresa ?? "").trim();
-    if (!selectedId) return null;
-    return (
-      empresaSelectOptionsById.get(selectedId)
-      || empresaSelectFallbackValue
-      || {
-        value: selectedId,
-        label: "Empresa seleccionada",
-        searchText: normalizeSearchKey(`empresa ${selectedId}`),
-      }
-    );
-  }, [form.id_empresa, empresaSelectOptionsById, empresaSelectFallbackValue]);
-
-  const _empresaSelectStyles = useMemo(
-    () => buildClientesSelectStyles(Boolean(errors.id_empresa)),
-    [errors.id_empresa]
-  );
-
-  const _empresaDefaultOptions = useMemo(
-    () => filterAsyncOptions(empresaSelectOptions, ""),
-    [empresaSelectOptions]
-  );
-
-  const tipoClienteOptions = useMemo(
-    () =>
-      (Array.isArray(tiposCliente) ? tiposCliente : []).map((t) => {
-        const id = t?.id_tipo_cliente;
-        const label = t?.tipo_cliente || t?.descripcion || t?.nombre || `Tipo #${id ?? "N/D"}`;
-        return {
-          id: id ? String(id) : "",
-          label: String(label),
-          searchText: normalizeSearchKey(label),
-        };
-      }),
-    [tiposCliente]
-  );
-
-  const tipoClienteSelectOptions = useMemo(
-    () =>
-      tipoClienteOptions.map((item) => ({
-        value: item.id,
-        label: item.label,
-        searchText: item.searchText,
-      })),
-    [tipoClienteOptions]
-  );
-
-  const tipoClienteSelectOptionsById = useMemo(
-    () => new Map(tipoClienteSelectOptions.map((option) => [option.value, option])),
-    [tipoClienteSelectOptions]
-  );
-
-  const tipoClienteSelectFallbackValue = useMemo(() => {
-    const selectedId = String(form.id_tipo_cliente ?? "").trim();
-    if (!selectedId) return null;
-    const clienteActual = clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? ""));
-    const label = firstNonEmptyValue(clienteActual?.tipo_cliente, "Tipo seleccionado");
-    return {
-      value: selectedId,
-      label,
-      searchText: normalizeSearchKey(label),
-    };
-  }, [clientes, editId, form.id_tipo_cliente]);
-
-  const _tipoClienteSelectValue = useMemo(() => {
-    const selectedId = String(form.id_tipo_cliente ?? "").trim();
-    if (!selectedId) return null;
-    return (
-      tipoClienteSelectOptionsById.get(selectedId)
-      || tipoClienteSelectFallbackValue
-      || {
-        value: selectedId,
-        label: "Tipo seleccionado",
-        searchText: normalizeSearchKey(`tipo ${selectedId}`),
-      }
-    );
-  }, [form.id_tipo_cliente, tipoClienteSelectOptionsById, tipoClienteSelectFallbackValue]);
-
-  const _tipoClienteSelectStyles = useMemo(
-    () => buildClientesSelectStyles(Boolean(errors.id_tipo_cliente)),
-    [errors.id_tipo_cliente]
-  );
-
-  const _tipoClienteDefaultOptions = useMemo(
-    () => filterAsyncOptions(tipoClienteSelectOptions, ""),
-    [tipoClienteSelectOptions]
   );
 
   const getClientePrincipalNombre = useCallback((cliente) => {
@@ -777,161 +548,13 @@ const Clientes = ({ openToast }) => {
       return {
         id_persona: keepPersona ? resolvedPersona : "",
         id_empresa: keepPersona ? "" : resolvedEmpresa,
-        id_tipo_cliente:
-          cliente?.id_tipo_cliente
-            ? String(cliente.id_tipo_cliente)
-            : resolveIdFromLabel(
-                cliente?.tipo_cliente_nombre || cliente?.tipo_cliente || cliente?.nombre_tipo_cliente,
-                tipoClienteOptions
-              ),
-        fecha_ingreso: toDateInputValue(cliente?.fecha_ingreso),
-        puntos:
-          cliente?.puntos === null || cliente?.puntos === undefined
-            ? ""
-            : String(cliente.puntos),
         estado: isActivo(cliente),
       };
     },
-    [personaOptions, empresaOptions, tipoClienteOptions]
+    [personaOptions, empresaOptions]
   );
 
-  useEffect(() => {
-    empresaSearchCacheRef.current.clear();
-  }, [empresaSelectOptions]);
 
-  useEffect(() => {
-    tipoSearchCacheRef.current.clear();
-  }, [tipoClienteSelectOptions]);
-
-  const _loadEmpresaOptions = useCallback(
-    (inputValue = "") =>
-      new Promise((resolve) => {
-        const searchTerm = normalizeSearchKey(inputValue);
-        const cacheKey = searchTerm || "__default__";
-
-        if (empresaSearchCacheRef.current.has(cacheKey)) {
-          resolve(empresaSearchCacheRef.current.get(cacheKey));
-          return;
-        }
-
-        if (empresaDebounceTimerRef.current) {
-          clearTimeout(empresaDebounceTimerRef.current);
-        }
-
-        if (empresaAbortRef.current) {
-          empresaAbortRef.current.abort();
-        }
-
-        const requestSeq = ++empresaAsyncReqSeqRef.current;
-
-        empresaDebounceTimerRef.current = setTimeout(async () => {
-          try {
-            if (!mountedRef.current || requestSeq !== empresaAsyncReqSeqRef.current) {
-              resolve([]);
-              return;
-            }
-
-            let options = [];
-
-            if (searchTerm) {
-              const controller = new AbortController();
-              empresaAbortRef.current = controller;
-
-              const response = await personaService.getEmpresas({
-                page: 1,
-                limit: ASYNC_SELECT_LIMIT,
-                nombre: searchTerm,
-                signal: controller.signal,
-              });
-
-              if (!mountedRef.current || requestSeq !== empresaAsyncReqSeqRef.current) {
-                resolve([]);
-                return;
-              }
-
-              const fetchedItems = normalizeListResponse(response).items;
-              if (Array.isArray(fetchedItems) && fetchedItems.length) {
-                setEmpresasCatalogo((prev) => {
-                  const current = Array.isArray(prev) ? prev : [];
-                  const map = new Map(current.map((item) => [String(item?.id_empresa ?? ""), item]));
-                  fetchedItems.forEach((item) => {
-                    const key = String(item?.id_empresa ?? "");
-                    if (key) map.set(key, item);
-                  });
-                  return Array.from(map.values());
-                });
-              }
-
-              const fetchedOptions = (Array.isArray(fetchedItems) ? fetchedItems : []).map((item) => {
-                const id = String(item?.id_empresa ?? "").trim();
-                const nombreEmpresa = firstNonEmptyValue(item?.nombre_empresa, "Empresa sin nombre");
-                const rtn = firstNonEmptyValue(item?.rtn);
-                const correo = firstNonEmptyValue(item?.direccion_correo, item?.correo);
-                const telefono = firstNonEmptyValue(item?.telefono);
-                const labelParts = [nombreEmpresa];
-                if (rtn) labelParts.push(`RTN: ${rtn}`);
-                if (correo) labelParts.push(correo);
-                return {
-                  value: id,
-                  label: labelParts.join(" | "),
-                  searchText: normalizeSearchKey(`${nombreEmpresa} ${rtn} ${correo} ${telefono}`),
-                };
-              });
-
-              options = filterAsyncOptions(fetchedOptions, searchTerm);
-            }
-
-            if (!options.length) {
-              options = filterAsyncOptions(empresaSelectOptions, searchTerm);
-            }
-
-            empresaSearchCacheRef.current.set(cacheKey, options);
-            resolve(options);
-          } catch (error) {
-            if (error?.name === "AbortError") {
-              resolve([]);
-              return;
-            }
-            resolve(filterAsyncOptions(empresaSelectOptions, searchTerm));
-          } finally {
-            if (requestSeq === empresaAsyncReqSeqRef.current) {
-              empresaAbortRef.current = null;
-            }
-          }
-        }, ASYNC_SELECT_DEBOUNCE_MS);
-      }),
-    [empresaSelectOptions]
-  );
-
-  const _loadTipoClienteOptions = useCallback(
-    (inputValue = "") =>
-      new Promise((resolve) => {
-        const searchTerm = normalizeSearchKey(inputValue);
-        const cacheKey = searchTerm || "__default__";
-
-        if (tipoSearchCacheRef.current.has(cacheKey)) {
-          resolve(tipoSearchCacheRef.current.get(cacheKey));
-          return;
-        }
-
-        if (tipoDebounceTimerRef.current) {
-          clearTimeout(tipoDebounceTimerRef.current);
-        }
-
-        const requestSeq = ++tipoAsyncReqSeqRef.current;
-        tipoDebounceTimerRef.current = setTimeout(() => {
-          if (!mountedRef.current || requestSeq !== tipoAsyncReqSeqRef.current) {
-            resolve([]);
-            return;
-          }
-
-          const options = filterAsyncOptions(tipoClienteSelectOptions, searchTerm);
-          tipoSearchCacheRef.current.set(cacheKey, options);
-          resolve(options);
-        }, ASYNC_SELECT_DEBOUNCE_MS);
-      }),
-    [tipoClienteSelectOptions]
-  );
 
   const buildClientesCacheKey = useCallback(
     (targetPage) =>
@@ -946,22 +569,8 @@ const Clientes = ({ openToast }) => {
 
   const normalizeClientesPage = useCallback(
     (items = []) =>
-      (Array.isArray(items) ? items : []).map((item) => {
-        const normalized = normalizeClienteForView(item);
-        if (normalized?.tipo_cliente) return normalized;
-
-        const tipoId = String(normalized?.id_tipo_cliente ?? "").trim();
-        const tipoOption = tipoId ? tipoClienteSelectOptionsById.get(tipoId) : null;
-        if (tipoOption?.label) {
-          return {
-            ...normalized,
-            tipo_cliente: String(tipoOption.label).trim(),
-          };
-        }
-
-        return normalized;
-      }),
-    [tipoClienteSelectOptionsById]
+      (Array.isArray(items) ? items : []).map((item) => normalizeClienteForView(item)),
+    []
   );
 
   const setClientesCacheEntry = useCallback((cacheKey, data) => {
@@ -1065,10 +674,9 @@ const Clientes = ({ openToast }) => {
     catalogosLoadingRef.current = true;
 
     try {
-      const [personasTodas, empresasResp, tiposResp] = await Promise.all([
+      const [personasTodas, empresasResp] = await Promise.all([
         cargarPersonasCatalogoCompleto(),
         personaService.getEmpresas({ page: 1, limit: 100 }),
-        parametrosService.listarCatalogo("tipo_cliente"),
       ]);
 
       if (!mountedRef.current) return;
@@ -1101,7 +709,6 @@ const Clientes = ({ openToast }) => {
 
       setPersonasCatalogo(Array.from(personasMap.values()));
       setEmpresasCatalogo(normalizeListResponse(empresasResp).items);
-      setTiposCliente(normalizeArrayPayload(tiposResp));
       catalogosCargadosRef.current = true;
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudieron cargar catalogos", "danger");
@@ -1215,15 +822,6 @@ const Clientes = ({ openToast }) => {
       listAbortRef.current = null;
       listPrefetchAbortRef.current?.abort();
       listPrefetchAbortRef.current = null;
-      if (empresaDebounceTimerRef.current) {
-        clearTimeout(empresaDebounceTimerRef.current);
-      }
-      if (tipoDebounceTimerRef.current) {
-        clearTimeout(tipoDebounceTimerRef.current);
-      }
-      if (empresaAbortRef.current) {
-        empresaAbortRef.current.abort();
-      }
     };
   }, []);
 
@@ -1283,7 +881,6 @@ const Clientes = ({ openToast }) => {
 
       if (!prev.id_persona && resolved.id_persona) next.id_persona = resolved.id_persona;
       if (!prev.id_empresa && resolved.id_empresa) next.id_empresa = resolved.id_empresa;
-      if (!prev.id_tipo_cliente && resolved.id_tipo_cliente) next.id_tipo_cliente = resolved.id_tipo_cliente;
 
       return next;
     });
@@ -1311,13 +908,17 @@ const Clientes = ({ openToast }) => {
 
     if (isCreateMode) {
       if (clienteOriginType === "persona") {
-        if (hasEmpresa) currentErrors.id_empresa = "Este campo no aplica para Cliente Persona";
-        if (hasPersona) currentErrors.id_persona = "En alta nueva no debes seleccionar persona existente.";
-      } else if (clienteOriginType === "empresa") {
-        if (hasPersona) currentErrors.id_persona = "Este campo no aplica para Cliente Empresa";
-        if (hasEmpresa) currentErrors.id_empresa = "En alta nueva no debes seleccionar empresa existente.";
+        Object.assign(currentErrors, validatePersonaForm(inlinePersonaForm));
+      } else {
+        Object.assign(currentErrors, validateEmpresaForm(inlineEmpresaForm));
       }
-    } else if (hasPersona && hasEmpresa) {
+
+
+      setErrors(currentErrors);
+      return Object.keys(currentErrors).length === 0;
+    }
+
+    if (hasPersona && hasEmpresa) {
       currentErrors.id_persona = "Solo puedes seleccionar una opcion";
       currentErrors.id_empresa = "Solo puedes seleccionar una opcion";
     } else if (clienteOriginType === "persona") {
@@ -1346,8 +947,75 @@ const Clientes = ({ openToast }) => {
     return Object.keys(currentErrors).length === 0;
   };
 
+  const handlePersonaBaseFieldChange = useCallback((field, value) => {
+    setInlinePersonaForm((state) => normalizePersonaFormValues({ ...state, [field]: value }));
+    setErrors((state) => ({ ...state, [field]: undefined, id_persona: undefined }));
+  }, []);
+
+  const handleEmpresaBaseFieldChange = useCallback((field, value) => {
+    setInlineEmpresaForm((state) => normalizeEmpresaFormValues({ ...state, [field]: value }));
+    setErrors((state) => ({ ...state, [field]: undefined, id_empresa: undefined }));
+  }, []);
+
+  const handlePersonaDniChange = useCallback((value) => {
+    const formatted = formatDNI(limitPersonaDigits(digitsOnlyPersona(value), 13));
+    handlePersonaBaseFieldChange("dni", formatted);
+  }, [handlePersonaBaseFieldChange]);
+
+  const handlePersonaRtnChange = useCallback((value) => {
+    const complemento = limitPersonaDigits(digitsOnlyPersona(value), 1);
+    handlePersonaBaseFieldChange("rtn", complemento);
+  }, [handlePersonaBaseFieldChange]);
+
+  const handlePersonaTelefonoChange = useCallback((value) => {
+    const formatted = formatPersonaPhone(limitPersonaDigits(digitsOnlyPersona(value), 8));
+    handlePersonaBaseFieldChange("id_telefono", formatted);
+  }, [handlePersonaBaseFieldChange]);
+
+  const handleEmpresaRtnChange = useCallback((value) => {
+    const formatted = formatRtn(limitEmpresaDigits(digitsOnlyEmpresa(value), 14));
+    handleEmpresaBaseFieldChange("rtn", formatted);
+  }, [handleEmpresaBaseFieldChange]);
+
+  const handleEmpresaTelefonoChange = useCallback((value) => {
+    const formatted = formatEmpresaPhone(limitEmpresaDigits(digitsOnlyEmpresa(value), 8));
+    handleEmpresaBaseFieldChange("id_telefono", formatted);
+  }, [handleEmpresaBaseFieldChange]);
+
+  const handleNextToCommercialStep = useCallback(() => {
+    if (editId || createStep !== 2) return;
+
+    const baseErrors =
+      clienteOriginType === "persona"
+        ? validatePersonaForm(inlinePersonaForm)
+        : validateEmpresaForm(inlineEmpresaForm);
+
+    if (Object.keys(baseErrors).length > 0) {
+      setErrors((state) => ({ ...state, ...baseErrors }));
+      safeToast("ERROR", "Completa los datos base del cliente antes de continuar.", "danger");
+      return;
+    }
+
+    setErrors((state) => {
+      const next = { ...state };
+      Object.keys(baseErrors).forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+    setCreateStep(3);
+  }, [editId, createStep, clienteOriginType, inlinePersonaForm, inlineEmpresaForm, safeToast]);
+
   const guardar = async (event) => {
     event.preventDefault();
+    if (editId && !canEditCliente) {
+      safeToast("ERROR", "No tienes permiso para editar clientes.", "danger");
+      return;
+    }
+    if (!editId && !canCreateCliente) {
+      safeToast("ERROR", "No tienes permiso para crear clientes.", "danger");
+      return;
+    }
     if (!validar() || actionLoading) return;
 
     const payloadLimpio = sanitizeForm();
@@ -1510,6 +1178,10 @@ const Clientes = ({ openToast }) => {
   };
 
   const handleVincularDuplicado = useCallback(async () => {
+    if (!canCreateCliente) {
+      safeToast("ERROR", "No tienes permiso para crear clientes.", "danger");
+      return;
+    }
     if (actionLoading) return;
     if (!duplicateResolution?.visible) return;
     const suggestedId = parsePositiveInteger(duplicateResolution.suggestedId);
@@ -1579,6 +1251,7 @@ const Clientes = ({ openToast }) => {
       if (mountedRef.current) setActionLoading(false);
     }
   }, [
+    canCreateCliente,
     actionLoading,
     closeFormDrawer,
     duplicateResolution,
@@ -1865,14 +1538,14 @@ const Clientes = ({ openToast }) => {
       setInlineEmpresaForm(emptyInlineEmpresaForm);
       setShowEmpresaCreateModal(false);
       setUseInlinePersonaCreate(true);
-      setShowPersonaCreateModal(true);
+      setShowPersonaCreateModal(false);
       setForm((state) => ({ ...state, id_persona: "", id_empresa: "" }));
     } else {
       setUseInlinePersonaCreate(false);
       setInlinePersonaForm(emptyInlinePersonaForm);
       setShowPersonaCreateModal(false);
       setUseInlineEmpresaCreate(true);
-      setShowEmpresaCreateModal(true);
+      setShowEmpresaCreateModal(false);
       setForm((state) => ({ ...state, id_empresa: "", id_persona: "" }));
     }
   }, [clienteOriginType, resetDuplicateResolution]);
@@ -1884,7 +1557,13 @@ const Clientes = ({ openToast }) => {
     resetDuplicateResolution();
   }, [resetDuplicateResolution]);
 
+  const handleBackToCreateStepTwo = useCallback(() => {
+    setCreateStep(2);
+    resetDuplicateResolution();
+  }, [resetDuplicateResolution]);
+
   const iniciarEdicion = (cliente) => {
+    if (!canEditCliente) return;
     setFiltersOpen(false);
     setEditId(cliente.id_cliente);
     setCreateStep(2);
@@ -1911,6 +1590,7 @@ const Clientes = ({ openToast }) => {
   };
 
   const openCreate = () => {
+    if (!canCreateCliente) return;
     if (actionLoading || deletingId) return;
     setFiltersOpen(false);
     setEditId(null);
@@ -1946,30 +1626,36 @@ const Clientes = ({ openToast }) => {
       setShowEmpresaCreateModal(false);
       setShowEmpresaEditModal(false);
       setUseInlinePersonaCreate(isCreateMode ? true : false);
-      setShowPersonaCreateModal(isCreateMode && createStep === 2);
+      setShowPersonaCreateModal(false);
     } else {
       setUseInlinePersonaCreate(false);
       setInlinePersonaForm(emptyInlinePersonaForm);
       setShowPersonaCreateModal(false);
       setShowPersonaEditModal(false);
       setUseInlineEmpresaCreate(isCreateMode ? true : false);
-      setShowEmpresaCreateModal(isCreateMode && createStep === 2);
+      setShowEmpresaCreateModal(false);
     }
     setErrors((state) => ({ ...state, id_persona: undefined, id_empresa: undefined }));
   };
 
-  const openConfirmDelete = (cliente) =>
+  const openConfirmDelete = (cliente) => {
+    if (!canInactivateCliente) return;
     setConfirmModal({
       show: true,
       idToDelete: cliente?.id_cliente ?? null,
       nombre: firstNonEmptyValue(cliente?.nombre_principal, getClientePrincipalNombre(cliente)),
       estadoActual: isActivo(cliente),
     });
+  };
 
   const closeConfirmDelete = () =>
     setConfirmModal({ show: false, idToDelete: null, nombre: "", estadoActual: true });
 
   const eliminarConfirmado = async () => {
+    if (!canInactivateCliente) {
+      safeToast("ERROR", "No tienes permiso para inactivar o activar clientes.", "danger");
+      return;
+    }
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
     const shouldActivate = confirmModal.estadoActual === false;
@@ -2150,20 +1836,14 @@ const Clientes = ({ openToast }) => {
   const drawerMode = editId ? "edit" : "create";
   const isCreateFlow = drawerMode === "create";
   const isCreateStepOne = isCreateFlow && createStep === 1;
-  const isCreateStepTwo = !isCreateFlow || createStep === 2;
+  const isCreateStepTwo = isCreateFlow && createStep === 2;
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
-  const _personaDisabled = actionLoading || clienteOriginType === "empresa";
-  const _empresaDisabled = actionLoading || clienteOriginType === "persona";
-  const formOriginLabel = clienteOriginType === "empresa" ? "Cliente Empresa" : "Cliente Persona";
-  const isInlinePersonaFlow = drawerMode === "create" && clienteOriginType === "persona" && useInlinePersonaCreate;
-  const isInlineEmpresaFlow = drawerMode === "create" && clienteOriginType === "empresa" && useInlineEmpresaCreate;
+  const formOriginLabel = clienteOriginType === "empresa" ? "Empresa" : "Individual";
   const createSubtitle = isCreateStepOne
-    ? "Paso 1 de 2: elige si el cliente sera Persona o Empresa."
-    : isInlinePersonaFlow
-      ? "Paso 2 de 2: completa la persona y finaliza el cliente."
-      : isInlineEmpresaFlow
-        ? "Paso 2 de 2: completa la empresa y finaliza el cliente."
-        : "Paso 2 de 2: completa el registro base y guarda el cliente.";
+    ? "Paso 1 de 3: selecciona el tipo de cliente."
+    : isCreateStepTwo
+      ? "Paso 2 de 3: completa los datos base del cliente."
+      : "Paso 3 de 3: completa los datos comerciales del cliente.";
   const clienteEditando = useMemo(
     () => (drawerMode === "edit"
       ? clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? "")) || null
@@ -2244,6 +1924,7 @@ const Clientes = ({ openToast }) => {
           createOpen={showModal}
           onOpenCreate={openCreate}
           createLabel="Nuevo"
+          canCreate={canCreateCliente}
           filtersControlsId="cli-filtros-drawer"
           formControlsId="cli-form-drawer"
           viewMode={viewMode}
@@ -2313,9 +1994,11 @@ const Clientes = ({ openToast }) => {
                       Limpiar filtros
                     </button>
                   ) : null}
-                  <button type="button" className="btn btn-primary" onClick={openCreate}>
-                    Nuevo cliente
-                  </button>
+                  {canCreateCliente ? (
+                    <button type="button" className="btn btn-primary" onClick={openCreate}>
+                      Nuevo cliente
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : isTableView ? (
@@ -2390,7 +2073,7 @@ const Clientes = ({ openToast }) => {
                                 className="inv-catpro-action edit inv-catpro-action-compact"
                                 onClick={() => iniciarEdicion(cliente)}
                                 title="Editar"
-                                disabled={actionLoading || deleting}
+                                disabled={actionLoading || deleting || !canEditCliente}
                               >
                                 <i className="bi bi-pencil-square" />
                                 <span className="inv-catpro-action-label">Editar</span>
@@ -2401,7 +2084,7 @@ const Clientes = ({ openToast }) => {
                                 className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
                                 onClick={() => openConfirmDelete(cliente)}
                                 title={isActive ? "Inactivar" : "Activar"}
-                                disabled={actionLoading || deleting}
+                                disabled={actionLoading || deleting || !canInactivateCliente}
                               >
                                 <i className={`bi ${deleting ? "bi-hourglass-split" : (isActive ? "bi-slash-circle" : "bi-check-circle")}`} />
                                 <span className="inv-catpro-action-label">
@@ -2428,6 +2111,10 @@ const Clientes = ({ openToast }) => {
                     actionLoading={actionLoading}
                     deletingId={deletingId}
                     personaRtnCatalog={personaRtnById.get(String(cliente?.id_persona ?? "").trim()) || ""}
+                    canEdit={canEditCliente}
+                    canInactivate={canInactivateCliente}
+                    canDelete={canDeleteCliente}
+                    canView={canViewCliente}
                   />
                 ))}
               </div>
@@ -2485,15 +2172,17 @@ const Clientes = ({ openToast }) => {
         </div>
       </div>
 
-      <button
-        type="button"
-        className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? "is-hidden" : ""}`}
-        onClick={openCreate}
-        title="Nuevo"
-        disabled={actionLoading || !!deletingId}
-      >
-        <i className="bi bi-plus" />
-      </button>
+      {canCreateCliente ? (
+        <button
+          type="button"
+          className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? "is-hidden" : ""}`}
+          onClick={openCreate}
+          title="Nuevo"
+          disabled={actionLoading || !!deletingId}
+        >
+          <i className="bi bi-plus" />
+        </button>
+      ) : null}
 
       <div
         className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? "show" : ""}`}
@@ -2572,9 +2261,9 @@ const Clientes = ({ openToast }) => {
                     onClick={() => handleOriginTypeChange("persona")}
                     disabled={actionLoading || !isCreateFlow}
                     aria-pressed={clienteOriginType === "persona"}
-                    title="Cliente Persona"
+                    title="Individual"
                   >
-                    Cliente Persona
+                    Individual
                   </button>
                   <button
                     type="button"
@@ -2582,22 +2271,20 @@ const Clientes = ({ openToast }) => {
                     onClick={() => handleOriginTypeChange("empresa")}
                     disabled={actionLoading || !isCreateFlow}
                     aria-pressed={clienteOriginType === "empresa"}
-                    title="Cliente Empresa"
+                    title="Empresa"
                   >
-                    Cliente Empresa
+                    Empresa
                   </button>
                 </div>
 
                 <div className="clientes-modal__origin-row">
-                  <span
-                    className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}
-                  >
+                  <span className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}>
                     {formOriginLabel}
                   </span>
-                  <span className="clientes-modal__origin-caption">Paso 1: define el origen del cliente</span>
+                  <span className="clientes-modal__origin-caption">Paso 1: tipo de cliente</span>
                 </div>
                 <p className="clientes-modal__origin-text">
-                  Primero selecciona si el cliente sera Persona o Empresa y luego presiona Siguiente.
+                  Selecciona el tipo para continuar con el flujo guiado de alta.
                 </p>
               </div>
 
@@ -2620,107 +2307,232 @@ const Clientes = ({ openToast }) => {
                 </button>
               </div>
             </>
-          ) : (
+          ) : isCreateStepTwo ? (
             <>
               <div className="clientes-modal__origin-helper">
                 <div className="clientes-modal__origin-row">
-                  <span
-                    className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}
-                  >
+                  <span className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}>
                     {formOriginLabel}
                   </span>
-                  <span className="clientes-modal__origin-caption">
-                    {isCreateStepTwo && isCreateFlow ? "Paso 2: completa datos y finaliza el cliente" : "Origen actual del cliente"}
-                  </span>
+                  <span className="clientes-modal__origin-caption">Paso 2: Datos base del cliente</span>
                 </div>
                 <p className="clientes-modal__origin-text">
-                  {isCreateFlow
-                    ? "Completa una sola vez los datos base y el sistema creara persona/empresa + cliente automaticamente."
-                    : "Edita los datos del cliente y tambien los datos de la persona o empresa vinculada."}
+                  {clienteOriginType === "empresa"
+                    ? "Completa los datos de empresa del cliente."
+                    : "Completa los datos individuales del cliente."}
                 </p>
-                <div
-                  className="personas-page__view-toggle clientes-modal__origin-toggle"
-                  role="tablist"
-                  aria-label="Tipo de cliente"
-                >
-                  <button
-                    type="button"
-                    className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "persona" ? "is-active" : ""}`}
-                    onClick={() => handleOriginTypeChange("persona")}
-                    disabled={actionLoading}
-                    aria-pressed={clienteOriginType === "persona"}
-                    title="Cliente Persona"
-                  >
-                    Cliente Persona
-                  </button>
-                  <button
-                    type="button"
-                    className={`personas-page__view-btn clientes-modal__origin-option ${clienteOriginType === "empresa" ? "is-active" : ""}`}
-                    onClick={() => handleOriginTypeChange("empresa")}
-                    disabled={actionLoading}
-                    aria-pressed={clienteOriginType === "empresa"}
-                    title="Cliente Empresa"
-                  >
-                    Cliente Empresa
-                  </button>
-                </div>
               </div>
 
               <div className="row g-3 crud-modal__grid">
                 {clienteOriginType === "persona" ? (
+                  <>
+                    <div className="col-12">
+                      <h6 className="mb-1">Datos individuales del cliente</h6>
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Nombre</label>
+                      <input
+                        className={`form-control ${errors.nombre ? "is-invalid" : ""}`}
+                        value={inlinePersonaForm.nombre}
+                        onChange={(event) => handlePersonaBaseFieldChange("nombre", event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.nombre ? <div className="invalid-feedback d-block">{errors.nombre}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Apellido</label>
+                      <input
+                        className={`form-control ${errors.apellido ? "is-invalid" : ""}`}
+                        value={inlinePersonaForm.apellido}
+                        onChange={(event) => handlePersonaBaseFieldChange("apellido", event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.apellido ? <div className="invalid-feedback d-block">{errors.apellido}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">DNI</label>
+                      <input
+                        className={`form-control ${errors.dni ? "is-invalid" : ""}`}
+                        value={inlinePersonaForm.dni}
+                        onChange={(event) => handlePersonaDniChange(event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.dni ? <div className="invalid-feedback d-block">{errors.dni}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">RTN (complemento)</label>
+                      <input
+                        className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
+                        value={inlinePersonaForm.rtn}
+                        onChange={(event) => handlePersonaRtnChange(event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.rtn ? <div className="invalid-feedback d-block">{errors.rtn}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Genero</label>
+                      <select
+                        className={`form-select ${errors.genero ? "is-invalid" : ""}`}
+                        value={inlinePersonaForm.genero}
+                        onChange={(event) => handlePersonaBaseFieldChange("genero", event.target.value)}
+                        disabled={actionLoading}
+                      >
+                        <option value="">Selecciona genero</option>
+                        <option value="M">Masculino</option>
+                        <option value="F">Femenino</option>
+                        <option value="O">Otro</option>
+                      </select>
+                      {errors.genero ? <div className="invalid-feedback d-block">{errors.genero}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Fecha nacimiento</label>
+                      <input
+                        type="date"
+                        className={`form-control ${errors.fecha_nacimiento ? "is-invalid" : ""}`}
+                        value={inlinePersonaForm.fecha_nacimiento}
+                        onChange={(event) => handlePersonaBaseFieldChange("fecha_nacimiento", event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.fecha_nacimiento ? <div className="invalid-feedback d-block">{errors.fecha_nacimiento}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Telefono</label>
+                      <input
+                        className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
+                        value={inlinePersonaForm.id_telefono}
+                        onChange={(event) => handlePersonaTelefonoChange(event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.id_telefono ? <div className="invalid-feedback d-block">{errors.id_telefono}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Correo</label>
+                      <input
+                        type="email"
+                        className={`form-control ${errors.id_correo ? "is-invalid" : ""}`}
+                        value={inlinePersonaForm.id_correo}
+                        onChange={(event) => handlePersonaBaseFieldChange("id_correo", event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.id_correo ? <div className="invalid-feedback d-block">{errors.id_correo}</div> : null}
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label">Direccion</label>
+                      <input
+                        className="form-control"
+                        value={inlinePersonaForm.id_direccion}
+                        onChange={(event) => handlePersonaBaseFieldChange("id_direccion", event.target.value)}
+                        disabled={actionLoading}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="col-12">
+                      <h6 className="mb-1">Datos de empresa del cliente</h6>
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">RTN</label>
+                      <input
+                        className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
+                        value={inlineEmpresaForm.rtn}
+                        onChange={(event) => handleEmpresaRtnChange(event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.rtn ? <div className="invalid-feedback d-block">{errors.rtn}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Nombre empresa</label>
+                      <input
+                        className={`form-control ${errors.nombre_empresa ? "is-invalid" : ""}`}
+                        value={inlineEmpresaForm.nombre_empresa}
+                        onChange={(event) => handleEmpresaBaseFieldChange("nombre_empresa", event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.nombre_empresa ? <div className="invalid-feedback d-block">{errors.nombre_empresa}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Telefono</label>
+                      <input
+                        className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
+                        value={inlineEmpresaForm.id_telefono}
+                        onChange={(event) => handleEmpresaTelefonoChange(event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.id_telefono ? <div className="invalid-feedback d-block">{errors.id_telefono}</div> : null}
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Correo</label>
+                      <input
+                        type="email"
+                        className={`form-control ${errors.id_correo ? "is-invalid" : ""}`}
+                        value={inlineEmpresaForm.id_correo}
+                        onChange={(event) => handleEmpresaBaseFieldChange("id_correo", event.target.value)}
+                        disabled={actionLoading}
+                      />
+                      {errors.id_correo ? <div className="invalid-feedback d-block">{errors.id_correo}</div> : null}
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label">Direccion</label>
+                      <input
+                        className="form-control"
+                        value={inlineEmpresaForm.id_direccion}
+                        onChange={(event) => handleEmpresaBaseFieldChange("id_direccion", event.target.value)}
+                        disabled={actionLoading}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="d-flex gap-2 mt-4 crud-modal__footer">
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
+                  onClick={handleBackToCreateStepOne}
+                  disabled={actionLoading || !!deletingId}
+                >
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
+                  onClick={handleNextToCommercialStep}
+                  disabled={actionLoading || !!deletingId}
+                >
+                  Siguiente
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="clientes-modal__origin-helper">
+                <div className="clientes-modal__origin-row">
+                  <span className={`clientes-origin-chip ${clienteOriginType === "empresa" ? "is-empresa" : "is-persona"}`}>
+                    {formOriginLabel}
+                  </span>
+                  <span className="clientes-modal__origin-caption">
+                    {isCreateFlow ? "Paso 3: Datos comerciales del cliente" : "Datos comerciales del cliente"}
+                  </span>
+                </div>
+                <p className="clientes-modal__origin-text">
+                  {isCreateFlow
+                    ? "Revisa los datos base y completa la informacion comercial del cliente."
+                    : "Edita los datos comerciales y los datos base vinculados del cliente."}
+                </p>
+              </div>
+
+              <div className="row g-3 crud-modal__grid">
+                {!isCreateFlow ? (
                   <div className="col-12">
-                    {isCreateFlow ? (
-                      <div className="smart-select-entity__summary clientes-inline-summary clientes-modal__entity-block">
-                        <div className="clientes-inline-summary__head">
-                          <span
-                            className={`clientes-inline-summary__status ${String(inlinePersonaForm.nombre ?? "").trim() ? "is-ready" : "is-pending"}`}
-                          >
-                            <i className={`bi ${String(inlinePersonaForm.nombre ?? "").trim() ? "bi-check2-circle" : "bi-info-circle"}`} />
-                            {String(inlinePersonaForm.nombre ?? "").trim() ? "Persona lista" : "Pendiente"}
-                          </span>
-                          <span className="clientes-inline-summary__kind">Base Persona</span>
-                        </div>
-                        <div className="clientes-inline-summary__text">
-                          {String(inlinePersonaForm.nombre ?? "").trim()
-                            ? "Excelente. Ya puedes completar y guardar el cliente."
-                            : "Primero completa los datos de la persona para continuar."}
-                        </div>
-                        <div className="clientes-inline-summary__meta-grid">
-                          <div className="clientes-inline-summary__meta-item">
-                            <span>Nombre</span>
-                            <strong>
-                              {String(inlinePersonaForm.nombre ?? "").trim() || "Sin nombre"}{" "}
-                              {String(inlinePersonaForm.apellido ?? "").trim()}
-                            </strong>
-                          </div>
-                          <div className="clientes-inline-summary__meta-item">
-                            <span>Documento</span>
-                            <strong>DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}</strong>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn btn-sm clientes-inline-summary__action"
-                          onClick={() => setShowPersonaCreateModal(true)}
-                          disabled={actionLoading}
-                        >
-                          <i className="bi bi-pencil-square me-2" />
-                          {String(inlinePersonaForm.nombre ?? "").trim()
-                            ? "Editar formulario de persona"
-                            : "Abrir formulario de persona"}
-                        </button>
-                      </div>
-                    ) : (
+                    {clienteOriginType === "persona" ? (
                       <div className="smart-select-entity__summary clientes-inline-summary clientes-modal__entity-block">
                         <div className="clientes-inline-summary__head">
                           <span className="clientes-inline-summary__status is-ready">
                             <i className="bi bi-check2-circle" />
-                            Persona vinculada
+                            Datos base del cliente
                           </span>
-                          <span className="clientes-inline-summary__kind">Base Persona</span>
-                        </div>
-                        <div className="clientes-inline-summary__text">
-                          Edita los datos de la persona vinculada cuando lo necesites.
+                          <span className="clientes-inline-summary__kind">Individual</span>
                         </div>
                         <div className="clientes-inline-summary__meta-grid">
                           <div className="clientes-inline-summary__meta-item">
@@ -2744,49 +2556,7 @@ const Clientes = ({ openToast }) => {
                           disabled={actionLoading}
                         >
                           <i className="bi bi-pencil-square me-2" />
-                          Editar datos de persona
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="col-12">
-                    {isCreateFlow ? (
-                      <div className="smart-select-entity__summary clientes-inline-summary clientes-modal__entity-block">
-                        <div className="clientes-inline-summary__head">
-                          <span
-                            className={`clientes-inline-summary__status ${String(inlineEmpresaForm.nombre_empresa ?? "").trim() ? "is-ready" : "is-pending"}`}
-                          >
-                            <i className={`bi ${String(inlineEmpresaForm.nombre_empresa ?? "").trim() ? "bi-check2-circle" : "bi-info-circle"}`} />
-                            {String(inlineEmpresaForm.nombre_empresa ?? "").trim() ? "Empresa lista" : "Pendiente"}
-                          </span>
-                          <span className="clientes-inline-summary__kind">Base Empresa</span>
-                        </div>
-                        <div className="clientes-inline-summary__text">
-                          {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
-                            ? "Excelente. Ya puedes completar y guardar el cliente."
-                            : "Primero completa los datos de la empresa para continuar."}
-                        </div>
-                        <div className="clientes-inline-summary__meta-grid">
-                          <div className="clientes-inline-summary__meta-item">
-                            <span>Empresa</span>
-                            <strong>{String(inlineEmpresaForm.nombre_empresa ?? "").trim() || "Sin nombre de empresa"}</strong>
-                          </div>
-                          <div className="clientes-inline-summary__meta-item">
-                            <span>Documento</span>
-                            <strong>RTN: {toDisplayValue(inlineEmpresaForm.rtn, "N/D")}</strong>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn btn-sm clientes-inline-summary__action"
-                          onClick={() => setShowEmpresaCreateModal(true)}
-                          disabled={actionLoading}
-                        >
-                          <i className="bi bi-pencil-square me-2" />
-                          {String(inlineEmpresaForm.nombre_empresa ?? "").trim()
-                            ? "Editar formulario de empresa"
-                            : "Abrir formulario de empresa"}
+                          Editar datos base del cliente
                         </button>
                       </div>
                     ) : (
@@ -2794,12 +2564,9 @@ const Clientes = ({ openToast }) => {
                         <div className="clientes-inline-summary__head">
                           <span className="clientes-inline-summary__status is-ready">
                             <i className="bi bi-check2-circle" />
-                            Empresa vinculada
+                            Datos base del cliente
                           </span>
-                          <span className="clientes-inline-summary__kind">Base Empresa</span>
-                        </div>
-                        <div className="clientes-inline-summary__text">
-                          Edita los datos de la empresa vinculada cuando lo necesites.
+                          <span className="clientes-inline-summary__kind">Empresa</span>
                         </div>
                         <div className="clientes-inline-summary__meta-grid">
                           <div className="clientes-inline-summary__meta-item">
@@ -2818,12 +2585,24 @@ const Clientes = ({ openToast }) => {
                           disabled={actionLoading}
                         >
                           <i className="bi bi-pencil-square me-2" />
-                          Editar datos de empresa
+                          Editar datos base del cliente
                         </button>
                       </div>
                     )}
                   </div>
-                )}
+                ) : null}
+
+                <div className="col-12">
+                  <h6 className="mb-1">Datos comerciales del cliente</h6>
+                </div>
+                <div className="col-12">
+                  <div className="alert alert-light border mb-0">
+                    <div className="fw-semibold mb-1">Configuración automática</div>
+                    <div className="small text-muted">
+                      Este cliente se registrará como tipo General. La fecha de ingreso será asignada automáticamente y los puntos se administran desde Fidelización.
+                    </div>
+                  </div>
+                </div>
 
                 {isCreateFlow && duplicateResolution.visible ? (
                   <div className="col-12">
@@ -2851,8 +2630,6 @@ const Clientes = ({ openToast }) => {
                   </div>
                 ) : null}
 
-                {/* Sprint 5: tipo_cliente, fecha_ingreso y puntos se gestionan en backend/BD */}
-
                 {drawerMode === "edit" ? (
                   <div className="col-12">
                     <div className="form-check form-switch m-0">
@@ -2876,7 +2653,7 @@ const Clientes = ({ openToast }) => {
                   <button
                     type="button"
                     className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
-                    onClick={handleBackToCreateStepOne}
+                    onClick={handleBackToCreateStepTwo}
                     disabled={actionLoading || !!deletingId}
                   >
                     Anterior
