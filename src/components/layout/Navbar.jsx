@@ -251,6 +251,7 @@ const Navbar = () => {
     if (location.pathname.startsWith('/dashboard/planillas')) return 'planillas';
     if (isPlanillasContext(location.pathname, location.search)) return 'planillas';
     if (location.pathname.startsWith('/dashboard/inventario')) return 'inventario';
+    if (location.pathname.startsWith('/dashboard/reportes')) return 'reportes';
     if (location.pathname.startsWith('/dashboard/seguridad')) return 'seguridad';
     if (location.pathname.startsWith('/dashboard/personas')) return 'personas';
     if (location.pathname.startsWith('/dashboard/ventas')) return 'ventas';
