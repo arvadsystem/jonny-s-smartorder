@@ -1,41 +1,46 @@
-/* Estilos del boton flotante de carrito. */
+/* Barra de carrito mobile-first (sticky inferior). */
 .pm-cart-fab {
   position: fixed;
-  right: 1.2rem;
-  top: 6.3rem;
-  z-index: 30;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  left: 0.62rem;
+  right: 0.62rem;
+  bottom: calc(0.78rem + env(safe-area-inset-bottom, 0px));
+  z-index: 45;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px;
-  background: linear-gradient(135deg, #3a2d24, #2f251f);
+  background:
+    linear-gradient(135deg, rgba(56, 42, 33, 0.94), rgba(31, 22, 17, 0.96)),
+    linear-gradient(90deg, rgba(255, 190, 102, 0.2), rgba(255, 190, 102, 0));
   color: #fff;
-  min-height: 50px;
-  padding: 0.56rem 0.9rem;
+  min-height: 56px;
+  padding: 0.56rem 0.95rem;
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 0.5rem;
-  box-shadow: 0 12px 18px rgba(17, 24, 39, 0.24);
+  box-shadow: 0 16px 24px rgba(17, 24, 39, 0.24);
   font-weight: 700;
   letter-spacing: 0.01em;
+  backdrop-filter: blur(8px);
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease,
     background 0.2s ease;
 }
 
-.pm-cart-fab span {
-  display: inline-block;
-  font-size: 0.98rem;
-  line-height: 1;
+.pm-cart-fab.is-pulse {
+  animation: pmCartFabPulse 460ms ease;
 }
 
-.pm-cart-fab i {
-  font-size: 1.05rem;
+.pm-cart-fab__left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
 }
 
 .pm-cart-fab:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 22px rgba(17, 24, 39, 0.3);
+  box-shadow: 0 18px 28px rgba(17, 24, 39, 0.3);
 }
 
 .pm-cart-fab:active {
@@ -47,9 +52,20 @@
   cursor: not-allowed;
 }
 
+.pm-cart-fab__left span {
+  display: inline-block;
+  font-size: 0.96rem;
+  line-height: 1;
+}
+
+.pm-cart-fab__left i {
+  font-size: 1.03rem;
+}
+
 .pm-cart-fab__count {
-  position: static;
-  background: #e53935;
+  position: relative;
+  top: -0.5px;
+  background: linear-gradient(145deg, #fd6657, #df2d2d);
   border-radius: 999px;
   min-width: 1.5rem;
   height: 1.5rem;
@@ -62,3 +78,35 @@
   padding: 0 0.25rem;
 }
 
+.pm-cart-fab__total {
+  font-size: 0.95rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+@keyframes pmCartFabPulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (min-width: 768px) {
+  .pm-cart-fab {
+    left: auto;
+    right: 1rem;
+    bottom: 1rem;
+    min-height: 50px;
+    padding: 0.52rem 0.85rem;
+    width: auto;
+  }
+
+  .pm-cart-fab__total {
+    font-size: 0.88rem;
+  }
+}

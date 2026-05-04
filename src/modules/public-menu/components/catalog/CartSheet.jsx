@@ -32,7 +32,9 @@ const CartSheet = ({
   onDecrease,
   onRemove,
   onConfirm,
-  confirming = false
+  confirming = false,
+  disabled = false,
+  disabledReason = ''
 }) => {
   if (!open) return null;
 
@@ -72,7 +74,6 @@ const CartSheet = ({
                 <li key={item.line_key || item.id_detalle_menu} className="pm-cart-sheet__item">
                   <div className="pm-cart-sheet__item-main">
                     <strong>{item.nombre}</strong>
-                    <small>{item.tipo_item}</small>
                     {formatExtras(item.extras) ? (
                       <small className="pm-cart-sheet__line-meta">Extras: {formatExtras(item.extras)}</small>
                     ) : null}
@@ -122,10 +123,10 @@ const CartSheet = ({
           <button
             type="button"
             className="btn btn-dark pm-cart-sheet__confirm"
-            disabled={items.length === 0 || confirming}
+            disabled={items.length === 0 || confirming || disabled}
             onClick={onConfirm}
           >
-            {confirming ? 'Enviando pedido...' : 'Confirmar pedido'}
+            {confirming ? 'Enviando pedido...' : (disabled && items.length > 0 ? disabledReason || 'Sucursal cerrada' : 'Confirmar pedido')}
           </button>
         </footer>
       </section>

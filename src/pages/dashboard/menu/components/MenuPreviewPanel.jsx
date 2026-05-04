@@ -1,11 +1,23 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
-// Preview embebido reutilizando el endpoint publico real del menu cliente.
+const normalizeString = (value) => String(value || '').trim();
 
-const formatMoney = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 'L. --';
-  return `L. ${parsed.toFixed(2)}`;
+// Convierte la URL de cliente a modo espejo embebido en /menu-publico/menu.
+const buildEmbeddedPreviewUrl = (openAsClientUrl) => {
+  const raw = normalizeString(openAsClientUrl);
+  const fallback = '/menu-publico/menu?preview_admin=1&auto=1&tipo_pedido=dine-in';
+  if (!raw || typeof window === 'undefined') return fallback;
+
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    const params = new URLSearchParams(parsed.search);
+    params.set('preview_admin', '1');
+    params.set('auto', '1');
+    if (!params.get('tipo_pedido')) params.set('tipo_pedido', 'dine-in');
+    return `/menu-publico/menu?${params.toString()}`;
+  } catch {
+    return fallback;
+  }
 };
 
 const MenuPreviewPanel = ({
@@ -14,79 +26,50 @@ const MenuPreviewPanel = ({
   preview = null,
   openAsClientUrl = '/menu-publico/sucursal'
 }) => {
-  const groupedItems = useMemo(() => {
-    const groups = new Map();
-    const rows = Array.isArray(preview?.items) ? preview.items : [];
-
-    rows.forEach((item) => {
-      const categoryName = item?.categoria?.nombre || 'Sin categoria';
-      if (!groups.has(categoryName)) groups.set(categoryName, []);
-      groups.get(categoryName).push(item);
-    });
-
-    return Array.from(groups.entries());
-  }, [preview?.items]);
-
-  const stats = preview?.stats || { total: 0, disponibles: 0, agotados: 0 };
+  const [reloadToken, setReloadToken] = useState(0);
+  const mirrorUrl = useMemo(() => buildEmbeddedPreviewUrl(openAsClientUrl), [openAsClientUrl]);
 
   return (
-    <section className="menu-pub-admin__preview" aria-label="Preview del menu publico">
+    <section className="menu-pub-admin__preview" aria-label="Preview del menu publico real">
       <div className="menu-pub-admin__preview-head">
-        <h6 className="mb-1">Preview cliente</h6>
-        <button
-          type="button"
-          className="btn btn-sm inv-prod-btn-subtle"
-          onClick={() => window.open(openAsClientUrl, '_blank', 'noopener,noreferrer')}
-        >
-          Abrir como cliente
-        </button>
+        <h6 className="mb-0">Vista espejo cliente</h6>
+        <div className="menu-pub-admin__preview-head-actions">
+          <button
+            type="button"
+            className="btn btn-sm inv-prod-btn-subtle"
+            onClick={() => setReloadToken((value) => value + 1)}
+          >
+            Recargar preview
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm inv-prod-btn-primary"
+            onClick={() => window.open(openAsClientUrl, '_blank', 'noopener,noreferrer')}
+          >
+            Abrir como cliente
+          </button>
+        </div>
       </div>
 
-      {loading ? <div className="text-center py-3">Cargando preview...</div> : null}
+      <div className="menu-pub-admin__preview-layout">
+        <div className="menu-pub-admin__preview-mirror">
+          {loading ? (
+            <div className="menu-pub-admin__preview-overlay">Cargando preview...</div>
+          ) : null}
 
-      {!loading && error ? (
-        <div className="alert alert-danger py-2 mb-2">{error}</div>
-      ) : null}
-
-      {!loading && !error ? (
-        <>
-          <div className="menu-pub-admin__preview-stats">
-            <span>Total: <strong>{Number(stats.total || 0)}</strong></span>
-            <span>Disponibles: <strong>{Number(stats.disponibles || 0)}</strong></span>
-            <span>Agotados: <strong>{Number(stats.agotados || 0)}</strong></span>
-          </div>
-
-          {groupedItems.length === 0 ? (
-            <div className="alert alert-warning mb-0 py-2">
-              Esta sucursal no tiene menu disponible en este momento.
-            </div>
+          {error ? (
+            <div className="menu-pub-admin__preview-overlay is-error">{error}</div>
           ) : (
-            <div className="menu-pub-admin__preview-list">
-              {groupedItems.map(([categoryName, rows]) => (
-                <article key={categoryName} className="menu-pub-admin__preview-category">
-                  <header>{categoryName}</header>
-                  <ul>
-                    {rows.map((item) => (
-                      <li key={item.id_detalle_menu || `${item.tipo_item}-${item.id_item_base}`}>
-                        <div>
-                          <strong>{item.nombre}</strong>
-                          <small>{item.tipo_item}</small>
-                        </div>
-                        <div className="text-end">
-                          <div>{formatMoney(item?.precio?.final)}</div>
-                          <small className={item?.disponibilidad?.available ? 'text-success' : 'text-danger'}>
-                            {item?.disponibilidad?.available ? 'Disponible' : 'No disponible'}
-                          </small>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-            </div>
+            <iframe
+              key={`${mirrorUrl}-${reloadToken}`}
+              src={mirrorUrl}
+              className="menu-pub-admin__preview-iframe"
+              title="Vista espejo del menu publico"
+              loading="lazy"
+            />
           )}
-        </>
-      ) : null}
+        </div>
+      </div>
     </section>
   );
 };

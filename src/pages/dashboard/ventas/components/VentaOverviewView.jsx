@@ -1,55 +1,30 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import VentasList from './VentasList';
 import VentasStats from './VentasStats';
 import VentasToolbar from './VentasToolbar';
-import { buildVentaStats, matchesVenta } from '../utils/ventasHelpers';
 
 export default function VentaOverviewView({
   ventas,
+  summary,
+  pagination,
+  scopeInfo,
+  ventasFilters,
+  sucursales,
   loading,
   error,
   statsVisibility,
+  onSearchChange,
+  onPageChange,
+  onPageSizeChange,
+  onSucursalChange,
   onOpenDetail,
   onGoToCaja,
-  canCreate = true
+  canCreate = true,
+  onOpenReversion,
+  canReversion = false
 }) {
-  const [search, setSearch] = useState('');
   const [view, setView] = useState('grid');
-  const [currentPage, setCurrentPage] = useState(0);
-
-  const deferredSearch = useDeferredValue(search);
-  const stats = useMemo(() => {
-    const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-    const rows = Array.isArray(ventas) ? ventas : [];
-    const delDia = rows.filter((v) => {
-      const dateStr = v.fecha_hora_pedido ? v.fecha_hora_pedido.split('T')[0] : '';
-      return dateStr === todayStr || v.fecha_label === new Date().toLocaleDateString('es-HN', {
-        day: '2-digit', month: '2-digit', year: 'numeric'
-      });
-    });
-    return buildVentaStats(delDia);
-  }, [ventas]);
-
-  const filteredVentas = useMemo(() => {
-    const rows = [...(Array.isArray(ventas) ? ventas : [])];
-    rows.sort((a, b) => Number(b?.id_factura ?? 0) - Number(a?.id_factura ?? 0));
-
-    return rows.filter((venta) => matchesVenta(venta, deferredSearch));
-  }, [deferredSearch, ventas]);
-
-  const pageSize = view === 'list' ? 5 : 6;
-  const totalPages = Math.max(1, Math.ceil(filteredVentas.length / pageSize));
-  const pagedVentas = filteredVentas.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
-  const hasActiveFilters = search.trim() !== '';
-
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [deferredSearch, view]);
-
-  useEffect(() => {
-    if (currentPage <= totalPages - 1) return;
-    setCurrentPage(Math.max(totalPages - 1, 0));
-  }, [currentPage, totalPages]);
+  const [pageSizeLocal, setPageSizeLocal] = useState(ventasFilters?.pageSize || 30);
 
   return (
     <div className="ventas-page">
@@ -77,9 +52,21 @@ export default function VentaOverviewView({
       </div>
 
       <div className="inv-catpro-card inv-prod-card mb-3">
-        <VentasToolbar search={search} onSearchChange={setSearch} onOpenCreate={onGoToCaja} canCreate={canCreate} />
+        <VentasToolbar
+          search={ventasFilters?.search || ''}
+          selectedSucursalId={ventasFilters?.idSucursal || null}
+          canSelectSucursal={Boolean(scopeInfo?.canSelectSucursal)}
+          sucursales={Array.isArray(sucursales) ? sucursales : []}
+          allowedSucursalIds={Array.isArray(scopeInfo?.allowedSucursalIds) ? scopeInfo.allowedSucursalIds : []}
+          onSucursalChange={onSucursalChange}
+          onSearchChange={onSearchChange}
+          onOpenCreate={onGoToCaja}
+          canCreate={canCreate}
+          onOpenReversion={onOpenReversion}
+          canReversion={canReversion}
+        />
 
-        <VentasStats stats={stats} visibleKeys={statsVisibility} />
+        <VentasStats stats={summary} visibleKeys={statsVisibility} />
 
         <div className="inv-catpro-body inv-prod-body p-3">
           {error ? (
@@ -90,16 +77,21 @@ export default function VentaOverviewView({
 
           <VentasList
             loading={loading}
-            ventas={pagedVentas}
-            totalVentas={filteredVentas.length}
-            hasActiveFilters={hasActiveFilters}
+            ventas={ventas}
+            totalVentas={pagination?.total || 0}
+            hasActiveFilters={Boolean((ventasFilters?.search || '').trim())}
             view={view}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPrevPage={() => setCurrentPage((page) => Math.max(page - 1, 0))}
-            onNextPage={() => setCurrentPage((page) => Math.min(page + 1, totalPages - 1))}
+            currentPage={pagination?.page || 1}
+            pageSize={pagination?.pageSize || pageSizeLocal || 30}
+            totalPages={pagination?.totalPages || 1}
+            onPageChange={onPageChange}
+            onPageSizeChange={(next) => {
+              setPageSizeLocal(next);
+              onPageSizeChange?.(next);
+            }}
+            limitedToLast72Hours={Boolean(scopeInfo?.limitedToLast72Hours)}
             onClearFilters={() => {
-              setSearch('');
+              onSearchChange?.('');
             }}
             onOpenCreate={onGoToCaja}
             onOpenDetail={onOpenDetail}

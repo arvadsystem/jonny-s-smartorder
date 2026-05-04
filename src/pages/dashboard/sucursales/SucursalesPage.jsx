@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import SucursalesCardsCarousel from './components/SucursalesCardsCarousel';
 import SucursalDeleteConfirm from './components/SucursalDeleteConfirm';
 import SucursalFormDrawer from './components/SucursalFormDrawer';
@@ -6,9 +7,10 @@ import SucursalesFiltersDrawer from './components/SucursalesFiltersDrawer';
 import SucursalesStats from './components/SucursalesStats';
 import SucursalesToast from './components/SucursalesToast';
 import SucursalesToolbar from './components/SucursalesToolbar';
+import SucursalHorariosTab from './components/SucursalHorariosTab';
 import { useSucursales } from './hooks/useSucursales';
 import { usePermisos } from '../../../context/PermisosContext';
-import { PERMISSIONS } from '../../../utils/permissions';
+import { getAllowedTabs, PERMISSIONS } from '../../../utils/permissions';
 import { inventarioService } from '../../../services/inventarioService';
 import './styles/sucursales.css';
 import {
@@ -16,6 +18,8 @@ import {
   inferDuplicateFieldErrors,
   initialSucursalForm,
   normalizeDateForInput,
+  normalizePhone,
+  normalizeSucursalPayload,
   parseEstado,
   resolveCardsPerPage,
   validateSucursalForm
@@ -27,11 +31,20 @@ const createInitialFiltersDraft = () => ({
 });
 
 export default function SucursalesPage() {
-  const { canAny } = usePermisos();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { canAny, isSuperAdmin, permisos } = usePermisos();
   const canCreateSucursal = canAny([PERMISSIONS.SUCURSALES_CREAR]);
   const canEditSucursal = canAny([PERMISSIONS.SUCURSALES_EDITAR]);
   const canDeleteSucursal = canAny([PERMISSIONS.SUCURSALES_ELIMINAR]);
   const canToggleSucursal = canAny([PERMISSIONS.SUCURSALES_ESTADO_CAMBIAR]);
+  const canManageHorarios = canAny([PERMISSIONS.SUCURSALES_HORARIOS_GESTIONAR]);
+  const allowedTabs = useMemo(
+    () => getAllowedTabs('sucursales', permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
+  );
+  const fallbackTab = allowedTabs[0] || 'sucursales';
+  const rawTab = String(searchParams.get('tab') || fallbackTab).toLowerCase();
+  const activeTab = allowedTabs.includes(rawTab) ? rawTab : fallbackTab;
 
   const {
     sucursales,
@@ -75,6 +88,13 @@ export default function SucursalesPage() {
     typeof window === 'undefined' ? false : window.innerWidth <= 991.98
   );
   const carouselRef = useRef(null);
+
+  useEffect(() => {
+    if (rawTab === activeTab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', activeTab);
+    setSearchParams(next, { replace: true });
+  }, [activeTab, rawTab, searchParams, setSearchParams]);
 
   useEffect(() => {
     const onResize = () => {
@@ -234,7 +254,10 @@ export default function SucursalesPage() {
 
   const onFieldChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    let nextValue = type === 'checkbox' ? checked : value;
+    if (name === 'texto_telefono') nextValue = normalizePhone(nextValue);
+    if (name === 'texto_correo') nextValue = String(nextValue || '').trim().toLowerCase();
+    setForm((prev) => ({ ...prev, [name]: nextValue }));
     if (name) {
       setFormErrors((prev) => (prev[name] ? { ...prev, [name]: '' } : prev));
     }
@@ -243,6 +266,12 @@ export default function SucursalesPage() {
   const onImageUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const isAllowedType = ['image/jpeg', 'image/png'].includes(String(file.type || '').toLowerCase());
+    if (!isAllowedType) {
+      openToast('ERROR', 'Solo se permiten imágenes JPG o PNG.', 'warning');
+      event.target.value = '';
+      return;
+    }
     try {
       setUploadingImage(true);
       const toDataUrl = await new Promise((resolve, reject) => {
@@ -265,7 +294,7 @@ export default function SucursalesPage() {
         imagen_url_publica: String(response?.url_publica || '')
       }));
     } catch (err) {
-      const msg = extractApiMessage(err, 'NO SE PUDO SUBIR LA IMAGEN');
+      const msg = extractApiMessage(err, 'No se pudo subir la imagen. Intenta nuevamente.');
       openToast('ERROR', msg, 'danger');
     } finally {
       setUploadingImage(false);
@@ -277,7 +306,9 @@ export default function SucursalesPage() {
     e?.preventDefault?.();
     setError('');
 
-    const validation = validateSucursalForm({ form, sucursales, mode: drawerMode, editId });
+    const normalizedForm = normalizeSucursalPayload(form);
+    setForm((prev) => ({ ...prev, ...normalizedForm }));
+    const validation = validateSucursalForm({ form: normalizedForm, sucursales, mode: drawerMode, editId });
     setFormErrors(validation.errors);
     if (!validation.ok) return;
 
@@ -349,6 +380,9 @@ export default function SucursalesPage() {
 
   return (
     <div className="suc-page">
+      {activeTab === 'horarios' ? (
+        <SucursalHorariosTab sucursales={sucursales} canManage={canManageHorarios} />
+      ) : (
       <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
         <SucursalesToolbar
           search={search}
@@ -397,8 +431,9 @@ export default function SucursalesPage() {
           />
         </div>
       </div>
+      )}
 
-      <button
+      {activeTab === 'sucursales' ? <button
         type="button"
         className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`}
         onClick={openCreate}
@@ -406,24 +441,24 @@ export default function SucursalesPage() {
         disabled={!canCreateSucursal}
       >
         <i className="bi bi-plus" />
-      </button>
+      </button> : null}
 
-      <div
+      {activeTab === 'sucursales' ? <div
         className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${filtersOpen ? 'show' : ''}`}
         onClick={closeFiltersDrawer}
         aria-hidden={!filtersOpen}
-      />
+      /> : null}
 
-      <SucursalesFiltersDrawer
+      {activeTab === 'sucursales' ? <SucursalesFiltersDrawer
         open={filtersOpen}
         draft={filtersDraft}
         onChangeDraft={setFiltersDraft}
         onClose={closeFiltersDrawer}
         onApply={applyFiltersDrawer}
         onClear={clearVisualFilters}
-      />
+      /> : null}
 
-      <SucursalFormDrawer
+      {activeTab === 'sucursales' ? <SucursalFormDrawer
         open={drawerOpen}
         mode={drawerMode}
         form={form}
@@ -436,15 +471,15 @@ export default function SucursalesPage() {
         fieldErrors={formErrors}
         duplicateErrors={duplicateErrors}
         disableSubmit={hasLiveDuplicates}
-      />
+      /> : null}
 
-      <SucursalDeleteConfirm
+      {activeTab === 'sucursales' ? <SucursalDeleteConfirm
         open={confirmDelete.show}
         sucursal={confirmDelete.sucursal}
         deleting={Number(deletingId ?? 0) === Number(confirmDelete.sucursal?.id_sucursal ?? 0)}
         onClose={closeConfirmDelete}
         onConfirm={eliminarConfirmado}
-      />
+      /> : null}
 
       <SucursalesToast toast={toast} onClose={closeToast} />
     </div>

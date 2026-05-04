@@ -75,8 +75,42 @@ export const buildSucursalPayload = (form) => ({
   estado: !!form?.estado
 });
 
+export const sanitizePlainText = (value, max = 200) => {
+  const raw = String(value ?? '');
+  const cleaned = raw
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.slice(0, max);
+};
+
+export const toTitleCase = (value) => {
+  const cleaned = sanitizePlainText(value, 200)
+    .toLocaleLowerCase('es');
+  if (!cleaned) return '';
+  return cleaned.replace(/(^|\s)(\p{L})/gu, (match, prefix, char) => `${prefix}${char.toLocaleUpperCase('es')}`);
+};
+
+export const toSentenceCase = (value) => {
+  const cleaned = sanitizePlainText(value, 220).toLocaleLowerCase('es');
+  if (!cleaned) return '';
+  return cleaned.replace(/^(\p{L})/u, (char) => char.toLocaleUpperCase('es'));
+};
+
+export const normalizeEmail = (value) => String(value ?? '').trim().toLowerCase();
+
+export const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+
+export const hasPhoneLetters = (value) => /[a-zA-Z]/.test(String(value || ''));
+
+export const normalizePhone = (value) => {
+  const raw = sanitizePlainText(value, 30);
+  return raw.replace(/[^\d+\-()\s]/g, '').replace(/\s+/g, ' ').trim();
+};
+
 export const validateSucursalForm = ({ form, sucursales = [], mode = 'create', editId = null }) => {
-  const payload = buildSucursalPayload(form);
+  const payload = normalizeSucursalPayload(buildSucursalPayload(form));
   const errors = {};
 
   if (!payload.nombre_sucursal) errors.nombre_sucursal = 'EL NOMBRE DE LA SUCURSAL ES OBLIGATORIO';
@@ -89,6 +123,8 @@ export const validateSucursalForm = ({ form, sucursales = [], mode = 'create', e
 
   if (payload.texto_telefono && payload.texto_telefono.length > 30) {
     errors.texto_telefono = 'MAXIMO 30 CARACTERES';
+  } else if (payload.texto_telefono && hasPhoneLetters(payload.texto_telefono)) {
+    errors.texto_telefono = 'EL TELEFONO NO DEBE CONTENER LETRAS';
   }
 
   if (payload.texto_correo) {
@@ -97,6 +133,10 @@ export const validateSucursalForm = ({ form, sucursales = [], mode = 'create', e
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.texto_correo)) {
       errors.texto_correo = 'CORREO INVALIDO';
     }
+  }
+
+  if (payload.fecha_inauguracion && !isValidDate(payload.fecha_inauguracion)) {
+    errors.fecha_inauguracion = 'FECHA INVALIDA';
   }
 
   if ((payload.hora_inicio && !payload.hora_final) || (!payload.hora_inicio && payload.hora_final)) {
@@ -197,5 +237,98 @@ export const buildKpiSeries = (stats) => {
     total: makeSeries(stats?.total, stats?.activas),
     activas: makeSeries(stats?.activas, stats?.total),
     inactivas: makeSeries(stats?.inactivas, stats?.total)
+  };
+};
+
+export const DIAS_SEMANA = [
+  { value: 1, label: 'Lunes' },
+  { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miercoles' },
+  { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' },
+  { value: 6, label: 'Sabado' },
+  { value: 7, label: 'Domingo' }
+];
+
+export const FECHA_ESPECIAL_TIPOS = ['FERIADO', 'CIERRE_ESPECIAL', 'HORARIO_ESPECIAL'];
+
+export const isValidTime = (value) => /^\d{2}:\d{2}(:\d{2})?$/.test(String(value || '').trim());
+export const normalizeTime = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = String(value).trim();
+  if (!isValidTime(raw)) return null;
+  return raw.length === 8 ? raw.slice(0, 5) : raw;
+};
+export const isEndTimeAfterStart = (start, end) => {
+  const a = normalizeTime(start);
+  const b = normalizeTime(end);
+  if (!a || !b) return false;
+  return b > a;
+};
+export const isValidDate = (value) => {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  const [year, month, day] = raw.split('-').map((part) => Number(part));
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return dt.getUTCFullYear() === year && dt.getUTCMonth() + 1 === month && dt.getUTCDate() === day;
+};
+
+export const normalizeSucursalPayload = (payload = {}) => {
+  const nombre = toTitleCase(payload?.nombre_sucursal);
+  const direccion = toSentenceCase(payload?.texto_direccion);
+  const telefono = normalizePhone(payload?.texto_telefono);
+  const correo = normalizeEmail(sanitizePlainText(payload?.texto_correo, 120));
+  const fecha = String(payload?.fecha_inauguracion ?? '').trim();
+  const estado = payload?.estado === true || payload?.estado === false ? payload.estado : Boolean(payload?.estado);
+
+  return {
+    ...payload,
+    nombre_sucursal: nombre,
+    texto_direccion: direccion || null,
+    texto_telefono: telefono || null,
+    texto_correo: correo || null,
+    fecha_inauguracion: fecha || null,
+    estado
+  };
+};
+
+export const validateHorarioRegular = (horarios = []) => {
+  const list = Array.isArray(horarios) ? horarios : [];
+  if (list.length > 7) return { ok: false, message: 'No se pudieron guardar los horarios. Verifica los datos ingresados.' };
+  const seen = new Set();
+  for (const row of list) {
+    const dia = Number(row?.dia_semana ?? 0);
+    if (!Number.isInteger(dia) || dia < 1 || dia > 7 || seen.has(dia)) {
+      return { ok: false, message: 'No se pudieron guardar los horarios. Verifica los datos ingresados.' };
+    }
+    seen.add(dia);
+    const cerrado = Boolean(row?.cerrado);
+    if (!cerrado && (!isValidTime(row?.hora_inicio) || !isValidTime(row?.hora_final) || !isEndTimeAfterStart(row?.hora_inicio, row?.hora_final))) {
+      return { ok: false, message: 'No se pudieron guardar los horarios. Verifica los datos ingresados.' };
+    }
+  }
+  return { ok: true };
+};
+
+export const validateFechaEspecial = (payload = {}) => {
+  if (!isValidDate(payload?.fecha)) return { ok: false, message: 'No se pudo guardar la fecha especial.' };
+  if (!FECHA_ESPECIAL_TIPOS.includes(String(payload?.tipo || '').trim().toUpperCase())) return { ok: false, message: 'No se pudo guardar la fecha especial.' };
+  const descripcion = sanitizePlainText(payload?.descripcion, 200);
+  if (String(payload?.descripcion || '').trim().length > 200) return { ok: false, message: 'No se pudo guardar la fecha especial.' };
+  const cerrado = Boolean(payload?.cerrado);
+  if (!cerrado && (!isValidTime(payload?.hora_inicio) || !isValidTime(payload?.hora_final) || !isEndTimeAfterStart(payload?.hora_inicio, payload?.hora_final))) {
+    return { ok: false, message: 'No se pudo guardar la fecha especial.' };
+  }
+  return {
+    ok: true,
+    payload: {
+      fecha: String(payload.fecha).trim(),
+      tipo: String(payload.tipo).trim().toUpperCase(),
+      descripcion,
+      cerrado,
+      hora_inicio: cerrado ? null : normalizeTime(payload.hora_inicio),
+      hora_final: cerrado ? null : normalizeTime(payload.hora_final),
+      estado: payload?.estado !== false
+    }
   };
 };

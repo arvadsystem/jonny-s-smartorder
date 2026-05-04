@@ -28,7 +28,7 @@ const SucursalCard = ({ branch, selected, onSelect }) => (
     <div className="pm-option-card__top">
       <h3 className="pm-option-card__title">{branch.displayName || branch.name}</h3>
       <span className={`pm-status-pill ${branch.isOpen ? 'is-open' : 'is-closed'}`}>
-        {branch.isOpen ? 'Abierta' : 'Cerrada'}
+        {branch.statusLabel || (branch.isOpen ? 'Abierto ahora' : 'Cerrado')}
       </span>
     </div>
 
@@ -38,12 +38,17 @@ const SucursalCard = ({ branch, selected, onSelect }) => (
     <small className="pm-option-card__meta">
       <i className="bi bi-clock-history" aria-hidden="true" /> {branch.schedule}
     </small>
+    {!branch.isOpen && branch.closedReason ? (
+      <small className="pm-option-card__meta pm-option-card__meta--warning">
+        <i className="bi bi-info-circle" aria-hidden="true" /> {branch.closedReason}
+      </small>
+    ) : null}
     <small className="pm-option-card__meta">
       <i className="bi bi-bicycle" aria-hidden="true" /> Tiempo estimado: {branch.etaMinutes}
     </small>
 
     <div className="pm-branch-card__cta">
-      <span>Ver menu</span>
+      <span>Ver menú</span>
       <i className="bi bi-arrow-right-short" aria-hidden="true" />
     </div>
   </button>

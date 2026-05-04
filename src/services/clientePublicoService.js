@@ -3,7 +3,7 @@ import { apiFetch } from './api';
 /**
  * clientePublicoService
  * Servicio para el flujo público del cliente web.
- * No requiere token para /api/public/menu ni /api/public/register.
+ * Registro/login no requieren token para /api/public/register y /api/public/login.
  */
 const clientePublicoService = {
   /**
@@ -35,18 +35,18 @@ const clientePublicoService = {
   },
 
   /**
-   * Obtener el menú público completo.
+   * DEPRECATED: el flujo público ahora usa /api/public-menu/*.
    */
   getMenu: async () => {
-    return await apiFetch('/api/public/menu', 'GET');
+    throw new Error('clientePublicoService.getMenu esta deprecado. Usa src/modules/public-menu/services/publicMenuBootstrapService.');
   },
 
   /**
-   * Obtener detalle de un ítem del menú.
+   * DEPRECATED: el flujo público ahora usa /api/public-menu/*.
    * @param {number} id
    */
-  getMenuItem: async (id) => {
-    return await apiFetch(`/api/public/menu/${id}`, 'GET');
+  getMenuItem: async (_id) => {
+    throw new Error('clientePublicoService.getMenuItem esta deprecado. Usa src/modules/public-menu/services/publicMenuBootstrapService.');
   },
 
   /**
@@ -63,6 +63,14 @@ const clientePublicoService = {
    */
   verifyEmail: async (data) => {
     return await apiFetch('/api/public/verify-email', 'POST', data);
+  },
+
+  /**
+   * Reenviar correo de verificacion para cuenta pendiente.
+   * @param {{ identifier?: string, email?: string }} data
+   */
+  resendVerification: async (data) => {
+    return await apiFetch('/api/public/resend-verification', 'POST', data);
   }
 };
 

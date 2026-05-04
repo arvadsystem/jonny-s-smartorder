@@ -22,6 +22,20 @@ const pickAllowedFields = (payload, allowedFields = []) => {
   );
 };
 
+const parseBooleanFlag = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+    return null;
+  }
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (['true', '1', 't', 'si', 'activo'].includes(normalized)) return true;
+  if (['false', '0', 'f', 'no', 'inactivo'].includes(normalized)) return false;
+  return null;
+};
+
 const applyRbacContextToPayload = (payload, context) => {
   const normalizedContext = toCleanString(context).toLowerCase();
   if (!normalizedContext) return payload;
@@ -282,7 +296,7 @@ export const personaService = {
   // PERSONAS
   // ==============================
 
-  getPersonas: (pageOrOptions = 1, limitArg = 10, searchArg = '', requestOptions = {}) => {
+  getPersonas: async (pageOrOptions = 1, limitArg = 10, searchArg = '', requestOptions = {}) => {
     const { page, limit, search, sort, genero, estado, suggest, signal } = resolvePersonasListArgs(
       pageOrOptions,
       limitArg,
@@ -297,11 +311,37 @@ export const personaService = {
     if (typeof genero === 'string' && genero.trim() && genero.trim().toLowerCase() !== 'todos') {
       params.set('genero', genero.trim());
     }
-    if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+    const hasEstadoFilter = estado !== undefined && estado !== null;
+    if (hasEstadoFilter) params.set('estado', String(estado));
     if (suggest) params.set('suggest', '1');
     const endpoint = `/personas?${params.toString()}`;
-    if (signal) return fetchGetWithSignal(endpoint, signal);
-    return apiFetch(endpoint, 'GET');
+    if (!hasEstadoFilter) {
+      if (signal) return fetchGetWithSignal(endpoint, signal);
+      return apiFetch(endpoint, 'GET');
+    }
+
+    const paramsWithoutEstado = new URLSearchParams(params);
+    paramsWithoutEstado.delete('estado');
+    const fallbackEndpoint = `/personas?${paramsWithoutEstado.toString()}`;
+
+    try {
+      if (signal) return await fetchGetWithSignal(endpoint, signal);
+      return await apiFetch(endpoint, 'GET');
+    } catch (error) {
+      const status = Number(error?.status);
+      const message = String(error?.message || '').toLowerCase();
+      const errorPayload = (error?.data && typeof error.data === 'object')
+        ? error.data
+        : (error?.payload && typeof error.payload === 'object' ? error.payload : null);
+      const payloadMessage = String(errorPayload?.message || errorPayload?.mensaje || '').toLowerCase();
+      const shouldRetryWithoutEstado =
+        status === 400
+        && (message.includes('estado') || payloadMessage.includes('estado') || payloadMessage.includes('no soporta'));
+
+      if (!shouldRetryWithoutEstado) throw error;
+      if (signal) return fetchGetWithSignal(fallbackEndpoint, signal);
+      return apiFetch(fallbackEndpoint, 'GET');
+    }
   },
 
   getPersonaSuggestions: ({
@@ -477,6 +517,21 @@ export const personaService = {
       ...(isPlainObject(payload) ? payload : {}),
       rbac_context: 'empleados'
     }),
+
+  createEmpleadoFull: async (payload = {}) => {
+    const requestPayload = {
+      ...(isPlainObject(payload) ? payload : {}),
+      rbac_context: 'empleados'
+    };
+    try {
+      return await apiFetch('/empleados/full-create', 'POST', requestPayload);
+    } catch (error) {
+      if ([404, 405].includes(Number(error?.status))) {
+        return apiFetch('/empleados/atomico', 'POST', requestPayload);
+      }
+      throw error;
+    }
+  },
 
   updateEmpleado: async (id, updates = {}) => {
     if (isPlainObject(updates) && Object.prototype.hasOwnProperty.call(updates, 'campo')) {
@@ -721,10 +776,59 @@ export const personaService = {
       requestPayload.cliente = clientePayload;
     }
 
+    if (Object.prototype.hasOwnProperty.call(requestPayload, 'strict_base_create')) {
+      const strictParsed = parseBooleanFlag(requestPayload.strict_base_create);
+      if (strictParsed !== null) {
+        requestPayload.strict_base_create = strictParsed;
+      }
+    }
+
     return apiFetch('/clientes/atomico', 'POST', {
       ...requestPayload,
       rbac_context: 'clientes'
     });
+  },
+
+  createClienteFull: async (payload = {}) => {
+    const requestPayload = isPlainObject(payload) ? { ...payload } : {};
+    const clientePayload = isPlainObject(requestPayload.cliente)
+      ? { ...requestPayload.cliente }
+      : null;
+
+    if (clientePayload) {
+      delete clientePayload.id_tipo_cliente;
+      delete clientePayload.puntos;
+      delete clientePayload.fecha_ingreso;
+      if (
+        clientePayload.id_empresa_cliente === undefined
+        && clientePayload.id_empresa !== undefined
+        && clientePayload.id_empresa !== null
+        && String(clientePayload.id_empresa).trim() !== ''
+      ) {
+        clientePayload.id_empresa_cliente = clientePayload.id_empresa;
+      }
+      if (Object.prototype.hasOwnProperty.call(clientePayload, 'id_empresa')) {
+        delete clientePayload.id_empresa;
+      }
+      requestPayload.cliente = clientePayload;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(requestPayload, 'strict_base_create')) {
+      const strictParsed = parseBooleanFlag(requestPayload.strict_base_create);
+      if (strictParsed !== null) {
+        requestPayload.strict_base_create = strictParsed;
+      }
+    }
+
+    requestPayload.rbac_context = 'clientes';
+    try {
+      return await apiFetch('/clientes/full-create', 'POST', requestPayload);
+    } catch (error) {
+      if ([404, 405].includes(Number(error?.status))) {
+        return apiFetch('/clientes/atomico', 'POST', requestPayload);
+      }
+      throw error;
+    }
   },
 
   updateCliente: async (id, updates = {}) => {
@@ -764,7 +868,7 @@ export const personaService = {
   getRolesUsuariosV2: () =>
     apiFetch('/usuarios/v2/roles', 'GET'),
 
-  getUsuariosV2: ({ page = 1, limit = 10, q = '', search = '', nombre = '' } = {}) => {
+  getUsuariosV2: ({ page = 1, limit = 10, q = '', search = '', nombre = '', estado } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -774,6 +878,7 @@ export const personaService = {
         ? search.trim()
         : (typeof nombre === 'string' ? nombre.trim() : ''));
     if (normalizedSearch) params.set('q', normalizedSearch);
+    if (estado !== undefined && estado !== null) params.set('estado', String(estado));
     return apiFetch(`/usuarios/v2/list?${params.toString()}`, 'GET');
   },
 

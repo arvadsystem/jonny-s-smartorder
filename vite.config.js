@@ -86,6 +86,9 @@ export default defineConfig(({ command }) => ({
     include: ['framer-motion', 'react-icons/fi', 'react-select', 'react-select/async', 'react-dom']
   },
   server: {
+    host: 'localhost',
+    port: 5173,
+    strictPort: true,
     proxy
   }
 }));

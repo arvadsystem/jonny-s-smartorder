@@ -86,6 +86,97 @@ export const formatPhone = (digits8) => {
   return `${p1}-${p2}`;
 };
 
+const normalizeTextValue = (value) => String(value ?? "").trim();
+const normalizeComparableText = (value) =>
+  normalizeTextValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const UI_PLACEHOLDER_VALUES = new Set([
+  "no registrado",
+  "no registrada",
+  "sin registrar",
+  "sin registro",
+  "no disponible",
+  "sin correo",
+  "sin telefono",
+  "sin direccion",
+  "n/d",
+  "null",
+  "undefined",
+]);
+
+const isUiPlaceholderText = (value) => {
+  const normalized = normalizeComparableText(value);
+  if (!normalized) return false;
+  if (UI_PLACEHOLDER_VALUES.has(normalized)) return true;
+  if (/^no registrad[oa]$/.test(normalized)) return true;
+  return false;
+};
+
+const firstNonEmptyText = (...values) => {
+  for (const value of values) {
+    const text = normalizeTextValue(value);
+    if (!text) continue;
+    if (isUiPlaceholderText(text)) continue;
+    return text;
+  }
+  return "";
+};
+
+const isLikelyForeignId = (value) => {
+  const text = normalizeTextValue(value);
+  return /^\d{1,6}$/.test(text);
+};
+
+const resolvePhoneDisplayValue = (value = {}) => {
+  const preferredPhone = firstNonEmptyText(
+    value?.texto_telefono,
+    value?.telefono,
+    value?.telefono_numero,
+    value?.numero_telefono,
+    value?.persona_telefono,
+    value?.telefono_persona
+  );
+  if (preferredPhone) return preferredPhone;
+
+  const idPhone = firstNonEmptyText(value?.id_telefono);
+  const idPhoneDigits = digitsOnly(idPhone);
+  return idPhoneDigits.length === PHONE_DIGITS_LENGTH ? idPhone : "";
+};
+
+const resolveAddressDisplayValue = (value = {}) => {
+  const preferredAddress = firstNonEmptyText(
+    value?.texto_direccion,
+    value?.direccion,
+    value?.direccion_detalle,
+    value?.persona_direccion,
+    value?.direccion_persona
+  );
+  if (preferredAddress) return preferredAddress;
+
+  const idAddress = firstNonEmptyText(value?.id_direccion);
+  return isLikelyForeignId(idAddress) ? "" : idAddress;
+};
+
+const resolveEmailDisplayValue = (value = {}) => {
+  const preferredEmail = firstNonEmptyText(
+    value?.texto_correo,
+    value?.direccion_correo,
+    value?.correo,
+    value?.email,
+    value?.correo_electronico,
+    value?.persona_correo,
+    value?.correo_persona
+  );
+  if (preferredEmail) return preferredEmail;
+
+  const idEmail = firstNonEmptyText(value?.id_correo);
+  if (!idEmail || isLikelyForeignId(idEmail)) return "";
+  return idEmail;
+};
+
 export const resolveCaretFromDigitIndex = (formattedValue, digitIndex) => {
   if (!formattedValue) return 0;
   if (digitIndex <= 0) return 0;
@@ -104,6 +195,10 @@ export const resolveCaretFromDigitIndex = (formattedValue, digitIndex) => {
 
 export const normalizePersonaFormValues = (value = {}) => {
   const base = createInitialPersonaForm();
+  const telefonoFuente = resolvePhoneDisplayValue(value);
+  const direccionFuente = resolveAddressDisplayValue(value);
+  const correoFuente = resolveEmailDisplayValue(value);
+
   return {
     ...base,
     nombre: String(value?.nombre ?? "").trim(),
@@ -114,22 +209,12 @@ export const normalizePersonaFormValues = (value = {}) => {
     fecha_nacimiento: String(value?.fecha_nacimiento ?? "").trim(),
     id_telefono: formatPhone(
       limit(
-        digitsOnly(
-          value?.id_telefono ?? value?.texto_telefono ?? value?.telefono ?? ""
-        ),
+        digitsOnly(telefonoFuente),
         PHONE_DIGITS_LENGTH
       )
     ),
-    id_direccion: String(
-      value?.id_direccion ?? value?.texto_direccion ?? value?.direccion ?? ""
-    ).trim(),
-    id_correo: String(
-      value?.id_correo ??
-        value?.texto_correo ??
-        value?.direccion_correo ??
-        value?.correo ??
-        ""
-    ).trim(),
+    id_direccion: direccionFuente,
+    id_correo: correoFuente,
   };
 };
 
@@ -206,4 +291,3 @@ export const validatePersonaForm = (form = {}) => {
 
   return currentErrors;
 };
-

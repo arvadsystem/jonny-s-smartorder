@@ -1,12 +1,17 @@
 const HAMBURGUESA_KEYWORDS = ['hamburguesa', 'burger', 'smash'];
-
-const FALLBACK_HAMBURGUESA_EXTRAS = [
-  {
-    id_extra: 'hamb-extra-bacon',
-    codigo: 'extra_bacon',
-    nombre: 'Extra bacon',
-    precio_adicional: 30
-  }
+const WINGS_SAUCE_KEYWORDS = ['alita', 'alitas', 'tender', 'tenders'];
+const KITCHEN_NOTE_KEYWORDS = [
+  'combo',
+  'combos',
+  'taco birria',
+  'tacos birria',
+  'taco de birria',
+  'tacos de birria',
+  'birria',
+  'hot dog',
+  'hot dogs',
+  'hotdog',
+  'hotdogs'
 ];
 
 const normalizeText = (value) =>
@@ -26,6 +31,30 @@ const hasAnyKeyword = (value, keywords = []) => {
   const text = normalizeText(value);
   if (!text) return false;
   return keywords.some((keyword) => text.includes(normalizeText(keyword)));
+};
+
+const inferSauceUnitsBaseFromText = (...sources) => {
+  const text = normalizeText(sources.filter(Boolean).join(' '));
+  if (!text) return 1;
+
+  const containsKeyword = WINGS_SAUCE_KEYWORDS.some((keyword) => text.includes(normalizeText(keyword)));
+  if (!containsKeyword) return 1;
+
+  const match =
+    text.match(/\b(\d{1,3})\s*(?:alitas?|tenders?)\b/i) ||
+    text.match(/\b(\d{1,3})\s*(?:uds?|unidades?|pzas?|piezas?)\b/i) ||
+    text.match(/\((\d{1,3})\s*(?:uds?|unidades?|pzas?|piezas?)\)/i);
+
+  const units = Number(match?.[1] || 0);
+  if (!Number.isFinite(units) || units <= 0) return 1;
+  return Math.max(1, Math.floor(units));
+};
+
+const calculateFallbackWingSauceRequirement = ({ item, quantity = 1 }) => {
+  const baseUnits = inferSauceUnitsBaseFromText(item?.nombre, item?.descripcion);
+  if (baseUnits <= 1) return 0;
+  const totalUnits = Math.max(1, Number(quantity || 1)) * baseUnits;
+  return Math.max(0, Math.ceil(totalUnits / 6));
 };
 
 const findMatchingSalsaRule = (rules, unidades) => {
@@ -56,6 +85,26 @@ export const isHamburguesaItem = (item) =>
   hasAnyKeyword(item?.descripcion, HAMBURGUESA_KEYWORDS) ||
   hasAnyKeyword(item?.categoria?.nombre, HAMBURGUESA_KEYWORDS);
 
+export const isWingsOrTendersItem = (item) => {
+  const directMatch =
+    hasAnyKeyword(item?.nombre, WINGS_SAUCE_KEYWORDS) ||
+    hasAnyKeyword(item?.descripcion, WINGS_SAUCE_KEYWORDS) ||
+    hasAnyKeyword(item?.categoria?.nombre, WINGS_SAUCE_KEYWORDS) ||
+    hasAnyKeyword(item?.categoria?.nombre_producto, WINGS_SAUCE_KEYWORDS);
+
+  if (directMatch) return true;
+
+  return (Array.isArray(item?.salsas_componentes) ? item.salsas_componentes : []).some((component) =>
+    hasAnyKeyword(component?.nombre_receta, WINGS_SAUCE_KEYWORDS)
+  );
+};
+
+export const isKitchenNoteItem = (item) =>
+  hasAnyKeyword(item?.nombre, KITCHEN_NOTE_KEYWORDS) ||
+  hasAnyKeyword(item?.descripcion, KITCHEN_NOTE_KEYWORDS) ||
+  hasAnyKeyword(item?.categoria?.nombre, KITCHEN_NOTE_KEYWORDS) ||
+  hasAnyKeyword(item?.categoria?.nombre_producto, KITCHEN_NOTE_KEYWORDS);
+
 export const getItemExtraOptions = (item) => {
   const backendOptions = Array.isArray(item?.extras_opciones) ? item.extras_opciones : [];
   if (backendOptions.length > 0) {
@@ -67,10 +116,6 @@ export const getItemExtraOptions = (item) => {
         precio_adicional: Number(extra?.precio_adicional || 0)
       }))
       .filter((extra) => extra.id_extra);
-  }
-
-  if (String(item?.tipo_item || '') === 'RECETA' && isHamburguesaItem(item)) {
-    return FALLBACK_HAMBURGUESA_EXTRAS.map((extra) => ({ ...extra }));
   }
 
   return [];
@@ -97,18 +142,24 @@ export const getItemAllowedSauces = (item) =>
 
 export const calculateRequiredSauces = (item, quantity = 1) => {
   const components = Array.isArray(item?.salsas_componentes) ? item.salsas_componentes : [];
-
-  return components.reduce((total, component) => {
+  const requiredFromComponents = components.reduce((total, component) => {
     const multiplier = Math.max(1, Number(component?.multiplicador || 1));
-    const units = Math.max(1, Number(quantity || 1)) * multiplier;
+    const baseUnits = Math.max(1, Number(component?.unidades_base || 1));
+    const units = Math.max(1, Number(quantity || 1)) * multiplier * baseUnits;
     const rule = findMatchingSalsaRule(component?.reglas, units);
     return total + Number(rule?.salsas_requeridas || 0);
   }, 0);
+
+  if (requiredFromComponents > 0) return requiredFromComponents;
+  return calculateFallbackWingSauceRequirement({ item, quantity });
 };
 
 export const requiresItemConfiguration = (item) =>
+  isKitchenNoteItem(item) ||
   getItemExtraOptions(item).length > 0 ||
-  item?.salsas_requiere_seleccion === true;
+  item?.salsas_requiere_seleccion === true ||
+  getItemAllowedSauces(item).length > 0 ||
+  calculateRequiredSauces(item, 1) > 0;
 
 export const normalizeSelectedSauces = (rawSauces = []) => {
   const merged = new Map();

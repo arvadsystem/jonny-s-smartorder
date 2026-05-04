@@ -10,6 +10,8 @@ const normalizeText = (value) =>
     .toLowerCase()
     .trim();
 
+const isProductAvailable = (product) => !product?.isSoldOut;
+
 // Catalog hook with simulated latency and state control for UI development.
 export const useCatalogProductsMock = ({ branchId, orderType }) => {
   const [products, setProducts] = useState([]);
@@ -45,14 +47,19 @@ export const useCatalogProductsMock = ({ branchId, orderType }) => {
     loadCatalog();
   }, [loadCatalog]);
 
+  const availableProducts = useMemo(
+    () => products.filter((product) => isProductAvailable(product)),
+    [products]
+  );
+
   const categories = useMemo(() => {
-    const unique = new Set(products.map((product) => product.category));
+    const unique = new Set(availableProducts.map((product) => product.category));
     return ['all', ...Array.from(unique)];
-  }, [products]);
+  }, [availableProducts]);
 
   const filteredProducts = useMemo(() => {
     const normalizedSearch = normalizeText(searchTerm);
-    return products.filter((product) => {
+    return availableProducts.filter((product) => {
       const inCategory = selectedCategory === 'all' || product.category === selectedCategory;
       if (!inCategory) return false;
 
@@ -61,21 +68,20 @@ export const useCatalogProductsMock = ({ branchId, orderType }) => {
       const description = normalizeText(product.description);
       return name.includes(normalizedSearch) || description.includes(normalizedSearch);
     });
-  }, [products, searchTerm, selectedCategory]);
+  }, [availableProducts, searchTerm, selectedCategory]);
 
   const stats = useMemo(() => {
-    const available = filteredProducts.filter((product) => !product.isSoldOut).length;
-    const soldOut = filteredProducts.length - available;
     return {
       total: filteredProducts.length,
-      available,
-      soldOut,
-      allFilteredSoldOut: filteredProducts.length > 0 && available === 0
+      available: filteredProducts.length,
+      soldOut: 0,
+      allFilteredSoldOut: false
     };
   }, [filteredProducts]);
 
   return {
     products,
+    availableProducts,
     filteredProducts,
     categories,
     searchTerm,
@@ -88,4 +94,3 @@ export const useCatalogProductsMock = ({ branchId, orderType }) => {
     reloadCatalog: loadCatalog
   };
 };
-
