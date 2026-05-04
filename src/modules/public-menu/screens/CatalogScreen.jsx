@@ -395,9 +395,14 @@ const CatalogScreen = () => {
   }, [heroIndex, heroSlides.length]);
 
   useEffect(() => {
-    if (!liveBranchId || selectedBranchOpen) {
+    if (!liveBranchId) {
       setClosedHoursConfirmOpen(false);
       setClosedHoursDismissedBranchId(null);
+      return;
+    }
+
+    if (selectedBranchOpen) {
+      setClosedHoursConfirmOpen(false);
       return;
     }
 
