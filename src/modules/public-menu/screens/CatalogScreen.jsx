@@ -782,7 +782,10 @@ const CatalogScreen = () => {
   }
 
   return (
-    <section className="pm-screen pm-catalog-screen" aria-label="Catalogo publico">
+    <section
+      className={`pm-screen pm-catalog-screen ${totalItems > 0 ? 'pm-catalog-screen--with-cart' : ''}`}
+      aria-label="Catalogo publico"
+    >
       <PremiumCatalogHeader
         categories={topNavCategories}
         selectedCategory={selectedCategory}
@@ -808,7 +811,7 @@ const CatalogScreen = () => {
         onToggleTheme={onToggleTheme}
       />
 
-      {heroSlides.length > 0 ? (
+      {isCatalogLanding && heroSlides.length > 0 ? (
         <PremiumHero
           slides={heroSlides}
           heroIndex={heroIndex}
