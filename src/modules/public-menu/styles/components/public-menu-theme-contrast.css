@@ -595,3 +595,147 @@
 .pm-shell .pm-jonny-experience__spark::after {
   background: #b86429 !important;
 }
+
+@media (min-width: 768px) {
+  .pm-shell .pm-hero-section__brand-mark {
+    display: block !important;
+    width: clamp(102px, 10.2vw, 154px) !important;
+    height: auto !important;
+    margin: 0 0 0.22rem !important;
+    justify-self: center !important;
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.38));
+  }
+
+  .pm-shell .pm-premium-header > .pm-premium-header__nav .pm-premium-header__nav-item {
+    position: relative !important;
+    padding-inline: clamp(0.52rem, 0.85vw, 0.9rem) !important;
+  }
+
+  .pm-shell .pm-premium-header > .pm-premium-header__nav .pm-premium-header__nav-item:not(:last-child)::after {
+    content: "|" !important;
+    position: absolute !important;
+    right: -0.08rem !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    color: rgba(171, 111, 65, 0.82) !important;
+    font-weight: 700 !important;
+    pointer-events: none !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pm-shell.pm-theme-light .pm-hero-section__overlay,
+  .pm-shell:not(.pm-theme-light) .pm-hero-section__overlay {
+    background:
+      radial-gradient(ellipse at 30% 52%, rgba(14, 7, 4, 0.12) 0%, rgba(14, 7, 4, 0.56) 100%),
+      linear-gradient(90deg, rgba(14, 7, 4, 0.58) 0%, rgba(14, 7, 4, 0.56) 46%, rgba(14, 7, 4, 0.16) 100%),
+      linear-gradient(0deg, rgba(14, 7, 4, 0.48), rgba(14, 7, 4, 0.14)) !important;
+  }
+
+  .pm-shell .pm-hero-section__brand-mark {
+    width: clamp(142px, 12.8vw, 218px) !important;
+    margin-bottom: 0.3rem !important;
+    justify-self: center !important;
+    transform: translateX(-120px) !important;
+  }
+
+  .pm-shell .pm-premium-header > .pm-premium-header__nav {
+    gap: 0 !important;
+    justify-content: space-between !important;
+    min-width: 0 !important;
+  }
+
+  .pm-shell .pm-premium-header > .pm-premium-header__nav .pm-premium-header__nav-item {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 34px !important;
+    font-size: clamp(0.82rem, 0.96vw, 1.04rem) !important;
+    line-height: 1.05 !important;
+    position: relative !important;
+    padding-inline: clamp(0.28rem, 0.42vw, 0.48rem) !important;
+    flex: 0 1 auto !important;
+  }
+
+  .pm-shell .pm-premium-header > .pm-premium-header__nav .pm-premium-header__nav-item:not(:last-child)::after {
+    content: "|" !important;
+    position: absolute !important;
+    right: -0.65rem !important;
+    top: 50% !important;
+    transform: translate(50%, -50%) !important;
+    color: rgba(171, 111, 65, 0.78) !important;
+    font-weight: 700 !important;
+    pointer-events: none !important;
+  }
+
+  .pm-shell .pm-premium-header > .pm-premium-header__nav .pm-premium-header__nav-item + .pm-premium-header__nav-item::before {
+    content: none !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pm-shell .pm-hero-section__brand-mark {
+    display: block !important;
+    width: clamp(58px, 18vw, 86px) !important;
+    height: auto !important;
+    justify-self: start !important;
+    margin: 0 0 0.14rem !important;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pm-shell .pm-catalog-screen {
+    padding-bottom: 0.95rem !important;
+  }
+
+  .pm-shell .pm-catalog-screen.pm-catalog-screen--with-cart {
+    padding-bottom: 5.9rem !important;
+  }
+
+  .pm-shell .pm-jonny-experience__item {
+    grid-template-columns: 2.85rem minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    align-items: center !important;
+    column-gap: 0.68rem !important;
+    row-gap: 0.14rem !important;
+    padding: 0.82rem 0.9rem !important;
+  }
+
+  .pm-shell .pm-jonny-experience__icon {
+    grid-column: 1 !important;
+    grid-row: 1 / span 2 !important;
+    align-self: center !important;
+    width: 2.85rem !important;
+    height: 2.85rem !important;
+  }
+
+  .pm-shell .pm-jonny-experience__icon svg {
+    width: 1.52rem !important;
+    height: 1.52rem !important;
+  }
+
+  .pm-shell .pm-jonny-experience__item h3 {
+    grid-column: 2 !important;
+    margin: 0 !important;
+    line-height: 0.96 !important;
+    align-self: end !important;
+  }
+
+  .pm-shell .pm-jonny-experience__item h3 span {
+    margin-top: 0.02rem !important;
+  }
+
+  .pm-shell .pm-jonny-experience__item p {
+    grid-column: 2 !important;
+    margin: 0 !important;
+    line-height: 1.22 !important;
+    max-width: 100% !important;
+    align-self: start !important;
+  }
+
+  .pm-shell .pm-public-footer {
+    margin-top: 0.05rem !important;
+    padding-bottom: 0 !important;
+  }
+}
