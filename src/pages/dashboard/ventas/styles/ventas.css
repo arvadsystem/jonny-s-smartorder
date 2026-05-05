@@ -289,6 +289,63 @@
   backdrop-filter: blur(6px);
 }
 
+.ventas-modal-card {
+  width: min(520px, 100%);
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  box-shadow: 0 26px 70px rgba(18, 7, 3, 0.34);
+  overflow: hidden;
+}
+
+.ventas-modal-header {
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+  background: linear-gradient(180deg, #fffef8 0%, #fff 100%);
+}
+
+.ventas-modal-header h5 {
+  margin: 0;
+  color: #47240d;
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.ventas-modal-body {
+  padding: 16px 22px 8px;
+}
+
+.ventas-modal-body p {
+  margin: 0;
+  color: rgba(55, 31, 17, 0.9);
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+
+.ventas-modal-footer {
+  padding: 14px 22px 20px;
+  border-top: 1px solid rgba(157, 150, 112, 0.14);
+  background: #fff;
+}
+
+.ventas-modal-footer .btn {
+  min-width: 116px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.ventas-modal-footer .btn-primary {
+  background: linear-gradient(135deg, #9a5319, #c26a22);
+  border-color: #9a5319;
+}
+
+.ventas-modal-footer .btn-primary:hover,
+.ventas-modal-footer .btn-primary:focus {
+  background: #8a4915;
+  border-color: #8a4915;
+}
+
 .ventas-modal {
   width: min(1120px, 100%);
   max-height: calc(100vh - 24px);
@@ -1387,8 +1444,8 @@
 
 @media (max-width: 767.98px) {
   .ventas-modal-backdrop {
-    padding: 6px;
-    align-items: stretch;
+    padding: 14px;
+    align-items: center;
   }
 
   .ventas-modal {
@@ -1402,6 +1459,28 @@
 
   .ventas-modal__header {
     padding: 14px 16px;
+  }
+
+  .ventas-modal-card {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 14px;
+  }
+
+  .ventas-modal-header,
+  .ventas-modal-body,
+  .ventas-modal-footer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .ventas-modal-footer {
+    padding-bottom: 14px;
+  }
+
+  .ventas-modal-footer .btn {
+    min-width: 0;
+    flex: 1 1 0;
   }
 
   .ventas-modal__title-wrap h3 {

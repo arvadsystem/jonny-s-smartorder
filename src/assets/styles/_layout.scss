@@ -60,6 +60,13 @@ body::before {
   transition: margin-left 180ms ease, padding 180ms ease;
 }
 
+.dashboard-shell.dashboard-shell--tv-mode .main-content {
+  margin-left: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+}
+
 .dashboard-shell .main-content > * {
   min-width: 0;
   max-width: 100%;
