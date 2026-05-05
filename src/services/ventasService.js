@@ -26,8 +26,10 @@ const ventasService = {
   getRecetasCatalog: () => apiFetch('/ventas/catalogos/recetas', 'GET'),
   getDescuentosCatalog: () => apiFetch('/ventas/catalogos/descuentos', 'GET'),
   getTiposDescuentoCatalog: () => apiFetch('/ventas/catalogos/tipos-descuento', 'GET'),
-  getProductosCatalog: () => apiFetch('/productos', 'GET'),
-  getCategoriasCatalog: () => apiFetch('/categorias_productos', 'GET'),
+  getProductosCatalog: () => apiFetch('/ventas/catalogos/productos', 'GET'),
+  // FIX: usar endpoint propio de ventas para categorias; /categorias_productos exige
+  // INVENTARIO_CATEGORIAS_VER que el cajero no tiene, causando 403 y caja sin productos.
+  getCategoriasCatalog: () => apiFetch('/ventas/catalogos/categorias', 'GET'),
   getTipoDepartamentos: () => apiFetch('/ventas/catalogos/tipo-departamento', 'GET'),
   listDescuentosCatalogosAdmin: (params = {}) =>
     apiFetch(`/ventas/descuentos-catalogos${buildQuery(params)}`, 'GET'),

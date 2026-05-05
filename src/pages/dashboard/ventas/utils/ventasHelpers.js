@@ -110,9 +110,9 @@ export const extractApiMessage = (error, fallbackMessage) => {
 
 export const normalizeCategoriaRecord = (row) => ({
   ...row,
-  id_categoria_producto: Number(row?.id_categoria_producto ?? 0) || null,
-  nombre_categoria: String(row?.nombre_categoria ?? 'Sin categoría'),
-  estado: parseBoolean(row?.estado)
+  id_categoria_producto: Number(row?.id_categoria_producto ?? row?.id_categoria ?? 0) || null,
+  nombre_categoria: String(row?.nombre_categoria ?? row?.nombre_departamento ?? 'Sin categoría'),
+  estado: parseBoolean(row?.estado ?? true)
 });
 
 export const buildCategoriasMap = (categorias) =>
@@ -336,3 +336,4 @@ export const downloadVentaDetail = (venta) => {
   link.click();
   window.URL.revokeObjectURL(url);
 };
+

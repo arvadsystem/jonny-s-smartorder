@@ -8,6 +8,7 @@ import { extractCajasApiMessage, formatCajaDateTime } from '../../ventas/utils/c
 import { useCierresCaja } from '../../ventas/hooks/useCierresCaja';
 import { PERMISSIONS } from '../../../../utils/permissions';
 import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
+import CierreCajaAbrirModal from '../../ventas/components/cierres/CierreCajaAbrirModal';
 
 const buildScopeQuery = (value) => {
   const parsed = Number.parseInt(String(value || ''), 10);
@@ -48,7 +49,8 @@ export default function CierresCajaAsignacionesView() {
     listUsuariosOperativos,
     createCajaAsignacion,
     updateCajaAsignacion,
-    inactivateCajaAsignacion
+    inactivateCajaAsignacion,
+    createCajaCatalogo
   } = useCierresCaja();
 
   const [selectedSucursalId, setSelectedSucursalId] = useState('');
@@ -71,6 +73,16 @@ export default function CierresCajaAsignacionesView() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(initialForm);
+  const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
+  const [confirmDeactivateTarget, setConfirmDeactivateTarget] = useState(null);
+  const [confirmDeactivateMessage, setConfirmDeactivateMessage] = useState('');
+  const [newCajaOpen, setNewCajaOpen] = useState(false);
+  const [newCajaUsuarios, setNewCajaUsuarios] = useState([]);
+  const [newCajaCajas, setNewCajaCajas] = useState([]);
+  const [loadingNewCajaUsuarios, setLoadingNewCajaUsuarios] = useState(false);
+  const [loadingNewCajaCajas, setLoadingNewCajaCajas] = useState(false);
+  const newCajaUsersRequestIdRef = useRef(0);
+  const newCajaListRequestIdRef = useRef(0);
   const usuariosRequestIdRef = useRef(0);
   const lastUsersLoadKeyRef = useRef('');
 
@@ -293,7 +305,7 @@ export default function CierresCajaAsignacionesView() {
   const selectedCajaSucursalId = Number(selectedCaja?.id_sucursal || 0) || null;
   const selectedCajaSucursalNombre = String(selectedCaja?.nombre_sucursal || '').trim();
   const hasRolOperativo = ['RESPONSABLE', 'AUXILIAR'].includes(String(form.rol_operativo || '').trim().toUpperCase());
-  const canPickUsuario = Boolean(selectedCajaSucursalId) && hasRolOperativo && !loadingUsuarios && !editing;
+  const canPickUsuario = Boolean(selectedCajaSucursalId) && hasRolOperativo && !loadingUsuarios;
   const userPlaceholder = !selectedCaja
     ? 'Selecciona una caja primero'
     : !selectedCajaSucursalId
@@ -332,15 +344,88 @@ export default function CierresCajaAsignacionesView() {
     }
   };
 
+
+  const openDeactivateConfirm = (target, message) => {
+    if (!target?.id_caja_usuario_autorizado) return;
+    setConfirmDeactivateTarget(target);
+    setConfirmDeactivateMessage(String(message || '¿Deseas desactivar esta asignación?'));
+    setConfirmDeactivateOpen(true);
+  };
+
+  const closeDeactivateConfirm = () => {
+    if (saving) return;
+    setConfirmDeactivateOpen(false);
+    setConfirmDeactivateTarget(null);
+    setConfirmDeactivateMessage('');
+  };
+
+  const confirmDeactivate = async () => {
+    if (!confirmDeactivateTarget?.id_caja_usuario_autorizado) return;
+    try {
+      await inactivateCajaAsignacion(confirmDeactivateTarget.id_caja_usuario_autorizado);
+      setConfirmDeactivateOpen(false);
+      setConfirmDeactivateTarget(null);
+      setConfirmDeactivateMessage('');
+      setModalOpen(false);
+      await loadData();
+    } catch {
+      // Los hooks ya exponen toast de error; evitamos uncaught promise.
+    }
+  };
   const toggleState = async (row) => {
     if (!row?.id_caja_usuario_autorizado) return;
     if (row.estado) {
-      const confirmed = window.confirm('¿Deseas desactivar esta asignación de caja? El usuario ya no podrá operar con este rol en esta caja.');
-      if (!confirmed) return;
+      openDeactivateConfirm(
+        row,
+        '¿Deseas desactivar esta asignación de caja? El usuario ya no podrá operar con este rol en esta caja.'
+      );
+      return;
     }
     try {
       if (row.estado) await inactivateCajaAsignacion(row.id_caja_usuario_autorizado);
       else await updateCajaAsignacion(row.id_caja_usuario_autorizado, { estado: true });
+      await loadData();
+    } catch {
+      // Los hooks ya exponen toast de error; evitamos uncaught promise.
+    }
+  };
+
+  const requestNewCajaUsuarios = useCallback(async (idSucursal, rolOperativo = 'RESPONSABLE') => {
+    const requestId = newCajaUsersRequestIdRef.current + 1;
+    newCajaUsersRequestIdRef.current = requestId;
+    setLoadingNewCajaUsuarios(true);
+    try {
+      const response = await listUsuariosOperativos({ id_sucursal: idSucursal, rol_operativo: rolOperativo });
+      if (newCajaUsersRequestIdRef.current !== requestId) return;
+      setNewCajaUsuarios(Array.isArray(response) ? response : []);
+    } catch {
+      if (newCajaUsersRequestIdRef.current !== requestId) return;
+      setNewCajaUsuarios([]);
+    } finally {
+      if (newCajaUsersRequestIdRef.current === requestId) setLoadingNewCajaUsuarios(false);
+    }
+  }, [listUsuariosOperativos]);
+
+  const requestNewCajaCatalog = useCallback(async (idSucursal) => {
+    const requestId = newCajaListRequestIdRef.current + 1;
+    newCajaListRequestIdRef.current = requestId;
+    setLoadingNewCajaCajas(true);
+    try {
+      const response = await listCajaCatalogo({ id_sucursal: idSucursal, incluir_inactivas: true });
+      if (newCajaListRequestIdRef.current !== requestId) return;
+      setNewCajaCajas(Array.isArray(response) ? response : []);
+    } catch {
+      if (newCajaListRequestIdRef.current !== requestId) return;
+      setNewCajaCajas([]);
+    } finally {
+      if (newCajaListRequestIdRef.current === requestId) setLoadingNewCajaCajas(false);
+    }
+  }, [listCajaCatalogo]);
+
+  const submitNewCaja = async (payload) => {
+    try {
+      await createCajaCatalogo(payload);
+      setNewCajaOpen(false);
       await loadData();
     } catch {
       // Los hooks ya exponen toast de error; evitamos uncaught promise.
@@ -368,6 +453,7 @@ export default function CierresCajaAsignacionesView() {
                 onSubmit={(value) => setSearch(String(value || '').trim())}
                 placeholder="Buscar por caja o usuario..."
                 ariaLabel="Buscar asignaciones"
+                expandDirection="left"
               />
 
               <button
@@ -389,15 +475,16 @@ export default function CierresCajaAsignacionesView() {
                 ) : null}
               </button>
 
-              <button
-                type="button"
-                className="inv-prod-toolbar-btn bg-white border"
-                onClick={() => void loadData()}
-                disabled={loading}
-              >
-                <i className="bi bi-arrow-clockwise" />
-                <span>Refrescar</span>
-              </button>
+              {canManage ? (
+                <button
+                  type="button"
+                  className="inv-prod-toolbar-btn bg-white border cierres-caja-toolbar__cta"
+                  onClick={() => setNewCajaOpen(true)}
+                >
+                  <i className="bi bi-plus-circle" />
+                  <span>Nueva caja</span>
+                </button>
+              ) : null}
 
               {canManage ? (
                 <button
@@ -429,8 +516,8 @@ export default function CierresCajaAsignacionesView() {
                 {!loading && !error && visible.length === 0 ? <tr><td colSpan="6" className="text-center py-4">No hay asignaciones para los filtros aplicados.</td></tr> : null}
                 {!loading && !error ? visible.map((row) => (
                   <tr key={row.id_caja_usuario_autorizado} className="ventas-page__table-row">
-                    <td><div className="ventas-page__table-sale"><strong>{row.nombre_caja || 'Caja sin nombre'}</strong><span>{row.codigo_caja || 'Sin codigo'}</span><small>{row.nombre_sucursal || 'Sin sucursal'}</small></div></td>
-                    <td className="align-middle"><div className="ventas-page__table-sale"><strong>{row.nombre_completo || 'Sin nombre'}</strong><span>{row.nombre_usuario ? `@${row.nombre_usuario}` : 'Sin usuario'}</span></div></td>
+                    <td><div className="ventas-page__table-sale"><strong>{row.nombre_caja || 'Caja sin nombre'}</strong></div></td>
+                    <td className="align-middle"><div className="ventas-page__table-sale"><strong>{row.nombre_completo || 'Sin nombre'}</strong></div></td>
                     <td className="align-middle"><span className="ventas-page__table-pill bg-white">{roleLabel(row)}</span></td>
                     <td className="text-center align-middle"><span className={`ventas-page__table-pill ${row.estado ? 'bg-success border-success text-white' : 'bg-secondary border-secondary text-white'}`}>{row.estado ? 'Activa' : 'Inactiva'}</span></td>
                     <td className="align-middle text-muted small fw-semibold">{formatCajaDateTime(row.fecha_actualizacion)}</td>
@@ -527,13 +614,62 @@ export default function CierresCajaAsignacionesView() {
               <div className="d-flex flex-wrap gap-3">{editing ? <label className="form-check"><input className="form-check-input" type="checkbox" checked={form.estado} onChange={(event) => setForm((current) => ({ ...current, estado: event.target.checked }))} /><span className="form-check-label">Activa</span></label> : null}</div>
               {!formValid ? <div className="ventas-create-modal__error">Debe seleccionar solo un rol operativo: responsable o auxiliar.</div> : null}
               <label className="ventas-create-modal__field"><span>Observacion</span><textarea className="ventas-create-modal__note-input" rows="3" value={form.observacion} onChange={(event) => setForm((current) => ({ ...current, observacion: event.target.value }))} /></label>
-              <footer className="ventas-detail-modal__footer"><div className="ventas-detail-modal__footer-actions"><button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)} disabled={saving}>Cancelar</button>{editing && form.rol_operativo === 'AUXILIAR' ? <button type="button" className="btn btn-outline-danger" disabled={saving || !editing?.id_caja_usuario_autorizado || !editing?.estado} onClick={async () => { const confirmed = window.confirm('¿Deseas desactivar esta asignación de auxiliar? El usuario ya no podrá operar como auxiliar permanente en esta caja.'); if (!confirmed) return; try { await inactivateCajaAsignacion(editing.id_caja_usuario_autorizado); setModalOpen(false); await loadData(); } catch { /* no-op: hook toast */ } }}>Desactivar auxiliar</button> : null}<button type="submit" className="btn btn-danger" disabled={!formValid || saving}>{saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear asignacion'}</button></div></footer>
+              <footer className="ventas-detail-modal__footer"><div className="ventas-detail-modal__footer-actions"><button type="button" className="btn btn-outline-secondary" onClick={() => setModalOpen(false)} disabled={saving}>Cancelar</button>{editing ? <button type="button" className="btn btn-outline-danger" disabled={saving || !editing?.id_caja_usuario_autorizado || !editing?.estado} onClick={() => openDeactivateConfirm(editing, `¿Deseas desactivar esta asignación de ${form.rol_operativo === 'RESPONSABLE' ? 'responsable' : 'auxiliar'}? El usuario ya no podrá operar con este rol permanente en esta caja.`)}>Desactivar asignación</button> : null}<button type="submit" className="btn btn-danger" disabled={!formValid || saving}>{saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear asignacion'}</button></div></footer>
             </form>
           </section>
         </div>
       ) : null}
+      {confirmDeactivateOpen ? (
+        <div className="ventas-modal-backdrop" onClick={closeDeactivateConfirm}>
+          <section className="ventas-modal cierres-caja-action-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className="ventas-modal__header">
+              <div className="ventas-modal__title-wrap">
+                <span className="ventas-modal__icon"><i className="bi bi-exclamation-triangle" /></span>
+                <div>
+                  <h3>Confirmar desactivación</h3>
+                  <p>Esta acción inactivará la asignación seleccionada.</p>
+                </div>
+              </div>
+              <button type="button" className="ventas-modal__close-btn" onClick={closeDeactivateConfirm} disabled={saving}><i className="bi bi-x-lg" /></button>
+            </header>
+            <div className="ventas-modal__body cierres-caja-action-modal__body">
+              <p className="mb-0">{confirmDeactivateMessage}</p>
+            </div>
+            <footer className="ventas-detail-modal__footer">
+              <div className="ventas-detail-modal__footer-actions">
+                <button type="button" className="btn btn-outline-secondary" onClick={closeDeactivateConfirm} disabled={saving}>Cancelar</button>
+                <button type="button" className="btn btn-danger" onClick={() => void confirmDeactivate()} disabled={saving}>{saving ? 'Procesando...' : 'Desactivar'}</button>
+              </div>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
+      <CierreCajaAbrirModal
+        key={newCajaOpen ? 'nueva-caja-open' : 'nueva-caja-closed'}
+        open={newCajaOpen}
+        mode="nueva"
+        cajasDisponibles={newCajaCajas}
+        loadingCajas={loadingNewCajaCajas}
+        saving={saving}
+        canSelectSucursal={canSelectSucursal}
+        selectedSucursalId={selectedSucursalId}
+        sucursales={sucursales}
+        usuariosDisponibles={newCajaUsuarios}
+        loadingUsuarios={loadingNewCajaUsuarios}
+        onRequestCajas={requestNewCajaCatalog}
+        onRequestUsuarios={requestNewCajaUsuarios}
+        onClose={() => setNewCajaOpen(false)}
+        onSubmitOpenSesion={() => Promise.resolve()}
+        onSubmitCreateCaja={submitNewCaja}
+      />
 
       <VentasToast toast={toast} onClose={closeToast} />
     </>
   );
 }
+
+
+
+
+

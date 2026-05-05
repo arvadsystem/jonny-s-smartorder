@@ -104,6 +104,8 @@ const cajasService = {
 
   closeSesion: (idSesionCaja, payload) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/cerrar`, 'PATCH', payload),
+  previewCloseSesion: (idSesionCaja, payload) =>
+    apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/cierre-preview`, 'POST', payload),
 
   editCierre: (idCierreCaja, payload) =>
     apiFetch(`/ventas/cajas/cierres/${idCierreCaja}`, 'PATCH', payload),

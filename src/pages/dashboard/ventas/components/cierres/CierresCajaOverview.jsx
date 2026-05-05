@@ -114,6 +114,8 @@ export default function CierresCajaOverview({
               onSubmit={handleSearch}
               placeholder="Buscar por sesion, caja, responsable o sucursal..."
               ariaLabel="Buscar sesiones de caja"
+              expandDirection="left"
+              className="cierres-caja-toolbar__search-compact"
             />
 
             <button
@@ -128,17 +130,6 @@ export default function CierresCajaOverview({
               ) : null}
             </button>
 
-            <button
-              type="button"
-              className="inv-prod-toolbar-btn bg-white border"
-              onClick={onRefresh}
-              disabled={loading}
-              style={{ color: 'rgba(82, 44, 34, 0.86)' }}
-            >
-              <i className="bi bi-arrow-clockwise" />
-              <span>Refrescar</span>
-            </button>
-
             {canOpenSession ? (
               <button
                 type="button"
@@ -151,6 +142,18 @@ export default function CierresCajaOverview({
                 <span>Abrir sesion</span>
               </button>
             ) : null}
+
+            <button
+              type="button"
+              className="inv-prod-toolbar-btn bg-white border"
+              onClick={onRefresh}
+              disabled={loading}
+              style={{ color: 'rgba(82, 44, 34, 0.86)' }}
+              aria-label="Refrescar"
+              title="Refrescar"
+            >
+              <i className="bi bi-arrow-clockwise" />
+            </button>
 
             {supportsCajaCatalogCreate ? (
               <button
