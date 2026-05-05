@@ -64,6 +64,16 @@ export const capitalizeFirstOnly = (value) => {
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
+export const normalizeHumanNameInput = (value, { preserveTrailingSpace = false } = {}) => {
+  const noInvalidChars = lettersAndSpaces(value).replace(/\s+/g, " ").replace(/^\s+/, "");
+  const hadTrailingSpace = preserveTrailingSpace && /\s$/.test(noInvalidChars);
+  const base = noInvalidChars.trimEnd();
+  if (!base) return "";
+  const words = base.split(" ").filter(Boolean).map((word) => capitalizeFirstOnly(word));
+  const normalized = words.join(" ");
+  return hadTrailingSpace ? `${normalized} ` : normalized;
+};
+
 export const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
 
 export const limit = (value, max) => String(value ?? "").slice(0, max);
@@ -193,7 +203,8 @@ export const resolveCaretFromDigitIndex = (formattedValue, digitIndex) => {
   return formattedValue.length;
 };
 
-export const normalizePersonaFormValues = (value = {}) => {
+export const normalizePersonaFormValues = (value = {}, options = {}) => {
+  const preserveNameTrailingSpace = Boolean(options?.preserveNameTrailingSpace);
   const base = createInitialPersonaForm();
   const telefonoFuente = resolvePhoneDisplayValue(value);
   const direccionFuente = resolveAddressDisplayValue(value);
@@ -201,8 +212,8 @@ export const normalizePersonaFormValues = (value = {}) => {
 
   return {
     ...base,
-    nombre: String(value?.nombre ?? "").trim(),
-    apellido: String(value?.apellido ?? "").trim(),
+    nombre: normalizeHumanNameInput(value?.nombre, { preserveTrailingSpace: preserveNameTrailingSpace }),
+    apellido: normalizeHumanNameInput(value?.apellido, { preserveTrailingSpace: preserveNameTrailingSpace }),
     dni: formatDNI(limit(digitsOnly(value?.dni ?? ""), DNI_DIGITS_LENGTH)),
     rtn: limit(digitsOnly(value?.rtn ?? ""), 1),
     genero: String(value?.genero ?? "").trim(),
@@ -238,7 +249,9 @@ export const validatePersonaField = (fieldName, value) => {
   switch (fieldName) {
     case "nombre":
     case "apellido":
-      return trimmedValue ? "" : "Requerido";
+      if (!trimmedValue) return "Requerido";
+      if (!LETTERS_INPUT_REGEX.test(trimmedValue)) return "Solo letras y espacios";
+      return "";
     case "dni": {
       const dniRaw = digitsOnly(currentValue);
       if (!dniRaw) return "";

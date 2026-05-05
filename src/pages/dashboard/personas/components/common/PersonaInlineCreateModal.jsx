@@ -5,14 +5,13 @@ import {
   LETTERS_INPUT_REGEX,
   PHONE_DIGITS_LENGTH,
   buildPersonaPayloadFromForm,
-  capitalizeFirstOnly,
   createInitialPersonaForm,
   createInitialPersonaTouched,
   digitsOnly,
   formatDNI,
   formatPhone,
-  lettersAndSpaces,
   limit,
+  normalizeHumanNameInput,
   normalizePersonaFormValues,
   personaFormFieldToTouchedKey,
   resolveCaretFromDigitIndex,
@@ -148,7 +147,7 @@ export default function PersonaInlineCreateModal({
   );
 
   const handleLettersFieldChange = (field) => (event) => {
-    const normalized = capitalizeFirstOnly(lettersAndSpaces(event.target.value));
+    const normalized = normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true });
     updateFieldValue(field, normalized, true);
   };
 
@@ -293,7 +292,8 @@ export default function PersonaInlineCreateModal({
   const blockInvalidLettersBeforeInput = useCallback((event) => {
     const data = event?.nativeEvent?.data ?? event?.data;
     if (!data) return;
-    if (!LETTERS_INPUT_REGEX.test(data)) event.preventDefault();
+    const normalizedData = String(data).replace(/\u00A0/g, " ");
+    if (!LETTERS_INPUT_REGEX.test(normalizedData)) event.preventDefault();
   }, []);
 
   const sanitizeLettersPaste = useCallback(
@@ -307,7 +307,7 @@ export default function PersonaInlineCreateModal({
       const selectionEnd =
         typeof input.selectionEnd === "number" ? input.selectionEnd : selectionStart;
       const merged = `${current.slice(0, selectionStart)}${pasted}${current.slice(selectionEnd)}`;
-      const normalized = capitalizeFirstOnly(lettersAndSpaces(merged));
+      const normalized = normalizeHumanNameInput(merged, { preserveTrailingSpace: true });
       updateFieldValue(fieldName, normalized, true);
     },
     [form, updateFieldValue]

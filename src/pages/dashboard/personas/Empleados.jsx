@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import Select from "react-select";
 import { personaService } from "../../../services/personasService";
 import sucursalesService from "../../../services/sucursalesService";
+import { usePermisos } from "../../../context/PermisosContext";
 import { API_URL } from "../../../utils/constants";
+import { PERMISSIONS } from "../../../utils/permissions";
 import EntityTable from "../../../components/ui/EntityTable";
 import HeaderModulo from "./components/common/HeaderModulo";
 import ModuleFiltros from "./components/common/ModuleFiltros";
@@ -19,6 +21,11 @@ import PersonaInlineCreateModal from "./components/common/PersonaInlineCreateMod
 import {
   buildPersonaPayloadFromForm,
   createInitialPersonaForm,
+  digitsOnly as digitsOnlyPersona,
+  formatDNI,
+  formatPhone as formatPersonaPhone,
+  limit as limitPersonaDigits,
+  normalizeHumanNameInput,
   normalizePersonaFormValues,
   validatePersonaForm,
 } from "./components/common/persona-form-shared";
@@ -217,7 +224,8 @@ const formatReferencePhone = (value) => {
   return `${digits.slice(0, 4)}-${digits.slice(4)}`;
 };
 
-const sanitizeReferenceName = (value) => String(value ?? "").replace(/[^\p{L}\s]/gu, "");
+const sanitizeReferenceName = (value) =>
+  normalizeHumanNameInput(String(value ?? "").replace(/[^\p{L}\s]/gu, ""), { preserveTrailingSpace: true });
 
 const resolveCardsPerPage = (width) => {
   if (width >= 1200) return 6;
@@ -774,6 +782,12 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     },
     [openToast]
   );
+  const { canAny } = usePermisos();
+  const canCreateEmpleado = canAny([PERMISSIONS.EMPLEADOS_CREAR]);
+  const canEditEmpleado = canAny([PERMISSIONS.EMPLEADOS_EDITAR]);
+  const canInactivateEmpleado = canAny([PERMISSIONS.EMPLEADOS_EDITAR]);
+  const canDeleteEmpleado = canAny([PERMISSIONS.EMPLEADOS_ELIMINAR]);
+  const canViewEmpleado = canAny([PERMISSIONS.EMPLEADOS_DETALLE_VER]);
 
   const [personasCatalogo, setPersonasCatalogo] = useState([]);
   const [sucursales, setSucursales] = useState([]);
@@ -801,7 +815,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const [errors, setErrors] = useState({});
   const [useInlinePersonaCreate, setUseInlinePersonaCreate] = useState(false);
   const [inlinePersonaForm, setInlinePersonaForm] = useState(emptyInlinePersonaForm);
-  const [showPersonaCreateModal, setShowPersonaCreateModal] = useState(false);
+  const [, setShowPersonaCreateModal] = useState(false);
   const [showPersonaEditModal, setShowPersonaEditModal] = useState(false);
   const [inlinePersonaSaving, setInlinePersonaSaving] = useState(false);
   const [personaModalContext, setPersonaModalContext] = useState("initial");
@@ -1248,8 +1262,9 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   }, [clearFormImageDraft]);
 
   const openDetailModal = useCallback((empleado) => {
+    if (!canViewEmpleado) return;
     setDetailEmpleado(empleado || null);
-  }, []);
+  }, [canViewEmpleado]);
 
   const closeDetailModal = useCallback(() => {
     setDetailEmpleado(null);
@@ -1937,31 +1952,65 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   };
 
   const validatePersonaStep = useCallback(() => {
-    let stepMessage = "";
     const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
-    if (Object.keys(personaValidationErrors).length > 0) {
-      stepMessage = "Completa los datos personales antes de continuar";
-    }
-
     setErrors((prev) => {
       const next = { ...prev };
-      if (stepMessage) next.id_persona = stepMessage;
-      else delete next.id_persona;
+      next.id_persona =
+        Object.keys(personaValidationErrors).length > 0
+          ? "Completa los datos personales del empleado antes de continuar"
+          : undefined;
+      const personaFields = [
+        "nombre",
+        "apellido",
+        "dni",
+        "rtn",
+        "genero",
+        "fecha_nacimiento",
+        "id_telefono",
+        "id_direccion",
+        "id_correo",
+      ];
+      personaFields.forEach((field) => {
+        if (personaValidationErrors[field]) {
+          next[field] = personaValidationErrors[field];
+        } else {
+          delete next[field];
+        }
+      });
       return next;
     });
 
-    return !stepMessage;
+    return Object.keys(personaValidationErrors).length === 0;
   }, [inlinePersonaForm]);
 
   const goToCreateStepTwo = useCallback(() => {
     if (!validatePersonaStep()) {
-      setShowPersonaCreateModal(true);
       return;
     }
-    setShowPersonaCreateModal(false);
-    setPersonaModalContext("edit");
     setCreateStep(2);
   }, [validatePersonaStep]);
+
+  const handleInlinePersonaFieldChange = useCallback((field, value) => {
+    setInlinePersonaForm((state) =>
+      normalizePersonaFormValues({ ...state, [field]: value }, { preserveNameTrailingSpace: true })
+    );
+    setErrors((state) => ({ ...state, [field]: undefined, id_persona: undefined }));
+  }, []);
+
+  const handleInlinePersonaDniChange = useCallback((value) => {
+    const formatted = formatDNI(limitPersonaDigits(digitsOnlyPersona(value), 13));
+    handleInlinePersonaFieldChange("dni", formatted);
+  }, [handleInlinePersonaFieldChange]);
+
+  const handleInlinePersonaRtnChange = useCallback((value) => {
+    const complemento = limitPersonaDigits(digitsOnlyPersona(value), 1);
+    handleInlinePersonaFieldChange("rtn", complemento);
+  }, [handleInlinePersonaFieldChange]);
+
+  const handleInlinePersonaTelefonoChange = useCallback((value) => {
+    const formatted = formatPersonaPhone(limitPersonaDigits(digitsOnlyPersona(value), 8));
+    handleInlinePersonaFieldChange("id_telefono", formatted);
+  }, [handleInlinePersonaFieldChange]);
 
   const onFormImageChange = useCallback(async (event) => {
     const input = event.target;
@@ -2050,6 +2099,14 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
   const guardar = async (event) => {
     event.preventDefault();
+    if (editId && !canEditEmpleado) {
+      safeToast("ERROR", "No tienes permiso para editar empleados.", "danger");
+      return;
+    }
+    if (!editId && !canCreateEmpleado) {
+      safeToast("ERROR", "No tienes permiso para crear empleados.", "danger");
+      return;
+    }
     if (!editId && createStep === 1) {
       goToCreateStepTwo();
       return;
@@ -2222,6 +2279,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   };
 
   const iniciarEdicion = (empleado) => {
+    if (!canEditEmpleado) return;
     setFiltersOpen(false);
     setDetailEmpleado(null);
     setEditId(empleado.id_empleado);
@@ -2408,6 +2466,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   }, [editId, personaModalContext, closeFormDrawer, clearFormImageDraft]);
 
   const openCreate = () => {
+    if (!canCreateEmpleado) return;
     if (actionLoading || deletingId) return;
     setFiltersOpen(false);
     setDetailEmpleado(null);
@@ -2416,7 +2475,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     setForm(emptyForm);
     setUseInlinePersonaCreate(true);
     setInlinePersonaForm(emptyInlinePersonaForm);
-    setShowPersonaCreateModal(true);
+    setShowPersonaCreateModal(false);
     setShowPersonaEditModal(false);
     setPersonaModalContext("initial");
     setCreateStep(1);
@@ -2425,6 +2484,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   };
 
   const openConfirmDelete = (empleado) => {
+    if (!canInactivateEmpleado) return;
     setDetailEmpleado(null);
     setConfirmModal({
       show: true,
@@ -2438,6 +2498,10 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     setConfirmModal({ show: false, idToDelete: null, nombre: "", estadoActual: true });
 
   const eliminarConfirmado = async () => {
+    if (!canInactivateEmpleado) {
+      safeToast("ERROR", "No tienes permiso para inactivar o activar empleados.", "danger");
+      return;
+    }
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
     const shouldActivate = confirmModal.estadoActual === false;
@@ -2649,21 +2713,21 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const isCreateFlow = drawerMode === "create";
   const isCreateStepOne = isCreateFlow && createStep === 1;
   const isCreateStepTwo = !isCreateFlow || createStep === 2;
-  const isFormDrawerOpen = showModal && isCreateStepTwo;
+  const isFormDrawerOpen = showModal;
   const showMainBackdrop = filtersOpen || isFormDrawerOpen;
   const todayDate = new Date().toISOString().split("T")[0];
   const isInlinePersonaFlow = isCreateFlow && useInlinePersonaCreate;
   const drawerSubtitle =
     isCreateFlow
       ? isCreateStepOne
-        ? "Paso 1 de 2: completa los datos personales de la persona."
-        : "Paso 2 de 2: completa los datos del empleado, agrega foto y crea el registro."
+        ? "Paso 1 de 2: completa los datos personales del empleado."
+        : "Paso 2 de 2: completa los datos laborales del empleado y crea el registro."
       : "Actualiza los campos necesarios y guarda los cambios.";
   const datosEmpleadoCopy = isCreateStepOne
-    ? "Completa los datos personales para continuar con el registro del empleado."
+    ? "Datos personales del empleado"
     : isInlinePersonaFlow
-      ? "Persona base lista. Ahora completa la informacion laboral."
-      : "Completa la informacion laboral y la foto del empleado.";
+      ? "Datos laborales del empleado"
+      : "Datos laborales del empleado";
   const empleadoEditando = useMemo(
     () => (drawerMode === "edit"
       ? empleados.find((item) => String(item?.id_empleado ?? "") === String(editId ?? "")) || null
@@ -2732,6 +2796,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
           onOpenFilters={openFiltersDrawer}
           createOpen={showModal}
           onOpenCreate={openCreate}
+          canCreate={canCreateEmpleado}
           createLabel="Nuevo"
           filtersControlsId="empd-filtros-drawer"
           formControlsId="empd-form-drawer"
@@ -2802,9 +2867,11 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       Limpiar filtros
                     </button>
                   ) : null}
-                  <button type="button" className="btn btn-primary" onClick={openCreate}>
-                    Nuevo empleado
-                  </button>
+                  {canCreateEmpleado ? (
+                    <button type="button" className="btn btn-primary" onClick={openCreate}>
+                      Nuevo empleado
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : viewMode === "table" ? (
@@ -2858,7 +2925,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                                 className="inv-catpro-action inv-catpro-action-compact"
                                 onClick={() => openDetailModal(empleado)}
                                 title="Ver detalle"
-                                disabled={actionLoading || deleting}
+                                disabled={actionLoading || deleting || !canViewEmpleado}
                               >
                                 <i className="bi bi-eye" />
                                 <span className="inv-catpro-action-label">Detalle</span>
@@ -2869,7 +2936,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                                 className="inv-catpro-action edit inv-catpro-action-compact"
                                 onClick={() => iniciarEdicion(empleado)}
                                 title="Editar"
-                                disabled={actionLoading || deleting}
+                                disabled={actionLoading || deleting || !canEditEmpleado}
                               >
                                 <i className="bi bi-pencil-square" />
                                 <span className="inv-catpro-action-label">Editar</span>
@@ -2880,7 +2947,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                                 className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
                                 onClick={() => openConfirmDelete(empleado)}
                                 title={isActive ? "Inactivar" : "Activar"}
-                                disabled={actionLoading || deleting}
+                                disabled={actionLoading || deleting || !canInactivateEmpleado}
                               >
                                 <i className={`bi ${deleting ? "bi-hourglass-split" : (isActive ? "bi-slash-circle" : "bi-check-circle")}`} />
                                 <span className="inv-catpro-action-label">
@@ -2908,6 +2975,10 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                     onOpenDetail={openDetailModal}
                     actionLoading={actionLoading}
                     deletingId={deletingId}
+                    canEdit={canEditEmpleado}
+                    canInactivate={canInactivateEmpleado}
+                    canDelete={canDeleteEmpleado}
+                    canView={canViewEmpleado}
                     getPersonaNombre={getPersonaNombre}
                     getSucursalNombre={getSucursalNombre}
                     getGeneroLabel={getGeneroEmpleado}
@@ -2968,15 +3039,17 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         </div>
       </div>
 
-      <button
-        type="button"
-        className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? "is-hidden" : ""}`}
-        onClick={openCreate}
-        title="Nuevo"
-        disabled={actionLoading || !!deletingId}
-      >
-        <i className="bi bi-plus" />
-      </button>
+      {canCreateEmpleado ? (
+        <button
+          type="button"
+          className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? "is-hidden" : ""}`}
+          onClick={openCreate}
+          title="Nuevo"
+          disabled={actionLoading || !!deletingId}
+        >
+          <i className="bi bi-plus" />
+        </button>
+      ) : null}
 
       <div
         className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${showMainBackdrop ? "show" : ""}`}
@@ -3041,7 +3114,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
           <section className="crud-modal__section empleados-modal__section">
             <header className="crud-modal__section-head">
-              <h4>{isCreateStepOne ? "Datos personales" : "Datos del empleado"}</h4>
+              <h4>{isCreateStepOne ? "Datos personales del empleado" : "Datos laborales del empleado"}</h4>
               <p>{datosEmpleadoCopy}</p>
             </header>
 
@@ -3109,6 +3182,148 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                 </>
               ) : null}
 
+              {isCreateFlow && isCreateStepOne ? (
+                <>
+                  <div className="col-12">
+                    <div className="alert alert-light border mb-0">
+                      <div className="fw-semibold mb-1">Ayuda de llenado</div>
+                      <div className="small text-muted">
+                        Completa los datos personales tal como aparecen en el documento oficial del empleado.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label text-light text-opacity-75">Nombre</label>
+                    <input
+                      type="text"
+                      className={`form-control ${errors.nombre ? "is-invalid" : ""}`}
+                      value={inlinePersonaForm.nombre}
+                      onChange={(event) =>
+                        handleInlinePersonaFieldChange(
+                          "nombre",
+                          normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true })
+                        )
+                      }
+                      placeholder="Ej. Jose Maria"
+                      maxLength={80}
+                    />
+                    {errors.nombre ? <div className="invalid-feedback d-block">{errors.nombre}</div> : null}
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label text-light text-opacity-75">Apellido</label>
+                    <input
+                      type="text"
+                      className={`form-control ${errors.apellido ? "is-invalid" : ""}`}
+                      value={inlinePersonaForm.apellido}
+                      onChange={(event) =>
+                        handleInlinePersonaFieldChange(
+                          "apellido",
+                          normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true })
+                        )
+                      }
+                      placeholder="Ej. Mejia Paz"
+                      maxLength={80}
+                    />
+                    {errors.apellido ? <div className="invalid-feedback d-block">{errors.apellido}</div> : null}
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label text-light text-opacity-75">DNI</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className={`form-control ${errors.dni ? "is-invalid" : ""}`}
+                      value={inlinePersonaForm.dni}
+                      onChange={(event) => handleInlinePersonaDniChange(event.target.value)}
+                      placeholder="0000-0000-00000"
+                      maxLength={15}
+                    />
+                    {errors.dni ? <div className="invalid-feedback d-block">{errors.dni}</div> : null}
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label text-light text-opacity-75">RTN (complemento)</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
+                      value={inlinePersonaForm.rtn}
+                      onChange={(event) => handleInlinePersonaRtnChange(event.target.value)}
+                      placeholder="0"
+                      maxLength={1}
+                    />
+                    {errors.rtn ? <div className="invalid-feedback d-block">{errors.rtn}</div> : null}
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label text-light text-opacity-75">Genero</label>
+                    <select
+                      className={`form-select ${errors.genero ? "is-invalid" : ""}`}
+                      value={inlinePersonaForm.genero}
+                      onChange={(event) => handleInlinePersonaFieldChange("genero", event.target.value)}
+                    >
+                      <option value="">Seleccione</option>
+                      <option value="M">Masculino</option>
+                      <option value="F">Femenino</option>
+                      <option value="O">Otro</option>
+                    </select>
+                    {errors.genero ? <div className="invalid-feedback d-block">{errors.genero}</div> : null}
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label text-light text-opacity-75">Fecha nacimiento</label>
+                    <input
+                      type="date"
+                      className={`form-control ${errors.fecha_nacimiento ? "is-invalid" : ""}`}
+                      value={inlinePersonaForm.fecha_nacimiento}
+                      onChange={(event) => handleInlinePersonaFieldChange("fecha_nacimiento", event.target.value)}
+                      max={todayDate}
+                    />
+                    {errors.fecha_nacimiento ? <div className="invalid-feedback d-block">{errors.fecha_nacimiento}</div> : null}
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label text-light text-opacity-75">Telefono</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
+                      value={inlinePersonaForm.id_telefono}
+                      onChange={(event) => handleInlinePersonaTelefonoChange(event.target.value)}
+                      placeholder="9999-9999"
+                      maxLength={9}
+                    />
+                    {errors.id_telefono ? <div className="invalid-feedback d-block">{errors.id_telefono}</div> : null}
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label text-light text-opacity-75">Correo</label>
+                    <input
+                      type="email"
+                      className={`form-control ${errors.id_correo ? "is-invalid" : ""}`}
+                      value={inlinePersonaForm.id_correo}
+                      onChange={(event) => handleInlinePersonaFieldChange("id_correo", event.target.value)}
+                      placeholder="empleado@dominio.com"
+                      maxLength={120}
+                    />
+                    {errors.id_correo ? <div className="invalid-feedback d-block">{errors.id_correo}</div> : null}
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label text-light text-opacity-75">Direccion</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={inlinePersonaForm.id_direccion}
+                      onChange={(event) => handleInlinePersonaFieldChange("id_direccion", event.target.value)}
+                      placeholder="Ej. Col. Centro, Tegucigalpa"
+                      maxLength={160}
+                    />
+                  </div>
+                </>
+              ) : null}
+
               {isCreateFlow && isCreateStepTwo ? (
                 <div className="col-12">
                   <div className="smart-select-entity__summary empleados-inline-summary">
@@ -3130,11 +3345,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                     <button
                       type="button"
                       className="btn btn-sm empleados-inline-summary__action"
-                      onClick={() => {
-                        setPersonaModalContext("edit");
-                        setCreateStep(1);
-                        setShowPersonaCreateModal(true);
-                      }}
+                      onClick={() => setCreateStep(1)}
                       disabled={actionLoading || Boolean(deletingId)}
                     >
                       Editar datos personales
@@ -3208,7 +3419,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                   onBeforeInput={handleNombreReferenciaBeforeInput}
                   onKeyDown={handleNombreReferenciaKeyDown}
                   onPaste={handleNombreReferenciaPaste}
-                  placeholder="Nombre del contacto de referencia"
+                  placeholder="Ej. Maria Lopez"
                   maxLength={120}
                 />
                 {errors.nombre_referencia && <div className="invalid-feedback d-block">{errors.nombre_referencia}</div>}
@@ -3226,7 +3437,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                   onBeforeInput={handleTelefonoReferenciaBeforeInput}
                   onKeyDown={handleTelefonoReferenciaKeyDown}
                   onPaste={handleTelefonoReferenciaPaste}
-                  placeholder="Numero de referencia"
+                  placeholder="9999-9999"
                   maxLength={9}
                 />
                 {errors.telefono_referencia && <div className="invalid-feedback d-block">{errors.telefono_referencia}</div>}
@@ -3253,6 +3464,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                   className={`form-control ${errors.salario_base ? "is-invalid" : ""}`}
                   value={form.salario_base}
                   onChange={(event) => setForm((state) => ({ ...state, salario_base: event.target.value }))}
+                  placeholder="Ej. 12000.00"
                 />
                 {errors.salario_base && <div className="invalid-feedback d-block">{errors.salario_base}</div>}
               </div>
@@ -3276,7 +3488,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                     {formImage.loading ? (
                       <div className="inv-prod-image-loading" role="status">
                         <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-                        <span>Procesando imagen...</span>
+                        <span>Cargando imagen...</span>
                       </div>
                     ) : formImage.previewUrl ? (
                       <img src={formImage.previewUrl} alt="Vista previa del empleado" />
@@ -3293,7 +3505,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       <input
                         ref={imageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         onChange={onFormImageChange}
                         disabled={actionLoading}
                       />
@@ -3365,11 +3577,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                   <button
                     type="button"
                     className="btn inv-prod-btn-subtle flex-fill crud-modal__btn"
-                    onClick={() => {
-                      setPersonaModalContext("edit");
-                      setCreateStep(1);
-                      setShowPersonaCreateModal(true);
-                    }}
+                    onClick={() => setCreateStep(1)}
                     disabled={actionLoading || !!deletingId}
                   >
                     Anterior
@@ -3410,8 +3618,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         show={
           showModal
           && (
-            (drawerMode === "create" && createStep === 1 && showPersonaCreateModal)
-            || (drawerMode === "edit" && showPersonaEditModal)
+            drawerMode === "edit" && showPersonaEditModal
           )
         }
         title={drawerMode === "edit" ? "Editar persona vinculada" : "Datos personales del empleado"}

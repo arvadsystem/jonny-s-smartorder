@@ -1,6 +1,4 @@
-// API base URL — vacío para usar el proxy de Vite en desarrollo
-// En producción, setear VITE_API_URL a la URL real del backend.
-const DEV_BACKEND_FALLBACK = import.meta.env.VITE_DEV_DIRECT_API_URL || 'http://localhost:3001';
-export const API_URL =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? DEV_BACKEND_FALLBACK : '');
+﻿// API base URL — vacio para usar el proxy de Vite en desarrollo.
+// En produccion, setear VITE_API_URL a la URL real del backend.
+const normalizeBaseUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
+export const API_URL = normalizeBaseUrl(import.meta.env.VITE_API_URL || '');

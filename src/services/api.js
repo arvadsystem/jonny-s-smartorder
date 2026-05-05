@@ -56,6 +56,12 @@ const extractErrorMessage = (payload) => {
   return '';
 };
 
+const extractErrorCode = (payload) => {
+  if (!payload || typeof payload !== 'object') return '';
+  const raw = payload.code ?? payload.codigo ?? payload.error_code;
+  return String(raw ?? '').trim().toUpperCase();
+};
+
 const safeUiErrorMessage = (rawMessage, fallback) => {
   const text = String(rawMessage || '').trim();
   if (!text) return fallback;
@@ -206,17 +212,22 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
   // 403 -> permissions or CSRF
   if (response.status === 403) {
     const errorData = await readBody(response);
-    const msg = safeUiErrorMessage(extractErrorMessage(errorData), 'Acceso denegado');
+    const rawMessage = extractErrorMessage(errorData);
+    const msg = safeUiErrorMessage(rawMessage, 'Acceso denegado');
+    const backendCode = extractErrorCode(errorData);
+    const looksLikeCsrfMessage = /csrf|token/i.test(String(rawMessage || msg || ''));
+    const isCsrf =
+      backendCode === 'CSRF'
+      || (!backendCode && !SAFE_METHODS.has(upperMethod) && looksLikeCsrfMessage);
 
-    if (SAFE_METHODS.has(upperMethod)) {
-      throw new ApiError(msg, {
+    throw new ApiError(
+      isCsrf ? (msg || 'Accion bloqueada (CSRF)') : msg,
+      {
         status: 403,
-        code: (errorData && typeof errorData === 'object' && errorData.code) || 'FORBIDDEN',
+        code: isCsrf ? 'CSRF' : (backendCode || 'FORBIDDEN'),
         data: errorData
-      });
-    }
-
-    throw new ApiError(msg || 'Accion bloqueada (CSRF)', { status: 403, code: 'CSRF', data: errorData });
+      }
+    );
   }
 
   // Other HTTP errors.

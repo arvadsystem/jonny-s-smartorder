@@ -1,8 +1,8 @@
-import logoJonnys from '../../../../assets/images/logo-jonnys.png';
 import { formatCurrency, formatDateLabel, formatTimeLabel, roundMoney } from '../utils/ventasHelpers';
 
 const DEFAULT_BUSINESS_NAME = "JONNY'S WINGS";
 const CONSUMIDOR_FINAL = 'Consumidor final';
+const DEFAULT_FOOTER = 'Gracias por su compra';
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -18,17 +18,6 @@ const sanitizeWidth = (paperWidth) => (Number(paperWidth) === 58 ? 58 : 80);
 
 const resolveFacturaDateTime = (venta) =>
   venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido || null;
-
-const resolveFiscalRange = (venta) => {
-  const desde = cleanText(venta?.numero_desde);
-  const hasta = cleanText(venta?.numero_hasta);
-  if (desde && hasta) return `${desde} - ${hasta}`;
-  if (desde || hasta) return `${desde || '--'} - ${hasta || '--'}`;
-  return '000-000 / --';
-};
-
-const resolveBusinessName = (venta, fallbackName) =>
-  cleanText(venta?.nombre_emisor) || cleanText(fallbackName) || DEFAULT_BUSINESS_NAME;
 
 const resolveTotals = (venta) => {
   const subtotal = toNumber(venta?.sub_total);
@@ -54,13 +43,85 @@ const resolveTotals = (venta) => {
   };
 };
 
+const parseSnapshot = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const buildFacturacionView = (venta, fallbackName) => {
+  const fromFacturacion = venta?.facturacion && typeof venta.facturacion === 'object'
+    ? venta.facturacion
+    : null;
+  const fromSnapshot = parseSnapshot(venta?.facturacion_snapshot);
+
+  const source = fromFacturacion || fromSnapshot || {};
+  const emisor = source?.emisor && typeof source.emisor === 'object' ? source.emisor : {};
+  const ticket = source?.ticket && typeof source.ticket === 'object' ? source.ticket : {};
+
+  const nombreEmisor =
+    cleanText(emisor?.nombre_emisor) ||
+    cleanText(venta?.nombre_emisor) ||
+    cleanText(fallbackName) ||
+    DEFAULT_BUSINESS_NAME;
+
+  return {
+    emisor: {
+      nombre_emisor: nombreEmisor,
+      rtn_emisor: cleanText(emisor?.rtn_emisor) || cleanText(venta?.rtn_emisor),
+      direccion_emisor: cleanText(emisor?.direccion_emisor) || cleanText(venta?.sucursal_direccion),
+      telefono_emisor: cleanText(emisor?.telefono_emisor) || cleanText(venta?.sucursal_telefono),
+      correo_emisor: cleanText(emisor?.correo_emisor) || cleanText(venta?.sucursal_correo),
+      logo_url: cleanText(emisor?.logo_url) || cleanText(venta?.logo_url)
+    },
+    ticket: {
+      ancho_ticket_mm: Number(ticket?.ancho_ticket_mm) === 58 || Number(venta?.ancho_ticket_mm) === 58 ? 58 : 80,
+      mostrar_logo_ticket:
+        ticket?.mostrar_logo_ticket !== undefined
+          ? Boolean(ticket?.mostrar_logo_ticket)
+          : Boolean(venta?.mostrar_logo_ticket),
+      mostrar_rtn:
+        ticket?.mostrar_rtn !== undefined
+          ? Boolean(ticket?.mostrar_rtn)
+          : true,
+      mostrar_direccion:
+        ticket?.mostrar_direccion !== undefined
+          ? Boolean(ticket?.mostrar_direccion)
+          : true,
+      mostrar_telefono:
+        ticket?.mostrar_telefono !== undefined
+          ? Boolean(ticket?.mostrar_telefono)
+          : true,
+      mostrar_correo:
+        ticket?.mostrar_correo !== undefined
+          ? Boolean(ticket?.mostrar_correo)
+          : false,
+      texto_encabezado_ticket:
+        cleanText(ticket?.texto_encabezado_ticket) || cleanText(venta?.texto_encabezado_ticket),
+      texto_pie_ticket:
+        cleanText(ticket?.texto_pie_ticket) || cleanText(venta?.texto_pie_ticket) || DEFAULT_FOOTER
+    },
+    fiscal: {
+      cai: '0',
+      numero_factura_fiscal: '0',
+      modo_fiscal: 'NO_INTEGRADO'
+    }
+  };
+};
+
 export default function VentaTicketPrint({
   venta,
   paperWidth = 80,
   showLogo = true,
   businessName = DEFAULT_BUSINESS_NAME
 }) {
-  const width = sanitizeWidth(paperWidth);
+  const facturacion = buildFacturacionView(venta, businessName);
+  const width = sanitizeWidth(paperWidth || facturacion.ticket.ancho_ticket_mm);
   const ticketDateTime = resolveFacturaDateTime(venta);
   const items = Array.isArray(venta?.items) ? venta.items : [];
   const totals = resolveTotals(venta);
@@ -68,21 +129,12 @@ export default function VentaTicketPrint({
   const efectivoEntregado = toNumber(venta?.efectivo_entregado);
   const cambio = toNumber(venta?.cambio);
 
-  const nombreEmisor = resolveBusinessName(venta, businessName);
-  const rtnEmisor = cleanText(venta?.rtn_emisor);
-  const sucursalDireccion = cleanText(venta?.sucursal_direccion);
-  const sucursalTelefono = cleanText(venta?.sucursal_telefono);
-  const sucursalCorreo = cleanText(venta?.sucursal_correo);
-
-  const cai = cleanText(venta?.cai) || '--';
-  const rangoAutorizado = resolveFiscalRange(venta);
-  const fechaLimiteEmision = venta?.fecha_limite_emision ? formatDateLabel(venta.fecha_limite_emision) : '--';
-
   const clienteRtn = cleanText(venta?.cliente_rtn || venta?.rtn);
   const banco = cleanText(venta?.banco);
   const codigoTransaccion = cleanText(venta?.codigo_transaccion || venta?.referencia);
   const cajaLabel = cleanText(venta?.nombre_caja || venta?.codigo_caja || venta?.id_caja);
   const sesionCajaLabel = cleanText(venta?.codigo_sesion_caja || venta?.id_sesion_caja);
+  const logoSource = facturacion.emisor.logo_url || null;
 
   return (
     <section
@@ -92,34 +144,33 @@ export default function VentaTicketPrint({
     >
       <div className="venta-ticket-print">
         <header className="venta-ticket-print__header">
-          {showLogo ? (
+          {showLogo && facturacion.ticket.mostrar_logo_ticket && logoSource ? (
             <img
-              src={logoJonnys}
-              alt="Logo Jonnys"
+              src={logoSource}
+              alt="Logo emisor"
               className="venta-ticket-print__logo"
               loading="lazy"
             />
           ) : null}
-          <h3>{nombreEmisor}</h3>
+          <h3>{facturacion.emisor.nombre_emisor}</h3>
           <p>Comprobante interno de venta</p>
+          {facturacion.ticket.texto_encabezado_ticket ? <p>{facturacion.ticket.texto_encabezado_ticket}</p> : null}
         </header>
 
         <div className="venta-ticket-print__divider" />
 
         <dl className="venta-ticket-print__meta">
-          <div><dt>RTN emisor:</dt><dd>{rtnEmisor || '--'}</dd></div>
-          <div><dt>Direccion:</dt><dd>{sucursalDireccion || '--'}</dd></div>
-          <div><dt>Contacto:</dt><dd>{sucursalTelefono || '--'}</dd></div>
-          <div><dt>Correo:</dt><dd>{sucursalCorreo || '--'}</dd></div>
+          {facturacion.ticket.mostrar_rtn ? <div><dt>RTN emisor:</dt><dd>{facturacion.emisor.rtn_emisor || '--'}</dd></div> : null}
+          {facturacion.ticket.mostrar_direccion ? <div><dt>Direccion:</dt><dd>{facturacion.emisor.direccion_emisor || '--'}</dd></div> : null}
+          {facturacion.ticket.mostrar_telefono ? <div><dt>Contacto:</dt><dd>{facturacion.emisor.telefono_emisor || '--'}</dd></div> : null}
+          {facturacion.ticket.mostrar_correo ? <div><dt>Correo:</dt><dd>{facturacion.emisor.correo_emisor || '--'}</dd></div> : null}
         </dl>
 
         <div className="venta-ticket-print__divider" />
 
         <dl className="venta-ticket-print__meta">
-          <div><dt>CAI:</dt><dd>{cai}</dd></div>
-          <div><dt>Rango autorizado:</dt><dd>{rangoAutorizado}</dd></div>
-          <div><dt>Fecha limite emision:</dt><dd>{fechaLimiteEmision}</dd></div>
-          <div><dt>No. fiscal:</dt><dd>{cleanText(venta?.numero_factura_fiscal) || '--'}</dd></div>
+          <div><dt>CAI:</dt><dd>{facturacion.fiscal.cai}</dd></div>
+          <div><dt>No. fiscal:</dt><dd>{facturacion.fiscal.numero_factura_fiscal}</dd></div>
           <div><dt>Codigo interno:</dt><dd>{venta?.codigo_venta || venta?.numero_venta || '--'}</dd></div>
         </dl>
 
@@ -200,7 +251,7 @@ export default function VentaTicketPrint({
 
         <div className="venta-ticket-print__divider" />
 
-        <p className="venta-ticket-print__thanks">Gracias por su compra.</p>
+        <p className="venta-ticket-print__thanks">{facturacion.ticket.texto_pie_ticket || DEFAULT_FOOTER}</p>
       </div>
     </section>
   );

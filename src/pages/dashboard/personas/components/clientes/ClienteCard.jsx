@@ -67,10 +67,18 @@ export default function ClienteCard({
   index,
   onOpenEdit,
   onOpenDelete,
+  canEdit = true,
+  canInactivate = true,
+  canDelete = false,
+  canView = false,
   actionLoading = false,
   deletingId = null,
   personaRtnCatalog = "",
 }) {
+  // Reservados para habilitar acciones futuras sin romper la firma del componente.
+  void canDelete;
+  void canView;
+
   const isActive = parseEstado(cliente);
   const idCliente = cliente?.id_cliente;
   const deleting = deletingId === idCliente;
@@ -177,27 +185,31 @@ export default function ClienteCard({
       }
       footerActions={
         <>
-          <button
-            type="button"
-            className="inv-catpro-action edit inv-catpro-action-compact"
-            onClick={() => onOpenEdit(cliente)}
-            title="Editar"
-            disabled={actionLoading || deleting}
-          >
-            <i className="bi bi-pencil-square" />
-            <span className="inv-catpro-action-label">Editar</span>
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              className="inv-catpro-action edit inv-catpro-action-compact"
+              onClick={() => onOpenEdit(cliente)}
+              title="Editar"
+              disabled={actionLoading || deleting || !canEdit}
+            >
+              <i className="bi bi-pencil-square" />
+              <span className="inv-catpro-action-label">Editar</span>
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
-            onClick={() => onOpenDelete(cliente)}
-            title={isActivating ? "Activar" : "Inactivar"}
-            disabled={actionLoading || deleting}
-          >
-            <i className={`bi ${statusActionIcon}`} />
-            <span className="inv-catpro-action-label">{statusActionLabel}</span>
-          </button>
+          {canInactivate ? (
+            <button
+              type="button"
+              className={`inv-catpro-action ${isActive ? "danger" : ""} inv-catpro-action-compact`.trim()}
+              onClick={() => onOpenDelete(cliente)}
+              title={isActivating ? "Activar" : "Inactivar"}
+              disabled={actionLoading || deleting || !canInactivate}
+            >
+              <i className={`bi ${statusActionIcon}`} />
+              <span className="inv-catpro-action-label">{statusActionLabel}</span>
+            </button>
+          ) : null}
         </>
       }
     >

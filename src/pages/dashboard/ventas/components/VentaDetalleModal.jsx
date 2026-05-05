@@ -32,6 +32,14 @@ export default function VentaDetalleModal({
   const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
 
   useEffect(() => {
+    if (!open) return;
+    const widthFromFacturacion = Number(venta?.facturacion?.ticket?.ancho_ticket_mm);
+    const widthFromLegacy = Number(venta?.ancho_ticket_mm);
+    const resolvedWidth = widthFromFacturacion === 58 || widthFromLegacy === 58 ? 58 : 80;
+    setTicketWidthMm(resolvedWidth);
+  }, [open, venta]);
+
+  useEffect(() => {
     if (!open) return undefined;
 
     const onKeyDown = (event) => {
