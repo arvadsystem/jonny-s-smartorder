@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
@@ -62,6 +62,7 @@ export default function VentasPage() {
   const [reversionOpen, setReversionOpen] = useState(false);
   const [selectedVenta, setSelectedVenta] = useState(null);
   const [selectedVentaReversion, setSelectedVentaReversion] = useState(null);
+  const detailRequestRef = useRef(0);
 
   const allowedTabs = useMemo(
     () => getAllowedTabs('ventas', permisos, { isSuperAdmin }).map((tab) => tab.key),
@@ -138,11 +139,14 @@ export default function VentasPage() {
   const openDetail = async (venta) => {
     if (!venta?.id_factura) return;
 
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
     setSelectedVenta(venta);
     setDetailOpen(true);
 
     try {
       const detail = await getVentaDetail(venta.id_factura);
+      if (detailRequestRef.current !== requestId) return;
       setSelectedVenta(detail);
     } catch {
       // El hook ya expone el feedback visual.
@@ -262,7 +266,10 @@ export default function VentasPage() {
         }}
         canExport={canExportVenta}
         canPrint={canPrintVenta}
-        onClose={() => setDetailOpen(false)}
+        onClose={() => {
+          detailRequestRef.current += 1;
+          setDetailOpen(false);
+        }}
       />
 
       <VentaReversionModal

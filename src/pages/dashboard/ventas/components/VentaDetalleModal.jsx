@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   downloadVentaDetail,
   formatCurrency,
@@ -30,6 +30,7 @@ export default function VentaDetalleModal({
   canPrint = true
 }) {
   const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
+  const printInProgressRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -56,18 +57,20 @@ export default function VentaDetalleModal({
   const ticketDateTime = venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido;
 
   const handlePrintTicket = () => {
-    if (typeof window === 'undefined' || !venta) return;
+    if (typeof window === 'undefined' || !venta || printInProgressRef.current) return;
+    printInProgressRef.current = true;
 
     document.body.classList.add('venta-ticket-printing');
     const cleanup = () => {
       document.body.classList.remove('venta-ticket-printing');
       window.removeEventListener('afterprint', cleanup);
+      printInProgressRef.current = false;
     };
 
     window.addEventListener('afterprint', cleanup);
     window.requestAnimationFrame(() => {
       window.print();
-      window.setTimeout(cleanup, 1200);
+      window.setTimeout(cleanup, 1500);
     });
   };
 
