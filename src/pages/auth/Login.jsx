@@ -26,6 +26,14 @@ const isClienteUser = (authUser) => {
   return roles.map(normalizeRoleName).includes('CLIENTE');
 };
 
+const isPantallaCocinaUser = (authUser) => {
+  const roles = Array.isArray(authUser?.roles) ? authUser.roles : [];
+  const normalizedRoles = roles.map(normalizeRoleName);
+  return normalizedRoles.includes('P_COCINA')
+    || normalizedRoles.includes('PANTALLA_COCINA')
+    || normalizedRoles.includes('PANTALLA_DE_COCINA');
+};
+
 const RESEND_GENERIC_MESSAGE =
   'Si la cuenta existe y esta pendiente de verificacion, enviaremos un nuevo correo de verificacion.';
 
@@ -70,6 +78,12 @@ const Login = () => {
       setShowForcePasswordModal(false);
       const from = searchParams.get('from');
       navigate(from === 'carrito' ? '/carrito' : '/menu-publico', { replace: true });
+      return;
+    }
+
+    if (isPantallaCocinaUser(user)) {
+      setShowForcePasswordModal(false);
+      navigate('/dashboard/cocina', { replace: true });
       return;
     }
 
@@ -125,6 +139,7 @@ const Login = () => {
 
         const usuario = response.usuario;
         const isCliente = isClienteUser(usuario);
+        const isPantallaCocina = isPantallaCocinaUser(usuario);
         const mustChange = !isCliente && Boolean(usuario?.must_change_password);
 
         setShowForcePasswordModal(mustChange);
@@ -138,6 +153,8 @@ const Login = () => {
               ? from === 'carrito'
                 ? '/carrito'
                 : '/menu-publico'
+              : isPantallaCocina
+                ? '/dashboard/cocina'
               : '/dashboard',
             { replace: true }
           );
@@ -203,11 +220,6 @@ const Login = () => {
         <div className="side-fade" />
 
         <div className="left-content">
-          <div className="badge">
-            <span className="dot" />
-            SISTEMA DE GESTION - HONDURAS
-          </div>
-
           <div className="brand">
             <div className="logo-ring">
               <div className="halo" />

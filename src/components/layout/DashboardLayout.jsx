@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
 import BottomNav from "./BottomNav";
 import "../../assets/styles/main.scss";
 import { PermisosProvider } from "../../context/PermisosContext";
 import { useAuth } from "../../hooks/useAuth";
+import { normalizeRoleName } from "../../utils/permissions";
 import "./inactivity-timeout-modal.css";
 import CajaAperturaEnforcer from "./CajaAperturaEnforcer";
 
 const SIDEBAR_STORAGE_KEY = "ui.sidebarCollapsed";
 const PASSWORD_WARNING_DISMISS_PREFIX = "ui.passwordWarning58.dismissed";
+const SCREEN_MODE_ROLES = new Set(["P_COCINA", "PANTALLA_COCINA", "PANTALLA_DE_COCINA"]);
 
 const readStoredSidebarState = () => {
   if (typeof window === "undefined") return false;
@@ -23,11 +25,15 @@ const readStoredSidebarState = () => {
 };
 
 const DashboardLayout = () => {
+  const location = useLocation();
   const { user } = useAuth();
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(() => readStoredSidebarState());
   const [showPasswordWarning, setShowPasswordWarning] = useState(false);
 
   const warningStorageKey = `${PASSWORD_WARNING_DISMISS_PREFIX}:${String(user?.id_usuario ?? "anon")}:${String(user?.password_age_days ?? "na")}`;
+  const isPantallaCocina = (Array.isArray(user?.roles) ? user.roles : [])
+    .some((role) => SCREEN_MODE_ROLES.has(normalizeRoleName(role)));
+  const isPantallaCocinaRoute = isPantallaCocina && location.pathname.startsWith("/dashboard/cocina");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -81,7 +87,7 @@ const DashboardLayout = () => {
 
   return (
     <PermisosProvider>
-      {showPasswordWarning ? (
+      {showPasswordWarning && !isPantallaCocinaRoute ? (
         <div
           className="password-expiry-warning-backdrop"
           role="dialog"
@@ -122,17 +128,25 @@ const DashboardLayout = () => {
         </div>
       ) : null}
 
-      <div className={`dashboard-shell ${isSidebarCollapsed ? "shell--collapsed" : ""}`}>
-        <Sidebar isCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
-
-        <div className="main-content">
-          <Navbar />
-          <Outlet />
+      {isPantallaCocinaRoute ? (
+        <div className="dashboard-shell dashboard-shell--tv-mode">
+          <div className="main-content">
+            <Outlet />
+          </div>
         </div>
+      ) : (
+        <div className={`dashboard-shell ${isSidebarCollapsed ? "shell--collapsed" : ""}`}>
+          <Sidebar isCollapsed={isSidebarCollapsed} toggleSidebar={toggleSidebar} />
 
-        <CajaAperturaEnforcer />
-        <BottomNav />
-      </div>
+          <div className="main-content">
+            <Navbar />
+            <Outlet />
+          </div>
+
+          <CajaAperturaEnforcer />
+          <BottomNav />
+        </div>
+      )}
     </PermisosProvider>
   );
 };

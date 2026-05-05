@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PremiumNavCategories from './PremiumNavCategories';
 import PremiumHeaderActions from './PremiumHeaderActions';
-import jonnysLogo from '../../../../assets/images/logo-sin-fondo.png';
+
+const MOBILE_MENU_MEDIA_QUERY = '(max-width: 767.98px)';
 
 // PremiumHeader: header unico del catalogo.
 // En mobile agrega menu desplegable de categorias sin cambiar handlers de negocio.
@@ -30,6 +31,30 @@ const PremiumHeader = ({
   onToggleTheme
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia(MOBILE_MENU_MEDIA_QUERY).matches
+  ));
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const mediaQuery = window.matchMedia(MOBILE_MENU_MEDIA_QUERY);
+    const syncViewportMode = (matches) => {
+      setIsMobileViewport(matches);
+      if (!matches) setMobileMenuOpen(false);
+    };
+
+    syncViewportMode(mediaQuery.matches);
+
+    const handleViewportChange = (event) => syncViewportMode(event.matches);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleViewportChange);
+      return () => mediaQuery.removeEventListener('change', handleViewportChange);
+    }
+
+    mediaQuery.addListener(handleViewportChange);
+    return () => mediaQuery.removeListener(handleViewportChange);
+  }, []);
 
   const handleSelectCategory = (category) => {
     onSelectCategory?.(category);
@@ -39,28 +64,29 @@ const PremiumHeader = ({
   return (
     <header className="pm-premium-header" aria-label="Cabecera principal del catalogo">
       <div className="pm-premium-header__brand-row">
-        <button
-          type="button"
-          className="pm-premium-header__menu-btn"
-          onClick={() => setMobileMenuOpen((prev) => !prev)}
-          aria-label="Abrir categorias"
-          aria-expanded={mobileMenuOpen}
-        >
-          <i className={`bi ${mobileMenuOpen ? 'bi-x-lg' : 'bi-list'}`} aria-hidden="true" />
-        </button>
+        {isMobileViewport ? (
+          <button
+            type="button"
+            className="pm-premium-header__menu-btn"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            aria-label="Abrir categorias"
+            aria-expanded={mobileMenuOpen}
+          >
+            <i className={`bi ${mobileMenuOpen ? 'bi-x-lg' : 'bi-list'}`} aria-hidden="true" />
+          </button>
+        ) : null}
 
-        <div className="pm-premium-header__brand">
-          <img src={jonnysLogo} alt="JONNY'S Grill & Burger" className="pm-premium-header__brand-logo" />
-        </div>
       </div>
 
-      <PremiumNavCategories
-        categories={categories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={handleSelectCategory}
-      />
+      {!isMobileViewport ? (
+        <PremiumNavCategories
+          categories={categories}
+          selectedCategory={selectedCategory}
+          onSelectCategory={handleSelectCategory}
+        />
+      ) : null}
 
-      {mobileMenuOpen ? (
+      {isMobileViewport && mobileMenuOpen ? (
         <div className="pm-premium-header__mobile-panel" aria-label="Listado de categorias">
           <PremiumNavCategories
             categories={categories}
