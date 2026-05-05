@@ -289,6 +289,63 @@
   backdrop-filter: blur(6px);
 }
 
+.ventas-modal-card {
+  width: min(520px, 100%);
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  box-shadow: 0 26px 70px rgba(18, 7, 3, 0.34);
+  overflow: hidden;
+}
+
+.ventas-modal-header {
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+  background: linear-gradient(180deg, #fffef8 0%, #fff 100%);
+}
+
+.ventas-modal-header h5 {
+  margin: 0;
+  color: #47240d;
+  font-size: 1.08rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.ventas-modal-body {
+  padding: 16px 22px 8px;
+}
+
+.ventas-modal-body p {
+  margin: 0;
+  color: rgba(55, 31, 17, 0.9);
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+
+.ventas-modal-footer {
+  padding: 14px 22px 20px;
+  border-top: 1px solid rgba(157, 150, 112, 0.14);
+  background: #fff;
+}
+
+.ventas-modal-footer .btn {
+  min-width: 116px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.ventas-modal-footer .btn-primary {
+  background: linear-gradient(135deg, #9a5319, #c26a22);
+  border-color: #9a5319;
+}
+
+.ventas-modal-footer .btn-primary:hover,
+.ventas-modal-footer .btn-primary:focus {
+  background: #8a4915;
+  border-color: #8a4915;
+}
+
 .ventas-modal {
   width: min(1120px, 100%);
   max-height: calc(100vh - 24px);
@@ -1387,8 +1444,8 @@
 
 @media (max-width: 767.98px) {
   .ventas-modal-backdrop {
-    padding: 6px;
-    align-items: stretch;
+    padding: 14px;
+    align-items: center;
   }
 
   .ventas-modal {
@@ -1402,6 +1459,28 @@
 
   .ventas-modal__header {
     padding: 14px 16px;
+  }
+
+  .ventas-modal-card {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 14px;
+  }
+
+  .ventas-modal-header,
+  .ventas-modal-body,
+  .ventas-modal-footer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .ventas-modal-footer {
+    padding-bottom: 14px;
+  }
+
+  .ventas-modal-footer .btn {
+    min-width: 0;
+    flex: 1 1 0;
   }
 
   .ventas-modal__title-wrap h3 {
@@ -2254,5 +2333,129 @@
   .ventas-summary__sucursal-wrap.is-super-admin .ventas-summary__dropdown {
     min-width: min(92vw, 420px);
     max-width: 92vw;
+  }
+}
+
+.ventas-cart__line-actions-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ventas-cart__line-complement-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+}
+
+.ventas-cart__line-complement-label {
+  font-size: 0.78rem;
+  color: rgba(82, 44, 34, 0.82);
+  font-weight: 600;
+}
+
+.ventas-cart__line-complement-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ventas-cart__line-complement-actions > small {
+  margin: 0;
+  color: #6f5a52;
+  white-space: nowrap;
+}
+
+.ventas-complementos-modal {
+  max-width: min(560px, 96vw);
+}
+
+.ventas-complementos-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ventas-complementos-modal__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ventas-complementos-modal__meta span {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f3ece5;
+  color: #6a4030;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.ventas-complementos-modal__hint {
+  font-size: 0.9rem;
+  color: #6f5a52;
+}
+
+.ventas-complementos-modal__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ventas-complementos-modal__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #eadccf;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.92rem;
+  color: #4a2e24;
+}
+
+.ventas-complementos-modal__empty {
+  grid-column: 1 / -1;
+  border: 1px dashed #e4d3c3;
+  border-radius: 10px;
+  padding: 10px;
+  color: #6f5a52;
+  font-size: 0.9rem;
+}
+
+.ventas-summary__client-btn,
+.ventas-summary__payment-btn,
+.ventas-summary__sucursal-btn,
+.ventas-summary__discount-btn,
+.ventas-summary__static-field,
+.ventas-create-modal__field input {
+  min-height: 42px;
+}
+
+@media (max-width: 767.98px) {
+  .ventas-complementos-modal__list {
+    grid-template-columns: 1fr;
+  }
+
+  .ventas-cart__line-complement-row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .ventas-cart__line-discount-row {
+    width: 100%;
+  }
+
+  .ventas-cart__line-discount-select {
+    width: 100%;
   }
 }

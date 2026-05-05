@@ -150,7 +150,18 @@ export const normalizeComboRecord = (row) => ({
   id_tipo_departamento: Number(row?.id_tipo_departamento ?? 0) || null,
   descripcion: String(row?.descripcion ?? 'Combo'),
   precio: roundMoney(row?.precio),
-  estado: parseBoolean(row?.estado)
+  estado: parseBoolean(row?.estado),
+  requiere_complementos: Boolean(row?.requiere_complementos),
+  tipo_complemento: String(row?.tipo_complemento ?? ''),
+  minimo_complementos: Number(row?.minimo_complementos ?? 0) || 0,
+  maximo_complementos: Number(row?.maximo_complementos ?? 0) || 0,
+  complementos_disponibles: (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
+    .map((entry) => ({
+      id_complemento: Number(entry?.id_complemento ?? 0) || null,
+      nombre: String(entry?.nombre ?? 'Complemento').trim(),
+      disponible: entry?.disponible !== false
+    }))
+    .filter((entry) => entry.id_complemento)
 });
 
 export const normalizeRecetaRecord = (row) => ({
@@ -161,7 +172,18 @@ export const normalizeRecetaRecord = (row) => ({
   nombre_receta: String(row?.nombre_receta ?? 'Receta'),
   nombre_producto_base: String(row?.nombre_producto_base ?? ''),
   precio: roundMoney(row?.precio),
-  estado: parseBoolean(row?.estado)
+  estado: parseBoolean(row?.estado),
+  requiere_complementos: Boolean(row?.requiere_complementos),
+  tipo_complemento: String(row?.tipo_complemento ?? ''),
+  minimo_complementos: Number(row?.minimo_complementos ?? 0) || 0,
+  maximo_complementos: Number(row?.maximo_complementos ?? 0) || 0,
+  complementos_disponibles: (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
+    .map((entry) => ({
+      id_complemento: Number(entry?.id_complemento ?? 0) || null,
+      nombre: String(entry?.nombre ?? 'Complemento').trim(),
+      disponible: entry?.disponible !== false
+    }))
+    .filter((entry) => entry.id_complemento)
 });
 
 export const normalizeClienteOption = (row) => ({

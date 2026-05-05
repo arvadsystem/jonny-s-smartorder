@@ -5,14 +5,20 @@ import { supabase } from '../../../../lib/supabaseClient';
 import {
   applyKitchenTransition,
   filterActiveSucursales,
-  normalizeKitchenOrder
+  normalizeKitchenOrder,
+  resolveExpectedMinutesByActiveCount,
+  resolveKitchenBaseDate,
+  resolveOrderColumnKey
 } from '../utils/cocinaHelpers';
+import { createCocinaAudioManager } from '../utils/cocinaAudio';
 
 const initialToast = {
   show: false,
   title: '',
   message: '',
-  variant: 'success'
+  variant: 'success',
+  origin: 'system',
+  code: ''
 };
 
 const extractApiMessage = (error, fallbackMessage) => {
@@ -28,7 +34,12 @@ const extractApiMessage = (error, fallbackMessage) => {
   return fallbackMessage;
 };
 
-export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true }) => {
+export const useCocina = ({
+  selectedSucursalId,
+  includeSucursalesCatalog = true,
+  toastPolicy = {},
+  audioMode = 'none'
+}) => {
   const [pedidos, setPedidos] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,18 +49,174 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
   const [toast, setToast] = useState(initialToast);
   const [mutatingIds, setMutatingIds] = useState([]);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const audioManagerRef = useRef(null);
+  const knownPedidoIdsRef = useRef(new Set());
+  const pendingReminderTimersRef = useRef(new Map());
+  const hasAudioBaselineRef = useRef(false);
+  const latestPedidosRef = useRef([]);
+  const demandBaselineCountRef = useRef(null);
+  const expectedMinutesByPedidoRef = useRef(new Map());
+  const baseMsByPedidoRef = useRef(new Map());
+  const isAudioEnabled = audioMode === 'cocina' || audioMode === 'pantalla';
+  const isCocinaOperativeAudio = audioMode === 'cocina';
+
+  const enrichPedidosWithTiming = useCallback((rows) => {
+    const normalizedRows = Array.isArray(rows) ? rows : [];
+    const activeRows = normalizedRows.filter((pedido) => {
+      const columnKey = resolveOrderColumnKey(pedido);
+      return columnKey === 'PENDIENTES' || columnKey === 'EN_PREPARACION';
+    });
+    const activeCount = activeRows.length;
+    const expectedForNew = resolveExpectedMinutesByActiveCount(activeCount);
+    const activeIds = new Set();
+
+    const enrichedRows = normalizedRows.map((pedido) => {
+      const idPedido = Number(pedido?.id_pedido ?? 0);
+      const columnKey = resolveOrderColumnKey(pedido);
+      const isActive = columnKey === 'PENDIENTES' || columnKey === 'EN_PREPARACION';
+      if (idPedido && isActive) {
+        activeIds.add(idPedido);
+        if (!expectedMinutesByPedidoRef.current.has(idPedido)) {
+          expectedMinutesByPedidoRef.current.set(idPedido, expectedForNew);
+        }
+        if (!baseMsByPedidoRef.current.has(idPedido)) {
+          const resolvedBaseMs = resolveKitchenBaseDate(pedido)?.getTime() || Date.now();
+          baseMsByPedidoRef.current.set(idPedido, resolvedBaseMs);
+        }
+      }
+
+      return {
+        ...pedido,
+        expected_minutes_kds: expectedMinutesByPedidoRef.current.get(idPedido) || 20,
+        kds_timer_base_at: idPedido ? new Date(baseMsByPedidoRef.current.get(idPedido) || Date.now()).toISOString() : null
+      };
+    });
+
+    [...expectedMinutesByPedidoRef.current.keys()].forEach((idPedido) => {
+      if (activeIds.has(idPedido)) return;
+      expectedMinutesByPedidoRef.current.delete(idPedido);
+      baseMsByPedidoRef.current.delete(idPedido);
+    });
+
+    return enrichedRows;
+  }, []);
 
   const mutatingIdsRef = useRef(mutatingIds);
   mutatingIdsRef.current = mutatingIds;
+  latestPedidosRef.current = pedidos;
 
-  const openToast = useCallback((title, message, variant = 'success') => {
+  useEffect(() => {
+    if (!isAudioEnabled) {
+      if (audioManagerRef.current) {
+        audioManagerRef.current.dispose();
+        audioManagerRef.current = null;
+      }
+      return undefined;
+    }
+
+    audioManagerRef.current = createCocinaAudioManager();
+    return () => {
+      if (audioManagerRef.current) {
+        audioManagerRef.current.dispose();
+        audioManagerRef.current = null;
+      }
+    };
+  }, [isAudioEnabled]);
+
+  useEffect(() => {
+    if (!isAudioEnabled) {
+      pendingReminderTimersRef.current.forEach((timer) => window.clearInterval(timer));
+      pendingReminderTimersRef.current.clear();
+      knownPedidoIdsRef.current.clear();
+      hasAudioBaselineRef.current = false;
+      demandBaselineCountRef.current = null;
+      return undefined;
+    }
+
+    const isActiveForKds = (pedido) => {
+      const columnKey = resolveOrderColumnKey(pedido);
+      return columnKey === 'PENDIENTES' || columnKey === 'EN_PREPARACION';
+    };
+
+    const isPending = (pedido) => resolveOrderColumnKey(pedido) === 'PENDIENTES';
+    const activePedidos = pedidos.filter(isActiveForKds);
+    const activeCount = activePedidos.length;
+    const pendingPedidos = activePedidos.filter(isPending);
+    const pendingIds = new Set(pendingPedidos.map((pedido) => Number(pedido?.id_pedido ?? 0)).filter(Boolean));
+
+    if (demandBaselineCountRef.current === null) {
+      demandBaselineCountRef.current = activeCount;
+    } else {
+      const previous = Number(demandBaselineCountRef.current ?? 0);
+      if (previous <= 15 && activeCount > 15) {
+        audioManagerRef.current?.playAltaDemanda();
+      }
+      demandBaselineCountRef.current = activeCount;
+    }
+
+    const knownIds = knownPedidoIdsRef.current;
+    pendingPedidos.forEach((pedido) => {
+      const idPedido = Number(pedido?.id_pedido ?? 0);
+      if (!idPedido) return;
+
+      const alreadyKnown = knownIds.has(idPedido);
+      if (!alreadyKnown) {
+        knownIds.add(idPedido);
+        if (hasAudioBaselineRef.current) {
+          audioManagerRef.current?.playNuevoPedido();
+        }
+      }
+
+      if (pendingReminderTimersRef.current.has(idPedido)) return;
+      const timer = window.setInterval(() => {
+        const currentPedido = latestPedidosRef.current.find(
+          (candidate) => Number(candidate?.id_pedido ?? 0) === idPedido
+        );
+        if (!currentPedido || !isPending(currentPedido)) {
+          const intervalId = pendingReminderTimersRef.current.get(idPedido);
+          if (intervalId) window.clearInterval(intervalId);
+          pendingReminderTimersRef.current.delete(idPedido);
+          return;
+        }
+        audioManagerRef.current?.playNuevoPedido();
+      }, 5 * 60 * 1000);
+      pendingReminderTimersRef.current.set(idPedido, timer);
+    });
+
+    [...pendingReminderTimersRef.current.keys()].forEach((idPedido) => {
+      if (pendingIds.has(idPedido)) return;
+      const timer = pendingReminderTimersRef.current.get(idPedido);
+      if (timer) window.clearInterval(timer);
+      pendingReminderTimersRef.current.delete(idPedido);
+    });
+
+    hasAudioBaselineRef.current = true;
+
+    return undefined;
+  }, [isAudioEnabled, pedidos]);
+
+  useEffect(() => () => {
+    pendingReminderTimersRef.current.forEach((timer) => window.clearInterval(timer));
+    pendingReminderTimersRef.current.clear();
+  }, []);
+
+  const openToast = useCallback((title, message, variant = 'success', options = {}) => {
+    const origin = String(options?.origin || 'system');
+    const code = String(options?.code || '');
+    if (toastPolicy?.hideAll) return;
+    if (toastPolicy?.hideSystem && origin !== 'user-action') return;
+    if (toastPolicy?.hideAdminWarnings && code === 'ADMIN_WARNING') return;
+    if (toastPolicy?.hideOperationalSuccess && code === 'ACTION_SUCCESS') return;
+
     setToast({
       show: true,
       title: String(title || ''),
       message: String(message || ''),
-      variant
+      variant,
+      origin,
+      code
     });
-  }, []);
+  }, [toastPolicy?.hideAdminWarnings, toastPolicy?.hideAll, toastPolicy?.hideOperationalSuccess, toastPolicy?.hideSystem]);
 
   const closeToast = useCallback(() => {
     setToast((prev) => ({ ...prev, show: false }));
@@ -86,7 +253,7 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
         const response = await cocinaApi.listPedidos({
           id_sucursal: selectedSucursalId || undefined
         });
-        const rows = (Array.isArray(response) ? response : []).map(normalizeKitchenOrder);
+        const rows = enrichPedidosWithTiming((Array.isArray(response) ? response : []).map(normalizeKitchenOrder));
         setPedidos(rows);
         setError('');
         return rows;
@@ -94,7 +261,7 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
         const message = extractApiMessage(loadError, 'No se pudieron cargar los pedidos de cocina.');
         setError(message);
         if (!silent) {
-          openToast('ERROR', message, 'danger');
+          openToast('ERROR', message, 'danger', { origin: 'system', code: 'LOAD_ERROR' });
         }
         throw loadError;
       } finally {
@@ -105,7 +272,7 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
         }
       }
     },
-    [openToast, selectedSucursalId]
+    [enrichPedidosWithTiming, openToast, selectedSucursalId]
   );
 
   useEffect(() => {
@@ -184,28 +351,44 @@ export const useCocina = ({ selectedSucursalId, includeSucursalesCatalog = true 
       try {
         const response = await cocinaApi.updateEstado(idPedido, estadoDestino);
         setPedidos((current) => applyKitchenTransition(current, idPedido, estadoDestino));
-        if (response?.warning?.code === 'FALTANTE_COCINA') {
-          openToast(
-            'PEDIDO LISTO CON FALTANTE',
-            'Pedido marcado como listo. Inventario descontado con faltantes auditados.',
-            'warning'
-          );
+        if (response?.warning_code === 'CONFIGURACION_INVENTARIO_INCOMPLETA') {
+          openToast('PEDIDO LISTO', 'Pedido marcado como listo correctamente.', 'success', {
+            origin: 'user-action',
+            code: 'ADMIN_WARNING'
+          });
+          if (isCocinaOperativeAudio) {
+            audioManagerRef.current?.playPedidoListo();
+          }
+        } else if (response?.warning_detail?.code === 'FALTANTE_COCINA') {
+          openToast('PEDIDO LISTO', 'Pedido marcado como listo correctamente.', 'success', {
+            origin: 'user-action',
+            code: 'ADMIN_WARNING'
+          });
+          if (isCocinaOperativeAudio) {
+            audioManagerRef.current?.playPedidoListo();
+          }
         } else {
-          openToast('PEDIDO ACTUALIZADO', response?.message || 'Estado actualizado correctamente.', 'success');
+          openToast('PEDIDO ACTUALIZADO', response?.message || 'Estado actualizado correctamente.', 'success', {
+            origin: 'user-action',
+            code: 'ACTION_SUCCESS'
+          });
+          if (isCocinaOperativeAudio && String(estadoDestino || '').toUpperCase() === 'LISTO_PARA_ENTREGA') {
+            audioManagerRef.current?.playPedidoListo();
+          }
         }
         refreshBoard({ silent: true }).catch(() => {});
         return response;
       } catch (saveError) {
         const message = extractApiMessage(saveError, 'No se pudo actualizar el pedido.');
         setError(message);
-        openToast('ERROR', message, 'danger');
+        openToast('ERROR', message, 'danger', { origin: 'user-action', code: 'ACTION_ERROR' });
         throw saveError;
       } finally {
         setSaving(false);
         setMutatingIds((current) => current.filter((value) => value !== idPedido));
       }
     },
-    [openToast, refreshBoard]
+    [isCocinaOperativeAudio, openToast, refreshBoard]
   );
 
   return useMemo(

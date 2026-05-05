@@ -1,23 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePermisos } from '../../../context/PermisosContext';
-import { PERMISSIONS } from '../../../utils/permissions';
+import { useAuth } from '../../../hooks/useAuth';
+import { normalizeRoleName, PERMISSIONS } from '../../../utils/permissions';
 import CocinaBoard from './components/CocinaBoard';
 import CocinaConfirmModal from './components/CocinaConfirmModal';
 import CocinaDetailModal from './components/CocinaDetailModal';
-import CocinaStats from './components/CocinaStats';
 import CocinaSucursalTabs from './components/CocinaSucursalTabs';
 import CocinaToast from './components/CocinaToast';
 import CocinaToolbar from './components/CocinaToolbar';
 import { useCocina } from './hooks/useCocina';
 import {
-  buildCocinaStats,
   groupOrdersByColumn,
   matchesKitchenOrder,
   resolveOrderColumnKey
 } from './utils/cocinaHelpers';
 import './styles/cocina.css';
 
+const SCREEN_MODE_ROLES = new Set([
+  'P_COCINA',
+  'PANTALLA_COCINA',
+  'PANTALLA_DE_COCINA'
+]);
+const COCINA_OPERATIVA_ROLES = new Set(['COCINA', 'COCINERA']);
+
+const isPantallaCocinaRole = (roles) =>
+  (Array.isArray(roles) ? roles : []).some((role) => SCREEN_MODE_ROLES.has(normalizeRoleName(role)));
+const isCocinaOperativaRole = (roles) =>
+  (Array.isArray(roles) ? roles : []).some((role) => COCINA_OPERATIVA_ROLES.has(normalizeRoleName(role)));
+
 export default function CocinaPage() {
+  const { user } = useAuth();
   const { canAny, isSuperAdmin } = usePermisos();
   const [search, setSearch] = useState('');
   const [selectedSucursalId, setSelectedSucursalId] = useState(null);
@@ -26,11 +38,27 @@ export default function CocinaPage() {
   const [now, setNow] = useState(() => Date.now());
   const pageRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const isPantallaCocina = useMemo(() => isPantallaCocinaRole(user?.roles), [user?.roles]);
+  const isCocinaOperativa = useMemo(() => isCocinaOperativaRole(user?.roles), [user?.roles]);
+  const toastPolicy = useMemo(
+    () => ({
+      hideAll: isPantallaCocina,
+      hideSystem: isPantallaCocina || (!isSuperAdmin && isCocinaOperativa),
+      hideAdminWarnings: isPantallaCocina || (!isSuperAdmin && isCocinaOperativa),
+      hideOperationalSuccess: isPantallaCocina || (!isSuperAdmin && isCocinaOperativa)
+    }),
+    [isCocinaOperativa, isPantallaCocina, isSuperAdmin]
+  );
+  const audioMode = useMemo(() => {
+    if (isPantallaCocina) return 'pantalla';
+    if (!isSuperAdmin && isCocinaOperativa) return 'cocina';
+    return 'none';
+  }, [isCocinaOperativa, isPantallaCocina, isSuperAdmin]);
 
-  const canSearch = canAny([PERMISSIONS.COCINA_BUSCAR]);
-  const canRefresh = canAny([PERMISSIONS.COCINA_ACTUALIZAR_TABLERO]);
+  const canSearch = !isPantallaCocina && canAny([PERMISSIONS.COCINA_BUSCAR]);
+  const canRefresh = !isPantallaCocina && canAny([PERMISSIONS.COCINA_ACTUALIZAR_TABLERO]);
   const canViewDetail = canAny([PERMISSIONS.COCINA_DETALLE_VER]);
-  const canFilterSucursal = canAny([PERMISSIONS.COCINA_FILTRAR_SUCURSAL]);
+  const canFilterSucursal = !isPantallaCocina && canAny([PERMISSIONS.COCINA_FILTRAR_SUCURSAL]);
   const canStartPedido = canAny([PERMISSIONS.COCINA_PEDIDO_INICIAR]);
   const canMarkReady = canAny([PERMISSIONS.COCINA_PEDIDO_MARCAR_LISTO]);
   const canDeliverPedido = canAny([PERMISSIONS.COCINA_PEDIDO_ENTREGAR]);
@@ -50,7 +78,9 @@ export default function CocinaPage() {
     isRealtimeConnected
   } = useCocina({
     selectedSucursalId,
-    includeSucursalesCatalog: canFilterSucursal || isSuperAdmin
+    includeSucursalesCatalog: !isPantallaCocina && (canFilterSucursal || isSuperAdmin),
+    toastPolicy,
+    audioMode
   });
 
   // Timer para mostrar temporizadores en vivo (1s)
@@ -70,27 +100,6 @@ export default function CocinaPage() {
   useEffect(() => {
     if (!canSearch && search) setSearch('');
   }, [canSearch, search]);
-
-  // Notificación sonora cuando llegan pedidos nuevos
-  const prevPedidosCountRef = useRef(pedidos.length);
-  useEffect(() => {
-    if (pedidos.length > prevPedidosCountRef.current) {
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.35);
-      } catch { /* sin audio: no pasa nada */ }
-    }
-    prevPedidosCountRef.current = pedidos.length;
-  }, [pedidos.length]);
 
   // Fullscreen toggle
   const toggleFullscreen = useCallback(async () => {
@@ -114,10 +123,10 @@ export default function CocinaPage() {
     [canSearch, pedidos, search]
   );
   const groupedPedidos = useMemo(() => groupOrdersByColumn(filteredPedidos), [filteredPedidos]);
-  const stats = useMemo(() => buildCocinaStats(filteredPedidos), [filteredPedidos]);
 
   const canAdvancePedido = useCallback(
     (pedido) => {
+      if (isPantallaCocina) return false;
       if (isSuperAdmin) return true;
       const columnKey = resolveOrderColumnKey(pedido);
       if (columnKey === 'PENDIENTES') return canStartPedido;
@@ -125,7 +134,7 @@ export default function CocinaPage() {
       if (columnKey === 'LISTOS_PARA_ENTREGA') return canDeliverPedido;
       return false;
     },
-    [isSuperAdmin, canStartPedido, canMarkReady, canDeliverPedido]
+    [isPantallaCocina, isSuperAdmin, canStartPedido, canMarkReady, canDeliverPedido]
   );
 
   const handleConfirmAction = useCallback(async () => {
@@ -157,24 +166,32 @@ export default function CocinaPage() {
   }, [advancePedido, canAdvancePedido, confirmState, selectedPedido]);
 
   return (
-    <div className="cocina-page" ref={pageRef}>
+    <div className={`cocina-page${isPantallaCocina ? ' cocina-page--tv-mode' : ''}`} ref={pageRef}>
       <div className="kds-root">
-        <CocinaToolbar
-          search={search}
-          onSearchChange={setSearch}
-          canRefresh={canRefresh}
-          canSearch={canSearch}
-          isRealtimeConnected={isRealtimeConnected}
-          isFullscreen={isFullscreen}
-          onRefresh={() => {
-            if (!canRefresh) return;
-            refreshBoard({ silent: true }).catch(() => {});
-          }}
-          onToggleFullscreen={toggleFullscreen}
-          refreshing={refreshing}
-        />
-
-        <CocinaStats stats={stats} />
+        {isPantallaCocina ? (
+          <header className="kds-tv-header">
+            <div className="kds-tv-header__title">Kitchen Display</div>
+            <div className={`kds-realtime ${isRealtimeConnected ? 'is-connected' : ''}`}>
+              <span className="kds-realtime__dot" />
+              <span>{isRealtimeConnected ? 'En tiempo real' : 'Reconectando...'}</span>
+            </div>
+          </header>
+        ) : (
+          <CocinaToolbar
+            search={search}
+            onSearchChange={setSearch}
+            canRefresh={canRefresh}
+            canSearch={canSearch}
+            isRealtimeConnected={isRealtimeConnected}
+            isFullscreen={isFullscreen}
+            onRefresh={() => {
+              if (!canRefresh) return;
+              refreshBoard({ silent: true }).catch(() => {});
+            }}
+            onToggleFullscreen={toggleFullscreen}
+            refreshing={refreshing}
+          />
+        )}
 
         {error ? (
           <div className="kds-error" role="alert">
@@ -183,15 +200,17 @@ export default function CocinaPage() {
           </div>
         ) : null}
 
-        <CocinaSucursalTabs
-          sucursales={sucursales}
-          selectedSucursalId={selectedSucursalId}
-          canFilter={canFilterSucursal || isSuperAdmin}
-          onSelectSucursal={(value) => {
-            if (!canFilterSucursal && !isSuperAdmin) return;
-            setSelectedSucursalId(value);
-          }}
-        />
+        {!isPantallaCocina ? (
+          <CocinaSucursalTabs
+            sucursales={sucursales}
+            selectedSucursalId={selectedSucursalId}
+            canFilter={canFilterSucursal || isSuperAdmin}
+            onSelectSucursal={(value) => {
+              if (!canFilterSucursal && !isSuperAdmin) return;
+              setSelectedSucursalId(value);
+            }}
+          />
+        ) : null}
 
         {loading ? (
           <div className="kds-loading" role="status" aria-live="polite">
@@ -201,7 +220,7 @@ export default function CocinaPage() {
         ) : (
           <CocinaBoard
             canAdvancePedido={canAdvancePedido}
-            isSuperAdmin={isSuperAdmin}
+            isSuperAdmin={isSuperAdmin && !isPantallaCocina}
             canOpenDetail={canViewDetail}
             canDeliverPedido={canDeliverPedido}
             groupedPedidos={groupedPedidos}

@@ -3,6 +3,8 @@
 // - slides: arreglo de imagenes/titulos existentes del catalogo.
 // - heroIndex: indice activo del carrusel (controlado por CatalogScreen).
 // - onPrev/onNext/onSelectSlide: handlers existentes del carrusel.
+import jonnysLogo from '../../../../assets/images/logo-sin-fondo.png';
+
 const HeroSection = ({
   slides = [],
   heroIndex = 0,
@@ -36,6 +38,7 @@ const HeroSection = ({
     </div>
 
     <div className="pm-hero-section__content">
+      <img src={jonnysLogo} alt="JONNY'S" className="pm-hero-section__brand-mark" />
       <h2 className="pm-hero-section__title">
         <span className="pm-hero-section__title-top">{'\u00BF'}QUE SE TE</span>
         <span className="pm-hero-section__title-bottom">

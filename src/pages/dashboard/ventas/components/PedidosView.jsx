@@ -1,6 +1,8 @@
-import { useDeferredValue, useMemo, useState, useEffect, useCallback } from 'react';
+import { useDeferredValue, useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import PedidosEmptyState from './PedidosEmptyState';
 import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
+import VentasToast from './VentasToast';
+import { supabase } from '../../../../lib/supabaseClient';
 import ventasService from '../../../../services/ventasService';
 
 const normalizeTextKey = (value) =>
@@ -26,6 +28,28 @@ const cleanPedidoDescription = (value) => {
   return raw.replace(/\s*\|\s*idem:[^\s|]+/i, '').trim();
 };
 
+const initialToast = {
+  show: false,
+  title: '',
+  message: '',
+  variant: 'success'
+};
+const initialConfirmDialog = {
+  open: false,
+  title: '',
+  message: '',
+  idPedido: null,
+  estadoDestino: ''
+};
+
+const buildPedidoVisibleCode = (pedido) => {
+  const rawCode = String(pedido?.codigo_venta || '').trim();
+  if (rawCode) return rawCode;
+  const idPedido = Number(pedido?.id_pedido ?? 0);
+  if (!idPedido) return 'VTA-S/N';
+  return `VTA-${String(idPedido).padStart(5, '0')}`;
+};
+
 export default function PedidosView() {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -33,41 +57,204 @@ export default function PedidosView() {
   const [loading, setLoading] = useState(true);
   const [actionBusyId, setActionBusyId] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [toast, setToast] = useState(initialToast);
+  const [confirmDialog, setConfirmDialog] = useState(initialConfirmDialog);
+  const notifiedReadyIdsRef = useRef(new Set());
+  const readyAudioRef = useRef(null);
 
-  const loadPedidos = useCallback(async () => {
+  useEffect(() => {
+    const { data } = supabase.storage
+      .from('notificacion')
+      .getPublicUrl('cocina-nuevo-pedido.mp3');
+    const audioUrl = String(data?.publicUrl || '').trim();
+    if (!audioUrl) {
+      readyAudioRef.current = null;
+      return undefined;
+    }
+    const audio = new Audio(audioUrl);
+    audio.preload = 'auto';
+    readyAudioRef.current = audio;
+    return () => {
+      if (!readyAudioRef.current) return;
+      try {
+        readyAudioRef.current.pause();
+        readyAudioRef.current.currentTime = 0;
+      } catch {
+        // AM: no interrumpir flujo si el navegador restringe APIs de audio.
+      }
+      readyAudioRef.current = null;
+    };
+  }, []);
+
+  const openToast = useCallback((title, message, variant = 'success') => {
+    setToast({
+      show: true,
+      title: String(title || ''),
+      message: String(message || ''),
+      variant
+    });
+  }, []);
+
+  const closeToast = useCallback(() => {
+    setToast((prev) => ({ ...prev, show: false }));
+  }, []);
+
+  useEffect(() => {
+    if (!toast.show) return undefined;
+    const timer = window.setTimeout(() => {
+      setToast((prev) => ({ ...prev, show: false }));
+    }, 3200);
+    return () => window.clearTimeout(timer);
+  }, [toast.show]);
+
+  const loadPedidos = useCallback(async ({ silent = false, source = 'manual' } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setErrorMessage('');
       const data = await ventasService.getPedidosMenu();
-      setPedidos(Array.isArray(data) ? data : []);
+      const nextPedidos = Array.isArray(data) ? data : [];
+      setPedidos((prevPedidos) => {
+        if (source !== 'initial' && source !== 'manual') {
+          const prevReadyIds = new Set(
+            (Array.isArray(prevPedidos) ? prevPedidos : [])
+              .filter((pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA')
+              .map((pedido) => Number(pedido?.id_pedido ?? 0))
+              .filter(Boolean)
+          );
+          const nextReadyPedidos = nextPedidos.filter(
+            (pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA'
+          );
+          const nextReadyIds = new Set(
+            nextReadyPedidos
+              .map((pedido) => Number(pedido?.id_pedido ?? 0))
+              .filter(Boolean)
+          );
+          notifiedReadyIdsRef.current.forEach((idPedido) => {
+            if (nextReadyIds.has(idPedido)) return;
+            notifiedReadyIdsRef.current.delete(idPedido);
+          });
+          nextReadyPedidos.forEach((pedido) => {
+            const idPedido = Number(pedido?.id_pedido ?? 0);
+            if (!idPedido) return;
+            if (prevReadyIds.has(idPedido)) return;
+            if (notifiedReadyIdsRef.current.has(idPedido)) return;
+            notifiedReadyIdsRef.current.add(idPedido);
+            const readyAudio = readyAudioRef.current;
+            if (readyAudio) {
+              try {
+                readyAudio.currentTime = 0;
+                void readyAudio.play().catch(() => {});
+              } catch {
+                // AM: autoplay bloqueado no debe romper Ventas/Pedidos.
+              }
+            }
+            openToast('PEDIDO LISTO', `Pedido ${buildPedidoVisibleCode(pedido)} listo para entrega.`, 'success');
+          });
+        }
+        return nextPedidos;
+      });
     } catch (err) {
       setErrorMessage(String(err?.message || 'No se pudo cargar el tablero de pedidos.'));
       setPedidos([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, []);
+  }, [openToast]);
 
   useEffect(() => {
-    void loadPedidos();
+    void loadPedidos({ source: 'initial' });
   }, [loadPedidos]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (actionBusyId !== null) return;
+      loadPedidos({ silent: true, source: 'poll' }).catch(() => {});
+    }, 8000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [actionBusyId, loadPedidos]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('ventas-pedidos-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'pedidos' },
+        () => {
+          if (actionBusyId !== null) return;
+          loadPedidos({ silent: true, source: 'realtime' }).catch(() => {});
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [actionBusyId, loadPedidos]);
 
   const runPedidoAction = useCallback(async (idPedido, action) => {
     try {
       setActionBusyId(idPedido);
       setErrorMessage('');
-      await action();
+      const response = await action();
       await loadPedidos();
-    } catch (err) {
-      setErrorMessage(String(err?.message || 'No se pudo completar la accion del pedido.'));
+      if (response?.message) {
+        openToast('PEDIDO ACTUALIZADO', response.message, 'success');
+      }
+    } catch {
+      setErrorMessage('No se pudo actualizar el pedido. Intenta nuevamente.');
+      openToast('ERROR', 'No se pudo actualizar el pedido. Intenta nuevamente.', 'danger');
     } finally {
       setActionBusyId(null);
     }
-  }, [loadPedidos]);
+  }, [loadPedidos, openToast]);
 
   const handleStateChange = useCallback((idPedido, estadoDestino) => (
     runPedidoAction(idPedido, () => ventasService.updatePedidoEstado(idPedido, estadoDestino))
   ), [runPedidoAction]);
+
+  const handleCompletePedido = useCallback((pedido) => {
+    const idPedido = Number(pedido?.id_pedido ?? 0);
+    if (!idPedido) return;
+    setConfirmDialog({
+      open: true,
+      title: 'Confirmar entrega',
+      message: '¿Confirmas que este pedido fue entregado al cliente?',
+      idPedido,
+      estadoDestino: 'COMPLETADO'
+    });
+  }, []);
+
+  const handleNoEntregadoPedido = useCallback((pedido) => {
+    const idPedido = Number(pedido?.id_pedido ?? 0);
+    if (!idPedido) return;
+    setConfirmDialog({
+      open: true,
+      title: 'Confirmar no entregado',
+      message: '¿Confirmas marcar este pedido como no entregado? Esta acción quedará registrada como dato histórico.',
+      idPedido,
+      estadoDestino: 'no_entregado'
+    });
+  }, []);
+
+  const closeConfirmDialog = useCallback(() => {
+    if (actionBusyId !== null) return;
+    setConfirmDialog(initialConfirmDialog);
+  }, [actionBusyId]);
+
+  const confirmStateChange = useCallback(() => {
+    if (!confirmDialog.idPedido || !confirmDialog.estadoDestino) {
+      setConfirmDialog(initialConfirmDialog);
+      return;
+    }
+    const idPedido = Number(confirmDialog.idPedido);
+    const estadoDestino = String(confirmDialog.estadoDestino);
+    setConfirmDialog(initialConfirmDialog);
+    handleStateChange(idPedido, estadoDestino);
+  }, [confirmDialog, handleStateChange]);
 
   const filteredPedidos = useMemo(() => {
     if (!deferredSearch) return pedidos;
@@ -206,7 +393,8 @@ export default function PedidosView() {
                       key={pedido.id_pedido}
                       pedido={pedido}
                       busy={actionBusyId === pedido.id_pedido}
-                      onComplete={() => handleStateChange(pedido.id_pedido, 'COMPLETADO')}
+                      onComplete={() => handleCompletePedido(pedido)}
+                      onNoEntregado={() => handleNoEntregadoPedido(pedido)}
                     />
                   ))
                 )}
@@ -215,6 +403,15 @@ export default function PedidosView() {
           </div>
         </div>
       </div>
+      <ConfirmActionModal
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        busy={actionBusyId !== null}
+        onCancel={closeConfirmDialog}
+        onConfirm={confirmStateChange}
+      />
+      <VentasToast toast={toast} onClose={closeToast} />
     </div>
   );
 }
@@ -224,7 +421,8 @@ function PedidoCard({
   busy = false,
   onSendKitchen,
   onSendReady,
-  onComplete
+  onComplete,
+  onNoEntregado
 }) {
   const clienteName = pedido?.nombres_cliente
     ? `${pedido.nombres_cliente} ${pedido.apellidos_cliente || ''}`
@@ -287,16 +485,70 @@ function PedidoCard({
         ) : null}
 
         {laneCode === 'LISTO_PARA_ENTREGA' ? (
-          <button
-            className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
-            onClick={onComplete}
-            disabled={busy}
-            type="button"
-            style={{ minHeight: '36px', fontSize: '0.85rem' }}
-          >
-            {busy ? 'Procesando...' : 'Completar y entregar'} <i className="bi bi-check2-circle" />
-          </button>
+          <div className="d-grid w-100 gap-2">
+            <button
+              className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+              onClick={onComplete}
+              disabled={busy}
+              type="button"
+              style={{ minHeight: '36px', fontSize: '0.85rem' }}
+            >
+              {busy ? 'Procesando...' : 'Completar'} <i className="bi bi-check2-circle" />
+            </button>
+            <button
+              className="w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+              onClick={onNoEntregado}
+              disabled={busy}
+              type="button"
+              style={{
+                minHeight: '36px',
+                fontSize: '0.85rem',
+                borderRadius: '10px',
+                border: '1px solid #f59e0b',
+                background: '#fff7ed',
+                color: '#9a3412',
+                fontWeight: 600
+              }}
+            >
+              {busy ? 'Procesando...' : 'No entregado'} <i className="bi bi-x-circle" />
+            </button>
+          </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ConfirmActionModal({ open, title, message, busy = false, onCancel, onConfirm }) {
+  if (!open) return null;
+
+  return (
+    <div className="ventas-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ventas-confirm-title">
+      <div className="ventas-modal-card" style={{ maxWidth: '480px', width: '100%' }}>
+        <div className="ventas-modal-header">
+          <h5 className="mb-0" id="ventas-confirm-title">{title}</h5>
+        </div>
+        <div className="ventas-modal-body">
+          <p className="mb-0">{message}</p>
+        </div>
+        <div className="ventas-modal-footer d-flex justify-content-end gap-2">
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            Confirmar
+          </button>
+        </div>
       </div>
     </div>
   );

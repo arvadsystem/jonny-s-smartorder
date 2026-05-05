@@ -1,4 +1,4 @@
-export const BOARD_COLUMNS = Object.freeze([
+﻿export const BOARD_COLUMNS = Object.freeze([
   {
     key: 'PENDIENTES',
     statusCode: 'EN_COCINA',
@@ -12,22 +12,12 @@ export const BOARD_COLUMNS = Object.freeze([
   {
     key: 'EN_PREPARACION',
     statusCode: 'EN_PREPARACION',
-    title: 'En preparación',
+    title: 'En preparaciÃ³n',
     actionLabel: 'Listo',
     actionStatus: 'LISTO_PARA_ENTREGA',
     buttonClass: 'is-ready',
     badgeClass: 'is-prep',
     icon: 'bi bi-check-circle-fill'
-  },
-  {
-    key: 'LISTOS_PARA_ENTREGA',
-    statusCode: 'LISTO_PARA_ENTREGA',
-    title: 'Listos para entrega',
-    actionLabel: 'Entregar',
-    actionStatus: 'COMPLETADO',
-    buttonClass: 'is-deliver',
-    badgeClass: 'is-ready',
-    icon: 'bi bi-box-seam-fill'
   }
 ]);
 
@@ -59,6 +49,11 @@ const parseDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+export const resolveKitchenBaseDate = (order) =>
+  parseDate(
+    order?.visible_en_cocina_at || order?.fecha_hora_facturacion || order?.fecha_hora_pedido || order?.created_at
+  );
+
 const roundMoney = (value) => Number(Number(value || 0).toFixed(2));
 
 const splitObservationSegments = (value) => {
@@ -72,17 +67,38 @@ const splitObservationSegments = (value) => {
     .filter(Boolean);
 };
 
-const inferModifications = (item, fallbackText = '') => {
-  const itemObservation = String(item?.observacion || '').trim();
-  if (itemObservation) {
-    return splitObservationSegments(itemObservation);
-  }
-
+const inferModifications = (item) => {
   if (Array.isArray(item?.modificaciones) && item.modificaciones.length > 0) {
-    return item.modificaciones.filter(Boolean).map((entry) => String(entry));
+    return item.modificaciones
+      .filter(Boolean)
+      .map((entry) => String(entry).trim())
+      .filter(Boolean);
   }
 
-  return splitObservationSegments(fallbackText);
+  const itemObservation = String(item?.observacion || '').trim();
+  if (itemObservation) return [];
+
+  return [];
+};
+
+const itemNameKey = (value) => normalizeTextKey(value).replace(/_/g, ' ');
+
+const extractPedidoGeneralNotes = (descripcionPedido, items = []) => {
+  const baseNotes = splitObservationSegments(descripcionPedido);
+  if (!baseNotes.length) return [];
+
+  const itemKeys = (Array.isArray(items) ? items : [])
+    .map((item) => itemNameKey(item?.nombre_item))
+    .filter(Boolean);
+
+  return baseNotes.filter((note) => {
+    const noteKey = itemNameKey(note);
+    if (!noteKey) return false;
+    if (!noteKey.includes(':')) return true;
+    const prefix = noteKey.split(':')[0].trim();
+    if (!prefix) return true;
+    return !itemKeys.some((key) => prefix.includes(key) || key.includes(prefix));
+  });
 };
 
 export const formatCurrency = (value) => `L ${roundMoney(value).toFixed(2)}`;
@@ -112,6 +128,35 @@ export const formatTimerLabel = (value, now = Date.now()) => {
   const seconds = String(totalSeconds % 60).padStart(2, '0');
   
   return `${hours}:${minutes}:${seconds}`;
+};
+
+export const resolveExpectedMinutesByActiveCount = (activeCount) =>
+  Number(activeCount) > 15 ? 40 : 20;
+
+const formatMinSec = (totalMs) => {
+  const safeMs = Math.max(0, Number(totalMs) || 0);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return `${minutes}:${seconds}`;
+};
+
+export const buildKitchenCountdown = ({ baseDateValue, expectedMinutes, now = Date.now() }) => {
+  const baseDate = parseDate(baseDateValue);
+  const baseMs = baseDate?.getTime() || Number(now);
+  const expectedMs = Math.max(1, Number(expectedMinutes) || 20) * 60 * 1000;
+  const elapsedMs = Math.max(0, Number(now) - baseMs);
+  const remainingMs = expectedMs - elapsedMs;
+  const isDelayed = remainingMs <= 0;
+  const delayedMs = Math.max(0, elapsedMs - expectedMs);
+
+  return {
+    remainingMs,
+    delayedMs,
+    isDelayed,
+    remainingLabel: isDelayed ? '00:00' : formatMinSec(remainingMs),
+    delayedLabel: isDelayed ? `Retrasado +${formatMinSec(delayedMs)}` : ''
+  };
 };
 
 export const formatServiceLabel = (value) => {
@@ -144,6 +189,17 @@ export const normalizeKitchenOrder = (row) => {
     columna_kds: row?.columna_kds,
     estado_codigo: estadoCodigo
   });
+  const items = (Array.isArray(row?.items) ? row.items : []).map((item) => ({
+    ...item,
+    id_detalle: Number(item?.id_detalle ?? 0) || null,
+    id_producto: Number(item?.id_producto ?? 0) || null,
+    id_combo: Number(item?.id_combo ?? 0) || null,
+    id_receta: Number(item?.id_receta ?? 0) || null,
+    cantidad: Number(item?.cantidad ?? 0) || 0,
+    nombre_item: String(item?.nombre_item ?? 'Item de cocina'),
+    observacion: String(item?.observacion ?? '').trim() || null,
+    modificaciones: inferModifications(item)
+  }));
 
   return {
     ...row,
@@ -161,20 +217,10 @@ export const normalizeKitchenOrder = (row) => {
     descripcion_pedido: row?.descripcion_pedido || null,
     descripcion_envio: row?.descripcion_envio || null,
     visible_en_cocina_at: row?.visible_en_cocina_at || row?.fecha_hora_facturacion || row?.fecha_hora_pedido || null,
-    // Campos de expiración provenientes del backend
     minutos_en_espera: row?.minutos_en_espera != null ? Number(row.minutos_en_espera) : null,
     esta_proximo_a_expirar: Boolean(row?.esta_proximo_a_expirar),
-    items: (Array.isArray(row?.items) ? row.items : []).map((item) => ({
-      ...item,
-      id_detalle: Number(item?.id_detalle ?? 0) || null,
-      id_producto: Number(item?.id_producto ?? 0) || null,
-      id_combo: Number(item?.id_combo ?? 0) || null,
-      id_receta: Number(item?.id_receta ?? 0) || null,
-      cantidad: Number(item?.cantidad ?? 0) || 0,
-      nombre_item: String(item?.nombre_item ?? 'Item de cocina'),
-      observacion: String(item?.observacion ?? '').trim() || null,
-      modificaciones: inferModifications(item, row?.descripcion_pedido)
-    }))
+    nota_general_pedido: extractPedidoGeneralNotes(row?.descripcion_pedido, items),
+    items
   };
 };
 
@@ -306,3 +352,4 @@ export const applyKitchenTransition = (orders, idPedido, nextStatus) => {
     ];
   });
 };
+

@@ -36,6 +36,29 @@ const getOrderTypeLabel = (orderTypeId) =>
 
 const HERO_AUTOPLAY_MS = 5000;
 const HERO_CONFIG_GLOBAL_BRANCH_KEY = '0';
+const CLOSED_HOURS_DISMISS_STORAGE_KEY = 'pm_closed_hours_dismissed_branches';
+
+const loadDismissedClosedHoursBranches = () => {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.sessionStorage.getItem(CLOSED_HOURS_DISMISS_STORAGE_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return {};
+
+    return parsed.reduce((acc, value) => {
+      const id = Number.parseInt(String(value ?? '').trim(), 10);
+      if (Number.isInteger(id) && id > 0) {
+        acc[String(id)] = true;
+      }
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+};
 
 const normalizeHeroCarouselConfig = (value) => {
   if (!value || typeof value !== 'object') return { byBranch: {}, customByBranch: {} };
@@ -225,7 +248,9 @@ const CatalogScreen = () => {
   const [authRequired, setAuthRequired] = useState({ open: false, message: '' });
   const [homeConfirmOpen, setHomeConfirmOpen] = useState(false);
   const [closedHoursConfirmOpen, setClosedHoursConfirmOpen] = useState(false);
-  const [closedHoursDismissedBranchId, setClosedHoursDismissedBranchId] = useState(null);
+  const [closedHoursDismissedByBranch, setClosedHoursDismissedByBranch] = useState(
+    loadDismissedClosedHoursBranches
+  );
   const [orderSuccess, setOrderSuccess] = useState({ open: false, order: null });
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -330,6 +355,7 @@ const CatalogScreen = () => {
   const branchClosedReason = liveSelectedBranch?.closedReason || `Disponible de ${branchScheduleText}`;
   const orderDisabledReason = selectedBranchOpen ? '' : 'Sucursal cerrada';
   const liveBranchId = Number(liveSelectedBranch?.id || 0);
+  const liveBranchKey = liveBranchId > 0 ? String(liveBranchId) : '';
   const topNavCategories = useMemo(
     () => {
       const visibleCategories = categories.filter((category) => category !== 'all');
@@ -395,15 +421,33 @@ const CatalogScreen = () => {
   }, [heroIndex, heroSlides.length]);
 
   useEffect(() => {
-    if (!liveBranchId || selectedBranchOpen) {
+    if (typeof window === 'undefined') return;
+    try {
+      const branchIds = Object.keys(closedHoursDismissedByBranch || {});
+      window.sessionStorage.setItem(CLOSED_HOURS_DISMISS_STORAGE_KEY, JSON.stringify(branchIds));
+    } catch {
+      // Silencioso: si sessionStorage falla, no bloqueamos el menu.
+    }
+  }, [closedHoursDismissedByBranch]);
+
+  useEffect(() => {
+    if (!liveBranchId) {
       setClosedHoursConfirmOpen(false);
-      setClosedHoursDismissedBranchId(null);
       return;
     }
 
-    if (Number(closedHoursDismissedBranchId || 0) === liveBranchId) return;
+    if (selectedBranchOpen) {
+      setClosedHoursConfirmOpen(false);
+      return;
+    }
+
+    if (closedHoursDismissedByBranch[liveBranchKey]) {
+      setClosedHoursConfirmOpen(false);
+      return;
+    }
+
     setClosedHoursConfirmOpen(true);
-  }, [closedHoursDismissedBranchId, liveBranchId, selectedBranchOpen]);
+  }, [closedHoursDismissedByBranch, liveBranchId, liveBranchKey, selectedBranchOpen]);
 
   useEffect(() => {
     if (heroTimerRef.current) {
@@ -545,7 +589,11 @@ const CatalogScreen = () => {
   };
 
   const continueBrowsingClosedMenu = () => {
-    setClosedHoursDismissedBranchId(liveBranchId || null);
+    const dismissBranchId = Number(liveSelectedBranch?.id || state.selectedBranch?.id || 0);
+    if (dismissBranchId > 0) {
+      const branchKey = String(dismissBranchId);
+      setClosedHoursDismissedByBranch((prev) => ({ ...prev, [branchKey]: true }));
+    }
     setClosedHoursConfirmOpen(false);
   };
 
@@ -734,7 +782,10 @@ const CatalogScreen = () => {
   }
 
   return (
-    <section className="pm-screen pm-catalog-screen" aria-label="Catalogo publico">
+    <section
+      className={`pm-screen pm-catalog-screen ${totalItems > 0 ? 'pm-catalog-screen--with-cart' : ''}`}
+      aria-label="Catalogo publico"
+    >
       <PremiumCatalogHeader
         categories={topNavCategories}
         selectedCategory={selectedCategory}
@@ -760,7 +811,7 @@ const CatalogScreen = () => {
         onToggleTheme={onToggleTheme}
       />
 
-      {heroSlides.length > 0 ? (
+      {isCatalogLanding && heroSlides.length > 0 ? (
         <PremiumHero
           slides={heroSlides}
           heroIndex={heroIndex}
