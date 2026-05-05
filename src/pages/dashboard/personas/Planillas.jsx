@@ -3560,17 +3560,7 @@ export default function Planillas({
           throw new Error('Datos incompletos para actualizar la hora extra.');
         }
 
-        await planillasService.compensarHoraExtraPlanilla(context.idPlanilla, idHoraExtra, {
-          observacion: '[CORREGIDA_HE] Registro anterior compensado automaticamente por correccion de hora extra.',
-          id_sucursal: idSucursal,
-          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
-          quincena:
-            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
-              ? normalizeQuincena(quincena)
-              : undefined
-        });
-
-        await planillasService.registrarHoraExtraPlanilla(context.idPlanilla, {
+        await planillasService.actualizarHoraExtraPlanilla(context.idPlanilla, idHoraExtra, {
           id_empleado: idEmpleado,
           fecha,
           horas,

@@ -8,6 +8,7 @@ import SucursalesStats from './components/SucursalesStats';
 import SucursalesToast from './components/SucursalesToast';
 import SucursalesToolbar from './components/SucursalesToolbar';
 import SucursalHorariosTab from './components/SucursalHorariosTab';
+import SucursalFacturacionTab from './components/SucursalFacturacionTab';
 import { useSucursales } from './hooks/useSucursales';
 import { usePermisos } from '../../../context/PermisosContext';
 import { getAllowedTabs, PERMISSIONS } from '../../../utils/permissions';
@@ -38,6 +39,13 @@ export default function SucursalesPage() {
   const canDeleteSucursal = canAny([PERMISSIONS.SUCURSALES_ELIMINAR]);
   const canToggleSucursal = canAny([PERMISSIONS.SUCURSALES_ESTADO_CAMBIAR]);
   const canManageHorarios = canAny([PERMISSIONS.SUCURSALES_HORARIOS_GESTIONAR]);
+  const canViewFacturacion = canAny([
+    PERMISSIONS.SUCURSALES_FACTURACION_VER,
+    PERMISSIONS.SUCURSALES_FACTURACION_EDITAR,
+    PERMISSIONS.SUCURSALES_FACTURACION_PREVIEW_VER
+  ]);
+  const canEditFacturacion = canAny([PERMISSIONS.SUCURSALES_FACTURACION_EDITAR]);
+  const canViewFacturacionPreview = canAny([PERMISSIONS.SUCURSALES_FACTURACION_PREVIEW_VER]);
   const allowedTabs = useMemo(
     () => getAllowedTabs('sucursales', permisos, { isSuperAdmin }).map((tab) => tab.key),
     [isSuperAdmin, permisos]
@@ -382,6 +390,13 @@ export default function SucursalesPage() {
     <div className="suc-page">
       {activeTab === 'horarios' ? (
         <SucursalHorariosTab sucursales={sucursales} canManage={canManageHorarios} />
+      ) : activeTab === 'facturacion' ? (
+        <SucursalFacturacionTab
+          sucursales={sucursales}
+          canConfigurar={canViewFacturacion && canEditFacturacion}
+          canVerPreview={canViewFacturacion && canViewFacturacionPreview}
+          onToast={openToast}
+        />
       ) : (
       <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
         <SucursalesToolbar

@@ -21,6 +21,7 @@ import {
   isUsuarioDataImageUrl,
   isUsuarioRenderableImageValue,
   isUsuarioUploadsImageUrl,
+  pickUsuarioImageValue,
 } from './components/usuarios/imageSourcePolicy';
 
 const emptyForm = {
@@ -38,11 +39,11 @@ const createInitialFiltersDraft = () => ({
 });
 
 const IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+const IMAGE_MAX_BYTES = 6 * 1024 * 1024;
 const USERS_FETCH_BATCH_LIMIT = 100;
 const USERS_FETCH_MAX_PAGES = 40;
 const FOTO_PERFIL_MAX_LENGTH = 500;
-const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'La imagen supera el limite de 20 MB.';
+const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'La imagen supera el limite de 6 MB.';
 const FOTO_PERFIL_URL_TOO_LARGE_MESSAGE = 'URL de imagen demasiado larga. Maximo 500 caracteres.';
 const FOTO_PERFIL_INVALID_MESSAGE = 'Solo se permiten imagenes JPG, PNG o WEBP.';
 const FOTO_PERFIL_INVALID_URL_MESSAGE = 'URL de imagen no valida. Use una ruta /uploads/...';
@@ -78,6 +79,13 @@ const normalizeListResponse = (resp) => {
 const normalizeText = (value) => String(value ?? '').trim();
 const toDisplayValue = (value, fallback = 'No registrado') => normalizeText(value) || fallback;
 const toImageValue = (value) => normalizeText(value);
+const withImageRenderVersion = (value) => {
+  const normalized = toImageValue(value);
+  if (!normalized) return '';
+  if (isUsuarioDataImageUrl(normalized)) return normalized;
+  const separator = normalized.includes('?') ? '&' : '?';
+  return `${normalized}${separator}_imgv=${Date.now()}`;
+};
 const normalizeRoleIds = (value) => {
   const source = Array.isArray(value) ? value : value ? [value] : [];
   return [...new Set(source.map((item) => String(item ?? '').trim()).filter(Boolean))]
@@ -264,6 +272,7 @@ export default function UsuariosTab({ openToast }) {
   const catalogLoadedRef = useRef(false);
   const panelRef = useRef(null);
   const imageInputRef = useRef(null);
+  const userPhotoOverridesRef = useRef(new Map());
 
   const getNombreCompleto = useCallback((u) =>
     normalizeText(u?.nombre_completo || u?.empleado?.nombre_completo || u?.cliente?.nombre_completo) || normalizeText(u?.nombre_usuario) || 'No registrado',
@@ -278,6 +287,23 @@ export default function UsuariosTab({ openToast }) {
       return roles.map((role) => role.nombre).join(', ');
     }
     return normalizeText(u?.rol?.nombre || u?.rol_nombre || u?.nombre_rol);
+  }, []);
+
+  const applyUsuarioPhotoOverride = useCallback((usuario) => {
+    const idUsuario = String(usuario?.id_usuario ?? '').trim();
+    if (!idUsuario) return usuario;
+
+    const photoOverrides = userPhotoOverridesRef.current;
+    if (!photoOverrides.has(idUsuario)) return usuario;
+
+    const overrideValue = toImageValue(photoOverrides.get(idUsuario));
+    return {
+      ...usuario,
+      foto_perfil: overrideValue,
+      foto_perfil_url: overrideValue,
+      foto_url: overrideValue,
+      imagen_url: overrideValue,
+    };
   }, []);
 
   const drawerMode = editId ? 'edit' : 'create';
@@ -475,8 +501,9 @@ export default function UsuariosTab({ openToast }) {
         return true;
       });
 
-      setUsuarios(deduped);
-      setTotal(deduped.length);
+      const withPhotoOverrides = deduped.map((item) => applyUsuarioPhotoOverride(item));
+      setUsuarios(withPhotoOverrides);
+      setTotal(withPhotoOverrides.length);
     } catch (error) {
       if (!mountedRef.current) return;
       setUsuarios([]);
@@ -485,7 +512,7 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current && reqId === requestIdRef.current) setLoading(false);
     }
-  }, [canListUsuarios, safeToast]);
+  }, [canListUsuarios, safeToast, applyUsuarioPhotoOverride]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -540,7 +567,7 @@ export default function UsuariosTab({ openToast }) {
       id_roles: currentRoles,
       estado: parseBooleanField(current),
     });
-    const photoValue = toImageValue(current?.foto_perfil);
+    const photoValue = toImageValue(pickUsuarioImageValue(current));
     const safePhotoValue = isUsuarioRenderableImageValue(photoValue) ? photoValue : '';
     setFormImage(createImageDraftState(safePhotoValue));
     setFormImageUrl(isValidUrlPhoto(photoValue) ? photoValue : '');
@@ -767,6 +794,10 @@ export default function UsuariosTab({ openToast }) {
 
         if (photoPlan.shouldSend && response?.usuario?.id_usuario) {
           await personaService.updateUsuarioFotoV2(response.usuario.id_usuario, { foto_perfil: photoPlan.value });
+          userPhotoOverridesRef.current.set(
+            String(response.usuario.id_usuario),
+            withImageRenderVersion(photoPlan.value)
+          );
         }
 
         setCreateCredentialsResult({
@@ -806,7 +837,7 @@ export default function UsuariosTab({ openToast }) {
           return;
         }
 
-        const photoPlan = buildPhotoChangePlan(original?.foto_perfil);
+        const photoPlan = buildPhotoChangePlan(pickUsuarioImageValue(original));
         if (!photoPlan.ok) {
           setFormImage((prev) => ({ ...prev, error: photoPlan.message, loading: false }));
           openPhotoErrorModal(photoPlan.message);
@@ -832,6 +863,7 @@ export default function UsuariosTab({ openToast }) {
 
         if (photoPlan.shouldSend) {
           tasks.push(personaService.updateUsuarioFotoV2(editId, { foto_perfil: photoPlan.value }));
+          userPhotoOverridesRef.current.set(String(editId), withImageRenderVersion(photoPlan.value));
         }
 
         if (tasks.length) {

@@ -25,6 +25,7 @@ import {
   formatDNI,
   formatPhone as formatPersonaPhone,
   limit as limitPersonaDigits,
+  normalizeHumanNameInput,
   normalizePersonaFormValues,
   validatePersonaForm,
 } from "./components/common/persona-form-shared";
@@ -223,7 +224,8 @@ const formatReferencePhone = (value) => {
   return `${digits.slice(0, 4)}-${digits.slice(4)}`;
 };
 
-const sanitizeReferenceName = (value) => String(value ?? "").replace(/[^\p{L}\s]/gu, "");
+const sanitizeReferenceName = (value) =>
+  normalizeHumanNameInput(String(value ?? "").replace(/[^\p{L}\s]/gu, ""), { preserveTrailingSpace: true });
 
 const resolveCardsPerPage = (width) => {
   if (width >= 1200) return 6;
@@ -1989,7 +1991,9 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   }, [validatePersonaStep]);
 
   const handleInlinePersonaFieldChange = useCallback((field, value) => {
-    setInlinePersonaForm((state) => normalizePersonaFormValues({ ...state, [field]: value }));
+    setInlinePersonaForm((state) =>
+      normalizePersonaFormValues({ ...state, [field]: value }, { preserveNameTrailingSpace: true })
+    );
     setErrors((state) => ({ ...state, [field]: undefined, id_persona: undefined }));
   }, []);
 
@@ -3180,13 +3184,27 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
               {isCreateFlow && isCreateStepOne ? (
                 <>
+                  <div className="col-12">
+                    <div className="alert alert-light border mb-0">
+                      <div className="fw-semibold mb-1">Ayuda de llenado</div>
+                      <div className="small text-muted">
+                        Completa los datos personales tal como aparecen en el documento oficial del empleado.
+                      </div>
+                    </div>
+                  </div>
                   <div className="col-12 col-md-6">
                     <label className="form-label text-light text-opacity-75">Nombre</label>
                     <input
                       type="text"
                       className={`form-control ${errors.nombre ? "is-invalid" : ""}`}
                       value={inlinePersonaForm.nombre}
-                      onChange={(event) => handleInlinePersonaFieldChange("nombre", event.target.value)}
+                      onChange={(event) =>
+                        handleInlinePersonaFieldChange(
+                          "nombre",
+                          normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true })
+                        )
+                      }
+                      placeholder="Ej. Jose Maria"
                       maxLength={80}
                     />
                     {errors.nombre ? <div className="invalid-feedback d-block">{errors.nombre}</div> : null}
@@ -3198,7 +3216,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       type="text"
                       className={`form-control ${errors.apellido ? "is-invalid" : ""}`}
                       value={inlinePersonaForm.apellido}
-                      onChange={(event) => handleInlinePersonaFieldChange("apellido", event.target.value)}
+                      onChange={(event) =>
+                        handleInlinePersonaFieldChange(
+                          "apellido",
+                          normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true })
+                        )
+                      }
+                      placeholder="Ej. Mejia Paz"
                       maxLength={80}
                     />
                     {errors.apellido ? <div className="invalid-feedback d-block">{errors.apellido}</div> : null}
@@ -3212,6 +3236,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       className={`form-control ${errors.dni ? "is-invalid" : ""}`}
                       value={inlinePersonaForm.dni}
                       onChange={(event) => handleInlinePersonaDniChange(event.target.value)}
+                      placeholder="0000-0000-00000"
                       maxLength={15}
                     />
                     {errors.dni ? <div className="invalid-feedback d-block">{errors.dni}</div> : null}
@@ -3225,6 +3250,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
                       value={inlinePersonaForm.rtn}
                       onChange={(event) => handleInlinePersonaRtnChange(event.target.value)}
+                      placeholder="0"
                       maxLength={1}
                     />
                     {errors.rtn ? <div className="invalid-feedback d-block">{errors.rtn}</div> : null}
@@ -3265,6 +3291,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
                       value={inlinePersonaForm.id_telefono}
                       onChange={(event) => handleInlinePersonaTelefonoChange(event.target.value)}
+                      placeholder="9999-9999"
                       maxLength={9}
                     />
                     {errors.id_telefono ? <div className="invalid-feedback d-block">{errors.id_telefono}</div> : null}
@@ -3277,6 +3304,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       className={`form-control ${errors.id_correo ? "is-invalid" : ""}`}
                       value={inlinePersonaForm.id_correo}
                       onChange={(event) => handleInlinePersonaFieldChange("id_correo", event.target.value)}
+                      placeholder="empleado@dominio.com"
                       maxLength={120}
                     />
                     {errors.id_correo ? <div className="invalid-feedback d-block">{errors.id_correo}</div> : null}
@@ -3289,6 +3317,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       className="form-control"
                       value={inlinePersonaForm.id_direccion}
                       onChange={(event) => handleInlinePersonaFieldChange("id_direccion", event.target.value)}
+                      placeholder="Ej. Col. Centro, Tegucigalpa"
                       maxLength={160}
                     />
                   </div>
@@ -3390,7 +3419,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                   onBeforeInput={handleNombreReferenciaBeforeInput}
                   onKeyDown={handleNombreReferenciaKeyDown}
                   onPaste={handleNombreReferenciaPaste}
-                  placeholder="Nombre del contacto de referencia"
+                  placeholder="Ej. Maria Lopez"
                   maxLength={120}
                 />
                 {errors.nombre_referencia && <div className="invalid-feedback d-block">{errors.nombre_referencia}</div>}
@@ -3408,7 +3437,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                   onBeforeInput={handleTelefonoReferenciaBeforeInput}
                   onKeyDown={handleTelefonoReferenciaKeyDown}
                   onPaste={handleTelefonoReferenciaPaste}
-                  placeholder="Numero de referencia"
+                  placeholder="9999-9999"
                   maxLength={9}
                 />
                 {errors.telefono_referencia && <div className="invalid-feedback d-block">{errors.telefono_referencia}</div>}
@@ -3435,6 +3464,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                   className={`form-control ${errors.salario_base ? "is-invalid" : ""}`}
                   value={form.salario_base}
                   onChange={(event) => setForm((state) => ({ ...state, salario_base: event.target.value }))}
+                  placeholder="Ej. 12000.00"
                 />
                 {errors.salario_base && <div className="invalid-feedback d-block">{errors.salario_base}</div>}
               </div>
@@ -3458,7 +3488,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                     {formImage.loading ? (
                       <div className="inv-prod-image-loading" role="status">
                         <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-                        <span>Procesando imagen...</span>
+                        <span>Cargando imagen...</span>
                       </div>
                     ) : formImage.previewUrl ? (
                       <img src={formImage.previewUrl} alt="Vista previa del empleado" />
@@ -3475,7 +3505,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                       <input
                         ref={imageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         onChange={onFormImageChange}
                         disabled={actionLoading}
                       />

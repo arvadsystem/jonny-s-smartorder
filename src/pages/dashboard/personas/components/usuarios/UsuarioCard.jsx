@@ -1,6 +1,6 @@
 import { useState } from "react";
 import EntityCard from "../../../../../components/ui/EntityCard";
-import { resolveUserImageSrc } from "./imageSourcePolicy";
+import { pickUsuarioImageValue, resolveUserImageSrc } from "./imageSourcePolicy";
 import { parseEstadoUsuario } from "./estadoUtils";
 
 const toDisplayValue = (value, fallback = "No registrado") => {
@@ -70,7 +70,7 @@ export default function UsuarioCard({
   const nombre = toDisplayValue(getNombreCompleto(usuario), "Usuario sin nombre");
   const sucursal = toDisplayValue(getSucursal(usuario));
   const username = toDisplayValue(usuario?.nombre_usuario, "Sin usuario");
-  const foto = String(usuario?.foto_perfil || "").trim();
+  const foto = pickUsuarioImageValue(usuario);
   const initials = getInitials(nombre);
   const rolNombre = toDisplayValue(getRolNombre(usuario), "-");
   const rolIcon = /admin/i.test(rolNombre) ? "bi-shield-lock" : "bi-person-badge";

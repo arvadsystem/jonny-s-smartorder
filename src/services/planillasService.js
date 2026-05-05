@@ -130,7 +130,9 @@ const planillasService = {
       'fecha',
       'horas',
       'observacion',
-      'id_sucursal'
+      'id_sucursal',
+      'tipo_periodo',
+      'quincena'
     ]);
 
     return apiFetch(`/planillas/${idPlanilla}/horas-extra/${idHorasExtra}/actualizar`, 'POST', body);

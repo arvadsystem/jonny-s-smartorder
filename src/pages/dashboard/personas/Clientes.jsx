@@ -22,6 +22,7 @@ import {
   formatDNI,
   formatPhone as formatPersonaPhone,
   limit as limitPersonaDigits,
+  normalizeHumanNameInput,
   normalizePersonaFormValues,
   validatePersonaForm,
 } from "./components/common/persona-form-shared";
@@ -94,7 +95,7 @@ const isAbortError = (error) =>
     String(error.message || "").toLowerCase().includes("aborted")
   );
 
-const filterAsyncOptions = (options, needle, limit = ASYNC_SELECT_LIMIT) => {
+const _filterAsyncOptions = (options, needle, limit = ASYNC_SELECT_LIMIT) => {
   const normalizedNeedle = normalizeSearchKey(needle);
   const source = Array.isArray(options) ? options : [];
   const filtered = normalizedNeedle
@@ -948,7 +949,9 @@ const Clientes = ({ openToast }) => {
   };
 
   const handlePersonaBaseFieldChange = useCallback((field, value) => {
-    setInlinePersonaForm((state) => normalizePersonaFormValues({ ...state, [field]: value }));
+    setInlinePersonaForm((state) =>
+      normalizePersonaFormValues({ ...state, [field]: value }, { preserveNameTrailingSpace: true })
+    );
     setErrors((state) => ({ ...state, [field]: undefined, id_persona: undefined }));
   }, []);
 
@@ -1008,6 +1011,10 @@ const Clientes = ({ openToast }) => {
 
   const guardar = async (event) => {
     event.preventDefault();
+    if (!editId && createStep !== 3) {
+      safeToast("INFO", "Completa los pasos y presiona 'Crear cliente' en el paso 3.", "info");
+      return;
+    }
     if (editId && !canEditCliente) {
       safeToast("ERROR", "No tienes permiso para editar clientes.", "danger");
       return;
@@ -1176,6 +1183,13 @@ const Clientes = ({ openToast }) => {
       if (mountedRef.current) setActionLoading(false);
     }
   };
+
+  const handleCreateFormKeyDown = useCallback((event) => {
+    if (editId) return;
+    if (createStep === 3) return;
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+  }, [editId, createStep]);
 
   const handleVincularDuplicado = useCallback(async () => {
     if (!canCreateCliente) {
@@ -2246,7 +2260,11 @@ const Clientes = ({ openToast }) => {
           </button>
         </div>
 
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body" onSubmit={guardar}>
+        <form
+          className="inv-prod-drawer-body inv-catpro-drawer-body-lite crud-modal__body"
+          onSubmit={guardar}
+          onKeyDown={handleCreateFormKeyDown}
+        >
           {isCreateStepOne ? (
             <>
               <div className="clientes-modal__origin-helper">
@@ -2334,7 +2352,13 @@ const Clientes = ({ openToast }) => {
                       <input
                         className={`form-control ${errors.nombre ? "is-invalid" : ""}`}
                         value={inlinePersonaForm.nombre}
-                        onChange={(event) => handlePersonaBaseFieldChange("nombre", event.target.value)}
+                        onChange={(event) =>
+                          handlePersonaBaseFieldChange(
+                            "nombre",
+                            normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true })
+                          )
+                        }
+                        placeholder="Ej. Jose Maria"
                         disabled={actionLoading}
                       />
                       {errors.nombre ? <div className="invalid-feedback d-block">{errors.nombre}</div> : null}
@@ -2344,7 +2368,13 @@ const Clientes = ({ openToast }) => {
                       <input
                         className={`form-control ${errors.apellido ? "is-invalid" : ""}`}
                         value={inlinePersonaForm.apellido}
-                        onChange={(event) => handlePersonaBaseFieldChange("apellido", event.target.value)}
+                        onChange={(event) =>
+                          handlePersonaBaseFieldChange(
+                            "apellido",
+                            normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true })
+                          )
+                        }
+                        placeholder="Ej. Mejia Paz"
                         disabled={actionLoading}
                       />
                       {errors.apellido ? <div className="invalid-feedback d-block">{errors.apellido}</div> : null}
@@ -2355,6 +2385,7 @@ const Clientes = ({ openToast }) => {
                         className={`form-control ${errors.dni ? "is-invalid" : ""}`}
                         value={inlinePersonaForm.dni}
                         onChange={(event) => handlePersonaDniChange(event.target.value)}
+                        placeholder="0000-0000-00000"
                         disabled={actionLoading}
                       />
                       {errors.dni ? <div className="invalid-feedback d-block">{errors.dni}</div> : null}
@@ -2365,6 +2396,7 @@ const Clientes = ({ openToast }) => {
                         className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
                         value={inlinePersonaForm.rtn}
                         onChange={(event) => handlePersonaRtnChange(event.target.value)}
+                        placeholder="0"
                         disabled={actionLoading}
                       />
                       {errors.rtn ? <div className="invalid-feedback d-block">{errors.rtn}</div> : null}
@@ -2401,6 +2433,7 @@ const Clientes = ({ openToast }) => {
                         className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
                         value={inlinePersonaForm.id_telefono}
                         onChange={(event) => handlePersonaTelefonoChange(event.target.value)}
+                        placeholder="9999-9999"
                         disabled={actionLoading}
                       />
                       {errors.id_telefono ? <div className="invalid-feedback d-block">{errors.id_telefono}</div> : null}
@@ -2412,6 +2445,7 @@ const Clientes = ({ openToast }) => {
                         className={`form-control ${errors.id_correo ? "is-invalid" : ""}`}
                         value={inlinePersonaForm.id_correo}
                         onChange={(event) => handlePersonaBaseFieldChange("id_correo", event.target.value)}
+                        placeholder="usuario@dominio.com"
                         disabled={actionLoading}
                       />
                       {errors.id_correo ? <div className="invalid-feedback d-block">{errors.id_correo}</div> : null}
@@ -2422,6 +2456,7 @@ const Clientes = ({ openToast }) => {
                         className="form-control"
                         value={inlinePersonaForm.id_direccion}
                         onChange={(event) => handlePersonaBaseFieldChange("id_direccion", event.target.value)}
+                        placeholder="Ej. Col. Centro, Tegucigalpa"
                         disabled={actionLoading}
                       />
                     </div>
@@ -2437,6 +2472,7 @@ const Clientes = ({ openToast }) => {
                         className={`form-control ${errors.rtn ? "is-invalid" : ""}`}
                         value={inlineEmpresaForm.rtn}
                         onChange={(event) => handleEmpresaRtnChange(event.target.value)}
+                        placeholder="0000-0000-000000"
                         disabled={actionLoading}
                       />
                       {errors.rtn ? <div className="invalid-feedback d-block">{errors.rtn}</div> : null}
@@ -2447,6 +2483,7 @@ const Clientes = ({ openToast }) => {
                         className={`form-control ${errors.nombre_empresa ? "is-invalid" : ""}`}
                         value={inlineEmpresaForm.nombre_empresa}
                         onChange={(event) => handleEmpresaBaseFieldChange("nombre_empresa", event.target.value)}
+                        placeholder="Ej. Inversiones Jonny's S. de R.L."
                         disabled={actionLoading}
                       />
                       {errors.nombre_empresa ? <div className="invalid-feedback d-block">{errors.nombre_empresa}</div> : null}
@@ -2457,6 +2494,7 @@ const Clientes = ({ openToast }) => {
                         className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
                         value={inlineEmpresaForm.id_telefono}
                         onChange={(event) => handleEmpresaTelefonoChange(event.target.value)}
+                        placeholder="9999-9999"
                         disabled={actionLoading}
                       />
                       {errors.id_telefono ? <div className="invalid-feedback d-block">{errors.id_telefono}</div> : null}
@@ -2468,6 +2506,7 @@ const Clientes = ({ openToast }) => {
                         className={`form-control ${errors.id_correo ? "is-invalid" : ""}`}
                         value={inlineEmpresaForm.id_correo}
                         onChange={(event) => handleEmpresaBaseFieldChange("id_correo", event.target.value)}
+                        placeholder="empresa@dominio.com"
                         disabled={actionLoading}
                       />
                       {errors.id_correo ? <div className="invalid-feedback d-block">{errors.id_correo}</div> : null}
@@ -2478,6 +2517,7 @@ const Clientes = ({ openToast }) => {
                         className="form-control"
                         value={inlineEmpresaForm.id_direccion}
                         onChange={(event) => handleEmpresaBaseFieldChange("id_direccion", event.target.value)}
+                        placeholder="Ej. Blvd. Morazan, Tegucigalpa"
                         disabled={actionLoading}
                       />
                     </div>

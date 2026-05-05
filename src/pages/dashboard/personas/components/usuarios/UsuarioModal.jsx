@@ -119,10 +119,8 @@ export default function UsuarioModal({
   usernameDisplay = '',
   sortedRoles = [],
   formImage,
-  formImageUrl = '',
   imageInputRef,
   onFormImageChange,
-  onFormImageUrlChange,
   onRemoveImage,
   canCreate = true,
   canEdit = true,
@@ -608,7 +606,7 @@ export default function UsuarioModal({
                 {formImage?.loading ? (
                   <div className="inv-prod-image-loading" role="status">
                     <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-                    <span>Procesando imagen...</span>
+                    <span>Cargando imagen...</span>
                   </div>
                 ) : formImage?.previewUrl ? (
                   <img src={formImage.previewUrl} alt="Vista previa del usuario" referrerPolicy="no-referrer" />
@@ -625,7 +623,7 @@ export default function UsuarioModal({
                   <input
                     ref={imageInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     onChange={onFormImageChange}
                     disabled={actionLoading || resetPasswordLoading || !canEditPhoto}
                   />
@@ -642,23 +640,11 @@ export default function UsuarioModal({
                 </button>
               </div>
 
-              <div className="mt-2 usuarios-modal__url-wrap">
-                <label className="form-label usuarios-modal__url-label">URL de imagen (opcional)</label>
-                <input
-                  type="url"
-                  className="form-control usuarios-modal__input"
-                  placeholder="/uploads/... o https://tu-backend/uploads/..."
-                  value={formImageUrl}
-                  onChange={onFormImageUrlChange}
-                  disabled={formImage?.loading || actionLoading || resetPasswordLoading || !canEditPhoto}
-                />
-              </div>
-
               {formImage?.error ? (
                 <div className="inv-prod-image-feedback is-error">{formImage.error}</div>
               ) : (
                 <div className="inv-prod-image-feedback usuarios-modal__hint">
-                  JPG, PNG o WEBP hasta 20 MB.
+                  JPG, PNG o WEBP hasta 6 MB.
                 </div>
               )}
             </div>
