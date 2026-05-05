@@ -275,21 +275,34 @@ export default function VentaComposerSummary({ composer, saving }) {
         </div>
         ) : null}
 
-        <label className="ventas-create-modal__field ventas-create-modal__field--inline">
-          <span title="Efectivo">
-            <i className="bi bi-cash-coin" /> Efectivo
-          </span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={composer.cashReceived}
-            placeholder={String(composer.total.toFixed(2))}
-            onChange={(event) => composer.setCashReceived(event.target.value)}
-            disabled={composer.paymentMethod !== 'efectivo'}
-            readOnly={composer.paymentMethod !== 'efectivo'}
-          />
-        </label>
+        {composer.paymentMethod === 'efectivo' ? (
+          <label className="ventas-create-modal__field ventas-create-modal__field--inline">
+            <span title="Efectivo entregado">
+              <i className="bi bi-cash-coin" /> Efectivo
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={composer.cashReceived}
+              placeholder={String(composer.total.toFixed(2))}
+              onChange={(event) => composer.setCashReceived(event.target.value)}
+            />
+          </label>
+        ) : (
+          <label className="ventas-create-modal__field ventas-create-modal__field--inline">
+            <span title="Referencia de pago">
+              <i className="bi bi-hash" /> Referencia
+            </span>
+            <input
+              type="text"
+              value={composer.referenciaPago}
+              placeholder="Voucher/Recibo"
+              onChange={(event) => composer.setReferenciaPago(event.target.value)}
+              required
+            />
+          </label>
+        )}
       </div>
 
       <section className="ventas-create-modal__section ventas-create-modal__cart">

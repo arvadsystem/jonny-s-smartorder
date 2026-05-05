@@ -7,7 +7,8 @@ export default function CollapsibleSearchInput({
   placeholder = 'Buscar...',
   ariaLabel = 'Buscar',
   className = '',
-  disabled = false
+  disabled = false,
+  expandDirection = 'right'
 }) {
   const toggleRef = useRef(null);
   const inputRef = useRef(null);
@@ -37,7 +38,7 @@ export default function CollapsibleSearchInput({
 
   return (
     <form
-      className={`collapsible-search ${isExpanded ? 'is-expanded' : ''} ${className}`.trim()}
+      className={`collapsible-search ${isExpanded ? 'is-expanded' : ''} ${expandDirection === 'left' ? 'collapsible-search--left' : ''} ${className}`.trim()}
       onSubmit={handleSubmit}
       role="search"
       aria-label={ariaLabel}

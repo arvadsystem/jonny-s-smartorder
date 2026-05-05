@@ -335,6 +335,22 @@ export function useCierresCaja() {
     [openToast]
   );
 
+  const previewCloseSesion = useCallback(
+    async (idSesionCaja, payload) => {
+      try {
+        return await cajasService.previewCloseSesion(idSesionCaja, payload);
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo calcular la vista previa del cierre.'),
+          'danger'
+        );
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
   const editCierre = useCallback(
     async (idCierreCaja, payload) => {
       setSaving(true);
@@ -416,6 +432,7 @@ export function useCierresCaja() {
     updateCajaAsignacion,
     inactivateCajaAsignacion,
     closeSesion,
+    previewCloseSesion,
     editCierre,
     createArqueo
   };

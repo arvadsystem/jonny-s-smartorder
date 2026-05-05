@@ -45,6 +45,7 @@ export default function VentasPage() {
     saving,
     detailLoading,
     error,
+    catalogErrors,
     toast,
     closeToast,
     setVentasSearch,
@@ -229,6 +230,7 @@ export default function VentasPage() {
           descuentosCatalogo={descuentosCatalogo}
           canApplyDiscount={canApplyDiscount}
           catalogLoading={catalogLoading}
+          catalogErrors={catalogErrors}
           saving={saving}
           onSubmit={handleCreateVenta}
         />

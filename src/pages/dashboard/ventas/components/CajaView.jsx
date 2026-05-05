@@ -19,6 +19,7 @@ export default function CajaView({
   descuentosCatalogo,
   canApplyDiscount,
   catalogLoading,
+  catalogErrors,
   saving,
   onSubmit
 }) {
@@ -116,7 +117,11 @@ export default function CajaView({
     <div className="ventas-page ventas-caja-page">
       <div className="inv-catpro-card inv-prod-card ventas-caja-card">
         <form className="ventas-create-modal__body ventas-caja__body" onSubmit={composer.handleSubmit}>
-          <VentaComposerCatalog composer={composer} catalogLoading={catalogLoading} />
+          <VentaComposerCatalog
+            composer={composer}
+            catalogLoading={catalogLoading}
+            catalogErrors={catalogErrors}
+          />
           <VentaComposerSummary composer={composer} saving={saving} />
         </form>
       </div>

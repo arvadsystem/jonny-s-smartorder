@@ -6,7 +6,8 @@
 .cierres-caja-toolbar {
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .cierres-caja-page .inv-prod-header {
@@ -21,9 +22,16 @@
 .cierres-caja-toolbar .collapsible-search.is-expanded .collapsible-search__field {
   width: clamp(240px, 30vw, 420px);
 }
+.cierres-caja-toolbar .collapsible-search.collapsible-search--left {
+  flex-direction: row-reverse;
+}
+.cierres-caja-toolbar .cierres-caja-toolbar__search-compact.is-expanded .collapsible-search__field {
+  width: clamp(140px, 16vw, 210px);
+}
 
 .cierres-caja-toolbar__cta {
   border-color: rgba(154, 83, 25, 0.25) !important;
+  white-space: nowrap;
 }
 
 .cierres-caja-filters-drawer__grid {

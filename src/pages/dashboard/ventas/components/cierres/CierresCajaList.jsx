@@ -77,27 +77,21 @@ export default function CierresCajaList({
                     <td>
                       <div className="ventas-page__table-sale">
                         <strong>SES-{String(sesion.id_sesion_caja).padStart(5, '0')}</strong>
-                        <span>{sesion.nombre_sucursal || 'Sin sucursal'}</span>
                       </div>
                     </td>
                     <td className="align-middle">
                       <div className="ventas-page__table-sale">
                         <strong>{sesion.nombre_caja || 'Caja sin nombre'}</strong>
-                        <span>{sesion.codigo_caja || 'Sin codigo'}</span>
                       </div>
                     </td>
                     <td className="align-middle">
                       <div className="ventas-page__table-sale">
                         <strong>{sesion.responsable_nombre || 'Sin responsable'}</strong>
-                        <span>{sesion.responsable_usuario ? `@${sesion.responsable_usuario}` : 'Sin usuario'}</span>
                       </div>
                     </td>
                     <td className="align-middle">
                       <div className="ventas-page__table-date">
                         <strong>{formatCajaDateTime(sesion.fecha_apertura)}</strong>
-                        <span>
-                          {sesion.fecha_cierre ? `Cierre ${formatCajaDateTime(sesion.fecha_cierre)}` : 'Sesion en curso'}
-                        </span>
                       </div>
                     </td>
                     <td className="text-end align-middle ventas-page__table-total">

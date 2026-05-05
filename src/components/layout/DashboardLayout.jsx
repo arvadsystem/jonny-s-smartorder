@@ -8,6 +8,7 @@ import { PermisosProvider } from "../../context/PermisosContext";
 import { useAuth } from "../../hooks/useAuth";
 import { normalizeRoleName } from "../../utils/permissions";
 import "./inactivity-timeout-modal.css";
+import CajaAperturaEnforcer from "./CajaAperturaEnforcer";
 
 const SIDEBAR_STORAGE_KEY = "ui.sidebarCollapsed";
 const PASSWORD_WARNING_DISMISS_PREFIX = "ui.passwordWarning58.dismissed";
@@ -142,6 +143,7 @@ const DashboardLayout = () => {
             <Outlet />
           </div>
 
+          <CajaAperturaEnforcer />
           <BottomNav />
         </div>
       )}

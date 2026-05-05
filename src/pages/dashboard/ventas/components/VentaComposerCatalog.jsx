@@ -11,7 +11,7 @@ const buildDiscountBadgeLabel = (discount) => {
   return `L ${value.toFixed(0)} OFF`;
 };
 
-export default function VentaComposerCatalog({ composer, catalogLoading }) {
+export default function VentaComposerCatalog({ composer, catalogLoading, catalogErrors = {} }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef(null);
   const searchWrapRef = useRef(null);
@@ -44,6 +44,12 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
   const resolveImageUrl = (row) => {
     return row.imagen_principal_url || row.url_imagen || null;
   };
+  const activeCatalogError = (() => {
+    if (composer.activeCatalog === 'PRODUCTOS') return catalogErrors.productos || null;
+    if (composer.activeCatalog === 'COMBOS') return catalogErrors.combos || null;
+    return catalogErrors.recetas || null;
+  })();
+  const hasCatalogErrors = Object.keys(catalogErrors || {}).length > 0;
 
   return (
     <div className="ventas-create-modal__catalog">
@@ -154,6 +160,16 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
       <div className="ventas-create-modal__results-meta">
         {catalogLoading ? 'Cargando catalogo...' : composer.resultsLabel}
       </div>
+      {activeCatalogError ? (
+        <div className="ventas-create-modal__error">
+          {`Error en ${activeCatalogError.endpoint}${activeCatalogError.status ? ` (HTTP ${activeCatalogError.status})` : ''}: ${activeCatalogError.message}`}
+        </div>
+      ) : null}
+      {!activeCatalogError && hasCatalogErrors ? (
+        <div className="ventas-create-modal__error">
+          Algunos catálogos auxiliares no cargaron. Productos, combos y recetas disponibles siguen habilitados.
+        </div>
+      ) : null}
 
       <div className="ventas-create-modal__products">
         {catalogLoading ? (
@@ -164,7 +180,11 @@ export default function VentaComposerCatalog({ composer, catalogLoading }) {
         ) : composer.currentCatalogRows.length === 0 ? (
           <div className="ventas-create-modal__empty">
             <i className="bi bi-search" />
-            <span>No hay resultados para ese filtro.</span>
+            <span>
+              {activeCatalogError
+                ? 'No se pudo cargar este catálogo por un error de servidor/permisos.'
+                : 'No hay resultados para ese filtro.'}
+            </span>
           </div>
         ) : (
           composer.currentCatalogRows.map((row) => {

@@ -82,6 +82,7 @@ export const useVentas = () => {
   const [saving, setSaving] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [catalogErrors, setCatalogErrors] = useState({});
   const [toast, setToast] = useState(initialToast);
 
   const openToast = useCallback((title, message, variant = 'success') => {
@@ -170,29 +171,64 @@ export const useVentas = () => {
 
   const loadCatalogs = useCallback(async () => {
     setCatalogLoading(true);
+    setCatalogErrors({});
+
+    const endpointRequests = [
+      { key: 'categorias', label: '/ventas/catalogos/categorias', request: () => ventasService.getCategoriasCatalog() },
+      { key: 'productos', label: '/ventas/catalogos/productos', request: () => ventasService.getProductosCatalog() },
+      { key: 'clientes', label: '/ventas/catalogos/clientes', request: () => ventasService.getClientesCatalog() },
+      { key: 'combos', label: '/ventas/catalogos/combos', request: () => ventasService.getCombosCatalog() },
+      { key: 'recetas', label: '/ventas/catalogos/recetas', request: () => ventasService.getRecetasCatalog() },
+      { key: 'descuentos', label: '/ventas/catalogos/descuentos', request: () => ventasService.getDescuentosCatalog() },
+      { key: 'tiposDescuento', label: '/ventas/catalogos/tipos-descuento', request: () => ventasService.getTiposDescuentoCatalog() },
+      { key: 'tiposDepartamento', label: '/ventas/catalogos/tipo-departamento', request: () => ventasService.getTipoDepartamentos() },
+      { key: 'sucursales', label: '/sucursales', request: () => sucursalesService.getAll() }
+    ];
 
     try {
-      const [
-        categoriasResponse,
-        productosResponse,
-        clientesResponse,
-        combosResponse,
-        recetasResponse,
-        descuentosResponse,
-        tiposDescuentoResponse,
-        tiposDepartamentoResponse,
-        sucursalesResponse
-      ] = await Promise.all([
-        ventasService.getCategoriasCatalog(),
-        ventasService.getProductosCatalog(),
-        ventasService.getClientesCatalog(),
-        ventasService.getCombosCatalog(),
-        ventasService.getRecetasCatalog(),
-        ventasService.getDescuentosCatalog(),
-        ventasService.getTiposDescuentoCatalog(),
-        ventasService.getTipoDepartamentos(),
-        sucursalesService.getAll()
-      ]);
+      const settledResponses = await Promise.allSettled(
+        endpointRequests.map((entry) => entry.request())
+      );
+      const responsesByKey = {};
+      const nextCatalogErrors = {};
+
+      settledResponses.forEach((result, index) => {
+        const endpoint = endpointRequests[index];
+        if (result.status === 'fulfilled') {
+          responsesByKey[endpoint.key] = result.value;
+          return;
+        }
+
+        const reason = result.reason;
+        nextCatalogErrors[endpoint.key] = {
+          endpoint: endpoint.label,
+          status: Number(reason?.status ?? 0) || null,
+          message: extractApiMessage(
+            reason,
+            `No se pudo cargar ${endpoint.label}.`
+          )
+        };
+      });
+
+      if (Object.keys(nextCatalogErrors).length > 0) {
+        setCatalogErrors(nextCatalogErrors);
+        const firstError = Object.values(nextCatalogErrors)[0];
+        openToast(
+          'ERROR CATALOGO',
+          `${firstError.endpoint}: ${firstError.message}`,
+          'danger'
+        );
+      }
+
+      const categoriasResponse = responsesByKey.categorias;
+      const productosResponse = responsesByKey.productos;
+      const clientesResponse = responsesByKey.clientes;
+      const combosResponse = responsesByKey.combos;
+      const recetasResponse = responsesByKey.recetas;
+      const descuentosResponse = responsesByKey.descuentos;
+      const tiposDescuentoResponse = responsesByKey.tiposDescuento;
+      const tiposDepartamentoResponse = responsesByKey.tiposDepartamento;
+      const sucursalesResponse = responsesByKey.sucursales;
 
       const normalizedCategorias = (Array.isArray(categoriasResponse) ? categoriasResponse : [])
         .map(normalizeCategoriaRecord)
@@ -302,10 +338,6 @@ export const useVentas = () => {
       setTiposDepartamento(normalizedTiposDepartamento);
       setClientes(normalizedClientes);
       setSucursales(normalizedSucursales);
-    } catch (error) {
-      const message = extractApiMessage(error, 'No se pudieron cargar los catalogos de ventas.');
-      openToast('ERROR', message, 'danger');
-      throw error;
     } finally {
       setCatalogLoading(false);
     }
@@ -410,6 +442,7 @@ export const useVentas = () => {
     saving,
     detailLoading,
     error,
+    catalogErrors,
     toast,
     closeToast,
     refreshVentas: loadVentas,

@@ -27,6 +27,7 @@ const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = 
   temporarySessionId: '',
   selectedDiscountId: '',
   cashReceived: '',
+  referenciaPago: '',
   cart: [],
   submitError: ''
 });
@@ -511,7 +512,10 @@ export const useVentaComposer = ({
   const change = roundMoney(Math.max(cashValue - total, 0));
   const canSubmit = hasSelectedSucursal
     && state.cart.length > 0
-    && (state.paymentMethod !== 'efectivo' || cashValue >= total);
+    && (
+      (state.paymentMethod === 'efectivo' && cashValue >= total) ||
+      (state.paymentMethod !== 'efectivo' && state.referenciaPago && state.referenciaPago.trim() !== '')
+    );
   const resultsLabel = getResultsLabel(state.activeCatalog, currentCatalogRows.length);
 
   const getCurrentProductoQuantityInCart = (idProducto, cart) =>
@@ -780,9 +784,9 @@ export const useVentaComposer = ({
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (state.paymentMethod !== 'efectivo') {
+    if (state.paymentMethod !== 'efectivo' && !state.referenciaPago.trim()) {
       setPartialState({
-        submitError: 'El esquema actual solo soporta ventas en efectivo.'
+        submitError: 'La referencia de pago es obligatoria para este metodo.'
       });
       return null;
     }
@@ -814,7 +818,8 @@ export const useVentaComposer = ({
       const response = await onSubmit({
         id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
         id_sucursal: selectedSucursalId,
-        metodo_pago: 'efectivo',
+        metodo_pago: state.paymentMethod,
+        referencia_pago: state.paymentMethod !== 'efectivo' ? state.referenciaPago.trim() : null,
         id_descuento_catalogo:
           canApplyDiscount && !usesLineDiscount && state.selectedDiscountId
             ? Number(state.selectedDiscountId)
@@ -888,6 +893,7 @@ export const useVentaComposer = ({
     descuentoGlobalOptions,
     descuentoPickerOpen: state.descuentoPickerOpen,
     cashReceived: state.cashReceived,
+    referenciaPago: state.referenciaPago,
     cart: state.cart,
     submitError: state.submitError,
     currentCatalogRows,
@@ -991,6 +997,7 @@ export const useVentaComposer = ({
             : ''
       })),
     setCashReceived: (value) => setPartialState({ cashReceived: value }),
+    setReferenciaPago: (value) => setPartialState({ referenciaPago: value }),
     addCatalogItem,
     openComplementModalForLine,
     closeComplementModal,

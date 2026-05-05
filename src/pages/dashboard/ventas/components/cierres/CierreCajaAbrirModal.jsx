@@ -9,12 +9,27 @@ const initialOpenForm = Object.freeze({
 
 const buildInitialCreateForm = (defaultSucursalId = '') => ({
   id_sucursal: defaultSucursalId || '',
-  codigo_caja: '',
-  nombre_caja: '',
+  codigo_caja: 'CAJA-1',
+  nombre_caja: 'Caja 1',
   observacion: '',
   id_usuario: '',
   rol_operativo: 'RESPONSABLE'
 });
+const resolveNextCajaSuggestion = (rows) => {
+  const items = Array.isArray(rows) ? rows : [];
+  let next = 1;
+  items.forEach((row) => {
+    const raw = String(row?.codigo_caja || '').trim().toUpperCase();
+    const match = /^CAJA-(\d+)$/.exec(raw);
+    if (!match) return;
+    const parsed = Number.parseInt(match[1], 10);
+    if (Number.isInteger(parsed) && parsed >= next) next = parsed + 1;
+  });
+  return {
+    codigo_caja: `CAJA-${next}`,
+    nombre_caja: `Caja ${next}`
+  };
+};
 
 export default function CierreCajaAbrirModal({
   open,
@@ -42,15 +57,17 @@ export default function CierreCajaAbrirModal({
   const lastRequestedCajasRef = useRef(null);
 
   useEffect(() => {
-    if (!open || mode !== 'existente') return;
-    const idSucursalTarget = Number.parseInt(String(openForm.id_sucursal || ''), 10);
+    if (!open || (mode !== 'existente' && mode !== 'nueva')) return;
+    const sourceSucursal = mode === 'nueva' ? createForm.id_sucursal : openForm.id_sucursal;
+    const idSucursalTarget = Number.parseInt(String(sourceSucursal || ''), 10);
     if (!Number.isInteger(idSucursalTarget) || idSucursalTarget <= 0) return;
-    if (lastRequestedCajasRef.current === idSucursalTarget) return;
-    lastRequestedCajasRef.current = idSucursalTarget;
+    const requestKey = `${mode}:${idSucursalTarget}`;
+    if (lastRequestedCajasRef.current === requestKey) return;
+    lastRequestedCajasRef.current = requestKey;
     if (typeof onRequestCajas === 'function') {
       void Promise.resolve(onRequestCajas(idSucursalTarget)).catch(() => {});
     }
-  }, [mode, onRequestCajas, open, openForm.id_sucursal]);
+  }, [createForm.id_sucursal, mode, onRequestCajas, open, openForm.id_sucursal]);
 
   useEffect(() => {
     if (!open || mode !== 'nueva') return;
@@ -64,6 +81,17 @@ export default function CierreCajaAbrirModal({
       void Promise.resolve(onRequestUsuarios(idSucursalTarget, rolOperativo)).catch(() => {});
     }
   }, [createForm.id_sucursal, createForm.rol_operativo, mode, onRequestUsuarios, open]);
+
+  useEffect(() => {
+    if (!open || mode !== 'nueva') return;
+    const suggestion = resolveNextCajaSuggestion(cajasDisponibles);
+    setCreateForm((current) => {
+      if (current.codigo_caja === suggestion.codigo_caja && current.nombre_caja === suggestion.nombre_caja) {
+        return current;
+      }
+      return { ...current, ...suggestion };
+    });
+  }, [cajasDisponibles, mode, open]);
 
   useEffect(() => {
     if (open) return;
@@ -114,7 +142,7 @@ export default function CierreCajaAbrirModal({
     try {
       await onSubmitCreateCaja({
         id_sucursal: idSucursal,
-        codigo_caja: createForm.codigo_caja.trim() || null,
+        codigo_caja: createForm.codigo_caja.trim(),
         nombre_caja: createForm.nombre_caja.trim(),
         observacion: createForm.observacion.trim() || null,
         asignacion_inicial: {
@@ -273,10 +301,8 @@ export default function CierreCajaAbrirModal({
                 <input
                   type="text"
                   value={createForm.nombre_caja}
-                  onChange={(event) =>
-                    setCreateForm((current) => ({ ...current, nombre_caja: event.target.value }))
-                  }
-                  placeholder="Caja principal"
+                  readOnly
+                  disabled
                 />
               </label>
 
@@ -285,10 +311,8 @@ export default function CierreCajaAbrirModal({
                 <input
                   type="text"
                   value={createForm.codigo_caja}
-                  onChange={(event) =>
-                    setCreateForm((current) => ({ ...current, codigo_caja: event.target.value }))
-                  }
-                  placeholder="CAJA-01"
+                  readOnly
+                  disabled
                 />
               </label>
 

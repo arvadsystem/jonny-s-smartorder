@@ -45,6 +45,7 @@ export default function CierresCajaView() {
     openSesion,
     createCajaCatalogo,
     closeSesion,
+    previewCloseSesion,
     createArqueo,
     listUsuariosOperativos,
     listCajaCatalogo
@@ -88,12 +89,8 @@ export default function CierresCajaView() {
   const canCloseSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_CERRAR]);
   const canRegisterArqueo = canAny([PERMISSIONS.VENTAS_CAJAS_ARQUEO_REGISTRAR]);
   const canOpenSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_ABRIR]);
-  const canCreateCajaCatalog =
-    canAny([PERMISSIONS.VENTAS_CAJAS_PARTICIPANTES_GESTIONAR])
-    && (isSuperAdmin || roleSet.has('ADMIN') || roleSet.has('ADMINISTRADOR') || roleSet.has('SUPER_ADMIN'));
   const canResolveDifference = canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
-  const canUseCloseFlow =
-    isSuperAdmin || roleSet.has('ADMIN') || roleSet.has('ADMINISTRADOR') || roleSet.has('SUPER_ADMIN');
+  const canUseCloseFlow = canCloseSession;
 
   const deferredSearch = useDeferredValue(filters.search);
   const scopeQuery = useMemo(() => buildScopeQuery(selectedSucursalId), [selectedSucursalId]);
@@ -395,15 +392,12 @@ export default function CierresCajaView() {
           onSucursalChange={setSelectedSucursalId}
           onRefresh={refreshCurrentScope}
           canOpenSession={canOpenSession}
-          supportsCajaCatalogCreate={canCreateCajaCatalog}
+          supportsCajaCatalogCreate={false}
           onOpenAbrirSesion={() => {
             setOpenCajaMode('existente');
             setOpenCajaOpen(true);
           }}
-          onOpenNuevaCaja={() => {
-            setOpenCajaMode('nueva');
-            setOpenCajaOpen(true);
-          }}
+          onOpenNuevaCaja={() => {}}
         />
 
         <CierresCajaList
@@ -476,6 +470,10 @@ export default function CierresCajaView() {
         canResolveDifference={canResolveDifference}
         onClose={() => setCloseOpen(false)}
         onSubmit={handleSubmitClose}
+        onPreview={async (payload) => {
+          if (!selectedSesion?.id_sesion_caja) return null;
+          return previewCloseSesion(selectedSesion.id_sesion_caja, payload);
+        }}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />
