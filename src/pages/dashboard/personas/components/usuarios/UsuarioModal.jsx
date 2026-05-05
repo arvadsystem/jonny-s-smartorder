@@ -371,21 +371,21 @@ export default function UsuarioModal({
             <>
               <div className="col-12 usuarios-modal__section usuarios-modal__section--first">
                 <label className="form-label usuarios-modal__label">Tipo de usuario</label>
-                <div className="d-flex gap-2">
-                  <button
-                    type="button"
-                    className={`btn btn-sm ${isTargetCliente ? 'btn-outline-secondary' : 'btn-primary'}`}
-                    onClick={() => onFieldChange?.('tipo_objetivo', 'EMPLEADO')}
-                  >
-                    Empleado
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-sm ${isTargetCliente ? 'btn-primary' : 'btn-outline-secondary'}`}
-                    onClick={() => onFieldChange?.('tipo_objetivo', 'CLIENTE')}
-                  >
-                    Cliente
-                  </button>
+                <div className="usuarios-modal__switch-row">
+                  <label className="usuarios-modal__type-switch" htmlFor="usuario_tipo_objetivo_modal" aria-label="Seleccionar tipo de usuario">
+                    <input
+                      id="usuario_tipo_objetivo_modal"
+                      type="checkbox"
+                      className="usuarios-modal__type-switch-input"
+                      checked={isTargetCliente}
+                      onChange={(event) => onFieldChange?.('tipo_objetivo', event.target.checked ? 'CLIENTE' : 'EMPLEADO')}
+                    />
+                    <span className="usuarios-modal__type-switch-track" aria-hidden="true">
+                      <span className="usuarios-modal__type-switch-option usuarios-modal__type-switch-option--empleado">Empleado</span>
+                      <span className="usuarios-modal__type-switch-option usuarios-modal__type-switch-option--cliente">Cliente</span>
+                      <span className="usuarios-modal__type-switch-thumb" />
+                    </span>
+                  </label>
                 </div>
               </div>
 
