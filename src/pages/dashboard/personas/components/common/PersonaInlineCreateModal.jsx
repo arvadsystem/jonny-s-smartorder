@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import Select from "react-select";
 import {
   ALLOWED_EDITING_KEYS,
   DNI_DIGITS_LENGTH,
@@ -20,6 +21,52 @@ import {
 } from "./persona-form-shared";
 import "./crud-modal-theme.css";
 import "./persona-inline-create-modal.css";
+
+const buildPersonaGeneroSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 38,
+    borderRadius: 10,
+    borderColor: hasError
+      ? "var(--bs-danger, #dc3545)"
+      : state.isFocused
+        ? "rgba(158, 105, 61, 0.72)"
+        : "rgba(157, 150, 112, 0.42)",
+    boxShadow: state.isFocused ? "0 0 0 0.2rem rgba(158, 105, 61, 0.18)" : "none",
+    backgroundColor: "#fff",
+    "&:hover": {
+      borderColor: hasError
+        ? "var(--bs-danger, #dc3545)"
+        : "rgba(158, 105, 61, 0.72)",
+    },
+  }),
+  valueContainer: (base) => ({ ...base, padding: "2px 12px" }),
+  input: (base) => ({ ...base, margin: 0, padding: 0 }),
+  placeholder: (base) => ({ ...base, color: "rgba(98, 83, 73, 0.75)" }),
+  singleValue: (base) => ({ ...base, color: "#2f1a10" }),
+  indicatorsContainer: (base) => ({ ...base, paddingRight: 4 }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? "rgba(99, 58, 37, 0.9)" : "rgba(99, 58, 37, 0.65)",
+  }),
+  clearIndicator: (base) => ({ ...base, color: "rgba(120, 84, 66, 0.72)" }),
+  menuPortal: (base) => ({ ...base, zIndex: 3000 }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: "1px solid rgba(206, 196, 177, 0.9)",
+    overflow: "hidden",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? "rgba(243, 238, 226, 0.95)"
+      : state.isSelected
+        ? "rgba(236, 222, 205, 0.95)"
+        : "#fff",
+    color: "#2f1a10",
+  }),
+});
 
 const buildTouchedAllTrue = () => ({
   nombre: true,
@@ -46,6 +93,11 @@ export default function PersonaInlineCreateModal({
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState(() => createInitialPersonaTouched());
   const drawerRef = useRef(null);
+  const generoOptions = [
+    { value: "M", label: "Masculino" },
+    { value: "F", label: "Femenino" },
+    { value: "O", label: "Otro" },
+  ];
 
   const dniInputRef = useRef(null);
   const telefonoInputRef = useRef(null);
@@ -472,17 +524,21 @@ export default function PersonaInlineCreateModal({
                 <span>Genero</span>
                 <span className="persona-field-label__meta is-required">Oblig.</span>
               </label>
-              <select
-                className={`form-select ${touched.genero && errors.genero ? "is-invalid" : ""}`}
-                value={form.genero}
-                onChange={(event) => updateFieldValue("genero", event.target.value, true)}
+              <Select
+                inputId="persona-inline-genero-select"
+                className={touched.genero && errors.genero ? "is-invalid" : ""}
+                classNamePrefix="persona-inline-genero-select"
+                placeholder="Seleccione"
+                isClearable
+                options={generoOptions}
+                value={generoOptions.find((option) => option.value === String(form.genero ?? "").trim().toUpperCase()) || null}
+                onChange={(option) => updateFieldValue("genero", option?.value || "", true)}
                 onBlur={handleFieldBlur("genero")}
-                disabled={saving}
-              >
-                <option value="">Seleccione</option>
-                <option value="M">Masculino</option>
-                <option value="F">Femenino</option>
-              </select>
+                isDisabled={saving}
+                styles={buildPersonaGeneroSelectStyles(Boolean(touched.genero && errors.genero))}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
+              />
               {touched.genero && errors.genero ? <div className="invalid-feedback d-block">{errors.genero}</div> : null}
             </div>
 

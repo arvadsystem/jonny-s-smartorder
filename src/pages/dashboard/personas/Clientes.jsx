@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Select from "react-select";
 import { usePermisos } from "../../../context/PermisosContext";
 import { personaService } from "../../../services/personasService";
 import { PERMISSIONS } from "../../../utils/permissions";
@@ -61,6 +62,76 @@ const createEmptyDuplicateResolution = () => ({
 const createInitialFiltersDraft = () => ({
   estadoFiltro: "activo",
   sortBy: "recientes",
+});
+
+const buildClientesSelectStyles = (hasError = false) => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 42,
+    borderRadius: 12,
+    borderColor: hasError
+      ? "var(--bs-danger, #dc3545)"
+      : state.isFocused
+        ? "rgba(158, 105, 61, 0.72)"
+        : "rgba(206, 196, 177, 0.9)",
+    boxShadow: state.isFocused
+      ? "0 0 0 0.2rem rgba(158, 105, 61, 0.18)"
+      : "none",
+    backgroundColor: "#fff",
+    "&:hover": {
+      borderColor: hasError
+        ? "var(--bs-danger, #dc3545)"
+        : "rgba(158, 105, 61, 0.72)",
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    padding: "2px 12px",
+  }),
+  input: (base) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: "rgba(98, 83, 73, 0.75)",
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: "#2f1a10",
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    paddingRight: 4,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? "rgba(99, 58, 37, 0.9)" : "rgba(99, 58, 37, 0.65)",
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: "rgba(120, 84, 66, 0.72)",
+  }),
+  menuPortal: (base) => ({
+    ...base,
+    zIndex: 3000,
+  }),
+  menu: (base) => ({
+    ...base,
+    borderRadius: 12,
+    border: "1px solid rgba(206, 196, 177, 0.9)",
+    overflow: "hidden",
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused
+      ? "rgba(243, 238, 226, 0.95)"
+      : state.isSelected
+        ? "rgba(236, 222, 205, 0.95)"
+        : "#fff",
+    color: "#2f1a10",
+  }),
 });
 
 const normalizeListResponse = (resp) => {
@@ -348,11 +419,14 @@ const isActivo = (record) => {
   return Boolean(record[field]);
 };
 
-const Clientes = ({ openToast }) => {
+const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const { canAny } = usePermisos();
   const canCreateCliente = canAny([PERMISSIONS.CLIENTES_CREAR]);
+  const canListPersonas = canAny([PERMISSIONS.PERSONAS_LISTADO_VER, PERMISSIONS.PERSONAS_VER]);
+  const canListEmpresas = canAny([PERMISSIONS.EMPRESAS_LISTADO_VER, PERMISSIONS.EMPRESAS_VER]);
+  const canCreateEmpresaDesdeClientes = canAny([PERMISSIONS.EMPRESAS_CREAR_DESDE_CLIENTES, PERMISSIONS.EMPRESAS_CREAR]);
   const canEditCliente = canAny([PERMISSIONS.CLIENTES_EDITAR]);
-  const canInactivateCliente = canAny([PERMISSIONS.CLIENTES_EDITAR]);
+  const canInactivateCliente = canAny([PERMISSIONS.CLIENTES_ESTADO_CAMBIAR]);
   const canDeleteCliente = canAny([PERMISSIONS.CLIENTES_ELIMINAR]);
   const canViewCliente = canAny([PERMISSIONS.CLIENTES_DETALLE_VER]);
 
@@ -398,6 +472,7 @@ const Clientes = ({ openToast }) => {
   const [showEmpresaEditModal, setShowEmpresaEditModal] = useState(false);
   const [inlinePersonaSaving, setInlinePersonaSaving] = useState(false);
   const [inlineEmpresaSaving, setInlineEmpresaSaving] = useState(false);
+  const [createSubmissionRequested, setCreateSubmissionRequested] = useState(false);
   const [duplicateResolution, setDuplicateResolution] = useState(createEmptyDuplicateResolution);
 
   const [actionLoading, setActionLoading] = useState(false);
@@ -446,6 +521,7 @@ const Clientes = ({ openToast }) => {
     setShowPersonaEditModal(false);
     setShowEmpresaEditModal(false);
     setCreateStep(1);
+    setCreateSubmissionRequested(false);
     resetDuplicateResolution();
     setShowModal(false);
   }, [blurFocusedElementInside, resetDuplicateResolution]);
@@ -675,10 +751,17 @@ const Clientes = ({ openToast }) => {
     catalogosLoadingRef.current = true;
 
     try {
-      const [personasTodas, empresasResp] = await Promise.all([
-        cargarPersonasCatalogoCompleto(),
-        personaService.getEmpresas({ page: 1, limit: 100 }),
+      const [personasResult, empresasResult] = await Promise.allSettled([
+        canListPersonas ? cargarPersonasCatalogoCompleto() : Promise.resolve([]),
+        canListEmpresas ? personaService.getEmpresas({ page: 1, limit: 100 }) : Promise.resolve({ items: [] }),
       ]);
+
+      const personasTodas = personasResult.status === "fulfilled" && Array.isArray(personasResult.value)
+        ? personasResult.value
+        : [];
+      const empresasResp = empresasResult.status === "fulfilled"
+        ? empresasResult.value
+        : { items: [] };
 
       if (!mountedRef.current) return;
 
@@ -711,12 +794,15 @@ const Clientes = ({ openToast }) => {
       setPersonasCatalogo(Array.from(personasMap.values()));
       setEmpresasCatalogo(normalizeListResponse(empresasResp).items);
       catalogosCargadosRef.current = true;
+      if (empresasResult.status === "rejected" && canCreateEmpresaDesdeClientes) {
+        safeToast("INFO", "Continuamos sin catalogo de empresas. Puedes crear empresa desde el formulario.", "info");
+      }
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudieron cargar catalogos", "danger");
     } finally {
       catalogosLoadingRef.current = false;
     }
-  }, [cargarPersonasCatalogoCompleto, safeToast]);
+  }, [canCreateEmpresaDesdeClientes, canListEmpresas, canListPersonas, cargarPersonasCatalogoCompleto, safeToast]);
 
   const cargarClientes = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
@@ -890,11 +976,13 @@ const Clientes = ({ openToast }) => {
   const sanitizeForm = () => {
     const personaId = String(form.id_persona ?? "").trim();
     const empresaId = String(form.id_empresa ?? "").trim();
+    const sucursalFromContext = parsePositiveInteger(selectedSucursalId);
 
     return {
       id_persona: personaId ? parseIntegerValue(personaId) : null,
       id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
       id_empresa_cliente: empresaId ? parseIntegerValue(empresaId) : null,
+      id_sucursal: sucursalFromContext || null,
       estado: Boolean(form.estado),
     };
   };
@@ -1006,6 +1094,7 @@ const Clientes = ({ openToast }) => {
       });
       return next;
     });
+    setCreateSubmissionRequested(false);
     setCreateStep(3);
   }, [editId, createStep, clienteOriginType, inlinePersonaForm, inlineEmpresaForm, safeToast]);
 
@@ -1013,6 +1102,9 @@ const Clientes = ({ openToast }) => {
     event.preventDefault();
     if (!editId && createStep !== 3) {
       safeToast("INFO", "Completa los pasos y presiona 'Crear cliente' en el paso 3.", "info");
+      return;
+    }
+    if (!editId && !createSubmissionRequested) {
       return;
     }
     if (editId && !canEditCliente) {
@@ -1180,6 +1272,7 @@ const Clientes = ({ openToast }) => {
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo guardar", "danger");
     } finally {
+      if (!editId) setCreateSubmissionRequested(false);
       if (mountedRef.current) setActionLoading(false);
     }
   };
@@ -1565,6 +1658,7 @@ const Clientes = ({ openToast }) => {
   }, [clienteOriginType, resetDuplicateResolution]);
 
   const handleBackToCreateStepOne = useCallback(() => {
+    setCreateSubmissionRequested(false);
     setCreateStep(1);
     setShowPersonaCreateModal(false);
     setShowEmpresaCreateModal(false);
@@ -1572,6 +1666,7 @@ const Clientes = ({ openToast }) => {
   }, [resetDuplicateResolution]);
 
   const handleBackToCreateStepTwo = useCallback(() => {
+    setCreateSubmissionRequested(false);
     setCreateStep(2);
     resetDuplicateResolution();
   }, [resetDuplicateResolution]);
@@ -1609,6 +1704,7 @@ const Clientes = ({ openToast }) => {
     setFiltersOpen(false);
     setEditId(null);
     setCreateStep(1);
+    setCreateSubmissionRequested(false);
     setErrors({});
     setForm(emptyForm);
     setClienteOriginType("persona");
@@ -1626,6 +1722,7 @@ const Clientes = ({ openToast }) => {
 
   const handleOriginTypeChange = (nextType) => {
     if (nextType !== "persona" && nextType !== "empresa") return;
+    setCreateSubmissionRequested(false);
     setClienteOriginType(nextType);
     resetDuplicateResolution();
     setForm((state) =>
@@ -1857,7 +1954,7 @@ const Clientes = ({ openToast }) => {
     ? "Paso 1 de 3: selecciona el tipo de cliente."
     : isCreateStepTwo
       ? "Paso 2 de 3: completa los datos base del cliente."
-      : "Paso 3 de 3: completa los datos comerciales del cliente.";
+      : "Paso 3 de 3: revisa el resumen y crea el cliente.";
   const clienteEditando = useMemo(
     () => (drawerMode === "edit"
       ? clientes.find((item) => String(item?.id_cliente ?? "") === String(editId ?? "")) || null
@@ -1888,6 +1985,32 @@ const Clientes = ({ openToast }) => {
     if (hasInlineEmpresaData) return inlineEmpresaForm;
     return buildInlineEmpresaFormFromCliente(clienteEditando);
   }, [clienteEditando, inlineEmpresaForm, buildInlineEmpresaFormFromCliente]);
+  const createPersonaSummaryRows = useMemo(
+    () => [
+      {
+        label: "Nombre completo",
+        value: `${String(inlinePersonaForm?.nombre ?? "").trim()} ${String(inlinePersonaForm?.apellido ?? "").trim()}`.trim(),
+      },
+      { label: "DNI", value: inlinePersonaForm?.dni },
+      { label: "RTN complemento", value: inlinePersonaForm?.rtn },
+      { label: "Genero", value: inlinePersonaForm?.genero },
+      { label: "Fecha nacimiento", value: inlinePersonaForm?.fecha_nacimiento },
+      { label: "Telefono", value: inlinePersonaForm?.id_telefono },
+      { label: "Correo", value: inlinePersonaForm?.id_correo },
+      { label: "Direccion", value: inlinePersonaForm?.id_direccion },
+    ],
+    [inlinePersonaForm]
+  );
+  const createEmpresaSummaryRows = useMemo(
+    () => [
+      { label: "Nombre empresa", value: inlineEmpresaForm?.nombre_empresa },
+      { label: "RTN", value: inlineEmpresaForm?.rtn },
+      { label: "Telefono", value: inlineEmpresaForm?.id_telefono },
+      { label: "Correo", value: inlineEmpresaForm?.id_correo },
+      { label: "Direccion", value: inlineEmpresaForm?.id_direccion },
+    ],
+    [inlineEmpresaForm]
+  );
 
   const openFiltersDrawer = () => {
     if (actionLoading) return;
@@ -2403,17 +2526,30 @@ const Clientes = ({ openToast }) => {
                     </div>
                     <div className="col-12 col-md-6">
                       <label className="form-label">Genero</label>
-                      <select
-                        className={`form-select ${errors.genero ? "is-invalid" : ""}`}
-                        value={inlinePersonaForm.genero}
-                        onChange={(event) => handlePersonaBaseFieldChange("genero", event.target.value)}
-                        disabled={actionLoading}
-                      >
-                        <option value="">Selecciona genero</option>
-                        <option value="M">Masculino</option>
-                        <option value="F">Femenino</option>
-                        <option value="O">Otro</option>
-                      </select>
+                      <Select
+                        inputId="cliente-genero-select"
+                        className={errors.genero ? "is-invalid" : ""}
+                        classNamePrefix="clientes-genero-select"
+                        placeholder="Selecciona genero"
+                        isClearable
+                        options={[
+                          { value: "M", label: "Masculino" },
+                          { value: "F", label: "Femenino" },
+                          { value: "O", label: "Otro" },
+                        ]}
+                        value={
+                          [
+                            { value: "M", label: "Masculino" },
+                            { value: "F", label: "Femenino" },
+                            { value: "O", label: "Otro" },
+                          ].find((option) => option.value === String(inlinePersonaForm.genero ?? "").trim().toUpperCase()) || null
+                        }
+                        onChange={(option) => handlePersonaBaseFieldChange("genero", option?.value || "")}
+                        styles={buildClientesSelectStyles(Boolean(errors.genero))}
+                        menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                        menuPosition="fixed"
+                        isDisabled={actionLoading}
+                      />
                       {errors.genero ? <div className="invalid-feedback d-block">{errors.genero}</div> : null}
                     </div>
                     <div className="col-12 col-md-6">
@@ -2552,12 +2688,12 @@ const Clientes = ({ openToast }) => {
                     {formOriginLabel}
                   </span>
                   <span className="clientes-modal__origin-caption">
-                    {isCreateFlow ? "Paso 3: Datos comerciales del cliente" : "Datos comerciales del cliente"}
+                    {isCreateFlow ? "Paso 3: Confirmar y crear cliente" : "Datos comerciales del cliente"}
                   </span>
                 </div>
                 <p className="clientes-modal__origin-text">
                   {isCreateFlow
-                    ? "Revisa los datos base y completa la informacion comercial del cliente."
+                    ? "Verifica los datos ingresados en el paso anterior. Al confirmar, se creara el cliente."
                     : "Edita los datos comerciales y los datos base vinculados del cliente."}
                 </p>
               </div>
@@ -2632,17 +2768,50 @@ const Clientes = ({ openToast }) => {
                   </div>
                 ) : null}
 
-                <div className="col-12">
-                  <h6 className="mb-1">Datos comerciales del cliente</h6>
-                </div>
-                <div className="col-12">
-                  <div className="alert alert-light border mb-0">
-                    <div className="fw-semibold mb-1">Configuración automática</div>
-                    <div className="small text-muted">
-                      Este cliente se registrará como tipo General. La fecha de ingreso será asignada automáticamente y los puntos se administran desde Fidelización.
+                {isCreateFlow ? (
+                  <div className="col-12">
+                    <div className="clientes-inline-summary">
+                      <div className="clientes-inline-summary__head">
+                        <span className="clientes-inline-summary__status is-ready">
+                          <i className="bi bi-check2-circle" />
+                          Resumen final
+                        </span>
+                        <span className="clientes-inline-summary__kind">{formOriginLabel}</span>
+                      </div>
+                      <div className="clientes-inline-summary__text">
+                        Revisa la informacion antes de crear el cliente.
+                      </div>
+                      <div className="clientes-inline-summary__meta-grid">
+                        {(clienteOriginType === "empresa" ? createEmpresaSummaryRows : createPersonaSummaryRows).map((item) => (
+                          <div key={item.label} className="clientes-inline-summary__meta-item">
+                            <span>{item.label}</span>
+                            <strong>{toDisplayValue(item.value, "No registrado")}</strong>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="alert alert-light border mb-0">
+                        <div className="fw-semibold mb-1">Configuracion automatica</div>
+                        <div className="small text-muted">
+                          El cliente se registrara como tipo General. La fecha de ingreso se asigna automaticamente y los puntos se administran desde Fidelizacion.
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="col-12">
+                      <h6 className="mb-1">Datos comerciales del cliente</h6>
+                    </div>
+                    <div className="col-12">
+                      <div className="alert alert-light border mb-0">
+                        <div className="fw-semibold mb-1">Configuracion automatica</div>
+                        <div className="small text-muted">
+                          Este cliente se registrara como tipo General. La fecha de ingreso sera asignada automaticamente y los puntos se administran desde Fidelizacion.
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {isCreateFlow && duplicateResolution.visible ? (
                   <div className="col-12">
@@ -2711,6 +2880,9 @@ const Clientes = ({ openToast }) => {
                 <button
                   type="submit"
                   className="btn inv-prod-btn-primary flex-fill crud-modal__btn"
+                  onClick={() => {
+                    if (drawerMode === "create") setCreateSubmissionRequested(true);
+                  }}
                   disabled={actionLoading || !!deletingId}
                 >
                   {actionLoading ? "Guardando..." : drawerMode === "create" ? "Crear cliente" : "Guardar cambios"}

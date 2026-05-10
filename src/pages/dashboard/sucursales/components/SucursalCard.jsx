@@ -44,7 +44,8 @@ export default function SucursalCard({
             src={imageUrl}
             alt={sucursal?.nombre_sucursal || 'Sucursal'}
             className="inv-prod-thumb suc-card__thumb-img"
-            loading="lazy"
+            loading="eager"
+            decoding="async"
           />
         ) : (
           <div className="inv-prod-thumb placeholder suc-card__thumb-placeholder">

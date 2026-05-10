@@ -4,7 +4,7 @@ import { inventarioService } from '../../../services/inventarioService';
 import sucursalesService from '../../../services/sucursalesService';
 import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
-import { PERMISSIONS } from '../../../utils/permissions';
+import { PERMISSIONS, isSuperAdminRoleList } from '../../../utils/permissions';
 import { useAuth } from '../../../hooks/useAuth';
 import { normalizeVisualText } from '../../../utils/normalizeVisualText';
 import MovimientosTab from './MovimientosTab.jsx';
@@ -453,9 +453,7 @@ const AlmacenesTab = ({ openToast }) => {
   };
 
   const isSuperAdminUser = useMemo(
-    () =>
-      Array.isArray(user?.roles) &&
-      user.roles.some((role) => String(role ?? '').trim().toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN'),
+    () => isSuperAdminRoleList(user?.roles),
     [user?.roles]
   );
 

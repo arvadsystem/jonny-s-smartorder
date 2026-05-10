@@ -141,7 +141,11 @@ const normalizePermisos = (rows) =>
   (Array.isArray(rows) ? rows : []).map((permiso) => ({
     ...permiso,
     id_permiso: Number(permiso.id_permiso),
-    asignado: Boolean(permiso.asignado)
+    asignado: Boolean(permiso.asignado),
+    descripcion:
+      typeof permiso?.descripcion === "string"
+        ? permiso.descripcion.trim()
+        : ""
   }));
 
 const ROLE_PREVIEW_GROUPS = [
@@ -193,6 +197,18 @@ const groupPreviewPermisos = (rows) => {
     ...group,
     permisos: grouped.get(group.key) || []
   })).filter((group) => group.permisos.length > 0);
+};
+
+const getPermissionIconClass = (technicalName) => {
+  const raw = String(technicalName ?? "").trim().toUpperCase();
+  if (!raw) return "bi bi-shield-lock";
+  if (raw.includes("_CREAR")) return "bi bi-plus-lg";
+  if (raw.includes("_EDITAR")) return "bi bi-pencil";
+  if (raw.includes("_ELIMINAR")) return "bi bi-trash3";
+  if (raw.includes("PERSONAS")) return "bi bi-people";
+  if (raw.includes("USUARIOS")) return "bi bi-person-gear";
+  if (raw.includes("ROLES")) return "bi bi-person-badge";
+  return "bi bi-shield-lock";
 };
 
 const normalizePagination = ({
@@ -617,7 +633,12 @@ const RolesPermisosTab = () => {
     return allPermisos.filter((permiso) => {
       const technical = String(permiso?.nombre_permiso || "");
       const humanized = humanizePermissionName(permiso?.nombre_permiso);
-      return includesSearch(technical, searchTerm) || includesSearch(humanized, searchTerm);
+      const description = String(permiso?.descripcion || "");
+      return (
+        includesSearch(technical, searchTerm) ||
+        includesSearch(humanized, searchTerm) ||
+        includesSearch(description, searchTerm)
+      );
     });
   }, [allPermisos, search]);
 
@@ -941,18 +962,23 @@ const RolesPermisosTab = () => {
       <div className="card shadow-sm roles-permisos-shell">
         <div className="card-body p-0">
           <div className="roles-permisos-header">
-            <div>
-              <h4 className="mb-1">Roles y permisos</h4>
-              <small className="text-muted">
-                Administra que acciones puede realizar cada rol del sistema.
-              </small>
+            <div className="roles-permisos-header-copy">
+              <div className="roles-permisos-header-icon" aria-hidden="true">
+                <i className="bi bi-shield-lock" />
+              </div>
+              <div>
+                <h4 className="mb-1">Roles y permisos</h4>
+                <small className="text-muted">
+                  Administra roles de usuarios y sus permisos.
+                </small>
+              </div>
             </div>
 
             {canEditRolesPermisos ? (
               <div className="roles-permisos-header-actions">
                 <button
                   type="button"
-                  className={`inv-prod-toolbar-btn roles-permisos-create-btn ${
+                  className={`roles-permisos-create-btn roles-permisos-save-quick-btn ${
                     roleDrawerOpen && roleDrawerMode === "create" ? "is-on" : ""
                   }`}
                   onClick={openCreateRoleDrawer}
@@ -960,7 +986,7 @@ const RolesPermisosTab = () => {
                   aria-expanded={roleDrawerOpen && roleDrawerMode === "create"}
                   aria-controls="roles-permisos-drawer"
                 >
-                  <i className="bi bi-plus-circle" />
+                  <i className="bi bi-plus-lg" />
                   <span>Nuevo</span>
                 </button>
               </div>
@@ -1061,12 +1087,18 @@ const RolesPermisosTab = () => {
                         aria-pressed={isActive}
                       >
                         <div className="roles-permisos-role-card__top">
+                          <span className="roles-permisos-role-card__icon" aria-hidden="true">
+                            <i className="bi bi-person-gear" />
+                          </span>
                           <div className="roles-permisos-role-card__copy">
                             <span className="roles-permisos-role-card__name">{roleName}</span>
+                            <small className="roles-permisos-role-card__meta">
+                              {Number(role.total_permisos || 0)} permisos
+                            </small>
                           </div>
 
                           <span className="roles-permisos-role-count">
-                            {Number(role.total_permisos || 0)}
+                            <i className="bi bi-chevron-right" />
                           </span>
                         </div>
 
@@ -1174,7 +1206,7 @@ const RolesPermisosTab = () => {
                           !canEditRolesPermisos
                         }
                       >
-                        Seleccionar todos
+                        Copiar todo
                       </button>
                       <button
                         type="button"
@@ -1186,7 +1218,7 @@ const RolesPermisosTab = () => {
                           !canEditRolesPermisos
                         }
                       >
-                        Quitar todos
+                        Descartar todos
                       </button>
                     </div>
                   </div>
@@ -1223,13 +1255,18 @@ const RolesPermisosTab = () => {
 
                         return (
                           <div key={idPermiso} className="roles-permisos-item">
-                            <div className="roles-permisos-item-copy">
-                              <label htmlFor={inputId} className="roles-permisos-item-label">
-                                {humanizePermissionName(permiso.nombre_permiso)}
-                              </label>
-                              <small className="roles-permisos-item-tech">
-                                {permiso.nombre_permiso}
-                              </small>
+                            <div className="roles-permisos-item-main">
+                              <span className="roles-permisos-item-icon" aria-hidden="true">
+                                <i className={getPermissionIconClass(permiso.nombre_permiso)} />
+                              </span>
+                              <div className="roles-permisos-item-copy">
+                                <label htmlFor={inputId} className="roles-permisos-item-label">
+                                  {humanizePermissionName(permiso.nombre_permiso)}
+                                </label>
+                                <small className="roles-permisos-item-description">
+                                  {permiso.descripcion || "Sin descripcion registrada."}
+                                </small>
+                              </div>
                             </div>
 
                             <div className="form-check form-switch m-0">
@@ -1418,6 +1455,9 @@ const RolesPermisosTab = () => {
                           </div>
                           <div className="roles-preview-permiso__tech">
                             {permiso.nombre_permiso}
+                          </div>
+                          <div className="roles-preview-permiso__description">
+                            {permiso.descripcion || "Sin descripcion registrada."}
                           </div>
                         </article>
                       ))}

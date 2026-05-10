@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import cajasService from '../../services/cajasService';
 import { useAuth } from '../../hooks/useAuth';
 import { usePermisos } from '../../context/PermisosContext';
-import { PERMISSIONS } from '../../utils/permissions';
+import { PERMISSIONS, normalizeRoles } from '../../utils/permissions';
 
 export default function CajaAperturaEnforcer() {
   const { user } = useAuth();
@@ -12,14 +12,17 @@ export default function CajaAperturaEnforcer() {
   const [actionLoading, setActionLoading] = useState(false);
   const [asignacion, setAsignacion] = useState(null);
   const [error, setError] = useState('');
-  
+
   const [montoApertura, setMontoApertura] = useState('');
   const [observacionApertura, setObservacionApertura] = useState('');
 
   const canOpen = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_ABRIR]);
+  const isCajero = normalizeRoles(user?.roles).includes('CAJERO');
 
   useEffect(() => {
-    if (!user || !canOpen) {
+    if (!user || !canOpen || !isCajero) {
+      setOpen(false);
+      setAsignacion(null);
       setLoading(false);
       return;
     }
@@ -27,48 +30,52 @@ export default function CajaAperturaEnforcer() {
     const checkState = async () => {
       try {
         setLoading(true);
-        // Verificar si ya tiene sesión activa
         const sessionReq = await cajasService.getSesionActiva();
         if (sessionReq && sessionReq.id_sesion_caja) {
-          // Ya tiene sesión, no mostrar modal
           setLoading(false);
           return;
         }
-      } catch (e) {
-        if (e.status !== 404) {
-          console.error(e);
+      } catch (errorResponse) {
+        if (Number(errorResponse?.status || 0) !== 404) {
+          setLoading(false);
+          return;
         }
       }
 
       try {
-        // Buscar asignaciones activas para el usuario actual
-        // El backend resuelve el usuario real si no es admin, pero le pasamos id_usuario por si acaso.
-        const asignacionesReq = await cajasService.listAsignaciones({ id_usuario: user.id_usuario, activo: true });
-        const rows = Array.isArray(asignacionesReq) ? asignacionesReq : (asignacionesReq?.rows || []);
-        
-        // CORRECCION 4: Solo mostramos si realmente tiene una caja asignada directamente a el.
-        // Esto evita molestar a super admins que no operan caja directamente.
-        if (rows.length > 0) {
-          setAsignacion(rows[0]);
+        // AM: evita consumir /asignaciones para cajero y usa catalogos permitidos.
+        const catalogosReq = await cajasService.getCatalogos({ solo_mias: true });
+        const cajas = Array.isArray(catalogosReq?.cajas) ? catalogosReq.cajas : [];
+
+        if (cajas.length > 0) {
+          const caja = cajas[0];
+          setAsignacion({
+            id_caja: caja.id_caja,
+            nombre_caja: caja.nombre_caja || caja.codigo_caja || 'Caja'
+          });
           setOpen(true);
+        } else {
+          setAsignacion(null);
+          setOpen(false);
         }
-      } catch (e) {
-        console.error('Error buscando asignaciones:', e);
+      } catch {
+        setAsignacion(null);
+        setOpen(false);
       } finally {
         setLoading(false);
       }
     };
 
     checkState();
-  }, [user, canOpen]);
+  }, [user, canOpen, isCajero]);
 
   const handleOpenSession = async (e) => {
     e.preventDefault();
     if (!asignacion) return;
-    
+
     const monto = parseFloat(montoApertura);
-    if (isNaN(monto) || monto < 0) {
-      setError('El monto de apertura debe ser un número válido mayor o igual a 0.');
+    if (Number.isNaN(monto) || monto < 0) {
+      setError('El monto de apertura debe ser un numero valido mayor o igual a 0.');
       return;
     }
 
@@ -82,8 +89,8 @@ export default function CajaAperturaEnforcer() {
         observacion_apertura: observacionApertura.trim() || 'Apertura de turno'
       });
       setOpen(false);
-    } catch (err) {
-      setError(err.message || 'Error al aperturar sesión.');
+    } catch (requestError) {
+      setError(requestError.message || 'Error al aperturar sesion.');
     } finally {
       setActionLoading(false);
     }
@@ -93,7 +100,7 @@ export default function CajaAperturaEnforcer() {
     setOpen(false);
   };
 
-  if (!open) return null;
+  if (loading || !open) return null;
 
   return (
     <div className="password-expiry-warning-backdrop" role="dialog" aria-modal="true" style={{ zIndex: 1060 }}>
@@ -116,7 +123,7 @@ export default function CajaAperturaEnforcer() {
               APERTURA DE CAJA
             </div>
             <div className="password-expiry-warning-subtitle" style={{ color: '#64748b' }}>
-              No tienes una sesión activa
+              No tienes una sesion activa
             </div>
           </div>
         </div>
@@ -124,17 +131,17 @@ export default function CajaAperturaEnforcer() {
         <form onSubmit={handleOpenSession}>
           <div className="password-expiry-warning-body mb-4" style={{ fontSize: '14px', color: '#334155' }}>
             <p>Tienes asignada la caja <strong>{asignacion.nombre_caja}</strong>.</p>
-            
+
             <div className="mb-3">
-              <label className="form-label text-start d-block">Monto de Apertura Físico (L)</label>
-              <input 
-                type="number" 
-                className="form-control" 
-                min="0" 
-                step="0.01" 
-                required 
-                value={montoApertura} 
-                onChange={e => setMontoApertura(e.target.value)} 
+              <label className="form-label text-start d-block">Monto de Apertura Fisico (L)</label>
+              <input
+                type="number"
+                className="form-control"
+                min="0"
+                step="0.01"
+                required
+                value={montoApertura}
+                onChange={(event) => setMontoApertura(event.target.value)}
                 disabled={actionLoading}
                 placeholder="Ej. 500.00"
               />
@@ -142,13 +149,13 @@ export default function CajaAperturaEnforcer() {
 
             <div className="mb-3">
               <label className="form-label text-start d-block">Observaciones (Opcional)</label>
-              <input 
-                type="text" 
-                className="form-control" 
-                value={observacionApertura} 
-                onChange={e => setObservacionApertura(e.target.value)} 
+              <input
+                type="text"
+                className="form-control"
+                value={observacionApertura}
+                onChange={(event) => setObservacionApertura(event.target.value)}
                 disabled={actionLoading}
-                placeholder="Ej. Billetes de baja denominación"
+                placeholder="Ej. Billetes de baja denominacion"
               />
             </div>
 
@@ -157,7 +164,7 @@ export default function CajaAperturaEnforcer() {
 
           <div className="d-flex justify-content-end gap-2">
             <button type="button" className="btn btn-light" onClick={handleCancel} disabled={actionLoading}>
-              Más tarde
+              Mas tarde
             </button>
             <button type="submit" className="btn btn-primary" disabled={actionLoading}>
               {actionLoading ? 'Abriendo...' : 'Aceptar'}

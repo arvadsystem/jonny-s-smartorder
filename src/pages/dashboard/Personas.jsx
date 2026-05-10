@@ -181,9 +181,9 @@ export default function Personas() {
       case "roles":
         return <RolesPermisosTab openToast={openToast} />;
       case "clientes":
-        return <ClientesTab openToast={openToast} />;
+        return <ClientesTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       default:
-        return <ClientesTab openToast={openToast} />;
+        return <ClientesTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
     }
   }, [activeTab, openToast, selectedSucursalId]);
 

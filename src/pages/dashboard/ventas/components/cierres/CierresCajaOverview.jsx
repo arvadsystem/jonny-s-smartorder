@@ -13,6 +13,7 @@ export default function CierresCajaOverview({
   stats,
   sesionActiva,
   loading,
+  hideKpis = false,
   canSelectSucursal,
   selectedSucursalId,
   sucursales,
@@ -170,7 +171,8 @@ export default function CierresCajaOverview({
           </div>
         </div>
 
-        <div className="inv-prod-kpis ventas-page__stats mb-2" aria-label="Resumen de cierres de caja">
+        {!hideKpis ? (
+          <div className="inv-prod-kpis ventas-page__stats mb-2" aria-label="Resumen de cierres de caja">
           <div className="inv-prod-kpi ventas-page__stat-card">
             <div className="ventas-page__stat-icon text-primary border-0 bg-white">
               <i className="bi bi-safe2" />
@@ -224,7 +226,8 @@ export default function CierresCajaOverview({
               </small>
             </div>
           </div>
-        </div>
+          </div>
+        ) : null}
       </section>
 
       <CierresCajaFiltersDrawer
