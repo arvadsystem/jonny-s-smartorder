@@ -233,6 +233,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     idToDelete: null,
     nombre: ''
   });
+  const [discardConfirm, setDiscardConfirm] = useState({ show: false, target: null });
   const [deleting, setDeleting] = useState(false);
   // NEW: error local del modal de confirmación de eliminar para mantenerlo abierto en fallos.
   // WHY: mostrar feedback en el propio modal sin cerrarlo cuando la API responde con error.
@@ -369,17 +370,15 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     );
   }, [editForm, editFormSnapshot]);
 
-  const confirmDiscardProductoChanges = useCallback(() => {
-    if (typeof window === 'undefined') return true;
-    return window.confirm('Hay cambios sin guardar. ¿Deseas cerrar y perderlos?');
-  }, []);
-
   const closeCreateProductoModal = useCallback((force = false) => {
     if (creating && !force) return;
-    if (!force && hasCreateProductoUnsavedChanges && !confirmDiscardProductoChanges()) return;
+    if (!force && hasCreateProductoUnsavedChanges) {
+      setDiscardConfirm({ show: true, target: 'create' });
+      return;
+    }
     setCreatePanelOpen(false);
     setShowCreateProductoSheet(false);
-  }, [confirmDiscardProductoChanges, creating, hasCreateProductoUnsavedChanges]);
+  }, [creating, hasCreateProductoUnsavedChanges]);
 
   // ==============================
   // HELPERS
@@ -891,6 +890,28 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     });
   }, []);
 
+  const resetCreateModalScroll = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const reset = () => {
+      if (createBodyRef.current) createBodyRef.current.scrollTop = 0;
+    };
+    window.requestAnimationFrame(() => {
+      reset();
+      window.requestAnimationFrame(reset);
+    });
+  }, []);
+
+  const resetDrawerScroll = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const reset = () => {
+      if (drawerBodyRef.current) drawerBodyRef.current.scrollTop = 0;
+    };
+    window.requestAnimationFrame(() => {
+      reset();
+      window.requestAnimationFrame(reset);
+    });
+  }, []);
+
   const onCreateImageChange = useCallback((event) => {
     const input = event.target;
     const file = input.files?.[0];
@@ -918,6 +939,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       loading: true,
       error: ''
     });
+    resetCreateModalScroll();
 
     const probe = new Image();
     probe.onload = () => {
@@ -929,13 +951,15 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           error: ''
         };
       });
+      resetCreateModalScroll();
     };
     probe.onerror = () => {
       setCreateImageError('No se pudo cargar la imagen seleccionada.');
       input.value = '';
+      resetCreateModalScroll();
     };
     probe.src = previewUrl;
-  }, [clearCreateImage, setCreateImageError]);
+  }, [clearCreateImage, resetCreateModalScroll, setCreateImageError]);
 
   const onCreatePreviewError = useCallback(() => {
     setCreateImageError('No se pudo mostrar la vista previa de la imagen.');
@@ -1341,7 +1365,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const cerrarDrawerProducto = useCallback((force = false) => {
     if ((savingEdit || togglingEstado) && !force) return;
-    if (!force && hasEditProductoUnsavedChanges && !confirmDiscardProductoChanges()) return;
+    if (!force && hasEditProductoUnsavedChanges) {
+      setDiscardConfirm({ show: true, target: 'edit' });
+      return;
+    }
     setDrawerOpen(false);
     setDrawerEditMode(false);
     setDrawerMessage('');
@@ -1349,11 +1376,31 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     cancelarEdicion();
   }, [
     cancelarEdicion,
-    confirmDiscardProductoChanges,
     hasEditProductoUnsavedChanges,
     savingEdit,
     togglingEstado
   ]);
+
+  const closeDiscardConfirm = useCallback(() => {
+    setDiscardConfirm({ show: false, target: null });
+  }, []);
+
+  const confirmDiscardProductoChanges = useCallback(() => {
+    const target = discardConfirm.target;
+    setDiscardConfirm({ show: false, target: null });
+    if (target === 'create') {
+      setCreatePanelOpen(false);
+      setShowCreateProductoSheet(false);
+      return;
+    }
+    if (target === 'edit') {
+      setDrawerOpen(false);
+      setDrawerEditMode(false);
+      setDrawerMessage('');
+      setSelectedProductoId(null);
+      cancelarEdicion();
+    }
+  }, [cancelarEdicion, discardConfirm.target]);
 
   const clearProductoImageError = useCallback((productoId) => {
     if (!productoId) return;
@@ -1407,6 +1454,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
     let uploadedArchivoId = null;
     setDrawerImageAction({ loading: true, error: '' });
+    resetDrawerScroll();
     try {
       const archivoResp = await uploadProductoImageFile(file);
       const archivoId = Number.parseInt(String(archivoResp.id_archivo ?? ''), 10);
@@ -1435,12 +1483,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       uploadedArchivoId = null;
       setDrawerImageAction({ loading: false, error: '' });
       setDrawerMessage('Imagen actualizada.');
+      resetDrawerScroll();
       safeToast('ACTUALIZADO', 'LA IMAGEN DEL PRODUCTO SE ACTUALIZO CORRECTAMENTE.', 'success');
     } catch (errorUpload) {
       const cleanupOk = await cleanupArchivoTemporal(uploadedArchivoId, 'productos_update_image_failed');
       const msg = handleApiStatusError(errorUpload, 'NO SE PUDO ACTUALIZAR LA IMAGEN DEL PRODUCTO.');
       setDrawerImageAction({ loading: false, error: msg });
       setDrawerMessage(msg);
+      resetDrawerScroll();
       if (!cleanupOk) {
         safeToast('AVISO', 'No se pudo limpiar la imagen temporal. Se reintentara posteriormente.', 'warning');
       }
@@ -1453,6 +1503,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     extractProductoFromApiResponse,
     handleApiStatusError,
     parseProductoPersistedId,
+    resetDrawerScroll,
     safeToast,
     selectedProducto,
     syncProductosSilently,
@@ -2679,6 +2730,16 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       <div className="inv-prod-pmodal__sections">
                         <section className="inv-prod-pmodal__section">
                           <div className="inv-prod-pmodal__section-head">
+                            <div className="inv-prod-pmodal__section-title">Imagen</div>
+                            <div className="inv-prod-pmodal__section-sub">Carga opcional con preview y validacion actual.</div>
+                          </div>
+                          <div className="row g-2 inv-prod-create-form">
+                            {renderCreateImageField('col-12')}
+                          </div>
+                        </section>
+
+                        <section className="inv-prod-pmodal__section">
+                          <div className="inv-prod-pmodal__section-head">
                             <div className="inv-prod-pmodal__section-title">Datos principales</div>
                             <div className="inv-prod-pmodal__section-sub">Nombre, categoría y descripción del producto.</div>
                           </div>
@@ -2844,15 +2905,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                           </div>
                         </section>
 
-                        <section className="inv-prod-pmodal__section">
-                          <div className="inv-prod-pmodal__section-head">
-                            <div className="inv-prod-pmodal__section-title">Imagen</div>
-                            <div className="inv-prod-pmodal__section-sub">Carga opcional con preview y validación actual.</div>
-                          </div>
-                          <div className="row g-2 inv-prod-create-form">
-                            {renderCreateImageField('col-12')}
-                          </div>
-                        </section>
                       </div>
                     </div>
 
@@ -4389,6 +4441,43 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         {/* ==============================
             MODAL CONFIRMAR ELIMINAR
             ============================== */}
+        {discardConfirm.show && productsModalPortalTarget ? createPortal(
+          <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeDiscardConfirm}>
+            <div className="inv-pro-confirm-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="inv-pro-confirm-glow" aria-hidden="true" />
+              <div className="inv-pro-confirm-head">
+                <div className="inv-pro-confirm-head-main">
+                  <div className="inv-pro-confirm-head-icon">
+                    <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+                  </div>
+                  <div className="inv-pro-confirm-head-copy">
+                    <div className="inv-pro-confirm-kicker">Productos</div>
+                    <div className="inv-pro-confirm-title">Cambios sin guardar</div>
+                    <div className="inv-pro-confirm-sub">Hay informacion pendiente en el formulario.</div>
+                  </div>
+                </div>
+                <button type="button" className="inv-pro-confirm-close" onClick={closeDiscardConfirm} aria-label="Cerrar">
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+              <div className="inv-pro-confirm-body">
+                <div className="inv-pro-confirm-note">
+                  <i className="bi bi-shield-exclamation" aria-hidden="true" />
+                  <span>Si cierras ahora, se perderan los cambios que no has guardado.</span>
+                </div>
+                <div className="inv-pro-confirm-question">Deseas cerrar sin guardar?</div>
+              </div>
+              <div className="inv-pro-confirm-footer">
+                <button className="btn inv-pro-btn-cancel" type="button" onClick={closeDiscardConfirm}>Seguir editando</button>
+                <button className="btn inv-pro-btn-danger" type="button" onClick={confirmDiscardProductoChanges}>
+                  <i className="bi bi-box-arrow-right" aria-hidden="true" />
+                  <span>Cerrar sin guardar</span>
+                </button>
+              </div>
+            </div>
+          </div>,
+          productsModalPortalTarget
+        ) : null}
         {confirmModal.show && (
           <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
             <div className="inv-pro-confirm-panel inv-pro-confirm-panel--danger" onClick={(e) => e.stopPropagation()}>

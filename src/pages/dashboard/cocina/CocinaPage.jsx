@@ -96,6 +96,16 @@ export default function CocinaPage() {
     }
   }, [canFilterSucursal, isSuperAdmin, selectedSucursalId]);
 
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    if (!Array.isArray(sucursales) || sucursales.length === 0) return;
+    if (selectedSucursalId) return;
+    const firstSucursalId = Number(sucursales[0]?.id_sucursal ?? 0);
+    if (firstSucursalId > 0) {
+      setSelectedSucursalId(firstSucursalId);
+    }
+  }, [isSuperAdmin, selectedSucursalId, sucursales]);
+
   // Limpiar búsqueda si pierde permiso
   useEffect(() => {
     if (!canSearch && search) setSearch('');
@@ -205,6 +215,7 @@ export default function CocinaPage() {
             sucursales={sucursales}
             selectedSucursalId={selectedSucursalId}
             canFilter={canFilterSucursal || isSuperAdmin}
+            allowAllOption={false}
             onSelectSucursal={(value) => {
               if (!canFilterSucursal && !isSuperAdmin) return;
               setSelectedSucursalId(value);
