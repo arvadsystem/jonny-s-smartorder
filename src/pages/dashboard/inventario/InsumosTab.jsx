@@ -239,6 +239,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const [imageErrorMap, setImageErrorMap] = useState({});
 
   const [confirmModal, setConfirmModal] = useState({ show: false, idToDelete: null, nombre: '' });
+  const [discardConfirm, setDiscardConfirm] = useState({ show: false, target: null });
   const [deleting, setDeleting] = useState(false);
 
   const cantidadInputRef = useRef(null);
@@ -840,24 +841,21 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     return !areInsumoFormsEqual(editForm, editFormSnapshot);
   }, [editForm, editFormSnapshot]);
 
-  const confirmDiscardInsumoChanges = useCallback(() => {
-    if (typeof window === 'undefined') return true;
-    return window.confirm('Hay cambios sin guardar. ¿Deseas cerrar y perderlos?');
-  }, []);
-
   const closeDrawer = useCallback(({ force = false } = {}) => {
     if ((creating || savingEdit || togglingEstado) && !force) return;
     if (drawer === 'form' && !force) {
       const hasUnsavedChanges =
         drawerMode === 'create' ? hasCreateFormUnsavedChanges : hasEditFormUnsavedChanges;
-      if (hasUnsavedChanges && !confirmDiscardInsumoChanges()) return;
+      if (hasUnsavedChanges) {
+        setDiscardConfirm({ show: true, target: drawerMode });
+        return;
+      }
     }
     setDrawer(null);
     setDrawerMsg('');
     setFocusCantidad(false);
     resetDrawerImage();
   }, [
-    confirmDiscardInsumoChanges,
     creating,
     drawer,
     drawerMode,
@@ -867,6 +865,19 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     savingEdit,
     togglingEstado
   ]);
+
+  const closeDiscardConfirm = useCallback(() => {
+    setDiscardConfirm({ show: false, target: null });
+  }, []);
+
+  const confirmDiscardInsumoChanges = useCallback(() => {
+    setDiscardConfirm({ show: false, target: null });
+    setDrawer(null);
+    setDrawerMsg('');
+    setFocusCantidad(false);
+    resetDrawerImage();
+    if (discardConfirm.target === 'edit') cancelEdit();
+  }, [cancelEdit, discardConfirm.target, resetDrawerImage]);
 
   const openDetailModal = useCallback((insumo) => {
     if (!insumo) return;
@@ -2582,6 +2593,42 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           </div>
         </div>
       ) : null}
+      {discardConfirm.show && (
+        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeDiscardConfirm}>
+          <div className="inv-pro-confirm-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="inv-pro-confirm-glow" aria-hidden="true" />
+            <div className="inv-pro-confirm-head">
+              <div className="inv-pro-confirm-head-main">
+                <div className="inv-pro-confirm-head-icon">
+                  <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+                </div>
+                <div className="inv-pro-confirm-head-copy">
+                  <div className="inv-pro-confirm-kicker">Insumos</div>
+                  <div className="inv-pro-confirm-title">Cambios sin guardar</div>
+                  <div className="inv-pro-confirm-sub">Hay informacion pendiente en el formulario.</div>
+                </div>
+              </div>
+              <button type="button" className="inv-pro-confirm-close" onClick={closeDiscardConfirm} aria-label="Cerrar">
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+            <div className="inv-pro-confirm-body">
+              <div className="inv-pro-confirm-note">
+                <i className="bi bi-shield-exclamation" aria-hidden="true" />
+                <span>Si cierras ahora, se perderan los cambios que no has guardado.</span>
+              </div>
+              <div className="inv-pro-confirm-question">Deseas cerrar sin guardar?</div>
+            </div>
+            <div className="inv-pro-confirm-footer">
+              <button className="btn inv-pro-btn-cancel" type="button" onClick={closeDiscardConfirm}>Seguir editando</button>
+              <button className="btn inv-pro-btn-danger" type="button" onClick={confirmDiscardInsumoChanges}>
+                <i className="bi bi-box-arrow-right" aria-hidden="true" />
+                <span>Cerrar sin guardar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmModal.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirm}>
           <div className="inv-pro-confirm-panel inv-pro-confirm-panel--danger" onClick={(e) => e.stopPropagation()}>
