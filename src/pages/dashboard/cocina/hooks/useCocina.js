@@ -38,7 +38,8 @@ export const useCocina = ({
   selectedSucursalId,
   includeSucursalesCatalog = true,
   toastPolicy = {},
-  audioMode = 'none'
+  audioMode = 'none',
+  requireSucursalSelection = false
 }) => {
   const [pedidos, setPedidos] = useState([]);
   const [sucursales, setSucursales] = useState([]);
@@ -243,6 +244,14 @@ export const useCocina = ({
 
   const loadPedidos = useCallback(
     async ({ silent = false } = {}) => {
+      if (requireSucursalSelection && !selectedSucursalId) {
+        setPedidos([]);
+        setError('');
+        setLoading(false);
+        setRefreshing(false);
+        return [];
+      }
+
       if (silent) {
         setRefreshing(true);
       } else {

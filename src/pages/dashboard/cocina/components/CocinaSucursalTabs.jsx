@@ -10,7 +10,8 @@ export default function CocinaSucursalTabs({
   sucursales,
   selectedSucursalId,
   canFilter,
-  onSelectSucursal
+  onSelectSucursal,
+  allowAllOption = true
 }) {
   const listaSucursales = Array.isArray(sucursales) ? sucursales : [];
 
@@ -32,15 +33,17 @@ export default function CocinaSucursalTabs({
   // Super Admin / admin: puede ver todas las sucursales
   return (
     <nav className="kds-tabs-wrap" role="tablist" aria-label="Filtrar por sucursal">
-      <button
-        type="button"
-        role="tab"
-        aria-selected={selectedSucursalId === null}
-        className={`kds-tab ${selectedSucursalId === null ? 'is-active' : ''}`}
-        onClick={() => onSelectSucursal(null)}
-      >
-        Todas
-      </button>
+      {allowAllOption ? (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={selectedSucursalId === null}
+          className={`kds-tab ${selectedSucursalId === null ? 'is-active' : ''}`}
+          onClick={() => onSelectSucursal(null)}
+        >
+          Todas
+        </button>
+      ) : null}
 
       {listaSucursales.map((sucursal) => (
         <button
