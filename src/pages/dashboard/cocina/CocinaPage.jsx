@@ -40,6 +40,7 @@ export default function CocinaPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isPantallaCocina = useMemo(() => isPantallaCocinaRole(user?.roles), [user?.roles]);
   const isCocinaOperativa = useMemo(() => isCocinaOperativaRole(user?.roles), [user?.roles]);
+  const canSelectSucursalInCocina = isSuperAdmin;
   const toastPolicy = useMemo(
     () => ({
       hideAll: isPantallaCocina,
@@ -58,7 +59,6 @@ export default function CocinaPage() {
   const canSearch = !isPantallaCocina && canAny([PERMISSIONS.COCINA_BUSCAR]);
   const canRefresh = !isPantallaCocina && canAny([PERMISSIONS.COCINA_ACTUALIZAR_TABLERO]);
   const canViewDetail = canAny([PERMISSIONS.COCINA_DETALLE_VER]);
-  const canFilterSucursal = !isPantallaCocina && canAny([PERMISSIONS.COCINA_FILTRAR_SUCURSAL]);
   const canStartPedido = canAny([PERMISSIONS.COCINA_PEDIDO_INICIAR]);
   const canMarkReady = canAny([PERMISSIONS.COCINA_PEDIDO_MARCAR_LISTO]);
   const canDeliverPedido = canAny([PERMISSIONS.COCINA_PEDIDO_ENTREGAR]);
@@ -78,9 +78,10 @@ export default function CocinaPage() {
     isRealtimeConnected
   } = useCocina({
     selectedSucursalId,
-    includeSucursalesCatalog: !isPantallaCocina && (canFilterSucursal || isSuperAdmin),
+    includeSucursalesCatalog: canSelectSucursalInCocina,
     toastPolicy,
-    audioMode
+    audioMode,
+    requireSucursalSelection: canSelectSucursalInCocina
   });
 
   // Timer para mostrar temporizadores en vivo (1s)
@@ -91,20 +92,20 @@ export default function CocinaPage() {
 
   // Sincronizar permisos: si pierde permiso de filtrado, resetear sucursal
   useEffect(() => {
-    if (!canFilterSucursal && !isSuperAdmin && selectedSucursalId !== null) {
+    if (!canSelectSucursalInCocina && selectedSucursalId !== null) {
       setSelectedSucursalId(null);
     }
-  }, [canFilterSucursal, isSuperAdmin, selectedSucursalId]);
+  }, [canSelectSucursalInCocina, selectedSucursalId]);
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!canSelectSucursalInCocina) return;
     if (!Array.isArray(sucursales) || sucursales.length === 0) return;
     if (selectedSucursalId) return;
     const firstSucursalId = Number(sucursales[0]?.id_sucursal ?? 0);
     if (firstSucursalId > 0) {
       setSelectedSucursalId(firstSucursalId);
     }
-  }, [isSuperAdmin, selectedSucursalId, sucursales]);
+  }, [canSelectSucursalInCocina, selectedSucursalId, sucursales]);
 
   // Limpiar búsqueda si pierde permiso
   useEffect(() => {
@@ -210,14 +211,14 @@ export default function CocinaPage() {
           </div>
         ) : null}
 
-        {!isPantallaCocina ? (
+        {!isPantallaCocina && canSelectSucursalInCocina ? (
           <CocinaSucursalTabs
             sucursales={sucursales}
             selectedSucursalId={selectedSucursalId}
-            canFilter={canFilterSucursal || isSuperAdmin}
+            canFilter
             allowAllOption={false}
             onSelectSucursal={(value) => {
-              if (!canFilterSucursal && !isSuperAdmin) return;
+              if (!canSelectSucursalInCocina) return;
               setSelectedSucursalId(value);
             }}
           />
