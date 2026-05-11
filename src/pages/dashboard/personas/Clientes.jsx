@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Select from "react-select";
 import { usePermisos } from "../../../context/PermisosContext";
+import { useAuth } from "../../../hooks/useAuth";
 import { personaService } from "../../../services/personasService";
 import { PERMISSIONS } from "../../../utils/permissions";
 import EntityTable from "../../../components/ui/EntityTable";
@@ -158,6 +159,7 @@ const MAX_CLIENTES_PAGE_CACHE = 24;
 const GLOBAL_STATS_FETCH_LIMIT = 1;
 const PERSONAS_CATALOGO_PAGE_LIMIT = 200;
 const PERSONAS_CATALOGO_MAX_PAGES = 200;
+const CLIENTES_FORCE_COMPAT_CREATE_FLAG = "clientes_force_compat_create_v1";
 
 const isAbortError = (error) =>
   Boolean(error) && (
@@ -219,6 +221,23 @@ const firstNonEmptyValue = (...values) => {
     if (text) return text;
   }
   return "";
+};
+
+const isUnregisteredPlaceholder = (value) => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return (
+    normalized === "no registrado"
+    || normalized === "no registrada"
+    || normalized === "n/d"
+    || normalized === "na"
+    || normalized === "sin registro"
+  );
+};
+
+const sanitizeOptionalSeedValue = (value) => {
+  if (value === null || value === undefined) return "";
+  if (isUnregisteredPlaceholder(value)) return "";
+  return String(value).trim();
 };
 
 const resolveDuplicateBaseFromError = (error, origin) => {
@@ -421,6 +440,7 @@ const isActivo = (record) => {
 
 const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const { canAny } = usePermisos();
+  const { user } = useAuth();
   const canCreateCliente = canAny([PERMISSIONS.CLIENTES_CREAR]);
   const canListPersonas = canAny([PERMISSIONS.PERSONAS_LISTADO_VER, PERMISSIONS.PERSONAS_VER]);
   const canListEmpresas = canAny([PERMISSIONS.EMPRESAS_LISTADO_VER, PERMISSIONS.EMPRESAS_VER]);
@@ -499,6 +519,43 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const isAnyDrawerOpen = showModal || filtersOpen;
   const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
+  const resolvedOperationalSucursalId = useMemo(() => {
+    const fromContext = parsePositiveInteger(selectedSucursalId);
+    if (fromContext) return fromContext;
+
+    const fromUser = parsePositiveInteger(
+      user?.id_sucursal
+      ?? user?.sucursal_id
+      ?? user?.empleado?.id_sucursal
+      ?? user?.empleado?.sucursal_id
+      ?? user?.sucursal?.id_sucursal
+      ?? user?.sucursal?.id
+    );
+    if (fromUser) return fromUser;
+
+    return null;
+  }, [selectedSucursalId, user]);
+  const resolvedOperationalEmpresaId = useMemo(() => {
+    const explicit = parsePositiveInteger(
+      user?.id_empresa
+      ?? user?.empresa_id
+      ?? user?.id_empresa_usuario
+      ?? user?.id_empresa_empleado
+      ?? user?.empresa?.id_empresa
+      ?? user?.empresa?.id
+      ?? user?.empleado?.id_empresa
+    );
+    if (explicit) return explicit;
+
+    const userEntries = user && typeof user === "object" ? Object.entries(user) : [];
+    const inferred = userEntries.find(([key, value]) =>
+      String(key).toLowerCase().includes("empresa")
+      && parsePositiveInteger(value)
+    );
+    if (inferred) return parsePositiveInteger(inferred[1]);
+
+    return null;
+  }, [user]);
 
   const blurFocusedElementInside = useCallback((containerId) => {
     if (typeof document === "undefined") return;
@@ -976,13 +1033,12 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const sanitizeForm = () => {
     const personaId = String(form.id_persona ?? "").trim();
     const empresaId = String(form.id_empresa ?? "").trim();
-    const sucursalFromContext = parsePositiveInteger(selectedSucursalId);
 
     return {
       id_persona: personaId ? parseIntegerValue(personaId) : null,
       id_empresa: empresaId ? parseIntegerValue(empresaId) : null,
       id_empresa_cliente: empresaId ? parseIntegerValue(empresaId) : null,
-      id_sucursal: sucursalFromContext || null,
+      id_sucursal: resolvedOperationalSucursalId || null,
       estado: Boolean(form.estado),
     };
   };
@@ -1115,6 +1171,10 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       safeToast("ERROR", "No tienes permiso para crear clientes.", "danger");
       return;
     }
+    if (!editId && !resolvedOperationalSucursalId) {
+      safeToast("ERROR", "No se pudo resolver la sucursal operativa. Selecciona una sucursal e intenta de nuevo.", "danger");
+      return;
+    }
     if (!validar() || actionLoading) return;
 
     const payloadLimpio = sanitizeForm();
@@ -1161,6 +1221,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         const atomicCreatePayload = {
           origen: clienteOriginType,
           strict_base_create: true,
+          id_sucursal: resolvedOperationalSucursalId,
+          id_empresa: resolvedOperationalEmpresaId || undefined,
           cliente: payloadLimpio,
           ...(clienteOriginType === "empresa"
             ? { empresa: buildEmpresaPayloadFromForm(inlineEmpresaForm) }
@@ -1169,7 +1231,21 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
         let createResult = null;
         try {
+          const forceCompatCreate =
+            typeof window !== "undefined"
+            && window.sessionStorage?.getItem(CLIENTES_FORCE_COMPAT_CREATE_FLAG) === "1";
+
+          if (forceCompatCreate) {
+            const compatBlockedError = new Error("Flujo atomico omitido para esta sesion.");
+            compatBlockedError.status = 403;
+            compatBlockedError.code = "CLIENTES_ATOMIC_ROUTE_BLOCKED";
+            throw compatBlockedError;
+          }
+
           createResult = await personaService.createClienteFull(atomicCreatePayload);
+          if (typeof window !== "undefined") {
+            window.sessionStorage?.removeItem(CLIENTES_FORCE_COMPAT_CREATE_FLAG);
+          }
         } catch (atomicError) {
           const duplicateBase = resolveDuplicateBaseFromError(atomicError, clienteOriginType);
           if (duplicateBase) {
@@ -1187,11 +1263,25 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
           const atomicStatus = Number(atomicError?.status);
           const atomicCode = String(atomicError?.code || atomicError?.data?.code || "").trim().toUpperCase();
+          const atomicMessage = String(
+            atomicError?.message
+            || atomicError?.data?.message
+            || atomicError?.data?.mensaje
+            || ""
+          ).trim().toLowerCase();
+          const isEmpresaContextResolutionError =
+            atomicStatus === 403
+            && atomicMessage.includes("no se pudo resolver la empresa del usuario");
+          if (isEmpresaContextResolutionError && typeof window !== "undefined") {
+            window.sessionStorage?.setItem(CLIENTES_FORCE_COMPAT_CREATE_FLAG, "1");
+          }
           const allowCompatibilityFallback =
             atomicStatus === 500
             || atomicCode === "DB_SCHEMA_ERROR"
             || atomicCode === "DB_FUNCTION_ERROR"
-            || atomicCode === "INTERNAL_ERROR";
+            || atomicCode === "INTERNAL_ERROR"
+            || atomicCode === "CLIENTES_ATOMIC_ROUTE_BLOCKED"
+            || isEmpresaContextResolutionError;
 
           if (!allowCompatibilityFallback) throw atomicError;
 
@@ -1214,6 +1304,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               id_persona: null,
               id_empresa: idEmpresaFallback,
               id_empresa_cliente: idEmpresaFallback,
+              id_sucursal: resolvedOperationalSucursalId || null,
             });
           } else {
             const personaCreada = await personaService.createPersona(
@@ -1232,6 +1323,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               id_persona: idPersonaFallback,
               id_empresa: null,
               id_empresa_cliente: null,
+              id_sucursal: resolvedOperationalSucursalId || null,
             });
           }
 
@@ -1307,6 +1399,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     const retryPayload = {
       ...basePayload,
       strict_base_create: false,
+      id_sucursal: resolvedOperationalSucursalId,
+      id_empresa: resolvedOperationalEmpresaId || basePayload?.id_empresa || undefined,
       cliente: {
         ...(basePayload.cliente || {}),
       },
@@ -1360,6 +1454,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   }, [
     canCreateCliente,
     actionLoading,
+    resolvedOperationalSucursalId,
+    resolvedOperationalEmpresaId,
     closeFormDrawer,
     duplicateResolution,
     safeToast,
@@ -1470,15 +1566,15 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         cliente?.telefono,
         empresaCatalogo?.id_telefono
       ),
-      id_direccion: firstNonEmptyValue(
+      id_direccion: sanitizeOptionalSeedValue(firstNonEmptyValue(
         empresaCatalogo?.texto_direccion,
         empresaCatalogo?.direccion,
         empresaCatalogo?.direccion_detalle,
         cliente?.empresa_direccion,
         cliente?.direccion,
         empresaCatalogo?.id_direccion
-      ),
-      id_correo: firstNonEmptyValue(
+      )),
+      id_correo: sanitizeOptionalSeedValue(firstNonEmptyValue(
         empresaCatalogo?.texto_correo,
         empresaCatalogo?.direccion_correo,
         empresaCatalogo?.correo,
@@ -1486,7 +1582,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         cliente?.empresa_correo,
         cliente?.correo,
         empresaCatalogo?.id_correo
-      ),
+      )),
       estado: empresaCatalogo?.estado === undefined ? isActivo(cliente) : Boolean(empresaCatalogo?.estado),
     });
   }, [empresasCatalogo]);
