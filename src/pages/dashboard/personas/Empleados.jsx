@@ -1773,6 +1773,18 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   }, [viewMode]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const forceCardsOnSmallViewport = () => {
+      if (window.innerWidth <= 575.98) {
+        setViewMode((prev) => (prev === "cards" ? prev : "cards"));
+      }
+    };
+    forceCardsOnSmallViewport();
+    window.addEventListener("resize", forceCardsOnSmallViewport);
+    return () => window.removeEventListener("resize", forceCardsOnSmallViewport);
+  }, []);
+
+  useEffect(() => {
     if (!showModal || !editId) return;
     const empleadoActual = empleados.find((item) => String(item.id_empleado) === String(editId));
     if (!empleadoActual) return;
