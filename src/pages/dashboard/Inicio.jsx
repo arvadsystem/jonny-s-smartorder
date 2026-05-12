@@ -17,7 +17,7 @@ const Inicio = () => {
   const safeCan = typeof can === 'function' ? can : () => false;
 
   const nombre = user?.nombre_usuario || 'Usuario';
-  const canViewDashboard = safeCan(PERMISSIONS.DASHBOARD_VER);
+  const canViewDashboard = isSuperAdmin && safeCan(PERMISSIONS.DASHBOARD_VER);
   const fallbackPath = useMemo(
     () => getFirstAccessibleDashboardPath(permisos, { isSuperAdmin }),
     [isSuperAdmin, permisos]
