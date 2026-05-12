@@ -44,10 +44,20 @@ const getStrengthData = ({ password = '', passed = 0, total = 1 }) => {
   return { label: 'Fuerte', level: 'strong', percent: Math.max(90, scorePercent) };
 };
 
+const normalizePasswordChangeError = (message) => {
+  const raw = String(message || '').trim();
+  if (!raw) return 'No se pudo cambiar la contrasena.';
+  const normalized = raw.toLowerCase();
+  if (normalized.includes('ya fue utilizada recientemente')) {
+    return 'La nueva contrasena ya fue utilizada recientemente. Elige una diferente.';
+  }
+  return raw;
+};
+
 const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const { policies } = usePasswordPolicies();
+  const { policies } = usePasswordPolicies({ enabled: !asModal, suppressForbidden: true });
 
   const [form, setForm] = useState({
     actual: '',
@@ -167,7 +177,7 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
       await logout();
       navigate('/auth/login', { replace: true });
     } catch (err) {
-      setError(err?.message || 'No se pudo cambiar la contraseña.');
+      setError(normalizePasswordChangeError(err?.message));
     } finally {
       setSaving(false);
     }
@@ -340,3 +350,4 @@ const ForcePasswordChange = ({ asModal = false, onCompleted = null }) => {
 };
 
 export default ForcePasswordChange;
+

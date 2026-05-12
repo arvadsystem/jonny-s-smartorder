@@ -215,6 +215,20 @@ const Login = () => {
     }
   };
 
+  const handleForcePasswordCompleted = async () => {
+    try {
+      const refreshed = await authService.me({ noCache: true });
+      if (refreshed?.usuario) {
+        login(refreshed);
+      }
+    } catch {
+      // Si falla el refresh, dejamos el usuario actual y redirigimos al dashboard.
+    }
+
+    setShowForcePasswordModal(false);
+    navigate('/dashboard', { replace: true });
+  };
+
   return (
     <div className="login-root">
       <div className="panel-left">
@@ -387,7 +401,9 @@ const Login = () => {
         </form>
       </motion.aside>
 
-      {showForcePasswordModal ? <ForcePasswordChange asModal /> : null}
+      {showForcePasswordModal ? (
+        <ForcePasswordChange asModal onCompleted={handleForcePasswordCompleted} />
+      ) : null}
     </div>
   );
 };

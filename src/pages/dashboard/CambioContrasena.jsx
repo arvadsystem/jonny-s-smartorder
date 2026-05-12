@@ -43,6 +43,16 @@ const getDaysSince = (dateValue) => {
   return Math.floor(diff / 86400000);
 };
 
+const normalizePasswordChangeError = (message) => {
+  const raw = String(message || "").trim();
+  if (!raw) return "No se pudo cambiar la contraseña";
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("ya fue utilizada recientemente")) {
+    return "La nueva contraseña ya fue utilizada recientemente. Elige una diferente.";
+  }
+  return raw;
+};
+
 const CambioContrasena = () => {
   const { user } = useAuth();
   const [pw, setPw] = useState({
@@ -167,7 +177,7 @@ const CambioContrasena = () => {
       setShowPw({ actual: false, nueva: false, confirmacion: false });
       await cargarUltimoCambioClave();
     } catch (e) {
-      mostrarAlerta(e?.message || "No se pudo cambiar la contrase\u00f1a", {
+      mostrarAlerta(normalizePasswordChangeError(e?.message), {
         variant: "danger",
       });
     }
