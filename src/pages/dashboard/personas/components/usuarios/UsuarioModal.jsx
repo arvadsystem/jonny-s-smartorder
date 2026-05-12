@@ -93,6 +93,27 @@ const buildClienteOptionLabel = (cliente, linked = false) => {
   return `${nombreCompleto} | DNI: ${dni} | ${correo}${linked ? ' (ya tiene usuario)' : ''}`;
 };
 
+const ROLE_VISUAL_META = {
+  administrador: { icon: 'bi-shield-check', description: 'Acceso administrativo completo al sistema.' },
+  super_admin: { icon: 'bi-crown', description: 'Super usuario con acceso total.' },
+  cocina: { icon: 'bi-bag', description: 'Gestiona pedidos y preparacion.' },
+  cajero: { icon: 'bi-cash-stack', description: 'Ventas, cobros y cierres de caja.' },
+  mesero: { icon: 'bi-cup-hot', description: 'Toma de pedidos y atencion a clientes.' },
+  supervisor: { icon: 'bi-person-workspace', description: 'Supervisa operaciones y reportes.' },
+  gerente: { icon: 'bi-briefcase', description: 'Gestion administrativa y reportes generales.' },
+  auxiliar_cocina: { icon: 'bi-egg-fried', description: 'Apoyo en cocina y preparacion.' },
+  cliente: { icon: 'bi-person', description: 'Acceso limitado como cliente.' },
+  root: { icon: 'bi-gear', description: 'Acceso tecnico y configuracion.' },
+};
+
+const resolveRoleVisualMeta = (roleName) => {
+  const slug = String(roleName ?? '').trim().toLowerCase();
+  return ROLE_VISUAL_META[slug] || {
+    icon: 'bi-person-badge',
+    description: 'Rol del sistema con permisos especificos.',
+  };
+};
+
 export default function UsuarioModal({
   open = false,
   mode = 'create',
@@ -333,6 +354,39 @@ export default function UsuarioModal({
     onClose?.();
   };
 
+  const renderRoleChip = (rol, disabled) => {
+    const roleId = String(rol.id_rol);
+    const checked = selectedRoleIds.includes(roleId);
+    const roleName = String(rol?.nombre ?? '').trim();
+    const slug = roleName || `rol_${roleId}`;
+    const roleClassName = slug.toLowerCase().replace(/[^a-z0-9_]+/g, '-');
+    const visualMeta = resolveRoleVisualMeta(roleName);
+    return (
+      <label
+        key={rol.id_rol}
+        className={`usuarios-modal__role-chip is-role-${roleClassName} ${checked ? 'is-active' : ''} ${disabled ? 'is-disabled' : ''}`}
+      >
+        <span className="usuarios-modal__role-check-wrap">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => handleToggleRole(roleId)}
+            disabled={disabled}
+          />
+        </span>
+        <span className="usuarios-modal__role-main">
+          <span className="usuarios-modal__role-icon" aria-hidden="true">
+            <i className={`bi ${visualMeta.icon}`} />
+          </span>
+          <span className="usuarios-modal__role-copy">
+            <span className="usuarios-modal__role-name">{slug}</span>
+            <span className="usuarios-modal__role-desc">{visualMeta.description}</span>
+          </span>
+        </span>
+      </label>
+    );
+  };
+
   return (
     <aside
       className={`inv-prod-drawer inv-cat-v2__drawer crud-modal usuarios-modal ${isOpen ? 'show' : ''} ${isCreate ? 'is-create' : 'is-edit'}`}
@@ -455,24 +509,7 @@ export default function UsuarioModal({
                 <div className="col-12 usuarios-modal__section">
                   <label className="form-label usuarios-modal__label">Roles</label>
                   <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
-                    {roleOptions.map((rol) => {
-                      const roleId = String(rol.id_rol);
-                      const checked = selectedRoleIds.includes(roleId);
-                      return (
-                        <label
-                          key={rol.id_rol}
-                          className={`usuarios-modal__role-chip ${checked ? 'is-active' : ''} ${rolesLoading || !canCreate ? 'is-disabled' : ''}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => handleToggleRole(roleId)}
-                            disabled={rolesLoading || !canCreate}
-                          />
-                          <span>{rol.nombre}</span>
-                        </label>
-                      );
-                    })}
+                    {roleOptions.map((rol) => renderRoleChip(rol, rolesLoading || !canCreate))}
                   </div>
                   <div className="usuarios-modal__roles-hint">Puedes asignar uno o varios roles al mismo usuario.</div>
                   {errors?.id_roles ? <div className="invalid-feedback d-block">{errors.id_roles}</div> : null}
@@ -543,24 +580,7 @@ export default function UsuarioModal({
                 <div className="col-12 usuarios-modal__section">
                   <label className="form-label usuarios-modal__label">Roles</label>
                   <div className={`usuarios-modal__roles-box ${errors?.id_roles ? 'is-invalid' : ''}`}>
-                    {roleOptions.map((rol) => {
-                      const roleId = String(rol.id_rol);
-                      const checked = selectedRoleIds.includes(roleId);
-                      return (
-                        <label
-                          key={rol.id_rol}
-                          className={`usuarios-modal__role-chip ${checked ? 'is-active' : ''} ${rolesLoading || !canEdit ? 'is-disabled' : ''}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => handleToggleRole(roleId)}
-                            disabled={rolesLoading || !canEdit}
-                          />
-                          <span>{rol.nombre}</span>
-                        </label>
-                      );
-                    })}
+                    {roleOptions.map((rol) => renderRoleChip(rol, rolesLoading || !canEdit))}
                   </div>
                   <div className="usuarios-modal__roles-hint">Puedes combinar varios roles; los permisos efectivos se unifican por usuario.</div>
                   {errors?.id_roles ? <div className="invalid-feedback d-block">{errors.id_roles}</div> : null}

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { inventarioService } from '../../services/inventarioService';
 import SinPermiso from '../../components/common/SinPermiso';
 import { usePermisos } from '../../context/PermisosContext';
-import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from '../../utils/permissions';
+import { getAllowedTabs, MODULE_PRIMARY_PERMISSION, PERMISSIONS } from '../../utils/permissions';
 
 import CategoriasTab from './inventario/CategoriasTab.jsx';
 import InsumosTab from './inventario/InsumosTab.jsx';
@@ -19,7 +19,7 @@ const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 
 
 const Inventario = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
+  const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
   const allowedTabs = useMemo(
     () => getAllowedTabs('inventario', permisos, { isSuperAdmin }).map((tab) => tab.key),
@@ -35,6 +35,11 @@ const Inventario = () => {
       ? rawTab
       : fallbackTab;
   const activeTab = fallbackTab && allowedTabs.includes(normalizedTab) ? normalizedTab : fallbackTab;
+  const canVerCategoriasProductos = canAny([PERMISSIONS.INVENTARIO_CATEGORIAS_VER]);
+  const canVerCategoriasInsumos = canAny([PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_VER]);
+  const needsCategoriasProductos =
+    activeTab === 'categorias' || activeTab === 'productos' || activeTab === 'insumos';
+  const needsCategoriasInsumos = activeTab === 'categorias' || activeTab === 'insumos';
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -95,6 +100,12 @@ const Inventario = () => {
   };
 
   const cargarCategorias = useCallback(async (options = {}) => {
+    if (!canVerCategoriasProductos) {
+      setCategorias([]);
+      setLoadingCategorias(false);
+      setErrorCategorias('');
+      return;
+    }
     const incluirInactivos =
       typeof options?.incluirInactivos === 'boolean'
         ? options.incluirInactivos
@@ -117,9 +128,15 @@ const Inventario = () => {
     } finally {
       setLoadingCategorias(false);
     }
-  }, [categoriasIncludeInactive]);
+  }, [canVerCategoriasProductos, categoriasIncludeInactive]);
 
   const cargarCategoriasInsumos = useCallback(async (options = {}) => {
+    if (!canVerCategoriasInsumos) {
+      setCategoriasInsumos([]);
+      setLoadingCategoriasInsumos(false);
+      setErrorCategoriasInsumos('');
+      return;
+    }
     const incluirInactivos =
       typeof options?.incluirInactivos === 'boolean'
         ? options.incluirInactivos
@@ -142,16 +159,15 @@ const Inventario = () => {
     } finally {
       setLoadingCategoriasInsumos(false);
     }
-  }, [categoriasInsumosIncludeInactive]);
+  }, [canVerCategoriasInsumos, categoriasInsumosIncludeInactive]);
 
   useEffect(() => {
-    cargarCategorias();
-    cargarCategoriasInsumos();
+    if (needsCategoriasProductos) void cargarCategorias();
+    if (needsCategoriasInsumos) void cargarCategoriasInsumos();
     // NEW: mount-only para evitar doble fetch cuando cambia la preferencia y se recarga manualmente desde el tab.
     // WHY: `cargarCategorias` depende de `categoriasIncludeInactive`.
     // IMPACT: la carga inicial se mantiene; recargas posteriores siguen entrando por `reloadCategorias`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cargarCategorias, cargarCategoriasInsumos, needsCategoriasInsumos, needsCategoriasProductos]);
 
   // NEW: patch local de categorias en el estado compartido del modulo Inventario.
   // WHY: permitir que CategoriasTab actualice una sola categoria (edit/estado) sin refetch global visible.

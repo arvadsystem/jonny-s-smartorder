@@ -1523,12 +1523,26 @@ export default function Planillas({
   const canGenerar = canAny([PERMISSIONS.PLANILLAS_GENERAR]);
   const canRecalcular = canAny([PERMISSIONS.PLANILLAS_RECALCULAR]);
   const canAplicarAdelantos = canAny([PERMISSIONS.PLANILLAS_ADELANTOS_APLICAR]);
+  const canRegistrarAdelantos = canAny([
+    PERMISSIONS.PLANILLAS_ADELANTOS_REGISTRAR,
+    PERMISSIONS.PLANILLAS_ADELANTOS_APLICAR
+  ]);
+  const canAnularAdelantos = canAny([
+    PERMISSIONS.PLANILLAS_ADELANTOS_ANULAR,
+    PERMISSIONS.PLANILLAS_ADELANTOS_APLICAR
+  ]);
   const canRegistrarMovimiento = canAny([PERMISSIONS.PLANILLAS_MOVIMIENTO_REGISTRAR]);
+  const canEditarMovimiento = canAny([
+    PERMISSIONS.PLANILLAS_MOVIMIENTO_EDITAR,
+    PERMISSIONS.PLANILLAS_MOVIMIENTO_REGISTRAR
+  ]);
   const canAnularMovimiento = canAny([PERMISSIONS.PLANILLAS_MOVIMIENTO_ANULAR]);
   const canCerrar = canAny([PERMISSIONS.PLANILLAS_CERRAR]);
   const canPagar = canAny([PERMISSIONS.PLANILLAS_PAGAR]);
   const canAnular = canAny([PERMISSIONS.PLANILLAS_ANULAR]);
   const canVerAuditoria = canAny([PERMISSIONS.PLANILLAS_AUDITORIA_VER]);
+  const canExport = canAny([PERMISSIONS.PLANILLAS_EXPORTAR, PERMISSIONS.PLANILLAS_DETALLE_VER]);
+  const canVerResumenCostos = canAny([PERMISSIONS.PLANILLAS_RESUMEN_VER_COSTOS, PERMISSIONS.PLANILLAS_DETALLE_VER]);
 
   const rawPlanillasTab = String(searchParams.get(PLANILLAS_NAV_QUERY_PARAM) || '').trim().toLowerCase();
   const activePlanillasTab = useMemo(
@@ -1841,7 +1855,12 @@ export default function Planillas({
   const canGenerarForPeriodo = Boolean(
     canGenerar && hasSucursalSelected && !planillaPeriodoLookup.loading && !hasPlanillaForPeriodo
   );
-  const canExportPlanilla = Boolean(canViewDetalle && selectedPlanilla?.id_planilla && isPlanillaPagada);
+  const canExportPlanilla = Boolean(
+    canViewDetalle &&
+      canExport &&
+      selectedPlanilla?.id_planilla &&
+      isPlanillaPagada
+  );
   const adelantosHistorialMovimientosScoped = useMemo(
     () =>
       scopeMovimientosToPlanillaContext({
@@ -4633,7 +4652,9 @@ export default function Planillas({
 
           {showPagoSection ? (
             <>
-              <PlanillasResumenCards resumen={resumen} cardKeys={PAGO_RESUMEN_CARD_KEYS} />
+              {canVerResumenCostos ? (
+                <PlanillasResumenCards resumen={resumen} cardKeys={PAGO_RESUMEN_CARD_KEYS} />
+              ) : null}
 
           <div className="inv-prod-results-meta personas-page__results-meta">
             <span>
@@ -4935,7 +4956,7 @@ export default function Planillas({
         loading={adelantosModal.loading}
         applying={adelantosModal.applying}
         registering={adelantosModal.registering}
-        canRegister={canAplicarAdelantos}
+        canRegister={canRegistrarAdelantos}
         onClose={() =>
           setAdelantosModal({
             open: false,
@@ -4990,7 +5011,7 @@ export default function Planillas({
         }`}
         open={adelantoRegistroGlobalModal.open}
         registering={adelantoRegistroGlobalModal.registering}
-        canRegister={canAplicarAdelantos && !loadingEmpleadosActivos}
+        canRegister={canRegistrarAdelantos && !loadingEmpleadosActivos}
         empleados={empleadosRegistroOptions}
         onClose={() => setAdelantoRegistroGlobalModal({ open: false, registering: false })}
         onSubmit={handleRegistrarAdelantoGlobal}
@@ -5007,8 +5028,8 @@ export default function Planillas({
         empleadoLabel={adelantosHistorialModal.empleadoLabel}
         updatingId={adelantosHistorialModal.updatingId}
         deletingId={adelantosHistorialModal.deletingId}
-        canEditar={canAplicarAdelantos}
-        canEliminar={canAplicarAdelantos}
+        canEditar={canRegistrarAdelantos}
+        canEliminar={canAnularAdelantos}
         hasPlanillaSeleccionada={hasSucursalSelected && Boolean(toText(periodo, ''))}
         onClose={() =>
           setAdelantosHistorialModal({
@@ -5048,8 +5069,8 @@ export default function Planillas({
         compensatingId={horasExtraModal.compensatingId}
         updatingId={horasExtraModal.updatingId}
         deletingId={horasExtraModal.deletingId}
-        canEditar={canRecalcular}
-        canEliminar={canRecalcular}
+        canEditar={canEditarMovimiento}
+        canEliminar={canAnularMovimiento}
         onClose={() =>
           setHorasExtraModal({
             open: false,

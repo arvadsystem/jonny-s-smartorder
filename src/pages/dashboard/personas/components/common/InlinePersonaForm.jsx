@@ -1,3 +1,23 @@
+import Select from "react-select";
+
+const buildInlineGeneroSelectStyles = () => ({
+  control: (base, state) => ({
+    ...base,
+    minHeight: 38,
+    borderRadius: 10,
+    borderColor: state.isFocused ? "rgba(158, 105, 61, 0.72)" : "rgba(157, 150, 112, 0.42)",
+    boxShadow: state.isFocused ? "0 0 0 0.2rem rgba(158, 105, 61, 0.18)" : "none",
+    backgroundColor: "#fff",
+    "&:hover": { borderColor: "rgba(158, 105, 61, 0.72)" },
+  }),
+  valueContainer: (base) => ({ ...base, padding: "2px 12px" }),
+  input: (base) => ({ ...base, margin: 0, padding: 0 }),
+  placeholder: (base) => ({ ...base, color: "rgba(98, 83, 73, 0.75)" }),
+  singleValue: (base) => ({ ...base, color: "#2f1a10" }),
+  indicatorsContainer: (base) => ({ ...base, paddingRight: 4 }),
+  menuPortal: (base) => ({ ...base, zIndex: 3000 }),
+});
+
 export default function InlinePersonaForm({
   form,
   errors = {},
@@ -7,6 +27,12 @@ export default function InlinePersonaForm({
   lastNameErrorKey = "inline_persona_apellido",
   layoutClassName = "row g-2 mt-1",
 }) {
+  const generoOptions = [
+    { value: "M", label: "Masculino" },
+    { value: "F", label: "Femenino" },
+    { value: "O", label: "Otro" },
+  ];
+
   return (
     <div className={layoutClassName}>
       <div className="col-12 col-md-6">
@@ -49,16 +75,19 @@ export default function InlinePersonaForm({
 
       <div className="col-12 col-md-6">
         <label className="form-label text-light text-opacity-75">Genero</label>
-        <select
-          className="form-select"
-          value={form.genero}
-          onChange={(event) => onFieldChange("genero", event.target.value)}
-          disabled={disabled}
-        >
-          <option value="">Seleccione</option>
-          <option value="M">Masculino</option>
-          <option value="F">Femenino</option>
-        </select>
+        <Select
+          inputId="inline-persona-genero-select"
+          classNamePrefix="inline-persona-genero-select"
+          placeholder="Seleccione"
+          isClearable
+          options={generoOptions}
+          value={generoOptions.find((option) => option.value === String(form.genero ?? "").trim().toUpperCase()) || null}
+          onChange={(option) => onFieldChange("genero", option?.value || "")}
+          isDisabled={disabled}
+          styles={buildInlineGeneroSelectStyles()}
+          menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+          menuPosition="fixed"
+        />
       </div>
 
       <div className="col-12 col-md-6">
