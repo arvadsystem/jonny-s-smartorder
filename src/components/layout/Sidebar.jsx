@@ -1,384 +1,100 @@
-import React, { useEffect, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
-import logo from '../../assets/images/logo-jonnys.png'; //  logo del proyecto
+import { NavLink, useLocation } from 'react-router-dom';
+import logo from '../../assets/images/sinFondo.jpeg';
+import { usePermisos } from '../../context/PermisosContext';
+import { getVisibleModuleItems } from '../../utils/permissions';
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
-  const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
-
-  // ==============================
-  // MENU PRINCIPAL 
-  // ==============================
-  const menuItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
-    { name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
-    { name: 'Personas/Empresas', path: '/dashboard/personas', icon: 'bi-people' },
-    { name: 'Inventario', path: '/dashboard/inventario', icon: 'bi-box-seam' },
-    { name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
-    { name: 'Menú', path: '/dashboard/menu', icon: 'bi-journal-text' },
-    { name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
-    { name: 'Configuración', path: '/dashboard/configuracion', icon: 'bi-gear' },
+  const { isSuperAdmin, loading, permisos } = usePermisos();
+  const visibleItems = getVisibleModuleItems(permisos, { isSuperAdmin });
+  const sidebarItems = visibleItems.filter((item) => item.path !== '/dashboard/configuracion');
+  const currentTab = String(new URLSearchParams(location.search || '').get('tab') || '').toLowerCase();
+  const GROUPS = [
+    { key: 'operacion', label: 'Operacion', itemKeys: ['dashboard', 'ventas', 'cierres-caja', 'cocina'] },
+    { key: 'inventario', label: 'Inventario', itemKeys: ['inventario', 'sucursales', 'menu'] },
+    { key: 'gestion', label: 'Gestion', itemKeys: ['personas', 'planillas', 'fidelizacion', 'reportes'] },
+    { key: 'sistema', label: 'Sistema', itemKeys: ['seguridad', 'configuracion'] }
   ];
 
-  // ==============================
-  // SUBMENUS INVENTARIO 
-  // ==============================
-  const isInInventario = location.pathname.startsWith('/dashboard/inventario');
-  const tabInventario = (new URLSearchParams(location.search).get('tab') || 'categorias').toLowerCase();
+  const resolveIsActive = (item, isActive) => {
+    if (item.key === 'planillas') {
+      return location.pathname === '/dashboard/personas' && currentTab === 'planillas';
+    }
 
-  
-  const [openInventario, setOpenInventario] = useState(isInInventario);
+    if (item.key === 'personas' && location.pathname === '/dashboard/personas' && currentTab === 'planillas') {
+      return false;
+    }
 
-  useEffect(() => {
-    if (isInInventario) setOpenInventario(true);
-  }, [isInInventario]);
-
-
-// ==============================
-// SUBMENUS PERSONAS
-// ==============================
-const isInPersonasEmpresas = location.pathname.startsWith('/dashboard/personas');
-const tabPersonasEmpresas =
-  (new URLSearchParams(location.search).get('tab') || 'personas').toLowerCase();
-
-const [openPersonasEmpresas, setOpenPersonasEmpresas] = useState(isInPersonasEmpresas);
-
-useEffect(() => {
-  if (isInPersonasEmpresas) setOpenPersonasEmpresas(true);
-}, [isInPersonasEmpresas]);
-
-
-//----------------------------------------------------------------------------
-
-
-  const handleLogout = async () => {
-    await logout(); 
-    navigate('/', { replace: true });
+    return isActive;
   };
 
-  const userName = user?.nombre_usuario || 'Usuario';
-  const userRole = user?.rol === 1 ? 'Administrador' : 'Empleado';
-  const userInitial = userName.charAt(0).toUpperCase();
-
-  return (
-    <div className={`sidebar-wrapper ${isCollapsed ? 'collapsed' : ''}`}>
-      <div className="sidebar-header">
-        <div className="brand">
-          
-          <img className="brand-logo" src={logo} alt="Jonny's" />
-          <h4>Jonny's Smart</h4>
-        </div>
-
-        <button
-          className="collapse-btn"
-          onClick={toggleSidebar}
-          style={{ display: isCollapsed ? 'flex' : 'none' }}
-          aria-label="Expandir menú"
-        >
-          <i className="bi bi-list text-white"></i>
-        </button>
-
-        <button
-          className="collapse-btn"
-          onClick={toggleSidebar}
-          style={{ display: !isCollapsed ? 'flex' : 'none' }}
-          aria-label="Colapsar menú"
-        >
-          <i className="bi bi-chevron-left"></i>
-        </button>
-      </div>
-
-      {/* HACER SCROLL EN EL MENÚ PARA PODER VER TODO EL SIDEBAR */}
-      <div
-        className="sidebar-menu"
-        style={{
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          flex: 1,
-          minHeight: 0,
-          paddingBottom: 8,
-          WebkitOverflowScrolling: 'touch'
-        }}
-      >
-        {menuItems.map((item) => {
-          // ==============================
-          // INVENTARIO CON SUBMENU 
-          // ==============================
-          if (item.name === 'Inventario') {
-            return (
-              <div key={item.path}>
-                <button
-                  type="button"
-                  className={`menu-item ${isInInventario ? 'active' : ''}`}
-                  title={isCollapsed ? item.name : ''}
-                  aria-expanded={openInventario}
-                  onClick={() => {
-                    
-                    if (!isInInventario) {
-                      navigate('/dashboard/inventario?tab=categorias');
-                      return;
-                    }
-
-                    // SI YA ESTAMOS EN INVENTARIO, SOLO ABRIR/CERRAR SUBMENU
-                    setOpenInventario((v) => !v);
-                  }}
-                  style={{
-                    width: '100%',
-                    border: 'none',
-                    background: 'transparent',
-                    textAlign: 'left',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  <i className={`bi ${item.icon}`}></i>
-                  <span>{item.name}</span>
-
-                  <i
-                    className={`bi ${openInventario ? 'bi-chevron-up' : 'bi-chevron-down'}`}
-                    style={{ marginLeft: 'auto' }}
-                  ></i>
-                </button>
-
-               
-                {openInventario && (
-                  <div style={{ paddingLeft: isCollapsed ? 0 : 18 }}>
-                    <NavLink
-                      to="/dashboard/inventario?tab=categorias"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'categorias' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Categorías' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-tags"></i>
-                      <span>Categorías</span>
-                    </NavLink>
-
-                    <NavLink
-                      to="/dashboard/inventario?tab=insumos"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'insumos' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Insumos' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-box"></i>
-                      <span>Insumos</span>
-                    </NavLink>
-
-                    
-                    <NavLink
-                      to="/dashboard/inventario?tab=productos"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'productos' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Productos' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-basket2"></i>
-                      <span>Productos</span>
-                    </NavLink>
-
-                    
-                    <NavLink
-                      to="/dashboard/inventario?tab=almacenes"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'almacenes' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Almacenes' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-building"></i>
-                      <span>Almacenes</span>
-                    </NavLink>
-
-                    
-                    <NavLink
-                      to="/dashboard/inventario?tab=movimientos"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'movimientos' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Movimientos' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-arrow-left-right"></i>
-                      <span>Movimientos</span>
-                    </NavLink>
-
-                    
-                    <NavLink
-                      to="/dashboard/inventario?tab=alertas"
-                      className={() =>
-                        `menu-item ${isInInventario && tabInventario === 'alertas' ? 'active' : ''}`
-                      }
-                      title={isCollapsed ? 'Alertas' : ''}
-                      style={{ fontSize: 14 }}
-                    >
-                      <i className="bi bi-exclamation-triangle"></i>
-                      <span>Alertas</span>
-                    </NavLink>
-                  </div>
-                )}
-              </div>
-            );
-          }
-
-// ==============================
-// PERSONAS / EMPRESAS CON SUBMENU
-// ==============================
-if (item.name === 'Personas/Empresas') {
-  return (
-    <div key={item.path}>
-      <button
-        type="button"
-        className={`menu-item ${isInPersonasEmpresas ? 'active' : ''}`}
-        title={isCollapsed ? item.name : ''}
-        aria-expanded={openPersonasEmpresas}
-        onClick={() => {
-          if (!isInPersonasEmpresas) {
-            navigate('/dashboard/personas?tab=personas');
-            return;
-          }
-          setOpenPersonasEmpresas(v => !v);
-        }}
-        style={{
-          width: '100%',
-          border: 'none',
-          background: 'transparent',
-          textAlign: 'left',
-          display: 'flex',
-          alignItems: 'center'
-        }}
-      >
-        <i className={`bi ${item.icon}`}></i>
-        <span>{item.name}</span>
-
-        <i
-          className={`bi ${openPersonasEmpresas ? 'bi-chevron-up' : 'bi-chevron-down'}`}
-          style={{ marginLeft: 'auto' }}
-        ></i>
-      </button>
-
-      {/* SUBMENÚ */}
-      {openPersonasEmpresas && (
-        <div style={{ paddingLeft: isCollapsed ? 0 : 18 }}>
-
-          <NavLink
-            to="/dashboard/personas?tab=personas"
-            className={() =>
-              `menu-item ${tabPersonasEmpresas === 'personas' ? 'active' : ''}`
-            }
-            style={{ fontSize: 14 }}
-          >
-            <i className="bi bi-person"></i>
-            <span>Personas</span>
-          </NavLink>
-
-          <NavLink
-            to="/dashboard/personas?tab=empresas"
-            className={() =>
-              `menu-item ${tabPersonasEmpresas === 'empresas' ? 'active' : ''}`
-            }
-            style={{ fontSize: 14 }}
-          >
-            <i className="bi bi-building"></i>
-            <span>Empresas</span>
-          </NavLink>
-
-          <NavLink
-            to="/dashboard/personas?tab=empleados"
-            className={() =>
-              `menu-item ${tabPersonasEmpresas === 'empleados' ? 'active' : ''}`
-            }
-            style={{ fontSize: 14 }}
-          >
-            <i className="bi bi-person-badge"></i>
-            <span>Empleados</span>
-          </NavLink>
-
-          <NavLink
-            to="/dashboard/personas?tab=usuarios"
-            className={() =>
-              `menu-item ${tabPersonasEmpresas === 'usuarios' ? 'active' : ''}`
-            }
-            style={{ fontSize: 14 }}
-          >
-            <i className="bi bi-person-lock"></i>
-            <span>Usuarios</span>
-          </NavLink>
-
-          <NavLink
-            to="/dashboard/personas?tab=clientes"
-            className={() =>
-              `menu-item ${tabPersonasEmpresas === 'clientes' ? 'active' : ''}`
-            }
-            style={{ fontSize: 14 }}
-          >
-            <i className="bi bi-people"></i>
-            <span>Clientes</span>
-          </NavLink>
-
-          <NavLink
-            to="/dashboard/personas?tab=planillas"
-            className={() =>
-              `menu-item ${tabPersonasEmpresas === 'planillas' ? 'active' : ''}`
-            }
-            style={{ fontSize: 14 }}
-          >
-            <i className="bi bi-cash-stack"></i>
-            <span>Planillas / Nóminas</span>
-          </NavLink>
-
-          <NavLink
-            to="/dashboard/personas?tab=biometricos"
-            className={() =>
-              `menu-item ${tabPersonasEmpresas === 'biometricos' ? 'active' : ''}`
-            }
-            style={{ fontSize: 14 }}
-          >
-            <i className="bi bi-fingerprint"></i>
-            <span>Registros Biométricos</span>
-          </NavLink>
-
-        </div>
-      )}
-    </div>
+  const renderLink = (item) => (
+    <NavLink
+      key={item.path}
+      to={item.path}
+      end={item.path === '/dashboard'}
+      className={({ isActive }) => `menu-item ${resolveIsActive(item, isActive) ? 'active' : ''}`}
+      title={isCollapsed ? item.name : undefined}
+    >
+      <span className="menu-item-icon" aria-hidden="true">
+        <i className={`bi ${item.icon}`} />
+      </span>
+      <span className="menu-item-label">{item.name}</span>
+    </NavLink>
   );
-}
 
+  const groupedItems = (() => {
+    const grouped = GROUPS.map((group) => ({
+      ...group,
+      items: sidebarItems.filter((item) => group.itemKeys.includes(item.key))
+    })).filter((group) => group.items.length > 0);
 
+    const groupedKeys = new Set(grouped.flatMap((group) => group.items.map((item) => item.key)));
+    const otherItems = sidebarItems.filter((item) => !groupedKeys.has(item.key));
 
-          // ==============================
-          // RESTO DE OPCIONES
-          // ==============================
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/dashboard'}
-              className={({ isActive }) => `menu-item ${isActive ? 'active' : ''}`}
-              title={isCollapsed ? item.name : ''}
-            >
-              <i className={`bi ${item.icon}`}></i>
-              <span>{item.name}</span>
-            </NavLink>
-          );
-        })}
-      </div>
+    if (otherItems.length > 0) {
+      grouped.push({ key: 'otros', label: 'Otros', itemKeys: [], items: otherItems });
+    }
 
-      <div className="sidebar-footer">
-        <div className="user-profile" onClick={handleLogout} title="Cerrar Sesión">
-          <div className="user-avatar">{userInitial}</div>
-          <div className="user-info">
-            <span className="user-name">{userName}</span>
-            <span className="user-email">{userRole}</span>
-          </div>
+    return grouped;
+  })();
+
+  return (
+    <aside className={`sidebar-wrapper ${isCollapsed ? 'collapsed' : ''}`} aria-label="Navegacion principal">
+      <div className="sidebar-panel">
+        <div className="sidebar-header">
+          <NavLink className="brand" to="/dashboard" title="Jonny's Smart">
+            <img className="brand-logo" src={logo} alt="Jonny's Smart" />
+            <div className="brand-copy">
+              <h4>Jonny's Smart</h4>
+              <p>Sistema de gestion</p>
+            </div>
+          </NavLink>
+
+          <button
+            type="button"
+            className="collapse-btn"
+            onClick={toggleSidebar}
+            aria-label={isCollapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
+            aria-expanded={!isCollapsed}
+            aria-controls="sidebar-menu-principal"
+          >
+            <i className={`bi ${isCollapsed ? 'bi-chevron-right' : 'bi-chevron-left'}`} />
+          </button>
         </div>
+
+        <nav id="sidebar-menu-principal" className="sidebar-menu" aria-label="Modulos del sistema">
+          {loading
+            ? null
+            : groupedItems.map((group) => (
+              <section key={group.key} className="menu-group" aria-label={`Grupo ${group.label}`}>
+                <div className="menu-group-title">{group.label}</div>
+                <div className="menu-group-items">{group.items.map((item) => renderLink(item))}</div>
+              </section>
+            ))}
+        </nav>
       </div>
-    </div>
+    </aside>
   );
 };
 

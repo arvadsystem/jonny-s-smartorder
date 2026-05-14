@@ -1,0 +1,390 @@
+.dashboard-shell .sidebar-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--shell-sidebar-current);
+  z-index: 1200;
+  transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 36px 36px 0;
+  box-shadow: none !important;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.dashboard-shell .sidebar-panel {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at top, rgba(255, 190, 118, 0.12), transparent 20%),
+    linear-gradient(180deg, var(--shell-sidebar-start) 0%, var(--shell-sidebar-end) 100%);
+  border: 1px solid var(--shell-sidebar-border);
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 40px rgba(20, 8, 3, 0.28),
+    0 6px 14px rgba(20, 8, 3, 0.12);
+  overflow: hidden;
+}
+
+.dashboard-shell .sidebar-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border-right: 1px solid rgba(255, 220, 178, 0.18);
+  border-top-right-radius: inherit;
+  border-bottom-right-radius: inherit;
+  pointer-events: none;
+}
+
+.dashboard-shell .sidebar-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 220, 178, 0.42), transparent);
+}
+
+.dashboard-shell .sidebar-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 22px 18px 18px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+}
+
+.dashboard-shell .brand {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: 14px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.dashboard-shell .brand-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  object-fit: cover;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.dashboard-shell .brand-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dashboard-shell .brand-copy h4 {
+  margin: 0;
+  color: #fae6c9;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+}
+
+.dashboard-shell .brand-copy p {
+  margin: 0;
+  color: rgba(245, 214, 182, 0.74);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.dashboard-shell .collapse-btn {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 220, 178, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5d7b1;
+  transition: background-color 200ms ease, border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+}
+
+.dashboard-shell .collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 220, 178, 0.3);
+  transform: translateY(-1px);
+}
+
+.dashboard-shell .collapse-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(245, 176, 102, 0.2);
+}
+
+.dashboard-shell .sidebar-menu {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 8px 14px 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0) transparent;
+}
+
+.dashboard-shell .sidebar-wrapper:not(.collapsed) .sidebar-menu {
+  gap: 10px;
+  padding-bottom: 14px;
+}
+
+.dashboard-shell .sidebar-wrapper:not(.collapsed) .sidebar-menu .menu-item {
+  min-height: 40px !important;
+}
+
+.dashboard-shell .menu-group {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.dashboard-shell .menu-group + .menu-group {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 220, 178, 0.1);
+}
+
+.dashboard-shell .menu-group:last-child {
+  padding-bottom: 10px;
+}
+
+.dashboard-shell .menu-group-title {
+  padding: 0 10px;
+  color: rgba(245, 214, 182, 0.68);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.dashboard-shell .menu-group-items {
+  display: grid;
+  grid-auto-rows: max-content;
+  gap: 5px;
+}
+
+.dashboard-shell .sidebar-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dashboard-shell .sidebar-menu::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0);
+  border: 1px solid transparent;
+}
+
+.dashboard-shell .sidebar-menu:hover::-webkit-scrollbar-thumb,
+.dashboard-shell .sidebar-menu:focus-within::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.dashboard-shell .sidebar-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dashboard-shell .sidebar-menu .menu-item {
+  min-height: 40px !important;
+  display: grid !important;
+  grid-template-columns: 36px 1fr !important;
+  align-items: center;
+  gap: 11px !important;
+  padding: 6px 10px !important;
+  border-radius: 16px !important;
+  color: rgba(250, 236, 220, 0.9);
+  text-decoration: none;
+  border: 1px solid transparent;
+  position: relative;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.dashboard-shell .sidebar-menu .menu-item-icon {
+  width: 36px !important;
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 1rem;
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.dashboard-shell .sidebar-menu .menu-item-label {
+  min-width: 0;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
+.dashboard-shell .sidebar-menu .menu-item:hover {
+  color: #fff9f1;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform: translateX(1px);
+}
+
+.dashboard-shell .sidebar-menu .menu-item:hover .menu-item-icon {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateX(1px);
+}
+
+.dashboard-shell .sidebar-menu .menu-item.active {
+  color: #fffaf4;
+  background: linear-gradient(90deg, rgba(143, 67, 20, 0.96), rgba(181, 98, 44, 0.94));
+  border-color: rgba(255, 212, 167, 0.32);
+  box-shadow: 0 10px 20px rgba(139, 72, 23, 0.24);
+}
+
+.dashboard-shell .sidebar-menu .menu-item.active .menu-item-icon {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dashboard-shell .sidebar-menu .menu-item.active::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: -3px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffd7a8, #ffbe78);
+  box-shadow: 0 0 0 1px rgba(255, 231, 201, 0.22);
+}
+
+.dashboard-shell .sidebar-menu .menu-item-icon i {
+  display: block;
+  line-height: 1;
+}
+
+.dashboard-shell .sidebar-menu .menu-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(245, 176, 102, 0.22), 0 0 0 5px rgba(19, 8, 4, 0.5);
+  border-color: rgba(255, 222, 190, 0.36);
+}
+
+.dashboard-shell.shell--collapsed .sidebar-header,
+.dashboard-shell .sidebar-wrapper.collapsed .sidebar-header {
+  position: relative;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 10px 12px;
+}
+
+.dashboard-shell.shell--collapsed .brand,
+.dashboard-shell .sidebar-wrapper.collapsed .brand {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  text-align: center;
+}
+
+.dashboard-shell.shell--collapsed .collapse-btn,
+.dashboard-shell .sidebar-wrapper.collapsed .collapse-btn {
+  position: static;
+  margin-top: 0;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  border: 1px solid rgba(255, 222, 190, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff7eb;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.dashboard-shell.shell--collapsed .brand-logo,
+.dashboard-shell .sidebar-wrapper.collapsed .brand-logo {
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+}
+
+.dashboard-shell.shell--collapsed .brand-copy,
+.dashboard-shell .sidebar-wrapper.collapsed .brand-copy,
+.dashboard-shell.shell--collapsed .sidebar-menu .menu-item-label,
+.dashboard-shell .sidebar-wrapper.collapsed .sidebar-menu .menu-item-label {
+  display: none;
+}
+
+.dashboard-shell.shell--collapsed .sidebar-menu,
+.dashboard-shell .sidebar-wrapper.collapsed .sidebar-menu {
+  padding-inline: 9px;
+  padding-bottom: 10px;
+  gap: 7px;
+}
+
+.dashboard-shell.shell--collapsed .menu-group,
+.dashboard-shell .sidebar-wrapper.collapsed .menu-group {
+  gap: 4px;
+}
+
+.dashboard-shell.shell--collapsed .menu-group + .menu-group,
+.dashboard-shell .sidebar-wrapper.collapsed .menu-group + .menu-group {
+  margin-top: 4px;
+  padding-top: 6px;
+}
+
+.dashboard-shell.shell--collapsed .menu-group:last-child,
+.dashboard-shell .sidebar-wrapper.collapsed .menu-group:last-child {
+  padding-bottom: 6px;
+}
+
+.dashboard-shell.shell--collapsed .menu-group-title,
+.dashboard-shell .sidebar-wrapper.collapsed .menu-group-title {
+  display: none;
+}
+
+.dashboard-shell.shell--collapsed .sidebar-menu .menu-item,
+.dashboard-shell .sidebar-wrapper.collapsed .sidebar-menu .menu-item {
+  grid-template-columns: 1fr !important;
+  justify-items: center;
+  padding: 7px !important;
+}
+
+.dashboard-shell.shell--collapsed .sidebar-menu .menu-item > .menu-item-icon,
+.dashboard-shell .sidebar-wrapper.collapsed .sidebar-menu .menu-item > .menu-item-icon {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.dashboard-shell.shell--collapsed .sidebar-menu .menu-item-icon,
+.dashboard-shell .sidebar-wrapper.collapsed .sidebar-menu .menu-item-icon {
+  width: 40px !important;
+  height: 40px !important;
+}

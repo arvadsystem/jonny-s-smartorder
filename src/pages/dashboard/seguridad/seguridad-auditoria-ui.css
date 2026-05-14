@@ -1,0 +1,459 @@
+.sec-audit-profile-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 280px) 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.sec-audit-profile-focus {
+  border: 1px solid rgba(228, 227, 209, 0.95);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.sec-audit-profile-focus-name {
+  background: linear-gradient(145deg, #11b8a7, #17b0c2);
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.sec-audit-profile-focus-avatar {
+  min-height: 170px;
+  border-top: 1px solid rgba(228, 227, 209, 0.95);
+  border-bottom: 1px solid rgba(228, 227, 209, 0.95);
+  background: #f7f6ef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7a1e24;
+}
+
+.sec-audit-profile-focus-avatar i {
+  font-size: 5.8rem;
+  line-height: 1;
+}
+
+.sec-audit-profile-focus-stats {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sec-audit-profile-focus-status .badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sec-audit-profile-focus-status {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.sec-audit-header-actions {
+  justify-content: flex-end;
+}
+
+.sec-audit-tab-toolbar {
+  border-radius: 16px;
+  border: 1px solid rgba(228, 227, 209, 0.95);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), #fbfbf6);
+  padding: 10px 12px;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.sec-audit-filters-toolbar {
+  border: 1px solid rgba(228, 227, 209, 0.95);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), #fbfbf6);
+  padding: 12px;
+}
+
+.sec-audit-filter-col {
+  min-width: 0;
+}
+
+.sec-audit-filter-label {
+  margin-bottom: 6px;
+  color: rgba(82, 44, 34, 0.84);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.sec-audit-filter-control.form-control,
+.sec-audit-filter-control.form-select {
+  min-height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(205, 196, 170, 0.9);
+  background-color: #fff;
+  color: #442f21;
+  font-size: 0.86rem;
+  box-shadow: none;
+}
+
+.sec-audit-filter-control.form-select {
+  background-image: var(--bs-form-select-bg-img), var(--bs-form-select-bg-icon, none);
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 16px 12px;
+  padding-right: 2.25rem;
+}
+
+.sec-audit-filter-control.form-control::placeholder {
+  color: rgba(120, 92, 72, 0.68);
+}
+
+.sec-audit-filter-control.form-control:focus,
+.sec-audit-filter-control.form-select:focus {
+  border-color: rgba(122, 30, 36, 0.42);
+  box-shadow: 0 0 0 0.16rem rgba(122, 30, 36, 0.12);
+}
+
+.sec-audit-filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.sec-loginlogs-filter-actions {
+  justify-content: center;
+}
+
+.sec-audit-filter-btn {
+  min-height: 38px;
+  border-radius: 999px !important;
+  padding: 0 16px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-weight: 700 !important;
+}
+
+.sec-audit-filter-btn.btn-primary {
+  border: 1px solid rgba(155, 39, 36, 0.7) !important;
+  background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
+}
+
+.sec-audit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(220, 219, 199, 0.9);
+  background: #fff;
+  padding: 0.28rem 0.64rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #5a4639;
+}
+
+.sec-audit-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid rgba(228, 227, 209, 0.95);
+}
+
+.sec-audit-tabs-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sec-audit-tabs-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sec-audit-tabs-results {
+  color: #5a4639;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sec-audit-tab-btn {
+  border: 1px solid rgba(220, 219, 199, 0.95);
+  background: #fff;
+  border-radius: 999px;
+  color: #5a4639;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.34rem 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.sec-audit-tab-btn.is-active {
+  border-color: rgba(122, 30, 36, 0.35);
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  color: #fff;
+}
+
+.sec-audit-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 14px 20px;
+  align-content: start;
+  border: 1px solid rgba(228, 227, 209, 0.95);
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px 16px;
+}
+
+.sec-audit-profile-item {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 0;
+}
+
+.sec-audit-profile-item .label {
+  color: #8a8160;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sec-audit-profile-item .value {
+  margin-top: 4px;
+  color: #2d2a1e;
+  font-size: 0.9rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.sec-audit-table-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sec-audit-message {
+  margin: 0 16px 10px;
+}
+
+@media (max-width: 768px) {
+  .sec-audit-filters-toolbar {
+    padding: 10px;
+  }
+
+  .sec-audit-filter-actions {
+    width: 100%;
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .sec-audit-filter-actions .sec-audit-filter-btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sec-audit-tabs-list {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+  }
+
+  .sec-audit-tabs-actions {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 992px) {
+  .sec-audit-profile-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .sec-audit-profile-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 576px) {
+  .sec-audit-profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   AJUSTES DE HOMOLOGACION CON INVENTARIO
+   ========================================================================== */
+
+.sec-audit-filters-toolbar.sec-filters-panel {
+  border-radius: 16px;
+}
+
+.sec-audit-filter-btn.inv-prod-toolbar-btn {
+  min-height: 38px;
+}
+
+.sec-audit-filter-btn.sec-btn-primary {
+  color: #ffffff !important;
+}
+
+.sec-audit-filter-btn.sec-btn-ghost {
+  color: #5a4639 !important;
+}
+
+.sec-audit-tabs {
+  margin-top: 8px;
+  border-bottom-color: rgba(228, 227, 209, 0.95);
+}
+
+.sec-audit-tab-btn {
+  min-height: 34px;
+}
+
+.sec-audit-profile-focus {
+  border-radius: 16px;
+  box-shadow: 0 10px 20px rgba(var(--c-shadow-rgb), 0.08);
+}
+
+/* ==========================================================================
+   AJUSTE RESPONSIVE - SELECTS POLITICAS DE CONTRASENA
+   ========================================================================== */
+
+.sec-password-policy-shell .sec-audit-filter-control.form-select {
+  min-height: 36px;
+  font-size: 0.83rem;
+  line-height: 1.15;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
+.sec-password-policy-shell .sec-audit-filter-control.form-select option {
+  font-size: 0.83rem;
+  line-height: 1.2;
+}
+
+.sec-password-policy-shell .sec-policy-mobile-toggle {
+  display: none;
+}
+
+.sec-password-policy-shell .sec-policy-mobile-option {
+  flex: 1 1 0;
+  min-height: 32px;
+  border-radius: 999px !important;
+  border: 1px solid rgba(205, 196, 170, 0.9) !important;
+  background: #ffffff !important;
+  color: #5a4639 !important;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0 10px !important;
+}
+
+.sec-password-policy-shell .sec-policy-mobile-option.is-active {
+  border-color: rgba(122, 30, 36, 0.34) !important;
+  background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 16px rgba(122, 30, 36, 0.22);
+}
+
+.sec-password-policy-shell .sec-policy-mobile-option:disabled {
+  opacity: 0.56;
+  box-shadow: none;
+}
+
+@media (max-width: 992px) {
+  .sec-password-policy-shell .sec-policy-mobile-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sec-password-policy-shell .sec-policy-desktop-select {
+    display: none;
+  }
+
+  .sec-password-policy-shell .sec-audit-filter-control.form-select {
+    min-height: 34px;
+    font-size: 0.8rem;
+    padding-top: 0.26rem;
+    padding-bottom: 0.26rem;
+  }
+
+  .sec-password-policy-shell .sec-audit-filter-control.form-select option {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .sec-password-policy-shell .sec-audit-filter-control.form-select {
+    min-height: 32px;
+    font-size: 0.78rem;
+    padding-top: 0.22rem;
+    padding-bottom: 0.22rem;
+  }
+
+  .sec-password-policy-shell .sec-audit-filter-control.form-select option {
+    font-size: 0.78rem;
+  }
+}
+
+.sec-audit-profile-focus-name {
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  letter-spacing: 0.015em;
+}
+
+.sec-audit-profile-focus-avatar {
+  background: linear-gradient(180deg, rgba(243, 241, 216, 0.6), #ffffff);
+}
+
+.sec-audit-profile-focus-status .badge {
+  min-width: 110px;
+  text-align: center;
+}
+
+.sec-audit-profile-grid {
+  border-radius: 16px;
+  box-shadow: 0 10px 20px rgba(var(--c-shadow-rgb), 0.08);
+}
+
+.sec-audit-profile-item .value {
+  color: #241812;
+}
+
+.sec-audit-message.alert-success {
+  border-color: rgba(45, 107, 102, 0.3);
+  background: rgba(45, 107, 102, 0.1);
+  color: #1f594f;
+}
+
+.sec-audit-message.alert-info {
+  border-color: rgba(66, 121, 191, 0.3);
+  background: rgba(66, 121, 191, 0.1);
+  color: #1f4e7f;
+}
+
+.sec-audit-message.alert-danger {
+  border-color: rgba(178, 45, 48, 0.32);
+  background: rgba(178, 45, 48, 0.11);
+  color: #6c1b1f;
+}

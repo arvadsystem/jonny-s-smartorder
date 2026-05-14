@@ -1,55 +1,75 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { inventarioService } from '../../services/inventarioService';
+import SinPermiso from '../../components/common/SinPermiso';
+import { usePermisos } from '../../context/PermisosContext';
+import { getAllowedTabs, MODULE_PRIMARY_PERMISSION, PERMISSIONS } from '../../utils/permissions';
 
 import CategoriasTab from './inventario/CategoriasTab.jsx';
 import InsumosTab from './inventario/InsumosTab.jsx';
-
 import ProductosTab from './inventario/ProductosTab.jsx';
 import AlmacenesTab from './inventario/AlmacenesTab.jsx';
-import MovimientosTab from './inventario/MovimientosTab.jsx';
-import AlertasTab from './inventario/AlertasTab.jsx';
+import OrdenesCompraTab from './inventario/OrdenesCompraTab.jsx';
+import MobiliarioTab from './inventario/MobiliarioTab.jsx';
+
+// AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
+// AM: agrega tab de workflow de ordenes de compra en inventario.
+const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'ordenes_compra', 'mobiliario'];
 
 const Inventario = () => {
-  // ==============================
-  // TAB ACTIVO (DESDE ?tab=)
-  // ==============================
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState('categorias'); // categorias | insumos | productos | almacenes | movimientos | alertas
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
+
+  const allowedTabs = useMemo(
+    () => getAllowedTabs('inventario', permisos, { isSuperAdmin }).map((tab) => tab.key),
+    [isSuperAdmin, permisos]
+  );
+  const fallbackTab = allowedTabs[0] || null;
+  const rawTab = (searchParams.get('tab') || fallbackTab || '').toLowerCase();
+  // AM: controla tabs invalidos desde querystring para no romper fallback por permisos.
+  const normalizedTab =
+    rawTab === 'movimientos'
+      ? 'almacenes'
+      : INVENTARIO_TAB_KEYS.includes(rawTab)
+      ? rawTab
+      : fallbackTab;
+  const activeTab = fallbackTab && allowedTabs.includes(normalizedTab) ? normalizedTab : fallbackTab;
+  const canVerCategoriasProductos = canAny([PERMISSIONS.INVENTARIO_CATEGORIAS_VER]);
+  const canVerCategoriasInsumos = canAny([PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_VER]);
+  const needsCategoriasProductos =
+    activeTab === 'categorias' || activeTab === 'productos' || activeTab === 'insumos';
+  const needsCategoriasInsumos = activeTab === 'categorias' || activeTab === 'insumos';
 
   useEffect(() => {
-    const t = (searchParams.get('tab') || 'categorias').toLowerCase();
+    if (permisosLoading || !activeTab) return;
+    if (normalizedTab === activeTab) return;
 
-    setActiveTab(
-      t === 'insumos'
-        ? 'insumos'
-        : t === 'productos'
-        ? 'productos'
-        : t === 'almacenes'
-        ? 'almacenes'
-        : t === 'movimientos'
-        ? 'movimientos'
-        : t === 'alertas'
-        ? 'alertas'
-        : 'categorias'
-    );
-  }, [searchParams]);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', activeTab);
+    setSearchParams(next, { replace: true });
+  }, [activeTab, normalizedTab, permisosLoading, searchParams, setSearchParams]);
 
-  // ==============================
-  // ESTADOS (CATEGORÍAS) - SE MANTIENEN AQUÍ PARA REUTILIZAR EN PRODUCTOS
-  // ==============================
   const [categorias, setCategorias] = useState([]);
   const [loadingCategorias, setLoadingCategorias] = useState(true);
   const [errorCategorias, setErrorCategorias] = useState('');
+  // NEW: controla si el tab de Categorias debe incluir registros inactivos en el GET.
+  // WHY: el backend ahora filtra activos por defecto y el tab admin necesita un toggle explicito.
+  // IMPACT: solo afecta la carga de CategoriasTab; contratos/endpoints se mantienen.
+  const [categoriasIncludeInactive, setCategoriasIncludeInactive] = useState(false);
+  // NEW: estado del catálogo de categorías de insumos para la vista unificada de Categorías e integración en Insumos.
+  // WHY: cargar ambos catálogos en Inventario y compartirlos sin refetches innecesarios entre submódulos.
+  // IMPACT: solo agrega estado local y rutas de carga para `/categorias_insumos`.
+  const [categoriasInsumos, setCategoriasInsumos] = useState([]);
+  const [loadingCategoriasInsumos, setLoadingCategoriasInsumos] = useState(true);
+  const [errorCategoriasInsumos, setErrorCategoriasInsumos] = useState('');
+  const [categoriasInsumosIncludeInactive, setCategoriasInsumosIncludeInactive] = useState(false);
 
-  // ==============================
-  // TOAST PROFESIONAL (MENSAJES)
-  // ==============================
   const [toast, setToast] = useState({
     show: false,
     title: '',
     message: '',
-    variant: 'success' // success | danger | warning | info
+    variant: 'success'
   });
 
   useEffect(() => {
@@ -58,74 +78,140 @@ const Inventario = () => {
     return () => clearTimeout(t);
   }, [toast.show]);
 
-  const openToast = (title, message, variant = 'success') => {
+  // NEW: callbacks estables para evitar que los submodulos de Inventario vuelvan a disparar efectos por cada render del padre.
+  // WHY: `InsumosTab` y otros tabs memoizan helpers sobre `openToast`; si cambia de referencia al mostrar/ocultar el toast, sus efectos de carga pueden re-ejecutarse.
+  // IMPACT: se elimina el refetch visual inducido por el toast sin alterar el comportamiento ni el contenido de las notificaciones.
+  const openToast = useCallback((title, message, variant = 'success') => {
     setToast({ show: true, title, message, variant });
-  };
+  }, []);
 
-  const closeToast = () => {
+  // NEW: cierre estable del toast para no propagar renders evitables hacia los submodulos.
+  // WHY: mantener las props de notificacion con referencias consistentes durante todo el ciclo del componente.
+  // IMPACT: el toast se sigue cerrando igual, pero ya no fuerza cargas derivadas por cambio de callback.
+  const closeToast = useCallback(() => {
     setToast((s) => ({ ...s, show: false }));
+  }, []);
+
+  const toastIconClass = (variant) => {
+    if (variant === 'danger') return 'bi bi-x-octagon-fill';
+    if (variant === 'warning') return 'bi bi-exclamation-triangle-fill';
+    if (variant === 'info') return 'bi bi-info-circle-fill';
+    return 'bi bi-check2-circle';
   };
 
-  const toastIcon = (variant) => {
-    if (variant === 'danger') return '❌';
-    if (variant === 'warning') return '⚠️';
-    if (variant === 'info') return 'ℹ️';
-    return '✅';
-  };
-
-  const toastBorderClass = (variant) => {
-    if (variant === 'danger') return 'border-danger';
-    if (variant === 'warning') return 'border-warning';
-    if (variant === 'info') return 'border-info';
-    return 'border-success';
-  };
-
-  // ==============================
-  // CARGAR CATEGORÍAS (SE USA EN: CategoriasTab y ProductosTab)
-  // ==============================
-  const cargarCategorias = async () => {
+  const cargarCategorias = useCallback(async (options = {}) => {
+    if (!canVerCategoriasProductos) {
+      setCategorias([]);
+      setLoadingCategorias(false);
+      setErrorCategorias('');
+      return;
+    }
+    const incluirInactivos =
+      typeof options?.incluirInactivos === 'boolean'
+        ? options.incluirInactivos
+        : categoriasIncludeInactive;
+    // NEW: persiste la preferencia local del toggle de "Mostrar inactivos" para recargas posteriores.
+    // WHY: reusar `reloadCategorias()` existente desde el tab sin perder el estado del filtro admin.
+    // IMPACT: llamadas existentes sin argumentos siguen funcionando.
+    if (typeof options?.incluirInactivos === 'boolean') {
+      setCategoriasIncludeInactive(options.incluirInactivos);
+    }
     setLoadingCategorias(true);
     setErrorCategorias('');
     try {
-      const data = await inventarioService.getCategorias();
+      const data = await inventarioService.getCategorias({ incluirInactivos });
       setCategorias(Array.isArray(data) ? data : []);
     } catch (e) {
-      const msg = e?.message || 'ERROR CARGANDO CATEGORÍAS';
+      const msg = e?.message || 'ERROR CARGANDO CATEGORIAS';
       setErrorCategorias(msg);
       openToast('ERROR', msg, 'danger');
     } finally {
       setLoadingCategorias(false);
     }
-  };
+  }, [canVerCategoriasProductos, categoriasIncludeInactive]);
+
+  const cargarCategoriasInsumos = useCallback(async (options = {}) => {
+    if (!canVerCategoriasInsumos) {
+      setCategoriasInsumos([]);
+      setLoadingCategoriasInsumos(false);
+      setErrorCategoriasInsumos('');
+      return;
+    }
+    const incluirInactivos =
+      typeof options?.incluirInactivos === 'boolean'
+        ? options.incluirInactivos
+        : categoriasInsumosIncludeInactive;
+    // NEW: persiste la preferencia del toggle de categorías de insumos para recargas posteriores.
+    // WHY: reutilizar `reloadCategoriasInsumos()` desde el panel unificado sin perder el estado del filtro admin.
+    // IMPACT: llamadas existentes sin argumentos siguen funcionando (solo aplica al nuevo catálogo).
+    if (typeof options?.incluirInactivos === 'boolean') {
+      setCategoriasInsumosIncludeInactive(options.incluirInactivos);
+    }
+    setLoadingCategoriasInsumos(true);
+    setErrorCategoriasInsumos('');
+    try {
+      const data = await inventarioService.getCategoriasInsumos({ incluirInactivos });
+      setCategoriasInsumos(Array.isArray(data) ? data : []);
+    } catch (e) {
+      const msg = e?.message || 'ERROR CARGANDO CATEGORIAS DE INSUMOS';
+      setErrorCategoriasInsumos(msg);
+      openToast('ERROR', msg, 'danger');
+    } finally {
+      setLoadingCategoriasInsumos(false);
+    }
+  }, [canVerCategoriasInsumos, categoriasInsumosIncludeInactive]);
 
   useEffect(() => {
-    cargarCategorias();
+    if (needsCategoriasProductos) void cargarCategorias();
+    if (needsCategoriasInsumos) void cargarCategoriasInsumos();
+    // NEW: mount-only para evitar doble fetch cuando cambia la preferencia y se recarga manualmente desde el tab.
+    // WHY: `cargarCategorias` depende de `categoriasIncludeInactive`.
+    // IMPACT: la carga inicial se mantiene; recargas posteriores siguen entrando por `reloadCategorias`.
+  }, [cargarCategorias, cargarCategoriasInsumos, needsCategoriasInsumos, needsCategoriasProductos]);
+
+  // NEW: patch local de categorias en el estado compartido del modulo Inventario.
+  // WHY: permitir que CategoriasTab actualice una sola categoria (edit/estado) sin refetch global visible.
+  // IMPACT: Productos/Insumos reciben el cambio inmediatamente via props, sin alterar contratos de API.
+  const patchCategoriaLocal = useCallback((idCategoria, patch) => {
+    const idNum = Number(idCategoria ?? 0);
+    if (!idNum || !patch || typeof patch !== 'object') return;
+    setCategorias((prev) =>
+      (Array.isArray(prev) ? prev : []).map((item) =>
+        Number(item?.id_categoria_producto ?? 0) === idNum ? { ...item, ...patch } : item
+      )
+    );
   }, []);
+
+  // NEW: patch local del catálogo de categorías de insumos compartido en Inventario.
+  // WHY: reflejar ediciones/cambios de estado desde el panel unificado sin recargar globalmente.
+  // IMPACT: solo sincroniza `categoriasInsumos` en memoria; no cambia contratos de API.
+  const patchCategoriaInsumoLocal = useCallback((idCategoria, patch) => {
+    const idNum = Number(idCategoria ?? 0);
+    if (!idNum || !patch || typeof patch !== 'object') return;
+    setCategoriasInsumos((prev) =>
+      (Array.isArray(prev) ? prev : []).map((item) =>
+        Number(item?.id_categoria_insumo ?? 0) === idNum ? { ...item, ...patch } : item
+      )
+    );
+  }, []);
+
+  const toastVariant = toast.variant || 'success';
+
+  if (permisosLoading) {
+    return null;
+  }
+
+  if (!fallbackTab) {
+    return (
+      <SinPermiso
+        permiso={MODULE_PRIMARY_PERMISSION.inventario}
+        detalle="No tienes acceso a ningun submodulo de Inventario."
+      />
+    );
+  }
 
   return (
     <div className="container-fluid p-3">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <div>
-          <h3 className="m-0">Inventario</h3>
-          <div className="text-muted small">
-            {activeTab === 'categorias' && (
-              <>
-                Categorías: <span className="fw-semibold">{categorias.length}</span>
-              </>
-            )}
-
-            {activeTab === 'insumos' && <>Insumos</>}
-            {activeTab === 'productos' && <>Productos</>}
-            {activeTab === 'almacenes' && <>Almacenes</>}
-            {activeTab === 'movimientos' && <>Movimientos (Kardex)</>}
-            {activeTab === 'alertas' && <>Alertas de stock</>}
-          </div>
-        </div>
-      </div>
-
-      {/* =====================================
-          TAB: CATEGORÍAS (PRO)
-          ===================================== */}
       {activeTab === 'categorias' && (
         <CategoriasTab
           categorias={categorias}
@@ -133,58 +219,47 @@ const Inventario = () => {
           error={errorCategorias}
           setError={setErrorCategorias}
           reloadCategorias={cargarCategorias}
+          includeInactive={categoriasIncludeInactive}
+          onIncludeInactiveChange={setCategoriasIncludeInactive}
+          onCategoriaPatched={patchCategoriaLocal}
+          categoriasInsumos={categoriasInsumos}
+          loadingCategoriasInsumos={loadingCategoriasInsumos}
+          errorCategoriasInsumos={errorCategoriasInsumos}
+          setErrorCategoriasInsumos={setErrorCategoriasInsumos}
+          reloadCategoriasInsumos={cargarCategoriasInsumos}
+          includeInactiveCategoriasInsumos={categoriasInsumosIncludeInactive}
+          onIncludeInactiveCategoriasInsumosChange={setCategoriasInsumosIncludeInactive}
+          onCategoriaInsumoPatched={patchCategoriaInsumoLocal}
           openToast={openToast}
         />
       )}
 
-      {/* =====================================
-          TAB: INSUMOS (PRO)
-          ===================================== */}
-      {activeTab === 'insumos' && <InsumosTab openToast={openToast} />}
-
-      {/* =====================================
-          TAB: PRODUCTOS
-          ===================================== */}
+      {activeTab === 'insumos' && <InsumosTab categorias={categorias} categoriasInsumos={categoriasInsumos} openToast={openToast} />}
       {activeTab === 'productos' && <ProductosTab categorias={categorias} openToast={openToast} />}
-
-      {/* =====================================
-          TAB: ALMACENES
-          ===================================== */}
       {activeTab === 'almacenes' && <AlmacenesTab openToast={openToast} />}
+      {activeTab === 'ordenes_compra' && <OrdenesCompraTab openToast={openToast} />}
+      {activeTab === 'mobiliario' && <MobiliarioTab openToast={openToast} />}
 
-      {/* =====================================
-          TAB: MOVIMIENTOS
-          ===================================== */}
-      {activeTab === 'movimientos' && <MovimientosTab openToast={openToast} />}
-
-      {/* =====================================
-          TAB: ALERTAS
-          ===================================== */}
-      {activeTab === 'alertas' && <AlertasTab openToast={openToast} />}
-
-      {/* ==============================
-          TOAST PROFESIONAL (ARRIBA DERECHA)
-          ============================== */}
-      {toast.show && (
-        <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 2000, width: 340, maxWidth: '90vw' }}>
-          <div className={`card shadow-sm border ${toastBorderClass(toast.variant)}`}>
-            <div className="card-body p-3">
-              <div className="d-flex justify-content-between align-items-start">
-                <div className="d-flex gap-2">
-                  <div style={{ fontSize: 18 }}>{toastIcon(toast.variant)}</div>
-                  <div>
-                    <div className="fw-bold">{toast.title}</div>
-                    <div className="text-muted small">{toast.message}</div>
-                  </div>
-                </div>
-
-                <button type="button" className="btn btn-sm btn-light" onClick={closeToast}>
-                  ✕
-                </button>
-              </div>
+      {toast.show && createPortal(
+        <div className="inv-toast-wrap" role="status" aria-live="polite">
+          <div className={`inv-toast-card ${toastVariant}`}>
+            <div className="inv-toast-icon">
+              <i className={toastIconClass(toastVariant)} />
             </div>
+
+            <div className="inv-toast-content">
+              <div className="inv-toast-title">{toast.title}</div>
+              <div className="inv-toast-message">{toast.message}</div>
+            </div>
+
+            <button type="button" className="inv-toast-close" onClick={closeToast} aria-label="Cerrar notificacion">
+              <i className="bi bi-x-lg" />
+            </button>
+
+            <div className="inv-toast-progress" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

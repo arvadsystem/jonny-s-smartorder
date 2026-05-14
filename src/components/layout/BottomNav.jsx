@@ -1,184 +1,137 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
+import { usePermisos } from '../../context/PermisosContext';
+import {
+  getAllowedTabs,
+  getVisibleModuleItems
+} from '../../utils/permissions';
 
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
-
-  // ==============================
-  // ESTADO DEL "SHEET" INVENTARIO (RESPONSIVE)
-  // ==============================
+  const { isSuperAdmin, loading, permisos } = usePermisos();
   const [showInventarioSheet, setShowInventarioSheet] = useState(false);
 
-  // DETECTAR SI ESTAMOS EN INVENTARIO (PARA MARCAR ACTIVO)
   const isInInventario = location.pathname.startsWith('/dashboard/inventario');
+  const currentTab = String(new URLSearchParams(location.search || '').get('tab') || '').toLowerCase();
 
-  
-  const menuItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
-    { name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
-    { name: 'Personas/Empresas', path: '/dashboard/personas', icon: 'bi-people' },
-    { name: 'Inventario', path: '/dashboard/inventario', icon: 'bi-box-seam' },
-    { name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
-    { name: 'Menú', path: '/dashboard/menu', icon: 'bi-journal-text' },
-    { name: 'Seguridad', path: '/dashboard/seguridad', icon: 'bi-shield-lock' },
-    { name: 'Configuración', path: '/dashboard/configuracion', icon: 'bi-gear' },
-  ];
+  const visibleMenuItems = useMemo(
+    () =>
+      getVisibleModuleItems(permisos, { isSuperAdmin }).filter(
+        (item) => item.key !== 'configuracion'
+      ),
+    [isSuperAdmin, permisos]
+  );
 
-  const handleLogout = async () => {
-    
-    await logout();
-    navigate('/', { replace: true });
-  };
+  const visibleInventarioOptions = useMemo(
+    () => getAllowedTabs('inventario', permisos, { isSuperAdmin }),
+    [isSuperAdmin, permisos]
+  );
 
-  // ==============================
-  // NAVEGAR A SUBMODULO INVENTARIO (CIERRA SHEET)
-  // ==============================
   const goInventario = (tab) => {
     setShowInventarioSheet(false);
     navigate(`/dashboard/inventario?tab=${tab}`);
+  };
+
+  const resolveIsActive = (item, isActive) => {
+    if (item.key === 'planillas') {
+      return location.pathname === '/dashboard/personas' && currentTab === 'planillas';
+    }
+
+    if (item.key === 'personas' && location.pathname === '/dashboard/personas' && currentTab === 'planillas') {
+      return false;
+    }
+
+    return isActive;
   };
 
   return (
     <>
       <div className="bottom-nav">
         <div className="bottom-nav-scroll">
-          {menuItems.map((item) => {
-            // ==============================
-            // INVENTARIO: EN MOVIL ABRE MODAL DE SUBMODULOS
-            // ==============================
-            if (item.name === 'Inventario') {
+          {!loading &&
+            visibleMenuItems.map((item) => {
+              if (item.key === 'inventario') {
+                return (
+                  <button
+                    key={item.path}
+                    type="button"
+                    className={`bottom-nav-item ${isInInventario ? 'active' : ''}`}
+                    onClick={() => {
+                      if (visibleInventarioOptions.length <= 1) {
+                        const onlyTab = visibleInventarioOptions[0]?.key || 'categorias';
+                        goInventario(onlyTab);
+                        return;
+                      }
+                      setShowInventarioSheet(true);
+                    }}
+                    title={item.name}
+                  >
+                    <i className={`bi ${item.icon}`} />
+                    <span>{item.name}</span>
+                  </button>
+                );
+              }
+
               return (
-                <button
+                <NavLink
                   key={item.path}
-                  type="button"
-                  className={`bottom-nav-item ${isInInventario ? 'active' : ''}`}
-                  onClick={() => setShowInventarioSheet(true)}
-                  title="Inventario"
+                  to={item.path}
+                  end={item.path === '/dashboard'}
+                  className={({ isActive }) => `bottom-nav-item ${resolveIsActive(item, isActive) ? 'active' : ''}`}
+                  title={item.name}
                 >
-                  <i className={`bi ${item.icon}`}></i>
+                  <i className={`bi ${item.icon}`} />
                   <span>{item.name}</span>
-                </button>
+                </NavLink>
               );
-            }
-
-          
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                end={item.path === '/dashboard'}
-                className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
-                title={item.name}
-              >
-                <i className={`bi ${item.icon}`}></i>
-                <span>{item.name}</span>
-              </NavLink>
-            );
-          })}
-
-          {/*  Opción original (Salir) ahora en la barra inferior */}
-          <button type="button" className="bottom-nav-item" onClick={handleLogout} title="Salir">
-            <i className="bi bi-box-arrow-right"></i>
-            <span>Salir</span>
-          </button>
+            })}
         </div>
       </div>
 
-      {/* ==============================
-          MODAL INVENTARIO (CENTRADO)
-          ============================== */}
-      {showInventarioSheet && (
+      {showInventarioSheet ? (
         <div
-          className="modal fade show"
+          className="modal fade show inv-submodule-modal"
           style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 2000 }}
           role="dialog"
           aria-modal="true"
           onClick={() => setShowInventarioSheet(false)}
         >
-          
-          <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content shadow">
-              <div className="modal-header d-flex align-items-center justify-content-between">
-                <div className="fw-semibold">Inventario</div>
+          <div
+            className="modal-dialog modal-dialog-centered inv-submodule-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-content shadow inv-submodule-content">
+              <div className="modal-header d-flex align-items-center justify-content-between inv-submodule-header">
+                <div className="fw-semibold inv-submodule-title">Inventario</div>
                 <button
                   type="button"
-                  className="btn btn-sm btn-light"
+                  className="btn btn-sm btn-light inv-submodule-close"
                   onClick={() => setShowInventarioSheet(false)}
                 >
-                  ✕
+                  �
                 </button>
               </div>
 
-              <div className="modal-body d-grid gap-2">
-                <button
-                  type="button"
-                  className="btn btn-outline-primary"
-                  onClick={() => goInventario('categorias')}
-                >
-                  <i className="bi bi-tags me-2"></i>
-                  Categorías
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-outline-primary"
-                  onClick={() => goInventario('insumos')}
-                >
-                  <i className="bi bi-box me-2"></i>
-                  Insumos
-                </button>
-
-                
-                <button
-                  type="button"
-                  className="btn btn-outline-primary"
-                  onClick={() => goInventario('productos')}
-                >
-                  <i className="bi bi-basket2 me-2"></i>
-                  Productos
-                </button>
-
-                
-                <button
-                  type="button"
-                  className="btn btn-outline-primary"
-                  onClick={() => goInventario('almacenes')}
-                >
-                  <i className="bi bi-building me-2"></i>
-                  Almacenes
-                </button>
-
-                
-                <button
-                  type="button"
-                  className="btn btn-outline-primary"
-                  onClick={() => goInventario('movimientos')}
-                >
-                  <i className="bi bi-arrow-left-right me-2"></i>
-                  Movimientos
-                </button>
-
-                
-                <button
-                  type="button"
-                  className="btn btn-outline-primary"
-                  onClick={() => goInventario('alertas')}
-                >
-                  <i className="bi bi-exclamation-triangle me-2"></i>
-                  Alertas
-                </button>
-
-
+              <div className="modal-body d-grid gap-2 inv-submodule-body">
+                {visibleInventarioOptions.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className="btn btn-outline-primary inv-submodule-option"
+                    onClick={() => goInventario(option.key)}
+                  >
+                    <i className={`${option.icon} me-2`} />
+                    {option.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="modal-footer">
-                <div className="text-muted small me-auto">SELECCIONA UN SUBMÓDULO</div>
+              <div className="modal-footer inv-submodule-footer">
+                <div className="text-muted small me-auto inv-submodule-help">SELECCIONA UN SUBMODULO</div>
                 <button
                   type="button"
-                  className="btn btn-outline-secondary"
+                  className="btn btn-outline-secondary inv-submodule-footer-btn"
                   onClick={() => setShowInventarioSheet(false)}
                 >
                   Cerrar
@@ -187,9 +140,10 @@ const BottomNav = () => {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 };
 
 export default BottomNav;
+

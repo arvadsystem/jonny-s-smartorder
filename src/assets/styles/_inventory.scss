@@ -1,0 +1,7883 @@
+.inv-catpro-card {
+  background: #fff !important;
+  border: 1px solid rgba(237, 235, 179, 0.44) !important;
+  box-shadow: 0 8px 18px rgba(var(--c-shadow-rgb), 0.12) !important;
+}
+
+.inv-catpro-header {
+  background: #fff !important;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.46) !important;
+}
+
+.inv-catpro-title {
+  color: var(--c-text) !important;
+  font-weight: 800;
+}
+
+.inv-catpro-header .bi,
+.inv-catpro-title .bi {
+  color: var(--c-text-soft) !important;
+}
+
+.inv-catpro-body {
+  background: #fff !important;
+}
+
+.inv-catpro-loading {
+  min-height: 180px;
+  border: 1px dashed rgba(237, 235, 179, 0.8);
+  border-radius: 14px;
+  background: rgba(243, 241, 216, 0.35);
+  color: var(--c-text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.inv-catpro-carousel-wrap {
+  // AJUSTE: se elimina la grilla lateral para que las flechas flotantes de Productos se posicionen correctamente.
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+
+.inv-catpro-carousel-shell {
+  // NEW: shell paginado de Categorias alineado al patron visual de Insumos.
+  // WHY: unificar la lectura del carrusel sin tocar cards, filtros ni drawers.
+  // IMPACT: solo afecta la presentacion del carrusel en Categorias y Categorias de Insumos.
+  display: grid;
+  gap: 0.8rem;
+}
+
+.inv-catpro-carousel-meta {
+  // NEW: meta superior del carrusel con pagina actual y total visible.
+  // WHY: replicar el resumen compacto del carrusel de Insumos en Categorias.
+  // IMPACT: solo añade contexto visual; no altera datos ni interacciones.
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-catpro-carousel-stage {
+  // NEW: padding lateral para alojar flechas flotantes sin invadir la grilla.
+  // WHY: igualar la respiracion lateral del carrusel de Insumos.
+  // IMPACT: solo cambia el layout del stage.
+  padding: 0.35rem 2.85rem;
+}
+
+.inv-catpro-carousel-nav {
+  width: 38px;
+  border: 1px solid rgba(157, 150, 112, 0.35) !important;
+  border-radius: 12px;
+  background: #F3F1D8 !important;
+  color: #522C22 !important;
+  box-shadow: none !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inv-catpro-carousel-nav:hover:not(:disabled) {
+  border-color: rgba(178, 45, 48, 0.5) !important;
+  color: #B22D30 !important;
+  box-shadow: 0 2px 8px rgba(var(--c-shadow-rgb), 0.18) !important;
+}
+
+.inv-catpro-carousel-nav:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.inv-catpro-carousel {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  display: flex;
+  gap: 14px;
+  // AJUSTE: padding lateral para replicar separacion del carrusel de Productos y evitar solape con flechas.
+  padding: 2px 16px 10px;
+}
+
+.inv-catpro-carousel::-webkit-scrollbar {
+  height: 8px;
+}
+
+.inv-catpro-carousel::-webkit-scrollbar-thumb {
+  background: rgba(157, 150, 112, 0.38);
+  border-radius: 999px;
+}
+
+.inv-catpro-page {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+.inv-catpro-grid-page {
+  display: grid;
+  gap: 12px;
+  animation: inv-ins-carousel-page-in 180ms ease;
+}
+
+.inv-catpro-grid-page.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.inv-catpro-grid-page.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.inv-catpro-grid-page.cols-1 {
+  grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+}
+
+.inv-catpro-kpi {
+  background: #efe7cf !important;
+  border: 1px solid rgba(157, 150, 112, 0.38) !important;
+  color: var(--c-text) !important;
+  box-shadow: none !important;
+}
+
+.inv-catpro-kpi-ok,
+.badge.bg-success {
+  background: var(--c-info) !important;
+  border-color: rgba(45, 107, 102, 0.35) !important;
+  color: #F7F7F7 !important;
+}
+
+.inv-catpro-kpi-off,
+.badge.bg-secondary {
+  background: var(--c-terracotta) !important;
+  border-color: rgba(197, 111, 67, 0.35) !important;
+  color: #F7F7F7 !important;
+}
+
+.inv-catpro-item {
+  // NEW: color de card alineado al look de Productos/Insumos (solo fondo y borde).
+  // WHY: unificar la paleta visual de cards en Inventario sin modificar layout ni comportamiento.
+  // IMPACT: cambio exclusivamente cromatico en cards de Categorias.
+  background: linear-gradient(180deg, #ffffff, #fcfbf4) !important;
+  border: 1px solid rgba(237, 235, 179, 0.65) !important;
+  box-shadow: 0 3px 10px rgba(var(--c-shadow-rgb), 0.14) !important;
+  border-radius: 16px !important;
+  padding: 14px !important;
+}
+
+.inv-catpro-item::before {
+  display: none !important;
+}
+
+.inv-catpro-item:hover {
+  transform: none !important;
+  box-shadow: 0 4px 12px rgba(var(--c-shadow-rgb), 0.16) !important;
+}
+
+// AJUSTE: card premium con animaciones suaves sin alterar el estilo base de inventario.
+.inv-catpro-item.inv-cat-card {
+  position: relative;
+  overflow: hidden !important;
+  isolation: isolate;
+  transition: transform 260ms ease, box-shadow 260ms ease, border-color 260ms ease, opacity 220ms ease, filter 220ms ease;
+}
+
+// NUEVO: card interactivo con puntero y foco accesible para apertura por click/teclado.
+.inv-catpro-item[role='button'] {
+  cursor: pointer;
+}
+
+.inv-catpro-item[role='button']:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.inv-catpro-item[role='button']:focus-visible {
+  outline: 2px solid rgba(157, 150, 112, 0.72);
+  outline-offset: 2px;
+}
+
+// NEW: watermark de categorias reemplaza el circulo decorativo y conserva micro-movimiento.
+// WHY: reforzar identidad visual del card con un icono sutil y menos generico.
+// IMPACT: solo cambia la capa decorativa `.inv-cat-card__halo`; no afecta contenido ni eventos.
+.inv-cat-card__halo {
+  position: absolute;
+  top: -18px;
+  right: -10px;
+  width: 132px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  opacity: 0.22;
+  transform: translate3d(0, 0, 0) rotate(-8deg) scale(0.96);
+  transition: transform 320ms ease, opacity 260ms ease, filter 260ms ease;
+  pointer-events: none;
+  z-index: 0;
+  filter: saturate(0.9);
+}
+
+.inv-cat-card__halo::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 24px;
+  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.6), rgba(178, 45, 48, 0.05) 52%, rgba(45, 107, 102, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.inv-cat-card__halo i {
+  position: relative;
+  font-size: 4rem;
+  line-height: 1;
+  color: rgba(178, 45, 48, 0.12);
+  transform: translate3d(4px, -2px, 0);
+}
+
+.inv-cat-card__title-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+// NUEVO: icono de card con micro-animacion en hover/focus.
+.inv-cat-card__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  background: rgba(243, 241, 216, 0.62);
+  color: var(--c-text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 220ms ease, background 220ms ease, border-color 220ms ease;
+}
+
+.inv-cat-card__icon i {
+  font-size: 0.92rem;
+}
+
+.inv-catpro-item.inv-cat-card .inv-catpro-item-top,
+.inv-catpro-item.inv-cat-card .inv-catpro-meta {
+  position: relative;
+  z-index: 1;
+}
+
+// AJUSTE: acciones premium aparecen en hover/focus, sin listeners adicionales.
+.inv-catpro-item.inv-cat-card .inv-cat-card__actions {
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.inv-catpro-item.inv-cat-card:hover,
+.inv-catpro-item.inv-cat-card:focus-visible {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 18px rgba(var(--c-shadow-rgb), 0.18) !important;
+  border-color: rgba(157, 150, 112, 0.72) !important;
+}
+
+.inv-catpro-item.inv-cat-card:hover .inv-cat-card__halo,
+.inv-catpro-item.inv-cat-card:focus-visible .inv-cat-card__halo {
+  transform: translate3d(-8px, 8px, 0) rotate(-3deg) scale(1.03);
+  opacity: 0.34;
+  filter: saturate(1);
+}
+
+.inv-catpro-item.inv-cat-card:hover .inv-cat-card__icon,
+.inv-catpro-item.inv-cat-card:focus-visible .inv-cat-card__icon {
+  transform: translateY(-2px) scale(1.04) rotate(-4deg);
+  border-color: rgba(157, 150, 112, 0.62);
+  background: rgba(243, 241, 216, 0.82);
+}
+
+.inv-catpro-item.inv-cat-card:hover .inv-cat-card__actions,
+.inv-catpro-item.inv-cat-card:focus-visible .inv-cat-card__actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+// NEW: estado visual "bloqueado" para categorias inactivas con transicion suave.
+// WHY: comunicar de inmediato la inactivacion sin recargar toda la grilla.
+// IMPACT: conserva legibilidad y no deshabilita acciones existentes por si el flujo permite editar/reactivar.
+.inv-catpro-item.is-inactive-state {
+  opacity: 0.66;
+  filter: saturate(0.72);
+  border-color: rgba(157, 150, 112, 0.46) !important;
+}
+
+.inv-catpro-item.inv-cat-card.is-inactive-state {
+  box-shadow: 0 3px 10px rgba(var(--c-shadow-rgb), 0.1) !important;
+}
+
+.inv-catpro-item.inv-cat-card.is-inactive-state .inv-cat-card__halo {
+  opacity: 0.28;
+  filter: saturate(0.6);
+}
+
+.inv-catpro-item.inv-cat-card.is-inactive-state .inv-cat-card__halo i {
+  color: rgba(82, 44, 34, 0.11);
+}
+
+.inv-catpro-item .fw-bold {
+  color: var(--c-text) !important;
+}
+
+.inv-catpro-item .text-muted,
+.inv-catpro-empty-sub {
+  color: rgba(82, 44, 34, 0.82) !important;
+}
+
+.inv-catpro-drawer-sub {
+  color: rgba(243, 241, 216, 0.92) !important;
+  text-shadow: 0 1px 0 rgba(23, 8, 10, 0.24);
+}
+
+.inv-catpro-meta {
+  border-top: 1px solid rgba(237, 235, 179, 0.9) !important;
+  margin-top: 12px !important;
+  padding-top: 10px !important;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  overflow: visible !important;
+}
+
+.inv-catpro-code-wrap {
+  gap: 10px !important;
+  min-width: 0;
+}
+
+.inv-catpro-state-dot.ok {
+  background: #5ac96b !important;
+  box-shadow: none !important;
+}
+
+.inv-catpro-state-dot.off {
+  background: #c56f43 !important;
+  box-shadow: none !important;
+}
+
+.inv-catpro-code {
+  background: #efe7cf !important;
+  border: 1px solid rgba(157, 150, 112, 0.46) !important;
+  color: var(--c-text) !important;
+  letter-spacing: 0 !important;
+  font-weight: 800 !important;
+  box-shadow: none !important;
+}
+
+.inv-catpro-action {
+  background: rgba(255, 255, 255, 0.52) !important;
+  border: 1px solid rgba(157, 150, 112, 0.42) !important;
+  color: var(--c-text-soft) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: 0;
+  transition: width 180ms ease, padding 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.inv-catpro-action-compact {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 11px !important;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.inv-catpro-action-label {
+  display: inline-block !important;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  margin-left: 0;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 800;
+  transition: max-width 180ms ease, opacity 160ms ease, margin-left 160ms ease;
+}
+
+.inv-catpro-action.edit {
+  color: #CDBB63 !important;
+}
+
+.inv-catpro-action.danger {
+  color: var(--c-accent) !important;
+}
+
+.inv-catpro-action:hover {
+  background: rgba(255, 255, 255, 0.78) !important;
+  border-color: rgba(157, 150, 112, 0.56) !important;
+  box-shadow: 0 2px 6px rgba(var(--c-shadow-rgb), 0.16) !important;
+}
+
+.inv-catpro-list,
+.inv-catpro-grid,
+.inv-catpro-item,
+.inv-catpro-meta,
+.inv-catpro-meta-actions {
+  overflow: visible !important;
+}
+
+.inv-catpro-meta-actions {
+  position: relative;
+  z-index: 8;
+  flex-shrink: 0;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (min-width: 992px) {
+  .inv-catpro-list.drawer-open {
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+    width: auto !important;
+    position: relative;
+    z-index: 2301;
+  }
+
+  .inv-catpro-backdrop.show {
+    background: rgba(23, 8, 10, 0.08) !important;
+    pointer-events: auto !important;
+    z-index: 2300 !important;
+  }
+
+  .inv-catpro-drawer {
+    z-index: 2350 !important;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inv-catpro-action-compact:hover {
+    width: auto;
+    padding: 0 12px !important;
+    justify-content: flex-start;
+  }
+
+  .inv-catpro-action:hover .inv-catpro-action-label {
+    max-width: 88px;
+    opacity: 1;
+    margin-left: 6px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .inv-catpro-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inv-catpro-meta-actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 992px) {
+  .inv-catpro-carousel-wrap {
+    // AJUSTE: mantiene el stage del carrusel en bloque para mobile/tablet.
+    display: block;
+  }
+
+  .inv-catpro-carousel-stage {
+    padding-inline: 2.55rem;
+  }
+
+  .inv-catpro-carousel-nav {
+    display: none;
+  }
+
+  .inv-catpro-action-compact {
+    width: 40px;
+    min-width: 40px;
+    padding: 0 !important;
+    justify-content: center;
+  }
+
+  .inv-catpro-action-label {
+    max-width: 0 !important;
+    opacity: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  // AJUSTE: en mobile se mantienen accesibles las acciones premium aunque no exista hover.
+  .inv-catpro-item.inv-cat-card .inv-cat-card__actions {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  // NEW: alternativa sin hover para el watermark (visible siempre + micro feedback en tap/focus).
+  // WHY: en mobile/tablet no hay hover y se necesita conservar el acento visual de forma segura.
+  // IMPACT: solo afecta cards premium de Categorias en <=992px; no cambia interacciones funcionales.
+  .inv-catpro-item.inv-cat-card .inv-cat-card__halo {
+    opacity: 0.18;
+    transform: translate3d(-3px, 4px, 0) rotate(-6deg) scale(0.95);
+  }
+
+  .inv-catpro-item.inv-cat-card:active .inv-cat-card__halo,
+  .inv-catpro-item.inv-cat-card:focus-within .inv-cat-card__halo {
+    opacity: 0.26;
+    transform: translate3d(-6px, 6px, 0) rotate(-3deg) scale(0.99);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-catpro-carousel-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inv-catpro-carousel-stage {
+    padding-inline: 0.25rem;
+  }
+
+  .inv-catpro-carousel-stage .inv-prod-carousel-float {
+    top: auto;
+    bottom: -0.35rem;
+    transform: none;
+  }
+
+  .inv-catpro-carousel-stage .inv-prod-carousel-float.is-prev {
+    left: 0;
+  }
+
+  .inv-catpro-carousel-stage .inv-prod-carousel-float.is-next {
+    right: 0;
+  }
+
+  .inv-catpro-grid-page {
+    padding-bottom: 2.25rem;
+  }
+}
+
+.inv-catpro-pillbtn {
+  box-shadow: none !important;
+}
+
+.inv-catpro-pillbtn.primary {
+  background: linear-gradient(145deg, var(--c-accent-hover), var(--c-accent)) !important;
+  border: 1px solid rgba(122, 30, 36, 0.62) !important;
+  color: #F7F7F7 !important;
+}
+
+.inv-catpro-pillbtn.filters {
+  background: linear-gradient(145deg, #d8c16e, var(--c-mustard)) !important;
+  border: 1px solid rgba(157, 150, 112, 0.55) !important;
+  color: var(--c-text) !important;
+}
+
+.inv-catpro-pillbtn.primary:hover,
+.inv-catpro-pillbtn.filters:hover {
+  box-shadow: 0 2px 7px rgba(var(--c-shadow-rgb), 0.2) !important;
+  transform: none !important;
+}
+
+.inv-catpro-filters {
+  background: rgba(243, 241, 216, 0.5) !important;
+  border: 1px solid rgba(237, 235, 179, 0.64) !important;
+}
+
+.inv-catpro-drawer {
+  background: linear-gradient(180deg, #1f1720 0%, #101525 100%) !important;
+  border-left: 1px solid rgba(237, 235, 179, 0.26) !important;
+  box-shadow: -10px 0 26px rgba(23, 8, 10, 0.28) !important;
+}
+
+.inv-catpro-drawer-head {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.22) !important;
+}
+
+.inv-catpro-drawer-chip-hero.is-create {
+  background: linear-gradient(145deg, rgba(122, 30, 36, 0.64), rgba(178, 45, 48, 0.7)) !important;
+  border-color: rgba(237, 235, 179, 0.28) !important;
+  box-shadow: none !important;
+}
+
+.inv-catpro-drawer-chip-hero.is-edit {
+  background: linear-gradient(145deg, rgba(45, 107, 102, 0.54), rgba(197, 111, 67, 0.5)) !important;
+  border-color: rgba(237, 235, 179, 0.28) !important;
+  box-shadow: none !important;
+}
+
+.inv-catpro-drawer .form-label {
+  color: rgba(247, 247, 247, 0.96) !important;
+}
+
+.inv-catpro-drawer .form-control,
+.inv-catpro-drawer .form-select {
+  background: rgba(247, 247, 247, 0.96) !important;
+  border: 1px solid rgba(237, 235, 179, 0.42) !important;
+  color: var(--c-text) !important;
+  box-shadow: none !important;
+}
+
+.inv-catpro-drawer .form-control:focus,
+.inv-catpro-drawer .form-select:focus {
+  border-color: rgba(237, 235, 179, 0.72) !important;
+  box-shadow: 0 0 0 0.18rem rgba(237, 235, 179, 0.2) !important;
+}
+
+.inv-catpro-drawer-footer {
+  background: linear-gradient(180deg, rgba(16, 21, 37, 0), rgba(16, 21, 37, 0.6)) !important;
+}
+
+.inv-catpro-save,
+.inv-catpro-cancel,
+.btn-primary,
+.inv-pro-btn-danger,
+.inv-pro-btn-cancel {
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.inv-catpro-save,
+.btn-primary {
+  background: var(--c-accent) !important;
+  border-color: var(--c-accent) !important;
+  color: #F7F7F7 !important;
+}
+
+.inv-catpro-save:hover,
+.btn-primary:hover {
+  background: var(--c-accent-hover) !important;
+  border-color: var(--c-accent-hover) !important;
+}
+
+.inv-catpro-cancel,
+.inv-pro-btn-cancel {
+  border: 1px solid rgba(237, 235, 179, 0.5) !important;
+  color: #F7F7F7 !important;
+  background: rgba(23, 8, 10, 0.25) !important;
+}
+
+.inv-catpro-cancel:hover,
+.inv-pro-btn-cancel:hover {
+  background: rgba(23, 8, 10, 0.36) !important;
+}
+
+// NEW: shell premium unificado para los modales de confirmación de Inventario.
+// WHY: el usuario pidió rediseñar Categorías, Insumos y Productos con una misma línea visual más fina.
+// IMPACT: solo estiliza y anima los confirm modals `inv-pro-confirm-*`; no cambia lógica, handlers ni contratos.
+.inv-pro-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(23, 8, 10, 0.56) !important;
+  backdrop-filter: blur(10px) saturate(120%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(120%) !important;
+  animation: inv-pro-confirm-backdrop-in 180ms ease;
+}
+
+.inv-pro-confirm-panel {
+  position: relative;
+  width: min(520px, calc(100vw - 2rem));
+  border-radius: 24px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fffdfa 0%, #fff8ef 100%) !important;
+  color: var(--c-text) !important;
+  border: 1px solid rgba(237, 235, 179, 0.62) !important;
+  box-shadow:
+    0 30px 60px rgba(var(--c-shadow-rgb), 0.32),
+    0 10px 22px rgba(23, 8, 10, 0.12) !important;
+  animation: inv-pro-confirm-panel-in 260ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.inv-pro-confirm-glow {
+  position: absolute;
+  top: -88px;
+  right: -38px;
+  width: 210px;
+  height: 210px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 176, 98, 0.26) 0%, rgba(255, 176, 98, 0.1) 34%, rgba(255, 176, 98, 0) 72%);
+  pointer-events: none;
+  filter: blur(4px);
+}
+
+.inv-pro-confirm-head {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.15rem 1.15rem 1rem;
+  background: linear-gradient(135deg, #260c05 0%, #5f1c0f 52%, #8e2f17 100%) !important;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.24) !important;
+}
+
+.inv-pro-confirm-head-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.inv-pro-confirm-head-copy {
+  min-width: 0;
+}
+
+.inv-pro-confirm-head-icon {
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #fff7f0 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  animation: inv-pro-confirm-icon-float 2.8s ease-in-out infinite;
+}
+
+.inv-pro-confirm-head-icon i {
+  font-size: 1.55rem;
+}
+
+.inv-pro-confirm-kicker {
+  color: rgba(255, 232, 221, 0.72);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 0.2rem;
+}
+
+.inv-pro-confirm-title {
+  color: #F7F7F7 !important;
+  font-size: 1.12rem;
+  font-weight: 900;
+  line-height: 1.14;
+}
+
+.inv-pro-confirm-sub {
+  color: rgba(247, 247, 247, 0.82) !important;
+  font-size: 0.84rem;
+  line-height: 1.3;
+  margin-top: 0.2rem;
+}
+
+.inv-pro-confirm-close {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #F7F7F7 !important;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.inv-pro-confirm-close:hover:not(:disabled),
+.inv-pro-confirm-close:focus-visible {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+.inv-pro-confirm-body,
+.inv-pro-confirm-footer {
+  background: transparent !important;
+  border-color: rgba(237, 235, 179, 0.45) !important;
+}
+
+.inv-pro-confirm-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.05rem 1.15rem 0.95rem;
+}
+
+.inv-pro-confirm-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.72rem;
+  padding: 0.8rem 0.92rem;
+  border-radius: 16px;
+  border: 1px solid rgba(197, 111, 67, 0.2);
+  background: linear-gradient(135deg, rgba(197, 111, 67, 0.08), rgba(255, 255, 255, 0.78));
+  color: rgba(82, 44, 34, 0.92);
+  font-size: 0.83rem;
+  line-height: 1.42;
+}
+
+.inv-pro-confirm-note i {
+  color: #c56f43;
+  font-size: 1rem;
+  margin-top: 0.06rem;
+}
+
+.inv-pro-confirm-question {
+  color: var(--c-text) !important;
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.inv-pro-confirm-description {
+  color: rgba(72, 57, 48, 0.86);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.inv-pro-confirm-name {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1px solid rgba(157, 150, 112, 0.28) !important;
+  color: var(--c-text-soft) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.inv-pro-confirm-name-label {
+  color: rgba(122, 97, 80, 0.82);
+  font-size: 0.69rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.inv-pro-confirm-name-value {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+  color: #17080a;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.28;
+}
+
+.inv-pro-confirm-name-value i {
+  color: var(--c-accent);
+  font-size: 1.05rem;
+}
+
+.inv-pro-confirm-error {
+  border-radius: 16px !important;
+  border: 1px solid rgba(178, 45, 48, 0.18) !important;
+  background: rgba(178, 45, 48, 0.08) !important;
+  color: #7a1e24 !important;
+  padding: 0.78rem 0.92rem !important;
+  font-size: 0.83rem;
+}
+
+.inv-pro-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.8rem;
+  padding: 0 1.15rem 1.15rem;
+}
+
+.inv-pro-confirm-footer .inv-pro-btn-cancel,
+.inv-pro-confirm-footer .inv-pro-btn-danger {
+  min-width: 148px;
+  min-height: 44px;
+  border-radius: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.inv-pro-confirm-footer .inv-pro-btn-cancel {
+  border: 1px solid rgba(82, 44, 34, 0.14) !important;
+  color: #5a4137 !important;
+  background: rgba(255, 255, 255, 0.84) !important;
+}
+
+.inv-pro-confirm-footer .inv-pro-btn-cancel:hover:not(:disabled),
+.inv-pro-confirm-footer .inv-pro-btn-cancel:focus-visible {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(82, 44, 34, 0.22) !important;
+  box-shadow: 0 10px 18px rgba(var(--c-shadow-rgb), 0.12) !important;
+  transform: translateY(-1px);
+}
+
+.inv-pro-btn-danger {
+  background: linear-gradient(135deg, var(--c-accent-hover), var(--c-accent)) !important;
+  border: 1px solid rgba(122, 30, 36, 0.94) !important;
+  color: #F7F7F7 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 12px 22px rgba(122, 30, 36, 0.22);
+}
+
+.inv-pro-btn-danger::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 16%, rgba(255, 255, 255, 0.38) 46%, transparent 74%);
+  transform: translateX(-145%);
+  transition: transform 280ms ease;
+}
+
+.inv-pro-btn-danger:hover:not(:disabled),
+.inv-pro-btn-danger:focus-visible {
+  background: linear-gradient(135deg, #8f231c, #c13d31) !important;
+  border-color: #8f231c !important;
+  transform: translateY(-1px);
+  box-shadow: 0 16px 26px rgba(122, 30, 36, 0.26);
+}
+
+.inv-pro-btn-danger:hover:not(:disabled)::after,
+.inv-pro-btn-danger:focus-visible::after {
+  transform: translateX(145%);
+}
+
+@keyframes inv-pro-confirm-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes inv-pro-confirm-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes inv-pro-confirm-icon-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@media (max-width: 767.98px) {
+  // NEW: compactación responsive del modal de confirmación para móvil.
+  // WHY: mantener legibilidad y controles accesibles sin romper la nueva composición premium.
+  // IMPACT: solo ajusta paddings y ancho en pantallas pequeñas.
+  .inv-pro-confirm-backdrop {
+    padding: 0.85rem;
+  }
+
+  .inv-pro-confirm-panel {
+    width: min(100%, 100%);
+    border-radius: 20px;
+  }
+
+  .inv-pro-confirm-head {
+    padding: 1rem;
+  }
+
+  .inv-pro-confirm-head-icon {
+    width: 54px;
+    height: 54px;
+    flex-basis: 54px;
+  }
+
+  .inv-pro-confirm-title {
+    font-size: 1.02rem;
+  }
+
+  .inv-pro-confirm-body {
+    padding: 0.92rem 1rem 0.88rem;
+  }
+
+  .inv-pro-confirm-footer {
+    flex-direction: column-reverse;
+    padding: 0 1rem 1rem;
+  }
+
+  .inv-pro-confirm-footer .inv-pro-btn-cancel,
+  .inv-pro-confirm-footer .inv-pro-btn-danger {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  // NUEVO: accesibilidad para usuarios con preferencia de movimiento reducido.
+  .inv-catpro-item.inv-cat-card,
+  .inv-cat-card__halo,
+  .inv-cat-card__icon,
+  .inv-catpro-item.inv-cat-card .inv-cat-card__actions {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+// NEW: ajustes visuales v2 para Categorias con el mismo patron de Insumos/Productos.
+// WHY: alinear header, dashboards, filtros y drawers sin reescribir estilos base reutilizables.
+// IMPACT: todas las reglas se limitan al prefijo `inv-cat-v2__*` o acciones de categoria.
+.inv-cat-v2 {
+  overflow: hidden;
+}
+
+.inv-cat-v2__header {
+  gap: 12px;
+}
+
+.inv-cat-v2__actions {
+  align-items: center;
+}
+
+// NEW: layout del header v3 con dos columnas para replicar la distribución de referencia.
+// WHY: dejar buscador protagonista a la izquierda y mantener switch + acciones en una columna derecha fija.
+// IMPACT: se limita al header de `Categorias` (`inv-cat-v3__*`); no toca lógica funcional ni otros módulos.
+.inv-cat-v3__header {
+  display: block !important;
+}
+
+.inv-cat-v3__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(220px, 23vw, 290px);
+  grid-template-areas:
+    "title switch"
+    "search actions";
+  align-items: start;
+  gap: 12px 16px;
+}
+
+.inv-cat-v3__title {
+  grid-area: title;
+  min-width: 0;
+}
+
+.inv-cat-v3__switch-slot {
+  grid-area: switch;
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+// NEW: forzar que el switch use todo el ancho de la columna derecha del header.
+// WHY: los botones de acciones deben caber justo debajo dentro del mismo ancho visual.
+// IMPACT: solo afecta el tamaño del switch en el header de Categorías.
+.inv-cat-v3__switch-slot .inv-cat-compact-switch {
+  width: 100%;
+}
+
+.inv-cat-v3__search {
+  grid-area: search;
+  width: 100%;
+  min-width: 0;
+}
+
+// NEW: acciones del header en fila (Filtros + Nuevo) debajo del switch.
+// WHY: evitar apilado vertical y cumplir el layout solicitado con ambos botones al lado.
+// IMPACT: solo cambia distribución visual de botones en Categorías; handlers siguen iguales.
+.inv-cat-v3__actions-stack {
+  grid-area: actions;
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+// NEW: botones ligeramente más compactos dentro de la columna del switch.
+// WHY: hacer que ambos botones entren cómodamente en el mismo ancho del switch.
+// IMPACT: ajuste visual local de tamaño en el header de Categorías.
+.inv-cat-v3__actions-stack .inv-prod-toolbar-btn {
+  width: 100%;
+  min-height: auto;
+  padding: 0.34rem 0.72rem !important;
+  font-size: 0.82rem !important;
+  justify-content: center;
+}
+
+// NEW: botón "Nuevo" destacado en el stack derecho del header.
+// WHY: respetar jerarquía visual de la referencia sin cambiar handlers ni clases funcionales.
+// IMPACT: solo estilo del botón Nuevo en Categorías; la acción sigue siendo la misma.
+.inv-cat-v3__new-btn {
+  background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
+  border-color: rgba(122, 30, 36, 0.72) !important;
+  color: #f7f7f7 !important;
+}
+
+.inv-cat-v3__new-btn:hover {
+  color: #ffffff !important;
+}
+
+.inv-cat-v2__kpis {
+  grid-template-columns: repeat(3, minmax(0, 220px)) !important;
+  justify-content: center;
+  max-width: 780px;
+  margin-inline: auto;
+}
+
+.inv-cat-v2__results-meta {
+  justify-content: space-between;
+}
+
+// NEW: switch compacto "segmented pill" con thumb deslizante para el header de Categorías.
+// WHY: reemplazar el switch grande por una versión más profesional, compacta y coherente con el espacio del título.
+// IMPACT: solo UI/animación del toggle; usa el mismo estado y handlers existentes.
+.inv-cat-compact-switch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  width: clamp(220px, 23vw, 290px);
+  min-height: 36px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.3);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(247, 241, 231, 0.9));
+  box-shadow:
+    0 8px 18px rgba(82, 44, 34, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  transition: box-shadow 220ms ease, transform 180ms ease;
+}
+
+.inv-cat-compact-switch__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  height: calc(100% - 6px);
+  border-radius: 999px;
+  border: 1px solid rgba(197, 111, 67, 0.34);
+  background: linear-gradient(135deg, rgba(197, 111, 67, 0.24), rgba(197, 111, 67, 0.08));
+  box-shadow:
+    0 8px 14px rgba(197, 111, 67, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.48);
+  transform: translateX(0);
+  transition:
+    transform 230ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 220ms ease,
+    box-shadow 220ms ease;
+  pointer-events: none;
+}
+
+.inv-cat-compact-switch.is-productos .inv-cat-compact-switch__thumb {
+  transform: translateX(100%);
+}
+
+.inv-cat-compact-switch__option {
+  position: relative;
+  z-index: 1;
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  transition: color 180ms ease, font-weight 180ms ease, transform 140ms ease;
+}
+
+.inv-cat-compact-switch__option.is-active {
+  color: #7a3f1f;
+  font-weight: 800;
+}
+
+.inv-cat-compact-switch__option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.14rem rgba(197, 111, 67, 0.22);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inv-cat-compact-switch:hover {
+    box-shadow:
+      0 10px 22px rgba(82, 44, 34, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  }
+
+  .inv-cat-compact-switch__option:hover {
+    color: rgba(122, 63, 31, 0.96);
+  }
+}
+
+.inv-cat-compact-switch:active {
+  transform: scale(0.98);
+}
+
+// NEW: switch maestro INSUMOS/PRODUCTOS dentro del submódulo Categorías.
+// WHY: unificar ambos catálogos en una sola pantalla manteniendo un control visual grande y claro.
+// IMPACT: solo afecta la vista de Categorías en Inventario; no cambia estilos globales de otros módulos.
+.inv-cat-unified-switch-row {
+  display: flex;
+  justify-content: center;
+  padding: 8px 14px 0;
+}
+
+.inv-cat-unified-switch {
+  position: relative;
+  width: min(100%, 390px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  padding: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 241, 231, 0.92));
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  box-shadow: 0 10px 24px rgba(82, 44, 34, 0.08);
+}
+
+.inv-cat-unified-switch__thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(197, 111, 67, 0.18), rgba(197, 111, 67, 0.08));
+  border: 1px solid rgba(197, 111, 67, 0.26);
+  box-shadow: 0 6px 14px rgba(197, 111, 67, 0.12);
+  transform: translateX(0);
+  transition: transform 220ms ease, background 220ms ease, box-shadow 220ms ease;
+  pointer-events: none;
+}
+
+.inv-cat-unified-switch.is-products .inv-cat-unified-switch__thumb {
+  transform: translateX(100%);
+}
+
+.inv-cat-unified-switch__option {
+  position: relative;
+  z-index: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.85);
+  font-weight: 800;
+  font-size: 0.88rem;
+  letter-spacing: 0.02em;
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.inv-cat-unified-switch__option.is-active {
+  color: #7a3f1f;
+}
+
+.inv-cat-unified-switch__option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.15rem rgba(197, 111, 67, 0.18);
+}
+
+// NEW: microanimación del panel al alternar el switch.
+// WHY: reforzar el cambio de contexto (insumos/productos) sin reestructurar componentes existentes.
+// IMPACT: solo presentación; no toca el flujo de datos ni handlers.
+.inv-cat-unified-panel-shell {
+  animation: inv-cat-unified-panel-enter 220ms ease;
+}
+
+@keyframes inv-cat-unified-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// NEW: alerta roja local para bloqueo de eliminacion por productos asignados.
+// WHY: mostrar feedback no bloqueante y claro sin abrir confirm modal cuando la categoria esta en uso.
+// IMPACT: solo presentacion de una alerta temporal en Categorias.
+.inv-cat-v2__delete-alert {
+  border: 1px solid rgba(178, 45, 48, 0.34) !important;
+  background: linear-gradient(150deg, rgba(178, 45, 48, 0.12), rgba(122, 30, 36, 0.08)) !important;
+  color: #7a1e24 !important;
+  box-shadow: 0 8px 18px rgba(178, 45, 48, 0.08);
+  font-weight: 800;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.inv-cat-v2__drawer-body {
+  display: grid;
+  gap: 10px;
+}
+
+.inv-cat-v2__drawer-body .form-label {
+  color: rgba(82, 44, 34, 0.82);
+  // NEW: mayor jerarquia visual para labels de campos en drawers de Categorias.
+  // WHY: separar con claridad label vs valor/input manteniendo accesibilidad.
+  // IMPACT: solo tipografia de labels; sin impacto funcional.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
+  margin-bottom: 4px;
+}
+
+.inv-catpro-drawer-body-lite .form-label,
+.inv-catpro-drawer-body-lite .form-check-label {
+  // NEW: tipografia de labels del formulario Nuevo/Editar de Categorias con mayor jerarquia.
+  // WHY: mantener consistencia de labels entre drawers de Categorias/Insumos/Productos.
+  // IMPACT: solo cambia font-size/weight de labels en el formulario lateral.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
+  text-transform: capitalize;
+}
+
+.inv-cat-v2__drawer-body .form-select {
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.inv-cat-v2__drawer-body .form-select:focus {
+  border-color: rgba(178, 45, 48, 0.62);
+  box-shadow: 0 0 0 0.18rem rgba(178, 45, 48, 0.12);
+}
+
+.inv-cat-v2__drawer-actions .btn {
+  min-height: 36px;
+}
+
+// NEW: glass/water drawer de Categorias (desktop + responsive) con animacion de entrada/salida.
+// WHY: unificar la experiencia visual con un panel lateral mas moderno sin cambiar la logica del drawer.
+// IMPACT: se aplica solo a drawers de Categorias (`inv-cat-v2__drawer` y su backdrop compartido).
+.inv-cat-v2__drawer {
+  border-left: 1px solid rgba(255, 255, 255, 0.35) !important;
+  background: rgba(255, 255, 255, 0.62) !important;
+  box-shadow: -14px 0 28px rgba(var(--c-shadow-rgb), 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+  transform-origin: right center;
+  transform: translate3d(110%, 0, 0) scale(0.992) !important;
+  opacity: 0;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease !important;
+  overflow: hidden;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.inv-cat-v2__drawer.show {
+  transform: translate3d(0, 0, 0) scale(1) !important;
+  opacity: 1;
+}
+
+.inv-cat-v2__drawer-backdrop {
+  background: rgba(23, 8, 10, 0.22) !important;
+  backdrop-filter: blur(4px) saturate(118%);
+  -webkit-backdrop-filter: blur(4px) saturate(118%);
+  transition: opacity 220ms ease, backdrop-filter 220ms ease, -webkit-backdrop-filter 220ms ease !important;
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-head {
+  position: relative;
+  background: rgba(255, 255, 255, 0.34);
+  border-bottom-color: rgba(255, 255, 255, 0.28) !important;
+  backdrop-filter: blur(10px) saturate(135%);
+  -webkit-backdrop-filter: blur(10px) saturate(135%);
+  overflow: hidden;
+}
+
+// NEW: watermark de categorias en header del drawer como alternativa visible en entornos sin hover.
+// WHY: conservar identidad visual tambien dentro del panel lateral con un acento sutil y no intrusivo.
+// IMPACT: pseudo-elemento decorativo en el header; no afecta foco ni interaccion.
+.inv-cat-v2__drawer-mark {
+  position: absolute;
+  right: 56px;
+  top: 10px;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: rgba(178, 45, 48, 0.09);
+  pointer-events: none;
+  transform: rotate(-8deg) translate3d(0, 0, 0);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.inv-cat-v2__drawer.show .inv-cat-v2__drawer-mark {
+  opacity: 1;
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-head:focus-within .inv-cat-v2__drawer-mark {
+  transform: rotate(-4deg) translate3d(-2px, 2px, 0);
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-body {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+// NEW: compactacion del header en drawers de Categorias.
+// WHY: el usuario reporto que el bloque superior se percibe sobredimensionado frente al contenido del formulario.
+// IMPACT: solo reduce tipografia y espaciado del header de Categorias/ Categorias de Insumos.
+.inv-cat-v2__drawer .inv-prod-drawer-title {
+  font-size: 0.98rem;
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-sub {
+  font-size: 0.75rem;
+}
+
+.inv-cat-v2__drawer .inv-prod-drawer-close {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+}
+
+// NEW: variante premium del drawer de alta para Categorias.
+// WHY: distinguir visualmente el flujo de "Nuevo" sin tocar edición ni filtros.
+// IMPACT: solo afecta `inv-cat-v2__drawer--create` y los bloques nuevos del formulario de alta.
+.inv-cat-v2__drawer--create .inv-prod-drawer-head {
+  background:
+    radial-gradient(circle at top right, rgba(255, 199, 120, 0.22), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.46), rgba(255, 250, 240, 0.3));
+}
+
+.inv-catpro-drawer-body-lite--create {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.inv-cat-create-hero {
+  position: relative;
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.82rem 0.88rem;
+  border-radius: 18px;
+  border: 1px solid rgba(197, 111, 67, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(255, 190, 113, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(255, 249, 240, 0.82));
+  box-shadow: 0 16px 28px rgba(var(--c-shadow-rgb), 0.1);
+  overflow: hidden;
+}
+
+// NEW: boton de cierre integrado al hero de Categorias.
+// WHY: el header superior del formulario se retiro por redundancia y la X debe seguir visible.
+// IMPACT: solo cambia la ubicacion del boton cerrar en nuevo/editar de Categorias.
+.inv-cat-create-hero__close {
+  position: absolute;
+  top: 0.72rem;
+  right: 0.72rem;
+  z-index: 3;
+}
+
+.inv-cat-create-hero__icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  color: #fff8f0;
+  box-shadow: 0 10px 18px rgba(122, 30, 36, 0.18);
+}
+
+.inv-cat-create-hero__icon i {
+  font-size: 1rem;
+}
+
+.inv-cat-create-hero__kicker {
+  color: rgba(122, 30, 36, 0.72);
+  font-size: 0.58rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  margin-bottom: 0.16rem;
+}
+
+.inv-cat-create-hero__title {
+  color: #17080a;
+  font-size: 0.94rem;
+  font-weight: 900;
+  line-height: 1.18;
+}
+
+.inv-cat-create-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.inv-cat-create-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.38rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  background: rgba(255, 255, 255, 0.78);
+  color: #5a4137;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.inv-cat-create-hero.is-edit {
+  border-color: rgba(45, 107, 102, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(105, 176, 171, 0.14), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(245, 250, 248, 0.82));
+}
+
+.inv-cat-create-grid.is-create,
+.inv-cat-create-grid.is-edit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.inv-cat-create-grid.is-create > .mb-2,
+.inv-cat-create-grid.is-edit > .mb-2,
+.inv-catpro-drawer-body-lite--create > .mb-2,
+.inv-catpro-drawer-body-lite--create > .form-check,
+.inv-catpro-drawer-body-lite--edit > .mb-2,
+.inv-catpro-drawer-body-lite--edit > .form-check {
+  margin-bottom: 0 !important;
+  padding: 0.88rem 0.92rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+// NEW: corrección estructural del bloque Activo en drawers de Categorías.
+// WHY: Bootstrap desplaza el checkbox hacia afuera con `float` y margen negativo, rompiendo la composición premium del formulario.
+// IMPACT: solo alinea el bloque `form-check` dentro del drawer; el campo y su lógica no cambian.
+.inv-catpro-drawer-body-lite .form-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 0.72rem;
+  row-gap: 0.42rem;
+  padding-left: 0 !important;
+}
+
+// NEW: contenedor especifico del checkbox Activo en drawers de Categorias.
+// WHY: asegurar que el control quede visualmente dentro del cuadro y no pegado al borde del drawer.
+// IMPACT: solo refuerza padding/alineacion del bloque Activo; no altera el valor ni la interaccion.
+.inv-catpro-form-check-row {
+  padding: 0.9rem 0.92rem 0.82rem 0.92rem !important;
+  overflow: hidden;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 16px;
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+// NEW: estado visual del bloque Activo/Inactivo para drawers de Categorias.
+// WHY: el usuario pidio que el estado cambie de color de forma clara al activar o desactivar.
+// IMPACT: solo cambia la presentacion del checkbox; la logica del campo sigue intacta.
+.inv-catpro-form-check-row.is-active {
+  background: linear-gradient(145deg, rgba(236, 249, 240, 0.95), rgba(245, 252, 247, 0.88));
+  border-color: rgba(86, 153, 106, 0.26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 20px rgba(86, 153, 106, 0.08);
+}
+
+.inv-catpro-form-check-row.is-inactive {
+  background: linear-gradient(145deg, rgba(255, 241, 241, 0.95), rgba(255, 247, 247, 0.88));
+  border-color: rgba(201, 94, 94, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 20px rgba(164, 69, 69, 0.08);
+}
+
+.inv-catpro-drawer-body-lite .form-check-input {
+  float: none;
+  margin: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  align-self: center;
+  position: relative;
+  left: 0;
+  accent-color: #2f8f57;
+}
+
+.inv-catpro-form-check-row.is-inactive .form-check-input {
+  accent-color: #b44a4a;
+}
+
+.inv-catpro-drawer-body-lite .form-check-label {
+  margin: 0;
+  align-self: center;
+  justify-self: stretch;
+  text-align: center;
+  transition: color 180ms ease;
+}
+
+.inv-catpro-form-check-row.is-active .form-check-label {
+  color: #236846;
+}
+
+.inv-catpro-form-check-row.is-inactive .form-check-label {
+  color: #9a3f3f;
+}
+
+.inv-catpro-drawer-body-lite .form-check .form-text {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0;
+}
+
+.inv-cat-create-actions,
+.inv-cat-edit-actions {
+  margin-top: 0.2rem;
+}
+
+.inv-cat-create-actions .btn,
+.inv-cat-edit-actions .btn {
+  min-height: 42px;
+  border-radius: 14px;
+}
+
+.inv-cat-v2__drawer--filters .inv-prod-drawer-body {
+  gap: 0.95rem;
+}
+
+.inv-cat-filter-hero {
+  gap: 0.72rem;
+}
+
+.inv-cat-filter-hero .inv-cat-create-hero__icon {
+  background: linear-gradient(145deg, #7a1e24, #c56f43);
+}
+
+.inv-cat-filter-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.inv-cat-filter-card {
+  padding: 0.88rem 0.92rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.inv-cat-filter-card .inv-prod-drawer-section-title {
+  margin-bottom: 0.55rem;
+}
+
+.inv-cat-filter-actions .btn {
+  min-height: 42px;
+  border-radius: 14px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  // NEW: fallback de legibilidad para navegadores sin soporte de blur.
+  // WHY: mantener contraste del panel y overlay sin depender de `backdrop-filter`.
+  // IMPACT: solo cambia opacidades; no altera posicion/animacion del drawer.
+  .inv-cat-v2__drawer {
+    background: rgba(255, 255, 255, 0.95) !important;
+  }
+
+  .inv-cat-v2__drawer .inv-prod-drawer-head {
+    background: rgba(255, 255, 255, 0.92);
+  }
+
+  .inv-cat-v2__drawer-backdrop {
+    background: rgba(23, 8, 10, 0.3) !important;
+  }
+}
+
+// NEW: estados visuales para accion rapida Activar/Inactivar en cards de categorias.
+// WHY: hacer evidente la accion secundaria sin romper la jerarquia cromatica existente.
+// IMPACT: solo afecta botones `inv-catpro-action` cuando usan `state-on` / `state-off`.
+.inv-catpro-action.state-on {
+  color: #2d6b66 !important;
+  border-color: rgba(45, 107, 102, 0.32) !important;
+  background: rgba(45, 107, 102, 0.06) !important;
+}
+
+.inv-catpro-action.state-off {
+  color: #c56f43 !important;
+  border-color: rgba(197, 111, 67, 0.34) !important;
+  background: rgba(197, 111, 67, 0.06) !important;
+}
+
+.inv-catpro-action.state-on:hover:not(:disabled) {
+  border-color: rgba(45, 107, 102, 0.48) !important;
+  background: rgba(45, 107, 102, 0.12) !important;
+}
+
+.inv-catpro-action.state-off:hover:not(:disabled) {
+  border-color: rgba(197, 111, 67, 0.48) !important;
+  background: rgba(197, 111, 67, 0.12) !important;
+}
+
+.inv-catpro-action:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+@media (max-width: 991.98px) {
+  // NEW: en tablet el header pasa a bloque vertical para evitar choques entre título, switch y acciones.
+  // WHY: mantener legibilidad y taps cómodos cuando no hay ancho suficiente para dos columnas.
+  // IMPACT: solo refluye el header de Categorías en <= 991.98px.
+  .inv-cat-v3__layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "title"
+      "switch"
+      "search"
+      "actions";
+  }
+
+  .inv-cat-v3__switch-slot {
+    justify-content: flex-start;
+  }
+
+  .inv-cat-v3__actions-stack.inv-ins-header-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-cat-v2__kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    max-width: 560px;
+  }
+
+  // NEW: mejoras de touch targets para acciones del header en tablet/mobile.
+  // WHY: evitar botones pequeños y facilitar taps en Filtros/Nuevo manteniendo el estilo del sistema.
+  // IMPACT: aplica solo a Categorias en responsive; desktop permanece igual.
+  .inv-cat-v2__actions .inv-prod-toolbar-btn {
+    min-height: 44px;
+    padding: 0.55rem 0.9rem !important;
+    font-size: 0.88rem;
+  }
+
+  // NEW: iguala tamaños de botones del header de Categorías con el estándar de otros submódulos.
+  // WHY: mantener consistencia visual de Filtros/Nuevo con Productos/Insumos sin tocar layout.
+  // IMPACT: solo tamaño de botones en el header v3 de Categorías; lógica y handlers intactos.
+  .inv-cat-v3__actions-stack.inv-cat-v2__actions .inv-prod-toolbar-btn {
+    min-height: auto;
+    padding: 0.34rem 0.72rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  .inv-cat-v3__search {
+    min-height: auto;
+    padding-top: 0.32rem;
+    padding-bottom: 0.32rem;
+  }
+
+  // NEW: ocultar FAB de agregar en mobile/tablet sin eliminar el componente.
+  // WHY: reducir ruido visual y evitar duplicidad con boton "Nuevo" en el header.
+  // IMPACT: desktop mantiene el comportamiento existente; solo se oculta por breakpoint.
+  .inv-catpro-fab {
+    display: none !important;
+  }
+
+  // NEW: drawer responsive con ancho parcial y animacion sutil (slide + fade + scale).
+  // WHY: evitar drawer full-screen en mobile/tablet y mejorar sensacion visual con apertura mas suave.
+  // IMPACT: se limita a drawers de Categorias (`inv-cat-v2__drawer`) y no altera Productos/Insumos.
+  .inv-cat-v2__drawer {
+    width: min(460px, 90vw) !important;
+    max-width: 90vw !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.35) !important;
+    background: rgba(255, 255, 255, 0.62) !important;
+    box-shadow: -14px 0 28px rgba(var(--c-shadow-rgb), 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+    transform-origin: right center;
+    transform: translate3d(110%, 0, 0) scale(0.992) !important;
+    opacity: 0;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease !important;
+    overflow: hidden;
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+  }
+
+  .inv-cat-v2__drawer.show {
+    transform: translate3d(0, 0, 0) scale(1) !important;
+    opacity: 1;
+  }
+
+  // NEW: overlay con blur ligero y oscurecido suave (efecto "agua" de fondo).
+  // WHY: separar el drawer del contenido sin bloquear visualmente toda la pantalla.
+  // IMPACT: solo afecta el backdrop compartido de Categorias en responsive.
+  .inv-cat-v2__drawer-backdrop {
+    background: rgba(23, 8, 10, 0.22) !important;
+    backdrop-filter: blur(4px) saturate(118%);
+    -webkit-backdrop-filter: blur(4px) saturate(118%);
+    transition: opacity 220ms ease, backdrop-filter 220ms ease, -webkit-backdrop-filter 220ms ease !important;
+  }
+
+  .inv-cat-v2__drawer .inv-prod-drawer-head {
+    background: rgba(255, 255, 255, 0.34);
+    border-bottom-color: rgba(255, 255, 255, 0.28) !important;
+    backdrop-filter: blur(10px) saturate(135%);
+    -webkit-backdrop-filter: blur(10px) saturate(135%);
+  }
+
+  .inv-cat-v2__drawer .inv-prod-drawer-body {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .inv-cat-v2__drawer .inv-prod-drawer-close {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-cat-v3__layout {
+    gap: 10px;
+  }
+
+  .inv-cat-v3__switch-slot {
+    justify-content: flex-start;
+  }
+
+  .inv-cat-compact-switch {
+    width: min(100%, 290px);
+  }
+
+  .inv-cat-v3__actions-stack.inv-ins-header-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-cat-v2__kpis {
+    grid-template-columns: 1fr !important;
+    max-width: 100%;
+  }
+
+  .inv-cat-v2__results-meta {
+    gap: 6px;
+  }
+
+  .inv-cat-unified-switch-row {
+    padding: 8px 12px 0;
+  }
+
+  .inv-cat-unified-switch {
+    width: min(100%, 100%);
+  }
+
+  .inv-cat-v2__drawer-actions {
+    grid-template-columns: 1fr;
+  }
+
+  // NEW: mantiene margen izquierdo visible en mobile y evita full screen del drawer.
+  // WHY: reforzar el efecto de panel lateral sin cubrir todo el viewport.
+  // IMPACT: solo drawers de Categorias en mobile.
+  .inv-cat-v2__drawer {
+    width: min(420px, 92vw) !important;
+    max-width: 92vw !important;
+  }
+}
+
+// NEW: mantiene Filtros/Nuevo en una sola fila también en móviles angostos.
+// WHY: respetar el requerimiento de botones al lado y justo debajo del switch.
+// IMPACT: conserva distribución de dos botones por fila en el header de Categorías.
+@media (max-width: 420px) {
+  .inv-cat-v3__actions-stack.inv-ins-header-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  @media (max-width: 991.98px) {
+    // NEW: fallback de legibilidad cuando no hay soporte de backdrop-filter.
+    // WHY: preservar contraste/lectura del drawer y overlay sin blur.
+    // IMPACT: solo se aplica en navegadores sin soporte; desktop intacto.
+    .inv-cat-v2__drawer {
+      background: rgba(255, 255, 255, 0.95) !important;
+    }
+
+    .inv-cat-v2__drawer .inv-prod-drawer-head {
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .inv-cat-v2__drawer-backdrop {
+      background: rgba(23, 8, 10, 0.3) !important;
+    }
+  }
+}
+
+// NEW: estilos del submodulo Insumos reutilizando la base visual de Productos/Categorias.
+// WHY: mantener consistencia visual (cards, chips, drawers, carruseles) sin tocar estilos existentes.
+// IMPACT: todas las reglas usan prefijo `inv-ins-*`, evitando colisiones con Productos/Categorias.
+.inv-ins-module {
+  overflow: hidden;
+}
+
+.inv-ins-header-actions {
+  align-items: center;
+}
+
+.inv-ins-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 260px;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 999px;
+  background: #fff;
+  padding: 0.32rem 0.72rem;
+  color: rgba(82, 44, 34, 0.82);
+}
+
+.inv-ins-search i {
+  color: rgba(122, 30, 36, 0.8);
+  font-size: 0.85rem;
+}
+
+.inv-ins-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #17080a;
+  font-size: 0.84rem;
+}
+
+.inv-ins-search input::placeholder {
+  color: rgba(82, 44, 34, 0.55);
+}
+
+.inv-ins-inline-note {
+  border: 1px dashed rgba(157, 150, 112, 0.45);
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  font-size: 0.76rem;
+  color: rgba(82, 44, 34, 0.76);
+}
+
+.inv-ins-section {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 0.95rem;
+}
+
+.inv-ins-section:last-child {
+  margin-bottom: 0;
+}
+
+.inv-ins-section__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inv-ins-section__title {
+  color: #17080a;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+.inv-ins-section__sub {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+}
+
+.inv-ins-section__tag {
+  align-self: center;
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  border-radius: 999px;
+  background: rgba(243, 241, 216, 0.54);
+  color: #522c22;
+  padding: 0.16rem 0.58rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.inv-ins-clear {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.inv-ins-carousel-stage {
+  padding-top: 2px;
+}
+
+.inv-ins-track {
+  --inv-ins-gap: 12px;
+  --inv-ins-pad: 12px;
+  display: grid;
+  grid-auto-flow: column;
+  gap: var(--inv-ins-gap);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding: 2px var(--inv-ins-pad) 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(157, 150, 112, 0.52) transparent;
+  align-items: stretch;
+}
+
+.inv-ins-track::-webkit-scrollbar {
+  height: 8px;
+}
+
+.inv-ins-track::-webkit-scrollbar-thumb {
+  background: rgba(157, 150, 112, 0.48);
+  border-radius: 999px;
+}
+
+.inv-ins-track.is-frequent {
+  grid-template-rows: 1fr;
+  grid-auto-columns: calc((100% - (var(--inv-ins-pad) * 2) - (var(--inv-ins-gap) * 2)) / 3);
+}
+
+.inv-ins-track.is-all {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-auto-columns: calc((100% - (var(--inv-ins-pad) * 2) - (var(--inv-ins-gap) * 2)) / 3);
+}
+
+.inv-ins-track .inv-ins-card {
+  scroll-snap-align: start;
+}
+
+.inv-ins-skeleton-track {
+  display: grid;
+  gap: 12px;
+}
+
+.inv-ins-skeleton-track.is-frequent {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.inv-ins-skeleton-track.is-all {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.inv-ins-skeleton-card {
+  min-height: 208px;
+  border-radius: 16px;
+  background: linear-gradient(110deg, rgba(243, 241, 216, 0.82) 25%, rgba(247, 247, 247, 0.96) 45%, rgba(243, 241, 216, 0.82) 65%);
+  background-size: 220% 100%;
+  animation: inv-prod-skeleton 1.2s linear infinite;
+}
+
+.inv-ins-empty {
+  border: 1px dashed rgba(157, 150, 112, 0.42);
+  border-radius: 14px;
+  background: rgba(243, 241, 216, 0.42);
+  color: rgba(82, 44, 34, 0.9);
+  padding: 1rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.inv-ins-card {
+  border: 1px solid rgba(237, 235, 179, 0.65);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #fcfbf4);
+  box-shadow: 0 2px 8px rgba(var(--c-shadow-rgb), 0.12);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, opacity 180ms ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.inv-ins-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(var(--c-shadow-rgb), 0.22);
+}
+
+.inv-ins-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.2rem rgba(178, 45, 48, 0.16);
+}
+
+.inv-ins-card.is-selected {
+  border-color: rgba(178, 45, 48, 0.55);
+}
+
+.inv-ins-card.is-low {
+  border-color: rgba(197, 111, 67, 0.35);
+}
+
+.inv-ins-card.is-out {
+  border-color: rgba(178, 45, 48, 0.38);
+  box-shadow: 0 6px 14px rgba(178, 45, 48, 0.08);
+}
+
+.inv-ins-card.is-inactive {
+  opacity: 0.62;
+}
+
+.inv-ins-card__head {
+  padding: 0.72rem 0.72rem 0.55rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inv-ins-card__title-wrap {
+  min-width: 0;
+}
+
+.inv-ins-card__title {
+  color: #17080a;
+  font-weight: 800;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card__sub {
+  margin-top: 2px;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.76rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card__badge {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 0.18rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.inv-ins-card__badge.is-ok {
+  color: #2d6b66;
+  border-color: rgba(45, 107, 102, 0.35);
+  background: rgba(45, 107, 102, 0.08);
+}
+
+.inv-ins-card__badge.is-low {
+  color: #c56f43;
+  border-color: rgba(197, 111, 67, 0.35);
+  background: rgba(197, 111, 67, 0.08);
+}
+
+.inv-ins-card__badge.is-out {
+  color: #b22d30;
+  border-color: rgba(178, 45, 48, 0.35);
+  background: rgba(178, 45, 48, 0.08);
+}
+
+.inv-ins-card__badge.is-inactive {
+  color: #522c22;
+  border-color: rgba(157, 150, 112, 0.4);
+  background: rgba(157, 150, 112, 0.12);
+}
+
+.inv-ins-card__body {
+  padding: 0 0.72rem 0.72rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+
+.inv-ins-card__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.inv-ins-card__grid > div {
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  border-radius: 10px;
+  background: rgba(243, 241, 216, 0.4);
+  padding: 0.45rem 0.55rem;
+}
+
+.inv-ins-card__label {
+  color: rgba(82, 44, 34, 0.74);
+  font-size: 0.7rem;
+}
+
+.inv-ins-card__value {
+  color: #17080a;
+  font-weight: 800;
+  font-size: 0.84rem;
+}
+
+.inv-ins-card__value--clip {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-ins-card__warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #c56f43;
+}
+
+.inv-ins-card__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: rgba(82, 44, 34, 0.86);
+  font-size: 0.76rem;
+}
+
+.inv-ins-card__line strong {
+  color: #17080a;
+  font-weight: 700;
+  min-width: 0;
+  text-align: right;
+}
+
+.inv-ins-card__desc {
+  color: rgba(82, 44, 34, 0.86);
+  font-size: 0.78rem;
+  line-height: 1.3;
+  min-height: 2.6em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card__footer {
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.inv-ins-card__actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.inv-ins-card__btn-main,
+.inv-ins-card__btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.inv-ins-card__btn-main {
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+}
+
+.inv-ins-card__btn {
+  min-width: 82px;
+  font-size: 0.76rem !important;
+}
+
+.inv-ins-card__hover {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.inv-ins-card__tertiary {
+  border: 1px solid rgba(178, 45, 48, 0.28) !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: #b22d30 !important;
+  border-radius: 10px !important;
+  padding: 0.22rem 0.55rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 180ms ease, transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.inv-ins-card__tertiary:hover:not(:disabled) {
+  background: rgba(178, 45, 48, 0.08) !important;
+  border-color: rgba(178, 45, 48, 0.45) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inv-ins-card__hover {
+    min-height: 30px;
+  }
+
+  .inv-ins-card__tertiary {
+    opacity: 0;
+    transform: translateY(4px);
+    pointer-events: none;
+  }
+
+  .inv-ins-card:hover .inv-ins-card__tertiary,
+  .inv-ins-card:focus-visible .inv-ins-card__tertiary {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+}
+
+.inv-ins-help {
+  margin-top: 0.34rem;
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.74rem;
+}
+
+.inv-ins-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inv-ins-chip {
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 999px;
+  background: #fff;
+  color: #522c22;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: border-color 180ms ease, background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.inv-ins-chip:hover {
+  border-color: rgba(122, 30, 36, 0.45);
+  color: #7a1e24;
+}
+
+.inv-ins-chip.is-active {
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  border-color: rgba(122, 30, 36, 0.72);
+  color: #f7f7f7;
+  box-shadow: 0 4px 10px rgba(var(--c-shadow-rgb), 0.18);
+}
+
+.inv-ins-drawer .inv-prod-drawer-body {
+  gap: 10px;
+}
+
+// NEW: variante premium del drawer de alta para Insumos.
+// WHY: hacer el flujo "Nuevo insumo" más llamativo sin alterar edición ni el resto del módulo.
+// IMPACT: solo afecta `inv-ins-drawer--create` y los bloques visuales nuevos del create drawer.
+.inv-ins-drawer--create .inv-prod-drawer-head {
+  background:
+    radial-gradient(circle at top right, rgba(255, 200, 132, 0.2), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.46), rgba(255, 249, 240, 0.3));
+}
+
+.inv-ins-drawer-body--create,
+.inv-ins-drawer-body--edit {
+  gap: 0.95rem !important;
+}
+
+.inv-ins-drawer--filters .inv-prod-drawer-body {
+  gap: 0.95rem;
+}
+
+.inv-ins-create-hero {
+  position: relative;
+  display: grid;
+  gap: 0.78rem;
+  padding: 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(197, 111, 67, 0.2);
+  background:
+    radial-gradient(circle at top right, rgba(255, 190, 113, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(255, 249, 240, 0.82));
+  box-shadow: 0 16px 28px rgba(var(--c-shadow-rgb), 0.1);
+}
+
+// NEW: boton de cierre integrado al hero de Insumos.
+// WHY: quitar el header duplicado sin perder una salida clara del drawer.
+// IMPACT: solo reposiciona la X dentro del bloque principal del formulario.
+.inv-ins-create-hero__close {
+  position: absolute;
+  top: 0.78rem;
+  right: 0.78rem;
+  z-index: 3;
+}
+
+.inv-ins-create-hero.is-edit {
+  border-color: rgba(45, 107, 102, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(105, 176, 171, 0.14), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(245, 250, 248, 0.82));
+}
+
+.inv-ins-create-hero__icon {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #7a1e24, #b22d30);
+  color: #fff8f0;
+  box-shadow: 0 14px 24px rgba(122, 30, 36, 0.2);
+}
+
+.inv-ins-create-hero__icon i {
+  font-size: 1.4rem;
+}
+
+.inv-ins-create-hero__kicker {
+  color: rgba(122, 30, 36, 0.72);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  margin-bottom: 0.26rem;
+}
+
+.inv-ins-create-hero__title {
+  color: #17080a;
+  font-size: 1.08rem;
+  font-weight: 900;
+  line-height: 1.14;
+}
+
+.inv-ins-create-hero__text {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  margin-top: 0.26rem;
+}
+
+.inv-ins-create-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.inv-ins-create-hero__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.48rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 255, 255, 0.8);
+  color: #5a4137;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.inv-ins-filter-hero .inv-ins-create-hero__icon {
+  background: linear-gradient(145deg, #7a1e24, #c56f43);
+}
+
+.inv-ins-filter-grid {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.inv-ins-filter-card {
+  padding: 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.inv-ins-filter-card .inv-prod-drawer-section-title {
+  margin-bottom: 0.6rem;
+}
+
+.inv-ins-filter-actions .btn {
+  min-height: 44px;
+  border-radius: 14px;
+}
+
+.inv-ins-drawer-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0.65rem 0.72rem;
+  border: 1px solid rgba(237, 235, 179, 0.7);
+  border-radius: 12px;
+  background: rgba(243, 241, 216, 0.42);
+}
+
+.inv-ins-drawer-hero.is-create,
+.inv-ins-drawer-hero.is-edit {
+  border-radius: 16px;
+  border-color: rgba(197, 111, 67, 0.22);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(255, 249, 240, 0.8));
+  box-shadow: 0 10px 18px rgba(var(--c-shadow-rgb), 0.08);
+}
+
+.inv-ins-drawer-hero__price {
+  color: #17080a;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.inv-ins-drawer-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.inv-ins-drawer-fields--create > div,
+.inv-ins-drawer-fields--create > .inv-ins-drawer-grid,
+.inv-ins-drawer-fields--edit > div,
+.inv-ins-drawer-fields--edit > .inv-ins-drawer-grid {
+  padding: 0.78rem 0.84rem;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.inv-ins-drawer-fields .form-label {
+  color: rgba(82, 44, 34, 0.82);
+  // NEW: labels mas notorios en drawer de Insumos para unificar jerarquia con Productos/Categorias.
+  // WHY: mejorar lectura y consistencia de formularios de Inventario.
+  // IMPACT: tipografia solamente; validaciones y campos no cambian.
+  font-size: 0.79rem;
+  font-weight: 800;
+  letter-spacing: 0.12px;
+  margin-bottom: 4px;
+  text-transform: capitalize;
+}
+
+.inv-ins-drawer-fields .form-control,
+.inv-ins-drawer-fields .form-select {
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  min-height: 38px;
+  padding: 0.38rem 0.58rem;
+  font-size: 0.88rem;
+}
+
+.inv-ins-drawer-fields .form-control:focus,
+.inv-ins-drawer-fields .form-select:focus {
+  border-color: rgba(178, 45, 48, 0.62);
+  box-shadow: 0 0 0 0.18rem rgba(178, 45, 48, 0.12);
+}
+
+.inv-ins-drawer-fields textarea.form-control {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.inv-ins-drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+// AM: fuerza alineacion de columnas y soporte para campos que deben ocupar todo el ancho (ej. almacenes).
+.inv-ins-drawer-grid > div {
+  min-width: 0;
+}
+
+.inv-ins-drawer-field--span-2 {
+  grid-column: 1 / -1;
+}
+
+// AM: compacta y alinea la lista de checkboxes de almacenes en create/edit de Insumos.
+.inv-ins-drawer-fields .inv-almacenes-checkboxes {
+  max-height: 168px;
+  padding: 0.52rem 0.66rem;
+}
+
+.inv-ins-drawer-fields .inv-almacenes-checkboxes .form-check {
+  margin-bottom: 0.34rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.46rem;
+  padding-left: 0;
+}
+
+.inv-ins-drawer-fields .inv-almacenes-checkboxes .form-check-input {
+  margin: 0.16rem 0 0;
+  float: none;
+  position: static;
+  flex: 0 0 auto;
+}
+
+.inv-ins-drawer-fields .inv-almacenes-checkboxes .form-check-label {
+  margin-bottom: 0;
+  font-size: 0.81rem;
+  line-height: 1.24;
+}
+
+.inv-ins-drawer-fields .invalid-feedback {
+  margin-top: 0.18rem;
+  font-size: 0.72rem;
+}
+
+.inv-ins-stepper {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  gap: 8px;
+}
+
+.inv-ins-stepper button,
+.inv-ins-stepper input {
+  border: 1px solid rgba(157, 150, 112, 0.45);
+  border-radius: 10px;
+  background: #fff;
+  color: #17080a;
+}
+
+.inv-ins-stepper button {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.inv-ins-stepper input {
+  text-align: center;
+  font-weight: 700;
+}
+
+.inv-ins-disabled-note {
+  border: 1px dashed rgba(157, 150, 112, 0.48);
+  border-radius: 10px;
+  background: rgba(243, 241, 216, 0.4);
+  color: rgba(82, 44, 34, 0.86);
+  padding: 0.6rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.inv-ins-drawer-footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.inv-ins-drawer-footer .btn {
+  min-height: 36px;
+}
+
+.inv-ins-drawer-actions {
+  grid-template-columns: 1fr 1fr !important;
+}
+
+.inv-ins-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.36);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.inv-ins-view-toggle__option {
+  width: 38px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.inv-ins-view-toggle__option:hover,
+.inv-ins-view-toggle__option:focus-visible {
+  color: #7a1e24;
+  background: rgba(243, 241, 216, 0.78);
+  outline: none;
+}
+
+.inv-ins-view-toggle__option.is-active {
+  color: #fff7f3;
+  background: linear-gradient(135deg, #7a1e24, #b22d30);
+  box-shadow: 0 10px 18px rgba(122, 30, 36, 0.18);
+}
+
+.inv-ins-track .inv-ins-card-v3 {
+  scroll-snap-align: start;
+}
+
+.inv-ins-card-v3 {
+  min-height: 100%;
+}
+
+.inv-ins-card-v3.is-selected {
+  border-color: rgba(178, 45, 48, 0.55);
+}
+
+.inv-ins-card-v3.is-inactive {
+  opacity: 0.72;
+}
+
+.inv-ins-card-v3__thumb-wrap {
+  height: 144px;
+}
+
+.inv-ins-card-v3__body {
+  gap: 8px;
+}
+
+.inv-ins-card-v3__meta {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.77rem;
+  line-height: 1.35;
+  margin-top: 3px;
+  min-height: 2.1em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v3__metrics {
+  margin-top: 0.62rem;
+}
+
+.inv-ins-card-v3__footer {
+  min-height: 54px;
+  align-items: stretch;
+}
+
+.inv-ins-card-v3__footer .inv-prod-stock-copy small {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v3__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inv-ins-card-v3__action {
+  min-height: 34px;
+}
+
+.inv-ins-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.14rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.inv-ins-status-pill.is-ok {
+  border-color: rgba(45, 107, 102, 0.36);
+  color: #2d6b66;
+  background: rgba(45, 107, 102, 0.08);
+}
+
+.inv-ins-status-pill.is-low {
+  border-color: rgba(197, 111, 67, 0.36);
+  color: #c56f43;
+  background: rgba(197, 111, 67, 0.1);
+}
+
+.inv-ins-status-pill.is-empty {
+  border-color: rgba(178, 45, 48, 0.36);
+  color: #b22d30;
+  background: rgba(178, 45, 48, 0.08);
+}
+
+.inv-ins-status-pill.is-inactive {
+  border-color: rgba(157, 150, 112, 0.42);
+  color: #522c22;
+  background: rgba(157, 150, 112, 0.14);
+}
+
+.inv-ins-table-wrap {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  border-radius: 18px;
+  padding: 0.35rem 0.45rem;
+}
+
+.inv-ins-table thead th {
+  vertical-align: middle;
+}
+
+.inv-ins-table tbody td {
+  vertical-align: middle;
+}
+
+.inv-ins-table-thumb-wrap {
+  width: 56px;
+  height: 56px;
+}
+
+.inv-ins-table-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(243, 241, 216, 0.55);
+  display: block;
+}
+
+.inv-ins-table-thumb.is-placeholder {
+  display: grid;
+  place-items: center;
+  color: rgba(82, 44, 34, 0.52);
+}
+
+.inv-ins-table-desc {
+  min-width: 220px;
+  max-width: 280px;
+  color: rgba(82, 44, 34, 0.88);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inv-ins-table-action-icon {
+  // NEW: acciones compactas del listado (Ver/Editar/Activar-Inactivar) con hit area consistente.
+  // WHY: replicar la referencia visual por iconos sin recargar la tabla de Insumos.
+  // IMPACT: solo presentacion de botones del listado; handlers y flujo CRUD permanecen iguales.
+  width: 36px;
+  height: 36px;
+  padding: 0 !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(157, 150, 112, 0.36) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #8c5a20 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none !important;
+}
+
+.inv-ins-table-action-icon:hover:not(:disabled),
+.inv-ins-table-action-icon:focus-visible {
+  color: #7a1e24 !important;
+  border-color: rgba(122, 30, 36, 0.42) !important;
+  background: rgba(243, 241, 216, 0.84) !important;
+  box-shadow: 0 0 0 0.16rem rgba(178, 45, 48, 0.1) !important;
+  outline: none;
+}
+
+.inv-ins-table-action-icon.is-danger {
+  color: #c56f43 !important;
+  border-color: rgba(197, 111, 67, 0.34) !important;
+  background: rgba(197, 111, 67, 0.08) !important;
+}
+
+.inv-ins-table-action-icon.is-success {
+  color: #2d6b66 !important;
+  border-color: rgba(45, 107, 102, 0.34) !important;
+  background: rgba(45, 107, 102, 0.08) !important;
+}
+
+.inv-ins-detail-modal-dialog {
+  max-width: min(980px, 94vw);
+}
+
+.inv-ins-detail-modal {
+  background: linear-gradient(180deg, #ffffff, #fbfaf3);
+}
+
+.inv-ins-detail-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 1rem 1.1rem;
+  background: linear-gradient(145deg, rgba(23, 8, 10, 0.98), rgba(82, 44, 34, 0.96));
+  color: #f7f7f7;
+}
+
+.inv-ins-detail-modal__title-wrap,
+.inv-ins-detail-modal__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inv-ins-detail-modal__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(237, 235, 179, 0.22);
+  background: rgba(243, 241, 216, 0.08);
+  display: grid;
+  place-items: center;
+  color: #f3f1d8;
+  flex-shrink: 0;
+}
+
+.inv-ins-detail-modal__body {
+  display: grid;
+  gap: 16px;
+  padding: 1rem 1.1rem;
+}
+
+.inv-ins-detail-modal__hero {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inv-ins-detail-modal__hero-card,
+.inv-ins-detail-modal__item,
+.inv-ins-detail-modal__image-meta {
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  border-radius: 16px;
+  background: rgba(247, 247, 247, 0.94);
+  padding: 0.85rem 0.95rem;
+}
+
+.inv-ins-detail-modal__hero-card span,
+.inv-ins-detail-modal__item span,
+.inv-ins-detail-modal__image-meta span {
+  display: block;
+  color: rgba(82, 44, 34, 0.74);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08px;
+  margin-bottom: 4px;
+}
+
+.inv-ins-detail-modal__hero-card strong,
+.inv-ins-detail-modal__item strong,
+.inv-ins-detail-modal__image-meta strong {
+  color: #17080a;
+  font-size: 0.96rem;
+  line-height: 1.3;
+  font-weight: 800;
+}
+
+.inv-ins-detail-modal__section {
+  display: grid;
+  gap: 10px;
+}
+
+.inv-ins-detail-modal__section-title {
+  color: #17080a;
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.inv-ins-detail-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.inv-ins-detail-modal__image-block {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.inv-ins-detail-modal__image {
+  width: 100%;
+  min-height: 200px;
+  border-radius: 18px;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(243, 241, 216, 0.44);
+  object-fit: cover;
+}
+
+.inv-ins-detail-modal__image--placeholder {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  color: rgba(82, 44, 34, 0.62);
+  font-weight: 700;
+}
+
+.inv-ins-detail-modal__footer {
+  justify-content: flex-end;
+}
+
+// NEW: layout y jerarquia visual especificos para Insumos con cards 3/2/1, tabla compacta y modal segmentado.
+// WHY: la version previa mezclaba estilos heredados y no daba una lectura limpia entre cards, listado y detalle.
+// IMPACT: solo afecta la presentacion del submodulo Insumos; no modifica estilos globales ni otros modulos.
+.inv-ins-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.inv-ins-card-v3 {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100%;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.inv-ins-card-v3__header {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 0.95rem;
+  align-items: start;
+}
+
+.inv-ins-card-v3__media {
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(243, 241, 216, 0.8), rgba(237, 235, 179, 0.62));
+  border: 1px solid rgba(237, 235, 179, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.inv-ins-card-v3__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.inv-ins-card-v3__image--placeholder {
+  display: grid;
+  place-items: center;
+  gap: 0.2rem;
+  color: rgba(82, 44, 34, 0.62);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.inv-ins-card-v3__image--placeholder i {
+  font-size: 1.15rem;
+}
+
+.inv-ins-card-v3__header-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.inv-ins-card-v3__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.inv-ins-card-v3__name {
+  min-width: 0;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v3__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.inv-ins-card-v3__stock-chip {
+  margin: 0;
+}
+
+.inv-ins-card-v3__meta {
+  margin: 0;
+  min-height: 0;
+}
+
+.inv-ins-card-v3__body {
+  display: grid;
+  align-content: space-between;
+  gap: 0.95rem;
+  padding-top: 0.25rem;
+}
+
+.inv-ins-card-v3__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.inv-ins-card-v3__stat {
+  border-radius: 18px;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.72rem 0.8rem;
+  min-width: 0;
+}
+
+.inv-ins-card-v3__stat span {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: rgba(82, 44, 34, 0.7);
+  margin-bottom: 0.25rem;
+}
+
+.inv-ins-card-v3__stat strong {
+  display: block;
+  font-size: 0.96rem;
+  line-height: 1.3;
+  color: #17080a;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-ins-card-v3__actions-primary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.inv-ins-card-v3__action {
+  min-height: 40px;
+  padding-inline: 0.72rem !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease !important;
+}
+
+.inv-ins-card-v3__action:hover:not(:disabled),
+.inv-ins-card-v3__action:focus-visible {
+  transform: translateY(-1px);
+}
+
+.inv-ins-card-v3__action span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-ins-card-v3__body > .inv-prod-card-name,
+.inv-ins-card-v3__body > .inv-prod-card-category,
+.inv-ins-card-v3__body > .inv-ins-card-v3__meta:not(:first-child),
+.inv-ins-card-v3__body > .inv-prod-card-metrics,
+.inv-ins-card-v3__body > .inv-prod-stock-line {
+  display: none !important;
+}
+
+.inv-ins-table-main {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.inv-ins-table-main__copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.inv-ins-table-main__copy strong,
+.inv-ins-table-main__copy span,
+.inv-ins-table-main__copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inv-ins-table-main__copy small {
+  color: rgba(82, 44, 34, 0.68);
+}
+
+.inv-ins-table-action {
+  min-height: 36px;
+  padding-inline: 0.72rem !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+}
+
+.inv-ins-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inv-ins-pagination__page {
+  min-width: 132px;
+  text-align: center;
+  padding: 0.65rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  background: rgba(255, 255, 255, 0.86);
+  color: #522c22;
+  font-weight: 800;
+}
+
+.inv-ins-detail-modal__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.15rem 0 0.2rem;
+  background: linear-gradient(180deg, rgba(251, 250, 243, 0.98), rgba(251, 250, 243, 0.85));
+  backdrop-filter: blur(8px);
+}
+
+.inv-ins-detail-modal__tab {
+  border: 1px solid rgba(157, 150, 112, 0.32);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #6f3c2c;
+  font-weight: 800;
+  font-size: 0.8rem;
+  padding: 0.55rem 0.85rem;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.inv-ins-detail-modal__tab:hover,
+.inv-ins-detail-modal__tab:focus-visible {
+  border-color: rgba(122, 30, 36, 0.35);
+  color: #7a1e24;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.inv-ins-detail-modal__tab.is-active {
+  background: linear-gradient(135deg, #7a1e24, #b22d30);
+  border-color: transparent;
+  color: #fff7f3;
+  box-shadow: 0 10px 18px rgba(122, 30, 36, 0.18);
+}
+
+.inv-ins-detail-modal__panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.inv-ins-detail-modal__section {
+  padding: 0.2rem 0 0;
+}
+
+.inv-ins-detail-modal__image-meta strong {
+  word-break: break-word;
+}
+
+@media (min-width: 768px) {
+  .inv-ins-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .inv-ins-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1199.98px) {
+  .inv-ins-track.is-frequent {
+    grid-auto-columns: calc((100% - (var(--inv-ins-pad) * 2) - var(--inv-ins-gap)) / 2);
+  }
+
+  .inv-ins-track.is-all {
+    grid-auto-columns: calc((100% - (var(--inv-ins-pad) * 2) - var(--inv-ins-gap)) / 2);
+  }
+
+  .inv-ins-skeleton-track.is-frequent,
+  .inv-ins-skeleton-track.is-all {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-ins-card-v3__actions-primary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-ins-detail-modal__hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-ins-header-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .inv-ins-search {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .inv-ins-view-toggle {
+    justify-self: start;
+  }
+
+  .inv-ins-header-actions .inv-prod-toolbar-btn {
+    justify-content: center;
+  }
+
+  .inv-ins-section__head {
+    gap: 8px;
+  }
+
+  .inv-ins-track {
+    --inv-ins-pad: 8px;
+    --inv-ins-gap: 10px;
+  }
+
+  .inv-ins-track.is-frequent {
+    grid-auto-columns: calc(100% - (var(--inv-ins-pad) * 2));
+  }
+
+  .inv-ins-track.is-all {
+    grid-template-rows: 1fr;
+    grid-auto-columns: calc(100% - (var(--inv-ins-pad) * 2));
+  }
+
+  .inv-ins-card__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-card__btn {
+    min-width: 0;
+  }
+
+  .inv-ins-card__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-drawer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  // AM: compactacion mobile de create/edit para que Insumos quede alineado con Productos en pantallas chicas.
+  .inv-ins-drawer-fields--create > div,
+  .inv-ins-drawer-fields--create > .inv-ins-drawer-grid,
+  .inv-ins-drawer-fields--edit > div,
+  .inv-ins-drawer-fields--edit > .inv-ins-drawer-grid {
+    padding: 0.68rem 0.72rem;
+    border-radius: 12px;
+  }
+
+  .inv-ins-drawer-fields .form-label {
+    margin-bottom: 0.24rem;
+  }
+
+  .inv-ins-drawer-fields .inv-almacenes-checkboxes {
+    max-height: 146px;
+    padding: 0.48rem 0.6rem;
+  }
+
+  .inv-ins-drawer-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-skeleton-track.is-frequent,
+  .inv-ins-skeleton-track.is-all {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-card-v3__header {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .inv-ins-card-v3__media {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+  }
+
+  .inv-ins-card-v3__stats,
+  .inv-ins-card-v3__actions-primary {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-table-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-ins-table-desc {
+    min-width: 160px;
+  }
+
+  .inv-ins-detail-modal-dialog {
+    max-width: 100vw;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  .inv-ins-detail-modal {
+    min-height: 100vh;
+    border-radius: 0 !important;
+  }
+
+  .inv-ins-detail-modal__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .inv-ins-detail-modal__header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .inv-ins-detail-modal__tabs {
+    top: -0.2rem;
+    margin-inline: -0.1rem;
+    padding-right: 0.1rem;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .inv-ins-detail-modal__tab {
+    flex: 0 0 auto;
+  }
+
+  .inv-ins-detail-modal__hero,
+  .inv-ins-detail-modal__grid,
+  .inv-ins-detail-modal__image-block {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-card-v3__action,
+  .inv-ins-table-action,
+  .inv-ins-pagination__page {
+    width: 100%;
+  }
+
+  .inv-ins-detail-modal__body {
+    padding: 0.95rem;
+  }
+
+  .inv-ins-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inv-ins-card,
+  .inv-ins-card__tertiary,
+  .inv-ins-skeleton-card {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+// NEW: unificacion visual de dropdowns/selects de Categorias e Insumos con efecto glass/agua.
+// WHY: mantener el mismo lenguaje visual en listas desplegables del modulo Inventario sin tocar logica.
+// IMPACT: solo estilos en wrappers `inv-catpro-card`, `inv-cat-v2__drawer-body` e `inv-ins-module`.
+.inv-catpro-card .form-select,
+.inv-cat-v2__drawer-body .form-select,
+.inv-ins-module .form-select {
+  background-color: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow:
+    0 8px 16px rgba(var(--c-shadow-rgb), 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  color: #17080a;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+  scrollbar-color: rgba(157, 150, 112, 0.45) rgba(255, 255, 255, 0.14);
+}
+
+.inv-catpro-card .form-select:hover:not(:disabled),
+.inv-cat-v2__drawer-body .form-select:hover:not(:disabled),
+.inv-ins-module .form-select:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.52);
+  background-color: rgba(255, 255, 255, 0.64);
+}
+
+.inv-catpro-card .form-select:focus,
+.inv-cat-v2__drawer-body .form-select:focus,
+.inv-ins-module .form-select:focus {
+  border-color: rgba(178, 45, 48, 0.36);
+  box-shadow:
+    0 0 0 0.18rem rgba(178, 45, 48, 0.12),
+    0 10px 18px rgba(var(--c-shadow-rgb), 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  background-color: rgba(255, 255, 255, 0.66);
+}
+
+.inv-catpro-card .form-select:disabled,
+.inv-cat-v2__drawer-body .form-select:disabled,
+.inv-ins-module .form-select:disabled {
+  background-color: rgba(255, 255, 255, 0.4);
+  color: rgba(82, 44, 34, 0.58);
+  border-color: rgba(255, 255, 255, 0.22);
+  opacity: 1;
+}
+
+// NEW: estilo de opciones para navegadores que permiten personalizar menus nativos.
+// WHY: acercar el panel de opciones al look glass manteniendo legibilidad donde el navegador lo soporte.
+// IMPACT: progresivo; si el SO renderiza el menu nativo, conserva su apariencia por defecto.
+.inv-catpro-card .form-select option,
+.inv-cat-v2__drawer-body .form-select option,
+.inv-ins-module .form-select option,
+.inv-catpro-card .form-select optgroup,
+.inv-cat-v2__drawer-body .form-select optgroup,
+.inv-ins-module .form-select optgroup {
+  background: rgba(255, 255, 255, 0.94);
+  color: #17080a;
+}
+
+.inv-catpro-card .form-select option:checked,
+.inv-cat-v2__drawer-body .form-select option:checked,
+.inv-ins-module .form-select option:checked {
+  background: rgba(178, 45, 48, 0.14);
+  color: #17080a;
+}
+
+// AM: estabiliza la visualizacion de listados multi-almacen en modales/drawers (mobile + desktop).
+// AM: evita que el browser renderice el `select[multiple]` como combo cerrado sin texto visible.
+.inv-catpro-card .form-select[multiple],
+.inv-cat-v2__drawer-body .form-select[multiple],
+.inv-ins-module .form-select[multiple] {
+  min-height: 108px;
+  padding-right: 0.72rem;
+  background-image: none !important;
+  overflow-y: auto;
+  -webkit-appearance: listbox;
+  appearance: listbox;
+}
+
+.inv-catpro-card .form-select[multiple] option,
+.inv-cat-v2__drawer-body .form-select[multiple] option,
+.inv-ins-module .form-select[multiple] option {
+  display: block;
+  padding: 0.34rem 0.48rem;
+  line-height: 1.25;
+  color: #17080a;
+  white-space: normal;
+}
+
+.inv-catpro-card .form-select[multiple] option:checked,
+.inv-cat-v2__drawer-body .form-select[multiple] option:checked,
+.inv-ins-module .form-select[multiple] option:checked {
+  background: rgba(178, 45, 48, 0.18);
+  color: #17080a;
+}
+
+// AM: contenedor visual para "Almacenes asignados" con checkboxes en formularios de Inventario.
+.inv-catpro-card .inv-almacenes-checkboxes,
+.inv-cat-v2__drawer-body .inv-almacenes-checkboxes,
+.inv-ins-module .inv-almacenes-checkboxes {
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 12px;
+  padding: 0.62rem 0.76rem;
+  background: rgba(255, 255, 255, 0.52);
+  max-height: 186px;
+  overflow-y: auto;
+}
+
+.inv-catpro-card .inv-almacenes-checkboxes .form-check,
+.inv-cat-v2__drawer-body .inv-almacenes-checkboxes .form-check,
+.inv-ins-module .inv-almacenes-checkboxes .form-check {
+  margin-bottom: 0.42rem;
+}
+
+.inv-catpro-card .inv-almacenes-checkboxes .form-check:last-child,
+.inv-cat-v2__drawer-body .inv-almacenes-checkboxes .form-check:last-child,
+.inv-ins-module .inv-almacenes-checkboxes .form-check:last-child {
+  margin-bottom: 0;
+}
+
+.inv-catpro-card .inv-almacenes-checkboxes.is-invalid,
+.inv-cat-v2__drawer-body .inv-almacenes-checkboxes.is-invalid,
+.inv-ins-module .inv-almacenes-checkboxes.is-invalid {
+  border-color: #dc3545;
+}
+
+// NEW: soporte visual para dropdowns custom (ej. Bootstrap) si se usan dentro de Categorias/Insumos.
+// WHY: unificar menus de opciones no nativos sin afectar otros modulos fuera de Inventario.
+// IMPACT: alcance limitado a wrappers `inv-catpro-card` e `inv-ins-module`.
+.inv-catpro-card .dropdown-menu,
+.inv-ins-module .dropdown-menu {
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  box-shadow: 0 14px 26px rgba(var(--c-shadow-rgb), 0.14);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  z-index: 2330;
+}
+
+.inv-catpro-card .dropdown-item,
+.inv-ins-module .dropdown-item {
+  color: #17080a;
+  border-radius: 8px;
+}
+
+.inv-catpro-card .dropdown-item:hover,
+.inv-catpro-card .dropdown-item:focus,
+.inv-ins-module .dropdown-item:hover,
+.inv-ins-module .dropdown-item:focus {
+  background: rgba(178, 45, 48, 0.08);
+  color: #17080a;
+}
+
+.inv-catpro-card .dropdown-menu::-webkit-scrollbar,
+.inv-ins-module .dropdown-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.inv-catpro-card .dropdown-menu::-webkit-scrollbar-thumb,
+.inv-ins-module .dropdown-menu::-webkit-scrollbar-thumb {
+  background: rgba(157, 150, 112, 0.38);
+  border-radius: 999px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  // NEW: fallback de dropdown glass para navegadores sin blur.
+  // WHY: preservar contraste y legibilidad sin depender de `backdrop-filter`.
+  // IMPACT: solo sube opacidad del fondo; la funcionalidad permanece intacta.
+  .inv-catpro-card .form-select,
+  .inv-cat-v2__drawer-body .form-select,
+  .inv-ins-module .form-select,
+  .inv-catpro-card .dropdown-menu,
+  .inv-ins-module .dropdown-menu {
+    background-color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.9);
+  }
+}
+
+// NEW: overrides finales del carrusel/cards/modal de Insumos para dejar el submodulo solo en cards.
+// WHY: aislar la nueva UI de Insumos al final del archivo evita tocar reglas legacy que aun usan otros layouts del modulo.
+// IMPACT: solo afecta selectores `inv-ins-*`; Productos y otros submodulos conservan sus estilos actuales.
+.inv-ins-carousel-shell {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.inv-ins-carousel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-ins-carousel-stage {
+  padding: 0.35rem 2.85rem;
+}
+
+.inv-ins-carousel-page {
+  display: grid;
+  gap: 0.95rem;
+  align-items: stretch;
+  animation: inv-ins-carousel-page-in 180ms ease;
+}
+
+.inv-ins-carousel-page.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.inv-ins-carousel-page.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inv-ins-carousel-page.cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@keyframes inv-ins-carousel-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inv-ins-card-v4 {
+  min-height: 232px;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.9), transparent 36%),
+    linear-gradient(180deg, #fffdf8, #f8f4ea);
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  position: relative;
+  overflow: visible;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  box-shadow: 0 12px 22px rgba(82, 44, 34, 0.08);
+}
+
+.inv-ins-card-v4:hover {
+  transform: translateY(-3px);
+  border-color: rgba(197, 111, 67, 0.38);
+  box-shadow: 0 18px 30px rgba(82, 44, 34, 0.12);
+}
+
+.inv-ins-card-v4::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: rgba(157, 150, 112, 0.44);
+}
+
+.inv-ins-card-v4.is-low::before {
+  background: rgba(197, 111, 67, 0.8);
+}
+
+.inv-ins-card-v4.is-empty::before {
+  background: rgba(178, 45, 48, 0.84);
+}
+
+.inv-ins-card-v4.is-inactive::before {
+  background: rgba(82, 44, 34, 0.46);
+}
+
+.inv-ins-card-v4__surface {
+  display: flex;
+  flex-direction: column;
+  gap: 0.78rem;
+  min-height: 100%;
+  padding: 0.92rem 0.96rem 0.96rem 1.08rem;
+  position: relative;
+}
+
+/* NEW: icono de fondo tipo premium, inspirado en el comportamiento hover de Categorias. */
+/* WHY: el usuario pidio sacar el icono decorativo del header y dejarlo como acento visual amigable del card. */
+/* IMPACT: solo decoracion del card v4; no altera contenido, acciones ni eventos. */
+.inv-ins-card-v4__bg-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  width: 118px;
+  height: 118px;
+  border-radius: 36px;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.48), rgba(157, 150, 112, 0.05) 58%, rgba(157, 150, 112, 0.015) 100%);
+  color: rgba(122, 30, 36, 0.06);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 0;
+  transform: translate(-50%, -50%) scale(0.94) rotate(8deg);
+  transition: transform 220ms ease, color 220ms ease, background 220ms ease;
+}
+
+.inv-ins-card-v4__bg-icon i {
+  font-size: 3rem;
+}
+
+.inv-ins-card-v4:hover .inv-ins-card-v4__bg-icon,
+.inv-ins-card-v4:focus-visible .inv-ins-card-v4__bg-icon {
+  transform: translate(-50%, -50%) scale(1.12) rotate(4deg);
+  color: rgba(122, 30, 36, 0.1);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.56), rgba(197, 111, 67, 0.05) 58%, rgba(157, 150, 112, 0.02) 100%);
+}
+
+.inv-ins-card-v4__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+  position: relative;
+  z-index: 1;
+}
+
+.inv-ins-card-v4__name-wrap {
+  min-width: 0;
+}
+
+.inv-ins-card-v4__name {
+  color: #17080a;
+  font-size: 0.94rem;
+  font-weight: 800;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v4__stock-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.inv-ins-card-v4__stock-pill.is-ok {
+  color: #2d6b66;
+  background: rgba(45, 107, 102, 0.12);
+}
+
+.inv-ins-card-v4__stock-pill.is-low {
+  color: #a9582d;
+  background: rgba(197, 111, 67, 0.14);
+}
+
+.inv-ins-card-v4__stock-pill.is-empty {
+  color: #b22d30;
+  background: rgba(178, 45, 48, 0.12);
+}
+
+.inv-ins-card-v4__stock-pill.is-inactive {
+  color: #52342d;
+  background: rgba(82, 44, 34, 0.1);
+}
+
+.inv-ins-card-v4__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.72rem;
+  position: relative;
+  z-index: 1;
+}
+
+/* NEW: fila visual pareja para Categoria y Cantidad, con el mismo lenguaje visual. */
+/* WHY: el usuario pidio que ambas midan lo mismo y se vean uniformes entre si. */
+/* IMPACT: solo reorganiza el contenido del card; no cambia datos ni acciones. */
+.inv-ins-card-v4__feature-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+  margin-top: 0.26rem;
+}
+
+.inv-ins-card-v4__feature {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  padding-block: 0.26rem 0.34rem;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+}
+
+.inv-ins-card-v4__feature-icon,
+.inv-ins-card-v4__timeline-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: rgba(157, 150, 112, 0.1);
+  color: #a9582d;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.inv-ins-card-v4__feature-icon i,
+.inv-ins-card-v4__timeline-icon i {
+  font-size: 1.06rem;
+}
+
+.inv-ins-card-v4__feature-copy,
+.inv-ins-card-v4__timeline-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.16rem;
+}
+
+.inv-ins-card-v4__section-title {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.71rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.inv-ins-card-v4__feature-value {
+  color: rgba(23, 8, 10, 0.94);
+  font-size: 0.79rem;
+  font-weight: 500;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v4__timeline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.inv-ins-card-v4__timeline-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 0.52rem;
+  min-width: 0;
+}
+
+.inv-ins-card-v4__timeline-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+}
+
+.inv-ins-card-v4__timeline-value {
+  color: rgba(23, 8, 10, 0.9);
+  font-size: 0.77rem;
+  font-weight: 500;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inv-ins-card-v4__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.58rem;
+  position: relative;
+  z-index: 2;
+}
+
+.inv-ins-card-v4__action {
+  min-height: 38px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding-inline: 0.72rem !important;
+  font-size: 0.76rem !important;
+  font-weight: 700 !important;
+}
+
+/* NEW: refuerzo visual del CTA de inactivacion dentro del card para separarlo del icono decorativo de fondo. */
+/* WHY: al crecer el icono de fondo en hover, el boton debia conservar contraste y lectura propia. */
+/* IMPACT: solo cambia el boton de estado en cards de Insumos; no afecta otros modulos ni otros botones. */
+.inv-ins-card-v4__action.inv-prod-btn-inactivate,
+.inv-ins-card-v4__action.inv-prod-btn-success-lite {
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 8px 16px rgba(82, 44, 34, 0.08);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.inv-ins-card-v4__action.inv-prod-btn-inactivate {
+  background: rgba(255, 248, 244, 0.96) !important;
+  border-color: rgba(197, 111, 67, 0.42) !important;
+}
+
+.inv-ins-card-v4__action.inv-prod-btn-inactivate:hover:not(:disabled),
+.inv-ins-card-v4__action.inv-prod-btn-inactivate:focus-visible {
+  background: rgba(255, 242, 233, 0.98) !important;
+  border-color: rgba(197, 111, 67, 0.56) !important;
+}
+
+.inv-ins-card-v4__action .spinner-border {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.inv-ins-detail-modal-dialog {
+  // NEW: se ensancha el modal de detalle de Insumos en desktop.
+  // WHY: el usuario pidio una lectura mas horizontal y amplia en pantallas grandes.
+  // IMPACT: solo afecta el ancho maximo desktop; mobile mantiene sus overrides propios.
+  max-width: min(1360px, 97.5vw);
+}
+
+.inv-ins-detail-modal {
+  border-radius: 28px !important;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.96), transparent 34%),
+    linear-gradient(180deg, #fffdf9, #f8f4ea 90%);
+}
+
+.inv-ins-detail-modal__header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 1.2rem 1.45rem;
+  background: linear-gradient(135deg, #2b1208, #3a1607 58%, #52200f);
+}
+
+.inv-ins-detail-modal__title-wrap .text-muted,
+.inv-ins-detail-modal__header .text-muted {
+  color: rgba(255, 245, 239, 0.82) !important;
+}
+
+.inv-ins-detail-modal__body {
+  gap: 1.2rem;
+  padding: 1.3rem 1.45rem 1.45rem;
+  background: #f7f4f2;
+}
+
+.inv-ins-detail-modal__hero {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.inv-ins-detail-modal__hero-card,
+.inv-ins-detail-modal__item,
+.inv-ins-detail-modal__image-meta {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(226, 220, 214, 0.92);
+  box-shadow: none;
+}
+
+.inv-ins-detail-modal__status {
+  padding: 0.55rem 0.95rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.inv-ins-detail-modal__status.is-ok {
+  color: #22a055;
+  background: rgba(34, 160, 85, 0.12);
+  border-color: transparent;
+}
+
+.inv-ins-detail-modal__status.is-low,
+.inv-ins-detail-modal__status.is-empty,
+.inv-ins-detail-modal__status.is-inactive {
+  border-color: transparent;
+}
+
+.inv-ins-detail-modal__close {
+  width: 42px;
+  height: 42px;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: rgba(255, 245, 239, 0.9) !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none !important;
+}
+
+.inv-ins-detail-modal__close:hover,
+.inv-ins-detail-modal__close:focus-visible {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  outline: none;
+}
+
+.inv-ins-detail-modal__hero-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 0.45rem;
+}
+
+.inv-ins-detail-modal__hero-head i {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #a15526;
+  background: rgba(161, 85, 38, 0.08);
+  font-size: 0.95rem;
+}
+
+.inv-ins-detail-modal__hero-head span {
+  margin-bottom: 0 !important;
+}
+
+.inv-ins-detail-modal__section-title {
+  margin-bottom: 0;
+  color: #2b1a12;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.inv-ins-detail-modal__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.inv-ins-detail-modal__column {
+  display: grid;
+  gap: 1rem;
+}
+
+.inv-ins-detail-modal__section-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(226, 220, 214, 0.96);
+  min-width: 0;
+}
+
+.inv-ins-detail-modal__section-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inv-ins-detail-modal__info-card {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(232, 227, 221, 0.96);
+  border-radius: 18px;
+  background: rgba(248, 245, 242, 0.92);
+  min-height: 132px;
+  min-width: 0;
+}
+
+.inv-ins-detail-modal__info-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.inv-ins-detail-modal__info-head i {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #a15526;
+  background: rgba(161, 85, 38, 0.08);
+  font-size: 1rem;
+}
+
+.inv-ins-detail-modal__info-head span {
+  display: block;
+  color: rgba(116, 92, 77, 0.9);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.inv-ins-detail-modal__info-card strong {
+  color: #17080a;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  font-weight: 800;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.inv-ins-detail-modal__image-block {
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+}
+
+@media (max-width: 1279.98px) {
+  .inv-ins-carousel-stage {
+    padding-inline: 2.55rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-ins-carousel-meta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inv-ins-carousel-stage {
+    padding-inline: 0.25rem;
+  }
+
+  .inv-ins-carousel-stage .inv-prod-carousel-float {
+    top: auto;
+    bottom: -0.35rem;
+    transform: none;
+  }
+
+  .inv-ins-carousel-stage .inv-prod-carousel-float.is-prev {
+    left: 0;
+  }
+
+  .inv-ins-carousel-stage .inv-prod-carousel-float.is-next {
+    right: 0;
+  }
+
+  .inv-ins-carousel-page {
+    padding-bottom: 2.25rem;
+  }
+
+  .inv-ins-card-v4 {
+    min-height: 224px;
+  }
+
+  .inv-ins-card-v4__feature-row,
+  .inv-ins-card-v4__timeline,
+  .inv-ins-card-v4__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-detail-modal-dialog {
+    max-width: 100vw;
+  }
+
+  .inv-ins-detail-modal {
+    min-height: 100vh;
+    border-radius: 0 !important;
+  }
+
+  .inv-ins-detail-modal__hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-ins-detail-modal__section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-ins-detail-modal__info-card {
+    min-height: 0;
+  }
+
+  .inv-ins-detail-modal__content,
+  .inv-ins-detail-modal__column {
+    gap: 0.85rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .inv-ins-detail-modal__hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* NEW: variante editorial del modal de detalle de Insumos con solo los campos requeridos. */
+/* WHY: el usuario pidio un modal mas llamativo, fino y sin cuadros, mostrando unicamente precio, unidad, almacen, descripcion y stock minimo. */
+/* IMPACT: solo cambia la presentacion del modal "Ver detalle" de Insumos; cards, drawer y endpoints no se alteran. */
+.inv-ins-detail-modal--editorial {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(197, 111, 67, 0.08), transparent 34%),
+    linear-gradient(180deg, #fffdf9, #f7f1e7 92%);
+}
+
+.inv-ins-detail-modal--editorial .inv-ins-detail-modal__header {
+  padding: 0.95rem 1.25rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.inv-ins-detail-modal--editorial .inv-ins-detail-modal__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff6ef;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.inv-ins-detail-modal--editorial .inv-ins-detail-modal__icon i {
+  font-size: 1.04rem;
+}
+
+.inv-ins-detail-modal--editorial .inv-ins-detail-modal__header-actions {
+  justify-content: flex-end;
+}
+
+.inv-ins-detail-modal__body--editorial {
+  position: relative;
+  overflow: hidden;
+  padding: 1rem 1.25rem 1.1rem;
+  background: transparent;
+}
+
+.inv-ins-detail-modal__ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.inv-ins-detail-modal__ambient span {
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+  filter: blur(0);
+  opacity: 0.7;
+  animation: inv-ins-detail-float 8s ease-in-out infinite;
+}
+
+.inv-ins-detail-modal__ambient .is-one {
+  top: 22px;
+  right: 96px;
+  width: 168px;
+  height: 168px;
+  background: radial-gradient(circle, rgba(197, 111, 67, 0.12), rgba(197, 111, 67, 0.01) 68%);
+}
+
+.inv-ins-detail-modal__ambient .is-two {
+  bottom: 26px;
+  left: 24px;
+  width: 132px;
+  height: 132px;
+  background: radial-gradient(circle, rgba(82, 44, 34, 0.08), rgba(82, 44, 34, 0.01) 68%);
+  animation-delay: -2.5s;
+}
+
+.inv-ins-detail-modal__ambient .is-three {
+  top: 48%;
+  left: 48%;
+  width: 220px;
+  height: 220px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.02) 72%);
+  animation-delay: -4s;
+}
+
+.inv-ins-detail-modal__editorial-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.inv-ins-detail-modal__lead {
+  position: relative;
+  min-width: 0;
+  padding: 0 0 0.75rem;
+  text-align: center;
+  justify-items: center;
+}
+
+.inv-ins-detail-modal__lead::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(180px, 82%);
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(197, 111, 67, 0.74), rgba(197, 111, 67, 0));
+  transform: translateX(-50%);
+}
+
+.inv-ins-detail-modal__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: rgba(122, 30, 36, 0.78);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inv-ins-detail-modal__lead-price {
+  display: block;
+  margin-top: 0.18rem;
+  color: #220b08;
+  font-size: clamp(1.55rem, 2vw, 2.15rem);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+}
+
+.inv-ins-detail-modal__lead-copy {
+  display: none;
+}
+
+.inv-ins-detail-modal__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 0.9rem;
+  min-width: 0;
+}
+
+.inv-ins-detail-modal__line {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: start;
+  padding: 0.62rem 0;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.18);
+  animation: inv-ins-detail-line-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.inv-ins-detail-modal__line.is-description {
+  grid-column: auto;
+}
+
+.inv-ins-detail-modal__line:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.inv-ins-detail-modal__line:hover {
+  transform: translateX(4px);
+}
+
+.inv-ins-detail-modal__line.is-description {
+  align-items: flex-start;
+}
+
+.inv-ins-detail-modal__line-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: #a9582d;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 241, 0.74)),
+    rgba(255, 255, 255, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(197, 111, 67, 0.12),
+    0 10px 20px rgba(82, 44, 34, 0.06);
+}
+
+.inv-ins-detail-modal__line-icon i {
+  font-size: 1.02rem;
+}
+
+.inv-ins-detail-modal__line-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+  padding-top: 0.12rem;
+}
+
+.inv-ins-detail-modal__line-copy span {
+  color: rgba(122, 30, 36, 0.76);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.inv-ins-detail-modal__line-copy strong {
+  color: #210b08;
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.32;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.inv-ins-detail-modal__line.is-description .inv-ins-detail-modal__line-copy strong {
+  max-width: none;
+  font-size: 0.84rem;
+  line-height: 1.42;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@keyframes inv-ins-detail-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0) scale(1.04);
+  }
+}
+
+@keyframes inv-ins-detail-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 991.98px) {
+  .inv-ins-detail-modal__editorial-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .inv-ins-detail-modal__list {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .inv-ins-detail-modal__line.is-description {
+    grid-column: auto;
+  }
+
+  .inv-ins-detail-modal__lead {
+    padding-bottom: 0.9rem;
+  }
+
+  .inv-ins-detail-modal__lead-copy {
+    max-width: none;
+  }
+}
+
+@media (max-width: 767.98px) {
+  // NEW: ajuste móvil de los heroes de alta para mantenerlos limpios y legibles.
+  // WHY: los nuevos bloques premium deben seguir viéndose ordenados en pantallas pequeñas.
+  // IMPACT: solo responsive en create drawers de Categorías e Insumos.
+  .inv-cat-create-grid.is-create,
+  .inv-cat-create-grid.is-edit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inv-cat-create-hero,
+  .inv-ins-create-hero {
+    padding: 0.88rem;
+  }
+
+  .inv-ins-create-hero__chips,
+  .inv-cat-create-hero__chips {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .inv-ins-detail-modal__body--editorial {
+    padding: 0.9rem 0.95rem 1rem;
+  }
+
+  .inv-ins-detail-modal__line {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 0.78rem;
+    padding: 0.8rem 0;
+  }
+
+  .inv-ins-detail-modal__line-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+  }
+
+  .inv-ins-detail-modal__line-copy strong {
+    font-size: 0.94rem;
+  }
+}
+
+// NEW: identidad visual del submodulo Almacenes alineada al lenguaje de Insumos.
+// WHY: el rediseño debía heredar la misma paleta cálida, cards blandas y jerarquía editorial del módulo.
+// IMPACT: alcance limitado a wrappers/clases `inv-warehouse-*`; no altera Productos, Insumos ni otras vistas.
+.inv-warehouse-module {
+  --inv-warehouse-border: rgba(157, 150, 112, 0.22);
+  --inv-warehouse-surface: linear-gradient(180deg, rgba(255, 253, 246, 0.98), rgba(247, 242, 229, 0.88));
+  --inv-warehouse-wine: #8f2d2c;
+  --inv-warehouse-green: #198754;
+  --inv-warehouse-sand: #efe7d2;
+}
+
+.inv-warehouse-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.3rem;
+}
+
+.inv-warehouse-results-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.2rem 0;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.inv-warehouse-results-meta strong {
+  color: #17080a;
+  font-size: 0.96rem;
+}
+
+.inv-warehouse-filter-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.inv-warehouse-filter-field {
+  width: min(100%, 320px);
+}
+
+.inv-warehouse-filter-field label {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: rgba(82, 44, 34, 0.78);
+  margin-bottom: 0.32rem;
+}
+
+.inv-warehouse-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.inv-warehouse-grid.is-centered {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 372px));
+  justify-content: center;
+}
+
+.inv-warehouse-grid.is-centered .inv-warehouse-card,
+.inv-warehouse-grid.is-centered .inv-warehouse-card--skeleton {
+  width: min(100%, 372px);
+}
+
+.inv-warehouse-card {
+  border: 1px solid var(--inv-warehouse-border);
+  border-radius: 22px;
+  background: var(--inv-warehouse-surface);
+  box-shadow: 0 16px 32px rgba(var(--c-shadow-rgb), 0.08);
+  padding: 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  min-height: 100%;
+  transition: transform 260ms ease, box-shadow 260ms ease, border-color 260ms ease;
+}
+
+.inv-warehouse-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px;
+  background: linear-gradient(90deg, #d7b481, #b22d30);
+  opacity: 0.95;
+}
+
+.inv-warehouse-card:hover,
+.inv-warehouse-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 34px rgba(var(--c-shadow-rgb), 0.12);
+  border-color: rgba(157, 150, 112, 0.58);
+}
+
+.inv-warehouse-card:focus-visible {
+  outline: 2px solid rgba(157, 150, 112, 0.64);
+  outline-offset: 3px;
+}
+
+.inv-warehouse-card.is-selected {
+  border-color: rgba(143, 45, 44, 0.45);
+  box-shadow: 0 22px 36px rgba(143, 45, 44, 0.12);
+}
+
+.inv-warehouse-card.has-alerts::before {
+  background: linear-gradient(90deg, #d46b3a, #b22d30);
+}
+
+.inv-warehouse-card--skeleton {
+  min-height: 280px;
+  background: linear-gradient(90deg, rgba(247, 242, 229, 0.9), rgba(255, 255, 255, 0.95), rgba(247, 242, 229, 0.9));
+  background-size: 200% 100%;
+  animation: inv-warehouse-skeleton 1.2s linear infinite;
+}
+
+.inv-warehouse-card__header,
+.inv-warehouse-card__meta,
+.inv-warehouse-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inv-warehouse-card__halo {
+  position: absolute;
+  top: -18px;
+  right: -10px;
+  width: 132px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+  opacity: 0.18;
+  transform: translate3d(0, 0, 0) rotate(-8deg) scale(0.95);
+  transition: transform 320ms ease, opacity 260ms ease, filter 260ms ease;
+  pointer-events: none;
+  z-index: 0;
+  filter: saturate(0.92);
+}
+
+.inv-warehouse-card__halo::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 24px;
+  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.6), rgba(178, 45, 48, 0.05) 52%, rgba(45, 107, 102, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.inv-warehouse-card__halo i {
+  position: relative;
+  font-size: 4rem;
+  line-height: 1;
+  color: rgba(178, 45, 48, 0.14);
+  transform: translate3d(4px, -2px, 0);
+}
+
+.inv-warehouse-card__header,
+.inv-warehouse-card__body,
+.inv-warehouse-card__meta,
+.inv-warehouse-card__footer {
+  position: relative;
+  z-index: 1;
+}
+
+.inv-warehouse-card__header {
+  align-items: flex-start;
+}
+
+.inv-warehouse-card__title-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.inv-warehouse-card__icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 14px;
+  border: 1px solid rgba(157, 150, 112, 0.42);
+  background: rgba(243, 241, 216, 0.64);
+  color: var(--inv-warehouse-wine);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 220ms ease, background 220ms ease, border-color 220ms ease, color 220ms ease;
+}
+
+.inv-warehouse-card__icon i {
+  font-size: 1rem;
+}
+
+.inv-warehouse-card__name {
+  color: #17080a;
+  font-size: 1.18rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.inv-warehouse-card__branch {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.82rem;
+}
+
+.inv-warehouse-card__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.38rem;
+}
+
+.inv-warehouse-card__status,
+.inv-warehouse-type-pill {
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.28rem 0.74rem;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.inv-warehouse-card__status.is-active,
+.inv-warehouse-type-pill.is-entry {
+  background: rgba(25, 135, 84, 0.12);
+  color: #0f6b41;
+}
+
+.inv-warehouse-card__status.is-inactive,
+.inv-warehouse-type-pill.is-exit {
+  background: rgba(178, 45, 48, 0.12);
+  color: #8f2d2c;
+}
+
+.inv-warehouse-card__status.is-unknown,
+.inv-warehouse-type-pill.is-neutral {
+  background: rgba(112, 110, 104, 0.12);
+  color: #5f5b50;
+}
+
+.inv-warehouse-type-pill.is-adjust {
+  background: rgba(212, 152, 74, 0.18);
+  color: #8a5d18;
+}
+
+.inv-warehouse-card__body {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.inv-warehouse-card__fact,
+.inv-warehouse-detail-modal__grid,
+.inv-warehouse-moves__summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.inv-warehouse-card__fact {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  padding: 0.78rem 0.82rem;
+}
+
+.inv-warehouse-card__fact,
+.inv-warehouse-detail-modal__card,
+.inv-warehouse-summary-card {
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.inv-warehouse-detail-modal__card,
+.inv-warehouse-summary-card {
+  padding: 0.88rem 0.92rem;
+}
+
+.inv-warehouse-card__fact-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 248, 239, 0.82);
+  color: var(--inv-warehouse-wine);
+  font-size: 1rem;
+}
+
+.inv-warehouse-card__fact-copy {
+  min-width: 0;
+}
+
+.inv-warehouse-card__fact-copy span,
+.inv-warehouse-detail-modal__card-head span,
+.inv-warehouse-summary-card__copy span {
+  display: block;
+  color: rgba(82, 44, 34, 0.76);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.inv-warehouse-card__fact-copy strong,
+.inv-warehouse-detail-modal__card strong,
+.inv-warehouse-summary-card__copy strong {
+  display: block;
+  color: #17080a;
+  line-height: 1.05;
+  font-weight: 900;
+  margin-top: 0.18rem;
+}
+
+.inv-warehouse-card__fact-copy strong {
+  font-size: 1.24rem;
+}
+
+.inv-warehouse-detail-modal__card strong,
+.inv-warehouse-summary-card__copy strong {
+  font-size: 1.58rem;
+}
+
+.inv-warehouse-card__fact.is-alert {
+  border-color: rgba(178, 45, 48, 0.22);
+  background: rgba(178, 45, 48, 0.06);
+}
+
+.inv-warehouse-card__fact.is-alert .inv-warehouse-card__fact-icon {
+  background: rgba(178, 45, 48, 0.12);
+  color: #8f2d2c;
+}
+
+.inv-warehouse-card__fact.is-alert strong {
+  color: #b22d30;
+}
+
+.inv-warehouse-empty,
+.inv-warehouse-moves__empty {
+  border: 1px dashed rgba(157, 150, 112, 0.38);
+  border-radius: 18px;
+  padding: 1.2rem;
+  color: rgba(82, 44, 34, 0.76);
+  text-align: center;
+}
+
+.inv-warehouse-card__meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.inv-warehouse-card__meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.42rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  background: rgba(255, 255, 255, 0.74);
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.inv-warehouse-card__meta-pill strong {
+  color: #17080a;
+  font-weight: 900;
+}
+
+.inv-warehouse-card__footer {
+  margin-top: auto;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(157, 150, 112, 0.18);
+  justify-content: stretch;
+}
+
+.inv-warehouse-card__actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.58rem;
+  position: relative;
+  z-index: 2;
+}
+
+.inv-warehouse-card__action {
+  min-height: 40px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding-inline: 0.72rem !important;
+  font-size: 0.76rem !important;
+  font-weight: 700 !important;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 8px 16px rgba(82, 44, 34, 0.08);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  transition: transform 220ms ease, box-shadow 220ms ease, background 220ms ease, border-color 220ms ease;
+}
+
+.inv-warehouse-card:hover .inv-warehouse-card__halo,
+.inv-warehouse-card:focus-visible .inv-warehouse-card__halo {
+  transform: translate3d(-8px, 8px, 0) rotate(-3deg) scale(1.03);
+  opacity: 0.3;
+  filter: saturate(1);
+}
+
+.inv-warehouse-card:hover .inv-warehouse-card__icon,
+.inv-warehouse-card:focus-visible .inv-warehouse-card__icon,
+.inv-warehouse-card.is-selected .inv-warehouse-card__icon {
+  transform: translateY(-2px) scale(1.03) rotate(-4deg);
+  border-color: rgba(157, 150, 112, 0.58);
+  background: rgba(255, 248, 239, 0.86);
+}
+
+.inv-warehouse-card.is-selected .inv-warehouse-card__icon {
+  color: #8f2d2c;
+}
+
+.inv-warehouse-card:hover .inv-warehouse-card__action,
+.inv-warehouse-card:focus-visible .inv-warehouse-card__action {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 18px rgba(82, 44, 34, 0.1);
+}
+
+.inv-warehouse-card__action:hover:not(:disabled),
+.inv-warehouse-card__action:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 20px rgba(82, 44, 34, 0.12);
+}
+
+@media (max-width: 991.98px) {
+  .inv-warehouse-card__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-warehouse-card__halo {
+    opacity: 0.16;
+    transform: translate3d(-3px, 4px, 0) rotate(-6deg) scale(0.95);
+  }
+
+  .inv-warehouse-card:active .inv-warehouse-card__halo,
+  .inv-warehouse-card:focus-within .inv-warehouse-card__halo {
+    opacity: 0.26;
+    transform: translate3d(-6px, 6px, 0) rotate(-3deg) scale(0.99);
+  }
+}
+
+.inv-warehouse-module .inv-prod-toolbar-btn,
+.inv-warehouse-module .inv-prod-toolbar-btn span {
+  white-space: nowrap;
+}
+
+.inv-warehouse-moves {
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(246, 240, 226, 0.92));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+}
+
+.inv-warehouse-moves__header {
+  padding: 1rem 1rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.9rem;
+}
+
+.inv-warehouse-moves__header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.inv-warehouse-moves__title-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inv-warehouse-moves__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.inv-warehouse-moves__title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #17080a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inv-warehouse-moves__tabs {
+  display: inline-flex;
+  gap: 0.3rem;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+  padding: 0.22rem;
+}
+
+.inv-warehouse-moves__header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.inv-warehouse-moves__tab {
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0.56rem 1rem;
+}
+
+.inv-warehouse-moves__tab.is-active {
+  background: linear-gradient(180deg, #fff8ef, #f7e7d8);
+  color: #8f2d2c;
+  box-shadow: 0 6px 14px rgba(var(--c-shadow-rgb), 0.08);
+}
+
+.inv-warehouse-moves__summary-grid,
+.inv-warehouse-moves__filters-shell,
+.inv-warehouse-moves__table-shell {
+  padding: 0 1rem 1rem;
+}
+
+.inv-warehouse-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.inv-warehouse-summary-card__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 248, 239, 0.8);
+  color: var(--inv-warehouse-wine);
+  font-size: 1.15rem;
+}
+
+.inv-warehouse-summary-card.is-entry .inv-warehouse-summary-card__icon {
+  color: #0f6b41;
+}
+
+.inv-warehouse-summary-card.is-exit .inv-warehouse-summary-card__icon {
+  color: #8f2d2c;
+}
+
+.inv-warehouse-summary-card.is-adjust .inv-warehouse-summary-card__icon {
+  color: #8a5d18;
+}
+
+.inv-warehouse-moves__filters-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.inv-warehouse-moves__filters-main,
+.inv-warehouse-moves__filters-advanced {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.inv-warehouse-moves__filters-advanced {
+  grid-template-columns: 1.2fr repeat(4, minmax(0, 1fr));
+}
+
+.inv-warehouse-moves__field label {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: rgba(82, 44, 34, 0.78);
+  margin-bottom: 0.3rem;
+}
+
+.inv-warehouse-moves__date-actions {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+}
+
+.inv-warehouse-moves__date-actions .inv-prod-toolbar-btn {
+  min-height: 42px;
+}
+
+.inv-warehouse-moves__search {
+  width: 100%;
+}
+
+.inv-warehouse-moves__search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  padding: 0;
+}
+
+.inv-warehouse-moves__search-row .inv-warehouse-moves__search {
+  flex: 1 1 420px;
+  width: min(100%, 620px);
+  max-width: 620px;
+}
+
+.inv-warehouse-moves__reset-btn {
+  flex: 0 0 auto;
+}
+
+.inv-warehouse-moves__table-shell {
+  padding-top: 0.15rem;
+}
+
+.inv-warehouse-moves__pagination {
+  margin-top: 0.9rem;
+}
+
+.inv-warehouse-moves__pagination-meta,
+.inv-warehouse-moves__pagination-status {
+  min-width: 156px;
+  font-size: 0.76rem;
+  font-weight: 400 !important;
+}
+
+.inv-warehouse-moves__pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.inv-warehouse-moves__pagination-pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  flex-wrap: wrap;
+}
+
+.inv-warehouse-moves__page-btn {
+  min-height: 36px;
+  min-width: 104px;
+  font-size: 0.76rem !important;
+  font-weight: 400 !important;
+}
+
+.inv-warehouse-moves__page-number {
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #5b342b;
+  font-size: 0.74rem;
+  font-weight: 400;
+  line-height: 1;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.inv-warehouse-moves__page-number:hover:not(:disabled),
+.inv-warehouse-moves__page-number:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(143, 45, 44, 0.26);
+  box-shadow: 0 10px 18px rgba(82, 44, 34, 0.08);
+}
+
+.inv-warehouse-moves__page-number.is-active {
+  background: linear-gradient(135deg, rgba(116, 44, 31, 0.96), rgba(164, 86, 54, 0.92));
+  border-color: rgba(116, 44, 31, 0.32);
+  color: #fffdf8;
+  box-shadow: 0 12px 22px rgba(116, 44, 31, 0.2);
+  font-weight: 500;
+}
+
+.inv-warehouse-moves__table-responsive {
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 24px;
+  overflow: auto;
+  background: linear-gradient(180deg, rgba(255, 252, 245, 0.96), rgba(255, 255, 255, 0.92));
+  box-shadow: 0 22px 44px rgba(82, 44, 34, 0.08);
+}
+
+.inv-warehouse-moves__table {
+  width: 100%;
+  min-width: 910px;
+  table-layout: fixed;
+  margin-bottom: 0;
+}
+
+.inv-warehouse-moves__table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.72rem 0.58rem;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+  background: linear-gradient(180deg, rgba(255, 250, 241, 0.98), rgba(243, 235, 220, 0.95));
+  color: #5b342b;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+  box-shadow: inset 0 -1px 0 rgba(157, 150, 112, 0.16);
+}
+
+.inv-warehouse-moves__table thead th.inv-warehouse-moves__cell-item,
+.inv-warehouse-moves__table thead th.inv-warehouse-moves__cell-note {
+  text-align: center;
+}
+
+.inv-warehouse-moves__table tbody td {
+  padding: 0.66rem 0.58rem;
+  border-color: rgba(157, 150, 112, 0.12);
+  color: #2e211d;
+  background: transparent;
+  font-size: 0.84rem;
+  font-weight: 400;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.inv-warehouse-moves__table tbody tr {
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.inv-warehouse-moves__table tbody tr:nth-child(even) td {
+  background: rgba(247, 242, 229, 0.38);
+}
+
+.inv-warehouse-moves__table tbody tr:hover td {
+  background: rgba(255, 248, 239, 0.9);
+}
+
+.inv-warehouse-moves__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.inv-warehouse-moves__cell-center {
+  text-align: center;
+}
+
+.inv-warehouse-moves__cell-item,
+.inv-warehouse-moves__cell-note {
+  text-align: center;
+}
+
+.inv-warehouse-moves__col-date {
+  width: 10rem;
+}
+
+.inv-warehouse-moves__col-type {
+  width: 6.6rem;
+}
+
+.inv-warehouse-moves__col-item {
+  width: 14rem;
+}
+
+.inv-warehouse-moves__col-qty {
+  width: 4.3rem;
+}
+
+.inv-warehouse-moves__col-stock {
+  width: 6.2rem;
+}
+
+.inv-warehouse-moves__col-ref {
+  width: 7.8rem;
+}
+
+.inv-warehouse-moves__col-note {
+  width: 15.5rem;
+}
+
+.inv-warehouse-moves__date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0.26rem 0.48rem;
+  border-radius: 14px;
+  background: rgba(255, 248, 239, 0.82);
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  color: #17080a;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.inv-warehouse-moves__item-main {
+  font-weight: 400;
+  color: #2e211d;
+  font-size: 0.83rem;
+  margin-bottom: 0.18rem;
+}
+
+.inv-warehouse-moves__item-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+  text-align: center;
+}
+
+.inv-warehouse-moves__item-sub,
+.inv-warehouse-moves__mobile-head span,
+.inv-warehouse-moves__mobile-grid span,
+.inv-warehouse-moves__mobile-note {
+  color: rgba(82, 44, 34, 0.74);
+  font-size: 0.8rem;
+}
+
+.inv-warehouse-moves__item-sub {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.inv-warehouse-moves__item-sub span {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(82, 44, 34, 0.06);
+  color: rgba(82, 44, 34, 0.8);
+  font-size: 0.7rem;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.inv-warehouse-moves__qty {
+  font-weight: 400;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+.inv-warehouse-moves__qty.is-entry {
+  color: #0f6b41;
+}
+
+.inv-warehouse-moves__qty.is-exit {
+  color: #8f2d2c;
+}
+
+.inv-warehouse-moves__qty.is-adjust {
+  color: #8a5d18;
+}
+
+.inv-warehouse-moves__stock,
+.inv-warehouse-moves__ref {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0.22rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.inv-warehouse-moves__stock {
+  min-width: 68px;
+  background: rgba(255, 248, 239, 0.84);
+  color: #533228;
+}
+
+.inv-warehouse-moves__ref {
+  max-width: 142px;
+  background: rgba(82, 44, 34, 0.06);
+  color: #5c352c;
+  text-align: center;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.inv-warehouse-moves__note {
+  margin: 0;
+  color: rgba(46, 33, 29, 0.82);
+  font-size: 0.83rem;
+  line-height: 1.38;
+  text-align: center;
+}
+
+.inv-warehouse-moves__note-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+}
+
+.inv-warehouse-moves__table .inv-warehouse-type-pill {
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.inv-warehouse-moves__mobile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.inv-warehouse-moves__mobile-card {
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.92rem;
+}
+
+.inv-warehouse-moves__mobile-head,
+.inv-warehouse-detail-modal__hero,
+.inv-warehouse-detail-modal__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.inv-warehouse-moves__mobile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.68rem;
+  margin-top: 0.8rem;
+}
+
+.inv-warehouse-moves__mobile-grid strong {
+  display: block;
+  color: #17080a;
+  margin-top: 0.18rem;
+}
+
+.inv-warehouse-detail-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background:
+    radial-gradient(circle at top right, rgba(143, 45, 44, 0.08), transparent 40%),
+    linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(247, 242, 229, 0.95));
+}
+
+.inv-warehouse-detail-modal__hero {
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 0.95rem 1rem;
+}
+
+.inv-warehouse-detail-modal__hero-main strong {
+  display: block;
+  color: #17080a;
+  font-size: 1.08rem;
+  margin: 0.12rem 0 0.2rem;
+}
+
+.inv-warehouse-detail-modal__hero-main p,
+.inv-warehouse-detail-modal__eyebrow {
+  margin: 0;
+  color: rgba(82, 44, 34, 0.74);
+  font-size: 0.8rem;
+}
+
+.inv-warehouse-detail-modal__card-head {
+  justify-content: flex-start;
+}
+
+.inv-warehouse-detail-modal__card-head i {
+  color: var(--inv-warehouse-wine);
+}
+
+.inv-warehouse-detail-modal__footer {
+  gap: 0.6rem;
+}
+
+.inv-warehouse-form-modal__header {
+  background: linear-gradient(180deg, rgba(255, 252, 245, 1), rgba(247, 242, 229, 0.94));
+  border-bottom: 1px solid rgba(157, 150, 112, 0.18);
+}
+
+@keyframes inv-warehouse-skeleton {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@media (max-width: 1199.98px) {
+  .inv-warehouse-grid,
+  .inv-warehouse-moves__summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-warehouse-moves__filters-main,
+  .inv-warehouse-moves__filters-advanced {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-warehouse-filter-row {
+    justify-content: stretch;
+  }
+
+  .inv-warehouse-filter-field,
+  .inv-warehouse-moves__date-actions {
+    width: 100%;
+  }
+
+  .inv-warehouse-grid,
+  .inv-warehouse-detail-modal__grid,
+  .inv-warehouse-moves__summary-grid,
+  .inv-warehouse-moves__filters-main,
+  .inv-warehouse-moves__filters-advanced {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inv-warehouse-card__footer,
+  .inv-warehouse-card__meta,
+  .inv-warehouse-moves__header,
+  .inv-warehouse-moves__header-top,
+  .inv-warehouse-moves__header-actions,
+  .inv-warehouse-moves__pagination-controls,
+  .inv-warehouse-detail-modal__hero,
+  .inv-warehouse-detail-modal__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-warehouse-moves__pagination-meta,
+  .inv-warehouse-moves__pagination-status,
+  .inv-warehouse-moves__page-btn {
+    width: 100%;
+  }
+
+  .inv-warehouse-moves__pagination-pages {
+    justify-content: center;
+  }
+
+  .inv-warehouse-moves__search-row .inv-warehouse-moves__search {
+    width: 100%;
+    max-width: none;
+  }
+
+  .inv-warehouse-moves__title {
+    white-space: normal;
+  }
+}
+
+/* AM: capa visual dedicada al submodulo de ordenes de compra dentro de Inventario. */
+.inv-oc-module {
+  --inv-oc-wine: #7f1d1d;
+  --inv-oc-coffee: #5a2d22;
+  --inv-oc-amber: #b97c2c;
+  --inv-oc-cream: #fff9ef;
+  --inv-oc-border: rgba(138, 95, 57, 0.24);
+}
+
+.inv-oc-summary-card {
+  border: 1px solid var(--inv-oc-border);
+}
+
+.inv-oc-summary-body {
+  padding-top: 0.72rem;
+  padding-bottom: 0.72rem;
+}
+
+.inv-oc-summary-header-actions {
+  align-items: center;
+}
+
+.inv-oc-stats-band {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.inv-oc-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--inv-oc-border);
+  border-radius: 22px;
+  padding: 1.1rem 1.2rem;
+  background:
+    radial-gradient(circle at top right, rgba(127, 29, 29, 0.16), transparent 42%),
+    radial-gradient(circle at bottom left, rgba(185, 124, 44, 0.14), transparent 45%),
+    linear-gradient(145deg, #fffdf7 0%, #f8f0e1 100%);
+  box-shadow: 0 14px 32px rgba(65, 31, 20, 0.08);
+  animation: inv-oc-fade-up 0.3s ease-out;
+}
+
+.inv-oc-hero__copy {
+  max-width: 680px;
+}
+
+.inv-oc-hero__eyebrow {
+  color: rgba(90, 45, 34, 0.78);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.inv-oc-hero__title {
+  color: #2f130c;
+  font-size: clamp(1.7rem, 2.3vw, 2.35rem);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.inv-oc-hero__subtitle {
+  color: rgba(58, 33, 27, 0.88);
+  font-size: 0.92rem;
+}
+
+.inv-oc-hero__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 0.65rem;
+  min-width: 320px;
+}
+
+.inv-oc-stat-card {
+  border: 1px solid rgba(127, 29, 29, 0.12);
+  border-radius: 14px;
+  padding: 0.65rem 0.72rem;
+  background: rgba(255, 255, 255, 0.78);
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.inv-oc-stat-card span {
+  color: rgba(54, 31, 24, 0.72);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.inv-oc-stat-card strong {
+  color: #1f0b06;
+  font-size: 1.24rem;
+  line-height: 1;
+}
+
+.inv-oc-stat-card.is-pending {
+  border-color: rgba(185, 124, 44, 0.3);
+}
+
+.inv-oc-stat-card.is-approved {
+  border-color: rgba(35, 93, 185, 0.26);
+}
+
+.inv-oc-stat-card.is-buying {
+  border-color: rgba(56, 128, 151, 0.26);
+}
+
+.inv-oc-stat-card.is-stocked {
+  border-color: rgba(28, 126, 88, 0.28);
+}
+
+.inv-oc-card {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  animation: inv-oc-fade-up 0.3s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+/* AM: apila verticalmente la parte superior de OC sin mover JSX delicado. */
+.inv-oc-top-panels,
+.inv-oc-top-panels.is-dual {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+/* AM: evita alturas forzadas del layout viejo en dos columnas. */
+.inv-oc-top-panels.is-dual > .inv-oc-card {
+  min-height: auto;
+}
+
+/* AM: orden visual seguro sin cortar ni pegar bloques JSX grandes. */
+.inv-oc-flow-shell {
+  order: 1;
+}
+
+/* AM: Nueva Solicitud va debajo de Flujo. */
+.inv-oc-create-shell {
+  order: 2;
+}
+
+.inv-oc-middle-panels {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.inv-oc-middle-panels.is-dual {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.inv-oc-incoming-card .card-body {
+  max-height: none;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.inv-oc-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 245, 0.98) 0%, rgba(248, 242, 230, 0.96) 100%);
+}
+
+.inv-oc-card__header h4 {
+  color: #2f130c;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.inv-oc-card__header--compact,
+.inv-oc-card__header--single-row {
+  align-items: flex-start;
+}
+
+.inv-oc-card__header--single-row {
+  align-items: center;
+}
+
+.inv-oc-title-stacked {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.02;
+  gap: 0.05rem;
+}
+
+.inv-oc-title-stacked span {
+  display: block;
+}
+
+.inv-oc-card__header-title {
+  min-width: 0;
+}
+
+.inv-oc-card__header-tools {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+  width: min(100%, 520px);
+}
+
+/* AM: cabeceras compactas de OC con linea visual alineada al header de Productos. */
+.inv-oc-card__header--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.inv-oc-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.inv-oc-panel-title-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.inv-oc-panel-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.inv-oc-panel-title-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 29, 29, 0.15);
+  background: rgba(255, 248, 236, 0.94);
+  color: #8f3c2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-oc-panel-title-copy h4 {
+  color: #2f130c;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inv-oc-panel-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: nowrap;
+}
+
+.inv-oc-panel-search {
+  min-width: min(100%, 320px);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.58rem 0.72rem;
+  border-radius: 14px;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.inv-oc-panel-search i {
+  color: rgba(90, 45, 34, 0.58);
+  flex-shrink: 0;
+}
+
+.inv-oc-panel-search input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: #2f130c;
+  font-size: 0.9rem;
+}
+
+.inv-oc-panel-search input::placeholder {
+  color: rgba(90, 45, 34, 0.52);
+}
+
+.inv-oc-panel-toolbar-btn {
+  min-height: 41px;
+  border: 1px solid rgba(127, 29, 29, 0.18);
+  border-radius: 14px;
+  padding: 0.55rem 0.78rem;
+  background: rgba(255, 249, 239, 0.94);
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.inv-oc-panel-toolbar-btn:hover,
+.inv-oc-panel-toolbar-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(65, 31, 20, 0.08);
+  border-color: rgba(127, 29, 29, 0.24);
+}
+
+.inv-oc-panel-toolbar-btn.is-on {
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.92), rgba(185, 124, 44, 0.9));
+  color: #fff;
+  border-color: transparent;
+}
+
+.inv-oc-panel-collapse-btn {
+  width: 41px;
+  height: 41px;
+  min-height: 41px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 14px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.92);
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.inv-oc-panel-collapse-btn:hover,
+.inv-oc-panel-collapse-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(65, 31, 20, 0.08);
+  border-color: rgba(127, 29, 29, 0.24);
+}
+
+.inv-oc-header-meta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+  padding-top: 0.72rem;
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+}
+
+.inv-oc-header-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+}
+
+.inv-oc-header-chipline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 340px;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-flow-filters-panel {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(248, 242, 230, 0.96));
+  padding: 0.82rem;
+  animation: inv-oc-fade-up 0.18s ease;
+}
+
+.inv-oc-flow-footnote {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 0.2rem;
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+}
+
+.inv-oc-input-wrap {
+  position: relative;
+}
+
+.inv-oc-input-wrap--compact {
+  width: 100%;
+}
+
+.inv-oc-input-wrap i {
+  position: absolute;
+  top: 50%;
+  left: 0.85rem;
+  transform: translateY(-50%);
+  color: rgba(90, 45, 34, 0.55);
+  pointer-events: none;
+}
+
+.inv-oc-input {
+  padding-left: 2rem;
+}
+
+.inv-oc-input-wrap--compact .inv-oc-input {
+  padding-left: 2.5rem;
+}
+
+.inv-oc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 39px;
+  padding: 0.48rem 0.72rem;
+  border-radius: 12px;
+  border: 1px dashed rgba(127, 29, 29, 0.24);
+  background: rgba(255, 249, 239, 0.84);
+  cursor: pointer;
+  color: #4a2b22;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.inv-oc-toggle--compact {
+  min-height: 32px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.inv-oc-catalog-grid {
+  display: grid;
+  /* AM: desktop a 4 columnas para Nueva Solicitud. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.78rem;
+}
+
+.inv-oc-catalog-grid--animated {
+  animation: inv-oc-carousel-slide-in 0.28s ease;
+}
+
+.inv-oc-catalog-card {
+  border: 1px solid rgba(157, 150, 112, 0.23);
+  border-radius: 14px;
+  padding: 0.78rem;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 48%),
+    rgba(255, 255, 255, 0.92);
+  display: flex;
+  flex-direction: column;
+  gap: 0.58rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.inv-oc-catalog-card:hover,
+.inv-oc-catalog-card:focus-within {
+  transform: translateY(-1px);
+  border-color: rgba(127, 29, 29, 0.26);
+  box-shadow: 0 10px 20px rgba(65, 31, 20, 0.08);
+}
+
+.inv-oc-catalog-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.inv-oc-catalog-card__head h5 {
+  margin: 0;
+  color: #2f130c;
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.inv-oc-catalog-card__title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.inv-oc-catalog-card__title-wrap i {
+  color: #8f3c2a;
+  font-size: 1rem;
+}
+
+.inv-oc-catalog-card p {
+  margin: 0;
+  color: rgba(65, 36, 29, 0.82);
+  font-size: 0.82rem;
+}
+
+.inv-oc-catalog-card__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.inv-oc-catalog-card__field {
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 10px;
+  background: rgba(255, 249, 239, 0.78);
+  padding: 0.38rem 0.44rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.14rem;
+}
+
+.inv-oc-catalog-card__field span {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-oc-catalog-card__field strong {
+  color: #2f130c;
+  font-size: 0.83rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-oc-catalog-card__action {
+  border: none;
+  border-radius: 10px;
+  padding: 0.48rem 0.64rem;
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.95), rgba(185, 124, 44, 0.9));
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.34rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.inv-oc-catalog-card__action:hover,
+.inv-oc-catalog-card__action:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(97, 38, 27, 0.26);
+}
+
+.inv-oc-carousel-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.1rem 0.1rem;
+  border-top: 1px dashed rgba(157, 150, 112, 0.32);
+}
+
+.inv-oc-carousel-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.inv-oc-carousel-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(157, 150, 112, 0.45);
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.inv-oc-carousel-dot:hover,
+.inv-oc-carousel-dot:focus-visible {
+  transform: scale(1.12);
+  background: rgba(127, 29, 29, 0.55);
+}
+
+.inv-oc-carousel-dot.is-active {
+  width: 24px;
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.95), rgba(185, 124, 44, 0.9));
+}
+
+.inv-oc-carousel-ellipsis {
+  color: rgba(74, 43, 34, 0.54);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  user-select: none;
+}
+
+.inv-oc-carousel-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.inv-oc-carousel-nav {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 29, 29, 0.24);
+  background: rgba(255, 255, 255, 0.9);
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.inv-oc-carousel-nav:hover:not(:disabled),
+.inv-oc-carousel-nav:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(127, 29, 29, 0.42);
+  box-shadow: 0 6px 12px rgba(65, 31, 20, 0.14);
+}
+
+.inv-oc-carousel-nav:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.inv-oc-carousel-counter {
+  border: 1px solid rgba(157, 150, 112, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 249, 239, 0.9);
+  color: #4a2b22;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.22rem 0.62rem;
+}
+
+.inv-oc-catalog-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.44rem;
+}
+
+.inv-oc-catalog-totals .badge {
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  color: #4a2b22;
+  font-size: 0.76rem;
+}
+
+.inv-oc-stock-badge {
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.inv-oc-stock-badge--card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+}
+
+.inv-oc-stock-badge.is-ok {
+  background: rgba(28, 126, 88, 0.14);
+  color: #0d6a45;
+}
+
+.inv-oc-stock-badge.is-low {
+  background: rgba(185, 124, 44, 0.2);
+  color: #7d5114;
+}
+
+.inv-oc-stock-badge.is-out {
+  background: rgba(159, 39, 39, 0.18);
+  color: #8d1f1f;
+}
+
+.inv-oc-draft-shell {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.inv-oc-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  max-height: 520px;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.inv-oc-draft-item-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 44%),
+    rgba(255, 255, 255, 0.95);
+  padding: 0.72rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.inv-oc-draft-item-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(127, 29, 29, 0.28);
+  box-shadow: 0 12px 22px rgba(65, 31, 20, 0.12);
+}
+
+.inv-oc-draft-item-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.inv-oc-draft-item-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.52rem;
+  min-width: 0;
+}
+
+.inv-oc-draft-item-card__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 29, 29, 0.2);
+  background: rgba(255, 246, 233, 0.95);
+  color: #8f3c2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-oc-draft-item-card__head strong {
+  color: #2f130c;
+  line-height: 1.12;
+  font-size: 0.98rem;
+}
+
+.inv-oc-draft-item-card__head small {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.73rem;
+}
+
+.inv-oc-draft-remove {
+  border-radius: 999px;
+}
+
+.inv-oc-draft-item-card__body .form-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: rgba(74, 43, 34, 0.82);
+}
+
+/* AM: renovacion visual del detalle de solicitud sin tocar su logica. */
+.inv-oc-draft-summary-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.inv-oc-draft-summary-pill {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  padding: 0.78rem 0.82rem;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.1), transparent 50%),
+    rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  box-shadow: 0 8px 18px rgba(56, 30, 22, 0.06);
+}
+
+.inv-oc-draft-summary-pill i {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(255, 246, 233, 0.96);
+  border: 1px solid rgba(127, 29, 29, 0.16);
+  color: #8f3c2a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.inv-oc-draft-summary-pill span {
+  display: block;
+  color: rgba(74, 43, 34, 0.7);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-oc-draft-summary-pill strong {
+  display: block;
+  color: #2f130c;
+  font-size: 1.08rem;
+  line-height: 1.1;
+}
+
+.inv-oc-draft-request-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: rgba(255, 255, 255, 0.94);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: flex-start;
+  box-shadow: 0 8px 18px rgba(56, 30, 22, 0.05);
+}
+
+.inv-oc-draft-request-card__remove {
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.inv-oc-draft-footer-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.9fr);
+  gap: 0.8rem;
+  align-items: stretch;
+}
+
+.inv-oc-draft-note-panel,
+.inv-oc-draft-submit-panel {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 52%),
+    rgba(255, 255, 255, 0.96);
+  padding: 0.9rem;
+  box-shadow: 0 10px 20px rgba(56, 30, 22, 0.05);
+}
+
+.inv-oc-draft-submit-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inv-oc-draft-submit-panel__copy span {
+  display: block;
+  color: rgba(74, 43, 34, 0.68);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.18rem;
+}
+
+.inv-oc-draft-submit-panel__copy strong {
+  display: block;
+  color: #2f130c;
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
+.inv-oc-draft-submit-panel__copy small {
+  display: block;
+  margin-top: 0.32rem;
+  color: rgba(74, 43, 34, 0.72);
+}
+
+/* AM: selector de almacenes (1 o 2) para cada linea y base de nuevos items. */
+.inv-oc-warehouse-base {
+  border: 1px dashed rgba(157, 150, 112, 0.36);
+  border-radius: 12px;
+  padding: 0.52rem 0.6rem;
+  background: rgba(255, 252, 246, 0.76);
+}
+
+.inv-oc-warehouse-base__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.42rem;
+}
+
+.inv-oc-warehouse-base__title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #5d2f23;
+}
+
+.inv-oc-warehouse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.34rem;
+}
+
+.inv-oc-warehouse-chips.is-invalid {
+  border-radius: 10px;
+  padding: 0.22rem;
+  border: 1px solid rgba(220, 53, 69, 0.56);
+  background: rgba(248, 215, 218, 0.3);
+}
+
+.inv-oc-warehouse-chip {
+  border: 1px solid rgba(157, 150, 112, 0.45);
+  background: rgba(255, 255, 255, 0.86);
+  color: #4a2b22;
+  border-radius: 999px;
+  padding: 0.2rem 0.54rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  transition: all 0.14s ease;
+}
+
+.inv-oc-warehouse-chip i {
+  font-size: 0.72rem;
+}
+
+.inv-oc-warehouse-chip:hover:not(:disabled),
+.inv-oc-warehouse-chip:focus-visible:not(:disabled) {
+  border-color: rgba(127, 29, 29, 0.45);
+  background: rgba(255, 244, 228, 0.9);
+  color: #35150d;
+}
+
+.inv-oc-warehouse-chip.is-active {
+  border-color: rgba(127, 29, 29, 0.58);
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.9), rgba(185, 124, 44, 0.92));
+  color: #fff9ef;
+  box-shadow: 0 6px 12px rgba(68, 26, 17, 0.2);
+}
+
+.inv-oc-warehouse-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* AM: control de cantidad en cards con botones -/+ y campo editable. */
+.inv-oc-qty-control {
+  border: 1px solid rgba(157, 150, 112, 0.32);
+  border-radius: 11px;
+  background: rgba(255, 249, 239, 0.66);
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  overflow: hidden;
+}
+
+.inv-oc-qty-control.is-invalid {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.18rem rgba(220, 53, 69, 0.12);
+}
+
+.inv-oc-qty-btn {
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: #4a2b22;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.inv-oc-qty-btn:hover,
+.inv-oc-qty-btn:focus-visible {
+  background: rgba(185, 124, 44, 0.16);
+  color: #2f130c;
+}
+
+.inv-oc-qty-input {
+  border: none;
+  border-left: 1px solid rgba(157, 150, 112, 0.26);
+  border-right: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 0;
+  background: transparent;
+  text-align: center;
+  font-weight: 700;
+  color: #2f130c;
+}
+
+.inv-oc-qty-input:focus {
+  box-shadow: none;
+}
+
+.inv-oc-flow-grid {
+  display: grid;
+  /* AM: desktop a 4 columnas para Flujo de OC. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+/* AM: replica la misma entrada animada del carrusel de Nueva Solicitud en el flujo. */
+.inv-oc-flow-grid--animated {
+  animation: inv-oc-carousel-slide-in 0.28s ease;
+}
+
+.inv-oc-flow-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.12), transparent 52%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(255, 249, 241, 0.96));
+  padding: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.82rem;
+  border-top-width: 4px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 22px rgba(56, 30, 22, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+/* AM: microinteraccion visual elegante para que la card se vea mas viva sin tocar logica. */
+.inv-oc-flow-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0));
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.inv-oc-flow-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 30px rgba(56, 30, 22, 0.14);
+}
+
+.inv-oc-flow-card:hover::after {
+  opacity: 1;
+}
+
+.inv-oc-flow-card.is-pendiente {
+  border-top-color: rgba(234, 179, 8, 0.9);
+}
+
+.inv-oc-flow-card.is-aprobada {
+  border-top-color: rgba(37, 99, 235, 0.85);
+}
+
+.inv-oc-flow-card.is-rechazada {
+  border-top-color: rgba(220, 38, 38, 0.82);
+}
+
+.inv-oc-flow-card.is-en-compra {
+  border-top-color: rgba(8, 145, 178, 0.84);
+}
+
+.inv-oc-flow-card.is-abastecida {
+  border-top-color: rgba(22, 163, 74, 0.84);
+}
+
+.inv-oc-flow-card__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+  min-width: 0;
+}
+
+.inv-oc-flow-card__order {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  color: #6b2f21;
+  font-size: 0.77rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inv-oc-flow-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.72rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-flow-card__user {
+  color: #2f130c;
+  line-height: 1.12;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inv-oc-flow-card__state-badge {
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.inv-oc-flow-card__stamp-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-flow-card__stamp {
+  border-radius: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 249, 239, 0.88);
+  padding: 0.38rem 0.56rem;
+  color: rgba(74, 43, 34, 0.88);
+  font-size: 0.76rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.inv-oc-flow-card__actions-wrap {
+  border-top: 1px dashed rgba(157, 150, 112, 0.28);
+  padding-top: 0.62rem;
+}
+
+.inv-oc-draft-shell__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  margin: 0.68rem 0.72rem 0;
+  color: #3a1e16;
+  font-weight: 700;
+  font-size: 0.84rem;
+}
+
+.inv-oc-draft-shell table thead th {
+  background: rgba(255, 249, 239, 0.84);
+}
+
+.inv-oc-primary-btn {
+  min-width: 175px;
+}
+
+.inv-oc-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.inv-oc-action-btn {
+  border: 1px solid rgba(127, 29, 29, 0.2);
+  border-radius: 9px;
+  padding: 0.34rem 0.55rem;
+  background: #fff;
+  color: #4a2b22;
+  font-size: 0.76rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  transition: all 0.18s ease;
+}
+
+.inv-oc-action-btn:hover:not(:disabled),
+.inv-oc-action-btn:focus-visible {
+  transform: translateY(-1px);
+}
+
+.inv-oc-action-btn.is-compact {
+  padding: 0.36rem 0.52rem;
+}
+
+.inv-oc-action-btn.is-neutral {
+  border-color: rgba(82, 44, 34, 0.24);
+}
+
+.inv-oc-action-btn.is-primary {
+  border-color: rgba(24, 93, 192, 0.25);
+  color: #114f9d;
+}
+
+.inv-oc-action-btn.is-danger {
+  border-color: rgba(159, 39, 39, 0.29);
+  color: #8d1f1f;
+}
+
+.inv-oc-action-btn.is-success {
+  border-color: rgba(28, 126, 88, 0.28);
+  color: #0d6a45;
+}
+
+.inv-oc-mobile-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.72rem;
+}
+
+.inv-oc-mobile-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.inv-oc-mobile-card__head strong,
+.inv-oc-mobile-card__head small {
+  display: block;
+}
+
+.inv-oc-mobile-card__head small {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.75rem;
+}
+
+.inv-oc-mobile-card__meta {
+  display: flex;
+  gap: 0.44rem;
+  flex-wrap: wrap;
+  margin: 0.55rem 0;
+  color: rgba(74, 43, 34, 0.78);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.inv-oc-info-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  padding: 0.68rem;
+  background: rgba(255, 249, 239, 0.78);
+}
+
+.inv-oc-info-card span {
+  display: block;
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.74rem;
+  margin-bottom: 0.15rem;
+}
+
+.inv-oc-info-card strong {
+  color: #29140e;
+  font-size: 1rem;
+}
+
+.inv-oc-info-card small {
+  display: block;
+  color: rgba(74, 43, 34, 0.76);
+  margin-top: 0.2rem;
+  font-size: 0.74rem;
+}
+
+/* AM: layout visual del modal de detalle de orden en formato cards y chips. */
+.inv-oc-detail-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.78rem;
+}
+
+.inv-oc-detail-hero-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.1), transparent 50%),
+    rgba(255, 251, 245, 0.96);
+  padding: 1rem 1.05rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.inv-oc-detail-hero-card__copy {
+  min-width: 0;
+}
+
+.inv-oc-detail-kicker {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  background: rgba(255, 249, 239, 0.9);
+  color: #6b2f21;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.2rem 0.58rem;
+  margin-bottom: 0.36rem;
+}
+
+.inv-oc-detail-hero-card__copy h6 {
+  margin: 0;
+  color: #2f130c;
+  font-size: 1.16rem;
+}
+
+.inv-oc-detail-hero-card__copy p {
+  margin: 0.35rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.inv-oc-detail-hero-card__copy p span {
+  font-size: 0.79rem;
+  color: rgba(74, 43, 34, 0.78);
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  background: rgba(255, 249, 239, 0.82);
+  padding: 0.12rem 0.46rem;
+}
+
+.inv-oc-detail-state-badge {
+  font-size: 0.83rem;
+  padding: 0.44rem 0.62rem;
+}
+
+/* AM: tarjetas de contexto para separar claramente recepcion de sucursal y gestion administrativa. */
+.inv-oc-detail-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.inv-oc-detail-meta-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.68rem 0.72rem;
+}
+
+.inv-oc-detail-meta-card h6 {
+  margin: 0 0 0.42rem;
+  color: #2f130c;
+  font-weight: 700;
+  font-size: 0.87rem;
+}
+
+.inv-oc-detail-meta-card p {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.16rem 0;
+}
+
+.inv-oc-detail-meta-card p span {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.75rem;
+}
+
+.inv-oc-detail-meta-card p strong {
+  color: #2f130c;
+  font-size: 0.77rem;
+  text-align: right;
+  max-width: 65%;
+}
+
+.inv-oc-detail-note-card {
+  border: 1px dashed rgba(157, 150, 112, 0.36);
+  border-radius: 12px;
+  background: rgba(255, 249, 239, 0.7);
+  padding: 0.6rem 0.68rem;
+}
+
+.inv-oc-detail-note-card span {
+  display: block;
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.73rem;
+  margin-bottom: 0.2rem;
+  font-weight: 700;
+}
+
+.inv-oc-detail-note-card p {
+  margin: 0;
+  color: rgba(74, 43, 34, 0.9);
+  font-size: 0.79rem;
+  line-height: 1.45;
+}
+
+/* AM: hace mucho mas claro y visual lo que se esta solicitando en la orden. */
+.inv-oc-detail-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.46rem;
+  color: #2f130c;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inv-oc-detail-line-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.72rem;
+  margin-top: 0.72rem;
+}
+
+.inv-oc-detail-line-card {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(185, 124, 44, 0.08), transparent 54%),
+    rgba(255, 255, 255, 0.96);
+  padding: 0.84rem 0.88rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: 0 10px 20px rgba(56, 30, 22, 0.06);
+}
+
+.inv-oc-detail-line-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.72rem;
+}
+
+.inv-oc-detail-line-card__title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+}
+
+.inv-oc-detail-line-card__title strong {
+  color: #2f130c;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.inv-oc-detail-line-card__type {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  color: #6b2f21;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.inv-oc-detail-line-card__qty {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 249, 239, 0.9);
+  color: #4a2b22;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.28rem 0.64rem;
+  white-space: nowrap;
+}
+
+.inv-oc-detail-line-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.inv-oc-detail-line-card__meta span {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  background: rgba(255, 247, 232, 0.88);
+  color: rgba(74, 43, 34, 0.86);
+  padding: 0.22rem 0.54rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.inv-oc-detail-section h6 {
+  color: #2f130c;
+  font-weight: 700;
+}
+
+.inv-oc-detail-evidence-grid,
+.inv-oc-detail-items-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.inv-oc-evidence-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.62rem 0.68rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.inv-oc-evidence-card span {
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.inv-oc-evidence-card a {
+  color: #2f130c;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.inv-oc-evidence-card a:hover,
+.inv-oc-evidence-card a:focus-visible {
+  text-decoration: underline;
+}
+
+.inv-oc-evidence-card img {
+  width: 100%;
+  max-height: 190px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+}
+
+.inv-oc-detail-item-simple {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.62rem 0.72rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.52rem;
+}
+
+.inv-oc-detail-item-simple span {
+  color: #2f130c;
+  font-weight: 600;
+  font-size: 0.83rem;
+}
+
+.inv-oc-detail-item-simple strong {
+  border-radius: 999px;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  background: rgba(255, 249, 239, 0.82);
+  color: rgba(74, 43, 34, 0.88);
+  padding: 0.2rem 0.56rem;
+  font-size: 0.79rem;
+}
+
+.inv-oc-empty-state {
+  border: 1px dashed rgba(157, 150, 112, 0.4);
+  border-radius: 12px;
+  background: rgba(255, 249, 239, 0.6);
+  color: rgba(82, 44, 34, 0.74);
+  padding: 0.8rem;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.34rem;
+  text-align: center;
+}
+
+/* AM: modales custom para mantener consistencia con el estilo del modulo inventario. */
+.inv-oc-modal-layer {
+  position: fixed !important;
+  inset: 0;
+  z-index: 2500;
+  overflow-y: auto;
+  background: rgba(24, 10, 8, 0.45);
+  backdrop-filter: blur(1px);
+  animation: inv-oc-backdrop-in 0.16s ease-out;
+}
+
+.inv-oc-modal-layer .modal-dialog {
+  margin: 1.35rem auto;
+  animation: inv-oc-modal-in 0.18s ease-out;
+}
+
+.inv-oc-modal {
+  border-radius: 16px;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  overflow: hidden;
+}
+
+.inv-oc-modal .modal-header {
+  border-bottom-color: rgba(157, 150, 112, 0.22);
+  background:
+    linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(248, 242, 230, 0.96));
+}
+
+.inv-oc-modal .modal-title {
+  color: #331812;
+  font-weight: 700;
+}
+
+.inv-oc-convert-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.inv-oc-convert-summary article {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 249, 239, 0.78);
+  padding: 0.6rem 0.66rem;
+}
+
+.inv-oc-convert-summary span {
+  display: block;
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.74rem;
+}
+
+.inv-oc-convert-summary strong {
+  display: block;
+  color: #2a120d;
+  margin-top: 0.12rem;
+}
+
+@keyframes inv-oc-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes inv-oc-backdrop-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes inv-oc-carousel-slide-in {
+  from {
+    opacity: 0.24;
+    transform: translateX(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes inv-oc-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 1199.98px) {
+  .inv-oc-stats-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-oc-hero {
+    flex-direction: column;
+  }
+
+  .inv-oc-hero__stats {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .inv-oc-top-panels.is-dual {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-middle-panels.is-dual {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-top-panels.is-dual > .inv-oc-card {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 991.98px) {
+  /* AM: tablet en 2 columnas para Flujo y Nueva Solicitud. */
+  .inv-oc-catalog-grid,
+  .inv-oc-flow-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-oc-draft-summary-band,
+  .inv-oc-draft-grid,
+  .inv-oc-detail-items-grid,
+  .inv-oc-detail-evidence-grid,
+  .inv-oc-detail-meta-grid,
+  .inv-oc-draft-footer-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-panel-head,
+  .inv-oc-header-meta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-oc-panel-header-actions,
+  .inv-oc-header-chipline {
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .inv-oc-panel-search {
+    min-width: 100%;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-oc-stats-band {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-catalog-card__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-hero {
+    padding: 0.9rem;
+    border-radius: 18px;
+  }
+
+  .inv-oc-hero__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-oc-card__header,
+  .inv-oc-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-oc-card__header-tools {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-title-stacked {
+    line-height: 1.05;
+  }
+
+  .inv-oc-toggle--compact,
+  .inv-oc-panel-toolbar-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .inv-oc-action-btn {
+    justify-content: center;
+  }
+
+  /* AM: mobile en 1 columna para evitar compresion de cards. */
+  .inv-oc-catalog-grid,
+  .inv-oc-flow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-draft-request-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-oc-detail-hero-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inv-oc-detail-meta-card p {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .inv-oc-detail-meta-card p strong {
+    max-width: 100%;
+    text-align: left;
+  }
+}
+// AM: ajustes UX puntuales del submodulo Inventario > Mobiliario para compactar cards y pulir modal.
+.inv-mob-card {
+  min-height: auto;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.inv-mob-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  position: relative;
+  z-index: 1;
+}
+
+.inv-mob-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.inv-mob-card__title-wrap {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.inv-mob-card__title-wrap .inv-cat-card__title {
+  line-height: 1.2;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+
+.inv-mob-card__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+
+.inv-mob-card__meta-cell {
+  min-width: 0;
+}
+
+.inv-mob-card__meta-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #866e5a;
+  margin-bottom: 0.08rem;
+}
+
+.inv-mob-card .inv-cat-card__description {
+  font-size: 0.93rem;
+  line-height: 1.3;
+}
+
+.inv-mob-card .inv-catpro-item-footer {
+  padding-top: 0.4rem;
+  margin-top: 0.15rem;
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid rgba(179, 144, 111, 0.28);
+}
+
+.inv-mob-card__divider {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(90deg, rgba(176, 128, 84, 0.22), rgba(176, 128, 84, 0.04));
+}
+
+.inv-mob-card__bg-icon {
+  position: absolute;
+  right: -10px;
+  bottom: -14px;
+  width: 112px;
+  height: 112px;
+  border-radius: 28px;
+  pointer-events: none;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(117, 74, 40, 0.1);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.56), rgba(191, 136, 82, 0.08) 58%, rgba(191, 136, 82, 0.02) 100%);
+  transform: rotate(-13deg);
+  animation: invMobBgFloat 3.2s ease-in-out infinite;
+}
+
+.inv-mob-card__bg-icon i {
+  font-size: 2.7rem;
+}
+
+.inv-mob-card .inv-catpro-code-wrap {
+  gap: 0.35rem;
+}
+
+@keyframes invMobIconFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes invMobBgFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-13deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(-9deg);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-mob-card__meta-grid {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .inv-mob-card__title-wrap .inv-cat-card__title {
+    font-size: 0.96rem;
+  }
+}
+
+// AM: unifica cards informativas de Inventario con el patrón visual de Ventas (icono + bloque de valor).
+.inv-catpro-card .inv-prod-kpis,
+.inv-oc-stats-band,
+.inv-warehouse-moves__summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card,
+.inv-oc-stat-card.inv-invstat-card,
+.inv-warehouse-summary-card.inv-invstat-card {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(157, 150, 112, 0.2) !important;
+  background: rgba(243, 241, 216, 0.78) !important;
+  padding: 0.58rem 0.72rem !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content {
+  gap: 1px;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content span,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span {
+  color: rgba(82, 44, 34, 0.8);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content strong,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong {
+  color: #17080a;
+  font-size: 1.46rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.inv-invstat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  color: #9a5319;
+  box-shadow: inset 0 0 0 1px rgba(157, 150, 112, 0.2);
+  flex-shrink: 0;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card.is-ok,
+.inv-oc-stat-card.inv-invstat-card.is-stocked,
+.inv-oc-stat-card.inv-invstat-card.is-approved {
+  background: rgba(229, 244, 236, 0.92) !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card.is-low,
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card.is-empty,
+.inv-oc-stat-card.inv-invstat-card.is-pending,
+.inv-oc-stat-card.inv-invstat-card.is-buying {
+  background: rgba(251, 240, 228, 0.92) !important;
+}
+
+// AM: retira las graficas sparkline de cards informativas en Inventario sin tocar logica de calculo.
+.inv-prod-kpi .inv-prod-kpi-spark {
+  display: none !important;
+}
+
+// AM: compacta y alinea en una sola linea los cards informativos del resumen de Ordenes de Compra.
+.inv-oc-module .inv-oc-stats-band {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch;
+  gap: 10px !important;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
+}
+
+// AM: reduce densidad visual de cards OC para una lectura lineal y mas estructurada.
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 10px !important;
+  padding: 0.48rem 0.56rem !important;
+  gap: 0.5rem !important;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-invstat-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span {
+  font-size: 0.76rem;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong {
+  font-size: 1.24rem;
+}
+
+@media (max-width: 767.98px) {
+  // AM: mantiene linealidad en mobile sin romper legibilidad; permite desplazamiento horizontal controlado.
+  .inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+    flex: 0 0 156px;
+  }
+}
+
+// AM: Bloque 5 - unificacion visual premium de KPIs informativas en Inventario.
+.inv-catpro-card .inv-prod-kpis,
+.inv-oc-stats-band,
+.inv-warehouse-moves__summary-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card,
+.inv-oc-stat-card.inv-invstat-card,
+.inv-warehouse-summary-card.inv-invstat-card {
+  min-height: 92px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start;
+  gap: 12px !important;
+  padding: 0.7rem 0.8rem !important;
+  border-radius: 12px !important;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content,
+.inv-warehouse-summary-card.inv-invstat-card .inv-warehouse-summary-card__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content span,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span,
+.inv-warehouse-summary-card.inv-invstat-card .inv-warehouse-summary-card__copy span {
+  color: rgba(82, 44, 34, 0.8);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inv-catpro-card .inv-prod-kpi.inv-invstat-card .inv-prod-kpi-content strong,
+.inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong,
+.inv-warehouse-summary-card.inv-invstat-card .inv-warehouse-summary-card__copy strong {
+  color: #17080a;
+  font-size: 1.46rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.inv-invstat-icon,
+.inv-warehouse-summary-card__icon {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  color: #9a5319;
+  box-shadow: inset 0 0 0 1px rgba(157, 150, 112, 0.2);
+  flex-shrink: 0;
+}
+
+.inv-oc-module .inv-oc-stats-band {
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+@media (max-width: 767.98px) {
+  .inv-catpro-card .inv-prod-kpis,
+  .inv-oc-stats-band,
+  .inv-warehouse-moves__summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .inv-catpro-card .inv-prod-kpi.inv-invstat-card,
+  .inv-oc-stat-card.inv-invstat-card,
+  .inv-warehouse-summary-card.inv-invstat-card {
+    min-height: 86px;
+  }
+}
+
+// AM: Bloque 5.1 - ajuste fino exclusivo KPIs de Ordenes de compra (compactas + centradas).
+.inv-oc-module .inv-oc-stats-band {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  align-items: stretch;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+  min-height: 78px;
+  padding: 0.48rem 0.58rem !important;
+  gap: 0.48rem !important;
+  align-items: center !important;
+  justify-content: center;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-invstat-icon {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 10px;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span {
+  font-size: 0.74rem;
+  line-height: 1.05;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong {
+  font-size: 1.18rem;
+  line-height: 1;
+}
+
+@media (max-width: 1199.98px) {
+  .inv-oc-module .inv-oc-stats-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-oc-module .inv-oc-stats-band {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+    min-height: 74px;
+    padding: 0.44rem 0.54rem !important;
+  }
+}

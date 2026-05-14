@@ -1,0 +1,82 @@
+.perfil-save-toast {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 2600;
+  width: min(360px, calc(100vw - 24px));
+  border-radius: 15px;
+  border: 1px solid rgba(151, 118, 89, 0.3);
+  background: linear-gradient(180deg, #fdfaf4 0%, #f5eee2 100%);
+  box-shadow: 0 18px 30px rgba(42, 24, 14, 0.25);
+  overflow: hidden;
+}
+
+.perfil-save-toast__body {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 44px 14px 13px;
+}
+
+.perfil-save-toast__icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(45, 107, 102, 0.15);
+  color: #1f6a5d;
+  border: 1px solid rgba(45, 107, 102, 0.34);
+  font-size: 0.95rem;
+}
+
+.perfil-save-toast__copy {
+  min-width: 0;
+}
+
+.perfil-save-toast__title {
+  color: #73212a;
+  font-weight: 900;
+  font-size: 0.95rem;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.perfil-save-toast__subtitle {
+  color: #5b4335;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.perfil-save-toast__close {
+  position: absolute;
+  top: 11px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(132, 93, 70, 0.28);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #6d4a35;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.perfil-save-toast__close:hover {
+  background: #f7ede4;
+}
+
+@media (max-width: 576px) {
+  .perfil-save-toast {
+    top: 8px;
+    right: 8px;
+    width: calc(100vw - 16px);
+  }
+}

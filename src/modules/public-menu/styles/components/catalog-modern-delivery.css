@@ -1,0 +1,426 @@
+/* Estilos modernos del catalogo tipo app delivery (hero + rails + sticky). */
+
+.pm-catalog-screen {
+  gap: 1rem;
+  scroll-behavior: smooth;
+}
+
+.pm-delivery-hero {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  min-height: 300px;
+  box-shadow: 0 24px 42px rgba(15, 18, 24, 0.24);
+  isolation: isolate;
+}
+
+.pm-delivery-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.pm-delivery-hero__viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.pm-delivery-hero__slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(1.03);
+  transition: opacity 460ms ease, transform 2200ms ease;
+}
+
+.pm-delivery-hero__slide.is-active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.pm-delivery-hero__image,
+.pm-delivery-hero__placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  object-fit: cover;
+}
+
+.pm-delivery-hero__placeholder {
+  background:
+    radial-gradient(circle at 15% 25%, rgba(255, 198, 98, 0.22), transparent 42%),
+    linear-gradient(130deg, #633f2a, #2a1a11);
+}
+
+.pm-delivery-hero__overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(102deg, rgba(8, 10, 12, 0.72), rgba(8, 10, 12, 0.3) 42%, rgba(8, 10, 12, 0.65)),
+    linear-gradient(180deg, rgba(8, 10, 12, 0.24), rgba(8, 10, 12, 0.86));
+}
+
+.pm-delivery-hero__copy {
+  position: relative;
+  z-index: 2;
+  padding: clamp(1rem, 2.2vw, 1.6rem);
+  color: #fff8f0;
+  display: grid;
+  gap: 0.5rem;
+  max-width: 560px;
+}
+
+.pm-delivery-hero__eyebrow {
+  width: fit-content;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.24rem 0.62rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  backdrop-filter: blur(5px);
+}
+
+.pm-delivery-hero__title {
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 2.8rem);
+  line-height: 1.01;
+  font-weight: 900;
+}
+
+.pm-delivery-hero__subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(255, 245, 231, 0.94);
+  max-width: 36ch;
+}
+
+.pm-delivery-hero__cta {
+  margin-top: 0.2rem;
+  width: fit-content;
+  border: 0;
+  border-radius: 999px;
+  min-height: 44px;
+  padding: 0.52rem 1.08rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #20180f;
+  background: linear-gradient(140deg, #ffe29c, #ffbc4d 62%, #ff9e40);
+  box-shadow: 0 14px 24px rgba(0, 0, 0, 0.26);
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.pm-delivery-hero__cta:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.pm-delivery-hero__stats {
+  margin-top: 0.32rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.pm-delivery-hero__stats span {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.23);
+  background: rgba(15, 12, 9, 0.35);
+  backdrop-filter: blur(4px);
+  padding: 0.2rem 0.52rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.pm-delivery-hero__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.44);
+  background: rgba(0, 0, 0, 0.34);
+  color: #fff;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pm-delivery-hero__arrow--prev {
+  left: 0.62rem;
+}
+
+.pm-delivery-hero__arrow--next {
+  right: 0.62rem;
+}
+
+.pm-delivery-hero__dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.7rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.36rem;
+  z-index: 2;
+}
+
+.pm-delivery-hero__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.48);
+  transition: width 180ms ease, background-color 180ms ease;
+}
+
+.pm-delivery-hero__dot.is-active {
+  width: 20px;
+  background: #fff;
+}
+
+.pm-branch-sticky {
+  position: sticky;
+  top: 4.7rem;
+  z-index: 9;
+  border-radius: 16px;
+  border: 1px solid rgba(218, 191, 156, 0.56);
+  background: rgba(255, 252, 246, 0.72);
+  box-shadow: 0 10px 24px rgba(36, 26, 15, 0.08);
+  padding: 0.64rem 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  backdrop-filter: blur(8px);
+}
+
+.pm-branch-sticky__left {
+  min-width: 0;
+  display: grid;
+  gap: 0.06rem;
+}
+
+.pm-branch-sticky__label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #866d59;
+  font-weight: 800;
+}
+
+.pm-branch-sticky__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  color: #2f2a24;
+}
+
+.pm-branch-sticky__name span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pm-branch-sticky__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.pm-branch-sticky__order-chip {
+  border-radius: 999px;
+  border: 1px solid rgba(184, 151, 120, 0.45);
+  background: #fff8ee;
+  padding: 0.18rem 0.52rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #664125;
+}
+
+.pm-branch-sticky__change {
+  border: 0;
+  border-radius: 999px;
+  min-height: 30px;
+  padding: 0.28rem 0.72rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: #201b18;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pm-promo-rail {
+  display: grid;
+  gap: 0.54rem;
+}
+
+.pm-promo-rail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pm-promo-rail__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #251d17;
+}
+
+.pm-promo-rail__scroller {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(214px, 1fr);
+  gap: 0.74rem;
+  overflow-x: auto;
+  padding: 0.06rem 0.04rem 0.24rem;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.pm-promo-card {
+  scroll-snap-align: start;
+  border-radius: 18px;
+  border: 1px solid rgba(196, 170, 143, 0.36);
+  background: rgba(255, 252, 247, 0.86);
+  overflow: hidden;
+  box-shadow: 0 14px 22px rgba(37, 25, 16, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pm-promo-card:active {
+  transform: scale(0.992);
+}
+
+.pm-promo-card.is-added {
+  animation: pmPromoAddPulse 520ms ease;
+}
+
+.pm-promo-card__media {
+  position: relative;
+  min-height: 138px;
+}
+
+.pm-promo-card__image,
+.pm-promo-card__placeholder {
+  width: 100%;
+  height: 138px;
+  object-fit: cover;
+}
+
+.pm-promo-card__placeholder {
+  display: grid;
+  place-items: center;
+  color: #726555;
+  background: #efe4d7;
+  font-size: 0.78rem;
+}
+
+.pm-promo-card__badge {
+  position: absolute;
+  left: 0.45rem;
+  top: 0.45rem;
+  border-radius: 999px;
+  padding: 0.14rem 0.5rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(19, 14, 10, 0.74);
+}
+
+.pm-promo-card__body {
+  padding: 0.64rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.pm-promo-card__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #30261f;
+}
+
+.pm-promo-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.pm-promo-card__price {
+  font-size: 0.86rem;
+  color: #201a15;
+}
+
+.pm-promo-card__add {
+  border: 0;
+  border-radius: 999px;
+  min-height: 30px;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fff;
+  background: #1f1b19;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+}
+
+.pm-promo-card__add:disabled {
+  opacity: 0.5;
+}
+
+.pm-catalog-main {
+  display: grid;
+  gap: 0.62rem;
+}
+
+@keyframes pmPromoAddPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 14px 22px rgba(37, 25, 16, 0.12);
+  }
+  40% {
+    transform: scale(1.02);
+    box-shadow: 0 18px 34px rgba(37, 25, 16, 0.18);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 14px 22px rgba(37, 25, 16, 0.12);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pm-delivery-hero {
+    min-height: 252px;
+    border-radius: 18px;
+  }
+
+  .pm-delivery-hero__image,
+  .pm-delivery-hero__placeholder {
+    min-height: 252px;
+  }
+
+  .pm-delivery-hero__arrow {
+    display: none;
+  }
+
+  .pm-promo-rail__scroller {
+    grid-auto-columns: minmax(188px, 1fr);
+  }
+}

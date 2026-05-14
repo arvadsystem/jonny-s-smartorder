@@ -1,15 +1,66 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { perfilService } from "../../services/perfilService";
-import usePasswordPolicies from "../../hooks/usePasswordPolicies";
-import { validatePassword } from "../../utils/passwordValidator";
+import { useAuth } from "../../hooks/useAuth";
+import { API_URL } from "../../utils/constants";
+import { fmtHN } from "../../utils/dateTime";
+import "./perfil-page.css";
+import "./perfil-toast.css";
+
+const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/|data:image\/)/i;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_PROFILE_IMAGE_BYTES = 6 * 1024 * 1024;
+
+const normalizeText = (value) => String(value ?? "").trim();
+
+const getApiOrigin = () => {
+  const clean = normalizeText(API_URL);
+  if (!clean) return "";
+
+  try {
+    return new URL(clean).origin;
+  } catch {
+    return clean.replace(/\/+$/, "");
+  }
+};
+
+const resolveProfilePhotoSrc = (value) => {
+  const photo = normalizeText(value);
+  if (!photo || !PHOTO_URL_RE.test(photo)) return "";
+  if (/^data:image\//i.test(photo)) return photo;
+  if (/^https?:\/\//i.test(photo)) return photo;
+  if (/^\/uploads\//i.test(photo)) {
+    const origin = getApiOrigin();
+    return origin ? `${origin}${photo}` : photo;
+  }
+  return "";
+};
+
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen seleccionada."));
+    reader.readAsDataURL(file);
+  });
 
 const Perfil = () => {
-  const [data, setData] = useState(null);
+  const { updateCurrentUser } = useAuth();
+  const imageInputRef = useRef(null);
   const [roles, setRoles] = useState([]);
   const [ultimo, setUltimo] = useState(null);
+  const [sesionesTotales, setSesionesTotales] = useState(0);
+  const [usuarioSesion, setUsuarioSesion] = useState("");
+  const [cuentaVerificada, setCuentaVerificada] = useState(true);
+  const [fotoPerfil, setFotoPerfil] = useState("");
+  const [fotoPerfilDraft, setFotoPerfilDraft] = useState("");
+  const [fotoPerfilDirty, setFotoPerfilDirty] = useState(false);
+  const [fotoProcesando, setFotoProcesando] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   // Form editar perfil
   const [form, setForm] = useState({
@@ -19,32 +70,13 @@ const Perfil = () => {
     email: "",
     direccion: "",
   });
-
-  // Cambio de contraseña
-  const [pw, setPw] = useState({
-    actual: "",
-    nueva: "",
-    confirmacion: "",
+  const [perfilVisible, setPerfilVisible] = useState({
+    nombre: "",
+    apellido: "",
+    telefono: "",
+    email: "",
+    direccion: "",
   });
-
-  // ✅ Toggle mostrar/ocultar password
-  const [showPw, setShowPw] = useState({
-    actual: false,
-    nueva: false,
-    confirmacion: false,
-  });
-
-  const { policies, loading: loadingPolicies, error: policiesError } = usePasswordPolicies();
-
-  const passwordCheck = validatePassword(pw.nueva || "", policies || {});
-  const confirmOk = pw.nueva.length > 0 && pw.nueva === pw.confirmacion;
-
-  const canChangePassword =
-    !loadingPolicies &&
-    !policiesError &&
-    pw.actual.length > 0 &&
-    passwordCheck.allOk &&
-    confirmOk;
 
   const cargar = async () => {
     setLoading(true);
@@ -52,11 +84,24 @@ const Perfil = () => {
 
     try {
       const res = await perfilService.getPerfil();
-      setData(res?.perfil || null);
       setRoles(res?.roles || []);
       setUltimo(res?.ultimo_acceso || null);
+      setSesionesTotales(Number(res?.sesiones_totales) || 0);
 
       const p = res?.perfil || {};
+      setUsuarioSesion(p.nombre_usuario || "");
+      setCuentaVerificada(
+        p.estado === undefined || p.estado === null ? true : Boolean(p.estado)
+      );
+      setFotoPerfil(p.foto_perfil || "");
+      updateCurrentUser?.({ foto_perfil: p.foto_perfil || "" });
+      setPerfilVisible({
+        nombre: p.nombre || "",
+        apellido: p.apellido || "",
+        telefono: p.telefono || "",
+        email: p.email || "",
+        direccion: p.direccion || "",
+      });
       setForm({
         nombre: p.nombre || "",
         apellido: p.apellido || "",
@@ -75,269 +120,492 @@ const Perfil = () => {
     cargar();
   }, []);
 
+  useEffect(() => {
+    if (!showSaveConfirm) return undefined;
+    const timer = setTimeout(() => setShowSaveConfirm(false), 3200);
+    return () => clearTimeout(timer);
+  }, [showSaveConfirm]);
+
+  const avatarImageSrc = useMemo(() => resolveProfilePhotoSrc(fotoPerfil), [fotoPerfil]);
+  const avatarDraftImageSrc = useMemo(() => resolveProfilePhotoSrc(fotoPerfilDraft), [fotoPerfilDraft]);
+
+  const handleAvatarEditClick = () => {
+    if (fotoProcesando) return;
+    setFotoError("");
+    setFotoPerfilDraft(fotoPerfil || "");
+    setFotoPerfilDirty(false);
+    setShowAvatarModal(true);
+  };
+
+  const handleCloseAvatarModal = () => {
+    if (fotoProcesando) return;
+    setFotoError("");
+    setFotoPerfilDraft("");
+    setFotoPerfilDirty(false);
+    setShowAvatarModal(false);
+  };
+
+  const handleAvatarFileChange = async (event) => {
+    const input = event.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+
+    setFotoError("");
+
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      setFotoError("Solo se permiten imagenes JPG, PNG o WEB.");
+      if (input) input.value = "";
+      return;
+    }
+
+    if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+      setFotoError("La imagen supera el limite de 6 MB.");
+      if (input) input.value = "";
+      return;
+    }
+
+    setFotoProcesando(true);
+    try {
+      const photoDataUrl = await readFileAsDataUrl(file);
+      setFotoPerfilDraft(photoDataUrl);
+      setFotoPerfilDirty(true);
+    } catch (e) {
+      setFotoError(e?.message || "No se pudo procesar la imagen de perfil.");
+    } finally {
+      setFotoProcesando(false);
+      if (input) input.value = "";
+    }
+  };
+
+  const handleRemoveAvatarImage = () => {
+    if (fotoProcesando) return;
+    setFotoError("");
+    const hadStoredPhoto = normalizeText(fotoPerfil) !== "";
+    const hasDraftPhoto = normalizeText(fotoPerfilDraft) !== "";
+    if (!hadStoredPhoto && !hasDraftPhoto) return;
+    setFotoPerfilDraft("");
+    setFotoPerfilDirty(true);
+  };
+
+  const handleSaveAvatarChanges = async () => {
+    if (fotoProcesando || !fotoPerfilDirty) return;
+    setFotoError("");
+    setFotoProcesando(true);
+    try {
+      const nextPhoto = normalizeText(fotoPerfilDraft);
+      await perfilService.updatePerfil({ foto_perfil: nextPhoto });
+      setFotoPerfil(nextPhoto);
+      updateCurrentUser?.({ foto_perfil: nextPhoto });
+      setShowAvatarModal(false);
+      setFotoPerfilDraft("");
+      setFotoPerfilDirty(false);
+      setShowSaveConfirm(true);
+      await cargar();
+    } catch (e) {
+      setFotoError(e?.message || "No se pudo actualizar la imagen de perfil.");
+    } finally {
+      setFotoProcesando(false);
+    }
+  };
+
   const onSavePerfil = async () => {
     try {
       await perfilService.updatePerfil(form);
-      alert("Perfil actualizado.");
+      setShowSaveConfirm(true);
       await cargar();
     } catch (e) {
       alert(e?.message || "No se pudo actualizar el perfil");
     }
   };
 
-  const onChangePassword = async () => {
-    if (pw.nueva !== pw.confirmacion) {
-      alert("La nueva contraseña y la confirmación no coinciden.");
-      return;
-    }
+  const nombreCompleto = useMemo(() => {
+    const value = `${perfilVisible.nombre || ""} ${perfilVisible.apellido || ""}`.trim();
+    return value || "Usuario";
+  }, [perfilVisible.nombre, perfilVisible.apellido]);
 
-    try {
-      await perfilService.changePassword({
-        password_actual: pw.actual,
-        password_nueva: pw.nueva,
-      });
+  const iniciales = useMemo(() => {
+    const parts = nombreCompleto
+      .split(" ")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 2);
 
-      alert("Contraseña actualizada.");
-      setPw({ actual: "", nueva: "", confirmacion: "" });
-      setShowPw({ actual: false, nueva: false, confirmacion: false });
-    } catch (e) {
-      alert(e?.message || "No se pudo cambiar la contraseña");
-    }
-  };
+    if (parts.length === 0) return "US";
+    return parts.map((value) => value[0]).join("").toUpperCase();
+  }, [nombreCompleto]);
 
-  if (loading) return <div className="p-4 text-muted">Cargando...</div>;
-  if (error) return <div className="p-4 alert alert-danger">{error}</div>;
+  const resumenCorreo = perfilVisible.email?.trim() ? perfilVisible.email.trim() : "Correo no registrado";
+  const identidadEnLinea = useMemo(() => {
+    const nombre = String(nombreCompleto || "").trim();
+    if (nombre && nombre !== "Usuario") return nombre;
+    return "Usuario conectado";
+  }, [nombreCompleto]);
 
-  return (
-    <div className="p-4">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <div>
-          <h3 className="mb-0">Mi perfil</h3>
-          <small className="text-muted">Administra tu información y seguridad</small>
+  if (loading) {
+    return (
+      <div className="p-4 perfil-page">
+        <div className="perfil-page__shell">
+          <div className="card shadow-sm perfil-panel">
+            <div className="card-body perfil-page__state">
+              <span className="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+              Cargando perfil...
+            </div>
+          </div>
         </div>
       </div>
+    );
+  }
 
-      <div className="row g-3">
-        {/* Datos */}
-        <div className="col-lg-7">
-          <div className="card shadow-sm">
+  if (error) {
+    return (
+      <div className="p-4 perfil-page">
+        <div className="perfil-page__shell">
+          <div className="card shadow-sm perfil-panel">
             <div className="card-body">
-              <h5 className="mb-3">Información personal</h5>
+              <div className="alert alert-danger mb-3">{error}</div>
+              <button className="btn btn-outline-danger btn-sm perfil-page__retry-btn" onClick={cargar}>
+                Reintentar carga
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <label className="form-label">Nombre</label>
-                  <input
-                    className="form-control"
-                    value={form.nombre}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, nombre: e.target.value }))
-                    }
-                  />
-                </div>
+  return (
+    <div className="p-4 perfil-page">
+      {showSaveConfirm && (
+        <div className="inv-toast-wrap" role="status" aria-live="polite">
+          <article className="inv-toast-card success">
+            <div className="inv-toast-icon" aria-hidden="true">
+              <i className="bi bi-check-circle-fill" />
+            </div>
 
-                <div className="col-md-6">
-                  <label className="form-label">Apellido</label>
-                  <input
-                    className="form-control"
-                    value={form.apellido}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, apellido: e.target.value }))
-                    }
-                  />
-                </div>
+            <div className="inv-toast-content">
+              <div className="inv-toast-title">ACTUALIZADO</div>
+              <div className="inv-toast-message">Perfil actualizado correctamente</div>
+            </div>
 
-                <div className="col-md-6">
-                  <label className="form-label">Teléfono</label>
-                  <input
-                    className="form-control"
-                    value={form.telefono}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, telefono: e.target.value }))
-                    }
-                  />
-                </div>
+            <button
+              type="button"
+              className="inv-toast-close"
+              onClick={() => setShowSaveConfirm(false)}
+              aria-label="Cerrar"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
 
-                <div className="col-md-6">
-                  <label className="form-label">Email</label>
-                  <input
-                    className="form-control"
-                    value={form.email}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, email: e.target.value }))
-                    }
-                  />
-                </div>
+            <div className="inv-toast-progress" aria-hidden="true" />
+          </article>
+        </div>
+      )}
 
-                <div className="col-12">
-                  <label className="form-label">Dirección</label>
-                  <input
-                    className="form-control"
-                    value={form.direccion}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, direccion: e.target.value }))
-                    }
-                  />
+      {showAvatarModal && (
+        <div
+          className="perfil-avatar-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Editar imagen de perfil"
+          onClick={handleCloseAvatarModal}
+        >
+          <div className="perfil-avatar-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="perfil-avatar-modal__head">
+              <h4>Imagen de perfil</h4>
+              <button
+                type="button"
+                className="perfil-avatar-modal__close"
+                onClick={handleCloseAvatarModal}
+                aria-label="Cerrar modal"
+                disabled={fotoProcesando}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <div className={`perfil-avatar-modal__preview ${avatarDraftImageSrc ? "has-image" : ""}`}>
+              {fotoProcesando ? (
+                <div className="perfil-avatar-modal__loading" role="status">
+                  <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                  <span>Procesando imagen...</span>
                 </div>
+              ) : avatarDraftImageSrc ? (
+                <img src={avatarDraftImageSrc} alt={`Foto de perfil de ${nombreCompleto}`} referrerPolicy="no-referrer" />
+              ) : (
+                <div className="perfil-avatar-modal__placeholder">
+                  <i className="bi bi-image" />
+                  <span>Sin imagen seleccionada</span>
+                </div>
+              )}
+            </div>
+
+            <div className="perfil-avatar-modal__actions">
+              <label className="perfil-avatar-modal__btn perfil-avatar-modal__btn--primary">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleAvatarFileChange}
+                  disabled={fotoProcesando}
+                />
+                <i className="bi bi-upload" />
+                <span>{avatarDraftImageSrc ? "Cambiar imagen" : "Seleccionar imagen"}</span>
+              </label>
+
+              <button
+                type="button"
+                className="perfil-avatar-modal__btn perfil-avatar-modal__btn--danger"
+                onClick={handleRemoveAvatarImage}
+                disabled={fotoProcesando || !avatarDraftImageSrc}
+              >
+                Quitar
+              </button>
+            </div>
+
+            <div className="perfil-avatar-modal__confirm-actions">
+              <button
+                type="button"
+                className="perfil-avatar-modal__confirm-btn perfil-avatar-modal__confirm-btn--cancel"
+                onClick={handleCloseAvatarModal}
+                disabled={fotoProcesando}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="perfil-avatar-modal__confirm-btn perfil-avatar-modal__confirm-btn--save"
+                onClick={handleSaveAvatarChanges}
+                disabled={fotoProcesando || !fotoPerfilDirty}
+              >
+                Guardar cambios
+              </button>
+            </div>
+
+            {fotoError ? (
+              <div className="perfil-avatar-modal__error">{fotoError}</div>
+            ) : (
+              <div className="perfil-avatar-modal__hint">JPG, PNG o WEB hasta 6 MB.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="perfil-page__shell">
+        <div className="card shadow-sm perfil-panel perfil-panel--total perfil-page__hero mb-3">
+          <div className="card-body">
+            <div className="perfil-page__hero-main">
+              <div className="perfil-page__avatar-wrap">
+                <div className="perfil-page__avatar" aria-hidden="true">
+                  {avatarImageSrc ? (
+                    <img
+                      src={avatarImageSrc}
+                      alt={`Foto de perfil de ${nombreCompleto}`}
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    iniciales
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="perfil-page__avatar-edit-btn"
+                  onClick={handleAvatarEditClick}
+                  disabled={fotoProcesando}
+                  aria-label="Editar imagen de perfil"
+                  title="Editar imagen"
+                >
+                  <i className={`bi ${fotoProcesando ? "bi-arrow-repeat" : "bi-pencil-fill"}`} />
+                </button>
+              </div>
+              <div>
+                <h3 className="mb-1">Mi perfil</h3>
+                <p className="text-muted mb-0">
+                  Administre su información.
+                </p>
+              </div>
+            </div>
+
+            <div className="perfil-page__hero-stats">
+              <div className="perfil-page__hero-stat perfil-page__hero-stat--total">
+                <div className="perfil-page__hero-stat-head">
+                  <div className="perfil-page__hero-stat-label perfil-page__online-label">
+                    <span className="perfil-page__online-dot" aria-hidden="true"></span>
+                    EN LÍNEA
+                  </div>
+                  <i className="bi bi-wifi perfil-page__stat-icon perfil-page__stat-icon--online" aria-hidden="true" />
+                </div>
+                <div className="perfil-page__hero-stat-value">{identidadEnLinea}</div>
               </div>
 
-              <div className="d-flex justify-content-end mt-3">
-                <button className="btn btn-primary" onClick={onSavePerfil}>
-                  Guardar
-                </button>
+              <div className="perfil-page__hero-stat perfil-page__hero-stat--ok">
+                <div className="perfil-page__hero-stat-head">
+                  <div className="perfil-page__hero-stat-label">Estado</div>
+                  <i
+                    className={`bi ${cuentaVerificada ? "bi-check-circle-fill" : "bi-x-circle-fill"} perfil-page__stat-icon ${cuentaVerificada ? "perfil-page__stat-icon--ok" : "perfil-page__stat-icon--off"}`}
+                    aria-hidden="true"
+                  />
+                </div>
+                <div className="perfil-page__hero-stat-value">{cuentaVerificada ? "Activo" : "Inactivo"}</div>
+                <div className="perfil-page__hero-stat-note">{cuentaVerificada ? "Cuenta verificada" : "Cuenta no verificada"}</div>
+              </div>
+
+              <div className="perfil-page__hero-stat perfil-page__hero-stat--warn">
+                <div className="perfil-page__hero-stat-head">
+                  <div className="perfil-page__hero-stat-label">Sesiones totales</div>
+                  <i className="bi bi-clock-history perfil-page__stat-icon perfil-page__stat-icon--sessions" aria-hidden="true" />
+                </div>
+                <div className="perfil-page__hero-stat-number">{sesionesTotales}</div>
+                <div className="perfil-page__hero-stat-note">Este mes</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Seguridad */}
-        <div className="col-lg-5">
-          <div className="card shadow-sm mb-3">
-            <div className="card-body">
-              <h5 className="mb-3">Cambiar contraseña</h5>
-
-              {loadingPolicies && (
-                <div className="text-muted mb-2">
-                  <span className="spinner-border spinner-border-sm me-2"></span>
-                  Cargando políticas...
+        <div className="row g-3 align-items-start">
+          <div className="col-12 col-xl-8">
+            <div className="card shadow-sm perfil-panel perfil-panel--total">
+              <div className="card-body">
+                <div className="perfil-panel__header">
+                  <div>
+                    <h5 className="mb-1">Información personal</h5>
+                    <p className="text-muted mb-0 small">
+                      Actualice sus datos de contacto y dirección para mantener la cuenta al día.
+                    </p>
+                  </div>
                 </div>
-              )}
 
-              {policiesError && (
-                <div className="alert alert-warning">
-                  No se pudieron cargar las políticas de contraseña. Aún puedes intentar cambiarla,
-                  pero no habrá validación en vivo.
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <label className="form-label">Nombre</label>
+                    <input
+                      className="form-control"
+                      value={form.nombre}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, nombre: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Apellido</label>
+                    <input
+                      className="form-control"
+                      value={form.apellido}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, apellido: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Teléfono</label>
+                    <input
+                      className="form-control"
+                      value={form.telefono}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, telefono: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="col-md-6">
+                    <label className="form-label">Email</label>
+                    <input
+                      className="form-control"
+                      value={form.email}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, email: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label">Dirección</label>
+                    <input
+                      className="form-control"
+                      value={form.direccion}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, direccion: e.target.value }))
+                      }
+                    />
+                  </div>
                 </div>
-              )}
 
-              {/* Contraseña actual */}
-              <label className="form-label">Contraseña actual</label>
-              <div className="input-group mb-2">
-                <input
-                  type={showPw.actual ? "text" : "password"}
-                  className="form-control"
-                  value={pw.actual}
-                  onChange={(e) =>
-                    setPw((s) => ({ ...s, actual: e.target.value }))
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() => setShowPw((s) => ({ ...s, actual: !s.actual }))}
-                  title={showPw.actual ? "Ocultar" : "Mostrar"}
-                >
-                  <i className={`bi ${showPw.actual ? "bi-eye-slash" : "bi-eye"}`}></i>
-                </button>
-              </div>
-
-              {/* Nueva contraseña */}
-              <label className="form-label">Nueva contraseña</label>
-              <div className="input-group mb-2">
-                <input
-                  type={showPw.nueva ? "text" : "password"}
-                  className="form-control"
-                  value={pw.nueva}
-                  onChange={(e) =>
-                    setPw((s) => ({ ...s, nueva: e.target.value }))
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() => setShowPw((s) => ({ ...s, nueva: !s.nueva }))}
-                  title={showPw.nueva ? "Ocultar" : "Mostrar"}
-                >
-                  <i className={`bi ${showPw.nueva ? "bi-eye-slash" : "bi-eye"}`}></i>
-                </button>
-              </div>
-
-              {/* Checklist */}
-              <div className="border rounded p-2 mb-2">
-                <div className="small fw-semibold mb-1">Debe cumplir:</div>
-                <ul className="list-unstyled mb-0 small">
-                  {passwordCheck.rules.map((r) => (
-                    <li key={r.key} className={r.ok ? "text-success" : "text-danger"}>
-                      <i className={`bi ${r.ok ? "bi-check-circle" : "bi-x-circle"} me-2`}></i>
-                      {r.label}
-                    </li>
-                  ))}
-                  <li className={confirmOk ? "text-success" : "text-danger"}>
-                    <i className={`bi ${confirmOk ? "bi-check-circle" : "bi-x-circle"} me-2`}></i>
-                    Confirmación coincide
-                  </li>
-                </ul>
-              </div>
-
-              {/* Confirmación */}
-              <label className="form-label">Confirmación</label>
-              <div className="input-group mb-3">
-                <input
-                  type={showPw.confirmacion ? "text" : "password"}
-                  className="form-control"
-                  value={pw.confirmacion}
-                  onChange={(e) =>
-                    setPw((s) => ({ ...s, confirmacion: e.target.value }))
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() =>
-                    setShowPw((s) => ({ ...s, confirmacion: !s.confirmacion }))
-                  }
-                  title={showPw.confirmacion ? "Ocultar" : "Mostrar"}
-                >
-                  <i className={`bi ${showPw.confirmacion ? "bi-eye-slash" : "bi-eye"}`}></i>
-                </button>
-              </div>
-
-              <button
-                className="btn btn-outline-dark w-100"
-                onClick={onChangePassword}
-                disabled={!canChangePassword}
-                title={
-                  !canChangePassword
-                    ? "Completa y cumple las políticas para habilitar"
-                    : "Cambiar contraseña"
-                }
-              >
-                Actualizar contraseña
-              </button>
-
-              {!confirmOk && pw.confirmacion.length > 0 && (
-                <div className="small text-danger mt-2">
-                  La confirmación no coincide.
+                <div className="d-flex justify-content-end mt-3">
+                  <button className="btn btn-primary perfil-page__save-btn" onClick={onSavePerfil}>
+                    Guardar cambios
+                  </button>
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
-          {/* Roles + último acceso */}
-          <div className="card shadow-sm">
-            <div className="card-body">
-              <h6 className="text-muted mb-2">Roles</h6>
-              <div className="d-flex flex-wrap gap-2 mb-3">
-                {roles.map((r) => (
-                  <span className="badge bg-secondary" key={r.id_rol}>
-                    {r.nombre}
-                  </span>
-                ))}
-                {roles.length === 0 && <span className="text-muted">—</span>}
+          <div className="col-12 col-xl-4">
+            <div className="d-grid gap-3">
+              <div className="card shadow-sm perfil-panel perfil-panel--total">
+                <div className="card-body">
+                  <h6 className="perfil-side__title">Resumen de usuario</h6>
+                  <div className="perfil-side__name">{nombreCompleto}</div>
+                  <div className="perfil-side__email">{resumenCorreo}</div>
+
+                  <div className="perfil-side__rows mt-3">
+                    <div className="perfil-side__row">
+                      <span>Teléfono</span>
+                      <strong>{perfilVisible.telefono?.trim() || "-"}</strong>
+                    </div>
+                    <div className="perfil-side__row">
+                      <span>Dirección</span>
+                      <strong>{perfilVisible.direccion?.trim() || "-"}</strong>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <h6 className="text-muted mb-2">Último acceso</h6>
-              {ultimo ? (
-                <ul className="list-unstyled mb-0 small">
-                  <li><b>Fecha:</b> {new Date(ultimo.fecha_hora).toLocaleString()}</li>
-                  <li><b>IP:</b> {ultimo.ip_origen || "—"}</li>
-                  <li><b>Navegador:</b> {ultimo.navegador || "—"}</li>
-                  <li><b>SO:</b> {ultimo.sistema_operativo || "—"}</li>
-                  <li><b>Dispositivo:</b> {ultimo.dispositivo || "—"}</li>
-                </ul>
-              ) : (
-                <div className="text-muted small">No hay registros de acceso aún.</div>
-              )}
+              <div className="card shadow-sm perfil-panel perfil-panel--ok">
+                <div className="card-body">
+                  <h6 className="perfil-side__title">Roles asignados</h6>
+                  <div className="d-flex flex-wrap gap-2 mt-2">
+                    {roles.map((r) => (
+                      <span className="badge rounded-pill perfil-page__role-badge" key={r.id_rol}>
+                        {r.nombre}
+                      </span>
+                    ))}
+                    {roles.length === 0 && <span className="text-muted small">Sin roles asignados.</span>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="card shadow-sm perfil-panel perfil-panel--warn">
+                <div className="card-body">
+                  <h6 className="perfil-side__title">Sesión actual</h6>
+                  {ultimo ? (
+                    <ul className="list-unstyled mb-0 small perfil-side__access-list">
+                      <li>
+                        <span>Fecha:</span>
+                        <strong>{fmtHN(ultimo.fecha_hora)}</strong>
+                      </li>
+                      <li>
+                        <span>IP:</span>
+                        <strong>{ultimo.ip_origen || "-"}</strong>
+                      </li>
+                      <li>
+                        <span>Navegador:</span>
+                        <strong>{ultimo.navegador || "-"}</strong>
+                      </li>
+                      <li>
+                        <span>SO:</span>
+                        <strong>{ultimo.sistema_operativo || "-"}</strong>
+                      </li>
+                      <li>
+                        <span>Dispositivo:</span>
+                        <strong>{ultimo.dispositivo || "-"}</strong>
+                      </li>
+                    </ul>
+                  ) : (
+                    <div className="text-muted small">No hay registros de acceso aún.</div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -347,3 +615,5 @@ const Perfil = () => {
 };
 
 export default Perfil;
+
+

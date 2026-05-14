@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { inventarioService } from '../../../services/inventarioService';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 
 const AlertasTab = ({ openToast }) => {
+  const navigate = useNavigate();
+  const { can } = usePermisos();
+  // AM: CTA opcional para crear solicitud OC desde alertas de stock.
+  const canCreateOc = can(PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR);
   // ==============================
   // TOAST (SI NO VIENE DEL PADRE)
   // ==============================
@@ -50,6 +57,11 @@ const AlertasTab = ({ openToast }) => {
 
   const sanitizeInteger = (value) => String(value ?? '').replace(/[^\d]/g, '');
 
+  // NUEVO: misma normalizacion de backend para detectar productos activos.
+  const productoActivo = useCallback((estado) => {
+    return estado === true || estado === 'true' || estado === 1 || estado === '1';
+  }, []);
+
   // ==============================
   // MAPAS ID -> OBJ (LABELS)
   // ==============================
@@ -71,24 +83,25 @@ const AlertasTab = ({ openToast }) => {
     return m;
   }, [tipoDepartamentos]);
 
-  const getAlmacenLabel = (id) => {
+  const getAlmacenLabel = useCallback((id) => {
     const a = almacenesMap.get(String(id));
     if (!a) return String(id || '-');
-    return `${a.nombre} (Sucursal ${a.id_sucursal})`;
-  };
+    // AM: el usuario pidio mostrar solo el nombre del almacen.
+    return `${a.nombre}`;
+  }, [almacenesMap]);
 
-  const getCategoriaLabel = (id) => {
+  const getCategoriaLabel = useCallback((id) => {
     const c = categoriasMap.get(String(id));
     if (!c) return String(id || '-');
     return `${c.nombre_categoria}`;
-  };
+  }, [categoriasMap]);
 
-  const getDeptoLabel = (id) => {
+  const getDeptoLabel = useCallback((id) => {
     if (!id && id !== 0) return '-';
     const d = tipoDeptoMap.get(String(id));
     if (!d) return String(id || '-');
     return `${d.nombre_departamento}${d.estado === false ? ' (Inactivo)' : ''}`;
-  };
+  }, [tipoDeptoMap]);
 
   // ==============================
   // COMENTARIO EN MAYÚSCULAS: NORMALIZAR ITEMS PARA UNIFICAR PRODUCTOS + INSUMOS EN 1 LISTA
@@ -97,6 +110,8 @@ const AlertasTab = ({ openToast }) => {
     const list = [];
 
     for (const p of productos) {
+      // AJUSTE: alertas y edicion de stock_minimo excluyen productos inactivos.
+      if (!productoActivo(p?.estado)) continue;
       list.push({
         item_tipo: 'producto',
         id: p?.id_producto,
@@ -124,7 +139,7 @@ const AlertasTab = ({ openToast }) => {
     }
 
     return list;
-  }, [productos, insumos]);
+  }, [productos, insumos, productoActivo]);
 
   const getEstadoStock = (it) => {
     const stock = Number.parseInt(String(it?.cantidad ?? '0'), 10);
@@ -303,7 +318,7 @@ const AlertasTab = ({ openToast }) => {
 
       return matchEstado && matchItem && matchAlmacen && matchTexto;
     });
-  }, [items, search, estadoFiltro, itemFiltro, almacenFiltro, almacenesMap, categoriasMap, tipoDeptoMap]);
+  }, [items, search, estadoFiltro, itemFiltro, almacenFiltro, getAlmacenLabel, getCategoriaLabel, getDeptoLabel]);
 
   const resumen = useMemo(() => {
     let sinStock = 0;
@@ -325,14 +340,26 @@ const AlertasTab = ({ openToast }) => {
       <div className="card-header fw-semibold d-flex align-items-center justify-content-between">
         <span>Alertas de stock</span>
 
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-secondary"
-          onClick={cargarTodo}
-          disabled={loading}
-        >
-          {loading ? 'Actualizando...' : 'Actualizar'}
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          {canCreateOc && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary"
+              onClick={() => navigate('/dashboard/inventario?tab=ordenes_compra')}
+            >
+              Crear solicitud OC
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            onClick={cargarTodo}
+            disabled={loading}
+          >
+            {loading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
       </div>
 
       <div className="card-body">
@@ -410,7 +437,7 @@ const AlertasTab = ({ openToast }) => {
               <option value="todos">Todos almacenes</option>
               {almacenes.map((a) => (
                 <option key={a.id_almacen} value={a.id_almacen}>
-                  {a.nombre} (Sucursal {a.id_sucursal})
+                  {a.nombre}
                 </option>
               ))}
             </select>
