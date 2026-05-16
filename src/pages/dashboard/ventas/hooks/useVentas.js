@@ -446,6 +446,57 @@ export const useVentas = () => {
     [loadVentas, openToast]
   );
 
+  const createPedidoPendiente = useCallback(
+    async (payload) => {
+      setSaving(true);
+      setError('');
+
+      try {
+        const response = await ventasService.createPedidoPendiente(payload);
+        await loadVentas();
+        openToast(
+          'PEDIDO PENDIENTE',
+          'Pedido pendiente creado y enviado a cocina.',
+          'success'
+        );
+        return response;
+      } catch (error) {
+        const message = extractApiMessage(error, 'No se pudo crear el pedido pendiente.');
+        setError(message);
+        openToast('ERROR', message, 'danger');
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [loadVentas, openToast]
+  );
+
+  const registrarPagoPedido = useCallback(
+    async (idPedido, payload) => {
+      setSaving(true);
+      setError('');
+
+      try {
+        const response = await ventasService.registrarPagoPedido(idPedido, payload);
+        await loadVentas();
+        openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
+        return response;
+      } catch (error) {
+        const isConflict = Number(error?.status || 0) === 409;
+        const message = isConflict
+          ? 'Este pedido ya fue pagado o no esta pendiente de pago.'
+          : extractApiMessage(error, 'No se pudo registrar el pago del pedido.');
+        setError(message);
+        openToast('ERROR', message, 'danger');
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [loadVentas, openToast]
+  );
+
   return {
     ventas,
     summary,
@@ -476,7 +527,9 @@ export const useVentas = () => {
     setVentasPageSize,
     setVentasSucursal,
     getVentaDetail,
-    createVenta
+    createVenta,
+    createPedidoPendiente,
+    registrarPagoPedido
   };
 };
 

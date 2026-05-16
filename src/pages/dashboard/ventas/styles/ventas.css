@@ -1172,6 +1172,55 @@
   overflow: visible;
 }
 
+.ventas-caja__operacion-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+  background: linear-gradient(180deg, #fffef8, #fff8ef);
+}
+
+.ventas-caja__operacion-bar>div {
+  display: grid;
+  gap: 2px;
+}
+
+.ventas-caja__operacion-bar strong {
+  color: #47240d;
+  font-size: 1.02rem;
+  font-weight: 800;
+}
+
+.ventas-caja__operacion-bar span {
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.ventas-caja__sucursal-select,
+.ventas-caja__sucursal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(184, 104, 33, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+  color: #6f3b15;
+  font-weight: 800;
+}
+
+.ventas-caja__sucursal-select select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 800;
+}
+
 .ventas-caja__header {
   align-items: center;
 }
@@ -1318,6 +1367,300 @@
 .ventas-pedidos__empty p {
   max-width: 440px;
   margin: 0;
+}
+
+.ventas-cart__compact-link {
+  align-self: flex-start;
+  color: #9a5319;
+  font-weight: 700;
+}
+
+.ventas-pendientes-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(184, 104, 33, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 248, 239, 0.9);
+}
+
+.ventas-pendientes-compact>div {
+  display: grid;
+  gap: 3px;
+}
+
+.ventas-pendientes-compact strong {
+  color: #47240d;
+  font-size: 0.92rem;
+}
+
+.ventas-pendientes-compact span {
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.ventas-pendientes-compact button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: rgba(184, 104, 33, 0.13);
+  color: #8a4915;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ventas-finalizar-modal {
+  width: min(860px, 100%);
+  max-height: min(90vh, 820px);
+  display: flex;
+  flex-direction: column;
+}
+
+.ventas-finalizar-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.ventas-finalizar-modal__header p {
+  margin: 4px 0 0;
+  color: rgba(82, 44, 34, 0.7);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.ventas-finalizar-modal__tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 18px 0;
+  background: #fff;
+}
+
+.ventas-finalizar-modal__tabs button {
+  min-height: 42px;
+  border: 1px solid rgba(184, 104, 33, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 248, 239, 0.64);
+  color: #7a4218;
+  font-weight: 800;
+}
+
+.ventas-finalizar-modal__tabs button.is-active {
+  background: linear-gradient(145deg, #9a5319, #b86821);
+  color: #fff;
+}
+
+.ventas-finalizar-modal__body {
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+}
+
+.ventas-finalizar-modal__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ventas-finalizar-modal__field-wide {
+  grid-column: 1 / -1;
+}
+
+.ventas-finalizar-modal__section {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 16px;
+  background: rgba(250, 247, 243, 0.72);
+}
+
+.ventas-finalizar-modal__section>strong {
+  color: #47240d;
+  font-size: 0.96rem;
+}
+
+.ventas-finalizar-modal__payment-summary,
+.ventas-finalizar-modal__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(184, 104, 33, 0.08);
+  color: #5d3722;
+  font-weight: 800;
+}
+
+.ventas-finalizar-modal__total strong {
+  color: #9a5319;
+  font-size: 1.45rem;
+}
+
+.ventas-registrar-pago-modal {
+  width: min(920px, 100%);
+}
+
+.ventas-registrar-pago-modal__body {
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  align-items: start;
+}
+
+.ventas-registrar-pago-modal__search-panel,
+.ventas-registrar-pago-modal__payment-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ventas-registrar-pago-modal__results {
+  display: grid;
+  gap: 8px;
+  max-height: 390px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.ventas-registrar-pago-modal__pedido,
+.ventas-registrar-pago-modal__selected,
+.ventas-registrar-pago-modal__empty {
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.ventas-registrar-pago-modal__pedido {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.ventas-registrar-pago-modal__pedido.is-selected {
+  border-color: rgba(154, 83, 25, 0.52);
+  box-shadow: 0 0 0 2px rgba(184, 104, 33, 0.1);
+}
+
+.ventas-registrar-pago-modal__pedido-main,
+.ventas-registrar-pago-modal__pedido-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ventas-registrar-pago-modal__pedido-main>div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ventas-registrar-pago-modal__pedido-main strong {
+  color: #47240d;
+  font-size: 0.98rem;
+}
+
+.ventas-registrar-pago-modal__pedido-main span,
+.ventas-registrar-pago-modal__pedido-meta span,
+.ventas-registrar-pago-modal__selected span {
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.ventas-registrar-pago-modal__badge {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(184, 104, 33, 0.12);
+  color: #8a4915 !important;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ventas-registrar-pago-modal__pedido-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.ventas-registrar-pago-modal__pedido-actions strong,
+.ventas-registrar-pago-modal__selected-total strong {
+  color: #9a5319;
+  font-size: 1.08rem;
+}
+
+.ventas-registrar-pago-modal__pedido-actions button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 11px;
+  background: linear-gradient(145deg, #9a5319, #b86821);
+  color: #fff;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ventas-registrar-pago-modal__selected {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.ventas-registrar-pago-modal__selected div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ventas-registrar-pago-modal__selected strong {
+  color: #47240d;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.ventas-registrar-pago-modal__selected-total {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+  border-top: 1px solid rgba(157, 150, 112, 0.14);
+}
+
+.ventas-registrar-pago-modal__empty {
+  min-height: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (max-width: 767.98px) {
+  .ventas-registrar-pago-modal__body,
+  .ventas-registrar-pago-modal__selected {
+    grid-template-columns: 1fr;
+  }
+
+  .ventas-registrar-pago-modal__pedido-main,
+  .ventas-registrar-pago-modal__pedido-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ventas-registrar-pago-modal__pedido-actions button {
+    width: 100%;
+  }
 }
 
 .ventas-pedidos__future-card {

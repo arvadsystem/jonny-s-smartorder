@@ -21,6 +21,11 @@ const ventasService = {
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
   create: (payload) => createVentaNative(payload),
+  createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload),
+  listPedidosPendientesPago: (params = {}) =>
+    apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),
+  registrarPagoPedido: (idPedido, payload) =>
+    apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload),
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
   getCombosCatalog: () => apiFetch('/ventas/catalogos/combos', 'GET'),
   getRecetasCatalog: () => apiFetch('/ventas/catalogos/recetas', 'GET'),
