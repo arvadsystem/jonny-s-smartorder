@@ -4,6 +4,7 @@ import CollapsibleSearchInput from '../../../../components/common/CollapsibleSea
 import VentasToast from './VentasToast';
 import { supabase } from '../../../../lib/supabaseClient';
 import ventasService from '../../../../services/ventasService';
+import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 
 const normalizeTextKey = (value) =>
   String(value || '')
@@ -42,13 +43,49 @@ const initialConfirmDialog = {
   estadoDestino: ''
 };
 
+const normalizePaymentCode = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
 const buildPedidoVisibleCode = (pedido) => {
-  const rawCode = String(pedido?.codigo_venta || '').trim();
-  if (rawCode) return rawCode;
   const idPedido = Number(pedido?.id_pedido ?? 0);
-  if (!idPedido) return 'VTA-S/N';
-  return `VTA-${String(idPedido).padStart(5, '0')}`;
+  const paymentCode = normalizePaymentCode(pedido?.estado_pago_control || pedido?.estado_pago);
+  if ((paymentCode === 'PENDIENTE_PAGO' || paymentCode === 'PENDIENTE_DE_PAGO') && idPedido) {
+    return `PED-${String(idPedido).padStart(5, '0')}`;
+  }
+  const rawCode = String(pedido?.codigo_pedido || pedido?.codigo_venta || '').trim();
+  if (rawCode) return rawCode;
+  if (!idPedido) return 'PED-S/N';
+  return `PED-${String(idPedido).padStart(5, '0')}`;
 };
+
+const isPedidoPendientePago = (pedido) => {
+  const code = normalizePaymentCode(pedido?.estado_pago_control || pedido?.estado_pago);
+  return code === 'PENDIENTE_PAGO' || code === 'PENDIENTE_DE_PAGO';
+};
+
+const normalizePedidoForPagoModal = (pedido) => ({
+  id_pedido: Number(pedido?.id_pedido ?? 0) || null,
+  codigo_pedido: buildPedidoVisibleCode(pedido),
+  fecha_hora_pedido: pedido?.fecha_hora_pedido || null,
+  nombre_contacto: String(
+    pedido?.nombre_contacto ||
+    `${pedido?.nombres_cliente || ''} ${pedido?.apellidos_cliente || ''}`.trim() ||
+    'Consumidor final'
+  ).trim(),
+  telefono_contacto: String(pedido?.telefono_contacto || '').trim(),
+  telefono_normalizado: String(pedido?.telefono_normalizado || '').trim(),
+  canal: pedido?.canal,
+  modalidad: pedido?.modalidad,
+  id_sucursal: Number(pedido?.id_sucursal ?? 0) || null,
+  estado_pago: pedido?.estado_pago_control || pedido?.estado_pago,
+  monto_pendiente: Number(pedido?.monto_pendiente ?? pedido?.total ?? 0) || 0,
+  total: Number(pedido?.total ?? 0) || 0
+});
 
 export default function PedidosView() {
   const [search, setSearch] = useState('');
@@ -59,6 +96,8 @@ export default function PedidosView() {
   const [errorMessage, setErrorMessage] = useState('');
   const [toast, setToast] = useState(initialToast);
   const [confirmDialog, setConfirmDialog] = useState(initialConfirmDialog);
+  const [pagoPedidoModal, setPagoPedidoModal] = useState({ open: false, pedido: null });
+  const [pagoPedidoSaving, setPagoPedidoSaving] = useState(false);
   const notifiedReadyIdsRef = useRef(new Set());
   const readyAudioRef = useRef(null);
 
@@ -240,6 +279,35 @@ export default function PedidosView() {
     });
   }, []);
 
+  const openPagoPedidoModal = useCallback((pedido) => {
+    const normalized = normalizePedidoForPagoModal(pedido);
+    if (!normalized.id_pedido) return;
+    setPagoPedidoModal({ open: true, pedido: normalized });
+  }, []);
+
+  const closePagoPedidoModal = useCallback(() => {
+    if (pagoPedidoSaving) return;
+    setPagoPedidoModal({ open: false, pedido: null });
+  }, [pagoPedidoSaving]);
+
+  const handleRegistrarPagoPedido = useCallback(async (idPedido, payload) => {
+    try {
+      setPagoPedidoSaving(true);
+      setErrorMessage('');
+      const response = await ventasService.registrarPagoPedido(idPedido, payload);
+      await loadPedidos();
+      openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
+      return response;
+    } catch (error) {
+      const message = String(error?.message || 'No se pudo registrar el pago del pedido.');
+      setErrorMessage(message);
+      openToast('ERROR', message, 'danger');
+      throw error;
+    } finally {
+      setPagoPedidoSaving(false);
+    }
+  }, [loadPedidos, openToast]);
+
   const closeConfirmDialog = useCallback(() => {
     if (actionBusyId !== null) return;
     setConfirmDialog(initialConfirmDialog);
@@ -261,6 +329,9 @@ export default function PedidosView() {
     const q = deferredSearch.toLowerCase();
     return pedidos.filter((pedido) =>
       String(pedido?.id_pedido || '').includes(q) ||
+      String(pedido?.codigo_pedido || '').toLowerCase().includes(q) ||
+      String(pedido?.nombre_contacto || '').toLowerCase().includes(q) ||
+      String(pedido?.telefono_contacto || '').toLowerCase().includes(q) ||
       `${pedido?.nombres_cliente || ''} ${pedido?.apellidos_cliente || ''}`.toLowerCase().includes(q) ||
       String(pedido?.descripcion_pedido || '').toLowerCase().includes(q)
     );
@@ -346,6 +417,7 @@ export default function PedidosView() {
                       pedido={pedido}
                       busy={actionBusyId === pedido.id_pedido}
                       onSendKitchen={() => handleStateChange(pedido.id_pedido, 'EN_COCINA')}
+                      onCobrar={() => openPagoPedidoModal(pedido)}
                     />
                   ))
                 )}
@@ -370,6 +442,7 @@ export default function PedidosView() {
                       pedido={pedido}
                       busy={actionBusyId === pedido.id_pedido}
                       onSendReady={() => handleStateChange(pedido.id_pedido, 'LISTO_PARA_ENTREGA')}
+                      onCobrar={() => openPagoPedidoModal(pedido)}
                     />
                   ))
                 )}
@@ -395,6 +468,7 @@ export default function PedidosView() {
                       busy={actionBusyId === pedido.id_pedido}
                       onComplete={() => handleCompletePedido(pedido)}
                       onNoEntregado={() => handleNoEntregadoPedido(pedido)}
+                      onCobrar={() => openPagoPedidoModal(pedido)}
                     />
                   ))
                 )}
@@ -411,6 +485,13 @@ export default function PedidosView() {
         onCancel={closeConfirmDialog}
         onConfirm={confirmStateChange}
       />
+      <VentaRegistrarPagoPedidoModal
+        open={pagoPedidoModal.open}
+        saving={pagoPedidoSaving}
+        onClose={closePagoPedidoModal}
+        onRegistrarPago={handleRegistrarPagoPedido}
+        initialPedido={pagoPedidoModal.pedido}
+      />
       <VentasToast toast={toast} onClose={closeToast} />
     </div>
   );
@@ -422,13 +503,16 @@ function PedidoCard({
   onSendKitchen,
   onSendReady,
   onComplete,
-  onNoEntregado
+  onNoEntregado,
+  onCobrar
 }) {
   const clienteName = pedido?.nombres_cliente
     ? `${pedido.nombres_cliente} ${pedido.apellidos_cliente || ''}`
-    : 'Consumidor final';
+    : String(pedido?.nombre_contacto || 'Consumidor final').trim();
   const cleanDescription = cleanPedidoDescription(pedido?.descripcion_pedido);
   const laneCode = mapPedidoStateCode(pedido);
+  const codigoPedido = buildPedidoVisibleCode(pedido);
+  const pendientePago = isPedidoPendientePago(pedido);
 
   return (
     <div className="ventas-create-modal__cart-item mb-2">
@@ -436,11 +520,16 @@ function PedidoCard({
         <div>
           <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
             <span className="badge bg-secondary" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-              PEDIDO
+              {codigoPedido}
             </span>
+            {pendientePago ? (
+              <span className="badge bg-warning text-dark" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
+                Pendiente de pago
+              </span>
+            ) : null}
           </div>
           <strong className="d-flex align-items-center gap-2">
-            <span>#{pedido.id_pedido} - {clienteName}</span>
+            <span>{codigoPedido} - {clienteName}</span>
           </strong>
           <small className="text-muted">
             <i className="bi bi-clock" /> {new Date(pedido.fecha_hora_pedido).toLocaleTimeString()}
@@ -458,6 +547,18 @@ function PedidoCard({
       ) : null}
 
       <div className="ventas-create-modal__cart-item-actions mt-2 justify-content-end">
+        {pendientePago ? (
+          <button
+            className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+            onClick={onCobrar}
+            disabled={busy}
+            type="button"
+            style={{ minHeight: '36px', fontSize: '0.85rem' }}
+          >
+            {busy ? 'Procesando...' : 'Cobrar'} <i className="bi bi-cash-coin" />
+          </button>
+        ) : null}
+
         {laneCode === 'PENDIENTE' ? (
           <div className="d-grid w-100">
             <button

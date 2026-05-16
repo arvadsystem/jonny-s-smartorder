@@ -510,6 +510,7 @@ export const useVentaComposer = ({
   }, [state.cashReceived, total]);
 
   const change = roundMoney(Math.max(cashValue - total, 0));
+  const canContinue = hasSelectedSucursal && state.cart.length > 0;
   const canSubmit = hasSelectedSucursal
     && state.cart.length > 0
     && (
@@ -781,71 +782,112 @@ export const useVentaComposer = ({
     addCatalogItem('PRODUCTO', currentCatalogRows[0]);
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const buildItemsPayload = () =>
+    state.cart.map((line) => ({
+      id_producto: line.id_producto,
+      id_combo: line.id_combo,
+      id_receta: line.id_receta,
+      cantidad: Number(line.cantidad),
+      id_descuento_catalogo:
+        canApplyDiscount && !usesGlobalDiscount && line.id_descuento_catalogo_linea
+          ? Number(line.id_descuento_catalogo_linea)
+          : null,
+      observacion:
+        line.kind === 'PRODUCTO'
+          ? undefined
+          : String(line.observacion || '').trim() || null,
+      complementos: normalizeComplementIds(line.complementos).length > 0
+        ? normalizeComplementIds(line.complementos).map((id) => ({ id_complemento: id }))
+        : undefined
+    }));
 
-    if (state.paymentMethod !== 'efectivo' && !state.referenciaPago.trim()) {
-      setPartialState({
-        submitError: 'La referencia de pago es obligatoria para este metodo.'
-      });
-      return null;
-    }
+  const buildDescuentosLineaPayload = () =>
+    state.cart.map((line) => ({
+      cart_key: line.cartKey,
+      id_descuento_catalogo:
+        canApplyDiscount && !usesGlobalDiscount && line.id_descuento_catalogo_linea
+          ? Number(line.id_descuento_catalogo_linea)
+          : null
+    }));
 
+  const validateBaseSale = () => {
     if (!hasSelectedSucursal) {
       setPartialState({
         submitError: isSuperAdmin
           ? 'Selecciona una sucursal para registrar la venta.'
           : 'No tienes sucursal operativa asignada para registrar ventas.'
       });
-      return null;
+      return false;
     }
 
     if (state.cart.length === 0) {
       setPartialState({
         submitError: 'Agrega al menos un item al carrito.'
       });
-      return null;
+      return false;
+    }
+
+    return true;
+  };
+
+  const validatePaidSale = () => {
+    if (!validateBaseSale()) return false;
+
+    if (state.paymentMethod !== 'efectivo' && !state.referenciaPago.trim()) {
+      setPartialState({
+        submitError: 'La referencia de pago es obligatoria para este metodo.'
+      });
+      return false;
     }
 
     if (state.paymentMethod === 'efectivo' && cashValue < total) {
       setPartialState({
         submitError: 'El efectivo entregado no puede ser menor al total.'
       });
-      return null;
+      return false;
     }
 
+    return true;
+  };
+
+  const buildPaidSalePayload = () => ({
+    id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
+    id_sucursal: selectedSucursalId,
+    metodo_pago: state.paymentMethod,
+    referencia_pago: state.paymentMethod !== 'efectivo' ? state.referenciaPago.trim() : null,
+    id_descuento_catalogo:
+      canApplyDiscount && !usesLineDiscount && state.selectedDiscountId
+        ? Number(state.selectedDiscountId)
+        : null,
+    descuento: canApplyDiscount && !usesLineDiscount && !state.selectedDiscountId ? discountValue : 0,
+    efectivo_entregado: cashValue,
+    id_sesion_caja: toNormalizedId(state.temporarySessionId),
+    descripcion_pedido: null,
+    items: buildItemsPayload()
+  });
+
+  const buildPedidoPendientePayload = ({ contacto, contexto, pagoPendiente, delivery }) => ({
+    id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
+    id_sucursal: selectedSucursalId,
+    items: buildItemsPayload(),
+    descuentos_linea: buildDescuentosLineaPayload(),
+    id_descuento_catalogo:
+      canApplyDiscount && !usesLineDiscount && state.selectedDiscountId
+        ? Number(state.selectedDiscountId)
+        : null,
+    descuento: canApplyDiscount && !usesLineDiscount && !state.selectedDiscountId ? discountValue : 0,
+    id_sesion_caja: toNormalizedId(state.temporarySessionId),
+    contacto,
+    contexto,
+    pago_pendiente: pagoPendiente,
+    delivery
+  });
+
+  const submitPaidSale = async () => {
+    if (!validatePaidSale()) return null;
+
     try {
-      const response = await onSubmit({
-        id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
-        id_sucursal: selectedSucursalId,
-        metodo_pago: state.paymentMethod,
-        referencia_pago: state.paymentMethod !== 'efectivo' ? state.referenciaPago.trim() : null,
-        id_descuento_catalogo:
-          canApplyDiscount && !usesLineDiscount && state.selectedDiscountId
-            ? Number(state.selectedDiscountId)
-            : null,
-        descuento: canApplyDiscount && !usesLineDiscount && !state.selectedDiscountId ? discountValue : 0,
-        efectivo_entregado: cashValue,
-        id_sesion_caja: toNormalizedId(state.temporarySessionId),
-        descripcion_pedido: null,
-        items: state.cart.map((line) => ({
-          id_producto: line.id_producto,
-          id_combo: line.id_combo,
-          id_receta: line.id_receta,
-          cantidad: Number(line.cantidad),
-          id_descuento_catalogo:
-            canApplyDiscount && !usesGlobalDiscount && line.id_descuento_catalogo_linea
-              ? Number(line.id_descuento_catalogo_linea)
-              : null,
-          observacion:
-            line.kind === 'PRODUCTO'
-              ? undefined
-              : String(line.observacion || '').trim() || null,
-          complementos: normalizeComplementIds(line.complementos).length > 0
-            ? normalizeComplementIds(line.complementos).map((id) => ({ id_complemento: id }))
-            : undefined
-        }))
-      });
+      const response = await onSubmit(buildPaidSalePayload());
 
       resetComposer();
       return response;
@@ -872,6 +914,11 @@ export const useVentaComposer = ({
       });
       return null;
     }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    return submitPaidSale();
   };
 
   return {
@@ -910,6 +957,7 @@ export const useVentaComposer = ({
     cashValue,
     change,
     canSubmit,
+    canContinue,
     complementModal,
     setPartialState,
     resetComposer,
@@ -1006,6 +1054,11 @@ export const useVentaComposer = ({
     removeLine,
     handleSearchKeyDown,
     handleSubmit,
+    submitPaidSale,
+    validateBaseSale,
+    buildPedidoPendientePayload,
+    buildPaidSalePayload,
+    selectedSucursalId,
     sucursales: normalizedSucursales,
     categorias: Array.isArray(categorias) ? categorias : [],
     tiposDepartamento: Array.isArray(tiposDepartamento) ? tiposDepartamento : [],

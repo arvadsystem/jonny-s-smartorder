@@ -53,6 +53,8 @@ export default function VentasPage() {
     setVentasPageSize,
     setVentasSucursal,
     createVenta,
+    createPedidoPendiente,
+    registrarPagoPedido,
     getVentaDetail,
     refreshVentas
   } = useVentas();
@@ -237,6 +239,8 @@ export default function VentasPage() {
           catalogErrors={catalogErrors}
           saving={saving}
           onSubmit={handleCreateVenta}
+          onCreatePedidoPendiente={createPedidoPendiente}
+          onRegistrarPagoPedido={registrarPagoPedido}
         />
       ) : null}
 
