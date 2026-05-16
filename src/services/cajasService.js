@@ -89,6 +89,7 @@ const cajasService = {
     apiFetch(`/ventas/cajas/asignaciones/${idAsignacion}/desactivar`, 'PATCH'),
 
   getSesionActiva: (params = {}) => apiFetch(`/ventas/cajas/sesion-activa${buildQuery(params)}`, 'GET'),
+  getMiAsignacionActiva: () => apiFetch('/ventas/cajas/mi-asignacion-activa', 'GET'),
 
   listSesiones: (params = {}) => apiFetch(`/ventas/cajas/sesiones${buildQuery(params)}`, 'GET'),
   listSesionesAbiertas: (params = {}) => apiFetch(`/ventas/cajas/sesiones-abiertas${buildQuery(params)}`, 'GET'),
@@ -101,6 +102,7 @@ const cajasService = {
   getReporteCierres: (params = {}) => apiFetch(`/ventas/cajas/reportes/cierres${buildQuery(params)}`, 'GET'),
 
   openSesion: (payload) => apiFetch('/ventas/cajas/sesiones', 'POST', payload),
+  abrirMiSesion: (payload) => apiFetch('/ventas/cajas/mi-sesion/abrir', 'POST', payload),
 
   closeSesion: (idSesionCaja, payload) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/cerrar`, 'PATCH', payload),

@@ -1221,6 +1221,143 @@
   font-weight: 800;
 }
 
+.ventas-caja__session-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.4fr);
+  gap: 14px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.16);
+  background: #fffdfa;
+}
+
+.ventas-caja__session-panel.is-active {
+  background: linear-gradient(180deg, rgba(238, 250, 244, 0.96), #fffdfa);
+}
+
+.ventas-caja__session-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ventas-caja__session-main strong {
+  color: #47240d;
+  font-size: 0.96rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.ventas-caja__session-main span,
+.ventas-caja__session-main small,
+.ventas-caja__session-metrics span {
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.ventas-caja__session-main small.is-error {
+  color: #9a1c12;
+}
+
+.ventas-caja__session-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(184, 104, 33, 0.12);
+  color: #8a4915 !important;
+  font-size: 0.76rem !important;
+  font-weight: 900 !important;
+}
+
+.ventas-caja__session-panel.is-active .ventas-caja__session-chip {
+  background: rgba(25, 153, 73, 0.14);
+  color: #1b8f47 !important;
+}
+
+.ventas-caja__session-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ventas-caja__session-metrics>div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid rgba(157, 150, 112, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.ventas-caja__session-metrics strong {
+  color: #47240d;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.ventas-caja-apertura-modal {
+  width: min(560px, 100%);
+}
+
+.ventas-caja-apertura-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ventas-caja-apertura-modal__header p {
+  margin: 4px 0 0;
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.ventas-caja-apertura-modal__body {
+  display: grid;
+  gap: 12px;
+}
+
+.ventas-caja-apertura-modal__body .ventas-modal-footer {
+  margin: 4px -22px -8px;
+}
+
+.ventas-caja-apertura-modal__assigned {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ventas-caja-apertura-modal__assigned>div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  background: rgba(250, 247, 243, 0.8);
+}
+
+.ventas-caja-apertura-modal__assigned span {
+  color: rgba(82, 44, 34, 0.7);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ventas-caja-apertura-modal__assigned strong {
+  color: #47240d;
+  font-size: 0.9rem;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+
 .ventas-caja__header {
   align-items: center;
 }
@@ -1773,6 +1910,11 @@
     grid-template-columns: 1fr;
   }
 
+  .ventas-caja__session-panel,
+  .ventas-caja__session-metrics {
+    grid-template-columns: 1fr;
+  }
+
   .ventas-caja-card .ventas-create-modal__summary {
     position: static;
     max-height: none;
@@ -1828,6 +1970,10 @@
 
   .ventas-modal__title-wrap h3 {
     font-size: 1.35rem;
+  }
+
+  .ventas-caja-apertura-modal__assigned {
+    grid-template-columns: 1fr;
   }
 
   .ventas-create-modal__catalog,
