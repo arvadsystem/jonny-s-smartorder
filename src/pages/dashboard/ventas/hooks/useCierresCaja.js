@@ -46,7 +46,7 @@ export function useCierresCaja() {
     const isAssignmentConflict = conflictCode === 'VENTAS_CAJAS_ASSIGN_USER_ACTIVE_DUPLICATE';
 
     if (isConflict || isAssignmentConflict) {
-      openToast('CONFLICTO DE ASIGNACION', message, 'danger');
+      openToast('CONFLICTO DE ASIGNACIÓN', message, 'danger');
       return;
     }
     openToast('ERROR', message, 'danger');
@@ -134,7 +134,7 @@ export function useCierresCaja() {
       } catch (errorResponse) {
         openToast(
           'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo cargar el detalle de la sesion.'),
+          extractCajasApiMessage(errorResponse, 'No se pudo cargar el detalle de la sesión.'),
           'danger'
         );
         throw errorResponse;
@@ -151,15 +151,15 @@ export function useCierresCaja() {
       try {
         const response = await cajasService.openSesion(payload);
         openToast(
-          'SESION ABIERTA',
-          response?.message || 'La sesion de caja se inicio correctamente.',
+          'SESIÓN ABIERTA',
+          response?.message || 'La sesión de caja se inició correctamente.',
           'success'
         );
         return response;
       } catch (errorResponse) {
         openToast(
           'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo abrir la sesion de caja.'),
+          extractCajasApiMessage(errorResponse, 'No se pudo abrir la sesión de caja.'),
           'danger'
         );
         throw errorResponse;
@@ -209,7 +209,7 @@ export function useCierresCaja() {
       } catch (errorResponse) {
         openToast(
           'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo cargar las asignaciones de cajas.'),
+          extractCajasApiMessage(errorResponse, 'No se pudieron cargar las asignaciones de cajas.'),
           'danger'
         );
         throw errorResponse;
@@ -245,13 +245,13 @@ export function useCierresCaja() {
       try {
         const response = await cajasService.createAsignacion(payload);
         openToast(
-          'ASIGNACION CREADA',
-          response?.message || 'La asignacion se registro correctamente.',
+          'ASIGNACIÓN CREADA',
+          response?.message || 'La asignación se registró correctamente.',
           'success'
         );
         return response;
       } catch (errorResponse) {
-        openConflictToast(errorResponse, 'No se pudo registrar la asignacion.');
+        openConflictToast(errorResponse, 'No se pudo registrar la asignación.');
         throw errorResponse;
       } finally {
         setSaving(false);
@@ -266,15 +266,15 @@ export function useCierresCaja() {
       try {
         const response = await cajasService.updateAsignacion(idAsignacion, payload);
         openToast(
-          'ASIGNACION ACTUALIZADA',
-          response?.message || 'La asignacion se actualizo correctamente.',
+          'ASIGNACIÓN ACTUALIZADA',
+          response?.message || 'La asignación se actualizó correctamente.',
           'success'
         );
         return response;
       } catch (errorResponse) {
         openToast(
           'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo actualizar la asignacion.'),
+          extractCajasApiMessage(errorResponse, 'No se pudo actualizar la asignación.'),
           'danger'
         );
         throw errorResponse;
@@ -291,15 +291,15 @@ export function useCierresCaja() {
       try {
         const response = await cajasService.inactivateAsignacion(idAsignacion);
         openToast(
-          'ASIGNACION INACTIVADA',
-          response?.message || 'La asignacion se inactivo correctamente.',
+          'ASIGNACIÓN INACTIVADA',
+          response?.message || 'La asignación se inactivó correctamente.',
           'success'
         );
         return response;
       } catch (errorResponse) {
         openToast(
           'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo inactivar la asignacion.'),
+          extractCajasApiMessage(errorResponse, 'No se pudo inactivar la asignación.'),
           'danger'
         );
         throw errorResponse;
@@ -311,7 +311,7 @@ export function useCierresCaja() {
   );
 
   const closeSesion = useCallback(
-    async (idSesionCaja, payload) => {
+    async (idSesionCaja, payload, options = {}) => {
       setSaving(true);
       try {
         const response = await cajasService.closeSesion(idSesionCaja, payload);
@@ -322,11 +322,13 @@ export function useCierresCaja() {
         );
         return response;
       } catch (errorResponse) {
-        openToast(
-          'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo registrar el cierre de caja.'),
-          'danger'
-        );
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo registrar el cierre de caja.'),
+            'danger'
+          );
+        }
         throw errorResponse;
       } finally {
         setSaving(false);
@@ -336,15 +338,17 @@ export function useCierresCaja() {
   );
 
   const previewCloseSesion = useCallback(
-    async (idSesionCaja, payload) => {
+    async (idSesionCaja, payload, options = {}) => {
       try {
         return await cajasService.previewCloseSesion(idSesionCaja, payload);
       } catch (errorResponse) {
-        openToast(
-          'ERROR',
-          extractCajasApiMessage(errorResponse, 'No se pudo calcular la vista previa del cierre.'),
-          'danger'
-        );
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo calcular la vista previa del cierre.'),
+            'danger'
+          );
+        }
         throw errorResponse;
       }
     },

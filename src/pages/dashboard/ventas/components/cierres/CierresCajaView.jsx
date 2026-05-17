@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { useAuth } from '../../../../../hooks/useAuth';
 import { usePermisos } from '../../../../../context/PermisosContext';
 import sucursalesService from '../../../../../services/sucursalesService';
+import cajasService from '../../../../../services/cajasService';
 import { normalizeRoles, PERMISSIONS } from '../../../../../utils/permissions';
 import VentasToast from '../VentasToast';
 import { useCierresCaja } from '../../hooks/useCierresCaja';
@@ -23,6 +24,63 @@ const buildScopeQuery = (value) => {
 const isTruthyState = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
+const toPositiveId = (value) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeMiCajaSession = (row) => {
+  const idSesion = toPositiveId(row?.id_sesion_caja);
+  if (!idSesion) return null;
+  return {
+    id_sesion_caja: idSesion,
+    estado_codigo: String(row?.estado_codigo || 'ABIERTA').trim().toUpperCase(),
+    fecha_apertura: row?.fecha_apertura || null,
+    monto_apertura: Number(row?.monto_apertura ?? 0) || 0
+  };
+};
+
+const normalizeMiCajaAsignacion = (row) => {
+  const idCaja = toPositiveId(row?.id_caja);
+  if (!idCaja) return null;
+  const estadoOperativo = String(row?.estado_operativo || '').trim().toUpperCase();
+  return {
+    id_caja: idCaja,
+    codigo_caja: String(row?.codigo_caja || '').trim(),
+    nombre_caja: String(row?.nombre_caja || '').trim(),
+    id_sucursal: toPositiveId(row?.id_sucursal),
+    nombre_sucursal: String(row?.nombre_sucursal || '').trim(),
+    puede_abrir: row?.puede_abrir !== false,
+    puede_operar: row?.puede_operar !== false,
+    estado_operativo: estadoOperativo,
+    caja_abierta_por_otro_responsable:
+      Boolean(row?.caja_abierta_por_otro_responsable) ||
+      estadoOperativo === 'ABIERTA_POR_OTRO_RESPONSABLE',
+    sesion_abierta: normalizeMiCajaSession(row?.sesion_abierta),
+    sesion_activa: normalizeMiCajaSession(row)
+  };
+};
+
+const isCajaAsignacionNotFound = (error) => {
+  const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+  return Number(error?.status || 0) === 404 && code === 'CAJA_ASIGNACION_NO_ENCONTRADA';
+};
+
+const resolveMiCajaError = (error, fallback = 'No se pudo consultar tu caja asignada.') => {
+  const status = Number(error?.status || 0);
+  const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+  const message = String(error?.message || '').trim();
+  if (code === 'CAJA_ASIGNACION_NO_ENCONTRADA') {
+    return 'No tienes una caja asignada activa. Solicita asignación a un administrador.';
+  }
+  if (code === 'CAJA_SESION_ABIERTA_POR_OTRO_RESPONSABLE') {
+    return 'La caja asignada ya tiene una sesión abierta por otro responsable.';
+  }
+  if (status === 403) return 'No tienes permiso para operar esta caja.';
+  if (status >= 500) return 'No se pudo consultar tu caja asignada por un error del servidor.';
+  return message || fallback;
+};
+
 export default function CierresCajaView() {
   const { user } = useAuth();
   const { canAny, isSuperAdmin } = usePermisos();
@@ -37,6 +95,7 @@ export default function CierresCajaView() {
     saving,
     error,
     toast,
+    openToast,
     closeToast,
     loadCatalogos,
     loadSesionActiva,
@@ -72,14 +131,29 @@ export default function CierresCajaView() {
   const [loadingUsuariosOperativos, setLoadingUsuariosOperativos] = useState(false);
   const [cajasOperativas, setCajasOperativas] = useState([]);
   const [loadingCajasOperativas, setLoadingCajasOperativas] = useState(false);
+  const [miAsignacionCaja, setMiAsignacionCaja] = useState(null);
+  const [loadingMiAsignacionCaja, setLoadingMiAsignacionCaja] = useState(false);
+  const [miAsignacionCajaMissing, setMiAsignacionCajaMissing] = useState(false);
+  const [miAsignacionCajaError, setMiAsignacionCajaError] = useState('');
+  const [cajeroOpenSaving, setCajeroOpenSaving] = useState(false);
   const usuariosRequestIdRef = useRef(0);
   const cajasRequestIdRef = useRef(0);
+  const miAsignacionRequestIdRef = useRef(0);
   const usuariosBySucursalRef = useRef(new Map());
   const cajasBySucursalRef = useRef(new Map());
 
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
   const roleSet = useMemo(() => new Set(normalizeRoles(user?.roles)), [user?.roles]);
   const isCajero = roleSet.has('CAJERO');
+  const isAdminRole = roleSet.has('ADMIN') || roleSet.has('ADMINISTRADOR') || roleSet.has('SUPER_ADMIN');
+  const hasCajaAdminPermissions = canAny([
+    PERMISSIONS.VENTAS_CAJAS_MULTISUCURSAL_VER,
+    PERMISSIONS.VENTAS_CAJAS_PARTICIPANTES_GESTIONAR,
+    PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER
+  ]);
+  const isCashierOnly = isCajero && !isSuperAdmin && !isAdminRole && !hasCajaAdminPermissions;
+  const isRestrictedCajero = isCashierOnly;
+  const canViewCajaTheoreticalAmounts = !isCashierOnly;
 
   const canSelectSucursal =
     isSuperAdmin || canAny([PERMISSIONS.VENTAS_CAJAS_MULTISUCURSAL_VER]);
@@ -214,6 +288,36 @@ export default function CierresCajaView() {
     ]);
   };
 
+  const loadMiAsignacionCaja = useCallback(async () => {
+    const requestId = miAsignacionRequestIdRef.current + 1;
+    miAsignacionRequestIdRef.current = requestId;
+    setLoadingMiAsignacionCaja(true);
+    setMiAsignacionCajaError('');
+    setMiAsignacionCajaMissing(false);
+
+    try {
+      const response = await cajasService.getMiAsignacionActiva();
+      if (miAsignacionRequestIdRef.current !== requestId) return;
+      setMiAsignacionCaja(normalizeMiCajaAsignacion(response));
+      setMiAsignacionCajaMissing(false);
+      setMiAsignacionCajaError('');
+    } catch (errorResponse) {
+      if (miAsignacionRequestIdRef.current !== requestId) return;
+      setMiAsignacionCaja(null);
+      if (isCajaAsignacionNotFound(errorResponse)) {
+        setMiAsignacionCajaMissing(true);
+        setMiAsignacionCajaError('');
+      } else {
+        setMiAsignacionCajaMissing(false);
+        setMiAsignacionCajaError(resolveMiCajaError(errorResponse));
+      }
+    } finally {
+      if (miAsignacionRequestIdRef.current === requestId) {
+        setLoadingMiAsignacionCaja(false);
+      }
+    }
+  }, []);
+
   const openDetalle = async (sesion) => {
     setSelectedSesion(sesion);
     setSelectedDetalle(null);
@@ -272,12 +376,34 @@ export default function CierresCajaView() {
 
   const handleSubmitClose = async (payload) => {
     if (!selectedSesion?.id_sesion_caja) return;
-    await closeSesion(selectedSesion.id_sesion_caja, payload);
+    await closeSesion(selectedSesion.id_sesion_caja, payload, { silent: true });
     await Promise.all([refreshCurrentScope(), ensureDetalle(selectedSesion)]);
     setCloseOpen(false);
   };
 
   const handleSubmitOpenSession = async (payload) => {
+    if (isRestrictedCajero) {
+      setCajeroOpenSaving(true);
+      try {
+        const response = await cajasService.abrirMiSesion({
+          monto_apertura: Number(payload?.monto_apertura ?? 0),
+          observacion_apertura: payload?.observacion_apertura || null
+        });
+        openToast(
+          'SESIÓN ABIERTA',
+          response?.message || 'Sesión de caja abierta correctamente.',
+          'success'
+        );
+        await refreshCurrentScope();
+        setOpenCajaOpen(false);
+      } catch (errorResponse) {
+        openToast('ERROR', resolveMiCajaError(errorResponse, 'No se pudo abrir la sesión de caja.'), 'danger');
+      } finally {
+        setCajeroOpenSaving(false);
+      }
+      return;
+    }
+
     try {
       await openSesion(payload);
       await refreshCurrentScope();
@@ -379,11 +505,22 @@ export default function CierresCajaView() {
     if (openCajaOpen) return;
     usuariosRequestIdRef.current += 1;
     cajasRequestIdRef.current += 1;
+    miAsignacionRequestIdRef.current += 1;
     setLoadingUsuariosOperativos(false);
     setLoadingCajasOperativas(false);
+    setLoadingMiAsignacionCaja(false);
     setUsuariosOperativos([]);
     setCajasOperativas([]);
+    setMiAsignacionCaja(null);
+    setMiAsignacionCajaMissing(false);
+    setMiAsignacionCajaError('');
+    setCajeroOpenSaving(false);
   }, [openCajaOpen]);
+
+  useEffect(() => {
+    if (!openCajaOpen || openCajaMode !== 'existente' || !isRestrictedCajero) return;
+    void loadMiAsignacionCaja();
+  }, [isRestrictedCajero, loadMiAsignacionCaja, openCajaMode, openCajaOpen]);
 
   return (
     <>
@@ -392,7 +529,7 @@ export default function CierresCajaView() {
           stats={stats}
           sesionActiva={sesionActiva}
           loading={loadingCatalogos || loadingSesiones}
-          hideKpis={isCajero}
+          hideKpis={!canViewCajaTheoreticalAmounts}
           canSelectSucursal={canSelectSucursal}
           selectedSucursalId={selectedSucursalId}
           sucursales={sucursales}
@@ -419,6 +556,7 @@ export default function CierresCajaView() {
           canCloseSession={canCloseSession}
           canRegisterArqueo={canRegisterArqueo}
           canUseCloseFlow={canUseCloseFlow}
+          canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
           onOpenDetalle={openDetalle}
           onOpenArqueo={openArqueo}
           onOpenCerrar={openCerrar}
@@ -432,6 +570,7 @@ export default function CierresCajaView() {
         canRegisterArqueo={canRegisterArqueo}
         canCloseSession={canCloseSession}
         canUseCloseFlow={canUseCloseFlow}
+        canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
         onClose={() => {
           setDetailOpen(false);
           setSelectedSesion(null);
@@ -447,12 +586,18 @@ export default function CierresCajaView() {
         mode={openCajaMode}
         cajasDisponibles={cajasOperativas}
         loadingCajas={loadingCajasOperativas}
-        saving={saving}
+        saving={saving || cajeroOpenSaving}
         canSelectSucursal={canSelectSucursal}
         selectedSucursalId={selectedSucursalId}
         sucursales={sucursales}
         usuariosDisponibles={usuariosOperativos}
         loadingUsuarios={loadingUsuariosOperativos}
+        useAssignedCajaOnly={isRestrictedCajero}
+        assignedCaja={miAsignacionCaja}
+        loadingAssignedCaja={loadingMiAsignacionCaja}
+        assignedCajaMissing={miAsignacionCajaMissing}
+        assignedCajaError={miAsignacionCajaError}
+        assignedCajaSessionActive={Boolean(miAsignacionCaja?.sesion_activa?.id_sesion_caja)}
         onRequestCajas={handleRequestCajas}
         onRequestUsuarios={handleRequestUsuarios}
         onClose={() => setOpenCajaOpen(false)}
@@ -479,11 +624,12 @@ export default function CierresCajaView() {
         resoluciones={catalogos.resoluciones_cierre}
         saving={saving}
         canResolveDifference={canResolveDifference}
+        canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
         onClose={() => setCloseOpen(false)}
         onSubmit={handleSubmitClose}
-        onPreview={async (payload) => {
+        onPreview={async (payload, options) => {
           if (!selectedSesion?.id_sesion_caja) return null;
-          return previewCloseSesion(selectedSesion.id_sesion_caja, payload);
+          return previewCloseSesion(selectedSesion.id_sesion_caja, payload, options);
         }}
       />
 

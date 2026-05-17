@@ -273,6 +273,27 @@
   gap: 14px;
 }
 
+.cierres-caja-action-modal__readonly {
+  padding: 10px 12px;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 12px;
+  background: rgba(250, 247, 243, 0.84);
+  color: rgba(82, 44, 34, 0.82);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.cierres-caja-inline-error {
+  margin-top: -8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(220, 53, 69, 0.22);
+  border-radius: 12px;
+  background: rgba(220, 53, 69, 0.08);
+  color: #842029;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
 @media (max-width: 991.98px) {
   .cierres-caja-toolbar .collapsible-search,
   .cierres-caja-toolbar .collapsible-search.is-expanded .collapsible-search__field,

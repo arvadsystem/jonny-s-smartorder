@@ -25,6 +25,7 @@ export default function CierreCajaDetalleModal({
   canRegisterArqueo,
   canCloseSession,
   canUseCloseFlow,
+  canViewCajaTheoreticalAmounts = true,
   onClose,
   onOpenArqueo,
   onOpenCerrar
@@ -36,9 +37,9 @@ export default function CierreCajaDetalleModal({
   const participantes = Array.isArray(detalle?.equipo_caja) ? detalle.equipo_caja : (Array.isArray(detalle?.participantes) ? detalle.participantes : []);
   const cierre = detalle?.cierre ?? null;
   const statusBadge = resolveSessionStatusBadge(sesion);
-  const differenceBadge = resolveDifferenceBadge(
-    cierre?.diferencia ?? resumen?.diferencia_cierre ?? sesion?.diferencia_cierre ?? null
-  );
+  const differenceBadge = canViewCajaTheoreticalAmounts
+    ? resolveDifferenceBadge(cierre?.diferencia ?? resumen?.diferencia_cierre ?? sesion?.diferencia_cierre ?? null)
+    : { label: 'Comparación no visible', className: 'bg-light border-secondary text-secondary' };
   const isOpen = sesion?.estado_codigo === 'ABIERTA';
 
   return (
@@ -127,7 +128,7 @@ export default function CierreCajaDetalleModal({
                         <th className="text-end">Apertura</th>
                         <th>Cierre</th>
                         <th>Estado</th>
-                        <th className="text-end">Diferencia</th>
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Diferencia</th> : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -137,7 +138,9 @@ export default function CierreCajaDetalleModal({
                         <td className="text-end">L. {formatCajaCurrency(sesion?.monto_apertura)}</td>
                         <td>{formatCajaDateTime(sesion?.fecha_cierre || cierre?.fecha_cierre)}</td>
                         <td>{statusBadge.label}</td>
-                        <td className="text-end">L. {formatCajaCurrency(cierre?.diferencia ?? resumen?.diferencia_cierre ?? 0)}</td>
+                        {canViewCajaTheoreticalAmounts ? (
+                          <td className="text-end">L. {formatCajaCurrency(cierre?.diferencia ?? resumen?.diferencia_cierre ?? 0)}</td>
+                        ) : null}
                       </tr>
                     </tbody>
                   </table>
@@ -190,25 +193,27 @@ export default function CierreCajaDetalleModal({
                   <table className="table ventas-page__table">
                     <thead>
                       <tr>
-                        <th className="text-end">Ventas efectivo</th>
-                        <th className="text-end">Ventas no efectivo</th>
-                        <th className="text-end">Ingresos manuales</th>
-                        <th className="text-end">Egresos manuales</th>
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Ventas efectivo</th> : null}
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Ventas no efectivo</th> : null}
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Ingresos manuales</th> : null}
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Egresos manuales</th> : null}
                         <th className="text-end">Total responsable</th>
                         <th className="text-end">Total auxiliares</th>
-                        <th className="text-end">Monto teorico</th>
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Monto teórico</th> : null}
                         <th className="text-end">Monto declarado</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td className="text-end">L. {formatCajaCurrency(resumen.ventas_efectivo)}</td>
-                        <td className="text-end">L. {formatCajaCurrency(resumen.ventas_no_efectivo)}</td>
-                        <td className="text-end">L. {formatCajaCurrency(resumen.ingresos_manuales)}</td>
-                        <td className="text-end">L. {formatCajaCurrency(resumen.egresos_manuales)}</td>
+                        {canViewCajaTheoreticalAmounts ? <td className="text-end">L. {formatCajaCurrency(resumen.ventas_efectivo)}</td> : null}
+                        {canViewCajaTheoreticalAmounts ? <td className="text-end">L. {formatCajaCurrency(resumen.ventas_no_efectivo)}</td> : null}
+                        {canViewCajaTheoreticalAmounts ? <td className="text-end">L. {formatCajaCurrency(resumen.ingresos_manuales)}</td> : null}
+                        {canViewCajaTheoreticalAmounts ? <td className="text-end">L. {formatCajaCurrency(resumen.egresos_manuales)}</td> : null}
                         <td className="text-end">L. {formatCajaCurrency(resumen.total_responsable)}</td>
                         <td className="text-end">L. {formatCajaCurrency(resumen.total_auxiliares)}</td>
-                        <td className="text-end">L. {formatCajaCurrency(resumen.monto_teorico ?? resumen.efectivo_teorico)}</td>
+                        {canViewCajaTheoreticalAmounts ? (
+                          <td className="text-end">L. {formatCajaCurrency(resumen.monto_teorico ?? resumen.efectivo_teorico)}</td>
+                        ) : null}
                         <td className="text-end">L. {formatCajaCurrency(resumen.monto_declarado ?? cierre?.monto_declarado_cierre ?? resumen.monto_declarado_cierre)}</td>
                       </tr>
                     </tbody>
@@ -230,15 +235,15 @@ export default function CierreCajaDetalleModal({
                         <th>Usuario</th>
                         <th className="text-center">Rol</th>
                         <th className="text-center">Cobros</th>
-                        <th className="text-end">Total efectivo</th>
-                        <th className="text-end">Total no efectivo</th>
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Total efectivo</th> : null}
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Total no efectivo</th> : null}
                         <th className="text-end">Total cobrado</th>
                       </tr>
                     </thead>
                     <tbody>
                       {detalle.cobros_por_usuario.length === 0 ? (
                         <tr>
-                          <td colSpan="6" className="text-center py-4 text-muted">
+                          <td colSpan={canViewCajaTheoreticalAmounts ? 6 : 4} className="text-center py-4 text-muted">
                             No hay registros.
                           </td>
                         </tr>
@@ -253,8 +258,12 @@ export default function CierreCajaDetalleModal({
                             </td>
                             <td className="text-center align-middle">{resolveRolCobroLabel(row)}</td>
                             <td className="text-center align-middle">{row.cobros_registrados}</td>
-                            <td className="text-end align-middle">L. {formatCajaCurrency(row.total_efectivo)}</td>
-                            <td className="text-end align-middle">L. {formatCajaCurrency(row.total_no_efectivo)}</td>
+                            {canViewCajaTheoreticalAmounts ? (
+                              <td className="text-end align-middle">L. {formatCajaCurrency(row.total_efectivo)}</td>
+                            ) : null}
+                            {canViewCajaTheoreticalAmounts ? (
+                              <td className="text-end align-middle">L. {formatCajaCurrency(row.total_no_efectivo)}</td>
+                            ) : null}
                             <td className="text-end align-middle ventas-page__table-total">
                               L. {formatCajaCurrency(row.total_cobrado)}
                             </td>
@@ -280,13 +289,13 @@ export default function CierreCajaDetalleModal({
                         <th>Tipo</th>
                         <th>Fecha</th>
                         <th className="text-end">Contado</th>
-                        <th className="text-end">Diferencia</th>
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Diferencia</th> : null}
                       </tr>
                     </thead>
                     <tbody>
                       {detalle.arqueos.length === 0 ? (
                         <tr>
-                          <td colSpan="4" className="text-center py-4 text-muted">
+                          <td colSpan={canViewCajaTheoreticalAmounts ? 4 : 3} className="text-center py-4 text-muted">
                             No hay registros.
                           </td>
                         </tr>
@@ -296,7 +305,9 @@ export default function CierreCajaDetalleModal({
                             <td>{arqueo.tipo_nombre || arqueo.tipo_codigo}</td>
                             <td>{formatCajaDateTime(arqueo.fecha_arqueo)}</td>
                             <td className="text-end">L. {formatCajaCurrency(arqueo.monto_contado)}</td>
-                            <td className="text-end">L. {formatCajaCurrency(arqueo.diferencia)}</td>
+                            {canViewCajaTheoreticalAmounts ? (
+                              <td className="text-end">L. {formatCajaCurrency(arqueo.diferencia)}</td>
+                            ) : null}
                           </tr>
                         ))
                       )}
