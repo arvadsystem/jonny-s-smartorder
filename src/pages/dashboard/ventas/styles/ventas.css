@@ -280,16 +280,19 @@
 .ventas-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1400;
+  z-index: 4200;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 12px;
-  background: rgba(28, 12, 4, 0.48);
-  backdrop-filter: blur(6px);
+  background: rgba(28, 12, 4, 0.62);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .ventas-modal-card {
+  position: relative;
+  z-index: 1;
   width: min(520px, 100%);
   border-radius: 18px;
   background: #ffffff;
@@ -1234,6 +1237,10 @@
   background: linear-gradient(180deg, rgba(238, 250, 244, 0.96), #fffdfa);
 }
 
+.ventas-caja__session-panel.is-missing {
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.96), #fffdfa);
+}
+
 .ventas-caja__session-main {
   display: grid;
   gap: 4px;
@@ -1278,6 +1285,11 @@
   color: #1b8f47 !important;
 }
 
+.ventas-caja__session-panel.is-missing .ventas-caja__session-chip {
+  background: rgba(184, 104, 33, 0.1);
+  color: #7d4a18 !important;
+}
+
 .ventas-caja__session-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1303,6 +1315,14 @@
 
 .ventas-caja-apertura-modal {
   width: min(560px, 100%);
+}
+
+.ventas-caja-apertura-backdrop {
+  z-index: 4300;
+}
+
+.ventas-caja-apertura-backdrop .ventas-modal-card {
+  z-index: 4301;
 }
 
 .ventas-caja-apertura-modal__header {
@@ -2409,6 +2429,35 @@
   font-size: 0.8rem;
   padding: 5px 8px;
   border-radius: 8px;
+}
+
+.ventas-cart__kitchen-note {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: rgba(82, 44, 34, 0.72);
+}
+
+.ventas-cart__kitchen-note textarea {
+  width: 100%;
+  min-height: 44px;
+  resize: vertical;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  color: #2f1a10;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.ventas-cart__kitchen-note textarea:focus {
+  outline: none;
+  border-color: rgba(154, 83, 25, 0.55);
+  box-shadow: 0 0 0 0.16rem rgba(154, 83, 25, 0.12);
 }
 
 /* Totales (footer) siempre visible */

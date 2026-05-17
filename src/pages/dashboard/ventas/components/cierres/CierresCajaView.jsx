@@ -529,7 +529,8 @@ export default function CierresCajaView() {
           stats={stats}
           sesionActiva={sesionActiva}
           loading={loadingCatalogos || loadingSesiones}
-          hideKpis={!canViewCajaTheoreticalAmounts}
+          hideKpis={false}
+          canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
           canSelectSucursal={canSelectSucursal}
           selectedSucursalId={selectedSucursalId}
           sucursales={sucursales}

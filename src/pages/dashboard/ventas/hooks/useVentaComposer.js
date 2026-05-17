@@ -493,10 +493,10 @@ export const useVentaComposer = ({
   }, [canApplyDiscount, normalizedDescuentosCatalogo, state.cart]);
 
   const usesLineDiscount = useMemo(
-    () => state.cart.some((line) => Number(line.id_descuento_catalogo_linea || 0) > 0),
-    [state.cart]
+    () => canApplyDiscount && state.cart.some((line) => Number(line.id_descuento_catalogo_linea || 0) > 0),
+    [canApplyDiscount, state.cart]
   );
-  const usesGlobalDiscount = Boolean(state.selectedDiscountId);
+  const usesGlobalDiscount = canApplyDiscount && Boolean(state.selectedDiscountId);
   const totalDiscount = usesLineDiscount ? lineDiscountValue : discountValue;
 
   const taxableSubtotal = roundMoney(Math.max(subtotal - totalDiscount, 0));
@@ -688,7 +688,11 @@ export const useVentaComposer = ({
               .filter((line) => line.cartKey !== complementModal.cartKey)
               .map((line) =>
                 line.cartKey === rebuilt.cartKey
-                  ? { ...line, cantidad: Number(line.cantidad ?? 0) + Number(editedLine.cantidad ?? 0) }
+                  ? {
+                    ...line,
+                    cantidad: Number(line.cantidad ?? 0) + Number(editedLine.cantidad ?? 0),
+                    observacion: line.observacion || editedLine.observacion || ''
+                  }
                   : line
               ),
             submitError: ''
@@ -783,32 +787,36 @@ export const useVentaComposer = ({
   };
 
   const buildItemsPayload = () =>
-    state.cart.map((line) => ({
-      id_producto: line.id_producto,
-      id_combo: line.id_combo,
-      id_receta: line.id_receta,
-      cantidad: Number(line.cantidad),
-      id_descuento_catalogo:
-        canApplyDiscount && !usesGlobalDiscount && line.id_descuento_catalogo_linea
-          ? Number(line.id_descuento_catalogo_linea)
-          : null,
-      observacion:
-        line.kind === 'PRODUCTO'
-          ? undefined
-          : String(line.observacion || '').trim() || null,
-      complementos: normalizeComplementIds(line.complementos).length > 0
-        ? normalizeComplementIds(line.complementos).map((id) => ({ id_complemento: id }))
-        : undefined
-    }));
+    state.cart.map((line) => {
+      const payload = {
+        id_producto: line.id_producto,
+        id_combo: line.id_combo,
+        id_receta: line.id_receta,
+        cantidad: Number(line.cantidad)
+      };
+      const lineDiscountId = Number(line.id_descuento_catalogo_linea || 0);
+      if (canApplyDiscount && !usesGlobalDiscount && lineDiscountId > 0) {
+        payload.id_descuento_catalogo = lineDiscountId;
+      }
+      if (line.kind !== 'PRODUCTO') {
+        payload.observacion = String(line.observacion || '').trim() || null;
+      }
+      const complementos = normalizeComplementIds(line.complementos);
+      if (complementos.length > 0) {
+        payload.complementos = complementos.map((id) => ({ id_complemento: id }));
+      }
+      return payload;
+    });
 
-  const buildDescuentosLineaPayload = () =>
-    state.cart.map((line) => ({
-      cart_key: line.cartKey,
-      id_descuento_catalogo:
-        canApplyDiscount && !usesGlobalDiscount && line.id_descuento_catalogo_linea
-          ? Number(line.id_descuento_catalogo_linea)
-          : null
-    }));
+  const buildDescuentosLineaPayload = () => {
+    if (!canApplyDiscount || usesGlobalDiscount) return [];
+    return state.cart
+      .map((line) => ({
+        cart_key: line.cartKey,
+        id_descuento_catalogo: Number(line.id_descuento_catalogo_linea || 0)
+      }))
+      .filter((line) => line.id_descuento_catalogo > 0);
+  };
 
   const validateBaseSale = () => {
     if (!hasSelectedSucursal) {
@@ -850,38 +858,52 @@ export const useVentaComposer = ({
     return true;
   };
 
-  const buildPaidSalePayload = () => ({
-    id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
-    id_sucursal: selectedSucursalId,
-    metodo_pago: state.paymentMethod,
-    referencia_pago: state.paymentMethod !== 'efectivo' ? state.referenciaPago.trim() : null,
-    id_descuento_catalogo:
-      canApplyDiscount && !usesLineDiscount && state.selectedDiscountId
-        ? Number(state.selectedDiscountId)
-        : null,
-    descuento: canApplyDiscount && !usesLineDiscount && !state.selectedDiscountId ? discountValue : 0,
-    efectivo_entregado: cashValue,
-    id_sesion_caja: toNormalizedId(state.temporarySessionId),
-    descripcion_pedido: null,
-    items: buildItemsPayload()
-  });
+  const applyDiscountPayloadFields = (payload) => {
+    if (!canApplyDiscount || usesLineDiscount) return payload;
+    if (state.selectedDiscountId) {
+      return {
+        ...payload,
+        id_descuento_catalogo: Number(state.selectedDiscountId)
+      };
+    }
+    if (discountValue > 0) {
+      return {
+        ...payload,
+        descuento: discountValue
+      };
+    }
+    return payload;
+  };
 
-  const buildPedidoPendientePayload = ({ contacto, contexto, pagoPendiente, delivery }) => ({
-    id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
-    id_sucursal: selectedSucursalId,
-    items: buildItemsPayload(),
-    descuentos_linea: buildDescuentosLineaPayload(),
-    id_descuento_catalogo:
-      canApplyDiscount && !usesLineDiscount && state.selectedDiscountId
-        ? Number(state.selectedDiscountId)
-        : null,
-    descuento: canApplyDiscount && !usesLineDiscount && !state.selectedDiscountId ? discountValue : 0,
-    id_sesion_caja: toNormalizedId(state.temporarySessionId),
-    contacto,
-    contexto,
-    pago_pendiente: pagoPendiente,
-    delivery
-  });
+  const buildPaidSalePayload = () =>
+    applyDiscountPayloadFields({
+      id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
+      id_sucursal: selectedSucursalId,
+      metodo_pago: state.paymentMethod,
+      referencia_pago: state.paymentMethod !== 'efectivo' ? state.referenciaPago.trim() : null,
+      efectivo_entregado: cashValue,
+      id_sesion_caja: toNormalizedId(state.temporarySessionId),
+      descripcion_pedido: null,
+      items: buildItemsPayload()
+    });
+
+  const buildPedidoPendientePayload = ({ contacto, contexto, pagoPendiente, delivery }) => {
+    const descuentosLinea = buildDescuentosLineaPayload();
+    const payload = applyDiscountPayloadFields({
+      id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
+      id_sucursal: selectedSucursalId,
+      items: buildItemsPayload(),
+      id_sesion_caja: toNormalizedId(state.temporarySessionId),
+      contacto,
+      contexto,
+      pago_pendiente: pagoPendiente,
+      delivery
+    });
+    if (descuentosLinea.length > 0) {
+      payload.descuentos_linea = descuentosLinea;
+    }
+    return payload;
+  };
 
   const submitPaidSale = async () => {
     if (!validatePaidSale()) return null;
@@ -992,7 +1014,15 @@ export const useVentaComposer = ({
         paymentMethod: value,
         submitError: ''
       }),
-    setSelectedDiscountId: (value) =>
+    setSelectedDiscountId: (value) => {
+      if (!canApplyDiscount) {
+        setPartialState({
+          selectedDiscountId: '',
+          descuentoPickerOpen: false,
+          submitError: ''
+        });
+        return;
+      }
       setPartialState(
         state.cart.some((line) => Number(line.id_descuento_catalogo_linea || 0) > 0)
           ? {
@@ -1004,9 +1034,10 @@ export const useVentaComposer = ({
               descuentoPickerOpen: false,
               submitError: ''
             }
-      ),
+      );
+    },
     getAvailableLineDiscounts: (line) =>
-      normalizedDescuentosCatalogo.filter((discount) => {
+      !canApplyDiscount ? [] : normalizedDescuentosCatalogo.filter((discount) => {
         const scope = normalizeDiscountScope(discount.alcance);
         if (scope === 'FACTURA_COMPLETA') return false;
         if (scope !== String(line.kind || '').toUpperCase()) return false;
@@ -1018,7 +1049,7 @@ export const useVentaComposer = ({
         return true;
       }),
     getBestCatalogDiscount: (kind, row) =>
-      resolveBestDiscountForLine({
+      !canApplyDiscount ? null : resolveBestDiscountForLine({
         discounts: normalizedDescuentosCatalogo,
         selectedSucursalId,
         line: {
@@ -1030,7 +1061,20 @@ export const useVentaComposer = ({
           cantidad: 1
         }
       }),
-    setLineDiscount: (cartKey, discountId) =>
+    setLineDiscount: (cartKey, discountId) => {
+      if (!canApplyDiscount) {
+        setState((current) => ({
+          ...current,
+          selectedDiscountId: '',
+          cart: current.cart.map((line) =>
+            line.cartKey === cartKey
+              ? { ...line, id_descuento_catalogo_linea: '' }
+              : line
+          ),
+          submitError: ''
+        }));
+        return;
+      }
       setState((current) => ({
         ...current,
         selectedDiscountId: discountId ? '' : current.selectedDiscountId,
@@ -1043,7 +1087,8 @@ export const useVentaComposer = ({
           current.selectedDiscountId && discountId
             ? 'No se puede combinar descuento global con descuentos por producto/receta/combo.'
             : ''
-      })),
+      }));
+    },
     setCashReceived: (value) => setPartialState({ cashReceived: value }),
     setReferenciaPago: (value) => setPartialState({ referenciaPago: value }),
     addCatalogItem,

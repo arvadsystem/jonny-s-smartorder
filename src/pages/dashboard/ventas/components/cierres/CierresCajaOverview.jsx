@@ -14,6 +14,7 @@ export default function CierresCajaOverview({
   sesionActiva,
   loading,
   hideKpis = false,
+  canViewCajaTheoreticalAmounts = true,
   canSelectSucursal,
   selectedSucursalId,
   sucursales,
@@ -198,34 +199,49 @@ export default function CierresCajaOverview({
             </div>
           </div>
 
-          <div className="inv-prod-kpi ventas-page__stat-card is-warning">
-            <div className="ventas-page__stat-icon text-warning border-0 bg-white">
-              <i className="bi bi-cash-stack" />
-            </div>
-            <div className="inv-prod-kpi-content">
-              <span>Efectivo teorico visible</span>
-              <strong>
-                {loading ? <div className="spinner-border spinner-border-sm" /> : `L. ${formatCajaCurrency(stats.efectivoTeoricoVisible)}`}
-              </strong>
-            </div>
-          </div>
+          {canViewCajaTheoreticalAmounts ? (
+            <>
+              <div className="inv-prod-kpi ventas-page__stat-card is-warning">
+                <div className="ventas-page__stat-icon text-warning border-0 bg-white">
+                  <i className="bi bi-cash-stack" />
+                </div>
+                <div className="inv-prod-kpi-content">
+                  <span>Efectivo teorico visible</span>
+                  <strong>
+                    {loading ? <div className="spinner-border spinner-border-sm" /> : `L. ${formatCajaCurrency(stats.efectivoTeoricoVisible)}`}
+                  </strong>
+                </div>
+              </div>
 
-          <div className="inv-prod-kpi ventas-page__stat-card is-accent">
-            <div className="ventas-page__stat-icon text-danger border-0 bg-white">
-              <i className="bi bi-activity" />
+              <div className="inv-prod-kpi ventas-page__stat-card is-accent">
+                <div className="ventas-page__stat-icon text-danger border-0 bg-white">
+                  <i className="bi bi-activity" />
+                </div>
+                <div className="inv-prod-kpi-content">
+                  <span>Diferencia acumulada</span>
+                  <strong>
+                    {loading ? <div className="spinner-border spinner-border-sm" /> : `L. ${formatCajaCurrency(stats.diferenciaAcumulada)}`}
+                  </strong>
+                  <small className="fidelizacion-kpi__helper">
+                    <span className={`ventas-page__table-pill ${diferenciaBadge.className}`}>
+                      {diferenciaBadge.label}
+                    </span>
+                  </small>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="inv-prod-kpi ventas-page__stat-card is-warning">
+              <div className="ventas-page__stat-icon text-warning border-0 bg-white">
+                <i className="bi bi-clipboard-check" />
+              </div>
+              <div className="inv-prod-kpi-content">
+                <span>Cierres procesados</span>
+                <strong>{loading ? <div className="spinner-border spinner-border-sm" /> : stats.cerradas}</strong>
+                <small className="fidelizacion-kpi__helper">Comparación no visible para cajero.</small>
+              </div>
             </div>
-            <div className="inv-prod-kpi-content">
-              <span>Diferencia acumulada</span>
-              <strong>
-                {loading ? <div className="spinner-border spinner-border-sm" /> : `L. ${formatCajaCurrency(stats.diferenciaAcumulada)}`}
-              </strong>
-              <small className="fidelizacion-kpi__helper">
-                <span className={`ventas-page__table-pill ${diferenciaBadge.className}`}>
-                  {diferenciaBadge.label}
-                </span>
-              </small>
-            </div>
-          </div>
+          )}
           </div>
         ) : null}
       </section>

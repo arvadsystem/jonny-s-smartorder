@@ -131,6 +131,23 @@ export default function VentaComposerSummary({
                         Editar complementos
                       </button>
                     ) : null}
+
+                    {line.kind !== 'PRODUCTO' ? (
+                      <label className="ventas-cart__kitchen-note">
+                        <span>Observación cocina</span>
+                        <textarea
+                          rows="2"
+                          value={line.observacion || ''}
+                          onChange={(event) =>
+                            composer.updateLine(line.cartKey, (current) => ({
+                              ...current,
+                              observacion: event.target.value
+                            }))
+                          }
+                          placeholder="Detalle para cocina"
+                        />
+                      </label>
+                    ) : null}
                   </div>
                 </div>
               );
