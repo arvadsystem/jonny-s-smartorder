@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const INITIAL_FORM = {
   monto_apertura: '',
@@ -20,18 +20,25 @@ export default function VentaCajaAbrirSesionModal({
 }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [localError, setLocalError] = useState('');
+  const [localSaving, setLocalSaving] = useState(false);
+  const submitRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
       setForm(INITIAL_FORM);
       setLocalError('');
+      setLocalSaving(false);
+      submitRef.current = false;
     }
   }, [open]);
 
   const montoApertura = useMemo(() => toMoneyNumber(form.monto_apertura), [form.monto_apertura]);
-  const canSubmit = montoApertura !== null && !saving;
+  const isSubmitting = saving || localSaving;
+  const canSubmit = montoApertura !== null && !isSubmitting;
 
   if (!open || !assignment) return null;
+
+  const cajaLabel = assignment.nombre_caja || assignment.codigo_caja || `Caja #${assignment.id_caja}`;
 
   const setField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -40,32 +47,39 @@ export default function VentaCajaAbrirSesionModal({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!canSubmit) {
-      setLocalError('Monto de apertura debe ser un numero mayor o igual a 0.');
+    if (submitRef.current || saving) return;
+    if (montoApertura === null) {
+      setLocalError('Monto de apertura debe ser un número mayor o igual a 0.');
       return;
     }
 
-    await onSubmit({
-      monto_apertura: montoApertura,
-      observacion_apertura: form.observacion_apertura.trim() || null
-    });
+    submitRef.current = true;
+    setLocalSaving(true);
+    try {
+      await onSubmit({
+        monto_apertura: montoApertura,
+        observacion_apertura: form.observacion_apertura.trim() || null
+      });
+    } finally {
+      submitRef.current = false;
+      setLocalSaving(false);
+    }
   };
 
   return (
-    <div className="ventas-modal-backdrop" role="presentation" onClick={!saving ? onClose : undefined}>
+    <div className="ventas-modal-backdrop ventas-caja-apertura-backdrop" role="presentation">
       <section
         className="ventas-modal-card ventas-caja-apertura-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="ventas-caja-apertura-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="ventas-modal-header ventas-caja-apertura-modal__header">
           <div>
-            <h5 id="ventas-caja-apertura-title">Abrir sesion</h5>
-            <p>La caja viene de tu asignacion activa.</p>
+            <h5 id="ventas-caja-apertura-title">Abrir sesión</h5>
+            <p>Tienes asignada la caja {cajaLabel}.</p>
           </div>
-          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={saving} aria-label="Cerrar">
+          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={isSubmitting} aria-label="Cerrar">
             <i className="bi bi-x-lg" />
           </button>
         </header>
@@ -73,7 +87,7 @@ export default function VentaCajaAbrirSesionModal({
         <form className="ventas-modal-body ventas-caja-apertura-modal__body" onSubmit={handleSubmit}>
           <div className="ventas-caja-apertura-modal__assigned">
             <div>
-              <span>Codigo / numero</span>
+              <span>Código / número</span>
               <strong>{assignment.codigo_caja || `Caja #${assignment.id_caja}`}</strong>
             </div>
             <div>
@@ -95,19 +109,20 @@ export default function VentaCajaAbrirSesionModal({
               value={form.monto_apertura}
               onChange={(event) => setField('monto_apertura', event.target.value)}
               placeholder="0.00"
-              disabled={saving}
+              disabled={isSubmitting}
+              autoFocus
             />
           </label>
 
           <label className="ventas-create-modal__field">
-            <span>Observacion de apertura</span>
+            <span>Observación de apertura</span>
             <textarea
               className="ventas-create-modal__note-input"
               rows="3"
               value={form.observacion_apertura}
               onChange={(event) => setField('observacion_apertura', event.target.value)}
               placeholder="Detalle operativo opcional..."
-              disabled={saving}
+              disabled={isSubmitting}
             />
           </label>
 
@@ -116,11 +131,11 @@ export default function VentaCajaAbrirSesionModal({
           ) : null}
 
           <footer className="ventas-modal-footer d-flex justify-content-end gap-2">
-            <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>
+            <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </button>
             <button type="submit" className="btn btn-primary" disabled={!canSubmit}>
-              {saving ? 'Abriendo...' : 'Abrir sesion'}
+              {isSubmitting ? 'Abriendo...' : 'Abrir sesión'}
             </button>
           </footer>
         </form>

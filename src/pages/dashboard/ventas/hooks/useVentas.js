@@ -485,7 +485,7 @@ export const useVentas = () => {
       } catch (error) {
         const isConflict = Number(error?.status || 0) === 409;
         const message = isConflict
-          ? 'Este pedido ya fue pagado o no esta pendiente de pago.'
+          ? 'Este pedido ya fue pagado o no está pendiente de pago.'
           : extractApiMessage(error, 'No se pudo registrar el pago del pedido.');
         setError(message);
         openToast('ERROR', message, 'danger');
@@ -519,6 +519,7 @@ export const useVentas = () => {
     error,
     catalogErrors,
     toast,
+    openToast,
     closeToast,
     refreshVentas: loadVentas,
     refreshCatalogs,

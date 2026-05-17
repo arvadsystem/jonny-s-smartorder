@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+
 const toastIconClass = (variant) => {
   if (variant === 'danger') return 'bi bi-x-octagon-fill';
   if (variant === 'warning') return 'bi bi-exclamation-triangle-fill';
@@ -10,7 +12,7 @@ export default function VentasToast({ toast, onClose }) {
 
   const variant = toast.variant || 'success';
 
-  return (
+  const content = (
     <div className="inv-toast-wrap" role="status" aria-live="polite">
       <div className={`inv-toast-card ${variant}`}>
         <div className="inv-toast-icon">
@@ -30,4 +32,7 @@ export default function VentasToast({ toast, onClose }) {
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return content;
+  return createPortal(content, document.body);
 }

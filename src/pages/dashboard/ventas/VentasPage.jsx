@@ -47,6 +47,7 @@ export default function VentasPage() {
     error,
     catalogErrors,
     toast,
+    openToast,
     closeToast,
     setVentasSearch,
     setVentasPage,
@@ -241,6 +242,7 @@ export default function VentasPage() {
           onSubmit={handleCreateVenta}
           onCreatePedidoPendiente={createPedidoPendiente}
           onRegistrarPagoPedido={registrarPagoPedido}
+          onNotify={openToast}
         />
       ) : null}
 
