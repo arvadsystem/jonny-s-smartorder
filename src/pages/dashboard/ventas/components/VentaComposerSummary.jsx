@@ -13,7 +13,9 @@ export default function VentaComposerSummary({
   deliveryCost = 0,
   pendingPaymentsSummary,
   onOpenFinalize,
-  onOpenRegistrarPago
+  onOpenRegistrarPago,
+  variant = 'side',
+  onClose
 }) {
   const [totalsExpanded, setTotalsExpanded] = useState(false);
   const safeDeliveryCost = Number.isFinite(Number(deliveryCost)) && Number(deliveryCost) >= 0
@@ -36,17 +38,33 @@ export default function VentaComposerSummary({
     const fakeEvent = { preventDefault: () => {} };
     composer.handleSubmit(fakeEvent);
   };
+  const isSheet = variant === 'sheet';
 
   return (
-    <aside className="ventas-create-modal__summary">
+    <aside className={`ventas-create-modal__summary ventas-caja-layout__cart ventas-cart-panel ventas-cart-panel--${variant}`}>
       <section className="ventas-create-modal__section ventas-create-modal__cart">
         <div className="ventas-create-modal__cart-head">
-          <div className="ventas-create-modal__section-label">
-            <i className="bi bi-cart3" /> Carrito
+          <div
+            className="ventas-create-modal__section-label"
+            id={isSheet ? 'ventas-caja-mobile-cart-title' : undefined}
+          >
+            <i className="bi bi-cart3" /> Carrito de venta
           </div>
-          <span className="ventas-create-modal__count-pill">
-            {composer.cartCount} {composer.cartCount === 1 ? 'item' : 'items'}
-          </span>
+          <div className="ventas-cart-panel__header-actions">
+            <span className="ventas-create-modal__count-pill">
+              {composer.cartCount} {composer.cartCount === 1 ? 'item' : 'items'}
+            </span>
+            {isSheet ? (
+              <button
+                type="button"
+                className="ventas-cart-panel__close"
+                onClick={onClose}
+                aria-label="Cerrar carrito"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="ventas-create-modal__cart-list">
@@ -55,8 +73,8 @@ export default function VentaComposerSummary({
               <div className="ventas-create-modal__cart-empty-icon">
                 <i className="bi bi-cart-x" />
               </div>
-              <strong>Carrito vacio</strong>
-              <span>Busca o selecciona items a la izquierda.</span>
+              <strong>Carrito vacío</strong>
+              <span>Agrega items desde el catálogo.</span>
             </div>
           ) : (
             composer.cart.map((line) => {
@@ -88,6 +106,7 @@ export default function VentaComposerSummary({
                       <div className="ventas-create-modal__qty-control">
                         <button
                           type="button"
+                          aria-label={`Disminuir cantidad de ${line.nombre_item}`}
                           onClick={() =>
                             composer.updateLine(line.cartKey, (current) => ({
                               ...current,
@@ -100,6 +119,7 @@ export default function VentaComposerSummary({
                         <span>{line.cantidad}</span>
                         <button
                           type="button"
+                          aria-label={`Aumentar cantidad de ${line.nombre_item}`}
                           disabled={!canIncrease}
                           onClick={() =>
                             composer.updateLine(line.cartKey, (current) => ({
@@ -117,6 +137,7 @@ export default function VentaComposerSummary({
                         className="ventas-create-modal__remove-btn"
                         onClick={() => composer.removeLine(line.cartKey)}
                         title="Eliminar item"
+                        aria-label={`Eliminar ${line.nombre_item}`}
                       >
                         <i className="bi bi-trash" />
                       </button>
@@ -130,6 +151,23 @@ export default function VentaComposerSummary({
                       >
                         Editar complementos
                       </button>
+                    ) : null}
+
+                    {line.kind !== 'PRODUCTO' ? (
+                      <label className="ventas-cart__kitchen-note">
+                        <span>Observación cocina</span>
+                        <textarea
+                          rows="2"
+                          value={line.observacion || ''}
+                          onChange={(event) =>
+                            composer.updateLine(line.cartKey, (current) => ({
+                              ...current,
+                              observacion: event.target.value
+                            }))
+                          }
+                          placeholder="Detalle para cocina"
+                        />
+                      </label>
                     ) : null}
                   </div>
                 </div>
@@ -145,7 +183,7 @@ export default function VentaComposerSummary({
           <span>{pendingLabel}</span>
         </div>
         <button type="button" onClick={onOpenRegistrarPago}>
-          <i className="bi bi-cash-coin" /> Ver / Cobrar
+          <i className="bi bi-cash-coin" /> Cobrar
         </button>
       </section>
 

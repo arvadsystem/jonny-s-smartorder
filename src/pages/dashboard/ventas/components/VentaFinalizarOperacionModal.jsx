@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
 
 const CONTACT_INITIAL = {
@@ -53,6 +53,11 @@ export default function VentaFinalizarOperacionModal({
   const [contact, setContact] = useState(CONTACT_INITIAL);
   const [delivery, setDelivery] = useState(DELIVERY_INITIAL);
   const [localError, setLocalError] = useState('');
+  const [paidSubmitting, setPaidSubmitting] = useState(false);
+  const [pendingSubmitting, setPendingSubmitting] = useState(false);
+  const paidSubmittingRef = useRef(false);
+  const pendingSubmittingRef = useRef(false);
+  const isSubmitting = saving || paidSubmitting || pendingSubmitting;
 
   const deliveryCost = useMemo(() => {
     const parsed = Number(delivery.costo_envio);
@@ -68,12 +73,20 @@ export default function VentaFinalizarOperacionModal({
     if (!open) return undefined;
 
     const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !saving) onClose();
+      if (event.key === 'Escape' && !isSubmitting) onClose();
     };
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, open, saving]);
+  }, [isSubmitting, onClose, open]);
+
+  useEffect(() => {
+    if (open) return;
+    paidSubmittingRef.current = false;
+    pendingSubmittingRef.current = false;
+    setPaidSubmitting(false);
+    setPendingSubmitting(false);
+  }, [open]);
 
   if (!open) return null;
 
@@ -101,14 +114,14 @@ export default function VentaFinalizarOperacionModal({
     }
 
     if (phoneRequired && !normalizeOptionalText(contact.telefono_contacto)) {
-      setLocalError('Telefono es obligatorio para este canal o modalidad.');
+      setLocalError('Teléfono es obligatorio para este canal o modalidad.');
       return false;
     }
 
     if (activeTab === 'pendiente' && contact.modalidad === 'DELIVERY') {
       const missing = [
         ['nombre_receptor', 'Nombre receptor'],
-        ['telefono_receptor', 'Telefono receptor'],
+        ['telefono_receptor', 'Teléfono receptor'],
         ['direccion_entrega', 'Direccion entrega'],
         ['referencia_entrega', 'Referencia entrega'],
         ['costo_envio', 'Costo envio']
@@ -130,46 +143,59 @@ export default function VentaFinalizarOperacionModal({
   };
 
   const handlePaidSubmit = async () => {
+    if (paidSubmittingRef.current || saving) return;
+    paidSubmittingRef.current = true;
+    setPaidSubmitting(true);
     setLocalError('');
-    const response = await composer.submitPaidSale();
-    if (response) onClose();
+    try {
+      const response = await composer.submitPaidSale();
+      if (response) onClose();
+    } finally {
+      paidSubmittingRef.current = false;
+      setPaidSubmitting(false);
+    }
   };
 
   const handlePendingSubmit = async () => {
-    if (!validateCommon()) return;
-
-    const modalidad = contact.modalidad;
-    const canal = contact.canal;
-    const payload = composer.buildPedidoPendientePayload({
-      contacto: {
-        nombre_contacto: normalizeOptionalText(contact.nombre_contacto),
-        telefono_contacto: normalizeOptionalText(contact.telefono_contacto),
-        dni: null,
-        rtn: null,
-        correo: null
-      },
-      contexto: {
-        canal,
-        modalidad,
-        observacion_contexto: normalizeOptionalText(contact.observacion_contexto)
-      },
-      pagoPendiente: {
-        motivo: resolveMotivoPagoPendiente({ canal, modalidad }),
-        observacion_pago: normalizeOptionalText(contact.observacion_pago)
-      },
-      delivery: modalidad === 'DELIVERY'
-        ? {
-            costo_envio: deliveryCost,
-            nombre_receptor: normalizeOptionalText(delivery.nombre_receptor),
-            telefono_receptor: normalizeOptionalText(delivery.telefono_receptor),
-            direccion_entrega: normalizeOptionalText(delivery.direccion_entrega),
-            referencia_entrega: normalizeOptionalText(delivery.referencia_entrega),
-            observacion_delivery: normalizeOptionalText(delivery.observacion_delivery)
-          }
-        : null
-    });
+    if (pendingSubmittingRef.current || saving) return;
+    pendingSubmittingRef.current = true;
+    setPendingSubmitting(true);
+    setLocalError('');
 
     try {
+      if (!validateCommon()) return;
+
+      const modalidad = contact.modalidad;
+      const canal = contact.canal;
+      const payload = composer.buildPedidoPendientePayload({
+        contacto: {
+          nombre_contacto: normalizeOptionalText(contact.nombre_contacto),
+          telefono_contacto: normalizeOptionalText(contact.telefono_contacto),
+          dni: null,
+          rtn: null,
+          correo: null
+        },
+        contexto: {
+          canal,
+          modalidad,
+          observacion_contexto: normalizeOptionalText(contact.observacion_contexto)
+        },
+        pagoPendiente: {
+          motivo: resolveMotivoPagoPendiente({ canal, modalidad }),
+          observacion_pago: normalizeOptionalText(contact.observacion_pago)
+        },
+        delivery: modalidad === 'DELIVERY'
+          ? {
+              costo_envio: deliveryCost,
+              nombre_receptor: normalizeOptionalText(delivery.nombre_receptor),
+              telefono_receptor: normalizeOptionalText(delivery.telefono_receptor),
+              direccion_entrega: normalizeOptionalText(delivery.direccion_entrega),
+              referencia_entrega: normalizeOptionalText(delivery.referencia_entrega),
+              observacion_delivery: normalizeOptionalText(delivery.observacion_delivery)
+            }
+          : null
+      });
+
       await onCreatePedidoPendiente(payload);
       composer.resetComposer();
       setContact(CONTACT_INITIAL);
@@ -178,6 +204,9 @@ export default function VentaFinalizarOperacionModal({
       onClose();
     } catch (error) {
       setLocalError(error?.message || 'No se pudo crear el pedido pendiente.');
+    } finally {
+      pendingSubmittingRef.current = false;
+      setPendingSubmitting(false);
     }
   };
 
@@ -185,7 +214,7 @@ export default function VentaFinalizarOperacionModal({
   const totalWithDelivery = composer.total + (activeTab === 'pendiente' && contact.modalidad === 'DELIVERY' ? deliveryCost : 0);
 
   return (
-    <div className="ventas-modal-backdrop" role="presentation" onClick={!saving ? onClose : undefined}>
+    <div className="ventas-modal-backdrop" role="presentation">
       <section
         className="ventas-modal-card ventas-finalizar-modal"
         role="dialog"
@@ -195,15 +224,15 @@ export default function VentaFinalizarOperacionModal({
       >
         <header className="ventas-modal-header ventas-finalizar-modal__header">
           <div>
-            <h5 id="ventas-finalizar-title">Finalizar operacion</h5>
+            <h5 id="ventas-finalizar-title">Finalizar operación</h5>
             <p>Selecciona si el pedido se paga ahora o queda pendiente.</p>
           </div>
-          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={saving} aria-label="Cerrar">
+          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={isSubmitting} aria-label="Cerrar">
             <i className="bi bi-x-lg" />
           </button>
         </header>
 
-        <div className="ventas-finalizar-modal__tabs" role="tablist" aria-label="Tipo de operacion">
+        <div className="ventas-finalizar-modal__tabs" role="tablist" aria-label="Tipo de operación">
           <button
             type="button"
             className={activeTab === 'pagar' ? 'is-active' : ''}
@@ -244,7 +273,7 @@ export default function VentaFinalizarOperacionModal({
             </label>
 
             <label className="ventas-create-modal__field">
-              <span>Telefono</span>
+              <span>Teléfono</span>
               <input
                 type="text"
                 value={contact.telefono_contacto}
@@ -271,7 +300,7 @@ export default function VentaFinalizarOperacionModal({
             </label>
 
             <label className="ventas-create-modal__field">
-              <span>Observacion</span>
+              <span>Observación</span>
               <input
                 type="text"
                 value={contact.observacion_contexto}
@@ -289,7 +318,7 @@ export default function VentaFinalizarOperacionModal({
                   <input type="text" value={delivery.nombre_receptor} onChange={(event) => setDeliveryField('nombre_receptor', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
-                  <span>Telefono receptor</span>
+                  <span>Teléfono receptor</span>
                   <input type="text" value={delivery.telefono_receptor} onChange={(event) => setDeliveryField('telefono_receptor', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
@@ -305,7 +334,7 @@ export default function VentaFinalizarOperacionModal({
                   <input type="number" min="0" step="0.01" value={delivery.costo_envio} onChange={(event) => setDeliveryField('costo_envio', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
-                  <span>Observacion delivery</span>
+                  <span>Observación delivery</span>
                   <input type="text" value={delivery.observacion_delivery} onChange={(event) => setDeliveryField('observacion_delivery', event.target.value)} />
                 </label>
               </div>
@@ -317,7 +346,7 @@ export default function VentaFinalizarOperacionModal({
               <strong>Pago</strong>
               <div className="ventas-finalizar-modal__grid">
                 <label className="ventas-create-modal__field">
-                  <span>Metodo de pago</span>
+                  <span>Método de pago</span>
                   <select value={composer.paymentMethod} onChange={(event) => composer.setPaymentMethod(event.target.value)}>
                     {PAYMENT_OPTIONS.map((option) => (
                       <option key={option.key} value={option.key}>{option.label}</option>
@@ -373,7 +402,7 @@ export default function VentaFinalizarOperacionModal({
             <section className="ventas-finalizar-modal__section">
               <strong>Pago pendiente</strong>
               <label className="ventas-create-modal__field">
-                <span>Observacion pago</span>
+                <span>Observación pago</span>
                 <input
                   type="text"
                   value={contact.observacion_pago}
@@ -395,16 +424,16 @@ export default function VentaFinalizarOperacionModal({
         </div>
 
         <footer className="ventas-modal-footer d-flex justify-content-end gap-2">
-          <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>
+          <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={isSubmitting}>
             Cancelar
           </button>
           {activeTab === 'pagar' ? (
-            <button type="button" className="btn btn-primary" onClick={handlePaidSubmit} disabled={!composer.canSubmit || saving}>
-              {saving ? 'Guardando...' : 'Confirmar pago y enviar pedido'}
+            <button type="button" className="btn btn-primary" onClick={handlePaidSubmit} disabled={!composer.canSubmit || isSubmitting}>
+              {paidSubmitting || saving ? 'Guardando...' : 'Confirmar pago y enviar pedido'}
             </button>
           ) : (
-            <button type="button" className="btn btn-primary" onClick={handlePendingSubmit} disabled={saving}>
-              {saving ? 'Guardando...' : 'Crear pedido pendiente'}
+            <button type="button" className="btn btn-primary" onClick={handlePendingSubmit} disabled={isSubmitting}>
+              {pendingSubmitting || saving ? 'Creando...' : 'Crear pedido pendiente'}
             </button>
           )}
         </footer>

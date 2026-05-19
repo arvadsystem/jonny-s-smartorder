@@ -7,6 +7,16 @@ const initialOpenForm = Object.freeze({
   observacion_apertura: ''
 });
 
+const toPositiveNumber = (value) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const resolveCajaLabel = (caja) => {
+  if (!caja) return 'Caja asignada';
+  return caja.nombre_caja || caja.codigo_caja || `Caja #${caja.id_caja}`;
+};
+
 const buildInitialCreateForm = (defaultSucursalId = '') => ({
   id_sucursal: defaultSucursalId || '',
   codigo_caja: 'CAJA-1',
@@ -42,6 +52,12 @@ export default function CierreCajaAbrirModal({
   sucursales,
   usuariosDisponibles,
   loadingUsuarios,
+  useAssignedCajaOnly = false,
+  assignedCaja = null,
+  loadingAssignedCaja = false,
+  assignedCajaMissing = false,
+  assignedCajaError = '',
+  assignedCajaSessionActive = false,
   onRequestCajas,
   onRequestUsuarios,
   onClose,
@@ -55,9 +71,11 @@ export default function CierreCajaAbrirModal({
   const [createForm, setCreateForm] = useState(() => buildInitialCreateForm(selectedSucursalId));
   const lastRequestedUsuariosKeyRef = useRef(null);
   const lastRequestedCajasRef = useRef(null);
+  const assignedCajaMode = mode === 'existente' && useAssignedCajaOnly;
+  const assignedCajaId = toPositiveNumber(assignedCaja?.id_caja);
 
   useEffect(() => {
-    if (!open || (mode !== 'existente' && mode !== 'nueva')) return;
+    if (!open || assignedCajaMode || (mode !== 'existente' && mode !== 'nueva')) return;
     const sourceSucursal = mode === 'nueva' ? createForm.id_sucursal : openForm.id_sucursal;
     const idSucursalTarget = Number.parseInt(String(sourceSucursal || ''), 10);
     if (!Number.isInteger(idSucursalTarget) || idSucursalTarget <= 0) return;
@@ -67,7 +85,7 @@ export default function CierreCajaAbrirModal({
     if (typeof onRequestCajas === 'function') {
       void Promise.resolve(onRequestCajas(idSucursalTarget)).catch(() => {});
     }
-  }, [createForm.id_sucursal, mode, onRequestCajas, open, openForm.id_sucursal]);
+  }, [assignedCajaMode, createForm.id_sucursal, mode, onRequestCajas, open, openForm.id_sucursal]);
 
   useEffect(() => {
     if (!open || mode !== 'nueva') return;
@@ -102,9 +120,31 @@ export default function CierreCajaAbrirModal({
   const isOpenValid = useMemo(() => {
     const monto = Number(openForm.monto_apertura);
     const hasSucursal =
-      !canSelectSucursal || Number.parseInt(String(openForm.id_sucursal || ''), 10) > 0;
-    return hasSucursal && Boolean(openForm.id_caja) && Number.isFinite(monto) && monto >= 0;
-  }, [canSelectSucursal, openForm.id_caja, openForm.id_sucursal, openForm.monto_apertura]);
+      assignedCajaMode || !canSelectSucursal || Number.parseInt(String(openForm.id_sucursal || ''), 10) > 0;
+    const hasCaja = assignedCajaMode ? Boolean(assignedCajaId) : Boolean(openForm.id_caja);
+    const assignmentBlocksOpen =
+      assignedCajaMode &&
+      (loadingAssignedCaja ||
+        assignedCajaMissing ||
+        Boolean(assignedCajaError) ||
+        assignedCajaSessionActive ||
+        assignedCaja?.caja_abierta_por_otro_responsable ||
+        assignedCaja?.puede_abrir === false);
+    return hasSucursal && hasCaja && Number.isFinite(monto) && monto >= 0 && !assignmentBlocksOpen;
+  }, [
+    assignedCaja?.caja_abierta_por_otro_responsable,
+    assignedCaja?.puede_abrir,
+    assignedCajaError,
+    assignedCajaId,
+    assignedCajaMissing,
+    assignedCajaMode,
+    assignedCajaSessionActive,
+    canSelectSucursal,
+    loadingAssignedCaja,
+    openForm.id_caja,
+    openForm.id_sucursal,
+    openForm.monto_apertura
+  ]);
 
   const isCreateValid = useMemo(() => {
     const hasNombre = String(createForm.nombre_caja || '').trim().length > 0;
@@ -121,12 +161,13 @@ export default function CierreCajaAbrirModal({
     if (!isOpenValid || saving) return;
 
     try {
-      await onSubmitOpenSesion({
+      const payload = {
         id_sucursal: Number.parseInt(String(openForm.id_sucursal || ''), 10) || null,
-        id_caja: Number(openForm.id_caja),
         monto_apertura: Number(openForm.monto_apertura),
         observacion_apertura: openForm.observacion_apertura.trim() || null
-      });
+      };
+      if (!assignedCajaMode) payload.id_caja = Number(openForm.id_caja);
+      await onSubmitOpenSesion(payload);
     } catch {
       // El hook ya muestra toast; evitamos uncaught promise.
     }
@@ -149,7 +190,7 @@ export default function CierreCajaAbrirModal({
           id_usuario: idUsuario,
           puede_responsable: createForm.rol_operativo === 'RESPONSABLE',
           puede_auxiliar: createForm.rol_operativo === 'AUXILIAR',
-          observacion: 'Asignacion inicial desde nueva caja'
+          observacion: 'Asignación inicial desde nueva caja'
         }
       });
     } catch {
@@ -158,11 +199,12 @@ export default function CierreCajaAbrirModal({
   };
 
   return (
-    <div className="ventas-modal-backdrop" onClick={onClose}>
+    <div className="ventas-modal-backdrop" role="presentation">
       <section
         className="ventas-modal cierres-caja-action-modal"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="cierres-caja-abrir-title"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="ventas-modal__header">
@@ -171,22 +213,24 @@ export default function CierreCajaAbrirModal({
               <i className="bi bi-safe2-fill" />
             </span>
             <div>
-              <h3>{mode === 'nueva' ? 'Nueva caja' : 'Abrir sesion'}</h3>
+              <h3 id="cierres-caja-abrir-title">{mode === 'nueva' ? 'Nueva caja' : 'Abrir sesión'}</h3>
               <p>
                 {mode === 'nueva'
-                  ? 'Crea una caja nueva y deja su asignacion operativa configurada.'
-                  : 'Abre una sesion sobre una caja existente.'}
+                  ? 'Crea una caja nueva y deja su asignación operativa configurada.'
+                  : assignedCajaMode
+                    ? 'Abre sesión sobre tu caja asignada.'
+                    : 'Abre una sesión sobre una caja existente.'}
               </p>
             </div>
           </div>
-          <button type="button" className="ventas-modal__close-btn" onClick={onClose} aria-label="Cerrar">
+          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={saving} aria-label="Cerrar">
             <i className="bi bi-x-lg" />
           </button>
         </header>
 
         {mode === 'existente' ? (
           <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={submitExisting}>
-            {canSelectSucursal ? (
+            {canSelectSucursal && !assignedCajaMode ? (
               <label className="ventas-create-modal__field">
                 <span>Sucursal</span>
                 <select
@@ -210,26 +254,71 @@ export default function CierreCajaAbrirModal({
               </label>
             ) : null}
 
-            <label className="ventas-create-modal__field">
-              <span>Caja existente</span>
-              <select
-                className="ventas-create-modal__select"
-                value={openForm.id_caja}
-                onChange={(event) =>
-                  setOpenForm((current) => ({ ...current, id_caja: event.target.value }))
-                }
-                disabled={loadingCajas}
-              >
-                <option value="">
-                  {loadingCajas ? 'Cargando cajas...' : 'Selecciona una caja'}
-                </option>
-                {cajasDisponibles.map((caja) => (
-                  <option key={caja.id_caja} value={caja.id_caja}>
-                    {caja.nombre_caja} ({caja.codigo_caja || 'Sin codigo'})
+            {assignedCajaMode ? (
+              <div className="ventas-create-modal__field">
+                <span>Caja asignada</span>
+                {loadingAssignedCaja ? (
+                  <div className="cierres-caja-action-modal__readonly">Consultando caja asignada...</div>
+                ) : assignedCajaMissing ? (
+                  <div className="ventas-create-modal__error">
+                    No tienes una caja asignada. Solicita a un administrador que te asigne una caja.
+                  </div>
+                ) : assignedCajaError ? (
+                  <div className="ventas-create-modal__error">{assignedCajaError}</div>
+                ) : assignedCaja ? (
+                  <>
+                    <div className="ventas-caja-apertura-modal__assigned">
+                      <div>
+                        <span>Caja</span>
+                        <strong>{resolveCajaLabel(assignedCaja)}</strong>
+                      </div>
+                      <div>
+                        <span>Código</span>
+                        <strong>{assignedCaja.codigo_caja || `Caja #${assignedCaja.id_caja}`}</strong>
+                      </div>
+                      <div>
+                        <span>Sucursal</span>
+                        <strong>{assignedCaja.nombre_sucursal || 'Sucursal asignada'}</strong>
+                      </div>
+                    </div>
+                    {assignedCajaSessionActive ? (
+                      <div className="cierres-caja-action-modal__readonly">
+                        Ya tienes una sesión activa en esta caja.
+                      </div>
+                    ) : assignedCaja?.caja_abierta_por_otro_responsable ? (
+                      <div className="ventas-create-modal__error">
+                        La caja asignada ya tiene una sesión abierta por otro responsable.
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="ventas-create-modal__error">
+                    No tienes una caja asignada. Solicita a un administrador que te asigne una caja.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <label className="ventas-create-modal__field">
+                <span>Caja existente</span>
+                <select
+                  className="ventas-create-modal__select"
+                  value={openForm.id_caja}
+                  onChange={(event) =>
+                    setOpenForm((current) => ({ ...current, id_caja: event.target.value }))
+                  }
+                  disabled={loadingCajas}
+                >
+                  <option value="">
+                    {loadingCajas ? 'Cargando cajas...' : 'Selecciona una caja'}
                   </option>
-                ))}
-              </select>
-            </label>
+                  {cajasDisponibles.map((caja) => (
+                    <option key={caja.id_caja} value={caja.id_caja}>
+                      {caja.nombre_caja} ({caja.codigo_caja || 'Sin código'})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             <label className="ventas-create-modal__field">
               <span>Monto de apertura</span>
@@ -246,7 +335,7 @@ export default function CierreCajaAbrirModal({
             </label>
 
             <label className="ventas-create-modal__field">
-              <span>Observacion de apertura</span>
+              <span>Observación de apertura</span>
               <textarea
                 className="ventas-create-modal__note-input"
                 rows="3"
@@ -264,7 +353,7 @@ export default function CierreCajaAbrirModal({
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-danger" disabled={!isOpenValid || saving}>
-                  {saving ? 'Guardando...' : 'Abrir sesion'}
+                  {saving ? 'Abriendo...' : 'Abrir sesión'}
                 </button>
               </div>
             </footer>
@@ -307,7 +396,7 @@ export default function CierreCajaAbrirModal({
               </label>
 
               <label className="ventas-create-modal__field">
-                <span>Codigo de caja</span>
+                <span>Código de caja</span>
                 <input
                   type="text"
                   value={createForm.codigo_caja}
@@ -357,7 +446,7 @@ export default function CierreCajaAbrirModal({
             </div>
 
             <label className="ventas-create-modal__field">
-              <span>Observacion de caja</span>
+              <span>Observación de caja</span>
               <textarea
                 className="ventas-create-modal__note-input"
                 rows="2"

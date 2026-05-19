@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ventasService from '../../../../services/ventasService';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
 import { formatCurrency } from '../utils/ventasHelpers';
@@ -73,19 +73,22 @@ export default function VentaRegistrarPagoPedidoModal({
   const [pedidosError, setPedidosError] = useState('');
   const [pedidos, setPedidos] = useState([]);
   const [selectedPedido, setSelectedPedido] = useState(null);
+  const [localSaving, setLocalSaving] = useState(false);
+  const submitRef = useRef(false);
   const initialPedidoId = toPositiveId(initialPedido?.id_pedido);
   const effectiveSucursalId = toPositiveId(selectedSucursalId) || toPositiveId(initialPedido?.id_sucursal);
+  const isSubmitting = saving || localSaving;
 
   useEffect(() => {
     if (!open) return undefined;
 
     const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !saving) onClose();
+      if (event.key === 'Escape' && !isSubmitting) onClose();
     };
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, open, saving]);
+  }, [isSubmitting, onClose, open]);
 
   useEffect(() => {
     if (!open) {
@@ -95,6 +98,8 @@ export default function VentaRegistrarPagoPedidoModal({
       setForm(INITIAL_FORM);
       setLocalError('');
       setPedidosError('');
+      setLocalSaving(false);
+      submitRef.current = false;
     }
   }, [open]);
 
@@ -191,19 +196,30 @@ export default function VentaRegistrarPagoPedidoModal({
   };
 
   const handleSubmit = async () => {
+    if (submitRef.current || saving) return;
+    submitRef.current = true;
+    setLocalSaving(true);
+    setLocalError('');
+
     if (!selectedPedido?.id_pedido) {
       setLocalError('Selecciona un pedido pendiente para cobrar.');
+      submitRef.current = false;
+      setLocalSaving(false);
       return;
     }
 
     const montoRecibido = Number(form.monto_recibido);
     if (isCash && (!Number.isFinite(montoRecibido) || montoRecibido < montoPendiente)) {
       setLocalError('Monto recibido debe cubrir el total pendiente.');
+      submitRef.current = false;
+      setLocalSaving(false);
       return;
     }
 
     if (!isCash && !normalizeOptionalText(form.referencia_pago)) {
       setLocalError('Referencia es obligatoria para tarjeta o transferencia.');
+      submitRef.current = false;
+      setLocalSaving(false);
       return;
     }
 
@@ -221,14 +237,17 @@ export default function VentaRegistrarPagoPedidoModal({
     } catch (error) {
       setLocalError(
         Number(error?.status || 0) === 409
-          ? 'Este pedido ya fue pagado o no esta pendiente de pago.'
+          ? 'Este pedido ya fue pagado o no está pendiente de pago.'
           : (error?.message || 'No se pudo registrar el pago del pedido.')
       );
+    } finally {
+      submitRef.current = false;
+      setLocalSaving(false);
     }
   };
 
   return (
-    <div className="ventas-modal-backdrop" role="presentation" onClick={!saving ? onClose : undefined}>
+    <div className="ventas-modal-backdrop" role="presentation">
       <section
         className="ventas-modal-card ventas-registrar-pago-modal"
         role="dialog"
@@ -239,9 +258,9 @@ export default function VentaRegistrarPagoPedidoModal({
         <header className="ventas-modal-header ventas-finalizar-modal__header">
           <div>
             <h5 id="ventas-registrar-pago-title">Registrar pago</h5>
-            <p>Busca un pedido pendiente real y cobra usando su codigo PED.</p>
+            <p>Busca un pedido pendiente real y cobra usando su código PED.</p>
           </div>
-          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={saving} aria-label="Cerrar">
+          <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={isSubmitting} aria-label="Cerrar">
             <i className="bi bi-x-lg" />
           </button>
         </header>
@@ -253,7 +272,7 @@ export default function VentaRegistrarPagoPedidoModal({
               <input
                 type="search"
                 value={search}
-                placeholder="Buscar por PED, telefono o cliente"
+                placeholder="Buscar por PED, teléfono o cliente"
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
@@ -281,7 +300,7 @@ export default function VentaRegistrarPagoPedidoModal({
                       <span className="ventas-registrar-pago-modal__badge">Pendiente de pago</span>
                     </div>
                     <div className="ventas-registrar-pago-modal__pedido-meta">
-                      <span><i className="bi bi-telephone" /> {pedido.telefono_contacto || pedido.telefono_normalizado || 'Sin telefono'}</span>
+                      <span><i className="bi bi-telephone" /> {pedido.telefono_contacto || pedido.telefono_normalizado || 'Sin teléfono'}</span>
                       <span>{pedido.modalidad}</span>
                       <span>{pedido.canal}</span>
                       <span>{formatDateTime(pedido.fecha_hora_pedido)}</span>
@@ -310,12 +329,12 @@ export default function VentaRegistrarPagoPedidoModal({
                   <strong>{selectedPedido.nombre_contacto}</strong>
                 </div>
                 <div>
-                  <span>Telefono</span>
-                  <strong>{selectedPedido.telefono_contacto || selectedPedido.telefono_normalizado || 'Sin telefono'}</strong>
+                  <span>Teléfono</span>
+                  <strong>{selectedPedido.telefono_contacto || selectedPedido.telefono_normalizado || 'Sin teléfono'}</strong>
                 </div>
                 <div>
                   <span>Modalidad / canal</span>
-                  <strong>{selectedPedido.modalidad} · {selectedPedido.canal}</strong>
+                  <strong>{selectedPedido.modalidad} / {selectedPedido.canal}</strong>
                 </div>
                 <div className="ventas-registrar-pago-modal__selected-total">
                   <span>Total pendiente</span>
@@ -328,7 +347,7 @@ export default function VentaRegistrarPagoPedidoModal({
 
             <div className="ventas-finalizar-modal__grid">
               <label className="ventas-create-modal__field">
-                <span>Metodo de pago</span>
+                <span>Método de pago</span>
                 <select value={form.metodo_pago} onChange={(event) => setField('metodo_pago', event.target.value)}>
                   {PAYMENT_OPTIONS.map((option) => (
                     <option key={option.key} value={option.key}>{option.label}</option>
@@ -359,7 +378,7 @@ export default function VentaRegistrarPagoPedidoModal({
               )}
 
               <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
-                <span>Observacion</span>
+                <span>Observación</span>
                 <input
                   type="text"
                   value={form.observacion_pago}
@@ -379,11 +398,11 @@ export default function VentaRegistrarPagoPedidoModal({
         </div>
 
         <footer className="ventas-modal-footer d-flex justify-content-end gap-2">
-          <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={saving}>
+          <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={isSubmitting}>
             Cancelar
           </button>
-          <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={saving || !selectedPedido}>
-            {saving ? 'Guardando...' : 'Confirmar pago'}
+          <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={isSubmitting || !selectedPedido}>
+            {isSubmitting ? 'Guardando...' : 'Confirmar pago'}
           </button>
         </footer>
       </section>

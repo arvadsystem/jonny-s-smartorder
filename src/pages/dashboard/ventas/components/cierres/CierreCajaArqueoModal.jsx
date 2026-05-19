@@ -7,6 +7,7 @@ export default function CierreCajaArqueoModal({
   detalle,
   tiposArqueo,
   saving,
+  canViewCajaTheoreticalAmounts = true,
   onClose,
   onSubmit
 }) {
@@ -36,12 +37,11 @@ export default function CierreCajaArqueoModal({
   };
 
   return (
-    <div className="ventas-modal-backdrop" onClick={onClose}>
+    <div className="ventas-modal-backdrop">
       <section
-        className="ventas-modal cierres-caja-action-modal"
+        className="ventas-modal cierres-caja-action-modal cierres-caja-compact-modal cierres-caja-arqueo-modal"
         role="dialog"
         aria-modal="true"
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="ventas-modal__header">
           <div className="ventas-modal__title-wrap">
@@ -62,14 +62,24 @@ export default function CierreCajaArqueoModal({
           </button>
         </header>
 
-        <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={handleSubmit}>
-          <div className="ventas-page__stat-card is-warning">
+        <form className="ventas-modal__body cierres-caja-action-modal__body cierres-caja-compact-modal__body" onSubmit={handleSubmit}>
+          <div className="ventas-page__stat-card cierres-caja-compact-summary is-warning">
             <div className="ventas-page__stat-icon text-warning border-0 bg-white">
               <i className="bi bi-cash-stack" />
             </div>
             <div className="inv-prod-kpi-content">
-              <span>Efectivo teorico actual</span>
-              <strong>L. {formatCajaCurrency(efectivoTeorico)}</strong>
+              {canViewCajaTheoreticalAmounts ? (
+                <>
+                  <span>Efectivo teorico actual</span>
+                  <strong>L. {formatCajaCurrency(efectivoTeorico)}</strong>
+                </>
+              ) : (
+                <>
+                  <span>Conteo de efectivo</span>
+                  <strong>Registra el efectivo contado.</strong>
+                  <small className="text-muted">La comparación será revisada según permisos.</small>
+                </>
+              )}
             </div>
           </div>
 
@@ -110,7 +120,7 @@ export default function CierreCajaArqueoModal({
             <span>Observacion</span>
             <textarea
               className="ventas-create-modal__note-input"
-              rows="4"
+              rows="3"
               value={form.observacion}
               onChange={(event) =>
                 setForm((current) => ({ ...current, observacion: event.target.value }))

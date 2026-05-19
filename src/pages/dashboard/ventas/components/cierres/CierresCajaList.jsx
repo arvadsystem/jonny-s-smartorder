@@ -13,10 +13,12 @@ export default function CierresCajaList({
   canCloseSession,
   canRegisterArqueo,
   canUseCloseFlow,
+  canViewCajaTheoreticalAmounts = true,
   onOpenDetalle,
   onOpenArqueo,
   onOpenCerrar
 }) {
+  const desktopColSpan = canViewCajaTheoreticalAmounts ? 9 : 7;
   const renderEmpty = (iconClass, message) => (
     <div className="ventas-create-modal__empty shadow-none border-0 bg-transparent">
       <div className="ventas-create-modal__cart-empty-icon">
@@ -37,28 +39,28 @@ export default function CierresCajaList({
               <th>Responsable</th>
               <th>Fechas</th>
               <th className="text-end">Apertura</th>
-              <th className="text-end">Teorico</th>
+              {canViewCajaTheoreticalAmounts ? <th className="text-end">Teórico</th> : null}
               <th className="text-center">Estado</th>
-              <th className="text-center">Diferencia</th>
+              {canViewCajaTheoreticalAmounts ? <th className="text-center">Diferencia</th> : null}
               <th className="text-end">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="9" className="text-center py-5">
+                <td colSpan={desktopColSpan} className="text-center py-5">
                   <div className="spinner-border text-danger" role="status" />
                 </td>
               </tr>
             ) : error ? (
               <tr>
-                <td colSpan="9" className="text-center py-5">
+                <td colSpan={desktopColSpan} className="text-center py-5">
                   {renderEmpty('bi bi-exclamation-diamond text-danger', error)}
                 </td>
               </tr>
             ) : sesiones.length === 0 ? (
               <tr>
-                <td colSpan="9" className="text-center py-5">
+                <td colSpan={desktopColSpan} className="text-center py-5">
                   {renderEmpty('bi bi-safe2 text-secondary', 'No hay sesiones de caja para los filtros aplicados.')}
                 </td>
               </tr>
@@ -67,12 +69,15 @@ export default function CierresCajaList({
                 const statusBadge = resolveSessionStatusBadge(sesion);
                 const differenceBadge = resolveDifferenceBadge(sesion.diferencia_cierre);
                 const isOpen = sesion.estado_codigo === 'ABIERTA';
+                const hasFormalClose = !isOpen && Boolean(sesion.fecha_cierre);
+                const canOpenDetailForSession =
+                  canViewDetail && (canViewCajaTheoreticalAmounts || hasFormalClose);
 
                 return (
                   <tr
                     key={sesion.id_sesion_caja}
                     className="ventas-page__table-row"
-                    onClick={() => canViewDetail && onOpenDetalle(sesion)}
+                    onClick={() => canOpenDetailForSession && onOpenDetalle(sesion)}
                   >
                     <td>
                       <div className="ventas-page__table-sale">
@@ -97,29 +102,33 @@ export default function CierresCajaList({
                     <td className="text-end align-middle ventas-page__table-total">
                       L. {formatCajaCurrency(sesion.monto_apertura)}
                     </td>
-                    <td className="text-end align-middle ventas-page__table-total">
-                      L. {formatCajaCurrency(sesion.efectivo_teorico)}
-                    </td>
+                    {canViewCajaTheoreticalAmounts ? (
+                      <td className="text-end align-middle ventas-page__table-total">
+                        L. {formatCajaCurrency(sesion.efectivo_teorico)}
+                      </td>
+                    ) : null}
                     <td className="text-center align-middle">
                       <span className={`ventas-page__table-pill ${statusBadge.className}`}>
                         {statusBadge.label}
                       </span>
                     </td>
-                    <td className="text-center align-middle">
-                      <div className="d-grid gap-1 justify-items-center">
-                        <span className={`ventas-page__table-pill ${differenceBadge.className}`}>
-                          {differenceBadge.label}
-                        </span>
-                        <small className="text-muted fw-semibold">
-                          {sesion.diferencia_cierre === null || sesion.diferencia_cierre === undefined
-                            ? '-'
-                            : `L. ${formatCajaCurrency(sesion.diferencia_cierre)}`}
-                        </small>
-                      </div>
-                    </td>
+                    {canViewCajaTheoreticalAmounts ? (
+                      <td className="text-center align-middle">
+                        <div className="d-grid gap-1 justify-items-center">
+                          <span className={`ventas-page__table-pill ${differenceBadge.className}`}>
+                            {differenceBadge.label}
+                          </span>
+                          <small className="text-muted fw-semibold">
+                            {sesion.diferencia_cierre === null || sesion.diferencia_cierre === undefined
+                              ? '-'
+                              : `L. ${formatCajaCurrency(sesion.diferencia_cierre)}`}
+                          </small>
+                        </div>
+                      </td>
+                    ) : null}
                     <td className="text-end align-middle" onClick={(event) => event.stopPropagation()}>
                       <div className="d-inline-flex gap-2">
-                        {canViewDetail ? (
+                        {canOpenDetailForSession ? (
                           <button
                             type="button"
                             className="ventas-page__table-detail-btn"
@@ -177,8 +186,10 @@ export default function CierresCajaList({
         ) : (
           sesiones.map((sesion) => {
             const statusBadge = resolveSessionStatusBadge(sesion);
-            const differenceBadge = resolveDifferenceBadge(sesion.diferencia_cierre);
             const isOpen = sesion.estado_codigo === 'ABIERTA';
+            const hasFormalClose = !isOpen && Boolean(sesion.fecha_cierre);
+            const canOpenDetailForSession =
+              canViewDetail && (canViewCajaTheoreticalAmounts || hasFormalClose);
             return (
               <article key={sesion.id_sesion_caja} className="cierres-caja-mobile-card">
                 <div className="cierres-caja-mobile-card__head">
@@ -204,21 +215,29 @@ export default function CierresCajaList({
                     <span>Apertura</span>
                     <strong>L. {formatCajaCurrency(sesion.monto_apertura)}</strong>
                   </div>
-                  <div>
-                    <span>Teorico</span>
-                    <strong>L. {formatCajaCurrency(sesion.efectivo_teorico)}</strong>
-                  </div>
+                  {canViewCajaTheoreticalAmounts ? (
+                    <div>
+                      <span>Teórico</span>
+                      <strong>L. {formatCajaCurrency(sesion.efectivo_teorico)}</strong>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="cierres-caja-mobile-card__meta">
                   <span>{formatCajaDateTime(sesion.fecha_apertura)}</span>
-                  <span className={`ventas-page__table-pill ${differenceBadge.className}`}>
-                    {differenceBadge.label}
-                  </span>
+                  {canViewCajaTheoreticalAmounts ? (
+                    <span className={`ventas-page__table-pill ${resolveDifferenceBadge(sesion.diferencia_cierre).className}`}>
+                      {resolveDifferenceBadge(sesion.diferencia_cierre).label}
+                    </span>
+                  ) : (
+                    <span className="ventas-page__table-pill bg-light border-secondary text-secondary">
+                      Comparación no visible
+                    </span>
+                  )}
                 </div>
 
                 <div className="cierres-caja-mobile-card__actions">
-                  {canViewDetail ? (
+                  {canOpenDetailForSession ? (
                     <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => onOpenDetalle(sesion)}>
                       Ver detalle
                     </button>
