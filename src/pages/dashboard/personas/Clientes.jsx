@@ -1010,6 +1010,18 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   }, [viewMode]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const forceCardsOnSmallViewport = () => {
+      if (window.innerWidth <= 575.98) {
+        setViewMode((prev) => (prev === "cards" ? prev : "cards"));
+      }
+    };
+    forceCardsOnSmallViewport();
+    window.addEventListener("resize", forceCardsOnSmallViewport);
+    return () => window.removeEventListener("resize", forceCardsOnSmallViewport);
+  }, []);
+
+  useEffect(() => {
     clearClientesListCache();
     setPage(1);
   }, [viewMode, clearClientesListCache]);
