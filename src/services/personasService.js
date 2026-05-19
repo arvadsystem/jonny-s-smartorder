@@ -1,5 +1,6 @@
 import { apiFetch } from './api';
 import { API_URL } from '../utils/constants';
+const CLIENTES_ATOMIC_ROUTE_BLOCK_FLAG = 'clientes_atomic_route_blocked_v1';
 
 const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -289,6 +290,30 @@ const resolveEmpleadosBatchRequest = (payload = {}) => {
 
   return { empleados, ids };
 };
+
+const readClientesAtomicRouteBlocked = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(CLIENTES_ATOMIC_ROUTE_BLOCK_FLAG) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const persistClientesAtomicRouteBlocked = (blocked) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (blocked) {
+      window.sessionStorage.setItem(CLIENTES_ATOMIC_ROUTE_BLOCK_FLAG, '1');
+      return;
+    }
+    window.sessionStorage.removeItem(CLIENTES_ATOMIC_ROUTE_BLOCK_FLAG);
+  } catch {
+    // ignore storage failures
+  }
+};
+
+let clientesAtomicRouteBlocked = readClientesAtomicRouteBlocked();
 
 export const personaService = {
 
@@ -790,6 +815,13 @@ export const personaService = {
   },
 
   createClienteFull: async (payload = {}) => {
+    if (clientesAtomicRouteBlocked) {
+      const blockedError = new Error('Rutas atomicas de clientes bloqueadas para esta sesion.');
+      blockedError.status = 403;
+      blockedError.code = 'CLIENTES_ATOMIC_ROUTE_BLOCKED';
+      throw blockedError;
+    }
+
     const requestPayload = isPlainObject(payload) ? { ...payload } : {};
     const clientePayload = isPlainObject(requestPayload.cliente)
       ? { ...requestPayload.cliente }
@@ -824,8 +856,28 @@ export const personaService = {
     try {
       return await apiFetch('/clientes/full-create', 'POST', requestPayload);
     } catch (error) {
-      if ([404, 405].includes(Number(error?.status))) {
-        return apiFetch('/clientes/atomico', 'POST', requestPayload);
+      const status = Number(error?.status);
+      const code = String(error?.code || '').trim().toUpperCase();
+      const canFallbackToAtomico =
+        [403, 404, 405].includes(status)
+        && code !== 'CSRF';
+
+      if (canFallbackToAtomico) {
+        try {
+          return await apiFetch('/clientes/atomico', 'POST', requestPayload);
+        } catch (atomicoError) {
+          const atomicoStatus = Number(atomicoError?.status);
+          const atomicoCode = String(atomicoError?.code || '').trim().toUpperCase();
+          const shouldBlockAtomicRoutes =
+            atomicoStatus === 403
+            && atomicoCode !== 'CSRF';
+
+          if (shouldBlockAtomicRoutes) {
+            clientesAtomicRouteBlocked = true;
+            persistClientesAtomicRouteBlocked(true);
+          }
+          throw atomicoError;
+        }
       }
       throw error;
     }

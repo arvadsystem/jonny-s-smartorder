@@ -66,10 +66,10 @@ export const useInicioDashboardData = ({ can, isSuperAdmin }) => {
       pedidosCocina: can(PERMISSIONS.COCINA_VER)
         ? cocinaService.listPedidos()
         : Promise.resolve([]),
-      productos: can(PERMISSIONS.INVENTARIO_VER)
+      productos: can(PERMISSIONS.INVENTARIO_PRODUCTOS_VER)
         ? inventarioService.getProductos({ incluirInactivos: true })
         : Promise.resolve([]),
-      insumos: can(PERMISSIONS.INVENTARIO_VER)
+      insumos: can(PERMISSIONS.INVENTARIO_INSUMOS_VER)
         ? inventarioService.getInsumos({ incluirInactivos: true })
         : Promise.resolve([]),
       securitySummary:

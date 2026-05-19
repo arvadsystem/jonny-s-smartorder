@@ -91,7 +91,10 @@ export default function CierresCajaAsignacionesView() {
   const canManage = canAny([PERMISSIONS.VENTAS_CAJAS_PARTICIPANTES_GESTIONAR]);
   const canView = canAny([PERMISSIONS.VENTAS_CAJAS_LISTADO_VER, PERMISSIONS.VENTAS_CAJAS_DETALLE_VER]);
 
-  const scopeQuery = useMemo(() => buildScopeQuery(selectedSucursalId), [selectedSucursalId]);
+  const scopeQuery = useMemo(
+    () => (canSelectSucursal ? buildScopeQuery(selectedSucursalId) : {}),
+    [canSelectSucursal, selectedSucursalId]
+  );
   const deferredSearch = useDeferredValue(search);
   const activeFilters = useMemo(
     () => countActiveFilters({ ...filters, sucursal: canSelectSucursal ? selectedSucursalId : '' }),

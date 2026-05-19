@@ -83,10 +83,14 @@ export default function CierresCajaHistorialView() {
     PERMISSIONS.VENTAS_CAJAS_DETALLE_VER,
     PERMISSIONS.VENTAS_CAJAS_REPORTE_VER
   ]);
+  const canViewHistory = canAny([PERMISSIONS.VENTAS_CAJAS_REPORTE_VER]);
   const canEditClose = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_CERRAR]);
 
   const deferredSearch = useDeferredValue(search);
-  const scopeQuery = useMemo(() => buildScopeQuery(selectedSucursalId), [selectedSucursalId]);
+  const scopeQuery = useMemo(
+    () => (canSelectSucursal ? buildScopeQuery(selectedSucursalId) : {}),
+    [canSelectSucursal, selectedSucursalId]
+  );
   const activeFilters = useMemo(
     () =>
       countActiveFilters({
@@ -165,6 +169,12 @@ export default function CierresCajaHistorialView() {
   }, [detailOpen]);
 
   const loadHistory = useCallback(async () => {
+    if (!canViewHistory) {
+      setCierres([]);
+      setError('');
+      setLoading(false);
+      return;
+    }
     const requestId = historyRequestIdRef.current + 1;
     historyRequestIdRef.current = requestId;
     setLoading(true);
@@ -187,12 +197,12 @@ export default function CierresCajaHistorialView() {
         setLoading(false);
       }
     }
-  }, [openToast, scopeQuery]);
+  }, [canViewHistory, openToast, scopeQuery]);
 
   useEffect(() => {
-    if (!scopeInitialized) return;
+    if (!scopeInitialized || !canViewHistory) return;
     void loadHistory();
-  }, [loadHistory, scopeInitialized]);
+  }, [canViewHistory, loadHistory, scopeInitialized]);
 
   useEffect(
     () => () => {

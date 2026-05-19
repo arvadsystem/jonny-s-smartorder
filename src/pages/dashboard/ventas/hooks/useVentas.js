@@ -141,8 +141,9 @@ export const useVentas = () => {
         hasNextPage: Boolean(serverPagination.hasNextPage ?? (resolvedPage < resolvedTotalPages)),
         hasPreviousPage: Boolean(serverPagination.hasPreviousPage ?? (resolvedPage > 1))
       });
+      const canSelectSucursal = Boolean(response?.filters?.scope?.canSelectSucursal);
       setScopeInfo({
-        canSelectSucursal: Boolean(response?.filters?.scope?.canSelectSucursal),
+        canSelectSucursal,
         selectedSucursalId: response?.filters?.scope?.selectedSucursalId ?? null,
         userSucursalId: response?.filters?.scope?.userSucursalId ?? null,
         limitedByRole: Boolean(response?.filters?.scope?.limitedByRole),
@@ -158,7 +159,7 @@ export const useVentas = () => {
         completadas: Number.parseInt(String(backendSummary?.completadas ?? 0), 10) || 0,
         pendientes: Number.parseInt(String(backendSummary?.pendientes ?? 0), 10) || 0
       });
-      return rows;
+      return { rows, canSelectSucursal };
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar las ventas.');
       setError(message);
@@ -169,7 +170,7 @@ export const useVentas = () => {
     }
   }, [openToast, ventasFilters]);
 
-  const loadCatalogs = useCallback(async () => {
+  const loadCatalogs = useCallback(async (options = {}) => {
     setCatalogLoading(true);
     setCatalogErrors({});
 
@@ -181,9 +182,11 @@ export const useVentas = () => {
       { key: 'recetas', label: '/ventas/catalogos/recetas', request: () => ventasService.getRecetasCatalog() },
       { key: 'descuentos', label: '/ventas/catalogos/descuentos', request: () => ventasService.getDescuentosCatalog() },
       { key: 'tiposDescuento', label: '/ventas/catalogos/tipos-descuento', request: () => ventasService.getTiposDescuentoCatalog() },
-      { key: 'tiposDepartamento', label: '/ventas/catalogos/tipo-departamento', request: () => ventasService.getTipoDepartamentos() },
-      { key: 'sucursales', label: '/sucursales', request: () => sucursalesService.getAll() }
+      { key: 'tiposDepartamento', label: '/ventas/catalogos/tipo-departamento', request: () => ventasService.getTipoDepartamentos() }
     ];
+    if (options?.includeSucursales) {
+      endpointRequests.push({ key: 'sucursales', label: '/sucursales', request: () => sucursalesService.getAll() });
+    }
 
     try {
       const settledResponses = await Promise.allSettled(
@@ -200,6 +203,13 @@ export const useVentas = () => {
         }
 
         const reason = result.reason;
+        const isOptionalSucursalesForbidden =
+          endpoint.key === 'sucursales' && Number(reason?.status ?? 0) === 403;
+        if (isOptionalSucursalesForbidden) {
+          responsesByKey[endpoint.key] = [];
+          return;
+        }
+
         nextCatalogErrors[endpoint.key] = {
           endpoint: endpoint.label,
           status: Number(reason?.status ?? 0) || null,
@@ -344,8 +354,22 @@ export const useVentas = () => {
   }, [openToast]);
 
   useEffect(() => {
-    Promise.allSettled([loadVentas(), loadCatalogs()]);
+    let active = true;
+    void (async () => {
+      const ventasResult = await loadVentas().catch(() => null);
+      if (!active) return;
+      const includeSucursales = Boolean(ventasResult?.canSelectSucursal);
+      await loadCatalogs({ includeSucursales });
+    })();
+    return () => {
+      active = false;
+    };
   }, [loadCatalogs, loadVentas]);
+
+  const refreshCatalogs = useCallback(
+    () => loadCatalogs({ includeSucursales: Boolean(scopeInfo?.canSelectSucursal) }),
+    [loadCatalogs, scopeInfo?.canSelectSucursal]
+  );
 
   const setVentasSearch = useCallback((search) => {
     setVentasFilters((prev) => ({
@@ -422,6 +446,57 @@ export const useVentas = () => {
     [loadVentas, openToast]
   );
 
+  const createPedidoPendiente = useCallback(
+    async (payload) => {
+      setSaving(true);
+      setError('');
+
+      try {
+        const response = await ventasService.createPedidoPendiente(payload);
+        await loadVentas();
+        openToast(
+          'PEDIDO PENDIENTE',
+          'Pedido pendiente creado y enviado a cocina.',
+          'success'
+        );
+        return response;
+      } catch (error) {
+        const message = extractApiMessage(error, 'No se pudo crear el pedido pendiente.');
+        setError(message);
+        openToast('ERROR', message, 'danger');
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [loadVentas, openToast]
+  );
+
+  const registrarPagoPedido = useCallback(
+    async (idPedido, payload) => {
+      setSaving(true);
+      setError('');
+
+      try {
+        const response = await ventasService.registrarPagoPedido(idPedido, payload);
+        await loadVentas();
+        openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
+        return response;
+      } catch (error) {
+        const isConflict = Number(error?.status || 0) === 409;
+        const message = isConflict
+          ? 'Este pedido ya fue pagado o no esta pendiente de pago.'
+          : extractApiMessage(error, 'No se pudo registrar el pago del pedido.');
+        setError(message);
+        openToast('ERROR', message, 'danger');
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [loadVentas, openToast]
+  );
+
   return {
     ventas,
     summary,
@@ -446,13 +521,15 @@ export const useVentas = () => {
     toast,
     closeToast,
     refreshVentas: loadVentas,
-    refreshCatalogs: loadCatalogs,
+    refreshCatalogs,
     setVentasSearch,
     setVentasPage,
     setVentasPageSize,
     setVentasSucursal,
     getVentaDetail,
-    createVenta
+    createVenta,
+    createPedidoPendiente,
+    registrarPagoPedido
   };
 };
 

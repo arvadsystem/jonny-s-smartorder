@@ -219,8 +219,7 @@ export default function UsuariosTab({ openToast }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const isTableView = viewMode === "table";
-  const limit = isTableView ? 10 : 9;
+  const limit = 9;
   const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);

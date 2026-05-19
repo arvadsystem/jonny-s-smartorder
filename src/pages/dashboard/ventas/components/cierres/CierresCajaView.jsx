@@ -79,6 +79,7 @@ export default function CierresCajaView() {
 
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
   const roleSet = useMemo(() => new Set(normalizeRoles(user?.roles)), [user?.roles]);
+  const isCajero = roleSet.has('CAJERO');
 
   const canSelectSucursal =
     isSuperAdmin || canAny([PERMISSIONS.VENTAS_CAJAS_MULTISUCURSAL_VER]);
@@ -91,9 +92,17 @@ export default function CierresCajaView() {
   const canOpenSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_ABRIR]);
   const canResolveDifference = canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
   const canUseCloseFlow = canCloseSession;
+  const canListSesiones = canAny([
+    PERMISSIONS.VENTAS_CAJAS_LISTADO_VER,
+    PERMISSIONS.VENTAS_CAJAS_DETALLE_VER,
+    PERMISSIONS.VENTAS_CAJAS_REPORTE_VER
+  ]);
 
   const deferredSearch = useDeferredValue(filters.search);
-  const scopeQuery = useMemo(() => buildScopeQuery(selectedSucursalId), [selectedSucursalId]);
+  const scopeQuery = useMemo(
+    () => (canSelectSucursal ? buildScopeQuery(selectedSucursalId) : {}),
+    [canSelectSucursal, selectedSucursalId]
+  );
 
   const visibleSesiones = useMemo(
     () => sesiones.filter((session) => matchesCajaSession(session, deferredSearch)),
@@ -163,7 +172,7 @@ export default function CierresCajaView() {
   }, [loadCatalogos, loadSesionActiva, scopeInitialized, scopeQuery]);
 
   useEffect(() => {
-    if (!scopeInitialized) return;
+    if (!scopeInitialized || !canListSesiones) return;
 
     const query = {
       ...scopeQuery,
@@ -177,6 +186,7 @@ export default function CierresCajaView() {
     filters.fecha_desde,
     filters.fecha_hasta,
     filters.id_estado_sesion_caja,
+    canListSesiones,
     loadSesiones,
     scopeInitialized,
     scopeQuery
@@ -382,6 +392,7 @@ export default function CierresCajaView() {
           stats={stats}
           sesionActiva={sesionActiva}
           loading={loadingCatalogos || loadingSesiones}
+          hideKpis={isCajero}
           canSelectSucursal={canSelectSucursal}
           selectedSucursalId={selectedSucursalId}
           sucursales={sucursales}

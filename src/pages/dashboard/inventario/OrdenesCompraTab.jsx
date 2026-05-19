@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
 import { usePermisos } from '../../../context/PermisosContext';
 import { useAuth } from '../../../hooks/useAuth';
-import { PERMISSIONS } from '../../../utils/permissions';
+import { PERMISSIONS, isSuperAdminRoleList } from '../../../utils/permissions';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
@@ -594,21 +594,33 @@ const OrdenesCompraTab = ({ openToast }) => {
     PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR,
     PERMISSIONS.INVENTARIO_INSUMOS_CREAR
   ]);
+  const canVerAlmacenesCatalogo = canAny([
+    PERMISSIONS.INVENTARIO_ALMACENES_VER,
+    PERMISSIONS.INVENTARIO_ALMACENES_DETALLE_VER
+  ]);
+  const canVerCategoriasProductosCatalogo = canAny([PERMISSIONS.INVENTARIO_CATEGORIAS_VER]);
+  const canVerCategoriasInsumosCatalogo = canAny([PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_VER]);
+  const canVerUnidadesMedidaCatalogo = canAny([PERMISSIONS.PARAMETROS_UNIDADES_MEDIDA_VER]);
+  const canVerProveedoresCatalogo = canAny([
+    PERMISSIONS.INVENTARIO_PROVEEDORES_VER,
+    PERMISSIONS.INVENTARIO_PROVEEDORES_DETALLE_VER
+  ]);
+  const canVerProductosCatalogo = canAny([
+    PERMISSIONS.INVENTARIO_PRODUCTOS_VER,
+    PERMISSIONS.INVENTARIO_PRODUCTOS_LISTADO_VER,
+    PERMISSIONS.INVENTARIO_PRODUCTOS_DETALLE_VER
+  ]);
+  const canVerInsumosCatalogo = canAny([
+    PERMISSIONS.INVENTARIO_INSUMOS_VER,
+    PERMISSIONS.INVENTARIO_INSUMOS_LISTADO_VER,
+    PERMISSIONS.INVENTARIO_INSUMOS_DETALLE_VER
+  ]);
   const canSolicitarItemNuevo = canCrear && !canCrearCatalogoDirecto;
   // AM: separa actor operativo (cocina/cajero) de actor administrativo para no mezclar etapas.
   const isAdminFlowActor = canConvertir || canAbastecer || canGestionar || canVerTodas;
   const isSucursalOperativeActor = canRecepcionar && !isAdminFlowActor;
   // AM: visibilidad de historial/evidencias abastecidas limitada a super admin.
-  const isSuperAdmin = Array.isArray(user?.roles)
-    ? user.roles
-        .map((role) =>
-          String(role || '')
-            .trim()
-            .replace(/[\s-]+/g, '_')
-            .toUpperCase()
-        )
-        .includes('SUPER_ADMIN')
-    : false;
+  const isSuperAdmin = isSuperAdminRoleList(user?.roles);
   // AM: cancelacion administrativa reservada para Admin/Super Admin.
   const canCancelarOrden = canCancelar || isSuperAdmin;
   const toast = useCallback(
@@ -1097,12 +1109,22 @@ const flowDotItems = useMemo(() => {
     try {
       // AM: primero resuelve contexto de creacion para derivar filtros seguros de catalogo operativo.
       const [prov, alm, contextoCreacion, catsProd, catsIns, units] = await Promise.all([
-        canConvertir ? inventarioService.getProveedores() : Promise.resolve([]),
-        canCrear || canGestionar ? inventarioService.getAlmacenes() : Promise.resolve([]),
+        canConvertir && canVerProveedoresCatalogo
+          ? inventarioService.getProveedores()
+          : Promise.resolve([]),
+        (canCrear || canGestionar) && canVerAlmacenesCatalogo
+          ? inventarioService.getAlmacenes()
+          : Promise.resolve([]),
         canCrear ? inventarioService.getOrdenCompraWorkflowContextoCreacion() : Promise.resolve(null),
-        canAtenderSolicitudItem ? inventarioService.getCategorias() : Promise.resolve([]),
-        canAtenderSolicitudItem ? inventarioService.getCategoriasInsumos() : Promise.resolve([]),
-        canAtenderSolicitudItem ? inventarioService.getUnidadesMedida() : Promise.resolve([])
+        canAtenderSolicitudItem && canVerCategoriasProductosCatalogo
+          ? inventarioService.getCategorias()
+          : Promise.resolve([]),
+        canAtenderSolicitudItem && canVerCategoriasInsumosCatalogo
+          ? inventarioService.getCategoriasInsumos()
+          : Promise.resolve([]),
+        canAtenderSolicitudItem && canVerUnidadesMedidaCatalogo
+          ? inventarioService.getUnidadesMedida()
+          : Promise.resolve([])
       ]);
 
       const contextData = contextoCreacion?.data || {};
@@ -1123,8 +1145,12 @@ const flowDotItems = useMemo(() => {
           : undefined;
 
       const [p, i] = await Promise.all([
-      canCrear || canEditarSolicitud ? inventarioService.getProductos(catalogOptions) : Promise.resolve([]),
-      canCrear || canEditarSolicitud ? inventarioService.getInsumos(catalogOptions) : Promise.resolve([])
+        canVerProductosCatalogo && (canCrear || canEditarSolicitud)
+          ? inventarioService.getProductos(catalogOptions)
+          : Promise.resolve([]),
+        canVerInsumosCatalogo && (canCrear || canEditarSolicitud)
+          ? inventarioService.getInsumos(catalogOptions)
+          : Promise.resolve([])
       ]);
 
       setProductos(Array.isArray(p) ? p : []);
@@ -1145,7 +1171,22 @@ const flowDotItems = useMemo(() => {
     } finally {
       if (!options?.silent) setLoadingCatalog(false);
     }
-  }, [canAtenderSolicitudItem, canConvertir, canCrear, canEditarSolicitud, canGestionar, isSucursalOperativeActor, toast]);
+  }, [
+    canAtenderSolicitudItem,
+    canConvertir,
+    canCrear,
+    canEditarSolicitud,
+    canGestionar,
+    canVerAlmacenesCatalogo,
+    canVerCategoriasInsumosCatalogo,
+    canVerCategoriasProductosCatalogo,
+    canVerInsumosCatalogo,
+    canVerProductosCatalogo,
+    canVerProveedoresCatalogo,
+    canVerUnidadesMedidaCatalogo,
+    isSucursalOperativeActor,
+    toast
+  ]);
 
   useEffect(() => {
     if (permisosLoading) return;

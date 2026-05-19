@@ -50,6 +50,20 @@ const createInitialFiltersDraft = () => ({
   sortBy: "recientes",
 });
 
+const EMPLEADO_PUESTO_OPTIONS = [
+  { value: "Encargado", label: "Encargado" },
+  { value: "Cajero", label: "Cajero" },
+  { value: "Jefe de cocina", label: "Jefe de cocina" },
+  { value: "Asistente de cocina", label: "Asistente de cocina" },
+  { value: "Mesero", label: "Mesero" },
+];
+
+const normalizePuestoValue = (value) =>
+  String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+
 const buildEmpleadosSelectStyles = (hasError = false) => ({
   control: (base, state) => ({
     ...base,
@@ -804,7 +818,8 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [page, setPage] = useState(1);
-  const limit = 10;
+  const isTableView = viewMode === "table";
+  const limit = isTableView ? 10 : 9;
   const [total, setTotal] = useState(0);
   const [globalStats, setGlobalStats] = useState({ total: 0, activas: 0, inactivas: 0 });
 
@@ -946,6 +961,39 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     () => buildEmpleadosSelectStyles(Boolean(errors.id_sucursal)),
     [errors.id_sucursal]
   );
+
+  const generoSelectOptions = useMemo(
+    () => ([
+      { value: "M", label: "Masculino" },
+      { value: "F", label: "Femenino" },
+      { value: "O", label: "Otro" },
+    ]),
+    []
+  );
+
+  const generoSelectValue = useMemo(() => {
+    const selectedGenero = String(inlinePersonaForm?.genero ?? "").trim().toUpperCase();
+    if (!selectedGenero) return null;
+    return generoSelectOptions.find((option) => option.value === selectedGenero) || null;
+  }, [inlinePersonaForm?.genero, generoSelectOptions]);
+
+  const generoSelectStyles = useMemo(
+    () => buildEmpleadosSelectStyles(Boolean(errors.genero)),
+    [errors.genero]
+  );
+  const puestoSelectStyles = useMemo(
+    () => buildEmpleadosSelectStyles(Boolean(errors.cargo)),
+    [errors.cargo]
+  );
+  const puestoSelectOptions = useMemo(
+    () => EMPLEADO_PUESTO_OPTIONS,
+    []
+  );
+  const puestoSelectValue = useMemo(() => {
+    const selected = normalizePuestoValue(form?.cargo);
+    if (!selected) return null;
+    return puestoSelectOptions.find((option) => normalizePuestoValue(option.value) === selected) || null;
+  }, [form?.cargo, puestoSelectOptions]);
 
   const selectedPersona = useMemo(() => {
     const selectedPersonaId = String(form.id_persona ?? "").trim();
@@ -1903,11 +1951,19 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   );
 
   const sanitizeForm = () => ({
+    // AM: normalizamos cargo a un valor permitido para evitar entradas manipuladas desde cliente.
+    cargo: (() => {
+      const normalizedCargo = normalizePuestoValue(form.cargo);
+      if (!normalizedCargo) return "";
+      const allowedOption = EMPLEADO_PUESTO_OPTIONS.find(
+        (option) => normalizePuestoValue(option.value) === normalizedCargo
+      );
+      return allowedOption ? allowedOption.value : "";
+    })(),
     id_persona: Number.parseInt(String(form.id_persona), 10),
     id_sucursal: Number.parseInt(String(form.id_sucursal), 10),
     fecha_ingreso: form.fecha_ingreso,
     salario_base: Number.parseFloat(String(form.salario_base).replace(",", ".")),
-    cargo: String(form.cargo ?? "").trim(),
     nombre_referencia: String(form.nombre_referencia ?? "").trim(),
     telefono_referencia: String(form.telefono_referencia ?? "").trim(),
     estado: Boolean(form.estado),
@@ -1936,6 +1992,16 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     if (form.salario_base === "") currentErrors.salario_base = "Ingresa el salario base";
     if (Number.isNaN(payload.salario_base) || payload.salario_base < 0) {
       currentErrors.salario_base = "Debe ser un numero valido";
+    }
+    const cargoRaw = String(form.cargo ?? "").trim();
+    if (cargoRaw) {
+      const normalizedCargo = normalizePuestoValue(cargoRaw);
+      const isAllowedCargo = EMPLEADO_PUESTO_OPTIONS.some(
+        (option) => normalizePuestoValue(option.value) === normalizedCargo
+      );
+      if (!isAllowedCargo) {
+        currentErrors.cargo = "Selecciona un puesto valido de la lista";
+      }
     }
     const referenceName = String(form.nombre_referencia ?? "").trim();
     if (referenceName && !/^[\p{L}\s]+$/u.test(referenceName)) {
@@ -3258,16 +3324,19 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
                   <div className="col-12 col-md-6">
                     <label className="form-label text-light text-opacity-75">Genero</label>
-                    <select
-                      className={`form-select ${errors.genero ? "is-invalid" : ""}`}
-                      value={inlinePersonaForm.genero}
-                      onChange={(event) => handleInlinePersonaFieldChange("genero", event.target.value)}
-                    >
-                      <option value="">Seleccione</option>
-                      <option value="M">Masculino</option>
-                      <option value="F">Femenino</option>
-                      <option value="O">Otro</option>
-                    </select>
+                    <Select
+                      inputId="empleado-genero-select"
+                      className={`empleados-select ${errors.genero ? "is-invalid" : ""}`}
+                      classNamePrefix="empleados-select"
+                      placeholder="Seleccione"
+                      isClearable
+                      options={generoSelectOptions}
+                      value={generoSelectValue}
+                      onChange={(option) => handleInlinePersonaFieldChange("genero", option?.value || "")}
+                      styles={generoSelectStyles}
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                      menuPosition="fixed"
+                    />
                     {errors.genero ? <div className="invalid-feedback d-block">{errors.genero}</div> : null}
                   </div>
 
@@ -3399,14 +3468,25 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
               <div className="col-12">
                 <label className="form-label text-light text-opacity-75">Cargo / Puesto</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={form.cargo}
-                  onChange={(event) => setForm((state) => ({ ...state, cargo: event.target.value }))}
-                  placeholder="Ej. Cajero, Supervisor, Auxiliar"
-                  maxLength={120}
+                <Select
+                  inputId="empleado-puesto-select"
+                  className={`empleados-select ${errors.cargo ? "is-invalid" : ""}`}
+                  classNamePrefix="empleados-select"
+                  placeholder="Selecciona un puesto"
+                  isSearchable={false}
+                  isClearable
+                  options={puestoSelectOptions}
+                  value={puestoSelectValue}
+                  onChange={(option) => {
+                    setForm((state) => ({ ...state, cargo: option?.value ? String(option.value) : "" }));
+                    setErrors((state) => ({ ...state, cargo: undefined }));
+                  }}
+                  styles={puestoSelectStyles}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                  menuPosition="fixed"
+                  isDisabled={actionLoading || Boolean(deletingId)}
                 />
+                {errors.cargo ? <div className="invalid-feedback d-block">{errors.cargo}</div> : null}
               </div>
 
               <div className="col-12 col-md-6">
