@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useDeferredValue, useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import PedidosEmptyState from './PedidosEmptyState';
 import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
 import VentasToast from './VentasToast';
@@ -45,9 +45,37 @@ const initialConfirmDialog = {
 const buildPedidoVisibleCode = (pedido) => {
   const rawCode = String(pedido?.codigo_venta || '').trim();
   if (rawCode) return rawCode;
-  const idPedido = Number(pedido?.id_pedido ?? 0);
-  if (!idPedido) return 'VTA-S/N';
-  return `VTA-${String(idPedido).padStart(5, '0')}`;
+  return 'Sin VTA';
+};
+
+const isPedidoKdsVencido = (pedido) => {
+  if (pedido?.kds_vencido === true) return true;
+  if (String(pedido?.kds_vencido || '').toLowerCase() === 'true') return true;
+  return false;
+};
+
+const TECHNICAL_MESSAGE_PATTERNS = [
+  /cannot read/i,
+  /internal server error/i,
+  /syntax error/i,
+  /relation .* does not exist/i,
+  /column .* does not exist/i,
+  /sql/i,
+  /stack/i
+];
+
+const isTechnicalMessage = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  return TECHNICAL_MESSAGE_PATTERNS.some((pattern) => pattern.test(raw));
+};
+
+const extractUiMessage = (error, fallbackMessage = 'No se pudo completar la acción. Intenta nuevamente.') => {
+  const backendMessage = String(error?.data?.message || error?.data?.mensaje || '').trim();
+  if (backendMessage && !isTechnicalMessage(backendMessage)) return backendMessage;
+  const directMessage = String(error?.message || '').trim();
+  if (directMessage && !isTechnicalMessage(directMessage)) return directMessage;
+  return fallbackMessage;
 };
 
 export default function PedidosView() {
@@ -154,7 +182,7 @@ export default function PedidosView() {
         return nextPedidos;
       });
     } catch (err) {
-      setErrorMessage(String(err?.message || 'No se pudo cargar el tablero de pedidos.'));
+      setErrorMessage(extractUiMessage(err, 'No se pudo cargar el tablero de pedidos.'));
       setPedidos([]);
     } finally {
       if (!silent) setLoading(false);
@@ -204,9 +232,10 @@ export default function PedidosView() {
       if (response?.message) {
         openToast('PEDIDO ACTUALIZADO', response.message, 'success');
       }
-    } catch {
-      setErrorMessage('No se pudo actualizar el pedido. Intenta nuevamente.');
-      openToast('ERROR', 'No se pudo actualizar el pedido. Intenta nuevamente.', 'danger');
+    } catch (err) {
+      const message = extractUiMessage(err);
+      setErrorMessage(message);
+      openToast('ERROR', message, 'danger');
     } finally {
       setActionBusyId(null);
     }
@@ -222,7 +251,7 @@ export default function PedidosView() {
     setConfirmDialog({
       open: true,
       title: 'Confirmar entrega',
-      message: '¿Confirmas que este pedido fue entregado al cliente?',
+      message: 'Confirmas que este pedido fue entregado al cliente?',
       idPedido,
       estadoDestino: 'COMPLETADO'
     });
@@ -234,7 +263,7 @@ export default function PedidosView() {
     setConfirmDialog({
       open: true,
       title: 'Confirmar no entregado',
-      message: '¿Confirmas marcar este pedido como no entregado? Esta acción quedará registrada como dato histórico.',
+      message: 'Confirmas marcar este pedido como no entregado? Esta accion quedara registrada como dato historico.',
       idPedido,
       estadoDestino: 'no_entregado'
     });
@@ -369,7 +398,8 @@ export default function PedidosView() {
                       key={pedido.id_pedido}
                       pedido={pedido}
                       busy={actionBusyId === pedido.id_pedido}
-                      onSendReady={() => handleStateChange(pedido.id_pedido, 'LISTO_PARA_ENTREGA')}
+                      onComplete={isPedidoKdsVencido(pedido) ? () => handleCompletePedido(pedido) : undefined}
+                      onNoEntregado={isPedidoKdsVencido(pedido) ? () => handleNoEntregadoPedido(pedido) : undefined}
                     />
                   ))
                 )}
@@ -420,7 +450,6 @@ function PedidoCard({
   pedido,
   busy = false,
   onSendKitchen,
-  onSendReady,
   onComplete,
   onNoEntregado
 }) {
@@ -429,6 +458,9 @@ function PedidoCard({
     : 'Consumidor final';
   const cleanDescription = cleanPedidoDescription(pedido?.descripcion_pedido);
   const laneCode = mapPedidoStateCode(pedido);
+  const hasCodigoVenta = String(pedido?.codigo_venta || '').trim().length > 0;
+  const visibleCode = buildPedidoVisibleCode(pedido);
+  const kdsVencido = isPedidoKdsVencido(pedido);
 
   return (
     <div className="ventas-create-modal__cart-item mb-2">
@@ -438,6 +470,12 @@ function PedidoCard({
             <span className="badge bg-secondary" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
               PEDIDO
             </span>
+            <span
+              className={`badge ${hasCodigoVenta ? 'bg-dark' : 'bg-warning text-dark'}`}
+              style={{ fontSize: '0.65rem', fontWeight: 'bold' }}
+            >
+              {visibleCode}
+            </span>
           </div>
           <strong className="d-flex align-items-center gap-2">
             <span>#{pedido.id_pedido} - {clienteName}</span>
@@ -445,6 +483,13 @@ function PedidoCard({
           <small className="text-muted">
             <i className="bi bi-clock" /> {new Date(pedido.fecha_hora_pedido).toLocaleTimeString()}
           </small>
+          {laneCode === 'EN_COCINA' && kdsVencido ? (
+            <div className="mt-1">
+              <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
+                Pendiente vencido
+              </span>
+            </div>
+          ) : null}
         </div>
         <div className="ventas-create-modal__line-total" style={{ fontSize: '1.1rem' }}>
           L {Number(pedido.total || 0).toFixed(2)}
@@ -472,19 +517,38 @@ function PedidoCard({
           </div>
         ) : null}
 
-        {laneCode === 'EN_COCINA' ? (
-          <button
-            className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
-            onClick={onSendReady}
-            disabled={busy}
-            type="button"
-            style={{ minHeight: '36px', fontSize: '0.85rem' }}
-          >
-            {busy ? 'Procesando...' : 'Listo para entrega'} <i className="bi bi-arrow-right" />
-          </button>
+        {laneCode === 'LISTO_PARA_ENTREGA' ? (
+          <div className="d-grid w-100 gap-2">
+            <button
+              className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+              onClick={onComplete}
+              disabled={busy}
+              type="button"
+              style={{ minHeight: '36px', fontSize: '0.85rem' }}
+            >
+              {busy ? 'Procesando...' : 'Completar'} <i className="bi bi-check2-circle" />
+            </button>
+            <button
+              className="w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+              onClick={onNoEntregado}
+              disabled={busy}
+              type="button"
+              style={{
+                minHeight: '36px',
+                fontSize: '0.85rem',
+                borderRadius: '10px',
+                border: '1px solid #f59e0b',
+                background: '#fff7ed',
+                color: '#9a3412',
+                fontWeight: 600
+              }}
+            >
+              {busy ? 'Procesando...' : 'No entregado'} <i className="bi bi-x-circle" />
+            </button>
+          </div>
         ) : null}
 
-        {laneCode === 'LISTO_PARA_ENTREGA' ? (
+        {laneCode === 'EN_COCINA' && kdsVencido ? (
           <div className="d-grid w-100 gap-2">
             <button
               className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
@@ -553,3 +617,9 @@ function ConfirmActionModal({ open, title, message, busy = false, onCancel, onCo
     </div>
   );
 }
+
+
+
+
+
+

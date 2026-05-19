@@ -21,10 +21,118 @@ const classifyModification = (value) => {
   return { type: 'mod', label: text };
 };
 
+const normalizeKey = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const splitModLabel = (rawLabel) => {
+  const text = String(rawLabel || '').trim();
+  const colonIndex = text.indexOf(':');
+  if (colonIndex <= 0) return { title: '', value: text };
+  return {
+    title: text.slice(0, colonIndex).trim(),
+    value: text.slice(colonIndex + 1).trim()
+  };
+};
+
+const buildItemModGroups = (item) => {
+  const groups = [];
+  const map = new Map();
+  const pushValue = (key, title, type, value) => {
+    if (!value) return;
+    if (!map.has(key)) {
+      map.set(key, { key, title, type, values: [] });
+      groups.push(map.get(key));
+    }
+    const target = map.get(key);
+    if (!target.values.includes(value)) target.values.push(value);
+  };
+
+  const mods = Array.isArray(item?.modificaciones) ? item.modificaciones : [];
+  const noteValues = [];
+  mods
+    .map(classifyModification)
+    .filter(Boolean)
+    .slice(0, 8)
+    .forEach((mod) => {
+      const parts = splitModLabel(mod.label);
+      const rawTitle = String(parts.title || '').trim();
+      const titleKey = normalizeKey(rawTitle);
+      const value = parts.value || mod.label;
+      const rawKey = normalizeKey(mod.label);
+
+      const isExplicitSalsaTitle =
+        titleKey === 'salsa' ||
+        titleKey === 'salsas' ||
+        titleKey === 'salsa alitas' ||
+        titleKey === 'salsas alitas';
+      const isExplicitComplementTitle =
+        titleKey === 'complemento' ||
+        titleKey === 'complementos';
+      const isExplicitNoteTitle =
+        titleKey === 'nota' ||
+        titleKey === 'notas' ||
+        titleKey === 'observacion' ||
+        titleKey === 'observaciones' ||
+        titleKey === 'comentario' ||
+        titleKey === 'comentarios' ||
+        titleKey === 'descripcion';
+
+      const isExplicitSalsaLine =
+        rawKey.startsWith('salsa alitas:') ||
+        rawKey.startsWith('salsas alitas:') ||
+        rawKey.startsWith('salsa:') ||
+        rawKey.startsWith('salsas:');
+      const isExplicitComplementLine =
+        rawKey.startsWith('complemento:') ||
+        rawKey.startsWith('complementos:');
+
+      if (isExplicitSalsaTitle || isExplicitSalsaLine) {
+        const title = rawTitle || 'Salsa alitas';
+        const key = titleKey || 'salsas';
+        pushValue(key, title, 'salsa', value);
+        return;
+      }
+
+      if (isExplicitComplementTitle || isExplicitComplementLine) {
+        const title = rawTitle || 'Complementos';
+        const key = titleKey || 'complementos';
+        pushValue(key, title, 'complemento', value);
+        return;
+      }
+
+      if (isExplicitNoteTitle) {
+        if (value) noteValues.push(value);
+        return;
+      }
+
+      if (rawTitle) {
+        noteValues.push(`${rawTitle}: ${value}`);
+        return;
+      }
+
+      if (mod.label) noteValues.push(mod.label);
+    });
+
+  if (item?.observacion) noteValues.push(String(item.observacion).trim());
+  const mergedNote = noteValues
+    .filter(Boolean)
+    .map((value) => String(value).trim())
+    .filter((value, index, arr) => arr.indexOf(value) === index)
+    .join(', ');
+  if (mergedNote) pushValue('notas', 'Notas', 'nota', mergedNote);
+
+  return groups;
+};
+
 export default function CocinaOrderCard({
   canAdvance,
   isSuperAdmin = false,
   canOpenDetail,
+  isScreenMode = false,
   isPendingColumn = false,
   pedido,
   now,
@@ -71,6 +179,38 @@ export default function CocinaOrderCard({
     (item) => String(item.observacion || '').includes('[PUBLIC-MENU]')
   );
   const hasStatusBadges = isExpiring || isPublicMenu;
+  const renderItem = (item) => {
+    const groupedMods = buildItemModGroups(item).sort((a, b) => {
+      const rank = { salsa: 0, complemento: 1, nota: 2, mod: 3 };
+      return (rank[a.type] ?? 9) - (rank[b.type] ?? 9);
+    });
+    const isOrphan = item.tipo_item === 'ITEM';
+    return (
+      <div
+        key={item.id_detalle || `${item.tipo_item}-${item.nombre_item}`}
+        className="kds-card__item"
+      >
+        <div className={`kds-qty${isOrphan ? ' is-muted' : ''}`}>{item.cantidad}</div>
+        <div>
+          <div className="kds-card__item-name">
+            {item.nombre_item}
+          </div>
+          {groupedMods.length > 0 ? (
+            <div className="kds-card__item-mods">
+              {groupedMods.map((group) => (
+                <p key={`${item.id_detalle || item.nombre_item}-${group.key}`} className={`kds-mod-line is-${group.type}`}>
+                  <span className="kds-mod-line__title">{group.title}:</span>{' '}
+                  <span className="kds-mod-line__values">
+                    {group.values.join(', ')}
+                  </span>
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <motion.article
@@ -88,10 +228,12 @@ export default function CocinaOrderCard({
       <div className="kds-card__head">
         <div className="kds-card__head-main">
           <span className="kds-card__ticket">{pedido.numero_ticket}</span>
-          <div className="kds-card__head-client">
-            <i className="bi bi-person" aria-hidden="true" />
-            <span>{pedido.cliente_nombre || 'Consumidor final'}</span>
-          </div>
+          {!isScreenMode ? (
+            <div className="kds-card__head-client">
+              <i className="bi bi-person" aria-hidden="true" />
+              <span>{pedido.cliente_nombre || 'Consumidor final'}</span>
+            </div>
+          ) : null}
           <span className={`kds-chip kds-card__head-type ${SERVICE_CLASSES[pedido.tipo_servicio] || 'is-service'}`}>
             {tipoPedidoLabel}
           </span>
@@ -123,73 +265,11 @@ export default function CocinaOrderCard({
       ) : null}
 
       <div className="kds-card__items">
-        {(isDensePendingCard ? denseLeftItems : allItems).map((item) => {
-          const visibleMods = Array.isArray(item.modificaciones)
-            ? item.modificaciones
-                .map(classifyModification)
-                .filter(Boolean)
-                .slice(0, 4)
-            : [];
-          const isOrphan = item.tipo_item === 'ITEM';
-
-          return (
-            <div
-              key={item.id_detalle || `${item.tipo_item}-${item.nombre_item}`}
-              className="kds-card__item"
-            >
-              <div className={`kds-qty${isOrphan ? ' is-muted' : ''}`}>{item.cantidad}</div>
-              <div>
-                <div className="kds-card__item-name">
-                  {item.nombre_item}
-                </div>
-                {visibleMods.length > 0 ? (
-                  <div className="kds-card__item-mods">
-                    {visibleMods.map((mod) => (
-                      <span key={`${item.id_detalle || item.nombre_item}-${mod.type}-${mod.label}`} className={`kds-mod is-${mod.type}`}>
-                        {mod.label}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
+        {(isDensePendingCard ? denseLeftItems : allItems).map(renderItem)}
       </div>
       {isDensePendingCard ? (
         <div className="kds-card__items kds-card__items--secondary">
-          {denseRightItems.map((item) => {
-            const visibleMods = Array.isArray(item.modificaciones)
-              ? item.modificaciones
-                  .map(classifyModification)
-                  .filter(Boolean)
-                  .slice(0, 4)
-              : [];
-            const isOrphan = item.tipo_item === 'ITEM';
-
-            return (
-              <div
-                key={item.id_detalle || `${item.tipo_item}-${item.nombre_item}`}
-                className="kds-card__item"
-              >
-                <div className={`kds-qty${isOrphan ? ' is-muted' : ''}`}>{item.cantidad}</div>
-                <div>
-                  <div className="kds-card__item-name">
-                    {item.nombre_item}
-                  </div>
-                  {visibleMods.length > 0 ? (
-                    <div className="kds-card__item-mods">
-                      {visibleMods.map((mod) => (
-                        <span key={`${item.id_detalle || item.nombre_item}-${mod.type}-${mod.label}`} className={`kds-mod is-${mod.type}`}>
-                          {mod.label}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
+          {denseRightItems.map(renderItem)}
         </div>
       ) : null}
 

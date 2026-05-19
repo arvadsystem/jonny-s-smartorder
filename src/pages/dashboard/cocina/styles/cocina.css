@@ -369,9 +369,9 @@
 
 .kds-tv-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
-  gap: 1rem;
+  gap: 1.35rem;
   padding: 1rem 1.25rem;
   background: var(--kds-surface);
   border-bottom: 1px solid var(--kds-border);
@@ -382,6 +382,22 @@
   font-weight: 800;
   letter-spacing: 0.01em;
   color: var(--kds-text);
+}
+
+.kds-tv-header__clock {
+  font-size: 1.45rem;
+  font-weight: 900;
+  font-family: var(--kds-mono);
+  line-height: 1;
+  color: #e2ecff;
+}
+
+.kds-realtime--tv {
+  margin-left: auto;
+  margin-right: 0;
+  font-size: 1.02rem;
+  align-items: baseline;
+  gap: 0.45rem;
 }
 
 /* ── Columna ─────────────────────────────────────────────────────────── */
@@ -566,11 +582,11 @@
 }
 
 .kds-card__ticket {
-  font-size: 0.95rem;
+  font-size: 1.2rem;
   font-weight: 900;
-  color: var(--kds-amber);
+  color: var(--kds-blue);
   font-family: var(--kds-mono);
-  letter-spacing: -0.01em;
+  letter-spacing: 0.01em;
 }
 
 .kds-card__timer {
@@ -688,10 +704,10 @@
 }
 
 .kds-card__item-name {
-  font-size: 0.875rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--kds-text);
-  line-height: 1.3;
+  line-height: 1.22;
 }
 
 .kds-card__item-mods {
@@ -701,30 +717,35 @@
   margin-top: 0.35rem;
 }
 
-.kds-mod {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.67rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  background: var(--kds-red-dim);
-  color: var(--kds-red);
-  border: 1px solid rgba(239, 68, 68, 0.18);
+.kds-mod-line {
+  margin: 0;
+  display: block;
+  width: 100%;
+  font-size: 0.82rem;
+  line-height: 1.32;
+  color: var(--kds-text-2);
 }
 
-.kds-mod.is-salsa {
-  background: rgba(59, 130, 246, 0.14);
-  color: var(--kds-blue);
-  border-color: rgba(59, 130, 246, 0.26);
+.kds-mod-line__title {
+  font-weight: 800;
+  color: var(--kds-text-3);
 }
 
-.kds-mod.is-complemento {
-  background: rgba(34, 197, 94, 0.14);
+.kds-mod-line__values {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.kds-mod-line.is-salsa .kds-mod-line__values {
+  color: #facc15;
+}
+
+.kds-mod-line.is-complemento .kds-mod-line__values {
   color: var(--kds-green);
-  border-color: rgba(34, 197, 94, 0.24);
+}
+
+.kds-mod-line.is-nota .kds-mod-line__values {
+  color: var(--kds-red);
 }
 
 .kds-card__order-note {
@@ -840,7 +861,7 @@
 }
 
 .kds-column.is-pending .kds-card__ticket {
-  font-size: 1rem;
+  font-size: 1.3rem;
 }
 
 .kds-column.is-pending .kds-card__timer {
@@ -875,7 +896,7 @@
 }
 
 .kds-column.is-pending .kds-card__item-name {
-  font-size: 0.92rem;
+  font-size: 1.3rem;
   line-height: 1.38;
 }
 
@@ -1411,15 +1432,15 @@
 }
 
 .cocina-page--tv-mode .kds-card__ticket {
-  font-size: 1.04rem;
+  font-size: 1.38rem;
 }
 
 .cocina-page--tv-mode .kds-card__item-name {
-  font-size: 0.95rem;
+  font-size: 1.38rem;
 }
 
-.cocina-page--tv-mode .kds-mod {
-  font-size: 0.71rem;
+.cocina-page--tv-mode .kds-mod-line {
+  font-size: 0.9rem;
 }
 
 @media (max-width: 991.98px) {

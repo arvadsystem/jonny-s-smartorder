@@ -12,7 +12,7 @@
   {
     key: 'EN_PREPARACION',
     statusCode: 'EN_PREPARACION',
-    title: 'En preparaciÃ³n',
+    title: 'En preparación',
     actionLabel: 'Listo',
     actionStatus: 'LISTO_PARA_ENTREGA',
     buttonClass: 'is-ready',
@@ -29,7 +29,7 @@ const ORDER_STATUS_TO_COLUMN = Object.freeze({
 });
 const STATUS_LABEL_BY_CODE = Object.freeze({
   EN_COCINA: 'Pendiente',
-  EN_PREPARACION: 'En preparacion',
+  EN_PREPARACION: 'En preparación',
   LISTO_PARA_ENTREGA: 'Listo para entrega',
   COMPLETADO: 'Completado'
 });
@@ -216,6 +216,9 @@ export const normalizeKitchenOrder = (row) => {
     tipo_servicio: String(row?.tipo_servicio ?? 'LOCAL'),
     descripcion_pedido: row?.descripcion_pedido || null,
     descripcion_envio: row?.descripcion_envio || null,
+    kds_started_at: row?.kds_started_at || null,
+    kds_expected_minutes: Number(row?.kds_expected_minutes ?? 0) || null,
+    kds_expected_rule: row?.kds_expected_rule || null,
     visible_en_cocina_at: row?.visible_en_cocina_at || row?.fecha_hora_facturacion || row?.fecha_hora_pedido || null,
     minutos_en_espera: row?.minutos_en_espera != null ? Number(row.minutos_en_espera) : null,
     esta_proximo_a_expirar: Boolean(row?.esta_proximo_a_expirar),
