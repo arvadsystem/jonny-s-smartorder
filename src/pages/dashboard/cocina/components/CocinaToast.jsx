@@ -31,7 +31,7 @@ export default function CocinaToast({ toast, onClose }) {
             type="button"
             className="kds-toast__close"
             onClick={onClose}
-            aria-label="Cerrar notificación"
+            aria-label="Cerrar notificacion"
           >
             <i className="bi bi-x-lg" />
           </button>
@@ -40,3 +40,5 @@ export default function CocinaToast({ toast, onClose }) {
     </AnimatePresence>
   );
 }
+
+

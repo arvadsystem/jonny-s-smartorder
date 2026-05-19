@@ -35,6 +35,7 @@ const initialToast = {
   message: '',
   variant: 'success'
 };
+
 const initialConfirmDialog = {
   open: false,
   title: '',
@@ -52,15 +53,39 @@ const normalizePaymentCode = (value) =>
     .replace(/[\s-]+/g, '_');
 
 const buildPedidoVisibleCode = (pedido) => {
-  const idPedido = Number(pedido?.id_pedido ?? 0);
-  const paymentCode = normalizePaymentCode(pedido?.estado_pago_control || pedido?.estado_pago);
-  if ((paymentCode === 'PENDIENTE_PAGO' || paymentCode === 'PENDIENTE_DE_PAGO') && idPedido) {
-    return `PED-${String(idPedido).padStart(5, '0')}`;
-  }
-  const rawCode = String(pedido?.codigo_pedido || pedido?.codigo_venta || '').trim();
+  const rawCode = String(pedido?.codigo_venta || '').trim();
   if (rawCode) return rawCode;
-  if (!idPedido) return 'PED-S/N';
-  return `PED-${String(idPedido).padStart(5, '0')}`;
+  return 'Sin VTA';
+};
+
+const isPedidoKdsVencido = (pedido) => {
+  if (pedido?.kds_vencido === true) return true;
+  if (String(pedido?.kds_vencido || '').toLowerCase() === 'true') return true;
+  return false;
+};
+
+const TECHNICAL_MESSAGE_PATTERNS = [
+  /cannot read/i,
+  /internal server error/i,
+  /syntax error/i,
+  /relation .* does not exist/i,
+  /column .* does not exist/i,
+  /sql/i,
+  /stack/i
+];
+
+const isTechnicalMessage = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  return TECHNICAL_MESSAGE_PATTERNS.some((pattern) => pattern.test(raw));
+};
+
+const extractUiMessage = (error, fallbackMessage = 'No se pudo completar la acción. Intenta nuevamente.') => {
+  const backendMessage = String(error?.data?.message || error?.data?.mensaje || '').trim();
+  if (backendMessage && !isTechnicalMessage(backendMessage)) return backendMessage;
+  const directMessage = String(error?.message || '').trim();
+  if (directMessage && !isTechnicalMessage(directMessage)) return directMessage;
+  return fallbackMessage;
 };
 
 const isPedidoPendientePago = (pedido) => {
@@ -74,8 +99,8 @@ const normalizePedidoForPagoModal = (pedido) => ({
   fecha_hora_pedido: pedido?.fecha_hora_pedido || null,
   nombre_contacto: String(
     pedido?.nombre_contacto ||
-    `${pedido?.nombres_cliente || ''} ${pedido?.apellidos_cliente || ''}`.trim() ||
-    'Consumidor final'
+      `${pedido?.nombres_cliente || ''} ${pedido?.apellidos_cliente || ''}`.trim() ||
+      'Consumidor final'
   ).trim(),
   telefono_contacto: String(pedido?.telefono_contacto || '').trim(),
   telefono_normalizado: String(pedido?.telefono_normalizado || '').trim(),
@@ -102,9 +127,7 @@ export default function PedidosView() {
   const readyAudioRef = useRef(null);
 
   useEffect(() => {
-    const { data } = supabase.storage
-      .from('notificacion')
-      .getPublicUrl('cocina-nuevo-pedido.mp3');
+    const { data } = supabase.storage.from('notificacion').getPublicUrl('cocina-nuevo-pedido.mp3');
     const audioUrl = String(data?.publicUrl || '').trim();
     if (!audioUrl) {
       readyAudioRef.current = null;
@@ -146,59 +169,69 @@ export default function PedidosView() {
     return () => window.clearTimeout(timer);
   }, [toast.show]);
 
-  const loadPedidos = useCallback(async ({ silent = false, source = 'manual' } = {}) => {
-    try {
-      if (!silent) setLoading(true);
-      setErrorMessage('');
-      const data = await ventasService.getPedidosMenu();
-      const nextPedidos = Array.isArray(data) ? data : [];
-      setPedidos((prevPedidos) => {
-        if (source !== 'initial' && source !== 'manual') {
-          const prevReadyIds = new Set(
-            (Array.isArray(prevPedidos) ? prevPedidos : [])
-              .filter((pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA')
-              .map((pedido) => Number(pedido?.id_pedido ?? 0))
-              .filter(Boolean)
-          );
-          const nextReadyPedidos = nextPedidos.filter(
-            (pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA'
-          );
-          const nextReadyIds = new Set(
-            nextReadyPedidos
-              .map((pedido) => Number(pedido?.id_pedido ?? 0))
-              .filter(Boolean)
-          );
-          notifiedReadyIdsRef.current.forEach((idPedido) => {
-            if (nextReadyIds.has(idPedido)) return;
-            notifiedReadyIdsRef.current.delete(idPedido);
-          });
-          nextReadyPedidos.forEach((pedido) => {
-            const idPedido = Number(pedido?.id_pedido ?? 0);
-            if (!idPedido) return;
-            if (prevReadyIds.has(idPedido)) return;
-            if (notifiedReadyIdsRef.current.has(idPedido)) return;
-            notifiedReadyIdsRef.current.add(idPedido);
-            const readyAudio = readyAudioRef.current;
-            if (readyAudio) {
-              try {
-                readyAudio.currentTime = 0;
-                void readyAudio.play().catch(() => {});
-              } catch {
-                // AM: autoplay bloqueado no debe romper Ventas/Pedidos.
+  const loadPedidos = useCallback(
+    async ({ silent = false, source = 'manual' } = {}) => {
+      try {
+        if (!silent) setLoading(true);
+        setErrorMessage('');
+        const data = await ventasService.getPedidosMenu();
+        const nextPedidos = Array.isArray(data) ? data : [];
+
+        setPedidos((prevPedidos) => {
+          if (source !== 'initial' && source !== 'manual') {
+            const prevReadyIds = new Set(
+              (Array.isArray(prevPedidos) ? prevPedidos : [])
+                .filter((pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA')
+                .map((pedido) => Number(pedido?.id_pedido ?? 0))
+                .filter(Boolean)
+            );
+
+            const nextReadyPedidos = nextPedidos.filter(
+              (pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA'
+            );
+            const nextReadyIds = new Set(
+              nextReadyPedidos
+                .map((pedido) => Number(pedido?.id_pedido ?? 0))
+                .filter(Boolean)
+            );
+
+            notifiedReadyIdsRef.current.forEach((idPedido) => {
+              if (nextReadyIds.has(idPedido)) return;
+              notifiedReadyIdsRef.current.delete(idPedido);
+            });
+
+            nextReadyPedidos.forEach((pedido) => {
+              const idPedido = Number(pedido?.id_pedido ?? 0);
+              if (!idPedido) return;
+              if (prevReadyIds.has(idPedido)) return;
+              if (notifiedReadyIdsRef.current.has(idPedido)) return;
+
+              notifiedReadyIdsRef.current.add(idPedido);
+
+              const readyAudio = readyAudioRef.current;
+              if (readyAudio) {
+                try {
+                  readyAudio.currentTime = 0;
+                  void readyAudio.play().catch(() => {});
+                } catch {
+                  // AM: autoplay bloqueado no debe romper Ventas/Pedidos.
+                }
               }
-            }
-            openToast('PEDIDO LISTO', `Pedido ${buildPedidoVisibleCode(pedido)} listo para entrega.`, 'success');
-          });
-        }
-        return nextPedidos;
-      });
-    } catch (err) {
-      setErrorMessage(String(err?.message || 'No se pudo cargar el tablero de pedidos.'));
-      setPedidos([]);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [openToast]);
+
+              openToast('PEDIDO LISTO', `Pedido ${buildPedidoVisibleCode(pedido)} listo para entrega.`, 'success');
+            });
+          }
+          return nextPedidos;
+        });
+      } catch (err) {
+        setErrorMessage(extractUiMessage(err, 'No se pudo cargar el tablero de pedidos.'));
+        setPedidos([]);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [openToast]
+  );
 
   useEffect(() => {
     void loadPedidos({ source: 'initial' });
@@ -211,22 +244,16 @@ export default function PedidosView() {
       loadPedidos({ silent: true, source: 'poll' }).catch(() => {});
     }, 8000);
 
-    return () => {
-      window.clearInterval(intervalId);
-    };
+    return () => window.clearInterval(intervalId);
   }, [actionBusyId, loadPedidos]);
 
   useEffect(() => {
     const channel = supabase
       .channel('ventas-pedidos-realtime')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'pedidos' },
-        () => {
-          if (actionBusyId !== null) return;
-          loadPedidos({ silent: true, source: 'realtime' }).catch(() => {});
-        }
-      )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pedidos' }, () => {
+        if (actionBusyId !== null) return;
+        loadPedidos({ silent: true, source: 'realtime' }).catch(() => {});
+      })
       .subscribe();
 
     return () => {
@@ -234,26 +261,32 @@ export default function PedidosView() {
     };
   }, [actionBusyId, loadPedidos]);
 
-  const runPedidoAction = useCallback(async (idPedido, action) => {
-    try {
-      setActionBusyId(idPedido);
-      setErrorMessage('');
-      const response = await action();
-      await loadPedidos();
-      if (response?.message) {
-        openToast('PEDIDO ACTUALIZADO', response.message, 'success');
+  const runPedidoAction = useCallback(
+    async (idPedido, action) => {
+      try {
+        setActionBusyId(idPedido);
+        setErrorMessage('');
+        const response = await action();
+        await loadPedidos();
+        if (response?.message) {
+          openToast('PEDIDO ACTUALIZADO', response.message, 'success');
+        }
+      } catch (err) {
+        const message = extractUiMessage(err);
+        setErrorMessage(message);
+        openToast('ERROR', message, 'danger');
+      } finally {
+        setActionBusyId(null);
       }
-    } catch {
-      setErrorMessage('No se pudo actualizar el pedido. Intenta nuevamente.');
-      openToast('ERROR', 'No se pudo actualizar el pedido. Intenta nuevamente.', 'danger');
-    } finally {
-      setActionBusyId(null);
-    }
-  }, [loadPedidos, openToast]);
+    },
+    [loadPedidos, openToast]
+  );
 
-  const handleStateChange = useCallback((idPedido, estadoDestino) => (
-    runPedidoAction(idPedido, () => ventasService.updatePedidoEstado(idPedido, estadoDestino))
-  ), [runPedidoAction]);
+  const handleStateChange = useCallback(
+    (idPedido, estadoDestino) =>
+      runPedidoAction(idPedido, () => ventasService.updatePedidoEstado(idPedido, estadoDestino)),
+    [runPedidoAction]
+  );
 
   const handleCompletePedido = useCallback((pedido) => {
     const idPedido = Number(pedido?.id_pedido ?? 0);
@@ -261,7 +294,7 @@ export default function PedidosView() {
     setConfirmDialog({
       open: true,
       title: 'Confirmar entrega',
-      message: '¿Confirmas que este pedido fue entregado al cliente?',
+      message: 'Confirmas que este pedido fue entregado al cliente?',
       idPedido,
       estadoDestino: 'COMPLETADO'
     });
@@ -273,7 +306,7 @@ export default function PedidosView() {
     setConfirmDialog({
       open: true,
       title: 'Confirmar no entregado',
-      message: '¿Confirmas marcar este pedido como no entregado? Esta acción quedará registrada como dato histórico.',
+      message: 'Confirmas marcar este pedido como no entregado? Esta accion quedara registrada como dato historico.',
       idPedido,
       estadoDestino: 'no_entregado'
     });
@@ -290,23 +323,26 @@ export default function PedidosView() {
     setPagoPedidoModal({ open: false, pedido: null });
   }, [pagoPedidoSaving]);
 
-  const handleRegistrarPagoPedido = useCallback(async (idPedido, payload) => {
-    try {
-      setPagoPedidoSaving(true);
-      setErrorMessage('');
-      const response = await ventasService.registrarPagoPedido(idPedido, payload);
-      await loadPedidos();
-      openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
-      return response;
-    } catch (error) {
-      const message = String(error?.message || 'No se pudo registrar el pago del pedido.');
-      setErrorMessage(message);
-      openToast('ERROR', message, 'danger');
-      throw error;
-    } finally {
-      setPagoPedidoSaving(false);
-    }
-  }, [loadPedidos, openToast]);
+  const handleRegistrarPagoPedido = useCallback(
+    async (idPedido, payload) => {
+      try {
+        setPagoPedidoSaving(true);
+        setErrorMessage('');
+        const response = await ventasService.registrarPagoPedido(idPedido, payload);
+        await loadPedidos();
+        openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
+        return response;
+      } catch (error) {
+        const message = extractUiMessage(error, 'No se pudo registrar el pago del pedido.');
+        setErrorMessage(message);
+        openToast('ERROR', message, 'danger');
+        throw error;
+      } finally {
+        setPagoPedidoSaving(false);
+      }
+    },
+    [loadPedidos, openToast]
+  );
 
   const closeConfirmDialog = useCallback(() => {
     if (actionBusyId !== null) return;
@@ -327,13 +363,14 @@ export default function PedidosView() {
   const filteredPedidos = useMemo(() => {
     if (!deferredSearch) return pedidos;
     const q = deferredSearch.toLowerCase();
-    return pedidos.filter((pedido) =>
-      String(pedido?.id_pedido || '').includes(q) ||
-      String(pedido?.codigo_pedido || '').toLowerCase().includes(q) ||
-      String(pedido?.nombre_contacto || '').toLowerCase().includes(q) ||
-      String(pedido?.telefono_contacto || '').toLowerCase().includes(q) ||
-      `${pedido?.nombres_cliente || ''} ${pedido?.apellidos_cliente || ''}`.toLowerCase().includes(q) ||
-      String(pedido?.descripcion_pedido || '').toLowerCase().includes(q)
+    return pedidos.filter(
+      (pedido) =>
+        String(pedido?.id_pedido || '').includes(q) ||
+        String(pedido?.codigo_pedido || '').toLowerCase().includes(q) ||
+        String(pedido?.nombre_contacto || '').toLowerCase().includes(q) ||
+        String(pedido?.telefono_contacto || '').toLowerCase().includes(q) ||
+        `${pedido?.nombres_cliente || ''} ${pedido?.apellidos_cliente || ''}`.toLowerCase().includes(q) ||
+        String(pedido?.descripcion_pedido || '').toLowerCase().includes(q)
     );
   }, [deferredSearch, pedidos]);
 
@@ -359,9 +396,7 @@ export default function PedidosView() {
               <i className="bi bi-journal-richtext inv-prod-title-icon" />
               <span className="inv-prod-title">Pedidos / Validacion de pago</span>
             </div>
-            <div className="inv-prod-subtitle">
-              Flujo operativo: validar pago, enviar a cocina, marcar listo y entregar.
-            </div>
+            <div className="inv-prod-subtitle">Flujo operativo: validar pago, enviar a cocina, marcar listo y entregar.</div>
           </div>
 
           <div className="inv-prod-header-actions inv-ins-header-actions ventas-page__toolbar-actions">
@@ -389,7 +424,11 @@ export default function PedidosView() {
         <div className="inv-catpro-body inv-prod-body p-3">
           <div className="ventas-pedidos__meta mb-3">
             <span>{filteredPedidos.length} pedidos visibles</span>
-            {loading ? <span className="ms-3 text-muted"><i className="bi bi-hourglass-split" /> Cargando...</span> : null}
+            {loading ? (
+              <span className="ms-3 text-muted">
+                <i className="bi bi-hourglass-split" /> Cargando...
+              </span>
+            ) : null}
           </div>
 
           {errorMessage ? (
@@ -441,7 +480,8 @@ export default function PedidosView() {
                       key={pedido.id_pedido}
                       pedido={pedido}
                       busy={actionBusyId === pedido.id_pedido}
-                      onSendReady={() => handleStateChange(pedido.id_pedido, 'LISTO_PARA_ENTREGA')}
+                      onComplete={isPedidoKdsVencido(pedido) ? () => handleCompletePedido(pedido) : undefined}
+                      onNoEntregado={isPedidoKdsVencido(pedido) ? () => handleNoEntregadoPedido(pedido) : undefined}
                       onCobrar={() => openPagoPedidoModal(pedido)}
                     />
                   ))
@@ -477,6 +517,7 @@ export default function PedidosView() {
           </div>
         </div>
       </div>
+
       <ConfirmActionModal
         open={confirmDialog.open}
         title={confirmDialog.title}
@@ -485,6 +526,7 @@ export default function PedidosView() {
         onCancel={closeConfirmDialog}
         onConfirm={confirmStateChange}
       />
+
       <VentaRegistrarPagoPedidoModal
         open={pagoPedidoModal.open}
         saving={pagoPedidoSaving}
@@ -492,49 +534,55 @@ export default function PedidosView() {
         onRegistrarPago={handleRegistrarPagoPedido}
         initialPedido={pagoPedidoModal.pedido}
       />
+
       <VentasToast toast={toast} onClose={closeToast} />
     </div>
   );
 }
 
-function PedidoCard({
-  pedido,
-  busy = false,
-  onSendKitchen,
-  onSendReady,
-  onComplete,
-  onNoEntregado,
-  onCobrar
-}) {
+function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntregado, onCobrar }) {
   const clienteName = pedido?.nombres_cliente
     ? `${pedido.nombres_cliente} ${pedido.apellidos_cliente || ''}`
     : String(pedido?.nombre_contacto || 'Consumidor final').trim();
+
   const cleanDescription = cleanPedidoDescription(pedido?.descripcion_pedido);
   const laneCode = mapPedidoStateCode(pedido);
-  const codigoPedido = buildPedidoVisibleCode(pedido);
-  const pendientePago = isPedidoPendientePago(pedido);
+  const visibleCode = buildPedidoVisibleCode(pedido);
+  const pendingPago = isPedidoPendientePago(pedido);
+  const kdsVencido = isPedidoKdsVencido(pedido);
 
   return (
     <div className="ventas-create-modal__cart-item mb-2">
       <div className="ventas-create-modal__cart-item-head">
         <div>
           <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-            <span className="badge bg-secondary" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-              {codigoPedido}
+            <span className={`badge ${visibleCode === 'Sin VTA' ? 'bg-warning text-dark' : 'bg-dark'}`} style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
+              {visibleCode}
             </span>
-            {pendientePago ? (
+            {pendingPago ? (
               <span className="badge bg-warning text-dark" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
                 Pendiente de pago
               </span>
             ) : null}
           </div>
+
           <strong className="d-flex align-items-center gap-2">
-            <span>{codigoPedido} - {clienteName}</span>
+            <span>{visibleCode} - {clienteName}</span>
           </strong>
+
           <small className="text-muted">
             <i className="bi bi-clock" /> {new Date(pedido.fecha_hora_pedido).toLocaleTimeString()}
           </small>
+
+          {laneCode === 'EN_COCINA' && kdsVencido ? (
+            <div className="mt-1">
+              <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
+                Pendiente vencido
+              </span>
+            </div>
+          ) : null}
         </div>
+
         <div className="ventas-create-modal__line-total" style={{ fontSize: '1.1rem' }}>
           L {Number(pedido.total || 0).toFixed(2)}
         </div>
@@ -547,7 +595,7 @@ function PedidoCard({
       ) : null}
 
       <div className="ventas-create-modal__cart-item-actions mt-2 justify-content-end">
-        {pendientePago ? (
+        {pendingPago ? (
           <button
             className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
             onClick={onCobrar}
@@ -573,19 +621,38 @@ function PedidoCard({
           </div>
         ) : null}
 
-        {laneCode === 'EN_COCINA' ? (
-          <button
-            className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
-            onClick={onSendReady}
-            disabled={busy}
-            type="button"
-            style={{ minHeight: '36px', fontSize: '0.85rem' }}
-          >
-            {busy ? 'Procesando...' : 'Listo para entrega'} <i className="bi bi-arrow-right" />
-          </button>
+        {laneCode === 'LISTO_PARA_ENTREGA' ? (
+          <div className="d-grid w-100 gap-2">
+            <button
+              className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+              onClick={onComplete}
+              disabled={busy}
+              type="button"
+              style={{ minHeight: '36px', fontSize: '0.85rem' }}
+            >
+              {busy ? 'Procesando...' : 'Completar'} <i className="bi bi-check2-circle" />
+            </button>
+            <button
+              className="w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+              onClick={onNoEntregado}
+              disabled={busy}
+              type="button"
+              style={{
+                minHeight: '36px',
+                fontSize: '0.85rem',
+                borderRadius: '10px',
+                border: '1px solid #f59e0b',
+                background: '#fff7ed',
+                color: '#9a3412',
+                fontWeight: 600
+              }}
+            >
+              {busy ? 'Procesando...' : 'No entregado'} <i className="bi bi-x-circle" />
+            </button>
+          </div>
         ) : null}
 
-        {laneCode === 'LISTO_PARA_ENTREGA' ? (
+        {laneCode === 'EN_COCINA' && kdsVencido ? (
           <div className="d-grid w-100 gap-2">
             <button
               className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
@@ -633,20 +700,10 @@ function ConfirmActionModal({ open, title, message, busy = false, onCancel, onCo
           <p className="mb-0">{message}</p>
         </div>
         <div className="ventas-modal-footer d-flex justify-content-end gap-2">
-          <button
-            type="button"
-            className="btn btn-outline-secondary"
-            onClick={onCancel}
-            disabled={busy}
-          >
+          <button type="button" className="btn btn-outline-secondary" onClick={onCancel} disabled={busy}>
             Cancelar
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={onConfirm}
-            disabled={busy}
-          >
+          <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={busy}>
             Confirmar
           </button>
         </div>

@@ -1,4 +1,4 @@
-const toastIconClass = (variant) => {
+﻿const toastIconClass = (variant) => {
   if (variant === 'danger') return 'bi bi-x-octagon-fill';
   if (variant === 'warning') return 'bi bi-exclamation-triangle-fill';
   if (variant === 'info') return 'bi bi-info-circle-fill';
@@ -31,3 +31,6 @@ export default function VentasToast({ toast, onClose }) {
     </div>
   );
 }
+
+
+
