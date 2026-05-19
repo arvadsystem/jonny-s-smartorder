@@ -25,12 +25,12 @@ export default function CierresCajaOverview({
   onSucursalChange,
   onRefresh,
   canOpenSession,
-  canRegisterEgreso,
-  canAccessEgreso = false,
+  canRegisterMovimientoManual,
+  canAccessMovimientoManual = false,
   hasActiveCajaSession = false,
   supportsCajaCatalogCreate,
   onOpenAbrirSesion,
-  onOpenEgreso,
+  onOpenMovimientoManual,
   onOpenNuevaCaja
 }) {
   const [searchTerm, setSearchTerm] = useState(() => filters.search || '');
@@ -152,19 +152,20 @@ export default function CierresCajaOverview({
             <button
               type="button"
               className="inv-prod-toolbar-btn bg-white border cierres-caja-toolbar__cta"
-              onClick={onOpenEgreso}
-              disabled={!canAccessEgreso}
-              aria-disabled={!canRegisterEgreso}
+              onClick={onOpenMovimientoManual}
+              disabled={!canAccessMovimientoManual}
+              aria-disabled={!canRegisterMovimientoManual}
               aria-label={
                 hasActiveCajaSession
-                  ? 'Registrar egreso de caja'
-                  : 'Registrar egreso requiere una sesión activa'
+                  ? 'Registrar movimiento manual de caja'
+                  : 'Registrar movimiento manual requiere una sesión activa'
               }
               style={{ color: 'rgba(154, 83, 25, 0.9)' }}
             >
-              <i className="bi bi-cash-coin" />
-              <span>Registrar egreso</span>
+              <i className="bi bi-journal-plus" />
+              <span>Nuevo registro</span>
             </button>
+
 
             <button
               type="button"

@@ -41,6 +41,38 @@ export const formatCajaDateTime = (value) => {
   });
 };
 
+export const formatCajaDateTimeHN = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return date.toLocaleString('es-HN', {
+    timeZone: 'America/Tegucigalpa',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+export const resolveMovimientoManualKind = (movimiento = {}) => {
+  const code = String(
+    movimiento.tipo_codigo || movimiento.codigo || movimiento.tipo || ''
+  ).trim().toUpperCase();
+  const signo = Number(movimiento.signo);
+
+  if (code === 'APERTURA' || code.includes('APERTURA')) return 'OTRO';
+  if (signo === 1 || code.includes('INGRESO') || code.includes('ENTRADA') || code.includes('AJUSTE_POSITIVO')) {
+    return 'INGRESO';
+  }
+  if (signo === -1 || code.includes('EGRESO') || code.includes('RETIRO') || code.includes('SALIDA')) {
+    return 'EGRESO';
+  }
+
+  return 'OTRO';
+};
+
 export const normalizeCajaCatalogos = (payload = {}) => ({
   cajas: Array.isArray(payload.cajas) ? payload.cajas : [],
   estados_sesion: Array.isArray(payload.estados_sesion) ? payload.estados_sesion : [],
@@ -200,9 +232,22 @@ export const normalizeSesionDetalle = (payload = {}) => {
     movimientos: movimientos.map((row) => ({
       ...row,
       id_movimiento_caja: toNumber(row.id_movimiento_caja, 0) || null,
+      id_sesion_caja: toNumber(row.id_sesion_caja, 0) || null,
+      id_usuario_ejecutor: toNumber(row.id_usuario_ejecutor, 0) || null,
       monto: toNumber(row.monto, 0),
+      signo: row.signo === null || row.signo === undefined ? null : toNumber(row.signo, 0),
+      afecta_efectivo: truthy(row.afecta_efectivo),
       tipo_codigo: String(row.tipo_codigo ?? '').trim().toUpperCase(),
-      tipo_nombre: String(row.tipo_nombre ?? '').trim()
+      tipo_nombre: String(row.tipo_nombre ?? '').trim(),
+      usuario_ejecutor_nombre: String(row.usuario_ejecutor_nombre ?? row.nombre_completo ?? '').trim(),
+      usuario_ejecutor_alias: String(row.usuario_ejecutor_alias ?? row.nombre_usuario ?? '').trim(),
+      nombre_usuario: String(row.nombre_usuario ?? row.usuario_ejecutor_alias ?? '').trim(),
+      rol_participacion_codigo: String(row.rol_participacion_codigo ?? '').trim().toUpperCase(),
+      rol_participacion_nombre: String(row.rol_participacion_nombre ?? '').trim(),
+      referencia: String(row.referencia ?? '').trim(),
+      observacion: String(row.observacion ?? '').trim(),
+      fecha_movimiento: row.fecha_movimiento ?? null,
+      fecha_creacion: row.fecha_creacion ?? null
     })),
     incidencias: [],
     cierre: payload.cierre

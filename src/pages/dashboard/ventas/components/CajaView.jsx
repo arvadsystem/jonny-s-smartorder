@@ -227,6 +227,8 @@ export default function CajaView({
   const [abrirSesionError, setAbrirSesionError] = useState('');
   const [creatingPedidoPendiente, setCreatingPedidoPendiente] = useState(false);
   const [registrandoPagoPedido, setRegistrandoPagoPedido] = useState(false);
+  const [statusExpanded, setStatusExpanded] = useState(false);
+  const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const composerRef = useRef(null);
   const cajaAsignacionRequestRef = useRef(0);
   const creatingPedidoPendienteRef = useRef(false);
@@ -368,7 +370,7 @@ export default function CajaView({
   }, [cajaUserKey, hasCajaUser, loadCajaAsignada, syncComposerSession]);
 
   useEffect(() => {
-    const hasBlockingModal = decisionOpen || abrirSesionOpen || finalizarOpen || registrarPagoOpen || autoModalOpen;
+    const hasBlockingModal = decisionOpen || abrirSesionOpen || finalizarOpen || registrarPagoOpen || autoModalOpen || cartSheetOpen;
     if (!hasBlockingModal || typeof document === 'undefined') return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -377,7 +379,28 @@ export default function CajaView({
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [abrirSesionOpen, autoModalOpen, decisionOpen, finalizarOpen, registrarPagoOpen]);
+  }, [abrirSesionOpen, autoModalOpen, cartSheetOpen, decisionOpen, finalizarOpen, registrarPagoOpen]);
+
+  useEffect(() => {
+    if (!cartSheetOpen || typeof window === 'undefined') return undefined;
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    const closeOnDesktop = (event) => {
+      if (event.matches) setCartSheetOpen(false);
+    };
+
+    if (mediaQuery.matches) {
+      setCartSheetOpen(false);
+      return undefined;
+    }
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', closeOnDesktop);
+      return () => mediaQuery.removeEventListener('change', closeOnDesktop);
+    }
+
+    mediaQuery.addListener(closeOnDesktop);
+    return () => mediaQuery.removeListener(closeOnDesktop);
+  }, [cartSheetOpen]);
 
   const isCajaSessionError = (error) => {
     const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
@@ -428,6 +451,19 @@ export default function CajaView({
   useEffect(() => {
     void loadPendientesSummary();
   }, [loadPendientesSummary]);
+
+  useEffect(() => {
+    const shouldCollapse = Boolean(cajaSesionActiva)
+      && !cajaStatus.loading
+      && !cajaStatus.error
+      && !cajaStatus.assignmentMissing;
+    setStatusExpanded(!shouldCollapse);
+  }, [
+    cajaSesionActiva?.id_sesion_caja,
+    cajaStatus.assignmentMissing,
+    cajaStatus.error,
+    cajaStatus.loading
+  ]);
 
   const handleCreatePedidoPendiente = async (payload) => {
     if (creatingPedidoPendienteRef.current) {
@@ -547,6 +583,16 @@ export default function CajaView({
     : cajaStatus.assignmentMissing
       ? 'Sin caja asignada'
       : 'No hay sesión de caja activa';
+  const ventaTotalPreview = composer.total + (Number(deliveryCostPreview) > 0 ? Number(deliveryCostPreview) : 0);
+  const openFinalizeModal = () => {
+    if (!composer.validateBaseSale()) return;
+    setCartSheetOpen(false);
+    setFinalizarOpen(true);
+  };
+  const openRegistrarPagoModal = () => {
+    setCartSheetOpen(false);
+    setRegistrarPagoOpen(true);
+  };
 
   const closeAutoModal = () => {
     if (autoModalAssigning) return;
@@ -572,14 +618,10 @@ export default function CajaView({
   };
 
   return (
-    <div className="ventas-page ventas-caja-page">
+    <div className="ventas-page ventas-caja-page ventas-caja-shell">
       <div className="inv-catpro-card inv-prod-card ventas-caja-card">
-        <div className="ventas-caja__operacion-bar">
-          <div>
-            <strong>Caja</strong>
-            <span>Selecciona items y finaliza la operacion desde el modal.</span>
-          </div>
-          {composer.isSuperAdmin ? (
+        {composer.isSuperAdmin ? (
+          <div className="ventas-caja__operacion-bar ventas-caja__operacion-bar--admin">
             <label className="ventas-caja__sucursal-select">
               <i className="bi bi-shop" />
               <select
@@ -593,47 +635,59 @@ export default function CajaView({
                 ))}
               </select>
             </label>
-          ) : (
-            <span className="ventas-caja__sucursal-pill">
-              <i className="bi bi-shop" /> {composer.selectedSucursalLabel || 'Sucursal'}
-            </span>
-          )}
-        </div>
-        <section className={`ventas-caja__session-panel ${cajaSesionActiva ? 'is-active' : ''} ${cajaStatus.assignmentMissing ? 'is-missing' : ''}`}>
-          <div className="ventas-caja__session-main">
-            <span className="ventas-caja__session-chip">
-              <i className={`bi ${cajaSesionActiva ? 'bi-check-circle-fill' : 'bi-info-circle'}`} />
-              {cajaSessionChipText}
-            </span>
-            <strong>{cajaPanelTitle}</strong>
-            <span>{cajaPanelDescription}</span>
-            {cajaStatus.loading ? <small>Consultando caja asignada...</small> : null}
-            {cajaStatus.error ? <small className="is-error">{cajaStatus.error}</small> : null}
           </div>
-          <div className="ventas-caja__session-metrics">
-            <div>
-              <span>Caja asignada</span>
-              <strong>{cajaAsignacion ? (cajaAsignacion.codigo_caja || `Caja #${cajaAsignacion.id_caja}`) : 'Sin asignación'}</strong>
+        ) : null}
+        <section className={`ventas-caja__session-panel ventas-caja-statusbar ventas-caja-status-compact ${cajaSesionActiva ? 'is-active' : ''} ${cajaStatus.assignmentMissing ? 'is-missing' : ''} ${statusExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+          <button
+            type="button"
+            className="ventas-caja-status-compact__toggle"
+            onClick={() => setStatusExpanded((current) => !current)}
+            aria-expanded={statusExpanded}
+            aria-label={statusExpanded ? 'Contraer detalle de caja activa' : 'Expandir detalle de caja activa'}
+          >
+            <strong>{cajaSesionActiva ? 'Caja activa' : cajaPanelTitle}</strong>
+            {!cajaSesionActiva ? (
+              <small>{cajaSessionChipText}</small>
+            ) : null}
+            <i className={`bi bi-chevron-${statusExpanded ? 'up' : 'down'}`} aria-hidden="true" />
+          </button>
+
+          <div className="ventas-caja-status-compact__details" hidden={!statusExpanded}>
+            <div className="ventas-caja__session-main">
+              <strong>{cajaPanelTitle}</strong>
+              <span>{cajaPanelDescription}</span>
+              {cajaStatus.loading ? <small>Consultando caja asignada...</small> : null}
+              {cajaStatus.error ? <small className="is-error">{cajaStatus.error}</small> : null}
             </div>
-            <div>
-              <span>Sesión activa</span>
-              <strong>
-                {cajaSesionActiva?.id_sesion_caja
-                  ? `SES-${String(cajaSesionActiva.id_sesion_caja).padStart(5, '0')}`
-                  : 'Sin sesión'}
-              </strong>
-            </div>
-            <div>
-              <span>Monto apertura</span>
-              <strong>{composer.formatCurrency(cajaSesionActiva?.monto_apertura || 0)}</strong>
-            </div>
-            <div>
-              <span>Fecha apertura</span>
-              <strong>{formatDateTime(cajaSesionActiva?.fecha_apertura)}</strong>
+            <div className="ventas-caja__session-metrics">
+              <div>
+                <span>Caja asignada</span>
+                <strong>{cajaAsignacion ? (cajaAsignacion.codigo_caja || `Caja #${cajaAsignacion.id_caja}`) : 'Sin asignación'}</strong>
+              </div>
+              <div>
+                <span>Sesión activa</span>
+                <strong>
+                  {cajaSesionActiva?.id_sesion_caja
+                    ? `SES-${String(cajaSesionActiva.id_sesion_caja).padStart(5, '0')}`
+                    : 'Sin sesión'}
+                </strong>
+              </div>
+              <div>
+                <span>Monto apertura</span>
+                <strong>{composer.formatCurrency(cajaSesionActiva?.monto_apertura || 0)}</strong>
+              </div>
+              <div>
+                <span>Fecha apertura</span>
+                <strong>{formatDateTime(cajaSesionActiva?.fecha_apertura)}</strong>
+              </div>
+              <div>
+                <span>Sucursal</span>
+                <strong>{cajaAsignacion?.nombre_sucursal || composer.selectedSucursalLabel || 'Sucursal'}</strong>
+              </div>
             </div>
           </div>
         </section>
-        <form className="ventas-create-modal__body ventas-caja__body" onSubmit={composer.handleSubmit}>
+        <form className="ventas-create-modal__body ventas-caja__body ventas-caja-layout" onSubmit={composer.handleSubmit}>
           <VentaComposerCatalog
             composer={composer}
             catalogLoading={catalogLoading}
@@ -644,14 +698,58 @@ export default function CajaView({
             saving={saving}
             deliveryCost={deliveryCostPreview}
             pendingPaymentsSummary={pendientesSummary}
-            onOpenFinalize={() => {
-              if (!composer.validateBaseSale()) return;
-              setFinalizarOpen(true);
-            }}
-            onOpenRegistrarPago={() => setRegistrarPagoOpen(true)}
+            onOpenFinalize={openFinalizeModal}
+            onOpenRegistrarPago={openRegistrarPagoModal}
+            variant="side"
           />
         </form>
+        <button
+          type="button"
+          className={`ventas-caja-mobile-cart-bar ${composer.cart.length > 0 ? 'has-items' : 'is-empty'}`}
+          onClick={() => setCartSheetOpen(true)}
+          aria-label="Abrir carrito de venta"
+        >
+          <span className="ventas-caja-mobile-cart-bar__icon">
+            <i className="bi bi-cart3" />
+          </span>
+          <span className="ventas-caja-mobile-cart-bar__label">
+            <strong>{composer.cart.length > 0 ? 'Carrito de venta' : 'Carrito vacío'}</strong>
+            <small>{composer.cartCount} {composer.cartCount === 1 ? 'item' : 'items'}</small>
+          </span>
+          <strong className="ventas-caja-mobile-cart-bar__total">
+            {composer.formatCurrency(ventaTotalPreview)}
+          </strong>
+          <i className="bi bi-chevron-up" aria-hidden="true" />
+        </button>
       </div>
+      {cartSheetOpen ? (
+        <div className="ventas-caja-mobile-cart-sheet">
+          <button
+            type="button"
+            className="ventas-caja-mobile-cart-sheet__backdrop"
+            onClick={() => setCartSheetOpen(false)}
+            aria-label="Cerrar carrito"
+          />
+          <div
+            className="ventas-caja-mobile-cart-sheet__panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ventas-caja-mobile-cart-title"
+          >
+            <div className="ventas-caja-mobile-cart-sheet__handle" aria-hidden="true" />
+            <VentaComposerSummary
+              composer={composer}
+              saving={saving}
+              deliveryCost={deliveryCostPreview}
+              pendingPaymentsSummary={pendientesSummary}
+              onOpenFinalize={openFinalizeModal}
+              onOpenRegistrarPago={openRegistrarPagoModal}
+              variant="sheet"
+              onClose={() => setCartSheetOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
       <VentaCajaAperturaDecisionModal
         open={decisionOpen}
         assignment={cajaAsignacion}

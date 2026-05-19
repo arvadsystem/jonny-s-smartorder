@@ -12,38 +12,34 @@ const buildDiscountBadgeLabel = (discount) => {
 };
 
 export default function VentaComposerCatalog({ composer, catalogLoading, catalogErrors = {} }) {
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchInputRef = useRef(null);
+  const [filterOpen, setFilterOpen] = useState(false);
   const searchWrapRef = useRef(null);
-
   const hasFilters = composer.search.trim() !== '' || composer.activeCategory !== 'all';
-  const showX = searchOpen || hasFilters;
+  const searchPlaceholder = composer.activeCatalog === 'PRODUCTOS'
+    ? 'Buscar productos...'
+    : composer.activeCatalog === 'COMBOS'
+      ? 'Buscar combos...'
+      : 'Buscar recetas...';
 
   useEffect(() => {
-    if (!searchOpen) return undefined;
-    const handleOutsideClick = (e) => {
-      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
-        setSearchOpen(false);
+    if (!filterOpen) return undefined;
+    const handleOutsideClick = (event) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(event.target)) {
+        setFilterOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [searchOpen]);
+  }, [filterOpen]);
 
-  const handleSearchToggle = () => {
-    if (showX) {
-      setSearchOpen(false);
-      composer.setSearch('');
-      composer.setActiveCategory('all');
-    } else {
-      setSearchOpen(true);
-      setTimeout(() => searchInputRef.current?.focus(), 50);
-    }
+  const handleClearFilters = () => {
+    composer.setSearch('');
+    composer.setActiveCategory('all');
+    setFilterOpen(false);
   };
 
-  const resolveImageUrl = (row) => {
-    return row.imagen_principal_url || row.url_imagen || null;
-  };
+  const resolveImageUrl = (row) => row.imagen_principal_url || row.url_imagen || null;
+
   const activeCatalogError = (() => {
     if (composer.activeCatalog === 'PRODUCTOS') return catalogErrors.productos || null;
     if (composer.activeCatalog === 'COMBOS') return catalogErrors.combos || null;
@@ -52,53 +48,59 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
   const hasCatalogErrors = Object.keys(catalogErrors || {}).length > 0;
 
   return (
-    <div className="ventas-create-modal__catalog">
-      <div className="ventas-catalog__topbar">
-        <div className="ventas-create-modal__catalog-tabs" role="tablist" aria-label="Tipos de venta">
-          {CATALOG_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              className={`ventas-create-modal__catalog-tab ${composer.activeCatalog === tab.key ? 'is-active' : ''}`}
-              aria-pressed={composer.activeCatalog === tab.key}
-              onClick={() => composer.setActiveCatalog(tab.key)}
-            >
-              <i className={tab.icon} /> {tab.label}
-            </button>
-          ))}
-        </div>
+    <div className="ventas-create-modal__catalog ventas-caja-layout__catalog">
+      <div className="ventas-catalog__topbar ventas-catalog-toolbar ventas-catalog-compact-toolbar">
+        <label className="ventas-catalog-dropdown">
+          <span>Catálogo:</span>
+          <select
+            value={composer.activeCatalog}
+            onChange={(event) => composer.setActiveCatalog(event.target.value)}
+          >
+            {CATALOG_TABS.map((tab) => (
+              <option key={tab.key} value={tab.key}>
+                {tab.label}
+              </option>
+            ))}
+          </select>
+        </label>
 
-        <div className="ventas-catalog__search-wrap" style={{ position: 'relative' }} ref={searchWrapRef}>
-          {searchOpen && (
+        <div className="ventas-catalog__search-wrap" ref={searchWrapRef}>
+          <label className="ventas-catalog-search-field">
+            <i className="bi bi-search" aria-hidden="true" />
             <input
-              ref={searchInputRef}
               type="search"
               className="ventas-catalog__search-input"
-              placeholder={
-                composer.activeCatalog === 'PRODUCTOS'
-                  ? 'Buscar producto...'
-                  : composer.activeCatalog === 'COMBOS'
-                    ? 'Buscar combo...'
-                    : 'Buscar receta...'
-              }
+              placeholder={searchPlaceholder}
               value={composer.search}
-              onChange={(e) => composer.setSearch(e.target.value)}
+              onChange={(event) => composer.setSearch(event.target.value)}
               onKeyDown={composer.handleSearchKeyDown}
             />
-          )}
+          </label>
 
           <button
             type="button"
-            className="ventas-catalog__search-btn"
-            onClick={handleSearchToggle}
-            aria-label={showX ? 'Limpiar filtros' : 'Abrir buscador'}
-            title={showX ? 'Limpiar filtros y cerrar' : 'Buscar y filtrar'}
+            className={`ventas-catalog__search-btn ${filterOpen ? 'is-active' : ''}`}
+            onClick={() => setFilterOpen((current) => !current)}
+            aria-label="Abrir filtros"
+            title="Filtrar catálogo"
           >
-            <i className={showX ? 'bi bi-x-lg' : 'bi bi-search'} />
+            <i className="bi bi-sliders" />
           </button>
 
-          {searchOpen && (
-            <div className="ventas-catalog__search-popup" style={{ right: 0, left: 'auto' }}>
+          {hasFilters ? (
+            <button
+              type="button"
+              className="ventas-catalog__clear-btn"
+              onClick={handleClearFilters}
+              aria-label="Limpiar búsqueda y filtros"
+              title="Limpiar búsqueda y filtros"
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+          ) : null}
+
+          {filterOpen ? (
+            <div className="ventas-catalog__search-popup">
               <div className="ventas-catalog__categories-list">
                 <div className="ventas-catalog__categories-label">
                   {composer.activeCatalog === 'PRODUCTOS' ? 'FILTRAR POR CATEGORÍA:' : 'FILTRAR POR DEPARTAMENTO:'}
@@ -108,14 +110,14 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                   className={`ventas-catalog__category-item ${composer.activeCategory === 'all' ? 'is-selected' : ''}`}
                   onClick={() => {
                     composer.setActiveCategory('all');
-                    setSearchOpen(false);
+                    setFilterOpen(false);
                   }}
                 >
                   <span>{composer.activeCatalog === 'PRODUCTOS' ? 'Todos los productos' : 'Todos los departamentos'}</span>
-                  {composer.activeCategory === 'all' && <i className="bi bi-check2" />}
+                  {composer.activeCategory === 'all' ? <i className="bi bi-check2" /> : null}
                 </button>
 
-                {composer.activeCatalog === 'PRODUCTOS' 
+                {composer.activeCatalog === 'PRODUCTOS'
                   ? composer.categorias.map((categoria) => {
                       const isSelected = String(composer.activeCategory) === String(categoria.id_categoria_producto);
                       return (
@@ -125,11 +127,11 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                           className={`ventas-catalog__category-item ${isSelected ? 'is-selected' : ''}`}
                           onClick={() => {
                             composer.setActiveCategory(String(categoria.id_categoria_producto));
-                            setSearchOpen(false);
+                            setFilterOpen(false);
                           }}
                         >
                           <span>{categoria.nombre_categoria}</span>
-                          {isSelected && <i className="bi bi-check2" />}
+                          {isSelected ? <i className="bi bi-check2" /> : null}
                         </button>
                       );
                     })
@@ -142,23 +144,22 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                           className={`ventas-catalog__category-item ${isSelected ? 'is-selected' : ''}`}
                           onClick={() => {
                             composer.setActiveCategory(String(tipo.id_tipo_departamento));
-                            setSearchOpen(false);
+                            setFilterOpen(false);
                           }}
                         >
                           <span>{tipo.nombre_tipo_departamento}</span>
-                          {isSelected && <i className="bi bi-check2" />}
+                          {isSelected ? <i className="bi bi-check2" /> : null}
                         </button>
                       );
-                    })
-                }
+                    })}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
-      <div className="ventas-create-modal__results-meta">
-        {catalogLoading ? 'Cargando catalogo...' : composer.resultsLabel}
+      <div className="ventas-create-modal__results-meta ventas-catalog-results">
+        {catalogLoading ? 'Cargando catálogo...' : composer.resultsLabel}
       </div>
       {activeCatalogError ? (
         <div className="ventas-create-modal__error">
@@ -171,11 +172,11 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
         </div>
       ) : null}
 
-      <div className="ventas-create-modal__products">
+      <div className="ventas-create-modal__products ventas-catalog-grid">
         {catalogLoading ? (
           <div className="ventas-create-modal__empty">
             <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-            <span>Cargando catalogo...</span>
+            <span>Cargando catálogo...</span>
           </div>
         ) : composer.currentCatalogRows.length === 0 ? (
           <div className="ventas-create-modal__empty">
@@ -203,13 +204,10 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             return (
               <div
                 key={`${composer.activeCatalog}-${itemId}`}
-                className={`vcp-card ${isOutOfStock ? 'is-out-of-stock' : ''}`}
+                className={`vcp-card ventas-catalog-card-compact ${isOutOfStock ? 'is-out-of-stock' : ''}`}
                 onClick={() => {
                   if (isOutOfStock) return;
-                  composer.addCatalogItem(
-                    isProducto ? 'PRODUCTO' : isCombo ? 'COMBO' : 'RECETA',
-                    row
-                  );
+                  composer.addCatalogItem(kind, row);
                 }}
               >
                 <div className="vcp-card__media">
@@ -223,9 +221,9 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                       className="vcp-card__image"
                       loading="lazy"
                       referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const next = e.currentTarget.nextElementSibling;
+                      onError={(event) => {
+                        event.currentTarget.style.display = 'none';
+                        const next = event.currentTarget.nextElementSibling;
                         if (next) next.classList.remove('d-none');
                       }}
                     />
@@ -236,13 +234,20 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                 </div>
 
                 <div className="vcp-card__body">
+                  <div className="vcp-card__meta-row">
+                    <span className="vcp-card__kind">{kind}</span>
+                  </div>
                   <h6 className="vcp-card__name" title={itemName}>{itemName}</h6>
 
                   {isProducto ? (
                     <div className={`vcp-card__stock ${isOutOfStock ? 'is-empty' : ''}`}>
-                      {isOutOfStock ? 'Agotado' : `Existencia: ${stockDisponible}`}
+                      {isOutOfStock ? 'Agotado' : `Disponible: ${stockDisponible}`}
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="vcp-card__stock">
+                      {isCombo ? 'Combo con complementos' : 'Preparación de cocina'}
+                    </div>
+                  )}
 
                   <div className="vcp-card__footer">
                     <span className="vcp-card__price">L. {precio.toFixed(2)}</span>
@@ -250,18 +255,15 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                     <button
                       type="button"
                       className="vcp-card__add-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={(event) => {
+                        event.stopPropagation();
                         if (isOutOfStock) return;
-                        composer.addCatalogItem(
-                          isProducto ? 'PRODUCTO' : isCombo ? 'COMBO' : 'RECETA',
-                          row
-                        );
+                        composer.addCatalogItem(kind, row);
                       }}
                       aria-label={`Agregar ${itemName}`}
                       disabled={isOutOfStock}
                     >
-                      {isOutOfStock ? 'Sin stock' : 'Añadir'}
+                      {isOutOfStock ? 'Sin stock' : 'Añadir +'}
                     </button>
                   </div>
                 </div>

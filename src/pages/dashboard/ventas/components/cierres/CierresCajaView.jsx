@@ -13,7 +13,7 @@ import CierreCajaDetalleModal from './CierreCajaDetalleModal';
 import CierreCajaAbrirModal from './CierreCajaAbrirModal';
 import CierreCajaArqueoModal from './CierreCajaArqueoModal';
 import CierreCajaCerrarModal from './CierreCajaCerrarModal';
-import CierreCajaEgresoModal from './CierreCajaEgresoModal';
+import CierreCajaMovimientoManualModal from './CierreCajaMovimientoManualModal';
 import '../../../fidelizacion/styles/fidelizacion.css';
 import '../../styles/cierres-caja.css';
 
@@ -132,7 +132,7 @@ export default function CierresCajaView() {
     createCajaCatalogo,
     closeSesion,
     validateCloseSesion,
-    createMiSesionEgreso,
+    createMiSesionMovimientoManual,
     createArqueo,
     listUsuariosOperativos,
     listCajaCatalogo
@@ -155,9 +155,11 @@ export default function CierresCajaView() {
   const [openCajaMode, setOpenCajaMode] = useState('existente');
   const [arqueoOpen, setArqueoOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
-  const [egresoOpen, setEgresoOpen] = useState(false);
-  const [egresoContext, setEgresoContext] = useState(null);
-  const [egresoInvalidationKey, setEgresoInvalidationKey] = useState(0);
+  const [movimientoManualOpen, setMovimientoManualOpen] = useState(false);
+  const [movimientoManualContext, setMovimientoManualContext] = useState(null);
+  const [movimientoManualTipoInicial, setMovimientoManualTipoInicial] = useState('INGRESO');
+  const [cierreMovementInvalidationKey, setCierreMovementInvalidationKey] = useState(0);
+  const [cierreMovementInvalidationMessage, setCierreMovementInvalidationMessage] = useState('');
   const [usuariosOperativos, setUsuariosOperativos] = useState([]);
   const [loadingUsuariosOperativos, setLoadingUsuariosOperativos] = useState(false);
   const [cajasOperativas, setCajasOperativas] = useState([]);
@@ -196,8 +198,8 @@ export default function CierresCajaView() {
   const canRegisterArqueo = canAny([PERMISSIONS.VENTAS_CAJAS_ARQUEO_REGISTRAR]);
   const hasMovimientoPermission = canAny([PERMISSIONS.VENTAS_CAJAS_MOVIMIENTO_MANUAL_REGISTRAR]);
   const hasActiveCajaSession = Boolean(sesionActiva?.id_sesion_caja);
-  const canAccessEgreso = hasMovimientoPermission || isCashierOnly;
-  const canRegisterEgreso = hasActiveCajaSession && canAccessEgreso;
+  const canAccessMovimientoManual = hasMovimientoPermission || isCashierOnly;
+  const canRegisterMovimientoManual = hasActiveCajaSession && canAccessMovimientoManual;
   const canOpenSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_ABRIR]);
   const canResolveDifference = canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
   const canUseCloseFlow = canCloseSession;
@@ -264,7 +266,7 @@ export default function CierresCajaView() {
   }, [canSelectSucursal]);
 
   useEffect(() => {
-    const hasOverlay = detailOpen || openCajaOpen || arqueoOpen || closeOpen || egresoOpen;
+    const hasOverlay = detailOpen || openCajaOpen || arqueoOpen || closeOpen || movimientoManualOpen;
     if (!hasOverlay) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -272,7 +274,7 @@ export default function CierresCajaView() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [arqueoOpen, closeOpen, detailOpen, egresoOpen, openCajaOpen]);
+  }, [arqueoOpen, closeOpen, detailOpen, movimientoManualOpen, openCajaOpen]);
 
   useEffect(() => {
     if (!scopeInitialized) return;
@@ -486,34 +488,48 @@ export default function CierresCajaView() {
     setCloseOpen(false);
   };
 
-  const openEgreso = (context = {}) => {
+  const openMovimientoManual = (context = {}) => {
     if (!hasActiveCajaSession) {
       openToast(
         'SESIÓN REQUERIDA',
-        'Debes tener una sesión activa para registrar egresos. Abre una sesión de caja asignada antes de registrar salidas de efectivo.',
+        'Debes tener una sesión activa para registrar movimientos manuales. Abre una sesión de caja asignada antes de registrar ingresos o egresos.',
         'warning'
       );
       return;
     }
-    setEgresoContext({
+    setMovimientoManualContext({
       ...context,
       sesion: context?.sesion || selectedSesion || sesionActiva
     });
-    setEgresoOpen(true);
+    setMovimientoManualTipoInicial(context?.tipoInicial === 'EGRESO' ? 'EGRESO' : 'INGRESO');
+    setMovimientoManualOpen(true);
   };
 
-  const handleSubmitEgreso = async (payload) => {
-    await createMiSesionEgreso(payload, { silent: Boolean(egresoContext?.source === 'cierre') });
+  const handleSubmitMovimientoManual = async ({ tipo, monto, observacion, referencia }) => {
+    const normalizedTipo = tipo === 'EGRESO' ? 'EGRESO' : 'INGRESO';
+    const source = movimientoManualContext?.source;
+    await createMiSesionMovimientoManual(
+      normalizedTipo,
+      { monto, observacion, referencia },
+      { silent: Boolean(source === 'cierre') }
+    );
     await refreshCurrentScope();
     if (selectedSesion?.id_sesion_caja) {
-      await ensureDetalle(selectedSesion, { contexto: egresoContext?.source === 'cierre' ? 'CIERRE' : 'OPERACION' });
+      await ensureDetalle(selectedSesion, { contexto: source === 'cierre' ? 'CIERRE' : 'OPERACION' });
     }
-    setEgresoOpen(false);
-    setEgresoInvalidationKey((current) => current + 1);
-    if (egresoContext?.source === 'cierre') {
-      openToast('EGRESO REGISTRADO', 'Egreso registrado. Revisa diferencias nuevamente.', 'success');
+    setMovimientoManualOpen(false);
+    setMovimientoManualContext(null);
+    setCierreMovementInvalidationKey((current) => current + 1);
+    setCierreMovementInvalidationMessage('Movimiento registrado. Revisa diferencias nuevamente.');
+    if (source === 'cierre') {
+      openToast('MOVIMIENTO REGISTRADO', 'Movimiento registrado. Revisa diferencias nuevamente.', 'success');
+    } else {
+      openToast(
+        normalizedTipo === 'EGRESO' ? 'EGRESO REGISTRADO' : 'INGRESO REGISTRADO',
+        normalizedTipo === 'EGRESO' ? 'Egreso registrado correctamente.' : 'Ingreso registrado correctamente.',
+        'success'
+      );
     }
-    setEgresoContext(null);
   };
 
   const handleSubmitOpenSession = async (payload) => {
@@ -686,12 +702,12 @@ export default function CierresCajaView() {
           onSucursalChange={setSelectedSucursalId}
           onRefresh={refreshCurrentScope}
           canOpenSession={canOpenSession}
-          canRegisterEgreso={canRegisterEgreso}
-          canAccessEgreso={canAccessEgreso}
+          canRegisterMovimientoManual={canRegisterMovimientoManual}
+          canAccessMovimientoManual={canAccessMovimientoManual}
           hasActiveCajaSession={hasActiveCajaSession}
           supportsCajaCatalogCreate={false}
           onOpenAbrirSesion={handleOpenAbrirSesion}
-          onOpenEgreso={() => openEgreso({ source: 'toolbar' })}
+          onOpenMovimientoManual={() => openMovimientoManual({ source: 'toolbar', tipoInicial: 'INGRESO' })}
           onOpenNuevaCaja={() => {}}
         />
 
@@ -779,21 +795,23 @@ export default function CierresCajaView() {
           if (!selectedSesion?.id_sesion_caja) return null;
           return validateCloseSesion(selectedSesion.id_sesion_caja, payload, options);
         }}
-        onOpenEgreso={(context) => openEgreso(context)}
-        externalInvalidationKey={egresoInvalidationKey}
+        onOpenMovimientoManual={(context) => openMovimientoManual(context)}
+        externalInvalidationKey={cierreMovementInvalidationKey}
+        externalInvalidationMessage={cierreMovementInvalidationMessage}
       />
 
-      <CierreCajaEgresoModal
-        key={egresoOpen ? 'egreso-open' : 'egreso-closed'}
-        open={egresoOpen}
+      <CierreCajaMovimientoManualModal
+        key={movimientoManualOpen ? `movimiento-${movimientoManualTipoInicial}` : 'movimiento-closed'}
+        open={movimientoManualOpen}
         saving={saving}
-        sesion={egresoContext?.sesion || selectedSesion || sesionActiva}
+        sesion={movimientoManualContext?.sesion || selectedSesion || sesionActiva}
+        tipoInicial={movimientoManualTipoInicial}
         onClose={() => {
           if (saving) return;
-          setEgresoOpen(false);
-          setEgresoContext(null);
+          setMovimientoManualOpen(false);
+          setMovimientoManualContext(null);
         }}
-        onSubmit={handleSubmitEgreso}
+        onSubmit={handleSubmitMovimientoManual}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />

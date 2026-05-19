@@ -42,8 +42,9 @@ export default function CierreCajaCerrarModal({
   onClose,
   onSubmit,
   onValidate,
-  onOpenEgreso,
-  externalInvalidationKey = 0
+  onOpenMovimientoManual,
+  externalInvalidationKey = 0,
+  externalInvalidationMessage = 'Movimiento registrado. Revisa diferencias nuevamente.'
 }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [form, setForm] = useState(buildInitialState);
@@ -222,8 +223,8 @@ export default function CierreCajaCerrarModal({
     if (!open || !externalInvalidationKey) return;
     setValidationData(null);
     setValidationError('');
-    setStaleValidationNotice('Egreso registrado. Revisa diferencias nuevamente.');
-  }, [externalInvalidationKey, open]);
+    setStaleValidationNotice(externalInvalidationMessage || 'Movimiento registrado. Revisa diferencias nuevamente.');
+  }, [externalInvalidationKey, externalInvalidationMessage, open]);
 
   if (!open) return null;
 
@@ -309,9 +310,18 @@ export default function CierreCajaCerrarModal({
               <button
                 type="button"
                 className="btn btn-sm btn-outline-danger"
-                onClick={() => onOpenEgreso?.({ source: 'cierre', methodCode })}
+                onClick={() => onOpenMovimientoManual?.({ source: 'cierre', methodCode, tipoInicial: 'EGRESO' })}
               >
                 Registrar egreso
+              </button>
+            ) : null}
+            {diferencia > 0 ? (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-success"
+                onClick={() => onOpenMovimientoManual?.({ source: 'cierre', methodCode, tipoInicial: 'INGRESO' })}
+              >
+                Registrar ingreso
               </button>
             ) : null}
           </>
@@ -334,7 +344,7 @@ export default function CierreCajaCerrarModal({
   return (
     <div className="ventas-modal-backdrop">
       <section
-        className="ventas-modal cierres-caja-action-modal"
+        className="ventas-modal cierres-caja-action-modal cierres-caja-compact-modal cierres-caja-close-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="cierre-caja-title"
@@ -364,7 +374,7 @@ export default function CierreCajaCerrarModal({
           </button>
         </header>
 
-        <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={handleSubmit}>
+        <form className="ventas-modal__body cierres-caja-action-modal__body cierres-caja-compact-modal__body" onSubmit={handleSubmit}>
           <div className="d-flex align-items-center justify-content-between small text-muted">
             <span>Paso {stepIndex + 1} de {STEP_ORDER.length}</span>
             <span>{step}</span>
@@ -403,7 +413,7 @@ export default function CierreCajaCerrarModal({
                 <textarea
                   ref={fieldRefs[step]?.observacion}
                   className="ventas-create-modal__note-input"
-                  rows="3"
+                  rows="2"
                   value={form[step].observacion}
                   onChange={(event) => setMethodField(step, 'observacion', event.target.value)}
                   placeholder={`Observación para ${step.toLowerCase()}...`}
@@ -518,7 +528,7 @@ export default function CierreCajaCerrarModal({
                 <span>Observación general de cierre</span>
                 <textarea
                   className="ventas-create-modal__note-input"
-                  rows="3"
+                  rows="2"
                   value={form.observacion_cierre}
                   onChange={(event) => setForm((current) => ({ ...current, observacion_cierre: event.target.value }))}
                   placeholder="Observación general opcional..."
