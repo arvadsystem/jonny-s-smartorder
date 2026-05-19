@@ -126,10 +126,12 @@ export function useCierresCaja() {
   );
 
   const getSesionDetalle = useCallback(
-    async (idSesionCaja) => {
+    async (idSesionCaja, options = {}) => {
       setDetailLoading(true);
       try {
-        const response = await cajasService.getSesionReporte(idSesionCaja);
+        const response = await cajasService.getSesionReporte(idSesionCaja, {
+          contexto: options.contexto || options.context || undefined
+        });
         return normalizeSesionDetalle(response);
       } catch (errorResponse) {
         openToast(
@@ -355,6 +357,57 @@ export function useCierresCaja() {
     [openToast]
   );
 
+  const validateCloseSesion = useCallback(
+    async (idSesionCaja, payload, options = {}) => {
+      try {
+        const response = await cajasService.validarCierreSesion(idSesionCaja, payload);
+        if (!options?.silent) {
+          openToast('DIFERENCIAS REVISADAS', 'Diferencias revisadas.', 'success');
+        }
+        return response;
+      } catch (errorResponse) {
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo revisar las diferencias.'),
+            'danger'
+          );
+        }
+        throw errorResponse;
+      }
+    },
+    [openToast]
+  );
+
+  const createMiSesionEgreso = useCallback(
+    async (payload, options = {}) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.registrarMiSesionEgreso(payload);
+        if (!options?.silent) {
+          openToast(
+            'EGRESO REGISTRADO',
+            response?.message || 'Egreso registrado correctamente.',
+            'success'
+          );
+        }
+        return response;
+      } catch (errorResponse) {
+        if (!options?.silent) {
+          openToast(
+            'ERROR',
+            extractCajasApiMessage(errorResponse, 'No se pudo registrar el egreso.'),
+            'danger'
+          );
+        }
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
   const editCierre = useCallback(
     async (idCierreCaja, payload) => {
       setSaving(true);
@@ -437,6 +490,8 @@ export function useCierresCaja() {
     inactivateCajaAsignacion,
     closeSesion,
     previewCloseSesion,
+    validateCloseSesion,
+    createMiSesionEgreso,
     editCierre,
     createArqueo
   };

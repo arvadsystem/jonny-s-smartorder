@@ -36,6 +36,11 @@ export default function CierreCajaDetalleModal({
   const resumen = detalle?.resumen_operativo ?? {};
   const participantes = Array.isArray(detalle?.equipo_caja) ? detalle.equipo_caja : (Array.isArray(detalle?.participantes) ? detalle.participantes : []);
   const cierre = detalle?.cierre ?? null;
+  const movimientos = Array.isArray(detalle?.movimientos) ? detalle.movimientos : [];
+  const egresosRegistrados = movimientos.filter((movimiento) => {
+    const code = String(movimiento?.tipo_codigo || movimiento?.codigo || '').trim().toUpperCase();
+    return code.includes('EGRESO') || code.includes('RETIRO') || code.includes('SALIDA');
+  });
   const statusBadge = resolveSessionStatusBadge(sesion);
   const differenceBadge = canViewCajaTheoreticalAmounts
     ? resolveDifferenceBadge(cierre?.diferencia ?? resumen?.diferencia_cierre ?? sesion?.diferencia_cierre ?? null)
@@ -147,6 +152,88 @@ export default function CierreCajaDetalleModal({
                 </div>
               </section>
 
+              {!canViewCajaTheoreticalAmounts ? (
+                <>
+                  <section className="ventas-page__table-card">
+                    <div className="p-3 pb-0">
+                      <div className="inv-prod-title-row mb-2">
+                        <i className="bi bi-check2-square text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
+                        <span className="inv-prod-title">Resumen de cierre</span>
+                      </div>
+                    </div>
+                    <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap">
+                      <table className="table ventas-page__table">
+                        <thead>
+                          <tr>
+                            <th>Sesion</th>
+                            <th>Caja</th>
+                            <th>Cierre</th>
+                            <th className="text-end">Declarado</th>
+                            <th className="text-end">Diferencia final</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>SES-{String(sesion?.id_sesion_caja || '').padStart(5, '0')}</td>
+                            <td>{sesion?.nombre_caja || 'Sin caja'}</td>
+                            <td>{formatCajaDateTime(sesion?.fecha_cierre || cierre?.fecha_cierre)}</td>
+                            <td className="text-end">L. {formatCajaCurrency(cierre?.monto_declarado_cierre ?? resumen.monto_declarado_cierre)}</td>
+                            <td className="text-end">
+                              {cierre?.diferencia !== null && cierre?.diferencia !== undefined
+                                ? `L. ${formatCajaCurrency(cierre.diferencia)}`
+                                : 'No disponible'}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+
+                  <section className="ventas-page__table-card">
+                    <div className="p-3 pb-0">
+                      <div className="inv-prod-title-row mb-2">
+                        <i className="bi bi-cash-coin text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
+                        <span className="inv-prod-title">Egresos registrados</span>
+                      </div>
+                    </div>
+                    <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap">
+                      <table className="table ventas-page__table">
+                        <thead>
+                          <tr>
+                            <th>Tipo</th>
+                            <th>Referencia</th>
+                            <th>Observación</th>
+                            <th className="text-end">Monto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {egresosRegistrados.length === 0 ? (
+                            <tr><td colSpan="4" className="text-center py-4 text-muted">No hay egresos registrados.</td></tr>
+                          ) : egresosRegistrados.map((movimiento) => (
+                            <tr key={movimiento.id_movimiento_caja}>
+                              <td>{movimiento.tipo_nombre || movimiento.tipo_codigo || 'Egreso'}</td>
+                              <td>{movimiento.referencia || '-'}</td>
+                              <td>{movimiento.observacion || '-'}</td>
+                              <td className="text-end">L. {formatCajaCurrency(movimiento.monto)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+
+                  {cierre?.observacion ? (
+                    <section className="ventas-page__table-card p-3">
+                      <div className="inv-prod-title-row mb-2">
+                        <i className="bi bi-chat-left-text text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
+                        <span className="inv-prod-title">Observacion de cierre</span>
+                      </div>
+                      <p className="mb-0 text-muted fw-semibold">{cierre.observacion}</p>
+                    </section>
+                  ) : null}
+                </>
+              ) : (
+                <>
               <section className="ventas-page__table-card">
                 <div className="p-3 pb-0">
                   <div className="inv-prod-title-row mb-2">
@@ -325,6 +412,8 @@ export default function CierreCajaDetalleModal({
                   <p className="mb-0 text-muted fw-semibold">{cierre.observacion}</p>
                 </section>
               ) : null}
+                </>
+              )}
             </div>
           )}
         </div>

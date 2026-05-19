@@ -95,9 +95,11 @@ const cajasService = {
   listSesionesAbiertas: (params = {}) => apiFetch(`/ventas/cajas/sesiones-abiertas${buildQuery(params)}`, 'GET'),
   listSesionesAbiertasSafe: (params = {}) => getSafeOpenSessions(params),
 
-  getSesionById: (idSesionCaja) => apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}`, 'GET'),
+  getSesionById: (idSesionCaja, params = {}) =>
+    apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}${buildQuery(params)}`, 'GET'),
 
-  getSesionReporte: (idSesionCaja) => apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/reporte`, 'GET'),
+  getSesionReporte: (idSesionCaja, params = {}) =>
+    apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/reporte${buildQuery(params)}`, 'GET'),
 
   getReporteCierres: (params = {}) => apiFetch(`/ventas/cajas/reportes/cierres${buildQuery(params)}`, 'GET'),
 
@@ -108,6 +110,10 @@ const cajasService = {
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/cerrar`, 'PATCH', payload),
   previewCloseSesion: (idSesionCaja, payload) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/cierre-preview`, 'POST', payload),
+  validarCierreSesion: (idSesionCaja, payload) =>
+    apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/cierre-validaciones`, 'POST', payload),
+  registrarMiSesionEgreso: (payload) =>
+    apiFetch('/ventas/cajas/mi-sesion/egresos', 'POST', payload),
 
   editCierre: (idCierreCaja, payload) =>
     apiFetch(`/ventas/cajas/cierres/${idCierreCaja}`, 'PATCH', payload),

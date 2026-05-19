@@ -25,8 +25,12 @@ export default function CierresCajaOverview({
   onSucursalChange,
   onRefresh,
   canOpenSession,
+  canRegisterEgreso,
+  canAccessEgreso = false,
+  hasActiveCajaSession = false,
   supportsCajaCatalogCreate,
   onOpenAbrirSesion,
+  onOpenEgreso,
   onOpenNuevaCaja
 }) {
   const [searchTerm, setSearchTerm] = useState(() => filters.search || '');
@@ -144,6 +148,23 @@ export default function CierresCajaOverview({
                 <span>Abrir sesion</span>
               </button>
             ) : null}
+
+            <button
+              type="button"
+              className="inv-prod-toolbar-btn bg-white border cierres-caja-toolbar__cta"
+              onClick={onOpenEgreso}
+              disabled={!canAccessEgreso}
+              aria-disabled={!canRegisterEgreso}
+              aria-label={
+                hasActiveCajaSession
+                  ? 'Registrar egreso de caja'
+                  : 'Registrar egreso requiere una sesión activa'
+              }
+              style={{ color: 'rgba(154, 83, 25, 0.9)' }}
+            >
+              <i className="bi bi-cash-coin" />
+              <span>Registrar egreso</span>
+            </button>
 
             <button
               type="button"

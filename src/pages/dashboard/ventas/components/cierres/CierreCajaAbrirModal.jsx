@@ -261,7 +261,7 @@ export default function CierreCajaAbrirModal({
                   <div className="cierres-caja-action-modal__readonly">Consultando caja asignada...</div>
                 ) : assignedCajaMissing ? (
                   <div className="ventas-create-modal__error">
-                    No tienes una caja asignada activa. Solicita asignación a un administrador.
+                    No tienes una caja asignada. Solicita a un administrador que te asigne una caja.
                   </div>
                 ) : assignedCajaError ? (
                   <div className="ventas-create-modal__error">{assignedCajaError}</div>
@@ -293,7 +293,7 @@ export default function CierreCajaAbrirModal({
                   </>
                 ) : (
                   <div className="ventas-create-modal__error">
-                    No tienes una caja asignada activa. Solicita asignación a un administrador.
+                    No tienes una caja asignada. Solicita a un administrador que te asigne una caja.
                   </div>
                 )}
               </div>

@@ -294,6 +294,53 @@
   font-weight: 800;
 }
 
+.cierres-caja-review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.cierres-caja-review-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.cierres-caja-review-card__head,
+.cierres-caja-review-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cierres-caja-review-card__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cierres-caja-review-card__grid div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cierres-caja-review-card__grid span {
+  color: rgba(82, 44, 34, 0.62);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cierres-caja-review-card__grid strong {
+  color: #2f1a10;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 991.98px) {
   .cierres-caja-toolbar .collapsible-search,
   .cierres-caja-toolbar .collapsible-search.is-expanded .collapsible-search__field,
@@ -323,6 +370,7 @@
   .cierres-caja-detail__two-column,
   .cierres-caja-detail__team-grid,
   .cierres-caja-detail__summary-grid,
+  .cierres-caja-review-card__grid,
   .cierres-caja-action-modal__grid {
     grid-template-columns: 1fr;
   }

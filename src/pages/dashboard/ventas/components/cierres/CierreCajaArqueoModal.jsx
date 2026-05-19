@@ -7,6 +7,7 @@ export default function CierreCajaArqueoModal({
   detalle,
   tiposArqueo,
   saving,
+  canViewCajaTheoreticalAmounts = true,
   onClose,
   onSubmit
 }) {
@@ -36,12 +37,11 @@ export default function CierreCajaArqueoModal({
   };
 
   return (
-    <div className="ventas-modal-backdrop" onClick={onClose}>
+    <div className="ventas-modal-backdrop">
       <section
         className="ventas-modal cierres-caja-action-modal"
         role="dialog"
         aria-modal="true"
-        onClick={(event) => event.stopPropagation()}
       >
         <header className="ventas-modal__header">
           <div className="ventas-modal__title-wrap">
@@ -68,8 +68,18 @@ export default function CierreCajaArqueoModal({
               <i className="bi bi-cash-stack" />
             </div>
             <div className="inv-prod-kpi-content">
-              <span>Efectivo teorico actual</span>
-              <strong>L. {formatCajaCurrency(efectivoTeorico)}</strong>
+              {canViewCajaTheoreticalAmounts ? (
+                <>
+                  <span>Efectivo teorico actual</span>
+                  <strong>L. {formatCajaCurrency(efectivoTeorico)}</strong>
+                </>
+              ) : (
+                <>
+                  <span>Conteo de efectivo</span>
+                  <strong>Registra el efectivo contado.</strong>
+                  <small className="text-muted">La comparación será revisada según permisos.</small>
+                </>
+              )}
             </div>
           </div>
 

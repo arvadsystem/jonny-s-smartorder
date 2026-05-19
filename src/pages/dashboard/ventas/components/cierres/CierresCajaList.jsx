@@ -69,12 +69,15 @@ export default function CierresCajaList({
                 const statusBadge = resolveSessionStatusBadge(sesion);
                 const differenceBadge = resolveDifferenceBadge(sesion.diferencia_cierre);
                 const isOpen = sesion.estado_codigo === 'ABIERTA';
+                const hasFormalClose = !isOpen && Boolean(sesion.fecha_cierre);
+                const canOpenDetailForSession =
+                  canViewDetail && (canViewCajaTheoreticalAmounts || hasFormalClose);
 
                 return (
                   <tr
                     key={sesion.id_sesion_caja}
                     className="ventas-page__table-row"
-                    onClick={() => canViewDetail && onOpenDetalle(sesion)}
+                    onClick={() => canOpenDetailForSession && onOpenDetalle(sesion)}
                   >
                     <td>
                       <div className="ventas-page__table-sale">
@@ -125,7 +128,7 @@ export default function CierresCajaList({
                     ) : null}
                     <td className="text-end align-middle" onClick={(event) => event.stopPropagation()}>
                       <div className="d-inline-flex gap-2">
-                        {canViewDetail ? (
+                        {canOpenDetailForSession ? (
                           <button
                             type="button"
                             className="ventas-page__table-detail-btn"
@@ -184,6 +187,9 @@ export default function CierresCajaList({
           sesiones.map((sesion) => {
             const statusBadge = resolveSessionStatusBadge(sesion);
             const isOpen = sesion.estado_codigo === 'ABIERTA';
+            const hasFormalClose = !isOpen && Boolean(sesion.fecha_cierre);
+            const canOpenDetailForSession =
+              canViewDetail && (canViewCajaTheoreticalAmounts || hasFormalClose);
             return (
               <article key={sesion.id_sesion_caja} className="cierres-caja-mobile-card">
                 <div className="cierres-caja-mobile-card__head">
@@ -231,7 +237,7 @@ export default function CierresCajaList({
                 </div>
 
                 <div className="cierres-caja-mobile-card__actions">
-                  {canViewDetail ? (
+                  {canOpenDetailForSession ? (
                     <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => onOpenDetalle(sesion)}>
                       Ver detalle
                     </button>

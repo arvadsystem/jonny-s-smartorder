@@ -13,6 +13,7 @@ import CierreCajaDetalleModal from './CierreCajaDetalleModal';
 import CierreCajaAbrirModal from './CierreCajaAbrirModal';
 import CierreCajaArqueoModal from './CierreCajaArqueoModal';
 import CierreCajaCerrarModal from './CierreCajaCerrarModal';
+import CierreCajaEgresoModal from './CierreCajaEgresoModal';
 import '../../../fidelizacion/styles/fidelizacion.css';
 import '../../styles/cierres-caja.css';
 
@@ -81,6 +82,32 @@ const resolveMiCajaError = (error, fallback = 'No se pudo consultar tu caja asig
   return message || fallback;
 };
 
+const extractUserRoleNames = (user) => {
+  const roleRows = Array.isArray(user?.roles) ? user.roles : [];
+  const candidates = [
+    user?.rol,
+    user?.role,
+    user?.rol_codigo,
+    user?.codigo_rol,
+    user?.rol_nombre,
+    user?.nombre_rol,
+    ...roleRows.flatMap((role) => {
+      if (!role || typeof role !== 'object') return [role];
+      return [
+        role.codigo,
+        role.codigo_rol,
+        role.rol,
+        role.role,
+        role.nombre,
+        role.nombre_rol,
+        role.name
+      ];
+    })
+  ];
+
+  return normalizeRoles(candidates.filter(Boolean));
+};
+
 export default function CierresCajaView() {
   const { user } = useAuth();
   const { canAny, isSuperAdmin } = usePermisos();
@@ -104,7 +131,8 @@ export default function CierresCajaView() {
     openSesion,
     createCajaCatalogo,
     closeSesion,
-    previewCloseSesion,
+    validateCloseSesion,
+    createMiSesionEgreso,
     createArqueo,
     listUsuariosOperativos,
     listCajaCatalogo
@@ -127,6 +155,9 @@ export default function CierresCajaView() {
   const [openCajaMode, setOpenCajaMode] = useState('existente');
   const [arqueoOpen, setArqueoOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [egresoOpen, setEgresoOpen] = useState(false);
+  const [egresoContext, setEgresoContext] = useState(null);
+  const [egresoInvalidationKey, setEgresoInvalidationKey] = useState(0);
   const [usuariosOperativos, setUsuariosOperativos] = useState([]);
   const [loadingUsuariosOperativos, setLoadingUsuariosOperativos] = useState(false);
   const [cajasOperativas, setCajasOperativas] = useState([]);
@@ -143,7 +174,7 @@ export default function CierresCajaView() {
   const cajasBySucursalRef = useRef(new Map());
 
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
-  const roleSet = useMemo(() => new Set(normalizeRoles(user?.roles)), [user?.roles]);
+  const roleSet = useMemo(() => new Set(extractUserRoleNames(user)), [user]);
   const isCajero = roleSet.has('CAJERO');
   const isAdminRole = roleSet.has('ADMIN') || roleSet.has('ADMINISTRADOR') || roleSet.has('SUPER_ADMIN');
   const hasCajaAdminPermissions = canAny([
@@ -163,6 +194,10 @@ export default function CierresCajaView() {
   ]);
   const canCloseSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_CERRAR]);
   const canRegisterArqueo = canAny([PERMISSIONS.VENTAS_CAJAS_ARQUEO_REGISTRAR]);
+  const hasMovimientoPermission = canAny([PERMISSIONS.VENTAS_CAJAS_MOVIMIENTO_MANUAL_REGISTRAR]);
+  const hasActiveCajaSession = Boolean(sesionActiva?.id_sesion_caja);
+  const canAccessEgreso = hasMovimientoPermission || isCashierOnly;
+  const canRegisterEgreso = hasActiveCajaSession && canAccessEgreso;
   const canOpenSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_ABRIR]);
   const canResolveDifference = canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
   const canUseCloseFlow = canCloseSession;
@@ -229,7 +264,7 @@ export default function CierresCajaView() {
   }, [canSelectSucursal]);
 
   useEffect(() => {
-    const hasOverlay = detailOpen || openCajaOpen || arqueoOpen || closeOpen;
+    const hasOverlay = detailOpen || openCajaOpen || arqueoOpen || closeOpen || egresoOpen;
     if (!hasOverlay) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -237,7 +272,7 @@ export default function CierresCajaView() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [arqueoOpen, closeOpen, detailOpen, openCajaOpen]);
+  }, [arqueoOpen, closeOpen, detailOpen, egresoOpen, openCajaOpen]);
 
   useEffect(() => {
     if (!scopeInitialized) return;
@@ -266,10 +301,13 @@ export default function CierresCajaView() {
     scopeQuery
   ]);
 
-  const ensureDetalle = async (sesion) => {
+  const isOpenCajaSession = (sesion) =>
+    String(sesion?.estado_codigo || '').trim().toUpperCase() === 'ABIERTA';
+
+  const ensureDetalle = async (sesion, options = {}) => {
     const targetSession = sesion || selectedSesion;
     if (!targetSession?.id_sesion_caja) return null;
-    const detail = await getSesionDetalle(targetSession.id_sesion_caja);
+    const detail = await getSesionDetalle(targetSession.id_sesion_caja, options);
     setSelectedDetalle(detail);
     return detail;
   };
@@ -319,12 +357,21 @@ export default function CierresCajaView() {
   }, []);
 
   const openDetalle = async (sesion) => {
+    if (isRestrictedCajero && isOpenCajaSession(sesion)) {
+      openToast(
+        'DETALLE NO DISPONIBLE',
+        'El detalle estará disponible cuando la caja esté cerrada.',
+        'warning'
+      );
+      return;
+    }
+
     setSelectedSesion(sesion);
     setSelectedDetalle(null);
     setDetailOpen(true);
 
     try {
-      await ensureDetalle(sesion);
+      await ensureDetalle(sesion, { contexto: 'DETALLE' });
     } catch {
       setDetailOpen(false);
       setSelectedSesion(null);
@@ -338,7 +385,7 @@ export default function CierresCajaView() {
 
     if (!selectedDetalle || selectedDetalle?.sesion?.id_sesion_caja !== sesion?.id_sesion_caja) {
       try {
-        await ensureDetalle(sesion);
+        await ensureDetalle(sesion, { contexto: 'ARQUEO' });
       } catch {
         setArqueoOpen(false);
       }
@@ -351,9 +398,61 @@ export default function CierresCajaView() {
 
     if (!selectedDetalle || selectedDetalle?.sesion?.id_sesion_caja !== sesion?.id_sesion_caja) {
       try {
-        await ensureDetalle(sesion);
+        await ensureDetalle(sesion, { contexto: 'CIERRE' });
       } catch {
         setCloseOpen(false);
+      }
+    }
+  };
+
+  const handleOpenAbrirSesion = async () => {
+    setOpenCajaMode('existente');
+
+    if (!isRestrictedCajero) {
+      setOpenCajaOpen(true);
+      return;
+    }
+
+    const requestId = miAsignacionRequestIdRef.current + 1;
+    miAsignacionRequestIdRef.current = requestId;
+    setLoadingMiAsignacionCaja(true);
+    setMiAsignacionCaja(null);
+    setMiAsignacionCajaMissing(false);
+    setMiAsignacionCajaError('');
+
+    try {
+      const response = await cajasService.getMiAsignacionActiva();
+      if (miAsignacionRequestIdRef.current !== requestId) return;
+      const assignedCaja = normalizeMiCajaAsignacion(response);
+      if (!assignedCaja?.id_caja) {
+        setMiAsignacionCajaMissing(true);
+        openToast(
+          'CAJA NO ASIGNADA',
+          'No tienes una caja asignada. Solicita a un administrador que te asigne una caja antes de abrir sesión.',
+          'warning'
+        );
+        return;
+      }
+      setMiAsignacionCaja(assignedCaja);
+      setOpenCajaOpen(true);
+    } catch (errorResponse) {
+      if (miAsignacionRequestIdRef.current !== requestId) return;
+      setMiAsignacionCaja(null);
+      if (isCajaAsignacionNotFound(errorResponse)) {
+        setMiAsignacionCajaMissing(true);
+        openToast(
+          'CAJA NO ASIGNADA',
+          'No tienes una caja asignada. Solicita a un administrador que te asigne una caja antes de abrir sesión.',
+          'warning'
+        );
+        return;
+      }
+      const message = resolveMiCajaError(errorResponse, 'No se pudo consultar tu caja asignada.');
+      setMiAsignacionCajaError(message);
+      openToast('ERROR', message, 'danger');
+    } finally {
+      if (miAsignacionRequestIdRef.current === requestId) {
+        setLoadingMiAsignacionCaja(false);
       }
     }
   };
@@ -361,7 +460,10 @@ export default function CierresCajaView() {
   const handleSubmitArqueo = async (payload) => {
     if (!selectedSesion?.id_sesion_caja) return;
     await createArqueo(selectedSesion.id_sesion_caja, payload);
-    const [, detail] = await Promise.all([refreshCurrentScope(), ensureDetalle(selectedSesion)]);
+    const [, detail] = await Promise.all([
+      refreshCurrentScope(),
+      ensureDetalle(selectedSesion, { contexto: 'ARQUEO' })
+    ]);
     setArqueoOpen(false);
 
     const selectedType = (catalogos.tipos_arqueo || []).find(
@@ -377,8 +479,41 @@ export default function CierresCajaView() {
   const handleSubmitClose = async (payload) => {
     if (!selectedSesion?.id_sesion_caja) return;
     await closeSesion(selectedSesion.id_sesion_caja, payload, { silent: true });
-    await Promise.all([refreshCurrentScope(), ensureDetalle(selectedSesion)]);
+    await Promise.all([
+      refreshCurrentScope(),
+      ensureDetalle(selectedSesion, { contexto: 'CIERRE' })
+    ]);
     setCloseOpen(false);
+  };
+
+  const openEgreso = (context = {}) => {
+    if (!hasActiveCajaSession) {
+      openToast(
+        'SESIÓN REQUERIDA',
+        'Debes tener una sesión activa para registrar egresos. Abre una sesión de caja asignada antes de registrar salidas de efectivo.',
+        'warning'
+      );
+      return;
+    }
+    setEgresoContext({
+      ...context,
+      sesion: context?.sesion || selectedSesion || sesionActiva
+    });
+    setEgresoOpen(true);
+  };
+
+  const handleSubmitEgreso = async (payload) => {
+    await createMiSesionEgreso(payload, { silent: Boolean(egresoContext?.source === 'cierre') });
+    await refreshCurrentScope();
+    if (selectedSesion?.id_sesion_caja) {
+      await ensureDetalle(selectedSesion, { contexto: egresoContext?.source === 'cierre' ? 'CIERRE' : 'OPERACION' });
+    }
+    setEgresoOpen(false);
+    setEgresoInvalidationKey((current) => current + 1);
+    if (egresoContext?.source === 'cierre') {
+      openToast('EGRESO REGISTRADO', 'Egreso registrado. Revisa diferencias nuevamente.', 'success');
+    }
+    setEgresoContext(null);
   };
 
   const handleSubmitOpenSession = async (payload) => {
@@ -519,8 +654,18 @@ export default function CierresCajaView() {
 
   useEffect(() => {
     if (!openCajaOpen || openCajaMode !== 'existente' || !isRestrictedCajero) return;
+    if (loadingMiAsignacionCaja || miAsignacionCaja || miAsignacionCajaMissing || miAsignacionCajaError) return;
     void loadMiAsignacionCaja();
-  }, [isRestrictedCajero, loadMiAsignacionCaja, openCajaMode, openCajaOpen]);
+  }, [
+    isRestrictedCajero,
+    loadMiAsignacionCaja,
+    loadingMiAsignacionCaja,
+    miAsignacionCaja,
+    miAsignacionCajaError,
+    miAsignacionCajaMissing,
+    openCajaMode,
+    openCajaOpen
+  ]);
 
   return (
     <>
@@ -541,11 +686,12 @@ export default function CierresCajaView() {
           onSucursalChange={setSelectedSucursalId}
           onRefresh={refreshCurrentScope}
           canOpenSession={canOpenSession}
+          canRegisterEgreso={canRegisterEgreso}
+          canAccessEgreso={canAccessEgreso}
+          hasActiveCajaSession={hasActiveCajaSession}
           supportsCajaCatalogCreate={false}
-          onOpenAbrirSesion={() => {
-            setOpenCajaMode('existente');
-            setOpenCajaOpen(true);
-          }}
+          onOpenAbrirSesion={handleOpenAbrirSesion}
+          onOpenEgreso={() => openEgreso({ source: 'toolbar' })}
           onOpenNuevaCaja={() => {}}
         />
 
@@ -613,6 +759,7 @@ export default function CierresCajaView() {
         detalle={selectedDetalle}
         tiposArqueo={catalogos.tipos_arqueo}
         saving={saving}
+        canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
         onClose={() => setArqueoOpen(false)}
         onSubmit={handleSubmitArqueo}
       />
@@ -628,10 +775,25 @@ export default function CierresCajaView() {
         canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
         onClose={() => setCloseOpen(false)}
         onSubmit={handleSubmitClose}
-        onPreview={async (payload, options) => {
+        onValidate={async (payload, options) => {
           if (!selectedSesion?.id_sesion_caja) return null;
-          return previewCloseSesion(selectedSesion.id_sesion_caja, payload, options);
+          return validateCloseSesion(selectedSesion.id_sesion_caja, payload, options);
         }}
+        onOpenEgreso={(context) => openEgreso(context)}
+        externalInvalidationKey={egresoInvalidationKey}
+      />
+
+      <CierreCajaEgresoModal
+        key={egresoOpen ? 'egreso-open' : 'egreso-closed'}
+        open={egresoOpen}
+        saving={saving}
+        sesion={egresoContext?.sesion || selectedSesion || sesionActiva}
+        onClose={() => {
+          if (saving) return;
+          setEgresoOpen(false);
+          setEgresoContext(null);
+        }}
+        onSubmit={handleSubmitEgreso}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />
