@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import EmployeeRow from './EmployeeRow';
 
 const formatMoney = (value) => {
@@ -24,7 +25,86 @@ export default function PayrollTable({
   canAplicarAdelanto = false,
   canRecalcular = false
 }) {
+  const [isMobileLayout, setIsMobileLayout] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 767.98px)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mediaQuery = window.matchMedia('(max-width: 767.98px)');
+    const onChange = (event) => setIsMobileLayout(event.matches);
+    setIsMobileLayout(mediaQuery.matches);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', onChange);
+      return () => mediaQuery.removeEventListener('change', onChange);
+    }
+    mediaQuery.addListener(onChange);
+    return () => mediaQuery.removeListener(onChange);
+  }, []);
+
   const totalNeto = computeTotalNeto(items);
+
+  if (isMobileLayout) {
+    return (
+      <div className="planillas-payroll-cards">
+        {items.map((item, idx) => {
+          const rowIndex = (page - 1) * limit + idx + 1;
+          const empleadoNombre =
+            item.nombre_completo ||
+            item.empleado_nombre ||
+            item.nombre_empleado ||
+            `${item.nombre || ''} ${item.apellido || ''}`.trim();
+          const horasExtraLabel = String(item.he_tiempo ?? item.horas_extra_tiempo ?? '0').trim() || '0';
+          return (
+            <article
+              key={item.id_detalle_planilla || item.id_detalle || `${item.id_empleado || 'emp'}-${idx}`}
+              className="planillas-payroll-card"
+            >
+              <header className="planillas-payroll-card__head">
+                <strong>{rowIndex}. {empleadoNombre || 'Empleado sin nombre'}</strong>
+                <small>{item.dni || 'Sin DNI'}</small>
+              </header>
+              <div className="planillas-payroll-card__grid">
+                <span>Salario base: <strong>{formatMoney(item.salario_base)}</strong></span>
+                <span>Bonos: <strong>{formatMoney(item.total_bonos ?? item.bonos)}</strong></span>
+                <span>Deducciones: <strong>{formatMoney(item.total_deducciones ?? item.deducciones)}</strong></span>
+                <span>Adelantos: <strong>{formatMoney(item.total_adelantos_aplicados ?? item.adelantos)}</strong></span>
+                <span>H.E. tiempo: <strong>{horasExtraLabel}</strong></span>
+                <span>Neto: <strong>{formatMoney(item.neto_pagar ?? item.total_neto_pagar ?? item.neto)}</strong></span>
+              </div>
+              <div className="planillas-payroll-card__actions">
+                <button type="button" className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--view" onClick={() => onOpenDetalle?.(item)} title="Ver detalle">
+                  <i className="bi bi-eye" />
+                </button>
+                <button type="button" className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--list" onClick={() => onOpenMovimientos?.(item)} title="Movimientos">
+                  <i className="bi bi-list-ul" />
+                </button>
+                {typeof onOpenHorasExtra === 'function' ? (
+                  <button type="button" className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--recalc" onClick={() => onOpenHorasExtra?.(item)} title="Horas extra">
+                    <i className="bi bi-clock-history" />
+                  </button>
+                ) : null}
+                {canAplicarAdelanto ? (
+                  <button type="button" className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--adelanto payroll-row__action-strong" onClick={() => onOpenAdelanto?.(item)} title="Aplicar adelanto">
+                    <i className="bi bi-wallet2" />
+                  </button>
+                ) : null}
+                {canRecalcular ? (
+                  <button type="button" className="btn btn-sm payroll-row__icon-btn payroll-row__icon-btn--recalc payroll-row__action-strong" onClick={() => onRecalcularDetalle?.(item)} title="Recalcular detalle">
+                    <i className="bi bi-arrow-repeat" />
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          );
+        })}
+        <div className="planillas-payroll-card__total">
+          Total neto mostrado: <strong>{formatMoney(totalNeto)}</strong>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="table-responsive payroll-table-wrap">

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ventasService from '../../../../services/ventasService';
-import cocinaService from '../../../../services/cocinaService';
 import sucursalesService from '../../../../services/sucursalesService';
 import { inventarioService } from '../../../../services/inventarioService';
 import { securityService } from '../../../../services/securityService';
@@ -45,8 +44,7 @@ export const useInicioDashboardData = ({ can, isSuperAdmin }) => {
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [payload, setPayload] = useState({
     sucursales: [],
-    pedidosVentas: [],
-    pedidosCocina: [],
+    pedidosOperacion: [],
     productos: [],
     insumos: [],
     securitySummary: {}
@@ -60,11 +58,8 @@ export const useInicioDashboardData = ({ can, isSuperAdmin }) => {
       sucursales: can(PERMISSIONS.SUCURSALES_VER)
         ? sucursalesService.getAll()
         : Promise.resolve([]),
-      pedidosVentas: can(PERMISSIONS.VENTAS_VER)
+      pedidosOperacion: (can(PERMISSIONS.VENTAS_VER) || can(PERMISSIONS.COCINA_VER))
         ? ventasService.getPedidosMenu()
-        : Promise.resolve([]),
-      pedidosCocina: can(PERMISSIONS.COCINA_VER)
-        ? cocinaService.listPedidos()
         : Promise.resolve([]),
       productos: can(PERMISSIONS.INVENTARIO_PRODUCTOS_VER)
         ? inventarioService.getProductos({ incluirInactivos: true })
@@ -95,8 +90,7 @@ export const useInicioDashboardData = ({ can, isSuperAdmin }) => {
 
     setPayload({
       sucursales: extractRows(nextPayload.sucursales),
-      pedidosVentas: extractRows(nextPayload.pedidosVentas),
-      pedidosCocina: extractRows(nextPayload.pedidosCocina),
+      pedidosOperacion: extractRows(nextPayload.pedidosOperacion),
       productos: extractRows(nextPayload.productos),
       insumos: extractRows(nextPayload.insumos),
       securitySummary:
@@ -119,8 +113,7 @@ export const useInicioDashboardData = ({ can, isSuperAdmin }) => {
 
   const metrics = useMemo(() => {
     const sucursales = payload.sucursales;
-    const pedidosVentas = payload.pedidosVentas;
-    const pedidosCocina = payload.pedidosCocina;
+    const pedidosOperacion = payload.pedidosOperacion;
     const productos = payload.productos;
     const insumos = payload.insumos;
 
@@ -130,13 +123,13 @@ export const useInicioDashboardData = ({ can, isSuperAdmin }) => {
       return isActive(row?.estado);
     }).length;
 
-    const pendientesPago = pedidosVentas.filter(
+    const pendientesPago = pedidosOperacion.filter(
       (row) => Number.parseInt(String(row?.id_estado_pedido ?? 0), 10) === 1
     ).length;
-    const enCocina = pedidosCocina.filter(
+    const enCocina = pedidosOperacion.filter(
       (row) => Number.parseInt(String(row?.id_estado_pedido ?? 0), 10) === 2
     ).length;
-    const listosEntrega = pedidosCocina.filter(
+    const listosEntrega = pedidosOperacion.filter(
       (row) => Number.parseInt(String(row?.id_estado_pedido ?? 0), 10) === 3
     ).length;
 

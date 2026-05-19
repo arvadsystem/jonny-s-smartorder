@@ -5,6 +5,7 @@ export default function CocinaBoard({
   canAdvancePedido,
   isSuperAdmin = false,
   canOpenDetail,
+  isScreenMode = false,
   canDeliverPedido = false,
   groupedPedidos,
   now,
@@ -24,6 +25,7 @@ export default function CocinaBoard({
           isSuperAdmin={isSuperAdmin}
           canAdvancePedido={canAdvancePedido}
           canOpenDetail={canOpenDetail}
+          isScreenMode={isScreenMode}
           canDeliverPedido={canDeliverPedido}
           onOpenDetail={onOpenDetail}
           onOpenConfirm={onOpenConfirm}

@@ -14,6 +14,7 @@ export default function CocinaColumn({
   canAdvancePedido,
   isSuperAdmin = false,
   canOpenDetail,
+  isScreenMode = false,
   canDeliverPedido = false,
   columnKey,
   pedidos,
@@ -46,6 +47,7 @@ export default function CocinaColumn({
               canAdvance={canAdvancePedido(pedido)}
               isSuperAdmin={isSuperAdmin}
               canOpenDetail={canOpenDetail}
+              isScreenMode={isScreenMode}
               canDeliverPedido={canDeliverPedido}
               disabled={mutatingIds.includes(pedido.id_pedido)}
               onOpenDetail={onOpenDetail}

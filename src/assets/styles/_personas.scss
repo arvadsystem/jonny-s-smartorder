@@ -4241,6 +4241,75 @@
   font-variant-numeric: tabular-nums;
 }
 
+.personas-page.personas-page--planillas .planillas-payroll-cards {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card {
+  border: 1px solid var(--planillas-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fffdfb, #fff8f2);
+  box-shadow: 0 8px 20px var(--planillas-shadow);
+  padding: 0.72rem;
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  margin-bottom: 0.52rem;
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__head strong {
+  font-size: 0.92rem;
+  color: #3b2417;
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__head small {
+  font-size: 0.76rem;
+  color: rgba(89, 62, 45, 0.82);
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem 0.62rem;
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__grid span {
+  font-size: 0.8rem;
+  color: rgba(82, 56, 41, 0.95);
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__grid strong {
+  display: inline-block;
+  margin-left: 0.14rem;
+  color: #2f1208;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.44rem;
+  margin-top: 0.58rem;
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__total {
+  border: 1px solid rgba(167, 120, 83, 0.38);
+  border-radius: 12px;
+  background: rgba(251, 239, 228, 0.76);
+  color: #3a2316;
+  font-size: 0.86rem;
+  padding: 0.62rem 0.72rem;
+}
+
+.personas-page.personas-page--planillas .planillas-payroll-card__total strong {
+  font-size: 0.96rem;
+}
+
 .personas-page.personas-page--planillas .planillas-filters {
   border: 1px solid var(--planillas-border);
   border-radius: 16px;
@@ -5007,6 +5076,27 @@
     font-size: 1.08rem;
   }
 
+  .personas-page.personas-page--planillas .planillas-payroll-card {
+    padding: 0.66rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-payroll-card__head strong {
+    font-size: 0.86rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-payroll-card__grid {
+    grid-template-columns: 1fr;
+    gap: 0.34rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-payroll-card__grid span {
+    font-size: 0.77rem;
+  }
+
+  .personas-page.personas-page--planillas .planillas-payroll-card__actions {
+    gap: 0.36rem;
+  }
+
   .personas-page.personas-page--planillas .payroll-table {
     min-width: 920px;
   }
@@ -5029,6 +5119,24 @@
 
   .personas-page.personas-page--planillas .planillas-table__actions {
     padding: 0.08rem 0.12rem;
+  }
+
+  .personas-page.personas-page--planillas .personas-page__view-toggle {
+    display: none;
+  }
+
+  .personas-page.personas-page--planillas .personas-page__pagination-wrap {
+    gap: 0.4rem;
+    align-items: stretch;
+  }
+
+  .personas-page.personas-page--planillas .personas-page__pagination-info {
+    font-size: 0.72rem;
+  }
+
+  .personas-page.personas-page--planillas .personas-page__pagination-btn {
+    min-width: 2rem;
+    min-height: 2rem;
   }
 
   .personas-page.personas-page--planillas .planillas-modal-backdrop {

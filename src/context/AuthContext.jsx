@@ -80,6 +80,7 @@ const normalizeAuthPayloadUser = (payload) => {
 
 const enrichUserWithPerfil = async (usuario) => {
   if (!usuario || typeof usuario !== 'object') return usuario ?? null;
+  if (Boolean(usuario?.must_change_password)) return usuario;
 
   try {
     const perfilData = await perfilService.getPerfil({ timeoutMs: PERFIL_ENRICH_TIMEOUT_MS });

@@ -5,25 +5,25 @@ const _MOTION = motion;
 const VARIANT_CONFIG = {
   EN_PREPARACION: {
     title: 'Confirmar inicio',
-    body: 'El pedido pasará a preparación.',
+    body: 'El pedido pasara a preparacion.',
     icon: 'bi bi-play-circle',
     submitClass: 'is-start'
   },
   LISTO_PARA_ENTREGA: {
     title: 'Confirmar listo',
-    body: 'El pedido estará listo para entrega.',
+    body: 'El pedido estara listo para entrega.',
     icon: 'bi bi-check-circle',
     submitClass: 'is-ready'
   },
   COMPLETADO: {
     title: 'Confirmar entrega',
-    body: 'El pedido será marcado como entregado.',
+    body: 'El pedido sera marcado como entregado.',
     icon: 'bi bi-box-seam',
     submitClass: 'is-deliver'
   },
   NO_ENTREGADO: {
     title: 'Marcar como no entregado',
-    body: 'El pedido será marcado como no entregado. Se enviará una notificación.',
+    body: 'El pedido sera marcado como no entregado. Se enviara una notificacion.',
     icon: 'bi bi-x-circle',
     submitClass: 'is-fail'
   }
@@ -69,7 +69,7 @@ export default function CocinaConfirmModal({
             </h3>
 
             <p className="kds-confirm__body">
-              <strong>{pedido.numero_ticket}</strong> — {config.body}
+              <strong>{pedido.numero_ticket}</strong> - {config.body}
               {action.nextStatus === 'NO_ENTREGADO' && pedido.minutos_en_espera != null && (
                 <> Tiempo de espera: <strong>{pedido.minutos_en_espera} min</strong>.</>
               )}
@@ -99,3 +99,5 @@ export default function CocinaConfirmModal({
     </AnimatePresence>
   );
 }
+
+

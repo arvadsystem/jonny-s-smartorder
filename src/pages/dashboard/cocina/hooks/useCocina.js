@@ -6,8 +6,6 @@ import {
   applyKitchenTransition,
   filterActiveSucursales,
   normalizeKitchenOrder,
-  resolveExpectedMinutesByActiveCount,
-  resolveKitchenBaseDate,
   resolveOrderColumnKey
 } from '../utils/cocinaHelpers';
 import { createCocinaAudioManager } from '../utils/cocinaAudio';
@@ -21,14 +19,30 @@ const initialToast = {
   code: ''
 };
 
+const TECHNICAL_MESSAGE_PATTERNS = [
+  /cannot read/i,
+  /internal server error/i,
+  /syntax error/i,
+  /relation .* does not exist/i,
+  /column .* does not exist/i,
+  /sql/i,
+  /stack/i
+];
+
+const isTechnicalMessage = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  return TECHNICAL_MESSAGE_PATTERNS.some((pattern) => pattern.test(raw));
+};
+
 const extractApiMessage = (error, fallbackMessage) => {
   if (error?.data && typeof error.data === 'object') {
-    if (error.data.message) return error.data.message;
-    if (error.data.mensaje) return error.data.mensaje;
+    const backendMessage = String(error.data.message || error.data.mensaje || '').trim();
+    if (backendMessage && !isTechnicalMessage(backendMessage)) return backendMessage;
   }
 
-  if (typeof error?.message === 'string' && error.message.trim()) {
-    return error.message;
+  if (typeof error?.message === 'string' && error.message.trim() && !isTechnicalMessage(error.message)) {
+    return error.message.trim();
   }
 
   return fallbackMessage;
@@ -56,50 +70,21 @@ export const useCocina = ({
   const hasAudioBaselineRef = useRef(false);
   const latestPedidosRef = useRef([]);
   const demandBaselineCountRef = useRef(null);
-  const expectedMinutesByPedidoRef = useRef(new Map());
-  const baseMsByPedidoRef = useRef(new Map());
   const isAudioEnabled = audioMode === 'cocina' || audioMode === 'pantalla';
   const isCocinaOperativeAudio = audioMode === 'cocina';
 
   const enrichPedidosWithTiming = useCallback((rows) => {
     const normalizedRows = Array.isArray(rows) ? rows : [];
-    const activeRows = normalizedRows.filter((pedido) => {
-      const columnKey = resolveOrderColumnKey(pedido);
-      return columnKey === 'PENDIENTES' || columnKey === 'EN_PREPARACION';
-    });
-    const activeCount = activeRows.length;
-    const expectedForNew = resolveExpectedMinutesByActiveCount(activeCount);
-    const activeIds = new Set();
-
-    const enrichedRows = normalizedRows.map((pedido) => {
-      const idPedido = Number(pedido?.id_pedido ?? 0);
-      const columnKey = resolveOrderColumnKey(pedido);
-      const isActive = columnKey === 'PENDIENTES' || columnKey === 'EN_PREPARACION';
-      if (idPedido && isActive) {
-        activeIds.add(idPedido);
-        if (!expectedMinutesByPedidoRef.current.has(idPedido)) {
-          expectedMinutesByPedidoRef.current.set(idPedido, expectedForNew);
-        }
-        if (!baseMsByPedidoRef.current.has(idPedido)) {
-          const resolvedBaseMs = resolveKitchenBaseDate(pedido)?.getTime() || Date.now();
-          baseMsByPedidoRef.current.set(idPedido, resolvedBaseMs);
-        }
-      }
-
-      return {
-        ...pedido,
-        expected_minutes_kds: expectedMinutesByPedidoRef.current.get(idPedido) || 20,
-        kds_timer_base_at: idPedido ? new Date(baseMsByPedidoRef.current.get(idPedido) || Date.now()).toISOString() : null
-      };
-    });
-
-    [...expectedMinutesByPedidoRef.current.keys()].forEach((idPedido) => {
-      if (activeIds.has(idPedido)) return;
-      expectedMinutesByPedidoRef.current.delete(idPedido);
-      baseMsByPedidoRef.current.delete(idPedido);
-    });
-
-    return enrichedRows;
+    return normalizedRows.map((pedido) => ({
+      ...pedido,
+      expected_minutes_kds: Number(pedido?.kds_expected_minutes ?? 0) || 20,
+      kds_timer_base_at:
+        pedido?.kds_started_at ||
+        pedido?.visible_en_cocina_at ||
+        pedido?.fecha_hora_facturacion ||
+        pedido?.fecha_hora_pedido ||
+        null
+    }));
   }, []);
 
   const mutatingIdsRef = useRef(mutatingIds);
@@ -431,3 +416,4 @@ export const useCocina = ({
     ]
   );
 };
+

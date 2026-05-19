@@ -133,6 +133,15 @@ export default function CocinaPage() {
     () => pedidos.filter((pedido) => matchesKitchenOrder(pedido, canSearch ? search : '')),
     [canSearch, pedidos, search]
   );
+  const tvClockLabel = useMemo(
+    () =>
+      new Date(now).toLocaleTimeString('es-HN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      }),
+    [now]
+  );
   const groupedPedidos = useMemo(() => groupOrdersByColumn(filteredPedidos), [filteredPedidos]);
 
   const canAdvancePedido = useCallback(
@@ -182,9 +191,12 @@ export default function CocinaPage() {
         {isPantallaCocina ? (
           <header className="kds-tv-header">
             <div className="kds-tv-header__title">Kitchen Display</div>
-            <div className={`kds-realtime ${isRealtimeConnected ? 'is-connected' : ''}`}>
+            <div className={`kds-realtime kds-realtime--tv ${isRealtimeConnected ? 'is-connected' : ''}`}>
               <span className="kds-realtime__dot" />
               <span>{isRealtimeConnected ? 'En tiempo real' : 'Reconectando...'}</span>
+              <span className="kds-tv-header__clock" aria-label="Hora actual">
+                · {tvClockLabel}
+              </span>
             </div>
           </header>
         ) : (
@@ -237,6 +249,7 @@ export default function CocinaPage() {
             canDeliverPedido={canDeliverPedido}
             groupedPedidos={groupedPedidos}
             now={now}
+            isScreenMode={isPantallaCocina}
             mutatingIds={mutatingIds}
             onOpenDetail={(pedido) => {
               if (!canViewDetail) return;
