@@ -12,6 +12,7 @@ import VentaOverviewView from './components/VentaOverviewView';
 import VentaReversionModal from './components/VentaReversionModal';
 import VentasToast from './components/VentasToast';
 import { useVentas } from './hooks/useVentas';
+import { normalizeVentaDetail } from './utils/ventasHelpers';
 import {
   getAllowedTabs,
   MODULE_PRIMARY_PERMISSION,
@@ -21,6 +22,12 @@ import {
 import './styles/ventas.css';
 
 const VENTAS_TABS = new Set(['ventas', 'caja', 'pedidos', 'descuentos']);
+
+const hasCreateVentaDetailPayload = (response) =>
+  response?.ticket_ready === true &&
+  Number(response?.id_factura || 0) > 0 &&
+  Array.isArray(response?.items) &&
+  response.items.length > 0;
 
 export default function VentasPage() {
   const navigate = useNavigate();
@@ -173,12 +180,19 @@ export default function VentasPage() {
     if (response?.id_factura) {
       goToTab('ventas');
 
+      if (hasCreateVentaDetailPayload(response)) {
+        detailRequestRef.current += 1;
+        setSelectedVenta(normalizeVentaDetail(response));
+        setDetailOpen(true);
+        return response;
+      }
+
       try {
         const detail = await getVentaDetail(response.id_factura);
         setSelectedVenta(detail);
         setDetailOpen(true);
       } catch {
-        // El listado ya se refresco aunque falle el detalle.
+        // El hook ya muestra el error del detalle.
       }
     }
 
