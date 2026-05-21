@@ -1,3 +1,5 @@
+import AppSelect from '../../../../components/common/AppSelect';
+
 export default function VentaCajaAutoAuxiliarModal({
   open,
   loading,
@@ -11,38 +13,50 @@ export default function VentaCajaAutoAuxiliarModal({
 }) {
   if (!open) return null;
 
+  const sessionOptions = sessions.map((row) => ({
+    value: String(row.id_sesion_caja),
+    label: `${row.nombre_caja} (${row.codigo_caja}) - ${row.nombre_sucursal}`
+  }));
+
   return (
     <div className="ventas-modal-backdrop" role="presentation" onClick={onClose}>
-      <section className="ventas-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <section
+        className="ventas-modal ventas-caja-autoaux-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ventas-caja-autoaux-title"
+        onClick={(event) => event.stopPropagation()}
+      >
         <header className="ventas-modal__header">
           <div className="ventas-modal__title-wrap">
-            <span className="ventas-modal__icon" aria-hidden="true"><i className="bi bi-safe2" /></span>
-            <h3>Asignación temporal de caja</h3>
+            <span className="ventas-modal__icon" aria-hidden="true">
+              <i className="bi bi-safe2" />
+            </span>
+            <div>
+              <h3 id="ventas-caja-autoaux-title">Asignación temporal de caja</h3>
+              <p>Regístrate como auxiliar para operar una sesión abierta.</p>
+            </div>
           </div>
         </header>
         <div className="ventas-modal__body">
-          <p>No tienes una caja asignada para procesar esta venta. ¿Deseas registrarte como auxiliar de una caja activa?</p>
-          <label className="ventas-create-modal__field">
-            <span>Caja con sesión abierta</span>
-            <select
-              className="ventas-create-modal__select"
-              value={selectedSessionId}
-              onChange={(event) => onSelectSession(event.target.value)}
-              disabled={loading || assigning}
-            >
-              <option value="">{loading ? 'Cargando sesiones...' : 'Selecciona una caja'}</option>
-              {sessions.map((row) => (
-                <option key={row.id_sesion_caja} value={row.id_sesion_caja}>
-                  {row.nombre_caja} ({row.codigo_caja}) - {row.nombre_sucursal}
-                </option>
-              ))}
-            </select>
-          </label>
-          {errorMessage ? <div className="ventas-create-modal__error">{errorMessage}</div> : null}
+          <p className="ventas-caja-autoaux-modal__intro">
+            No tienes una caja asignada para procesar esta venta. Selecciona una caja activa para continuar.
+          </p>
+          <AppSelect
+            label="Caja con sesión abierta"
+            placeholder={loading ? 'Cargando sesiones...' : 'Selecciona una caja'}
+            value={selectedSessionId}
+            options={sessionOptions}
+            onChange={onSelectSession}
+            disabled={loading || assigning}
+            error={errorMessage}
+          />
         </div>
-        <footer className="ventas-detail-modal__footer">
-          <div className="ventas-detail-modal__footer-actions">
-            <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={assigning}>Cancelar</button>
+        <footer className="ventas-caja-autoaux-modal__footer">
+          <div className="ventas-caja-autoaux-modal__actions">
+            <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={assigning}>
+              Cancelar
+            </button>
             <button type="button" className="btn btn-danger" onClick={onConfirm} disabled={!selectedSessionId || assigning}>
               {assigning ? 'Registrando...' : 'Registrarme como auxiliar'}
             </button>

@@ -11,6 +11,7 @@ import VentaFinalizarOperacionModal from './VentaFinalizarOperacionModal';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import ventasService from '../../../../services/ventasService';
 import { useAuth } from '../../../../hooks/useAuth';
+import AppSelect from '../../../../components/common/AppSelect';
 
 const resolvePendientesErrorMessage = (error) => {
   const status = Number(error?.status || 0);
@@ -24,6 +25,8 @@ const resolvePendientesErrorMessage = (error) => {
 };
 
 const CAJA_APERTURA_DISMISS_PREFIX = 'jonny:ventas:caja-apertura-decision-dismissed';
+const CAJA_ASIGNACION_CACHE_MS = 30000;
+const CAJA_SESIONES_ABIERTAS_CACHE_MS = 15000;
 
 const toPositiveId = (value) => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -39,6 +42,9 @@ const buildCajaUserKey = (user) => {
   ).trim();
   return nombreUsuario ? `usuario:${nombreUsuario.toLowerCase()}` : 'anon';
 };
+
+const isTimedCacheFresh = (entry, key, ttlMs) =>
+  Boolean(entry && entry.key === key && Date.now() - Number(entry.at || 0) < ttlMs);
 
 const formatDateTime = (value) => {
   if (!value) return 'Sin fecha';
@@ -90,6 +96,12 @@ const normalizeCajaSession = (row) => {
   if (!idSesion) return null;
   return {
     id_sesion_caja: idSesion,
+    id_caja: toPositiveId(row?.id_caja),
+    id_sucursal: toPositiveId(row?.id_sucursal),
+    codigo_caja: String(row?.codigo_caja || '').trim(),
+    nombre_caja: String(row?.nombre_caja || '').trim(),
+    nombre_sucursal: String(row?.nombre_sucursal || '').trim(),
+    rol_participacion: String(row?.rol_participacion || '').trim().toUpperCase(),
     estado_codigo: String(row?.estado_codigo || 'ABIERTA').trim().toUpperCase(),
     fecha_apertura: row?.fecha_apertura || null,
     monto_apertura: Number(row?.monto_apertura ?? 0) || 0
@@ -112,6 +124,8 @@ const normalizeCajaAssignment = (row) => {
     puede_auxiliar: Boolean(row?.puede_auxiliar),
     puede_abrir: row?.puede_abrir !== false,
     puede_operar: row?.puede_operar !== false,
+    rol_participacion: String(row?.rol_participacion || '').trim().toUpperCase(),
+    id_participacion_caja: toPositiveId(row?.id_participacion_caja),
     estado_operativo: estadoOperativo,
     caja_abierta_por_otro_responsable:
       Boolean(row?.caja_abierta_por_otro_responsable) ||
@@ -195,6 +209,8 @@ export default function CajaView({
       codigo_caja: row.codigo_caja,
       nombre_caja: row.nombre_caja,
       nombre_sucursal: row.nombre_sucursal,
+      estado_codigo: row.estado_codigo || 'ABIERTA',
+      rol_participacion: row.rol_participacion,
       responsable_nombre: row.responsable_nombre,
       fecha_apertura: row.fecha_apertura
     }));
@@ -231,18 +247,48 @@ export default function CajaView({
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const composerRef = useRef(null);
   const cajaAsignacionRequestRef = useRef(0);
+  const cajaAsignacionCacheRef = useRef({ key: '', at: 0, status: 'idle' });
+  const cajaAsignacionInFlightRef = useRef(null);
+  const sesionesAbiertasCacheRef = useRef({ key: '', at: 0, rows: [] });
+  const sesionesAbiertasInFlightRef = useRef(null);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
 
-  const openAutoAuxiliarForSucursal = async ({ idSucursal }) => {
+  const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
+    const normalizedSucursalId = toPositiveId(idSucursal);
+    if (!normalizedSucursalId) return;
+
+    const cacheKey = `sucursal:${normalizedSucursalId}`;
     setAutoModalError('');
-    setAutoModalLoading(true);
     setAutoModalOpen(true);
+
+    const cached = sesionesAbiertasCacheRef.current;
+    if (!force && isTimedCacheFresh(cached, cacheKey, CAJA_SESIONES_ABIERTAS_CACHE_MS)) {
+      const rows = cached.rows || [];
+      setSesionesAbiertas(rows);
+      setSelectedSesion(rows.length > 0 ? String(rows[0].id_sesion_caja) : '');
+      if (rows.length === 0) {
+        setAutoModalError('No hay cajas activas con sesión abierta para la sucursal seleccionada.');
+      }
+      return;
+    }
+
+    setAutoModalLoading(true);
     try {
-      const rows = normalizeOpenSessions(
-        await cajasService.listSesionesAbiertasSafe({ id_sucursal: idSucursal })
-      );
+      let rows;
+      const inFlight = sesionesAbiertasInFlightRef.current;
+      if (inFlight?.key === cacheKey) {
+        rows = await inFlight.promise;
+      } else {
+        const promise = cajasService
+          .listSesionesAbiertasSafe({ id_sucursal: normalizedSucursalId })
+          .then((response) => normalizeOpenSessions(response));
+        sesionesAbiertasInFlightRef.current = { key: cacheKey, promise };
+        rows = await promise;
+      }
+
+      sesionesAbiertasCacheRef.current = { key: cacheKey, at: Date.now(), rows };
 
       setSesionesAbiertas(rows);
       setSelectedSesion(rows.length > 0 ? String(rows[0].id_sesion_caja) : '');
@@ -254,6 +300,9 @@ export default function CajaView({
       setSelectedSesion('');
       setAutoModalError(toSafeMessage(error, 'No se pudieron cargar sesiones abiertas.'));
     } finally {
+      if (sesionesAbiertasInFlightRef.current?.key === cacheKey) {
+        sesionesAbiertasInFlightRef.current = null;
+      }
       setAutoModalLoading(false);
     }
   };
@@ -281,12 +330,40 @@ export default function CajaView({
   }, []);
 
   const loadCajaAsignada = useCallback(async () => {
+    const cacheKey = `asignacion:${cajaUserKey}`;
+    const cached = cajaAsignacionCacheRef.current;
+    if (isTimedCacheFresh(cached, cacheKey, CAJA_ASIGNACION_CACHE_MS)) {
+      const cachedAssignment = cached.assignment || null;
+      const cachedSession = cached.session || null;
+      setCajaAsignacion(cachedAssignment);
+      setCajaSesionActiva(cachedSession);
+      syncComposerSession(cachedSession);
+      setCajaStatus({
+        loading: false,
+        error: cached.error || '',
+        assignmentMissing: cached.status === 'missing'
+      });
+      setDecisionOpen(false);
+      return;
+    }
+
+    const currentInFlight = cajaAsignacionInFlightRef.current;
+    if (currentInFlight?.key === cacheKey && currentInFlight.requestId === cajaAsignacionRequestRef.current) {
+      try {
+        await currentInFlight.promise;
+      } catch {
+        // La primera llamada es la responsable de reflejar el error controlado en pantalla.
+      }
+      return;
+    }
+
     const requestId = cajaAsignacionRequestRef.current + 1;
     cajaAsignacionRequestRef.current = requestId;
     const isCurrentRequest = () => cajaAsignacionRequestRef.current === requestId;
 
     setCajaStatus({ loading: true, error: '', assignmentMissing: false });
-    try {
+
+    const requestPromise = (async () => {
       const response = await cajasService.getMiAsignacionActiva();
       const assignment = normalizeCajaAssignment(response);
       const session = normalizeCajaSession(response);
@@ -302,6 +379,14 @@ export default function CajaView({
         : blockedCannotOpen
           ? 'Tu caja asignada no permite apertura en este momento.'
           : '';
+      cajaAsignacionCacheRef.current = {
+        key: cacheKey,
+        at: Date.now(),
+        status: 'active',
+        assignment,
+        session,
+        error: statusError
+      };
       setCajaStatus({ loading: false, error: statusError, assignmentMissing: false });
 
       if (assignment && !session && !blockedByOther && !blockedCannotOpen) {
@@ -309,10 +394,24 @@ export default function CajaView({
       } else {
         setDecisionOpen(false);
       }
+    })();
+
+    cajaAsignacionInFlightRef.current = { key: cacheKey, requestId, promise: requestPromise };
+
+    try {
+      await requestPromise;
     } catch (error) {
       if (!isCurrentRequest()) return;
 
       if (isCajaAssignmentNotFound(error)) {
+        cajaAsignacionCacheRef.current = {
+          key: cacheKey,
+          at: Date.now(),
+          status: 'missing',
+          assignment: null,
+          session: null,
+          error: ''
+        };
         setCajaAsignacion(null);
         setCajaSesionActiva(null);
         syncComposerSession(null);
@@ -341,6 +440,11 @@ export default function CajaView({
       setDecisionOpen(false);
       setAbrirSesionOpen(false);
       setAbrirSesionError('');
+    } finally {
+      const inFlight = cajaAsignacionInFlightRef.current;
+      if (inFlight?.key === cacheKey && inFlight.requestId === requestId) {
+        cajaAsignacionInFlightRef.current = null;
+      }
     }
   }, [cajaUserKey, syncComposerSession]);
 
@@ -368,6 +472,25 @@ export default function CajaView({
       cajaAsignacionRequestRef.current += 1;
     };
   }, [cajaUserKey, hasCajaUser, loadCajaAsignada, syncComposerSession]);
+
+  useEffect(() => {
+    if (!isSuperAdmin || !cajaSesionActiva?.id_sesion_caja) return;
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    const sessionSucursalId = toPositiveId(cajaSesionActiva.id_sucursal);
+    if (!selectedSucursalId || !sessionSucursalId || selectedSucursalId === sessionSucursalId) return;
+
+    setCajaAsignacion(null);
+    setCajaSesionActiva(null);
+    syncComposerSession(null);
+    setCajaStatus({ loading: false, error: '', assignmentMissing: true });
+  }, [
+    cajaSesionActiva?.id_sesion_caja,
+    cajaSesionActiva?.id_sucursal,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    isSuperAdmin,
+    syncComposerSession
+  ]);
 
   useEffect(() => {
     const hasBlockingModal = decisionOpen || abrirSesionOpen || finalizarOpen || registrarPagoOpen || autoModalOpen || cartSheetOpen;
@@ -571,10 +694,14 @@ export default function CajaView({
 
   const cajaAssignmentLabel = resolveCajaAssignmentLabel(cajaAsignacion);
   const cajaPanelTitle = cajaStatus.assignmentMissing
-    ? 'No tienes una caja asignada activa'
+    ? isSuperAdmin
+      ? 'Selecciona una caja activa'
+      : 'No tienes una caja asignada activa'
     : cajaAssignmentLabel || 'Caja asignada no disponible';
   const cajaPanelDescription = cajaStatus.assignmentMissing
-    ? 'No tienes una caja asignada activa. Solicita asignación a un administrador.'
+    ? isSuperAdmin
+      ? 'Regístrate como auxiliar en una sesión abierta antes de vender.'
+      : 'No tienes una caja asignada activa. Solicita asignación a un administrador.'
     : cajaAsignacion
       ? `${cajaAsignacion.codigo_caja || `Caja #${cajaAsignacion.id_caja}`} - ${cajaAsignacion.nombre_sucursal || 'Sucursal'}`
       : 'Solicita al administrador una asignación activa para operar caja.';
@@ -606,10 +733,42 @@ export default function CajaView({
     setAutoModalAssigning(true);
     setAutoModalError('');
     try {
-      await cajasService.autoAsignarAuxiliarSesionSafe(idSesionCaja, { id_sucursal: idSucursal });
+      const response = await cajasService.autoAsignarAuxiliarSesionSafe(idSesionCaja, { id_sucursal: idSucursal });
+      const selectedSession = sesionesAbiertas.find(
+        (session) => Number(session.id_sesion_caja) === Number(idSesionCaja)
+      ) || {};
+      const sessionSource = {
+        ...selectedSession,
+        ...response,
+        id_sesion_caja: response?.id_sesion_caja || idSesionCaja,
+        id_caja: response?.id_caja || selectedSession.id_caja,
+        id_sucursal: response?.id_sucursal || selectedSession.id_sucursal || idSucursal,
+        codigo_caja: response?.codigo_caja || selectedSession.codigo_caja,
+        nombre_caja: response?.nombre_caja || selectedSession.nombre_caja,
+        nombre_sucursal: response?.nombre_sucursal || selectedSession.nombre_sucursal,
+        estado_codigo: response?.estado_codigo || selectedSession.estado_codigo || 'ABIERTA',
+        rol_participacion: response?.rol_participacion || 'AUXILIAR',
+        puede_auxiliar: true,
+        puede_operar: true
+      };
+      const session = normalizeCajaSession(sessionSource);
+      const assignment = normalizeCajaAssignment(sessionSource);
+      setCajaAsignacion(assignment);
+      setCajaSesionActiva(session);
+      cajaAsignacionCacheRef.current = {
+        key: `asignacion:${cajaUserKey}`,
+        at: Date.now(),
+        status: 'active',
+        assignment,
+        session,
+        error: ''
+      };
       composer.setTemporarySessionId(String(idSesionCaja));
       composer.setPartialState({ submitError: '' });
+      setCajaStatus({ loading: false, error: '', assignmentMissing: false });
+      clearCajaDecisionDismissed(assignment, cajaUserKey);
       setAutoModalOpen(false);
+      onNotify?.('CAJA ACTIVA', 'Te registraste como auxiliar de caja para esta sesión.', 'success');
     } catch (error) {
       setAutoModalError(toSafeMessage(error, 'No se pudo registrar la autoasignación temporal.'));
     } finally {
@@ -622,19 +781,19 @@ export default function CajaView({
       <div className="inv-catpro-card inv-prod-card ventas-caja-card">
         {composer.isSuperAdmin ? (
           <div className="ventas-caja__operacion-bar ventas-caja__operacion-bar--admin">
-            <label className="ventas-caja__sucursal-select">
-              <i className="bi bi-shop" />
-              <select
+            <div className="ventas-caja__sucursal-select ventas-caja__sucursal-app-select">
+              <i className="bi bi-shop" aria-hidden="true" />
+              <AppSelect
                 value={composer.selectedSucursal}
-                onChange={(event) => composer.setSelectedSucursal(event.target.value)}
-              >
-                {composer.sucursales.map((sucursal) => (
-                  <option key={sucursal.id_sucursal} value={String(sucursal.id_sucursal)}>
-                    {sucursal.nombre_sucursal}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={composer.sucursales.map((sucursal) => ({
+                  value: String(sucursal.id_sucursal),
+                  label: sucursal.nombre_sucursal
+                }))}
+                onChange={composer.setSelectedSucursal}
+                placeholder="Selecciona sucursal"
+                className="app-select--compact app-select--warm"
+              />
+            </div>
           </div>
         ) : null}
         <section className={`ventas-caja__session-panel ventas-caja-statusbar ventas-caja-status-compact ${cajaSesionActiva ? 'is-active' : ''} ${cajaStatus.assignmentMissing ? 'is-missing' : ''} ${statusExpanded ? 'is-expanded' : 'is-collapsed'}`}>
@@ -647,9 +806,16 @@ export default function CajaView({
           >
             <strong>{cajaSesionActiva ? 'Caja activa' : cajaPanelTitle}</strong>
             {!cajaSesionActiva ? (
-              <small>{cajaSessionChipText}</small>
-            ) : null}
-            <i className={`bi bi-chevron-${statusExpanded ? 'up' : 'down'}`} aria-hidden="true" />
+              <span className="ventas-caja-status-compact__state">
+                <small>{cajaSessionChipText}</small>
+                <i className={`bi bi-chevron-${statusExpanded ? 'up' : 'down'}`} aria-hidden="true" />
+              </span>
+            ) : (
+              <i
+                className={`ventas-caja-status-compact__chevron bi bi-chevron-${statusExpanded ? 'up' : 'down'}`}
+                aria-hidden="true"
+              />
+            )}
           </button>
 
           <div className="ventas-caja-status-compact__details" hidden={!statusExpanded}>
@@ -658,6 +824,19 @@ export default function CajaView({
               <span>{cajaPanelDescription}</span>
               {cajaStatus.loading ? <small>Consultando caja asignada...</small> : null}
               {cajaStatus.error ? <small className="is-error">{cajaStatus.error}</small> : null}
+              {isSuperAdmin && cajaStatus.assignmentMissing ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-danger align-self-start"
+                  onClick={() => openAutoAuxiliarForSucursal({
+                    idSucursal: composer.selectedSucursalId || composer.selectedSucursal,
+                    force: true
+                  })}
+                  disabled={autoModalLoading || autoModalAssigning}
+                >
+                  Elegir sesión abierta
+                </button>
+              ) : null}
             </div>
             <div className="ventas-caja__session-metrics">
               <div>

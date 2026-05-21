@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FaImage } from 'react-icons/fa';
+import AppSelect from '../../../../components/common/AppSelect';
 import { CATALOG_TABS } from '../hooks/useVentaComposer';
 
 const buildDiscountBadgeLabel = (discount) => {
@@ -50,19 +51,16 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
   return (
     <div className="ventas-create-modal__catalog ventas-caja-layout__catalog">
       <div className="ventas-catalog__topbar ventas-catalog-toolbar ventas-catalog-compact-toolbar">
-        <label className="ventas-catalog-dropdown">
-          <span>Catálogo:</span>
-          <select
-            value={composer.activeCatalog}
-            onChange={(event) => composer.setActiveCatalog(event.target.value)}
-          >
-            {CATALOG_TABS.map((tab) => (
-              <option key={tab.key} value={tab.key}>
-                {tab.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <AppSelect
+          value={composer.activeCatalog}
+          options={CATALOG_TABS.map((tab) => ({
+            value: tab.key,
+            label: tab.label
+          }))}
+          onChange={composer.setActiveCatalog}
+          placeholder="Selecciona catálogo"
+          className="ventas-catalog-dropdown app-select--compact app-select--warm"
+        />
 
         <div className="ventas-catalog__search-wrap" ref={searchWrapRef}>
           <label className="ventas-catalog-search-field">
