@@ -1,5 +1,4 @@
 import { apiFetch } from './api';
-import { createVentaNative } from './ventasNativeService';
 
 const buildQuery = (params = {}) => {
   const searchParams = new URLSearchParams();
@@ -20,7 +19,7 @@ const ventasService = {
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
-  create: (payload) => createVentaNative(payload),
+  create: (payload) => apiFetch('/ventas', 'POST', payload, { timeoutMs: 7000 }),
   createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload),
   listPedidosPendientesPago: (params = {}) =>
     apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),

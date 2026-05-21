@@ -106,7 +106,8 @@ export const useVentas = () => {
     return () => clearTimeout(timer);
   }, [toast.show]);
 
-  const loadVentas = useCallback(async () => {
+  const loadVentas = useCallback(async (options = {}) => {
+    const suppressErrors = Boolean(options?.suppressErrors);
     setLoading(true);
     setError('');
 
@@ -162,8 +163,10 @@ export const useVentas = () => {
       return { rows, canSelectSucursal };
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar las ventas.');
-      setError(message);
-      openToast('ERROR', message, 'danger');
+      if (!suppressErrors) {
+        setError(message);
+        openToast('ERROR', message, 'danger');
+      }
       throw error;
     } finally {
       setLoading(false);
@@ -427,12 +430,12 @@ export const useVentas = () => {
 
       try {
         const response = await ventasService.create(payload);
-        await loadVentas();
         openToast(
           'VENTA CREADA',
-          `${response?.numero_venta || 'La venta'} se registro correctamente.`,
+          `${response?.numero_venta || response?.codigo_venta || 'La venta'} se registro correctamente.`,
           'success'
         );
+        void loadVentas({ suppressErrors: true }).catch(() => undefined);
         return response;
       } catch (error) {
         const message = extractApiMessage(error, 'No se pudo registrar la venta.');
