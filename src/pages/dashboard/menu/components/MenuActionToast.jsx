@@ -1,9 +1,16 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-// Toast ligero reutilizable para confirmar acciones exitosas del modulo menu.
+const toastIconClass = (variant) => {
+  if (variant === 'danger') return 'bi bi-exclamation-triangle-fill';
+  if (variant === 'warning') return 'bi bi-exclamation-circle-fill';
+  if (variant === 'info') return 'bi bi-info-circle-fill';
+  return 'bi bi-check-circle-fill';
+};
+
+// Toast alineado al patron visual de Personas.
 const MenuActionToast = ({
   message = '',
-  title = 'Operacion realizada',
+  title = 'OK',
   variant = 'success',
   durationMs = 3200,
   onClose
@@ -25,30 +32,30 @@ const MenuActionToast = ({
 
   if (!visible || !message) return null;
 
-  const isError = variant === 'danger' || variant === 'error';
-  const wrapperStyle = { zIndex: 1200 };
-  const cardClass = isError ? 'alert alert-danger shadow' : 'alert alert-success shadow';
-  const iconClass = isError ? 'bi bi-x-circle-fill' : 'bi bi-check-circle-fill';
+  const normalizedVariant = variant === 'error' ? 'danger' : variant;
 
   return (
-    <div className="position-fixed bottom-0 end-0 p-3" style={wrapperStyle} role="status" aria-live="polite">
-      <div className={cardClass} style={{ minWidth: 280, maxWidth: 420 }}>
-        <div className="d-flex align-items-start gap-2">
-          <i className={iconClass} aria-hidden="true" />
-          <div className="flex-grow-1">
-            <div className="fw-semibold">{title}</div>
-            <div className="small">{message}</div>
-          </div>
-          <button
-            type="button"
-            className="btn-close"
-            aria-label="Cerrar notificacion"
-            onClick={() => {
-              setVisible(false);
-              onClose?.();
-            }}
-          />
+    <div className="inv-toast-wrap" role="status" aria-live="polite">
+      <div className={`inv-toast-card ${normalizedVariant || 'success'}`}>
+        <div className="inv-toast-icon">
+          <i className={toastIconClass(normalizedVariant)} aria-hidden="true" />
         </div>
+        <div className="inv-toast-content">
+          <div className="inv-toast-title">{title}</div>
+          <div className="inv-toast-message">{message}</div>
+        </div>
+        <button
+          type="button"
+          className="inv-toast-close"
+          aria-label="Cerrar notificacion"
+          onClick={() => {
+            setVisible(false);
+            onClose?.();
+          }}
+        >
+          <i className="bi bi-x-lg" aria-hidden="true" />
+        </button>
+        <div className="inv-toast-progress" />
       </div>
     </div>
   );
