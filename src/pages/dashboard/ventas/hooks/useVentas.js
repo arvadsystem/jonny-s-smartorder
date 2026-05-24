@@ -312,6 +312,12 @@ export const useVentas = () => {
           id_producto: Number(row.id_producto ?? 0) || null,
           id_receta: Number(row.id_receta ?? 0) || null,
           id_combo: Number(row.id_combo ?? 0) || null,
+          objetivos: {
+            productos: Array.isArray(row.objetivos?.productos) ? row.objetivos.productos : [],
+            recetas: Array.isArray(row.objetivos?.recetas) ? row.objetivos.recetas : [],
+            combos: Array.isArray(row.objetivos?.combos) ? row.objetivos.combos : []
+          },
+          objetivos_count: row.objetivos_count || null,
           id_sucursal: Number(row.id_sucursal ?? 0) || null,
           fecha_inicio: row.fecha_inicio ?? null,
           fecha_fin: row.fecha_fin ?? null,
@@ -373,6 +379,24 @@ export const useVentas = () => {
     () => loadCatalogs({ includeSucursales: Boolean(scopeInfo?.canSelectSucursal) }),
     [loadCatalogs, scopeInfo?.canSelectSucursal]
   );
+
+  const refreshClientesCatalog = useCallback(async () => {
+    const clientesResponse = await ventasService.getClientesCatalog();
+    const normalizedClientes = [
+      {
+        id_cliente: null,
+        value: 'cf',
+        label: 'Consumidor final',
+        nombre_cliente: 'Consumidor final',
+        es_consumidor_final: true
+      },
+      ...(Array.isArray(clientesResponse) ? clientesResponse : [])
+        .map(normalizeClienteOption)
+        .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
+    ];
+    setClientes(normalizedClientes);
+    return normalizedClientes;
+  }, []);
 
   const setVentasSearch = useCallback((search) => {
     setVentasFilters((prev) => ({
@@ -526,6 +550,7 @@ export const useVentas = () => {
     closeToast,
     refreshVentas: loadVentas,
     refreshCatalogs,
+    refreshClientesCatalog,
     setVentasSearch,
     setVentasPage,
     setVentasPageSize,

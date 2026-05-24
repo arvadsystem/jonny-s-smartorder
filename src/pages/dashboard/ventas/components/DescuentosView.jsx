@@ -14,6 +14,11 @@ const initialForm = {
   id_producto: '',
   id_receta: '',
   id_combo: '',
+  objetivos: {
+    productos: [],
+    recetas: [],
+    combos: []
+  },
   id_sucursal: '',
   fecha_inicio: '',
   fecha_fin: ''
@@ -53,6 +58,154 @@ const toDbDateTimeValue = (value) => {
   return `${source.replace('T', ' ')}:00`;
 };
 
+const coerceIdList = (values) =>
+  [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0))];
+
+const getObjectiveConfig = (scope) => {
+  if (scope === 'PRODUCTO') {
+    return {
+      key: 'productos',
+      idKey: 'id_producto',
+      labelKey: 'nombre_producto',
+      emptyText: 'No hay productos disponibles para seleccionar.',
+      searchPlaceholder: 'Buscar productos...'
+    };
+  }
+  if (scope === 'RECETA') {
+    return {
+      key: 'recetas',
+      idKey: 'id_receta',
+      labelKey: 'nombre_receta',
+      emptyText: 'No hay recetas disponibles para seleccionar.',
+      searchPlaceholder: 'Buscar recetas...'
+    };
+  }
+  if (scope === 'COMBO') {
+    return {
+      key: 'combos',
+      idKey: 'id_combo',
+      labelKey: 'descripcion',
+      fallbackLabelKey: 'nombre_combo',
+      emptyText: 'No hay combos disponibles para seleccionar.',
+      searchPlaceholder: 'Buscar combos...'
+    };
+  }
+  return null;
+};
+
+function ObjetivosChecklist({
+  scope,
+  form,
+  productos,
+  recetas,
+  combos,
+  onObjetivosChange,
+  errors
+}) {
+  const [search, setSearch] = useState('');
+  const config = getObjectiveConfig(scope);
+
+  useEffect(() => {
+    setSearch('');
+  }, [scope]);
+
+  if (!config) {
+    return (
+      <div className="ventas-descuentos-targets__empty">
+        <i className="bi bi-receipt" />
+        <span>Factura completa no requiere objetivos.</span>
+      </div>
+    );
+  }
+
+  const sourceRows = scope === 'PRODUCTO' ? productos : scope === 'RECETA' ? recetas : combos;
+  const selectedIds = coerceIdList(form.objetivos?.[config.key]);
+  const selectedSet = new Set(selectedIds);
+  const sucursalFilter = parseId(form.id_sucursal);
+  const normalizedSearch = search.trim().toLowerCase();
+  const visibleRows = (Array.isArray(sourceRows) ? sourceRows : [])
+    .filter((row) => {
+      if (!sucursalFilter || !row?.id_sucursal) return true;
+      return Number(row.id_sucursal) === Number(sucursalFilter);
+    })
+    .filter((row) => {
+      if (!normalizedSearch) return true;
+      const label = String(row?.[config.labelKey] || row?.[config.fallbackLabelKey] || '').toLowerCase();
+      return label.includes(normalizedSearch);
+    });
+
+  const setSelectedIds = (nextIds) => {
+    onObjetivosChange(config.key, coerceIdList(nextIds));
+  };
+
+  const toggleId = (id) => {
+    if (selectedSet.has(id)) {
+      setSelectedIds(selectedIds.filter((value) => value !== id));
+      return;
+    }
+    setSelectedIds([...selectedIds, id]);
+  };
+
+  const selectVisible = () => {
+    setSelectedIds([...selectedIds, ...visibleRows.map((row) => Number(row?.[config.idKey])).filter(Boolean)]);
+  };
+
+  return (
+    <section className="ventas-descuentos-targets">
+      <div className="ventas-descuentos-targets__head">
+        <div>
+          <strong>Objetivos</strong>
+          <span>{selectedIds.length} seleccionado(s)</span>
+        </div>
+        <div className="ventas-descuentos-targets__actions">
+          <button type="button" onClick={selectVisible} disabled={visibleRows.length === 0}>
+            Seleccionar visibles
+          </button>
+          <button type="button" onClick={() => setSelectedIds([])} disabled={selectedIds.length === 0}>
+            Limpiar
+          </button>
+        </div>
+      </div>
+
+      <label className="ventas-descuentos-targets__search">
+        <i className="bi bi-search" />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={config.searchPlaceholder}
+        />
+      </label>
+
+      <div className="ventas-descuentos-targets__list">
+        {visibleRows.length === 0 ? (
+          <div className="ventas-descuentos-targets__empty">{config.emptyText}</div>
+        ) : (
+          visibleRows.map((row) => {
+            const id = Number(row?.[config.idKey]);
+            const label = String(row?.[config.labelKey] || row?.[config.fallbackLabelKey] || `${scope} #${id}`);
+            const checked = selectedSet.has(id);
+            return (
+              <label key={`${config.key}-${id}`} className={`ventas-descuentos-targets__option ${checked ? 'is-selected' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleId(id)}
+                />
+                <span>{label}</span>
+              </label>
+            );
+          })
+        )}
+      </div>
+
+      {errors?.objetivos ? <div className="invalid-feedback d-block">{errors.objetivos}</div> : null}
+    </section>
+  );
+}
+
 function DescuentoFormDrawer({
   open,
   mode,
@@ -65,6 +218,7 @@ function DescuentoFormDrawer({
   sucursales,
   canSelectSucursal,
   onFieldChange,
+  onObjetivosChange,
   onClose,
   onSubmit,
   errors
@@ -156,68 +310,15 @@ function DescuentoFormDrawer({
           {errors.alcance ? <div className="invalid-feedback d-block">{errors.alcance}</div> : null}
         </div>
 
-        {scope === 'PRODUCTO' ? (
-          <div className="mb-2">
-            <label className="form-label" htmlFor="descuento_producto">Producto objetivo</label>
-            <select
-              id="descuento_producto"
-              name="id_producto"
-              className={`form-select ${errors.id_producto ? 'is-invalid' : ''}`}
-              value={form.id_producto}
-              onChange={onFieldChange}
-            >
-              <option value="">Selecciona un producto</option>
-              {productos.map((producto) => (
-                <option key={producto.id_producto} value={producto.id_producto}>
-                  {producto.nombre_producto}
-                </option>
-              ))}
-            </select>
-            {errors.id_producto ? <div className="invalid-feedback d-block">{errors.id_producto}</div> : null}
-          </div>
-        ) : null}
-
-        {scope === 'RECETA' ? (
-          <div className="mb-2">
-            <label className="form-label" htmlFor="descuento_receta">Receta objetivo</label>
-            <select
-              id="descuento_receta"
-              name="id_receta"
-              className={`form-select ${errors.id_receta ? 'is-invalid' : ''}`}
-              value={form.id_receta}
-              onChange={onFieldChange}
-            >
-              <option value="">Selecciona una receta</option>
-              {recetas.map((receta) => (
-                <option key={receta.id_receta} value={receta.id_receta}>
-                  {receta.nombre_receta}
-                </option>
-              ))}
-            </select>
-            {errors.id_receta ? <div className="invalid-feedback d-block">{errors.id_receta}</div> : null}
-          </div>
-        ) : null}
-
-        {scope === 'COMBO' ? (
-          <div className="mb-2">
-            <label className="form-label" htmlFor="descuento_combo">Combo objetivo</label>
-            <select
-              id="descuento_combo"
-              name="id_combo"
-              className={`form-select ${errors.id_combo ? 'is-invalid' : ''}`}
-              value={form.id_combo}
-              onChange={onFieldChange}
-            >
-              <option value="">Selecciona un combo</option>
-              {combos.map((combo) => (
-                <option key={combo.id_combo} value={combo.id_combo}>
-                  {combo.descripcion || combo.nombre_combo || `Combo #${combo.id_combo}`}
-                </option>
-              ))}
-            </select>
-            {errors.id_combo ? <div className="invalid-feedback d-block">{errors.id_combo}</div> : null}
-          </div>
-        ) : null}
+        <ObjetivosChecklist
+          scope={scope}
+          form={form}
+          productos={productos}
+          recetas={recetas}
+          combos={combos}
+          onObjetivosChange={onObjetivosChange}
+          errors={errors}
+        />
 
         <div className="mb-2">
           <label className="form-label" htmlFor="descuento_sucursal">Sucursal</label>
@@ -318,6 +419,13 @@ const normalizeDiscountRow = (row) => ({
   id_producto: Number(row?.id_producto ?? 0) || null,
   id_receta: Number(row?.id_receta ?? 0) || null,
   id_combo: Number(row?.id_combo ?? 0) || null,
+  objetivos: {
+    productos: Array.isArray(row?.objetivos?.productos) ? row.objetivos.productos : [],
+    recetas: Array.isArray(row?.objetivos?.recetas) ? row.objetivos.recetas : [],
+    combos: Array.isArray(row?.objetivos?.combos) ? row.objetivos.combos : []
+  },
+  objetivos_count: row?.objetivos_count || { productos: 0, recetas: 0, combos: 0, total: 0 },
+  objetivo: String(row?.objetivo ?? ''),
   id_sucursal: Number(row?.id_sucursal ?? 0) || null,
   fecha_inicio: row?.fecha_inicio ?? null,
   fecha_fin: row?.fecha_fin ?? null,
@@ -390,9 +498,13 @@ export default function DescuentosView({
         row.descripcion,
         row.nombre_tipo_descuento,
         row.alcance,
+        row.objetivo,
         row.nombre_producto,
         row.nombre_receta,
         row.nombre_combo,
+        ...(row.objetivos?.productos || []).map((item) => item.nombre_producto),
+        ...(row.objetivos?.recetas || []).map((item) => item.nombre_receta),
+        ...(row.objetivos?.combos || []).map((item) => item.nombre_combo),
         row.nombre_sucursal
       ]
         .filter(Boolean)
@@ -405,6 +517,7 @@ export default function DescuentosView({
   const resetForm = () => {
     setForm({
       ...initialForm,
+      objetivos: { productos: [], recetas: [], combos: [] },
       id_sucursal: !isSuperAdmin && defaultSucursalId ? String(defaultSucursalId) : ''
     });
     setFormErrors({});
@@ -433,6 +546,20 @@ export default function DescuentosView({
       id_producto: row.id_producto ? String(row.id_producto) : '',
       id_receta: row.id_receta ? String(row.id_receta) : '',
       id_combo: row.id_combo ? String(row.id_combo) : '',
+      objetivos: {
+        productos: coerceIdList([
+          ...(row.objetivos?.productos || []).map((item) => item.id_producto),
+          row.id_producto
+        ]),
+        recetas: coerceIdList([
+          ...(row.objetivos?.recetas || []).map((item) => item.id_receta),
+          row.id_receta
+        ]),
+        combos: coerceIdList([
+          ...(row.objetivos?.combos || []).map((item) => item.id_combo),
+          row.id_combo
+        ])
+      },
       id_sucursal: row.id_sucursal ? String(row.id_sucursal) : '',
       fecha_inicio: toInputDateTimeValue(row.fecha_inicio),
       fecha_fin: toInputDateTimeValue(row.fecha_fin)
@@ -447,8 +574,8 @@ export default function DescuentosView({
     }
 
     const valor = Number(form.valor_descuento);
-    if (!Number.isFinite(valor) || valor < 0) {
-      errors.valor_descuento = 'El valor debe ser mayor o igual a 0.';
+    if (!Number.isFinite(valor) || valor <= 0) {
+      errors.valor_descuento = 'El valor debe ser mayor a 0.';
     }
 
     if (!Number(form.id_tipo_descuento)) {
@@ -467,14 +594,15 @@ export default function DescuentosView({
       errors.valor_descuento = 'Para porcentaje, el valor debe estar entre 0 y 100.';
     }
 
-    if (scope === 'PRODUCTO' && !parseId(form.id_producto)) {
-      errors.id_producto = 'Selecciona un producto.';
+    const objetivos = form.objetivos || {};
+    if (scope === 'PRODUCTO' && coerceIdList(objetivos.productos).length === 0) {
+      errors.objetivos = 'Selecciona al menos un producto.';
     }
-    if (scope === 'RECETA' && !parseId(form.id_receta)) {
-      errors.id_receta = 'Selecciona una receta.';
+    if (scope === 'RECETA' && coerceIdList(objetivos.recetas).length === 0) {
+      errors.objetivos = 'Selecciona al menos una receta.';
     }
-    if (scope === 'COMBO' && !parseId(form.id_combo)) {
-      errors.id_combo = 'Selecciona un combo.';
+    if (scope === 'COMBO' && coerceIdList(objetivos.combos).length === 0) {
+      errors.objetivos = 'Selecciona al menos un combo.';
     }
 
     const start = form.fecha_inicio ? new Date(form.fecha_inicio) : null;
@@ -508,12 +636,14 @@ export default function DescuentosView({
         id_tipo_descuento: Number(form.id_tipo_descuento),
         estado: !!form.estado,
         alcance: scope,
-        id_producto: scope === 'PRODUCTO' ? parseId(form.id_producto) : null,
-        id_receta: scope === 'RECETA' ? parseId(form.id_receta) : null,
-        id_combo: scope === 'COMBO' ? parseId(form.id_combo) : null,
         id_sucursal: parseId(form.id_sucursal),
         fecha_inicio: toDbDateTimeValue(form.fecha_inicio),
-        fecha_fin: toDbDateTimeValue(form.fecha_fin)
+        fecha_fin: toDbDateTimeValue(form.fecha_fin),
+        objetivos: {
+          productos: scope === 'PRODUCTO' ? coerceIdList(form.objetivos?.productos) : [],
+          recetas: scope === 'RECETA' ? coerceIdList(form.objetivos?.recetas) : [],
+          combos: scope === 'COMBO' ? coerceIdList(form.objetivos?.combos) : []
+        }
       };
 
       if (drawerMode === 'create') {
@@ -543,11 +673,24 @@ export default function DescuentosView({
         next.id_producto = '';
         next.id_receta = '';
         next.id_combo = '';
+        next.objetivos = { productos: [], recetas: [], combos: [] };
       }
 
       return next;
     });
     setFormErrors((prev) => ({ ...prev, [name]: '' }));
+  };
+
+  const onObjetivosChange = (key, ids) => {
+    setForm((prev) => ({
+      ...prev,
+      objetivos: {
+        productos: key === 'productos' ? coerceIdList(ids) : coerceIdList(prev.objetivos?.productos),
+        recetas: key === 'recetas' ? coerceIdList(ids) : coerceIdList(prev.objetivos?.recetas),
+        combos: key === 'combos' ? coerceIdList(ids) : coerceIdList(prev.objetivos?.combos)
+      }
+    }));
+    setFormErrors((prev) => ({ ...prev, objetivos: '' }));
   };
 
   const onToggleEstado = async (row, nextEstado) => {
@@ -643,13 +786,12 @@ export default function DescuentosView({
                           <td>{Number(row.valor_descuento).toFixed(2)}</td>
                           <td>{row.alcance}</td>
                           <td>
-                            {row.alcance === 'PRODUCTO'
-                              ? row.nombre_producto || (row.id_producto ? `Producto #${row.id_producto}` : '--')
-                              : row.alcance === 'RECETA'
-                                ? row.nombre_receta || (row.id_receta ? `Receta #${row.id_receta}` : '--')
-                                : row.alcance === 'COMBO'
-                                  ? row.nombre_combo || (row.id_combo ? `Combo #${row.id_combo}` : '--')
-                                  : '--'}
+                            <div className="ventas-descuentos-objective">
+                              <strong>{row.objetivo || '--'}</strong>
+                              {row.objetivos_count?.total > 1 ? (
+                                <span>{row.objetivos_count.total} objetivos</span>
+                              ) : null}
+                            </div>
                           </td>
                           <td>{row.nombre_sucursal || (row.id_sucursal ? `Sucursal #${row.id_sucursal}` : 'Global')}</td>
                           <td>
@@ -716,6 +858,7 @@ export default function DescuentosView({
         sucursales={Array.isArray(sucursales) ? sucursales : []}
         canSelectSucursal={isSuperAdmin}
         onFieldChange={onFieldChange}
+        onObjetivosChange={onObjetivosChange}
         onClose={() => setDrawerOpen(false)}
         onSubmit={onSubmit}
         errors={formErrors}
