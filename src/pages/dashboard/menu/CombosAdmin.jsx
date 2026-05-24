@@ -111,12 +111,6 @@ const CombosAdmin = () => {
         </div>
       </div>
 
-      <div
-        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${drawerOpen ? 'show' : ''}`}
-        onClick={closeDrawer}
-        aria-hidden={!drawerOpen}
-      />
-
       <CombosFormDrawer
         drawerOpen={drawerOpen}
         drawerMode={drawerMode}

@@ -317,30 +317,36 @@ const ExtrasAdmin = () => {
         </div>
       </div>
 
-      <div
-        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${drawerOpen ? 'show' : ''}`}
-        onClick={closeDrawer}
-        aria-hidden={!drawerOpen}
-      />
+      {drawerOpen ? (
+        <div className="inv-prod-pmodal inv-prod-pmodal--create show">
+          <div className="inv-prod-pmodal__overlay" onClick={closeDrawer} />
+          <div className="inv-prod-pmodal__viewport">
+            <section
+              className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="menu-extras-modal-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <form className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create menu-recetas-admin__form" onSubmit={submit}>
+                <div className="inv-prod-pmodal__body">
+                  <div className="inv-ins-create-hero is-create">
+                    <button type="button" className="inv-prod-drawer-close inv-ins-create-hero__close" onClick={closeDrawer} aria-label="Cerrar">
+                      <i className="bi bi-x-lg" />
+                    </button>
+                    <div className="inv-ins-create-hero__icon">
+                      <i className="bi bi-plus-square-dotted" aria-hidden="true" />
+                    </div>
+                    <div className="inv-ins-create-hero__copy">
+                      <div className="inv-ins-create-hero__kicker">{editingId ? 'Edicion Activa' : 'Nuevo Registro'}</div>
+                      <div id="menu-extras-modal-title" className="inv-ins-create-hero__title">
+                        {editingId ? `Editar extra #${editingId}` : 'Nuevo extra'}
+                      </div>
+                    </div>
+                  </div>
 
-      <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${drawerOpen ? 'show' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-hidden={!drawerOpen}
-      >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-plus-square-dotted inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">{editingId ? `Editar extra #${editingId}` : 'Nuevo extra'}</div>
-            <div className="inv-prod-drawer-sub">Precio, inventario y recetas donde aparece.</div>
-          </div>
-          <button type="button" className="inv-prod-drawer-close" onClick={closeDrawer} aria-label="Cerrar">
-            <i className="bi bi-x-lg" />
-          </button>
-        </div>
-
-        <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite menu-recetas-admin__form" onSubmit={submit}>
+                  <div className="inv-prod-pmodal__sections mt-3">
+                    <section className="inv-prod-pmodal__section">
           <div className="row g-2">
             <div className="col-12">
               <label className="form-label" htmlFor="extra_nombre">Nombre</label>
@@ -382,8 +388,9 @@ const ExtrasAdmin = () => {
               />
             </div>
           </div>
+                    </section>
 
-          <section className="menu-extras-admin__recipes">
+                    <section className="menu-extras-admin__recipes">
             <div className="menu-recetas-admin__detalle-title">Recetas donde aparece</div>
             <div className="menu-extras-admin__recipe-list">
               {recetas.map((receta) => {
@@ -400,18 +407,23 @@ const ExtrasAdmin = () => {
                 );
               })}
             </div>
-          </section>
+                    </section>
+                  </div>
+                </div>
 
-          <div className="d-flex gap-2 mt-3">
-            <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={closeDrawer} disabled={saving}>
-              Cancelar
-            </button>
-            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar extra'}
-            </button>
+                <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                  <button type="button" className="btn inv-prod-btn-subtle" onClick={closeDrawer} disabled={saving}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn inv-prod-btn-primary" disabled={saving}>
+                    {saving ? 'Guardando...' : 'Guardar extra'}
+                  </button>
+                </div>
+              </form>
+            </section>
           </div>
-        </form>
-      </aside>
+        </div>
+      ) : null}
 
       <MenuActionToast title="Extras" message={toastMessage} onClose={() => setToastMessage('')} />
       <MenuConfirmDialog

@@ -28,8 +28,7 @@ const RecetasAdmin = () => {
       viewMode,
       cardImageErrors,
       formPreviewError,
-      selectedImageFileName,
-      isAnyDrawerOpen
+      selectedImageFileName
     },
     derived: {
       recetasFiltradas,
@@ -155,9 +154,9 @@ const RecetasAdmin = () => {
       </div>
 
       <div
-        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${isAnyDrawerOpen ? 'show' : ''}`}
-        onClick={closeAnyDrawer}
-        aria-hidden={!isAnyDrawerOpen}
+        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${filtersOpen ? 'show' : ''}`}
+        onClick={closeFiltersDrawer}
+        aria-hidden={!filtersOpen}
       />
 
       <aside

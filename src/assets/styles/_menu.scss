@@ -1744,6 +1744,81 @@
   flex: 0 0 auto !important;
 }
 
+.menu-recetas-admin__carousel-page {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.menu-recetas-card--compact {
+  border-radius: 14px;
+}
+
+.menu-recetas-card--compact .menu-recetas-card__media {
+  height: clamp(110px, 9vw, 140px);
+  min-height: clamp(110px, 9vw, 140px);
+}
+
+.menu-recetas-card--compact .menu-recetas-card__media-top {
+  inset: 8px 8px auto 8px;
+}
+
+.menu-recetas-card--compact .menu-recetas-card__body {
+  gap: 7px;
+  padding: 9px;
+}
+
+.menu-recetas-card--compact .menu-recetas-card__title-row h6 {
+  font-size: 0.92rem;
+}
+
+.menu-recetas-card--compact .menu-recetas-card__description {
+  font-size: 0.8rem;
+  min-height: 2.8em;
+}
+
+.menu-recetas-card--compact .menu-recetas-card__meta {
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.menu-recetas-card--compact .menu-recetas-card__meta small {
+  font-size: 0.64rem;
+}
+
+.menu-recetas-card--compact .menu-recetas-card__meta strong {
+  font-size: 0.8rem;
+}
+
+.menu-recetas-card--compact .menu-recetas-card__actions {
+  gap: 6px;
+  padding: 0 9px 9px;
+}
+
+@media (max-width: 1399.98px) {
+  .menu-recetas-admin__carousel-page {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1199.98px) {
+  .menu-recetas-admin__carousel-page {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .menu-recetas-admin__carousel-page {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 575.98px) {
+  .menu-recetas-admin__carousel-page {
+    grid-template-columns: 1fr;
+  }
+}
+
 .menu-recetas-admin__form-image-preview {
   margin-top: 8px;
   border-radius: 14px;
@@ -2027,42 +2102,43 @@
 }
 
 .menu-recetas-admin__status-pill {
-  width: 100%;
-  max-width: 340px;
-  min-height: 40px;
+  width: auto;
+  max-width: 100%;
+  min-height: 38px;
   border-radius: 999px;
   border: 1px solid rgba(114, 170, 160, 0.48);
   background: rgba(225, 237, 234, 0.72);
   color: #2a6c62;
   font-weight: 900;
   text-align: center;
-  padding: 0 16px;
+  padding: 0 14px;
 }
 
 .menu-recetas-admin__status-pill--readonly {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  justify-self: start;
   user-select: none;
   cursor: default;
 }
 
 .menu-recetas-admin__image-actions {
-  /* Mantiene "Agregar imagen" y "Quitar" siempre en la misma fila, como el modal base. */
+  /* Permite reflujo controlado para evitar desbordes en paneles angostos. */
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
 
 .menu-recetas-admin__image-btn {
   border-radius: 10px !important;
-  min-height: 46px;
+  min-height: 42px;
   border: 1px solid rgba(157, 150, 112, 0.42) !important;
   background: #fff !important;
   color: #6b463c !important;
   font-weight: 700 !important;
-  padding: 0 16px !important;
+  padding: 0 14px !important;
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
@@ -2076,7 +2152,7 @@
 }
 
 .menu-recetas-admin__image-btn--add {
-  flex: 1 1 auto;
+  flex: 1 1 220px;
 }
 
 .menu-recetas-admin__image-btn--ghost {
@@ -2085,8 +2161,8 @@
 }
 
 .menu-recetas-admin__image-btn--remove {
-  flex: 0 0 auto;
-  min-width: 102px;
+  flex: 0 1 auto;
+  min-width: 96px;
 }
 
 .menu-recetas-admin__image-help {
@@ -2296,7 +2372,7 @@
   /* Mantiene ambos botones en una sola fila en movil, igual al layout de referencia. */
   .menu-recetas-admin__image-actions {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 8px;
   }
 
