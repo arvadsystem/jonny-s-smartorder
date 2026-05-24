@@ -37,7 +37,7 @@ const isExplicitlyOutOfStock = (row, isProducto) => {
 };
 
 const buildResultsLabel = (catalogKey, count) => {
-  if (catalogKey === 'DESCUENTOS') return `${count} ${count === 1 ? 'linea' : 'lineas'} con descuento`;
+  if (catalogKey === 'DESCUENTOS') return `${count} ${count === 1 ? 'item' : 'items'} con descuento`;
   if (catalogKey === 'COMBOS') return `${count} ${count === 1 ? 'combo' : 'combos'}`;
   if (catalogKey === 'RECETAS') return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
   return `${count} ${count === 1 ? 'producto' : 'productos'}`;
@@ -51,17 +51,23 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
   const catalogTabs = composer.canApplyDiscount
     ? [...CATALOG_TABS, { key: 'DESCUENTOS', label: 'Descuentos', icon: 'bi bi-tags' }]
     : CATALOG_TABS;
-  const discountableLines = Array.isArray(composer.lineDiscountDetails)
-    ? composer.lineDiscountDetails.filter((row) => row.availableDiscounts.length > 0)
+  const discountCatalogRows = Array.isArray(composer.discountCatalogRows)
+    ? composer.discountCatalogRows
     : [];
-  const hasFilters = !isDiscountCatalog && (composer.search.trim() !== '' || composer.activeCategory !== 'all');
+  const visibleDiscountRows = discountCatalogRows.filter(({ kind, row }) => {
+    const isProducto = kind === 'PRODUCTO';
+    return !isExplicitlyOutOfStock(row, isProducto);
+  });
+  const hasFilters = isDiscountCatalog
+    ? composer.search.trim() !== ''
+    : (composer.search.trim() !== '' || composer.activeCategory !== 'all');
   const searchPlaceholder = composer.activeCatalog === 'PRODUCTOS'
     ? 'Buscar productos...'
     : composer.activeCatalog === 'COMBOS'
       ? 'Buscar combos...'
       : composer.activeCatalog === 'RECETAS'
         ? 'Buscar recetas...'
-        : 'Gestionar descuentos del carrito';
+        : 'Buscar items con descuento...';
 
   useEffect(() => {
     if (!filterOpen) return undefined;
@@ -120,7 +126,6 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
           className="ventas-catalog-dropdown app-select--compact app-select--warm"
         />
 
-        {!isDiscountCatalog ? (
         <div className="ventas-catalog__search-wrap" ref={searchWrapRef}>
           <label className="ventas-catalog-search-field">
             <i className="bi bi-search" aria-hidden="true" />
@@ -134,15 +139,17 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             />
           </label>
 
-          <button
-            type="button"
-            className={`ventas-catalog__search-btn ${filterOpen ? 'is-active' : ''}`}
-            onClick={() => setFilterOpen((current) => !current)}
-            aria-label="Abrir filtros"
-            title="Filtrar catalogo"
-          >
-            <i className="bi bi-sliders" />
-          </button>
+          {!isDiscountCatalog ? (
+            <button
+              type="button"
+              className={`ventas-catalog__search-btn ${filterOpen ? 'is-active' : ''}`}
+              onClick={() => setFilterOpen((current) => !current)}
+              aria-label="Abrir filtros"
+              title="Filtrar catalogo"
+            >
+              <i className="bi bi-sliders" />
+            </button>
+          ) : null}
 
           {hasFilters ? (
             <button
@@ -156,7 +163,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             </button>
           ) : null}
 
-          {filterOpen ? (
+          {!isDiscountCatalog && filterOpen ? (
             <div className="ventas-catalog__search-popup">
               <div className="ventas-catalog__categories-list">
                 <div className="ventas-catalog__categories-label">
@@ -213,17 +220,15 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             </div>
           ) : null}
         </div>
-        ) : (
-          <div className="ventas-discounts-toolbar-note">
-            <i className="bi bi-shield-check" aria-hidden="true" />
-            <span>Selecciona descuentos configurados para los items del carrito.</span>
-          </div>
-        )}
       </div>
 
-      {!isDiscountCatalog ? (
-        <div className="ventas-create-modal__results-meta ventas-catalog-results">
-          <span>{catalogLoading ? 'Cargando catalogo...' : buildResultsLabel(composer.activeCatalog, visibleCatalogRows.length)}</span>
+      <div className="ventas-create-modal__results-meta ventas-catalog-results">
+        <span>
+          {catalogLoading
+            ? 'Cargando catalogo...'
+            : buildResultsLabel(composer.activeCatalog, isDiscountCatalog ? visibleDiscountRows.length : visibleCatalogRows.length)}
+        </span>
+        {!isDiscountCatalog ? (
           <label className="ventas-catalog__stock-toggle">
             <input
               type="checkbox"
@@ -233,8 +238,10 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             <span>Ver agotados</span>
             {outOfStockCount > 0 && !showOutOfStock ? <small>{outOfStockCount}</small> : null}
           </label>
-        </div>
-      ) : null}
+        ) : (
+          <span className="ventas-catalog-results__hint">Solo se muestran items con descuento aplicable</span>
+        )}
+      </div>
       {activeCatalogError ? (
         <div className="ventas-create-modal__error">
           {`Error en ${activeCatalogError.endpoint}${activeCatalogError.status ? ` (HTTP ${activeCatalogError.status})` : ''}: ${activeCatalogError.message}`}
@@ -248,55 +255,89 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
 
       {isDiscountCatalog ? (
         <div className="ventas-discounts-panel">
-          {composer.cart.length === 0 ? (
+          {catalogLoading ? (
             <div className="ventas-create-modal__empty ventas-discounts-panel__empty">
-              <i className="bi bi-cart-plus" />
-              <span>Agrega productos, combos o recetas para ver descuentos aplicables.</span>
+              <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+              <span>Cargando descuentos...</span>
             </div>
-          ) : discountableLines.length === 0 ? (
+          ) : visibleDiscountRows.length === 0 ? (
             <div className="ventas-create-modal__empty ventas-discounts-panel__empty">
               <i className="bi bi-tags" />
-              <span>No hay descuentos aplicables para los items actuales.</span>
+              <span>No hay productos, combos o recetas con descuentos aplicables para esta sucursal.</span>
             </div>
           ) : (
             <>
               <div className="ventas-discounts-panel__summary">
-                <span>{buildResultsLabel('DESCUENTOS', discountableLines.length)}</span>
-                <strong>{composer.formatCurrency(composer.lineDiscountValue)}</strong>
+                <span>Promociones disponibles</span>
+                <strong>{buildResultsLabel('DESCUENTOS', visibleDiscountRows.length)}</strong>
               </div>
-              <div className="ventas-discounts-panel__list">
-                {discountableLines.map(({ line, availableDiscounts, selectedDiscount, lineSubtotal, discountAmount }) => {
-                  const options = [
-                    { value: '', label: 'Sin descuento' },
-                    ...availableDiscounts.map((discount) => ({
-                      value: String(discount.id_descuento_catalogo),
-                      label: `${discount.nombre_descuento} - ${buildDiscountBadgeLabel(discount) || 'Descuento'}`
-                    }))
-                  ];
+              <div className="ventas-create-modal__products ventas-catalog-grid">
+                {visibleDiscountRows.map(({ kind, row, discount }) => {
+                  const isProducto = kind === 'PRODUCTO';
+                  const isCombo = kind === 'COMBO';
+                  const itemId = isProducto ? row.id_producto : isCombo ? row.id_combo : row.id_receta;
+                  const itemName = isProducto ? row.nombre_producto : isCombo ? row.descripcion : row.nombre_receta;
+                  const imageSrc = resolveImageUrl(row);
+                  const precio = Number(row.precio || 0);
+                  const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
+                  const badgeLabel = buildDiscountBadgeLabel(discount);
                   return (
-                    <article className="ventas-discounts-line-card" key={line.cartKey}>
-                      <div className="ventas-discounts-line-card__head">
-                        <div>
-                          <span className="ventas-discounts-line-card__kind">{line.kind}</span>
-                          <h4>{line.nombre_item}</h4>
+                    <div
+                      key={`DESCUENTO-${kind}-${itemId}`}
+                      className="vcp-card ventas-catalog-card-compact ventas-catalog-card-compact--discount"
+                      onClick={() => composer.addCatalogItem(kind, row)}
+                    >
+                      <div className="vcp-card__media">
+                        {badgeLabel ? (
+                          <span className="vcp-card__discount-badge">{badgeLabel}</span>
+                        ) : null}
+                        {imageSrc ? (
+                          <img
+                            src={imageSrc}
+                            alt={itemName}
+                            className="vcp-card__image"
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                            onError={(event) => {
+                              event.currentTarget.style.display = 'none';
+                              const next = event.currentTarget.nextElementSibling;
+                              if (next) next.classList.remove('d-none');
+                            }}
+                          />
+                        ) : null}
+                        <div className={`vcp-card__placeholder ${imageSrc ? 'd-none' : ''}`}>
+                          <FaImage className="vcp-card__placeholder-icon" />
                         </div>
-                        <strong>{composer.formatCurrency(lineSubtotal)}</strong>
                       </div>
-                      <div className="ventas-discounts-line-card__meta">
-                        <span>Cantidad: {line.cantidad}</span>
-                        <span>
-                          Actual: {selectedDiscount ? selectedDiscount.nombre_descuento : 'Sin descuento'}
-                        </span>
-                        {discountAmount > 0 ? <span>Ahorro: {composer.formatCurrency(discountAmount)}</span> : null}
+
+                      <div className="vcp-card__body">
+                        <div className="vcp-card__meta-row">
+                          <span className="vcp-card__kind">{kind}</span>
+                          <span className="ventas-discount-chip">{discount.nombre_descuento}</span>
+                        </div>
+                        <h6 className="vcp-card__name" title={itemName}>{itemName}</h6>
+
+                        <div className="vcp-card__stock">
+                          {isProducto ? `Disponible: ${stockDisponible}` : isCombo ? 'Combo con descuento' : 'Receta con descuento'}
+                        </div>
+
+                        <div className="vcp-card__footer">
+                          <span className="vcp-card__price">L. {precio.toFixed(2)}</span>
+
+                          <button
+                            type="button"
+                            className="vcp-card__add-btn"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              composer.addCatalogItem(kind, row);
+                            }}
+                            aria-label={`Agregar ${itemName} con descuento`}
+                          >
+                            Agregar +
+                          </button>
+                        </div>
                       </div>
-                      <AppSelect
-                        value={String(line.id_descuento_catalogo_linea || '')}
-                        options={options}
-                        onChange={(value) => composer.setLineDiscount(line.cartKey, value)}
-                        placeholder="Selecciona descuento"
-                        className="ventas-discounts-line-card__select app-select--warm"
-                      />
-                    </article>
+                    </div>
                   );
                 })}
               </div>

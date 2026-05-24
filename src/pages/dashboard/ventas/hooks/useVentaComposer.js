@@ -503,6 +503,41 @@ export const useVentaComposer = ({
     return filteredProducts;
   }, [filteredCombos, filteredProducts, filteredRecetas, state.activeCatalog]);
 
+  const discountCatalogRows = useMemo(() => {
+    if (!canApplyDiscount) return [];
+
+    const candidates = [
+      ...filteredProducts.map((row) => ({ kind: 'PRODUCTO', row })),
+      ...filteredCombos.map((row) => ({ kind: 'COMBO', row })),
+      ...filteredRecetas.map((row) => ({ kind: 'RECETA', row }))
+    ];
+
+    return candidates
+      .map((entry) => {
+        const discount = resolveBestDiscountForLine({
+          discounts: normalizedDescuentosCatalogo,
+          selectedSucursalId,
+          line: {
+            kind: entry.kind,
+            id_producto: entry.row?.id_producto ?? null,
+            id_receta: entry.row?.id_receta ?? null,
+            id_combo: entry.row?.id_combo ?? null,
+            precio_unitario: Number(entry.row?.precio ?? 0) || 0,
+            cantidad: 1
+          }
+        });
+        return discount ? { ...entry, discount } : null;
+      })
+      .filter(Boolean);
+  }, [
+    canApplyDiscount,
+    filteredCombos,
+    filteredProducts,
+    filteredRecetas,
+    normalizedDescuentosCatalogo,
+    selectedSucursalId
+  ]);
+
   const cartCount = useMemo(
     () => state.cart.reduce((total, line) => total + Number(line.cantidad ?? 0), 0),
     [state.cart]
@@ -651,9 +686,18 @@ export const useVentaComposer = ({
           }
         }
 
+        const autoDiscount = canApplyDiscount && !currentLine.id_descuento_catalogo_linea
+          ? resolveBestDiscountForLine({
+            discounts: normalizedDescuentosCatalogo,
+            line: catalogLine,
+            selectedSucursalId
+          })
+          : null;
+
         nextCart[index] = {
           ...currentLine,
-          cantidad: Number(currentLine.cantidad ?? 0) + 1
+          cantidad: Number(currentLine.cantidad ?? 0) + 1,
+          id_descuento_catalogo_linea: currentLine.id_descuento_catalogo_linea || (autoDiscount ? String(autoDiscount.id_descuento_catalogo) : '')
         };
         return {
           ...current,
@@ -1015,6 +1059,7 @@ export const useVentaComposer = ({
     cart: state.cart,
     submitError: state.submitError,
     currentCatalogRows,
+    discountCatalogRows,
     resultsLabel,
     cartCount,
     subtotal,

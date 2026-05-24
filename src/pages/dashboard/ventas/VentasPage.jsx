@@ -60,6 +60,8 @@ export default function VentasPage() {
     setVentasPage,
     setVentasPageSize,
     setVentasSucursal,
+    setVentasFilterPatch,
+    clearVentasFilters,
     createVenta,
     createPedidoPendiente,
     registrarPagoPedido,
@@ -227,6 +229,8 @@ export default function VentasPage() {
           onPageChange={setVentasPage}
           onPageSizeChange={setVentasPageSize}
           onSucursalChange={setVentasSucursal}
+          onFiltersChange={setVentasFilterPatch}
+          onClearFilters={clearVentasFilters}
           onOpenDetail={openDetail}
           onGoToCaja={() => goToTab('caja')}
           canCreate={canCreateVenta}
@@ -313,6 +317,15 @@ export default function VentasPage() {
         selectedVenta={selectedVentaReversion}
         onSuccess={() => {
           refreshVentas?.();
+          const idFactura = selectedVentaReversion?.id_factura || selectedVenta?.id_factura;
+          if (idFactura) {
+            void getVentaDetail(idFactura)
+              .then((detail) => {
+                setSelectedVenta(detail);
+                setSelectedVentaReversion(detail);
+              })
+              .catch(() => undefined);
+          }
         }}
       />
 

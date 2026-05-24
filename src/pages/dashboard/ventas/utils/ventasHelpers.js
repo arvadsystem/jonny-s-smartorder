@@ -220,6 +220,8 @@ export const normalizeVentaRecord = (row) => {
     descuento_total: roundMoney(row?.descuento_total),
     descuento_lineas: roundMoney(row?.descuento_lineas),
     descuento_global: roundMoney(row?.descuento_global),
+    monto_reversado_total: roundMoney(row?.monto_reversado_total),
+    reversiones_count: Number(row?.reversiones_count ?? 0) || 0,
     total_items: Number(row?.total_items ?? 0) || 0,
     cliente_nombre: String(row?.cliente_nombre ?? 'Consumidor final'),
     nombre_sucursal: String(row?.nombre_sucursal ?? 'Sucursal no definida'),
@@ -238,6 +240,38 @@ export const normalizeVentaRecord = (row) => {
 
 export const normalizeVentaDetail = (row) => {
   const base = normalizeVentaRecord(row);
+  const reversiones = (Array.isArray(row?.reversiones) ? row.reversiones : []).map((reversion) => ({
+    ...reversion,
+    id_reversion: Number(reversion?.id_reversion ?? 0) || null,
+    codigo_reversion: String(reversion?.codigo_reversion ?? ''),
+    tipo_reversion: String(reversion?.tipo_reversion ?? ''),
+    motivo: String(reversion?.motivo ?? ''),
+    observacion: String(reversion?.observacion ?? '').trim(),
+    monto_reversado: roundMoney(reversion?.monto_reversado),
+    fecha_operacion: reversion?.fecha_operacion ?? null,
+    creada_en: reversion?.creada_en ?? null,
+    usuario: String(reversion?.usuario ?? 'Sin usuario'),
+    lineas: (Array.isArray(reversion?.lineas) ? reversion.lineas : []).map((linea) => ({
+      ...linea,
+      id_detalle_factura: Number(linea?.id_detalle_factura ?? 0) || null,
+      tipo_item: String(linea?.tipo_item ?? 'ITEM'),
+      nombre_item: String(linea?.nombre_item ?? 'Item'),
+      cantidad_revertida: Number(linea?.cantidad_revertida ?? 0) || 0,
+      precio_unitario_original: roundMoney(linea?.precio_unitario_original),
+      subtotal_revertido: roundMoney(linea?.subtotal_revertido),
+      descuento_revertido: roundMoney(linea?.descuento_revertido),
+      total_revertido: roundMoney(linea?.total_revertido),
+      devuelve_inventario: Boolean(linea?.devuelve_inventario)
+    }))
+  }));
+  const reversedQtyByDetail = reversiones.reduce((map, reversion) => {
+    reversion.lineas.forEach((linea) => {
+      const idDetalle = Number(linea?.id_detalle_factura || 0);
+      if (!idDetalle) return;
+      map.set(idDetalle, (map.get(idDetalle) || 0) + Number(linea?.cantidad_revertida || 0));
+    });
+    return map;
+  }, new Map());
   const items = Array.isArray(row?.items)
     ? row.items.map((item) => ({
       ...item,
@@ -255,12 +289,18 @@ export const normalizeVentaDetail = (row) => {
       descuento_global: roundMoney(item?.descuento_global),
       nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
       nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
+      cantidad_revertida: reversedQtyByDetail.get(Number(item?.id_detalle ?? 0)) || 0,
       observacion: String(item?.observacion ?? '').trim()
     }))
     : [];
 
   return {
     ...base,
+    reversiones,
+    monto_reversado_total: roundMoney(
+      reversiones.reduce((acc, item) => acc + Number(item?.monto_reversado || 0), 0)
+    ) || base.monto_reversado_total,
+    reversiones_count: reversiones.length || base.reversiones_count,
     items,
     total_items: items.reduce((acc, item) => acc + Number(item?.cantidad ?? 0), 0) || base.total_items
   };
@@ -320,10 +360,18 @@ export const downloadVentaDetail = (venta) => {
     subtotal: venta.sub_total,
     isv: venta.isv,
     total: venta.total,
+    reversiones: venta.reversiones?.map((reversion) => ({
+      codigo_reversion: reversion.codigo_reversion,
+      tipo_reversion: reversion.tipo_reversion,
+      motivo: reversion.motivo,
+      monto_reversado: reversion.monto_reversado,
+      lineas: reversion.lineas
+    })),
     items: venta.items?.map((item) => ({
       producto: item.nombre_item || item.nombre_producto,
       tipo_item: item.tipo_item,
       cantidad: item.cantidad,
+      cantidad_revertida: item.cantidad_revertida || 0,
       precio_unitario: item.precio_unitario,
       subtotal: item.sub_total,
       total: item.total_linea,

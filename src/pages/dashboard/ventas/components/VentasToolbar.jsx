@@ -1,30 +1,15 @@
 export default function VentasToolbar({
   search,
-  selectedSucursalId,
-  canSelectSucursal = false,
-  sucursales = [],
-  allowedSucursalIds = [],
-  onSucursalChange,
   onSearchChange,
+  activeFilters = 0,
+  onOpenFilters,
   onOpenCreate,
   canCreate = true,
   onOpenReversion,
-  canReversion = false
+  canReversion = false,
+  view = 'grid',
+  onViewChange
 }) {
-  const allowedSet = new Set(
-    (Array.isArray(allowedSucursalIds) ? allowedSucursalIds : [])
-      .map((id) => Number.parseInt(String(id ?? ''), 10))
-      .filter((id) => Number.isInteger(id) && id > 0)
-  );
-
-  const selectableSucursales = (Array.isArray(sucursales) ? sucursales : [])
-    .filter((row) => allowedSet.has(Number(row?.id_sucursal)))
-    .sort((a, b) =>
-      String(a?.nombre_sucursal || '').localeCompare(String(b?.nombre_sucursal || ''), 'es', {
-        sensitivity: 'base'
-      })
-    );
-
   return (
     <div className="inv-prod-header ventas-page__toolbar">
       <div className="inv-prod-title-wrap">
@@ -36,32 +21,26 @@ export default function VentasToolbar({
       </div>
 
       <div className="inv-prod-header-actions inv-ins-header-actions ventas-page__toolbar-actions">
-        <label className="inv-ins-search" aria-label="Buscar ventas">
+        <label className="inv-ins-search ventas-page__search" aria-label="Buscar ventas">
           <i className="bi bi-search" />
           <input
             type="search"
+            maxLength={120}
             placeholder="Buscar por cliente, numero, sucursal o usuario..."
             value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
+            onChange={(event) => onSearchChange(event.target.value.slice(0, 120))}
           />
         </label>
 
-        {canSelectSucursal ? (
-          <label className="inv-ins-search" aria-label="Filtrar por sucursal">
-            <i className="bi bi-shop" />
-            <select
-              value={selectedSucursalId ? String(selectedSucursalId) : ''}
-              onChange={(event) => onSucursalChange?.(event.target.value)}
-            >
-              <option value="">Todas las sucursales</option>
-              {selectableSucursales.map((sucursal) => (
-                <option key={sucursal.id_sucursal} value={String(sucursal.id_sucursal)}>
-                  {sucursal.nombre_sucursal}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <button
+          type="button"
+          className={`inv-prod-toolbar-btn ventas-page__filter-btn ${activeFilters > 0 ? 'is-active' : ''}`}
+          onClick={onOpenFilters}
+        >
+          <i className="bi bi-funnel" />
+          <span>Filtros</span>
+          {activeFilters > 0 ? <strong>{activeFilters}</strong> : null}
+        </button>
 
         {canCreate ? (
           <button
@@ -73,6 +52,7 @@ export default function VentasToolbar({
             <span>Nueva venta</span>
           </button>
         ) : null}
+
         {canReversion ? (
           <button
             type="button"
@@ -80,9 +60,30 @@ export default function VentasToolbar({
             onClick={onOpenReversion}
           >
             <i className="bi bi-arrow-counterclockwise" />
-            <span>Registrar reversión</span>
+            <span>Registrar reversion</span>
           </button>
         ) : null}
+
+        <div className="ventas-page__view-toggle" role="tablist" aria-label="Cambiar vista">
+          <button
+            type="button"
+            className={`ventas-page__view-btn ${view === 'grid' ? 'is-active' : ''}`}
+            onClick={() => onViewChange?.('grid')}
+            aria-pressed={view === 'grid'}
+            title="Vista en tarjetas"
+          >
+            <i className="bi bi-grid-3x3-gap-fill" />
+          </button>
+          <button
+            type="button"
+            className={`ventas-page__view-btn ${view === 'list' ? 'is-active' : ''}`}
+            onClick={() => onViewChange?.('list')}
+            aria-pressed={view === 'list'}
+            title="Vista en lista"
+          >
+            <i className="bi bi-list-ul" />
+          </button>
+        </div>
       </div>
     </div>
   );

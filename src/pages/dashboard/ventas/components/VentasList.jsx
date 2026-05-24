@@ -20,7 +20,7 @@ export default function VentasList({
   canCreate = true
 }) {
   const currentRows = Array.isArray(ventas) ? ventas.length : 0;
-  const safePageSize = Number.parseInt(String(pageSize ?? ''), 10) || 30;
+  const safePageSize = Number.parseInt(String(pageSize ?? ''), 10) || 6;
   const total = Number.parseInt(String(totalVentas ?? ''), 10) || 0;
   const startIndex = total === 0 ? 0 : ((currentPage - 1) * safePageSize) + 1;
   const endIndex = total === 0 ? 0 : Math.min((currentPage - 1) * safePageSize + currentRows, total);
@@ -92,21 +92,11 @@ export default function VentasList({
                   pageSize={safePageSize}
                   currentPage={currentPage}
                   onPageChange={onPageChange}
+                  maxVisible={5}
                   className="ventas-page__pagination-bar"
                 />
-                <div className="d-flex align-items-center gap-2">
-                  <label className="small text-muted mb-0" htmlFor="ventas-page-size">Por pagina</label>
-                  <select
-                    id="ventas-page-size"
-                    className="form-select form-select-sm"
-                    style={{ width: 'auto' }}
-                    value={safePageSize}
-                    onChange={(event) => onPageSizeChange?.(event.target.value)}
-                  >
-                    <option value={10}>10</option>
-                    <option value={30}>30</option>
-                    <option value={50}>50</option>
-                  </select>
+                <div className="ventas-page__page-size-label">
+                  <span>6 por pagina</span>
                   <span className="small text-muted">
                     Pagina {currentPage} de {totalPages}
                   </span>
