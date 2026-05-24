@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import million from 'million/compiler';
+import process from 'node:process';
 
 const BACKEND = 'http://localhost:3001';
 
@@ -56,6 +57,7 @@ const proxiedPaths = [
   '/parametros',
   '/movimientos',
   '/perfil',
+  '/reportes',
   '/email-campaigns',
   '/archivos',
   '/mobiliario',

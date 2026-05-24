@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import SinPermiso from '../../components/common/SinPermiso';
@@ -8,6 +8,8 @@ import {
   getAllowedTabs
 } from '../../utils/permissions';
 import { reportesService } from '../../services/reportesService';
+import sucursalesService from '../../services/sucursalesService';
+import cajasService from '../../services/cajasService';
 
 const REPORT_KEYS = [
   'ventas-resumen',
@@ -122,6 +124,13 @@ const REPORT_GROUPS = Object.freeze([
   }
 ]);
 
+const REPORT_CATEGORY_LABELS = Object.freeze(
+  REPORT_GROUPS.reduce((acc, group) => {
+    acc[group.key] = group.label;
+    return acc;
+  }, {})
+);
+
 const INITIAL_FILTERS = {
   fecha_inicio: '',
   fecha_fin: '',
@@ -152,6 +161,18 @@ const FILTER_LABELS = Object.freeze({
   estado: 'Estado'
 });
 
+const sanitizeAdvancedFiltersForDrawer = (source = INITIAL_FILTERS) => ({
+  ...source,
+  almacen: '',
+  usuario: '',
+  tipo_diferencia: '',
+  tipo_descuento: '',
+  tipo_item: '',
+  solo_criticos: '',
+  categoria: '',
+  estado: ''
+});
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const REPORTS_PAGE_SIZE = 10;
 
@@ -166,7 +187,21 @@ const pushRow = (target, row) => {
   target.push(row);
 };
 
-const makeCatalogOptions = (rows, { idKeys = [], labelKeys = [], allLabel = 'Todos' }) => {
+const normalizeApiRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+
+const makeCatalogOptions = (
+  rows,
+  {
+    idKeys = [],
+    labelKeys = [],
+    allLabel = 'Todos',
+    allowLabelAsValue = true
+  }
+) => {
   const options = [{ value: '', label: allLabel }];
   const seen = new Set();
 
@@ -190,7 +225,7 @@ const makeCatalogOptions = (rows, { idKeys = [], labelKeys = [], allLabel = 'Tod
       }
     }
 
-    if (!resolvedValue && resolvedLabel) {
+    if (!resolvedValue && resolvedLabel && allowLabelAsValue) {
       resolvedValue = resolvedLabel;
     }
 
@@ -204,6 +239,18 @@ const makeCatalogOptions = (rows, { idKeys = [], labelKeys = [], allLabel = 'Tod
   });
 
   return options;
+};
+
+const extractRowsFromReportPayload = (responsePayload) => {
+  const data = responsePayload?.data;
+  if (!data || typeof data !== 'object') return [];
+
+  const rows = [];
+  Object.values(data).forEach((value) => {
+    if (!Array.isArray(value)) return;
+    value.forEach((item) => pushRow(rows, item));
+  });
+  return rows;
 };
 
 const getToastIconClass = (variant) => {
@@ -228,9 +275,6 @@ const getKpiCards = (tab, kpis) => {
     return [
       { label: 'Total ventas', value: `L ${money(kpis.total_ventas)}`, icon: 'bi bi-cash-stack', tone: 'is-ok' },
       { label: 'Cantidad ventas', value: kpis.cantidad_ventas || 0, icon: 'bi bi-receipt', tone: 'is-neutral' },
-      { label: 'Subtotal', value: `L ${money(kpis.subtotal)}`, icon: 'bi bi-wallet2', tone: 'is-neutral' },
-      { label: 'Descuentos', value: `L ${money(kpis.descuentos)}`, icon: 'bi bi-tags', tone: 'is-soft' },
-      { label: 'Impuestos', value: `L ${money(kpis.impuestos)}`, icon: 'bi bi-percent', tone: 'is-soft' },
       { label: 'Total neto', value: `L ${money(kpis.total_neto)}`, icon: 'bi bi-bar-chart-line', tone: 'is-ok' },
       { label: 'Promedio venta', value: `L ${money(kpis.promedio_por_venta)}`, icon: 'bi bi-graph-up', tone: 'is-neutral' },
       { label: 'Canceladas/Anuladas', value: kpis.ventas_canceladas_o_anuladas || 0, icon: 'bi bi-slash-circle', tone: 'is-alert' }
@@ -314,6 +358,12 @@ const Reportes = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
+  const hasPermiso = (permiso) => {
+    if (permisos instanceof Set) return permisos.has(permiso);
+    if (Array.isArray(permisos)) return permisos.includes(permiso);
+    return false;
+  };
+
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [draftFilters, setDraftFilters] = useState(INITIAL_FILTERS);
   const [loading, setLoading] = useState(false);
@@ -322,8 +372,6 @@ const Reportes = () => {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showFiltersDrawer, setShowFiltersDrawer] = useState(false);
-  const [showFeaturesMenu, setShowFeaturesMenu] = useState(false);
-  const [openCategory, setOpenCategory] = useState(null);
   const [emailForm, setEmailForm] = useState({
     destinatarios: '',
     formato: 'pdf',
@@ -340,28 +388,20 @@ const Reportes = () => {
     variant: 'success'
   });
   const [listPage, setListPage] = useState(1);
-
-  const categoryShellRef = useRef(null);
-  const featuresRef = useRef(null);
+  const [catalogRows, setCatalogRows] = useState([]);
+  const [loadingCatalogs, setLoadingCatalogs] = useState(false);
+  const [sucursalesCatalog, setSucursalesCatalog] = useState([]);
+  const [cajasCatalog, setCajasCatalog] = useState([]);
+  const [loadingBaseCatalogs, setLoadingBaseCatalogs] = useState(false);
 
   const allowedTabs = useMemo(
     () => getAllowedTabs('reportes', permisos, { isSuperAdmin }),
     [isSuperAdmin, permisos]
   );
-  const allowedTabSet = useMemo(() => new Set(allowedTabs.map((item) => item.key)), [allowedTabs]);
 
-  const canExportExcel = useMemo(
-    () => isSuperAdmin || (Array.isArray(permisos) && permisos.includes('REPORTES_EXPORTAR_EXCEL')),
-    [isSuperAdmin, permisos]
-  );
-  const canExportPdf = useMemo(
-    () => isSuperAdmin || (Array.isArray(permisos) && permisos.includes('REPORTES_EXPORTAR_PDF')),
-    [isSuperAdmin, permisos]
-  );
-  const canSendEmail = useMemo(
-    () => isSuperAdmin || (Array.isArray(permisos) && permisos.includes('REPORTES_ENVIAR_CORREO')),
-    [isSuperAdmin, permisos]
-  );
+  const canExportExcel = isSuperAdmin || hasPermiso('REPORTES_EXPORTAR_EXCEL');
+  const canExportPdf = isSuperAdmin || hasPermiso('REPORTES_EXPORTAR_PDF');
+  const canSendEmail = isSuperAdmin || hasPermiso('REPORTES_ENVIAR_CORREO');
 
   const fallbackTab = allowedTabs[0]?.key || null;
   const rawTab = String(searchParams.get('tab') || fallbackTab || '').toLowerCase();
@@ -369,15 +409,7 @@ const Reportes = () => {
   const activeTab = allowedTabs.some((tab) => tab.key === normalizedTab) ? normalizedTab : fallbackTab;
 
   const activeReport = REPORT_META[activeTab] || null;
-
-  const groupedTabs = useMemo(
-    () =>
-      REPORT_GROUPS.map((group) => ({
-        ...group,
-        tabs: group.tabs.filter((tabKey) => allowedTabSet.has(tabKey))
-      })).filter((group) => group.tabs.length > 0),
-    [allowedTabSet]
-  );
+  const activeCategoryLabel = REPORT_CATEGORY_LABELS[activeReport?.category] || 'General';
 
   useEffect(() => {
     if (!notice.show) return;
@@ -397,26 +429,6 @@ const Reportes = () => {
   }, [activeTab, rawTab, permisosLoading, searchParams, setSearchParams]);
 
   useEffect(() => {
-    if (showEmailModal || showFiltersDrawer) return;
-
-    const onPointerDown = (event) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-
-      if (categoryShellRef.current && !categoryShellRef.current.contains(target)) {
-        setOpenCategory(null);
-      }
-
-      if (featuresRef.current && !featuresRef.current.contains(target)) {
-        setShowFeaturesMenu(false);
-      }
-    };
-
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [showEmailModal, showFiltersDrawer]);
-
-  useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key !== 'Escape') return;
       if (showEmailModal && !sendingEmail) {
@@ -427,17 +439,99 @@ const Reportes = () => {
         setShowFiltersDrawer(false);
         return;
       }
-      if (showFeaturesMenu) {
-        setShowFeaturesMenu(false);
-      }
     };
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [showEmailModal, sendingEmail, showFiltersDrawer, showFeaturesMenu]);
+  }, [showEmailModal, sendingEmail, showFiltersDrawer]);
 
   const showToast = (title, message, variant = 'success') => {
     setNotice({ show: true, title, message, variant });
+  };
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadBaseCatalogs = async () => {
+      setLoadingBaseCatalogs(true);
+      try {
+        const [sucursalesResult, cajasResult] = await Promise.allSettled([
+          sucursalesService.getAll(),
+          cajasService.listCajaCatalogo({ incluir_inactivas: false })
+        ]);
+
+        if (!ignore && sucursalesResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(sucursalesResult.value)
+            .map((row) => ({
+              id_sucursal: Number(row?.id_sucursal ?? row?.id ?? 0) || 0,
+              nombre_sucursal: String(row?.nombre_sucursal ?? row?.sucursal ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.id_sucursal > 0 && row.nombre_sucursal)
+            .filter((row) => row.estado !== false)
+            .sort((a, b) =>
+              a.nombre_sucursal.localeCompare(b.nombre_sucursal, 'es', { sensitivity: 'base' })
+            );
+          setSucursalesCatalog(rows);
+        }
+
+        if (!ignore && cajasResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(cajasResult.value)
+            .map((row) => ({
+              id_caja: Number(row?.id_caja ?? 0) || 0,
+              id_sucursal: Number(row?.id_sucursal ?? 0) || 0,
+              codigo_caja: String(row?.codigo_caja ?? '').trim(),
+              nombre_caja: String(row?.nombre_caja ?? row?.caja ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.id_caja > 0 && row.nombre_caja)
+            .filter((row) => row.estado !== false)
+            .sort((a, b) =>
+              `${a.codigo_caja} ${a.nombre_caja}`.localeCompare(
+                `${b.codigo_caja} ${b.nombre_caja}`,
+                'es',
+                { sensitivity: 'base' }
+              )
+            );
+          setCajasCatalog(rows);
+        }
+      } finally {
+        if (!ignore) setLoadingBaseCatalogs(false);
+      }
+    };
+
+    void loadBaseCatalogs();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const refreshFilterCatalogs = async (baseFilters = filters) => {
+    if (!allowedTabs.length) return;
+
+    setLoadingCatalogs(true);
+    try {
+      const settled = await Promise.allSettled(
+        allowedTabs
+          .map((tab) => REPORT_HANDLERS[tab.key])
+          .filter(Boolean)
+          .map((fetcher) => fetcher(baseFilters))
+      );
+
+      const rows = [];
+      settled.forEach((result) => {
+        if (result.status !== 'fulfilled') return;
+        extractRowsFromReportPayload(result.value).forEach((row) => rows.push(row));
+      });
+
+      setCatalogRows(rows);
+
+      if (import.meta.env.DEV) {
+        console.log('[Reportes][Catalogos] rows', rows.length);
+      }
+    } finally {
+      setLoadingCatalogs(false);
+    }
   };
 
   const runReport = async (tabKey, customFilters = filters) => {
@@ -450,6 +544,10 @@ const Reportes = () => {
     try {
       const data = await fetcher(customFilters);
       setPayload(data || null);
+      setCatalogRows((prev) => {
+        const merged = [...prev, ...extractRowsFromReportPayload(data)];
+        return merged.length > 4000 ? merged.slice(merged.length - 4000) : merged;
+      });
     } catch (err) {
       const message = err?.message || 'No se pudo generar el reporte solicitado.';
       setError(message);
@@ -465,12 +563,11 @@ const Reportes = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  const handleSelectTab = (tabKey) => {
-    const next = new URLSearchParams(searchParams);
-    next.set('tab', tabKey);
-    setSearchParams(next);
-    setOpenCategory(null);
-  };
+  useEffect(() => {
+    if (!allowedTabs.length) return;
+    refreshFilterCatalogs(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedTabs]);
 
   const handleClearFilters = async () => {
     const reset = { ...INITIAL_FILTERS };
@@ -478,19 +575,23 @@ const Reportes = () => {
     setFilters(reset);
     setShowFiltersDrawer(false);
     await runReport(activeTab, reset);
+    await refreshFilterCatalogs(reset);
   };
 
   const handleApplyFilters = async () => {
-    const next = { ...draftFilters };
+    const next = sanitizeAdvancedFiltersForDrawer(draftFilters);
     setFilters(next);
     setShowFiltersDrawer(false);
     await runReport(activeTab, next);
+    await refreshFilterCatalogs(next);
   };
 
   const handleOpenFilters = () => {
-    setDraftFilters(filters);
+    setDraftFilters(sanitizeAdvancedFiltersForDrawer(filters));
     setShowFiltersDrawer(true);
-    setShowFeaturesMenu(false);
+    if (catalogRows.length === 0 && !loadingCatalogs) {
+      refreshFilterCatalogs(filters);
+    }
   };
 
   const handleExportExcel = async () => {
@@ -559,7 +660,6 @@ const Reportes = () => {
       mensaje: 'Adjunto reporte solicitado.',
       confirmado: false
     });
-    setShowFeaturesMenu(false);
     setShowEmailModal(true);
   };
 
@@ -627,17 +727,6 @@ const Reportes = () => {
     }
   };
 
-  if (permisosLoading) return null;
-
-  if (!fallbackTab) {
-    return (
-      <SinPermiso
-        permiso={MODULE_PRIMARY_PERMISSION.reportes}
-        detalle="No tienes acceso a ningún reporte habilitado."
-      />
-    );
-  }
-
   const kpis = payload?.data?.kpis || null;
   const serieDiaria = Array.isArray(payload?.data?.serie_diaria) ? payload.data.serie_diaria : [];
   const desgloseEstado = Array.isArray(payload?.data?.desglose_por_estado) ? payload.data.desglose_por_estado : [];
@@ -652,7 +741,7 @@ const Reportes = () => {
   const ventasItemsResumen = Array.isArray(payload?.data?.resumen_items) ? payload.data.resumen_items : [];
   const ventasItemsDetalle = Array.isArray(payload?.data?.detalle) ? payload.data.detalle : [];
 
-  const sourceRows = [];
+  const sourceRows = [...catalogRows];
   serieDiaria.forEach((row) => pushRow(sourceRows, row));
   desgloseEstado.forEach((row) => pushRow(sourceRows, row));
   resumenMetodos.forEach((row) => pushRow(sourceRows, row));
@@ -666,79 +755,47 @@ const Reportes = () => {
   ventasItemsResumen.forEach((row) => pushRow(sourceRows, row));
   ventasItemsDetalle.forEach((row) => pushRow(sourceRows, row));
 
-  const sucursalOptions = makeCatalogOptions(sourceRows, {
+  const fallbackSucursalOptions = makeCatalogOptions(sourceRows, {
     idKeys: ['id_sucursal', 'sucursal_id'],
     labelKeys: ['nombre_sucursal', 'sucursal'],
-    allLabel: 'Todas las sucursales'
+    allLabel: 'Todas las sucursales',
+    allowLabelAsValue: false
   });
 
-  const cajaOptions = makeCatalogOptions(sourceRows, {
+  const fallbackCajaOptions = makeCatalogOptions(sourceRows, {
     idKeys: ['id_caja'],
     labelKeys: ['codigo_caja', 'nombre_caja', 'caja'],
-    allLabel: 'Todas las cajas'
+    allLabel: 'Todas las cajas',
+    allowLabelAsValue: false
   });
 
-  const almacenOptions = makeCatalogOptions(sourceRows, {
-    idKeys: ['id_almacen'],
-    labelKeys: ['nombre_almacen', 'almacen'],
-    allLabel: 'Todos los almacenes'
+  const branchCatalogRows = sucursalesCatalog.map((row) => ({
+    id_sucursal: row.id_sucursal,
+    nombre_sucursal: row.nombre_sucursal
+  }));
+  const sucursalOptions = makeCatalogOptions([...branchCatalogRows, ...sourceRows], {
+    idKeys: ['id_sucursal', 'sucursal_id'],
+    labelKeys: ['nombre_sucursal', 'sucursal'],
+    allLabel: 'Todas las sucursales',
+    allowLabelAsValue: false
   });
 
-  const usuarioOptions = makeCatalogOptions(sourceRows, {
-    idKeys: ['id_usuario'],
-    labelKeys: ['usuario', 'responsable', 'usuario_cierre', 'nombre_usuario'],
-    allLabel: 'Todos los usuarios'
+  const selectedSucursalForCaja = String(
+    showFiltersDrawer ? draftFilters.sucursal || filters.sucursal || '' : filters.sucursal || ''
+  ).trim();
+  const cajaCatalogRows = cajasCatalog
+    .filter((row) => !selectedSucursalForCaja || String(row.id_sucursal) === selectedSucursalForCaja)
+    .map((row) => ({
+      id_caja: row.id_caja,
+      codigo_caja: row.codigo_caja,
+      nombre_caja: row.nombre_caja
+    }));
+  const cajaOptions = makeCatalogOptions([...cajaCatalogRows, ...sourceRows], {
+    idKeys: ['id_caja'],
+    labelKeys: ['codigo_caja', 'nombre_caja', 'caja'],
+    allLabel: 'Todas las cajas',
+    allowLabelAsValue: false
   });
-
-  const categoriaOptions = makeCatalogOptions(sourceRows, {
-    idKeys: ['id_categoria', 'id_categoria_producto', 'id_categoria_insumo'],
-    labelKeys: ['categoria', 'nombre_categoria'],
-    allLabel: 'Todas las categorías'
-  });
-
-  const estadoOptions = makeCatalogOptions(sourceRows, {
-    idKeys: [],
-    labelKeys: ['estado', 'estado_cierre', 'estado_resolucion'],
-    allLabel: 'Todos los estados'
-  });
-
-  const tipoDescuentoOptions = makeCatalogOptions(sourceRows, {
-    idKeys: ['id_tipo_descuento'],
-    labelKeys: ['tipo_descuento'],
-    allLabel: 'Todos los tipos'
-  });
-
-  const dynamicTipoItemOptions = makeCatalogOptions(sourceRows, {
-    idKeys: [],
-    labelKeys: ['tipo_item', 'item_tipo'],
-    allLabel: 'Todos'
-  });
-
-  const tipoItemOptions = [
-    { value: '', label: 'Todos' },
-    { value: 'producto', label: 'Producto' },
-    { value: 'combo', label: 'Combo' },
-    { value: 'receta', label: 'Receta' },
-    { value: 'insumo', label: 'Insumo' }
-  ];
-
-  dynamicTipoItemOptions.slice(1).forEach((option) => {
-    if (!tipoItemOptions.some((base) => base.value === option.value)) {
-      tipoItemOptions.push(option);
-    }
-  });
-
-  const tipoDiferenciaOptions = [
-    { value: '', label: 'Todos' },
-    { value: 'faltante', label: 'Faltante' },
-    { value: 'sobrante', label: 'Sobrante' }
-  ];
-
-  const soloCriticosOptions = [
-    { value: '', label: 'Todos' },
-    { value: 'true', label: 'Sí' },
-    { value: 'false', label: 'No' }
-  ];
 
   const activeFilterChips = Object.entries(filters)
     .filter(([, value]) => String(value ?? '').trim() !== '')
@@ -809,159 +866,184 @@ const Reportes = () => {
     }
   }, [listPage, safePage]);
 
+  useEffect(() => {
+    if (!import.meta.env.DEV || !showFiltersDrawer) return;
+    console.log('[Reportes][Filtros] options', {
+      sucursal: sucursalOptions.length,
+      caja: cajaOptions.length,
+      fallbackSucursal: fallbackSucursalOptions.length,
+      fallbackCaja: fallbackCajaOptions.length,
+      sucursalesCatalog: sucursalesCatalog.length,
+      cajasCatalog: cajasCatalog.length,
+      loadingCatalogs,
+      loadingBaseCatalogs,
+      draftFilters
+    });
+  }, [
+    showFiltersDrawer,
+    sucursalOptions.length,
+    cajaOptions.length,
+    fallbackSucursalOptions.length,
+    fallbackCajaOptions.length,
+    sucursalesCatalog.length,
+    cajasCatalog.length,
+    loadingCatalogs,
+    loadingBaseCatalogs,
+    draftFilters
+  ]);
+
+  if (permisosLoading) return null;
+
+  if (!fallbackTab) {
+    return (
+      <SinPermiso
+        permiso={MODULE_PRIMARY_PERMISSION.reportes}
+        detalle="No tienes acceso a ningún reporte habilitado."
+      />
+    );
+  }
+
   return (
     <div className="container-fluid p-3 reportes-page">
-      <div className="rep-shell-card rep-shell-card--header" ref={categoryShellRef}>
-        <div className="rep-shell-categories" role="tablist" aria-label="Categorías de reportes">
-          {groupedTabs.map((group) => {
-            const isActiveCategory = activeReport?.category === group.key;
-            const isOpen = openCategory === group.key;
-
-            return (
-              <button
-                key={group.key}
-                type="button"
-                className={`rep-shell-category-btn ${isActiveCategory ? 'is-active' : ''}`}
-                onClick={() => setOpenCategory((current) => (current === group.key ? null : group.key))}
-                aria-expanded={isOpen}
-              >
-                <i className={group.icon} aria-hidden="true" />
-                <span>{group.label}</span>
-                <i className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'}`} aria-hidden="true" />
-              </button>
-            );
-          })}
-        </div>
-
-        {openCategory ? (
-          <div className="rep-shell-submenu" role="menu" aria-label="Submódulos de reportes">
-            {(groupedTabs.find((group) => group.key === openCategory)?.tabs || []).map((tabKey) => {
-              const meta = REPORT_META[tabKey];
-              const isActive = tabKey === activeTab;
-
-              return (
-                <button
-                  key={tabKey}
-                  type="button"
-                  className={`rep-shell-submenu-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => handleSelectTab(tabKey)}
-                >
-                  <span className="rep-shell-submenu-item__icon" aria-hidden="true">
-                    <i className={meta?.icon || 'bi bi-file-earmark-text'} />
-                  </span>
-                  <span>{meta?.label || tabKey}</span>
-                  {isActive ? <span className="rep-shell-submenu-item__dot" aria-hidden="true" /> : null}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="rep-shell-card rep-module-head">
-        <div className="rep-module-head__title-wrap">
-          <div className="rep-module-head__title-row">
-            <i className={`${activeReport?.icon || 'bi bi-file-bar-graph'} rep-module-head__icon`} aria-hidden="true" />
-            <h2 className="rep-module-head__title">{activeReport?.label || 'Reportes'}</h2>
+      <header className="rep-shell-card rep-module-header">
+        <div className="rep-module-header__main">
+          <p className="rep-module-header__kicker">Inteligencia comercial</p>
+          <h1 className="rep-module-header__title">Reportes</h1>
+          <p className="rep-module-header__desc">
+            Consulta indicadores, aplica filtros y comparte resultados por exportación o correo.
+          </p>
+          <div className="rep-module-header__meta">
+            <span className="rep-meta-pill">{activeCategoryLabel}</span>
+            <span className="rep-meta-pill rep-meta-pill--active">
+              <i className={activeReport?.icon || 'bi bi-file-bar-graph'} aria-hidden="true" />
+              {activeReport?.label || 'Reporte activo'}
+            </span>
           </div>
         </div>
 
-        <div className="rep-module-head__actions">
-          <button
-            type="button"
-            className="btn inv-prod-btn-outline rep-action-btn"
-            onClick={handleOpenFilters}
-          >
-            <i className="bi bi-funnel" aria-hidden="true" />
-            <span>Filtros</span>
-          </button>
-
-          <div className="rep-functionalities" ref={featuresRef}>
+        <div className="rep-module-header__actions">
+          {canExportExcel ? (
             <button
               type="button"
               className="btn inv-prod-btn-subtle rep-action-btn"
-              onClick={() => setShowFeaturesMenu((current) => !current)}
-              aria-expanded={showFeaturesMenu}
+              onClick={handleExportExcel}
+              disabled={exporting || loading}
             >
-              <i className="bi bi-grid-3x3-gap" aria-hidden="true" />
-              <span>Funcionalidades</span>
-              <i className={`bi ${showFeaturesMenu ? 'bi-chevron-up' : 'bi-chevron-down'}`} aria-hidden="true" />
+              <i className="bi bi-filetype-csv" aria-hidden="true" />
+              <span>{exporting ? 'Exportando CSV/Excel...' : 'CSV/Excel'}</span>
             </button>
+          ) : null}
 
-            {showFeaturesMenu ? (
-              <div className="rep-functionalities-menu" role="menu" aria-label="Acciones de reporte">
-                {canExportExcel ? (
-                  <button
-                    type="button"
-                    className="rep-functionalities-menu__item"
-                    onClick={handleExportExcel}
-                    disabled={exporting || loading}
-                  >
-                    <i className="bi bi-filetype-csv" aria-hidden="true" />
-                    <span>{exporting ? 'Exportando CSV/Excel...' : 'Exportar CSV/Excel'}</span>
-                  </button>
-                ) : null}
+          {canExportPdf ? (
+            <button
+              type="button"
+              className="btn inv-prod-btn-subtle rep-action-btn"
+              onClick={handleExportPdf}
+              disabled={exportingPdf || loading}
+            >
+              <i className="bi bi-filetype-pdf" aria-hidden="true" />
+              <span>{exportingPdf ? 'Exportando PDF...' : 'PDF'}</span>
+            </button>
+          ) : null}
 
-                {canExportPdf ? (
-                  <button
-                    type="button"
-                    className="rep-functionalities-menu__item"
-                    onClick={handleExportPdf}
-                    disabled={exportingPdf || loading}
-                  >
-                    <i className="bi bi-filetype-pdf" aria-hidden="true" />
-                    <span>{exportingPdf ? 'Exportando PDF...' : 'Exportar PDF'}</span>
-                  </button>
-                ) : null}
+          {canSendEmail ? (
+            <button
+              type="button"
+              className="btn inv-prod-btn-outline rep-action-btn"
+              onClick={openEmailModal}
+              disabled={sendingEmail || loading}
+            >
+              <i className="bi bi-envelope-paper" aria-hidden="true" />
+              <span>Enviar por correo</span>
+            </button>
+          ) : null}
+        </div>
+      </header>
 
-                {canSendEmail ? (
-                  <button
-                    type="button"
-                    className="rep-functionalities-menu__item"
-                    onClick={openEmailModal}
-                    disabled={sendingEmail || loading}
-                  >
-                    <i className="bi bi-envelope-paper" aria-hidden="true" />
-                    <span>Enviar por correo</span>
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
+      <section className="rep-shell-card rep-filters-card" aria-label="Filtros rápidos">
+        <div className="rep-filters-inline">
+          <div className="rep-field rep-field--fecha-inicio">
+            <label htmlFor="rep-quick-fecha-inicio">Fecha inicio</label>
+            <input
+              id="rep-quick-fecha-inicio"
+              type="date"
+              value={filters.fecha_inicio}
+              onChange={(event) => setFilters((prev) => ({ ...prev, fecha_inicio: event.target.value }))}
+            />
+          </div>
+
+          <div className="rep-field rep-field--fecha-fin">
+            <label htmlFor="rep-quick-fecha-fin">Fecha fin</label>
+            <input
+              id="rep-quick-fecha-fin"
+              type="date"
+              value={filters.fecha_fin}
+              onChange={(event) => setFilters((prev) => ({ ...prev, fecha_fin: event.target.value }))}
+            />
+          </div>
+
+          <div className="rep-field rep-field--sucursal">
+            <label htmlFor="rep-quick-sucursal">Sucursal</label>
+            <select
+              id="rep-quick-sucursal"
+              value={filters.sucursal}
+              onChange={(event) =>
+                setFilters((prev) => ({ ...prev, sucursal: event.target.value, caja: '' }))
+              }
+              disabled={(loadingCatalogs || loadingBaseCatalogs) && sucursalOptions.length <= 1}
+            >
+              {(loadingCatalogs || loadingBaseCatalogs) && sucursalOptions.length <= 1 ? (
+                <option value="">Cargando sucursales...</option>
+              ) : (
+                sucursalOptions.map((option) => (
+                  <option key={`quick-sucursal-${option.value || 'all'}`} value={option.value}>{option.label}</option>
+                ))
+              )}
+            </select>
           </div>
 
           <button
             type="button"
-            className="btn inv-prod-btn-primary rep-action-btn"
+            className="btn inv-prod-btn-primary rep-action-btn rep-action-btn--aplicar"
             onClick={() => runReport(activeTab, filters)}
             disabled={loading}
           >
-            <i className="bi bi-search" aria-hidden="true" />
-            <span>{loading ? 'Generando...' : 'Generar reporte'}</span>
+            <i className="bi bi-arrow-repeat" aria-hidden="true" />
+            <span>{loading ? 'Actualizando...' : 'Aplicar filtros'}</span>
           </button>
 
           <button
             type="button"
-            className="btn inv-prod-btn-subtle rep-action-btn"
+            className="btn inv-prod-btn-subtle rep-action-btn rep-action-btn--limpiar"
             onClick={handleClearFilters}
             disabled={loading}
           >
             <i className="bi bi-eraser" aria-hidden="true" />
-            <span>Limpiar filtros</span>
+            <span>Limpiar</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn inv-prod-btn-outline rep-action-btn rep-action-btn--mas-filtros"
+            onClick={handleOpenFilters}
+          >
+            <i className="bi bi-sliders2" aria-hidden="true" />
+            <span>Más filtros</span>
           </button>
         </div>
-      </div>
 
-      {activeFilterChips.length > 0 ? (
-        <div className="rep-filter-chips" aria-label="Filtros activos">
-          {activeFilterChips.map((chip) => (
-            <span key={chip.key} className="rep-filter-chip">
-              <strong>{chip.label}:</strong> {chip.value}
-            </span>
-          ))}
-        </div>
-      ) : (
-        <div className="rep-filter-chips rep-filter-chips--empty">Sin filtros activos.</div>
-      )}
+        {activeFilterChips.length > 0 ? (
+          <div className="rep-filter-chips" aria-label="Filtros activos">
+            {activeFilterChips.map((chip) => (
+              <span key={chip.key} className="rep-filter-chip">
+                <strong>{chip.label}:</strong> {chip.value}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="rep-filter-chips rep-filter-chips--empty">Sin filtros activos.</div>
+        )}
+      </section>
 
       {kpiCards.length > 0 ? (
         <div className="rep-kpi-grid">
@@ -997,29 +1079,79 @@ const Reportes = () => {
         {!loading && !error && payload ? (
           <>
             {isVentasResumenTab ? (
-              <div className="rep-table-shell">
-                <div className="rep-table-responsive">
-                  <table className="rep-table">
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th className="text-end">Ventas</th>
-                        <th className="text-end">Total neto</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {serieDiaria.length === 0 ? (
-                        <tr><td colSpan={3} className="rep-table-empty">Sin datos diarios.</td></tr>
-                      ) : paginatedRows.map((item) => (
-                        <tr key={item.fecha}>
-                          <td>{item.fecha}</td>
-                          <td className="text-end">{item.cantidad_ventas}</td>
-                          <td className="text-end">L {money(item.total_neto)}</td>
+              <div className="rep-ventas-layout">
+                <div className="rep-table-shell">
+                  <div className="rep-table-responsive">
+                    <table className="rep-table">
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th className="text-end">Ventas</th>
+                          <th className="text-end">Total neto</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {serieDiaria.length === 0 ? (
+                          <tr><td colSpan={3} className="rep-table-empty">Sin datos para los filtros seleccionados.</td></tr>
+                        ) : paginatedRows.map((item) => (
+                          <tr key={item.fecha}>
+                            <td>{item.fecha}</td>
+                            <td className="text-end">{item.cantidad_ventas}</td>
+                            <td className="text-end">L {money(item.total_neto)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="rep-mobile-sales-list" aria-label="Resumen de ventas en tarjetas">
+                    {serieDiaria.length === 0 ? (
+                      <div className="rep-mobile-sales-empty">Sin datos para los filtros seleccionados.</div>
+                    ) : paginatedRows.map((item, index) => (
+                      <article key={`sales-mobile-${item.fecha}-${index}`} className="rep-mobile-sales-card">
+                        <div className="rep-mobile-sales-card__head">
+                          <span className="rep-mobile-sales-card__icon" aria-hidden="true">
+                            <i className="bi bi-graph-up-arrow" />
+                          </span>
+                          <strong>{item.fecha || '-'}</strong>
+                        </div>
+                        <div className="rep-mobile-sales-card__body">
+                          <div>
+                            <span>Ventas</span>
+                            <b>{item.cantidad_ventas ?? 0}</b>
+                          </div>
+                          <div>
+                            <span>Total neto</span>
+                            <b>L {money(item.total_neto)}</b>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
                 </div>
+
+                <aside className="rep-ventas-sidecard">
+                  <header className="rep-ventas-sidecard__head">
+                    <h3>Estado de ventas</h3>
+                    <p>Distribución de ventas por estado en el período.</p>
+                  </header>
+
+                  {desgloseEstado.length === 0 ? (
+                    <div className="rep-ventas-sidecard__empty">Sin desglose por estado.</div>
+                  ) : (
+                    <ul className="rep-ventas-sidecard__list">
+                      {desgloseEstado.map((item, index) => (
+                        <li key={`${item.estado || 'estado'}-${index}`} className="rep-ventas-sidecard__item">
+                          <div>
+                            <strong>{item.estado || 'Sin estado'}</strong>
+                            <span>{item.cantidad_ventas || 0} ventas</span>
+                          </div>
+                          <b>L {money(item.total_neto)}</b>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </aside>
               </div>
             ) : null}
 
@@ -1316,10 +1448,10 @@ const Reportes = () => {
               <div className="inv-warehouse-moves__pagination-controls">
                 <button
                   type="button"
-                  className="inv-warehouse-moves__pagination-btn"
+                  className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
                   onClick={() => setListPage((current) => Math.max(1, current - 1))}
                   disabled={safePage <= 1}
-                  aria-label="Pagina anterior"
+                  aria-label="Página anterior"
                 >
                   <i className="bi bi-chevron-left" aria-hidden="true" />
                   <span>Anterior</span>
@@ -1330,9 +1462,9 @@ const Reportes = () => {
                     <button
                       key={`rep-page-${pageNumber}`}
                       type="button"
-                      className={`inv-warehouse-moves__pagination-page ${pageNumber === safePage ? 'is-active' : ''}`}
+                      className={`inv-warehouse-moves__page-number ${pageNumber === safePage ? 'is-active' : ''}`.trim()}
                       onClick={() => setListPage(pageNumber)}
-                      aria-label={`Ir a la pagina ${pageNumber}`}
+                      aria-label={`Ir a la página ${pageNumber}`}
                     >
                       {pageNumber}
                     </button>
@@ -1345,10 +1477,10 @@ const Reportes = () => {
 
                 <button
                   type="button"
-                  className="inv-warehouse-moves__pagination-btn"
+                  className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
                   onClick={() => setListPage((current) => Math.min(totalPages, current + 1))}
                   disabled={safePage >= totalPages}
-                  aria-label="Pagina siguiente"
+                  aria-label="Página siguiente"
                 >
                   <span>Siguiente</span>
                   <i className="bi bi-chevron-right" aria-hidden="true" />
@@ -1367,17 +1499,17 @@ const Reportes = () => {
       </div>
 
       {showFiltersDrawer ? createPortal(
-        <div className="reportes-page">
-          <div className="inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop rep-drawer-backdrop show" onClick={() => setShowFiltersDrawer(false)} aria-hidden="true" />
-          <aside className="inv-prod-drawer inv-cat-v2__drawer inv-cat-v2__drawer--filters rep-drawer show" role="dialog" aria-modal="true" aria-label="Filtros de reportes">
-            <div className="inv-prod-drawer-body inv-cat-v2__drawer-body rep-drawer__body">
-              <header className="inv-cat-create-hero inv-cat-filter-hero rep-drawer__head">
-                <div className="inv-cat-create-hero__icon">
+        <div className="reportes-page rep-overlay-root">
+          <div className="inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop show" onClick={() => setShowFiltersDrawer(false)} aria-hidden="true" />
+          <aside className="inv-prod-drawer inv-cat-v2__drawer inv-cat-v2__drawer--filters show" role="dialog" aria-modal="true" aria-label="Filtros avanzados de reportes">
+            <div className="inv-prod-drawer-body inv-cat-v2__drawer-body">
+              <header className="inv-cat-create-hero inv-cat-filter-hero">
+                <div className="inv-cat-create-hero__icon" aria-hidden="true">
                   <i className="bi bi-funnel" aria-hidden="true" />
                 </div>
                 <div className="inv-cat-create-hero__copy">
-                  <p className="inv-cat-create-hero__kicker rep-drawer__kicker">Vista De Filtros</p>
-                  <h3 className="inv-cat-create-hero__title inv-prod-drawer-title rep-drawer__title">Ajusta estado y contexto del reporte</h3>
+                  <p className="inv-cat-create-hero__kicker">Filtros</p>
+                  <h3 className="inv-cat-create-hero__title inv-prod-drawer-title">Filtros avanzados</h3>
                 </div>
                 <div className="inv-cat-create-hero__chips">
                   <span className="inv-cat-create-hero__chip">
@@ -1385,14 +1517,14 @@ const Reportes = () => {
                     {activeFiltersCount > 0 ? `${activeFiltersCount} filtros activos` : 'Sin filtros activos'}
                   </span>
                 </div>
-                <button type="button" className="inv-prod-drawer-close inv-cat-create-hero__close rep-drawer__close" onClick={() => setShowFiltersDrawer(false)} aria-label="Cerrar filtros">
+                <button type="button" className="inv-prod-drawer-close inv-cat-create-hero__close" onClick={() => setShowFiltersDrawer(false)} aria-label="Cerrar filtros">
                   <i className="bi bi-x-lg" />
                 </button>
               </header>
 
-              <div className="inv-cat-filter-grid rep-drawer-grid">
-                <section className="inv-cat-filter-card rep-drawer__section">
-                  <h4>Periodo</h4>
+              <div className="inv-cat-filter-grid">
+                <section className="inv-prod-drawer-section inv-cat-filter-card">
+                  <h4>Período</h4>
                   <div className="rep-drawer__grid rep-drawer__grid--2">
                     <div className="rep-field">
                       <label htmlFor="rep-filter-fecha-inicio">Fecha inicio</label>
@@ -1415,7 +1547,7 @@ const Reportes = () => {
                   </div>
                 </section>
 
-                <section className="inv-cat-filter-card rep-drawer__section">
+                <section className="inv-prod-drawer-section inv-cat-filter-card">
                   <h4>Contexto</h4>
                   <div className="rep-drawer__grid rep-drawer__grid--2">
                     <div className="rep-field">
@@ -1423,11 +1555,18 @@ const Reportes = () => {
                       <select
                         id="rep-filter-sucursal"
                         value={draftFilters.sucursal}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, sucursal: event.target.value }))}
+                        onChange={(event) =>
+                          setDraftFilters((prev) => ({ ...prev, sucursal: event.target.value, caja: '' }))
+                        }
+                        disabled={(loadingCatalogs || loadingBaseCatalogs) && sucursalOptions.length <= 1}
                       >
-                        {sucursalOptions.map((option) => (
-                          <option key={`sucursal-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
+                        {(loadingCatalogs || loadingBaseCatalogs) && sucursalOptions.length <= 1 ? (
+                          <option value="">Cargando sucursales...</option>
+                        ) : (
+                          sucursalOptions.map((option) => (
+                            <option key={`sucursal-${option.value || 'all'}`} value={option.value}>{option.label}</option>
+                          ))
+                        )}
                       </select>
                     </div>
 
@@ -1437,125 +1576,24 @@ const Reportes = () => {
                         id="rep-filter-caja"
                         value={draftFilters.caja}
                         onChange={(event) => setDraftFilters((prev) => ({ ...prev, caja: event.target.value }))}
+                        disabled={(loadingCatalogs || loadingBaseCatalogs) && cajaOptions.length <= 1}
                       >
-                        {cajaOptions.map((option) => (
-                          <option key={`caja-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-almacen">Almacén</label>
-                      <select
-                        id="rep-filter-almacen"
-                        value={draftFilters.almacen}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, almacen: event.target.value }))}
-                      >
-                        {almacenOptions.map((option) => (
-                          <option key={`almacen-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-usuario">Usuario</label>
-                      <select
-                        id="rep-filter-usuario"
-                        value={draftFilters.usuario}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, usuario: event.target.value }))}
-                      >
-                        {usuarioOptions.map((option) => (
-                          <option key={`usuario-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-estado">Estado</label>
-                      <select
-                        id="rep-filter-estado"
-                        value={draftFilters.estado}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, estado: event.target.value }))}
-                      >
-                        {estadoOptions.map((option) => (
-                          <option key={`estado-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-categoria">Categoría</label>
-                      <select
-                        id="rep-filter-categoria"
-                        value={draftFilters.categoria}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, categoria: event.target.value }))}
-                      >
-                        {categoriaOptions.map((option) => (
-                          <option key={`categoria-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="inv-cat-filter-card rep-drawer__section">
-                  <h4>Filtros específicos</h4>
-                  <div className="rep-drawer__grid rep-drawer__grid--2">
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-tipo-diferencia">Tipo diferencia</label>
-                      <select
-                        id="rep-filter-tipo-diferencia"
-                        value={draftFilters.tipo_diferencia}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, tipo_diferencia: event.target.value }))}
-                      >
-                        {tipoDiferenciaOptions.map((option) => (
-                          <option key={`diferencia-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-tipo-descuento">Tipo descuento</label>
-                      <select
-                        id="rep-filter-tipo-descuento"
-                        value={draftFilters.tipo_descuento}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, tipo_descuento: event.target.value }))}
-                      >
-                        {tipoDescuentoOptions.map((option) => (
-                          <option key={`tipo-descuento-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-tipo-item">Tipo ítem</label>
-                      <select
-                        id="rep-filter-tipo-item"
-                        value={draftFilters.tipo_item}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, tipo_item: event.target.value }))}
-                      >
-                        {tipoItemOptions.map((option) => (
-                          <option key={`tipo-item-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-solo-criticos">Solo críticos</label>
-                      <select
-                        id="rep-filter-solo-criticos"
-                        value={draftFilters.solo_criticos}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, solo_criticos: event.target.value }))}
-                      >
-                        {soloCriticosOptions.map((option) => (
-                          <option key={`solo-criticos-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                        ))}
+                        {(loadingCatalogs || loadingBaseCatalogs) && cajaOptions.length <= 1 ? (
+                          <option value="">Cargando cajas...</option>
+                        ) : (
+                          cajaOptions.map((option) => (
+                            <option key={`caja-${option.value || 'all'}`} value={option.value}>{option.label}</option>
+                          ))
+                        )}
                       </select>
                     </div>
                   </div>
                 </section>
               </div>
-              <footer className="inv-prod-drawer-actions inv-cat-v2__drawer-actions inv-cat-filter-actions rep-drawer__footer">
+              <footer className="inv-prod-drawer-actions inv-cat-v2__drawer-actions inv-cat-filter-actions">
+                <button type="button" className="btn inv-prod-btn-subtle" onClick={() => setShowFiltersDrawer(false)} disabled={loading}>
+                  Cerrar
+                </button>
                 <button type="button" className="btn inv-prod-btn-subtle" onClick={handleClearFilters} disabled={loading}>
                   Limpiar
                 </button>
@@ -1580,6 +1618,7 @@ const Reportes = () => {
                 <div>
                   <p className="rep-mail-modal__kicker">Reportes</p>
                   <h3 className="rep-mail-modal__title">Enviar por correo</h3>
+                  <p className="rep-mail-modal__subtitle">Compartí este reporte con destinatarios autorizados.</p>
                 </div>
               </div>
               <button type="button" className="rep-mail-modal__close" aria-label="Cerrar" onClick={closeEmailModal} disabled={sendingEmail}>
@@ -1602,19 +1641,32 @@ const Reportes = () => {
                   value={emailForm.destinatarios}
                   onChange={(event) => setEmailForm((prev) => ({ ...prev, destinatarios: event.target.value }))}
                 />
+                <small className="rep-mail-modal__helper">Separá varios correos con coma o salto de línea.</small>
               </div>
 
               <div className="rep-mail-modal__grid">
                 <div className="rep-field">
-                  <label htmlFor="rep-mail-formato">Formato</label>
-                  <select
-                    id="rep-mail-formato"
-                    value={emailForm.formato}
-                    onChange={(event) => setEmailForm((prev) => ({ ...prev, formato: event.target.value }))}
-                  >
-                    <option value="pdf">PDF</option>
-                    <option value="excel">Excel</option>
-                  </select>
+                  <label>Formato</label>
+                  <div className="rep-mail-format-toggle" role="radiogroup" aria-label="Formato de reporte">
+                    <button
+                      type="button"
+                      className={`rep-mail-format-toggle__btn ${emailForm.formato === 'pdf' ? 'is-active' : ''}`.trim()}
+                      onClick={() => setEmailForm((prev) => ({ ...prev, formato: 'pdf' }))}
+                      aria-pressed={emailForm.formato === 'pdf'}
+                    >
+                      <i className="bi bi-file-earmark-pdf" aria-hidden="true" />
+                      PDF
+                    </button>
+                    <button
+                      type="button"
+                      className={`rep-mail-format-toggle__btn ${emailForm.formato === 'excel' ? 'is-active' : ''}`.trim()}
+                      onClick={() => setEmailForm((prev) => ({ ...prev, formato: 'excel' }))}
+                      aria-pressed={emailForm.formato === 'excel'}
+                    >
+                      <i className="bi bi-file-earmark-spreadsheet" aria-hidden="true" />
+                      Excel
+                    </button>
+                  </div>
                 </div>
 
                 <div className="rep-field">
@@ -1692,4 +1744,5 @@ const Reportes = () => {
 };
 
 export default Reportes;
+
 
