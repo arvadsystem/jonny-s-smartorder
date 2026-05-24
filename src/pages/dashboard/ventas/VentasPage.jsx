@@ -64,7 +64,8 @@ export default function VentasPage() {
     createPedidoPendiente,
     registrarPagoPedido,
     getVentaDetail,
-    refreshVentas
+    refreshVentas,
+    refreshClientesCatalog
   } = useVentas();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -256,11 +257,19 @@ export default function VentasPage() {
           onSubmit={handleCreateVenta}
           onCreatePedidoPendiente={createPedidoPendiente}
           onRegistrarPagoPedido={registrarPagoPedido}
+          onClientesRefresh={refreshClientesCatalog}
           onNotify={openToast}
         />
       ) : null}
 
-      {activeTab === 'pedidos' ? <PedidosView /> : null}
+      {activeTab === 'pedidos' ? (
+        <PedidosView
+          isSuperAdmin={isSuperAdmin}
+          sucursales={sucursales}
+          defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
+          scopeInfo={scopeInfo}
+        />
+      ) : null}
       {activeTab === 'descuentos' ? (
         <DescuentosView
           canView={canViewDescuentos}

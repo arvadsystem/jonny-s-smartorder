@@ -81,6 +81,35 @@ const toNormalizedId = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const addComboDepartmentId = (ids, value) => {
+  const id = toNormalizedId(value);
+  if (id) ids.add(id);
+};
+
+const addComboDepartmentArrayIds = (ids, value) => {
+  if (!Array.isArray(value)) return;
+  value.forEach((entry) => {
+    if (entry && typeof entry === 'object') {
+      addComboDepartmentId(
+        ids,
+        entry.id_tipo_departamento ?? entry.id_departamento ?? entry.id ?? entry.value
+      );
+      return;
+    }
+    addComboDepartmentId(ids, entry);
+  });
+};
+
+export const getComboDepartmentIds = (combo) => {
+  const ids = new Set();
+  addComboDepartmentId(ids, combo?.id_tipo_departamento);
+  addComboDepartmentId(ids, combo?.id_tipo_departamento_principal);
+  addComboDepartmentArrayIds(ids, combo?.departamentos_ids);
+  addComboDepartmentArrayIds(ids, combo?.departamentos);
+  addComboDepartmentArrayIds(ids, combo?.departamentos_derivados);
+  return [...ids];
+};
+
 const parseDiscountDate = (value) => {
   if (!value) return null;
   const source = String(value).trim();
@@ -252,19 +281,41 @@ const isDiscountAllowedForSucursal = (discount, idSucursal) => {
   return Number(idSucursalDiscount) === Number(idSucursal);
 };
 
+const normalizeDiscountTargetIds = (discount, key, legacyKey) => {
+  const objetivos = discount?.objetivos && typeof discount.objetivos === 'object' ? discount.objetivos : {};
+  const directRows = Array.isArray(objetivos[key]) ? objetivos[key] : [];
+  const ids = directRows
+    .map((row) => toNormalizedId(row?.[legacyKey]))
+    .filter(Boolean);
+  const legacyId = toNormalizedId(discount?.[legacyKey]);
+  if (legacyId && ids.length === 0) ids.push(legacyId);
+  return [...new Set(ids.map(Number))];
+};
+
+const isDiscountApplicableToLine = (discount, line, selectedSucursalId) => {
+  const scope = normalizeDiscountScope(discount.alcance);
+  if (scope === 'FACTURA_COMPLETA') return false;
+  if (scope !== String(line.kind || '').toUpperCase()) return false;
+  if (!isDiscountAllowedForSucursal(discount, selectedSucursalId)) return false;
+  if (scope === 'PRODUCTO') {
+    return normalizeDiscountTargetIds(discount, 'productos', 'id_producto').includes(Number(line.id_producto || 0));
+  }
+  if (scope === 'RECETA') {
+    return normalizeDiscountTargetIds(discount, 'recetas', 'id_receta').includes(Number(line.id_receta || 0));
+  }
+  if (scope === 'COMBO') {
+    return normalizeDiscountTargetIds(discount, 'combos', 'id_combo').includes(Number(line.id_combo || 0));
+  }
+  return false;
+};
+
 const resolveBestDiscountForLine = ({ discounts, line, selectedSucursalId }) => {
   const lineSubtotal = roundMoney(Number(line?.precio_unitario ?? 0) * Number(line?.cantidad ?? 0));
   if (lineSubtotal <= 0) return null;
 
   let best = null;
   for (const discount of discounts) {
-    const scope = normalizeDiscountScope(discount.alcance);
-    if (scope === 'FACTURA_COMPLETA') continue;
-    if (scope !== String(line.kind || '').toUpperCase()) continue;
-    if (!isDiscountAllowedForSucursal(discount, selectedSucursalId)) continue;
-    if (scope === 'PRODUCTO' && toNormalizedId(discount.id_producto) !== toNormalizedId(line.id_producto)) continue;
-    if (scope === 'RECETA' && toNormalizedId(discount.id_receta) !== toNormalizedId(line.id_receta)) continue;
-    if (scope === 'COMBO' && toNormalizedId(discount.id_combo) !== toNormalizedId(line.id_combo)) continue;
+    if (!isDiscountApplicableToLine(discount, line, selectedSucursalId)) continue;
 
     const benefit = computeDiscountAmount(lineSubtotal, discount);
     if (benefit <= 0) continue;
@@ -422,10 +473,11 @@ export const useVentaComposer = ({
 
   const filteredCombos = useMemo(() => {
     const categoryValue = state.activeCategory;
+    const categoryId = toNormalizedId(categoryValue);
     const categoryFiltered = (Array.isArray(combos) ? combos : []).filter((combo) =>
       categoryValue === 'all'
         ? true
-        : Number(combo.id_tipo_departamento ?? 0) === Number(categoryValue)
+        : getComboDepartmentIds(combo).some((id) => Number(id) === Number(categoryId))
     );
 
     return filterBySearch(categoryFiltered, deferredSearch, ['descripcion']);
@@ -467,37 +519,48 @@ export const useVentaComposer = ({
     [state.cart]
   );
 
-  const discountValue = useMemo(
-    () => (canApplyDiscount ? computeDiscountAmount(subtotal, selectedDiscount) : 0),
-    [canApplyDiscount, selectedDiscount, subtotal]
-  );
+  const getApplicableLineDiscounts = (line) => {
+    if (!canApplyDiscount) return [];
+    return normalizedDescuentosCatalogo.filter((discount) => {
+      return isDiscountApplicableToLine(discount, line, selectedSucursalId);
+    });
+  };
 
-  const lineDiscountValue = useMemo(() => {
-    if (!canApplyDiscount) return 0;
-    return roundMoney(
-      state.cart.reduce((acc, line) => {
-        const discount = normalizedDescuentosCatalogo.find(
-          (row) => String(row.id_descuento_catalogo) === String(line.id_descuento_catalogo_linea || '')
-        );
-        if (!discount) return acc;
-        const scope = normalizeDiscountScope(discount.alcance);
-        if (
-          (scope === 'PRODUCTO' && line.kind !== 'PRODUCTO') ||
-          (scope === 'RECETA' && line.kind !== 'RECETA') ||
-          (scope === 'COMBO' && line.kind !== 'COMBO')
-        ) return acc;
-        const lineSubtotal = roundMoney(Number(line.precio_unitario ?? 0) * Number(line.cantidad ?? 0));
-        return acc + computeDiscountAmount(lineSubtotal, discount);
-      }, 0)
-    );
-  }, [canApplyDiscount, normalizedDescuentosCatalogo, state.cart]);
+  const lineDiscountDetails = useMemo(() => {
+    if (!canApplyDiscount) return [];
+    return state.cart.map((line) => {
+      const availableDiscounts = getApplicableLineDiscounts(line);
+      const selectedLineDiscount = availableDiscounts.find(
+        (row) => String(row.id_descuento_catalogo) === String(line.id_descuento_catalogo_linea || '')
+      ) || null;
+      const lineSubtotal = roundMoney(Number(line.precio_unitario ?? 0) * Number(line.cantidad ?? 0));
+      const discountAmount = computeDiscountAmount(lineSubtotal, selectedLineDiscount);
+      return {
+        line,
+        availableDiscounts,
+        selectedDiscount: selectedLineDiscount,
+        lineSubtotal,
+        discountAmount
+      };
+    });
+  }, [canApplyDiscount, normalizedDescuentosCatalogo, selectedSucursalId, state.cart]);
+
+  const lineDiscountValue = useMemo(
+    () => roundMoney(lineDiscountDetails.reduce((acc, row) => acc + Number(row.discountAmount || 0), 0)),
+    [lineDiscountDetails]
+  );
 
   const usesLineDiscount = useMemo(
     () => canApplyDiscount && state.cart.some((line) => Number(line.id_descuento_catalogo_linea || 0) > 0),
     [canApplyDiscount, state.cart]
   );
   const usesGlobalDiscount = canApplyDiscount && Boolean(state.selectedDiscountId);
-  const totalDiscount = usesLineDiscount ? lineDiscountValue : discountValue;
+  const subtotalAfterLineDiscount = roundMoney(Math.max(subtotal - lineDiscountValue, 0));
+  const discountValue = useMemo(
+    () => (canApplyDiscount ? computeDiscountAmount(subtotalAfterLineDiscount, selectedDiscount) : 0),
+    [canApplyDiscount, selectedDiscount, subtotalAfterLineDiscount]
+  );
+  const totalDiscount = roundMoney(lineDiscountValue + discountValue);
 
   const taxableSubtotal = roundMoney(Math.max(subtotal - totalDiscount, 0));
   const isv = roundMoney(taxableSubtotal * 0.15);
@@ -544,8 +607,9 @@ export const useVentaComposer = ({
     });
   };
 
-  const addCatalogItem = (kind, row, selectedComplementos = []) => {
-    if (requiresComplementSelection(kind, row) && selectedComplementos.length === 0) {
+  const addCatalogItem = (kind, row, selectedComplementos = [], options = {}) => {
+    const allowEmptyComplementos = Boolean(options?.allowEmptyComplementos);
+    if (requiresComplementSelection(kind, row) && selectedComplementos.length === 0 && !allowEmptyComplementos) {
       openComplementModalForCatalogItem(kind, row);
       return;
     }
@@ -598,7 +662,7 @@ export const useVentaComposer = ({
         };
       }
 
-      const shouldAutoApplyLineDiscount = canApplyDiscount && !current.selectedDiscountId;
+      const shouldAutoApplyLineDiscount = canApplyDiscount;
       const autoDiscount = shouldAutoApplyLineDiscount
         ? resolveBestDiscountForLine({
           discounts: normalizedDescuentosCatalogo,
@@ -646,16 +710,7 @@ export const useVentaComposer = ({
 
   const confirmComplementModal = (selectedComplementos) => {
     const ids = normalizeComplementIds(selectedComplementos);
-    const min = Number(complementModal?.row?.minimo_complementos ?? 0) || 0;
     const max = Number(complementModal?.row?.maximo_complementos ?? 0) || 0;
-
-    if (min > 0 && ids.length < min) {
-      setComplementModal((current) => ({
-        ...current,
-        error: 'Selecciona al menos 1 complemento.'
-      }));
-      return false;
-    }
 
     if (max > 0 && ids.length > max) {
       setComplementModal((current) => ({
@@ -714,7 +769,7 @@ export const useVentaComposer = ({
         };
       });
     } else {
-      addCatalogItem(complementModal.kind, complementModal.row, ids);
+      addCatalogItem(complementModal.kind, complementModal.row, ids, { allowEmptyComplementos: true });
     }
 
     setComplementModal({
@@ -795,7 +850,7 @@ export const useVentaComposer = ({
         cantidad: Number(line.cantidad)
       };
       const lineDiscountId = Number(line.id_descuento_catalogo_linea || 0);
-      if (canApplyDiscount && !usesGlobalDiscount && lineDiscountId > 0) {
+      if (canApplyDiscount && lineDiscountId > 0) {
         payload.id_descuento_catalogo = lineDiscountId;
       }
       if (line.kind !== 'PRODUCTO') {
@@ -809,7 +864,7 @@ export const useVentaComposer = ({
     });
 
   const buildDescuentosLineaPayload = () => {
-    if (!canApplyDiscount || usesGlobalDiscount) return [];
+    if (!canApplyDiscount) return [];
     return state.cart
       .map((line) => ({
         cart_key: line.cartKey,
@@ -859,17 +914,11 @@ export const useVentaComposer = ({
   };
 
   const applyDiscountPayloadFields = (payload) => {
-    if (!canApplyDiscount || usesLineDiscount) return payload;
+    if (!canApplyDiscount) return payload;
     if (state.selectedDiscountId) {
       return {
         ...payload,
         id_descuento_catalogo: Number(state.selectedDiscountId)
-      };
-    }
-    if (discountValue > 0) {
-      return {
-        ...payload,
-        descuento: discountValue
       };
     }
     return payload;
@@ -972,6 +1021,10 @@ export const useVentaComposer = ({
     discountValue: totalDiscount,
     globalDiscountValue: discountValue,
     lineDiscountValue,
+    totalDiscountValue: totalDiscount,
+    subtotalAfterLineDiscount,
+    taxableSubtotal,
+    lineDiscountDetails,
     usesGlobalDiscount,
     usesLineDiscount,
     isv,
@@ -1023,31 +1076,13 @@ export const useVentaComposer = ({
         });
         return;
       }
-      setPartialState(
-        state.cart.some((line) => Number(line.id_descuento_catalogo_linea || 0) > 0)
-          ? {
-              descuentoPickerOpen: false,
-              submitError: 'No se puede combinar descuento global con descuentos por producto/receta/combo.'
-            }
-          : {
-              selectedDiscountId: value,
-              descuentoPickerOpen: false,
-              submitError: ''
-            }
-      );
+      setPartialState({
+        selectedDiscountId: value,
+        descuentoPickerOpen: false,
+        submitError: ''
+      });
     },
-    getAvailableLineDiscounts: (line) =>
-      !canApplyDiscount ? [] : normalizedDescuentosCatalogo.filter((discount) => {
-        const scope = normalizeDiscountScope(discount.alcance);
-        if (scope === 'FACTURA_COMPLETA') return false;
-        if (scope !== String(line.kind || '').toUpperCase()) return false;
-        if (!isDiscountAllowedForSucursal(discount, selectedSucursalId)) return false;
-        if (state.selectedDiscountId) return false;
-        if (scope === 'PRODUCTO' && toNormalizedId(discount.id_producto) !== toNormalizedId(line.id_producto)) return false;
-        if (scope === 'RECETA' && toNormalizedId(discount.id_receta) !== toNormalizedId(line.id_receta)) return false;
-        if (scope === 'COMBO' && toNormalizedId(discount.id_combo) !== toNormalizedId(line.id_combo)) return false;
-        return true;
-      }),
+    getAvailableLineDiscounts: getApplicableLineDiscounts,
     getBestCatalogDiscount: (kind, row) =>
       !canApplyDiscount ? null : resolveBestDiscountForLine({
         discounts: normalizedDescuentosCatalogo,
@@ -1077,16 +1112,12 @@ export const useVentaComposer = ({
       }
       setState((current) => ({
         ...current,
-        selectedDiscountId: discountId ? '' : current.selectedDiscountId,
         cart: current.cart.map((line) =>
           line.cartKey === cartKey
             ? { ...line, id_descuento_catalogo_linea: discountId || '' }
             : line
         ),
-        submitError:
-          current.selectedDiscountId && discountId
-            ? 'No se puede combinar descuento global con descuentos por producto/receta/combo.'
-            : ''
+        submitError: ''
       }));
     },
     setCashReceived: (value) => setPartialState({ cashReceived: value }),

@@ -12,15 +12,56 @@ const buildDiscountBadgeLabel = (discount) => {
   return `L ${value.toFixed(0)} OFF`;
 };
 
+const isExplicitlyOutOfStock = (row, isProducto) => {
+  if (isProducto) return Number(row?.cantidad ?? row?.stock_disponible ?? 0) <= 0;
+
+  const availabilityFields = [
+    row?.disponible,
+    row?.es_disponible,
+    row?.esta_disponible,
+    row?.tiene_stock,
+    row?.stock_disponible,
+    row?.cantidad_disponible,
+    row?.cantidad
+  ].filter((value) => value !== null && value !== undefined && value !== '');
+
+  if (availabilityFields.length === 0) return false;
+  return availabilityFields.some((value) => {
+    if (typeof value === 'boolean') return value === false;
+    if (typeof value === 'number') return value <= 0;
+    const normalized = String(value).trim().toLowerCase();
+    if (['false', 'no', 'agotado', 'sin stock', '0'].includes(normalized)) return true;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) && parsed <= 0;
+  });
+};
+
+const buildResultsLabel = (catalogKey, count) => {
+  if (catalogKey === 'DESCUENTOS') return `${count} ${count === 1 ? 'linea' : 'lineas'} con descuento`;
+  if (catalogKey === 'COMBOS') return `${count} ${count === 1 ? 'combo' : 'combos'}`;
+  if (catalogKey === 'RECETAS') return `${count} ${count === 1 ? 'receta' : 'recetas'}`;
+  return `${count} ${count === 1 ? 'producto' : 'productos'}`;
+};
+
 export default function VentaComposerCatalog({ composer, catalogLoading, catalogErrors = {} }) {
   const [filterOpen, setFilterOpen] = useState(false);
+  const [showOutOfStock, setShowOutOfStock] = useState(false);
   const searchWrapRef = useRef(null);
-  const hasFilters = composer.search.trim() !== '' || composer.activeCategory !== 'all';
+  const isDiscountCatalog = composer.activeCatalog === 'DESCUENTOS';
+  const catalogTabs = composer.canApplyDiscount
+    ? [...CATALOG_TABS, { key: 'DESCUENTOS', label: 'Descuentos', icon: 'bi bi-tags' }]
+    : CATALOG_TABS;
+  const discountableLines = Array.isArray(composer.lineDiscountDetails)
+    ? composer.lineDiscountDetails.filter((row) => row.availableDiscounts.length > 0)
+    : [];
+  const hasFilters = !isDiscountCatalog && (composer.search.trim() !== '' || composer.activeCategory !== 'all');
   const searchPlaceholder = composer.activeCatalog === 'PRODUCTOS'
     ? 'Buscar productos...'
     : composer.activeCatalog === 'COMBOS'
       ? 'Buscar combos...'
-      : 'Buscar recetas...';
+      : composer.activeCatalog === 'RECETAS'
+        ? 'Buscar recetas...'
+        : 'Gestionar descuentos del carrito';
 
   useEffect(() => {
     if (!filterOpen) return undefined;
@@ -33,6 +74,11 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [filterOpen]);
 
+  useEffect(() => {
+    if (composer.canApplyDiscount || composer.activeCatalog !== 'DESCUENTOS') return;
+    composer.setActiveCatalog('PRODUCTOS');
+  }, [composer]);
+
   const handleClearFilters = () => {
     composer.setSearch('');
     composer.setActiveCategory('all');
@@ -42,26 +88,39 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
   const resolveImageUrl = (row) => row.imagen_principal_url || row.url_imagen || null;
 
   const activeCatalogError = (() => {
+    if (isDiscountCatalog) return null;
     if (composer.activeCatalog === 'PRODUCTOS') return catalogErrors.productos || null;
     if (composer.activeCatalog === 'COMBOS') return catalogErrors.combos || null;
     return catalogErrors.recetas || null;
   })();
   const hasCatalogErrors = Object.keys(catalogErrors || {}).length > 0;
+  const visibleCatalogRows = composer.currentCatalogRows.filter((row) => {
+    if (isDiscountCatalog) return false;
+    const isProducto = composer.activeCatalog === 'PRODUCTOS';
+    const isOutOfStock = isExplicitlyOutOfStock(row, isProducto);
+    return showOutOfStock ? isOutOfStock : !isOutOfStock;
+  });
+  const outOfStockCount = composer.currentCatalogRows.filter((row) => {
+    if (isDiscountCatalog) return false;
+    const isProducto = composer.activeCatalog === 'PRODUCTOS';
+    return isExplicitlyOutOfStock(row, isProducto);
+  }).length;
 
   return (
     <div className="ventas-create-modal__catalog ventas-caja-layout__catalog">
       <div className="ventas-catalog__topbar ventas-catalog-toolbar ventas-catalog-compact-toolbar">
         <AppSelect
           value={composer.activeCatalog}
-          options={CATALOG_TABS.map((tab) => ({
+          options={catalogTabs.map((tab) => ({
             value: tab.key,
             label: tab.label
           }))}
           onChange={composer.setActiveCatalog}
-          placeholder="Selecciona catálogo"
+          placeholder="Selecciona catalogo"
           className="ventas-catalog-dropdown app-select--compact app-select--warm"
         />
 
+        {!isDiscountCatalog ? (
         <div className="ventas-catalog__search-wrap" ref={searchWrapRef}>
           <label className="ventas-catalog-search-field">
             <i className="bi bi-search" aria-hidden="true" />
@@ -80,7 +139,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             className={`ventas-catalog__search-btn ${filterOpen ? 'is-active' : ''}`}
             onClick={() => setFilterOpen((current) => !current)}
             aria-label="Abrir filtros"
-            title="Filtrar catálogo"
+            title="Filtrar catalogo"
           >
             <i className="bi bi-sliders" />
           </button>
@@ -90,8 +149,8 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
               type="button"
               className="ventas-catalog__clear-btn"
               onClick={handleClearFilters}
-              aria-label="Limpiar búsqueda y filtros"
-              title="Limpiar búsqueda y filtros"
+              aria-label="Limpiar busqueda y filtros"
+              title="Limpiar busqueda y filtros"
             >
               <i className="bi bi-x-lg" />
             </button>
@@ -101,7 +160,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             <div className="ventas-catalog__search-popup">
               <div className="ventas-catalog__categories-list">
                 <div className="ventas-catalog__categories-label">
-                  {composer.activeCatalog === 'PRODUCTOS' ? 'FILTRAR POR CATEGORÍA:' : 'FILTRAR POR DEPARTAMENTO:'}
+                  {composer.activeCatalog === 'PRODUCTOS' ? 'FILTRAR POR CATEGORIA:' : 'FILTRAR POR DEPARTAMENTO:'}
                 </div>
                 <button
                   type="button"
@@ -154,39 +213,118 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             </div>
           ) : null}
         </div>
+        ) : (
+          <div className="ventas-discounts-toolbar-note">
+            <i className="bi bi-shield-check" aria-hidden="true" />
+            <span>Selecciona descuentos configurados para los items del carrito.</span>
+          </div>
+        )}
       </div>
 
-      <div className="ventas-create-modal__results-meta ventas-catalog-results">
-        {catalogLoading ? 'Cargando catálogo...' : composer.resultsLabel}
-      </div>
+      {!isDiscountCatalog ? (
+        <div className="ventas-create-modal__results-meta ventas-catalog-results">
+          <span>{catalogLoading ? 'Cargando catalogo...' : buildResultsLabel(composer.activeCatalog, visibleCatalogRows.length)}</span>
+          <label className="ventas-catalog__stock-toggle">
+            <input
+              type="checkbox"
+              checked={showOutOfStock}
+              onChange={(event) => setShowOutOfStock(event.target.checked)}
+            />
+            <span>Ver agotados</span>
+            {outOfStockCount > 0 && !showOutOfStock ? <small>{outOfStockCount}</small> : null}
+          </label>
+        </div>
+      ) : null}
       {activeCatalogError ? (
         <div className="ventas-create-modal__error">
           {`Error en ${activeCatalogError.endpoint}${activeCatalogError.status ? ` (HTTP ${activeCatalogError.status})` : ''}: ${activeCatalogError.message}`}
         </div>
       ) : null}
-      {!activeCatalogError && hasCatalogErrors ? (
+      {!isDiscountCatalog && !activeCatalogError && hasCatalogErrors ? (
         <div className="ventas-create-modal__error">
-          Algunos catálogos auxiliares no cargaron. Productos, combos y recetas disponibles siguen habilitados.
+          Algunos catalogos auxiliares no cargaron. Productos, combos y recetas disponibles siguen habilitados.
         </div>
       ) : null}
 
+      {isDiscountCatalog ? (
+        <div className="ventas-discounts-panel">
+          {composer.cart.length === 0 ? (
+            <div className="ventas-create-modal__empty ventas-discounts-panel__empty">
+              <i className="bi bi-cart-plus" />
+              <span>Agrega productos, combos o recetas para ver descuentos aplicables.</span>
+            </div>
+          ) : discountableLines.length === 0 ? (
+            <div className="ventas-create-modal__empty ventas-discounts-panel__empty">
+              <i className="bi bi-tags" />
+              <span>No hay descuentos aplicables para los items actuales.</span>
+            </div>
+          ) : (
+            <>
+              <div className="ventas-discounts-panel__summary">
+                <span>{buildResultsLabel('DESCUENTOS', discountableLines.length)}</span>
+                <strong>{composer.formatCurrency(composer.lineDiscountValue)}</strong>
+              </div>
+              <div className="ventas-discounts-panel__list">
+                {discountableLines.map(({ line, availableDiscounts, selectedDiscount, lineSubtotal, discountAmount }) => {
+                  const options = [
+                    { value: '', label: 'Sin descuento' },
+                    ...availableDiscounts.map((discount) => ({
+                      value: String(discount.id_descuento_catalogo),
+                      label: `${discount.nombre_descuento} - ${buildDiscountBadgeLabel(discount) || 'Descuento'}`
+                    }))
+                  ];
+                  return (
+                    <article className="ventas-discounts-line-card" key={line.cartKey}>
+                      <div className="ventas-discounts-line-card__head">
+                        <div>
+                          <span className="ventas-discounts-line-card__kind">{line.kind}</span>
+                          <h4>{line.nombre_item}</h4>
+                        </div>
+                        <strong>{composer.formatCurrency(lineSubtotal)}</strong>
+                      </div>
+                      <div className="ventas-discounts-line-card__meta">
+                        <span>Cantidad: {line.cantidad}</span>
+                        <span>
+                          Actual: {selectedDiscount ? selectedDiscount.nombre_descuento : 'Sin descuento'}
+                        </span>
+                        {discountAmount > 0 ? <span>Ahorro: {composer.formatCurrency(discountAmount)}</span> : null}
+                      </div>
+                      <AppSelect
+                        value={String(line.id_descuento_catalogo_linea || '')}
+                        options={options}
+                        onChange={(value) => composer.setLineDiscount(line.cartKey, value)}
+                        placeholder="Selecciona descuento"
+                        className="ventas-discounts-line-card__select app-select--warm"
+                      />
+                    </article>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
       <div className="ventas-create-modal__products ventas-catalog-grid">
         {catalogLoading ? (
           <div className="ventas-create-modal__empty">
             <span className="spinner-border spinner-border-sm" aria-hidden="true" />
-            <span>Cargando catálogo...</span>
+            <span>Cargando catalogo...</span>
           </div>
-        ) : composer.currentCatalogRows.length === 0 ? (
+        ) : visibleCatalogRows.length === 0 ? (
           <div className="ventas-create-modal__empty">
             <i className="bi bi-search" />
             <span>
               {activeCatalogError
-                ? 'No se pudo cargar este catálogo por un error de servidor/permisos.'
-                : 'No hay resultados para ese filtro.'}
+                ? 'No se pudo cargar este catalogo por un error de servidor/permisos.'
+                : showOutOfStock
+                  ? 'No hay items agotados para ese filtro.'
+                : outOfStockCount > 0
+                  ? 'Solo hay items agotados para ese filtro.'
+                  : 'No hay resultados para ese filtro.'}
             </span>
           </div>
         ) : (
-          composer.currentCatalogRows.map((row) => {
+          visibleCatalogRows.map((row) => {
             const isProducto = composer.activeCatalog === 'PRODUCTOS';
             const isCombo = composer.activeCatalog === 'COMBOS';
             const kind = isProducto ? 'PRODUCTO' : isCombo ? 'COMBO' : 'RECETA';
@@ -195,7 +333,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
             const imageSrc = resolveImageUrl(row);
             const precio = Number(row.precio || 0);
             const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
-            const isOutOfStock = isProducto ? stockDisponible <= 0 : false;
+            const isOutOfStock = isExplicitlyOutOfStock(row, isProducto);
             const badgeDiscount = composer.getBestCatalogDiscount(kind, row);
             const badgeLabel = buildDiscountBadgeLabel(badgeDiscount);
 
@@ -242,8 +380,8 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                       {isOutOfStock ? 'Agotado' : `Disponible: ${stockDisponible}`}
                     </div>
                   ) : (
-                    <div className="vcp-card__stock">
-                      {isCombo ? 'Combo con complementos' : 'Preparación de cocina'}
+                    <div className={`vcp-card__stock ${isOutOfStock ? 'is-empty' : ''}`}>
+                      {isOutOfStock ? 'Agotado' : isCombo ? 'Combo con complementos' : 'Preparacion de cocina'}
                     </div>
                   )}
 
@@ -261,7 +399,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                       aria-label={`Agregar ${itemName}`}
                       disabled={isOutOfStock}
                     >
-                      {isOutOfStock ? 'Sin stock' : 'Añadir +'}
+                      {isOutOfStock ? 'Sin stock' : 'Anadir +'}
                     </button>
                   </div>
                 </div>
@@ -270,6 +408,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
           })
         )}
       </div>
+      )}
     </div>
   );
 }

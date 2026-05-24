@@ -55,6 +55,29 @@ export default function VentaDetalleModal({
 
   const statusLabel = venta?.statusLabel || 'Pendiente';
   const ticketDateTime = venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido;
+  const detailItems = Array.isArray(venta?.items) ? venta.items : [];
+  const hasExplicitDiscountSplit = detailItems.some(
+    (item) => Number(item?.descuento_linea || 0) > 0 || Number(item?.descuento_global || 0) > 0
+  );
+  const lineDiscountTotal = detailItems.reduce((sum, item) => {
+    const explicitLineDiscount = Number(item?.descuento_linea || 0);
+    const fallbackDiscount = hasExplicitDiscountSplit ? 0 : Number(item?.descuento || 0);
+    return sum + (Number.isFinite(explicitLineDiscount) ? explicitLineDiscount : 0) + fallbackDiscount;
+  }, 0);
+  const globalDiscountFromItems = detailItems.reduce((sum, item) => sum + Number(item?.descuento_global || 0), 0);
+  const discountTotal = Number(venta?.descuento_total ?? venta?.descuento ?? 0) || 0;
+  const globalDiscountTotal = hasExplicitDiscountSplit
+    ? globalDiscountFromItems
+    : Math.max(discountTotal - lineDiscountTotal, 0);
+  const resolvedDiscountTotal = Math.max(discountTotal, lineDiscountTotal + globalDiscountTotal);
+  const grossSubtotalFromItems = detailItems.reduce(
+    (sum, item) => sum + (Number(item?.precio_unitario || 0) * Number(item?.cantidad || 0)),
+    0
+  );
+  const grossSubtotal = grossSubtotalFromItems > 0
+    ? grossSubtotalFromItems
+    : Number(venta?.subtotal_bruto ?? 0) || (Number(venta?.sub_total || 0) + resolvedDiscountTotal);
+  const shouldShowItemDiscount = detailItems.some((item) => Number(item?.descuento || 0) > 0);
 
   const handlePrintTicket = () => {
     if (typeof window === 'undefined' || !venta || printInProgressRef.current) return;
@@ -124,7 +147,7 @@ export default function VentaDetalleModal({
               <div className="ventas-detail-modal__section">
                 <div className="ventas-detail-modal__section-title">Items</div>
 
-                {venta?.items?.length ? (
+                {detailItems.length ? (
                   <div className="ventas-detail-modal__table-wrap">
                     <table className="table ventas-detail-modal__table">
                       <thead>
@@ -134,11 +157,12 @@ export default function VentaDetalleModal({
                           <th>Tipo</th>
                           <th>Cant.</th>
                           <th>P. Unit.</th>
+                          {shouldShowItemDiscount ? <th>Desc.</th> : null}
                           <th>Subtotal</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {venta.items.map((item, index) => (
+                        {detailItems.map((item, index) => (
                           <tr
                             key={
                               item.id_detalle ||
@@ -160,6 +184,21 @@ export default function VentaDetalleModal({
                             <td>{item.tipo_item}</td>
                             <td>{item.cantidad}</td>
                             <td>{formatCurrency(item.precio_unitario)}</td>
+                            {shouldShowItemDiscount ? (
+                              <td>
+                                {Number(item.descuento || 0) > 0 ? (
+                                  <div className="ventas-detail-modal__discount-cell">
+                                    <strong>-{formatCurrency(item.descuento)}</strong>
+                                    {Number(item.descuento_linea || 0) > 0 ? (
+                                      <small>Linea: {formatCurrency(item.descuento_linea)}</small>
+                                    ) : null}
+                                    {Number(item.descuento_global || 0) > 0 ? (
+                                      <small>Global: {formatCurrency(item.descuento_global)}</small>
+                                    ) : null}
+                                  </div>
+                                ) : '--'}
+                              </td>
+                            ) : null}
                             <td>{formatCurrency(item.total_linea || item.sub_total)}</td>
                           </tr>
                         ))}
@@ -173,13 +212,25 @@ export default function VentaDetalleModal({
 
               <div className="ventas-detail-modal__totals-card">
                 <div>
-                  <span>Subtotal</span>
-                  <strong>{formatCurrency(venta?.sub_total)}</strong>
+                  <span>Subtotal bruto</span>
+                  <strong>{formatCurrency(grossSubtotal)}</strong>
                 </div>
-                <div>
-                  <span>Descuento</span>
-                  <strong>{formatCurrency(venta?.descuento_total)}</strong>
-                </div>
+                {resolvedDiscountTotal > 0 ? (
+                  <>
+                    <div>
+                      <span>Descuentos por linea</span>
+                      <strong>-{formatCurrency(lineDiscountTotal)}</strong>
+                    </div>
+                    <div>
+                      <span>Descuento global</span>
+                      <strong>-{formatCurrency(globalDiscountTotal)}</strong>
+                    </div>
+                    <div>
+                      <span>Descuento total</span>
+                      <strong>-{formatCurrency(resolvedDiscountTotal)}</strong>
+                    </div>
+                  </>
+                ) : null}
                 <div>
                   <span>ISV (15%)</span>
                   <strong>{formatCurrency(venta?.isv)}</strong>

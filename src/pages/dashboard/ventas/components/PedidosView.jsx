@@ -1,10 +1,13 @@
-import { useDeferredValue, useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import PedidosEmptyState from './PedidosEmptyState';
-import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
-import VentasToast from './VentasToast';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import AppSelect from '../../../../components/common/AppSelect';
 import { supabase } from '../../../../lib/supabaseClient';
 import ventasService from '../../../../services/ventasService';
+import { createCocinaAudioManager } from '../../cocina/utils/cocinaAudio';
+import { formatCurrency, normalizeVentaDetail } from '../utils/ventasHelpers';
+import PedidosEmptyState from './PedidosEmptyState';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
+import VentaDetalleModal from './VentaDetalleModal';
+import VentasToast from './VentasToast';
 
 const normalizeTextKey = (value) =>
   String(value || '')
@@ -44,6 +47,9 @@ const initialConfirmDialog = {
   estadoDestino: ''
 };
 
+const PEDIDOS_ACTIVE_LANE_STORAGE_KEY = 'ventas.pedidos.activeLane';
+const PEDIDOS_LANE_KEYS = ['pending', 'kitchen', 'ready'];
+
 const normalizePaymentCode = (value) =>
   String(value || '')
     .normalize('NFD')
@@ -53,15 +59,23 @@ const normalizePaymentCode = (value) =>
     .replace(/[\s-]+/g, '_');
 
 const buildPedidoVisibleCode = (pedido) => {
-  const rawCode = String(pedido?.codigo_venta || '').trim();
-  if (rawCode) return rawCode;
-  return 'Sin VTA';
+  const ventaCode = String(pedido?.codigo_venta || '').trim();
+  if (ventaCode) return ventaCode;
+  const pedidoCode = String(pedido?.codigo_pedido || '').trim();
+  if (pedidoCode) return pedidoCode;
+  const idPedido = Number(pedido?.id_pedido ?? 0) || 0;
+  return idPedido ? `PED-${String(idPedido).padStart(5, '0')}` : 'PED-SIN-CODIGO';
 };
 
 const isPedidoKdsVencido = (pedido) => {
   if (pedido?.kds_vencido === true) return true;
   if (String(pedido?.kds_vencido || '').toLowerCase() === 'true') return true;
   return false;
+};
+
+const isPedidoPendientePago = (pedido) => {
+  const code = normalizePaymentCode(pedido?.estado_pago_control || pedido?.estado_pago);
+  return code === 'PENDIENTE_PAGO' || code === 'PENDIENTE_DE_PAGO';
 };
 
 const TECHNICAL_MESSAGE_PATTERNS = [
@@ -80,7 +94,7 @@ const isTechnicalMessage = (value) => {
   return TECHNICAL_MESSAGE_PATTERNS.some((pattern) => pattern.test(raw));
 };
 
-const extractUiMessage = (error, fallbackMessage = 'No se pudo completar la acción. Intenta nuevamente.') => {
+const extractUiMessage = (error, fallbackMessage = 'No se pudo completar la accion. Intenta nuevamente.') => {
   const backendMessage = String(error?.data?.message || error?.data?.mensaje || '').trim();
   if (backendMessage && !isTechnicalMessage(backendMessage)) return backendMessage;
   const directMessage = String(error?.message || '').trim();
@@ -88,9 +102,9 @@ const extractUiMessage = (error, fallbackMessage = 'No se pudo completar la acci
   return fallbackMessage;
 };
 
-const isPedidoPendientePago = (pedido) => {
-  const code = normalizePaymentCode(pedido?.estado_pago_control || pedido?.estado_pago);
-  return code === 'PENDIENTE_PAGO' || code === 'PENDIENTE_DE_PAGO';
+const toPositiveId = (value) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
 const normalizePedidoForPagoModal = (pedido) => ({
@@ -106,13 +120,57 @@ const normalizePedidoForPagoModal = (pedido) => ({
   telefono_normalizado: String(pedido?.telefono_normalizado || '').trim(),
   canal: pedido?.canal,
   modalidad: pedido?.modalidad,
-  id_sucursal: Number(pedido?.id_sucursal ?? 0) || null,
+  id_sucursal: toPositiveId(pedido?.id_sucursal),
   estado_pago: pedido?.estado_pago_control || pedido?.estado_pago,
   monto_pendiente: Number(pedido?.monto_pendiente ?? pedido?.total ?? 0) || 0,
   total: Number(pedido?.total ?? 0) || 0
 });
 
-export default function PedidosView() {
+const formatPedidoTime = (value) => {
+  if (!value) return 'Sin hora';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Sin hora';
+  return new Intl.DateTimeFormat('es-HN', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+};
+
+const buildSucursalOptions = (sucursales = []) =>
+  sucursales
+    .map((sucursal) => ({
+      value: String(sucursal.id_sucursal),
+      label: sucursal.nombre_sucursal || `Sucursal ${sucursal.id_sucursal}`
+    }))
+    .filter((option) => toPositiveId(option.value));
+
+const normalizePedidoVentaDetail = (pedido) => {
+  const clienteNombre = pedido?.nombres_cliente
+    ? `${pedido.nombres_cliente} ${pedido.apellidos_cliente || ''}`.trim()
+    : String(pedido?.nombre_contacto || 'Consumidor final').trim();
+
+  return normalizeVentaDetail({
+    ...pedido,
+    id_factura: toPositiveId(pedido?.id_factura) || toPositiveId(pedido?.id_pedido),
+    codigo_venta: buildPedidoVisibleCode(pedido),
+    numero_venta: buildPedidoVisibleCode(pedido),
+    cliente_nombre: clienteNombre || 'Consumidor final',
+    estado_pedido: pedido?.nombre_estado_pedido,
+    metodo_pago: pedido?.metodo_pago || (isPedidoPendientePago(pedido) ? 'Pago pendiente' : null),
+    descuento_total: Number(pedido?.descuento_total ?? 0) || 0,
+    items: Array.isArray(pedido?.items) ? pedido.items : []
+  });
+};
+
+export default function PedidosView({
+  isSuperAdmin = false,
+  sucursales = [],
+  defaultSucursalId = null,
+  scopeInfo = null,
+  selectedSessionId = null
+}) {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [pedidos, setPedidos] = useState([]);
@@ -123,30 +181,74 @@ export default function PedidosView() {
   const [confirmDialog, setConfirmDialog] = useState(initialConfirmDialog);
   const [pagoPedidoModal, setPagoPedidoModal] = useState({ open: false, pedido: null });
   const [pagoPedidoSaving, setPagoPedidoSaving] = useState(false);
+  const [ventaDetailModal, setVentaDetailModal] = useState({ open: false, venta: null });
+  const [ventaDetailLoading, setVentaDetailLoading] = useState(false);
+  const [selectedSucursalId, setSelectedSucursalId] = useState(null);
+  const [activeLaneKey, setActiveLaneKey] = useState(() => {
+    if (typeof window === 'undefined') return 'pending';
+    const stored = window.localStorage.getItem(PEDIDOS_ACTIVE_LANE_STORAGE_KEY);
+    return PEDIDOS_LANE_KEYS.includes(stored) ? stored : 'pending';
+  });
   const notifiedReadyIdsRef = useRef(new Set());
-  const readyAudioRef = useRef(null);
+  const audioManagerRef = useRef(null);
+  const inFlightKeyRef = useRef('');
+  const actionBusyRef = useRef(null);
+  const lastActionRefreshAtRef = useRef(0);
+  const requestIdRef = useRef(0);
+  const forbiddenErrorKeyRef = useRef('');
+
+  const sucursalOptions = useMemo(() => buildSucursalOptions(sucursales), [sucursales]);
+  const selectedSucursalIsValid = useMemo(
+    () => Boolean(
+      toPositiveId(selectedSucursalId) &&
+      sucursalOptions.some((option) => toPositiveId(option.value) === toPositiveId(selectedSucursalId))
+    ),
+    [selectedSucursalId, sucursalOptions]
+  );
+  const effectiveSucursalId = useMemo(() => {
+    if (isSuperAdmin) {
+      return selectedSucursalIsValid ? toPositiveId(selectedSucursalId) : null;
+    }
+    return (
+      toPositiveId(scopeInfo?.selectedSucursalId) ||
+      toPositiveId(scopeInfo?.userSucursalId) ||
+      toPositiveId(defaultSucursalId)
+    );
+  }, [
+    defaultSucursalId,
+    isSuperAdmin,
+    scopeInfo?.selectedSucursalId,
+    scopeInfo?.userSucursalId,
+    selectedSucursalId,
+    selectedSucursalIsValid
+  ]);
 
   useEffect(() => {
-    const { data } = supabase.storage.from('notificacion').getPublicUrl('cocina-nuevo-pedido.mp3');
-    const audioUrl = String(data?.publicUrl || '').trim();
-    if (!audioUrl) {
-      readyAudioRef.current = null;
-      return undefined;
+    if (!isSuperAdmin) {
+      setSelectedSucursalId(null);
+      return;
     }
-    const audio = new Audio(audioUrl);
-    audio.preload = 'auto';
-    readyAudioRef.current = audio;
+    if (selectedSucursalIsValid) return;
+    const fallback = toPositiveId(sucursalOptions[0]?.value);
+    if (fallback) setSelectedSucursalId(fallback);
+  }, [isSuperAdmin, selectedSucursalIsValid, sucursalOptions]);
+
+  useEffect(() => {
+    audioManagerRef.current = createCocinaAudioManager();
     return () => {
-      if (!readyAudioRef.current) return;
-      try {
-        readyAudioRef.current.pause();
-        readyAudioRef.current.currentTime = 0;
-      } catch {
-        // AM: no interrumpir flujo si el navegador restringe APIs de audio.
-      }
-      readyAudioRef.current = null;
+      audioManagerRef.current?.dispose?.();
+      audioManagerRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    actionBusyRef.current = actionBusyId;
+  }, [actionBusyId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(PEDIDOS_ACTIVE_LANE_STORAGE_KEY, activeLaneKey);
+  }, [activeLaneKey]);
 
   const openToast = useCallback((title, message, variant = 'success') => {
     setToast({
@@ -171,14 +273,35 @@ export default function PedidosView() {
 
   const loadPedidos = useCallback(
     async ({ silent = false, source = 'manual' } = {}) => {
+      if (source !== 'action' && actionBusyRef.current !== null) return;
+      if (isSuperAdmin && !effectiveSucursalId) {
+        setPedidos([]);
+        setLoading(false);
+        return;
+      }
+
+      const requestSucursalId = effectiveSucursalId;
+      const requestKey = requestSucursalId ? `sucursal:${requestSucursalId}` : 'scope';
+      const canRetryForbidden = source === 'manual' || source === 'action' || source === 'initial';
+      if (!canRetryForbidden && forbiddenErrorKeyRef.current === requestKey) return;
+      if (inFlightKeyRef.current === requestKey) return;
+
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      inFlightKeyRef.current = requestKey;
       try {
         if (!silent) setLoading(true);
         setErrorMessage('');
-        const data = await ventasService.getPedidosMenu();
+        const params = requestSucursalId
+          ? { id_sucursal: requestSucursalId }
+          : {};
+        const data = await ventasService.getPedidosMenu(params);
+        if (requestId !== requestIdRef.current) return;
+        forbiddenErrorKeyRef.current = '';
         const nextPedidos = Array.isArray(data) ? data : [];
 
         setPedidos((prevPedidos) => {
-          if (source !== 'initial' && source !== 'manual') {
+          if (source !== 'initial' && source !== 'manual' && source !== 'action') {
             const prevReadyIds = new Set(
               (Array.isArray(prevPedidos) ? prevPedidos : [])
                 .filter((pedido) => mapPedidoStateCode(pedido) === 'LISTO_PARA_ENTREGA')
@@ -207,59 +330,64 @@ export default function PedidosView() {
               if (notifiedReadyIdsRef.current.has(idPedido)) return;
 
               notifiedReadyIdsRef.current.add(idPedido);
-
-              const readyAudio = readyAudioRef.current;
-              if (readyAudio) {
-                try {
-                  readyAudio.currentTime = 0;
-                  void readyAudio.play().catch(() => {});
-                } catch {
-                  // AM: autoplay bloqueado no debe romper Ventas/Pedidos.
-                }
-              }
-
+              void audioManagerRef.current?.playPedidoListo?.();
               openToast('PEDIDO LISTO', `Pedido ${buildPedidoVisibleCode(pedido)} listo para entrega.`, 'success');
             });
           }
           return nextPedidos;
         });
       } catch (err) {
-        setErrorMessage(extractUiMessage(err, 'No se pudo cargar el tablero de pedidos.'));
+        if (requestId !== requestIdRef.current) return;
+        const status = Number(err?.status || err?.data?.status || 0);
+        const message = extractUiMessage(err, 'No se pudo cargar el tablero de pedidos.');
+        if (status === 403) {
+          forbiddenErrorKeyRef.current = requestKey;
+        }
+        setErrorMessage((current) => (current === message ? current : message));
         setPedidos([]);
       } finally {
-        if (!silent) setLoading(false);
+        if (inFlightKeyRef.current === requestKey) {
+          inFlightKeyRef.current = '';
+        }
+        if (requestId === requestIdRef.current && !silent) setLoading(false);
       }
     },
-    [openToast]
+    [effectiveSucursalId, isSuperAdmin, openToast]
   );
 
   useEffect(() => {
+    if (isSuperAdmin && !effectiveSucursalId) {
+      setLoading(false);
+      return;
+    }
     void loadPedidos({ source: 'initial' });
-  }, [loadPedidos]);
+  }, [effectiveSucursalId, isSuperAdmin, loadPedidos]);
 
   useEffect(() => {
+    if (isSuperAdmin && !effectiveSucursalId) return undefined;
     const intervalId = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      if (actionBusyId !== null) return;
-      loadPedidos({ silent: true, source: 'poll' }).catch(() => {});
+      void loadPedidos({ silent: true, source: 'poll' });
     }, 8000);
 
     return () => window.clearInterval(intervalId);
-  }, [actionBusyId, loadPedidos]);
+  }, [effectiveSucursalId, isSuperAdmin, loadPedidos]);
 
   useEffect(() => {
+    if (isSuperAdmin && !effectiveSucursalId) return undefined;
     const channel = supabase
-      .channel('ventas-pedidos-realtime')
+      .channel(`ventas-pedidos-realtime-${effectiveSucursalId || 'scope'}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pedidos' }, () => {
-        if (actionBusyId !== null) return;
-        loadPedidos({ silent: true, source: 'realtime' }).catch(() => {});
+        if (forbiddenErrorKeyRef.current === (effectiveSucursalId ? `sucursal:${effectiveSucursalId}` : 'scope')) return;
+        if (Date.now() - lastActionRefreshAtRef.current < 1200) return;
+        void loadPedidos({ silent: true, source: 'realtime' });
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [actionBusyId, loadPedidos]);
+  }, [effectiveSucursalId, isSuperAdmin, loadPedidos]);
 
   const runPedidoAction = useCallback(
     async (idPedido, action) => {
@@ -267,7 +395,8 @@ export default function PedidosView() {
         setActionBusyId(idPedido);
         setErrorMessage('');
         const response = await action();
-        await loadPedidos();
+        await loadPedidos({ source: 'action' });
+        lastActionRefreshAtRef.current = Date.now();
         if (response?.message) {
           openToast('PEDIDO ACTUALIZADO', response.message, 'success');
         }
@@ -294,7 +423,7 @@ export default function PedidosView() {
     setConfirmDialog({
       open: true,
       title: 'Confirmar entrega',
-      message: 'Confirmas que este pedido fue entregado al cliente?',
+      message: 'Confirma que este pedido fue entregado al cliente.',
       idPedido,
       estadoDestino: 'COMPLETADO'
     });
@@ -305,8 +434,8 @@ export default function PedidosView() {
     if (!idPedido) return;
     setConfirmDialog({
       open: true,
-      title: 'Confirmar no entregado',
-      message: 'Confirmas marcar este pedido como no entregado? Esta accion quedara registrada como dato historico.',
+      title: 'Marcar no entregado',
+      message: 'Este pedido quedara registrado como no entregado.',
       idPedido,
       estadoDestino: 'no_entregado'
     });
@@ -323,13 +452,40 @@ export default function PedidosView() {
     setPagoPedidoModal({ open: false, pedido: null });
   }, [pagoPedidoSaving]);
 
+  const openPedidoDetail = useCallback(async (pedido) => {
+    if (!pedido) return;
+    const fallbackDetail = normalizePedidoVentaDetail(pedido);
+    const idFactura = toPositiveId(pedido?.id_factura);
+
+    setVentaDetailModal({ open: true, venta: fallbackDetail });
+    if (!idFactura) return;
+
+    try {
+      setVentaDetailLoading(true);
+      const response = await ventasService.getById(idFactura);
+      setVentaDetailModal({ open: true, venta: normalizeVentaDetail(response) });
+    } catch (error) {
+      const message = extractUiMessage(error, 'No se pudo cargar el detalle de la venta.');
+      setErrorMessage(message);
+      openToast('ERROR', message, 'danger');
+    } finally {
+      setVentaDetailLoading(false);
+    }
+  }, [openToast]);
+
+  const closePedidoDetail = useCallback(() => {
+    setVentaDetailModal({ open: false, venta: null });
+    setVentaDetailLoading(false);
+  }, []);
+
   const handleRegistrarPagoPedido = useCallback(
     async (idPedido, payload) => {
       try {
         setPagoPedidoSaving(true);
         setErrorMessage('');
         const response = await ventasService.registrarPagoPedido(idPedido, payload);
-        await loadPedidos();
+        await loadPedidos({ source: 'action' });
+        lastActionRefreshAtRef.current = Date.now();
         openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
         return response;
       } catch (error) {
@@ -361,12 +517,13 @@ export default function PedidosView() {
   }, [confirmDialog, handleStateChange]);
 
   const filteredPedidos = useMemo(() => {
-    if (!deferredSearch) return pedidos;
-    const q = deferredSearch.toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
+    if (!q) return pedidos;
     return pedidos.filter(
       (pedido) =>
         String(pedido?.id_pedido || '').includes(q) ||
         String(pedido?.codigo_pedido || '').toLowerCase().includes(q) ||
+        String(pedido?.codigo_venta || '').toLowerCase().includes(q) ||
         String(pedido?.nombre_contacto || '').toLowerCase().includes(q) ||
         String(pedido?.telefono_contacto || '').toLowerCase().includes(q) ||
         `${pedido?.nombres_cliente || ''} ${pedido?.apellidos_cliente || ''}`.toLowerCase().includes(q) ||
@@ -387,136 +544,194 @@ export default function PedidosView() {
     [filteredPedidos]
   );
 
+  const selectedSucursalName = useMemo(() => {
+    const match = sucursales.find((sucursal) => Number(sucursal.id_sucursal) === Number(effectiveSucursalId));
+    return match?.nombre_sucursal || '';
+  }, [effectiveSucursalId, sucursales]);
+
+  const effectivePagoSucursalId = toPositiveId(pagoPedidoModal.pedido?.id_sucursal) || effectiveSucursalId;
+  const lanes = useMemo(() => ([
+    {
+      key: 'pending',
+      tone: 'pending',
+      title: 'Pendientes / Validacion',
+      tabLabel: 'Pendientes',
+      count: pendientes.length,
+      emptyTitle: 'Sin pendientes',
+      emptyDescription: 'No hay pagos por validar.',
+      pedidos: pendientes,
+      renderPedido: (pedido) => (
+        <PedidoCard
+          key={pedido.id_pedido}
+          pedido={pedido}
+          busy={actionBusyId === pedido.id_pedido}
+          onSendKitchen={() => handleStateChange(pedido.id_pedido, 'EN_COCINA')}
+          onCobrar={() => openPagoPedidoModal(pedido)}
+          onViewDetail={() => openPedidoDetail(pedido)}
+        />
+      )
+    },
+    {
+      key: 'kitchen',
+      tone: 'kitchen',
+      title: 'En Cocina',
+      tabLabel: 'En cocina',
+      count: enCocina.length,
+      emptyTitle: 'Sin cocina',
+      emptyDescription: 'No hay pedidos en preparacion.',
+      pedidos: enCocina,
+      renderPedido: (pedido) => (
+        <PedidoCard
+          key={pedido.id_pedido}
+          pedido={pedido}
+          busy={actionBusyId === pedido.id_pedido}
+          onCobrar={() => openPagoPedidoModal(pedido)}
+          onViewDetail={() => openPedidoDetail(pedido)}
+        />
+      )
+    },
+    {
+      key: 'ready',
+      tone: 'ready',
+      title: 'Listo para Entrega',
+      tabLabel: 'Listos',
+      count: listos.length,
+      emptyTitle: 'Sin listos',
+      emptyDescription: 'Nada pendiente de entregar.',
+      pedidos: listos,
+      renderPedido: (pedido) => (
+        <PedidoCard
+          key={pedido.id_pedido}
+          pedido={pedido}
+          busy={actionBusyId === pedido.id_pedido}
+          onComplete={() => handleCompletePedido(pedido)}
+          onNoEntregado={() => handleNoEntregadoPedido(pedido)}
+          onCobrar={() => openPagoPedidoModal(pedido)}
+          onViewDetail={() => openPedidoDetail(pedido)}
+        />
+      )
+    }
+  ]), [
+    actionBusyId,
+    enCocina,
+    handleCompletePedido,
+    handleNoEntregadoPedido,
+    handleStateChange,
+    listos,
+    openPagoPedidoModal,
+    openPedidoDetail,
+    pendientes
+  ]);
+
   return (
     <div className="ventas-page ventas-pedidos-page">
-      <div className="inv-catpro-card inv-prod-card mb-3">
-        <div className="inv-prod-header ventas-page__toolbar">
-          <div className="inv-prod-title-wrap">
-            <div className="inv-prod-title-row">
-              <i className="bi bi-journal-richtext inv-prod-title-icon" />
-              <span className="inv-prod-title">Pedidos / Validacion de pago</span>
+      <section className="ventas-pedidos-board">
+        <header className="ventas-pedidos-header">
+          <div className="ventas-pedidos-header__title">
+            <span className="ventas-pedidos-header__icon">
+              <i className="bi bi-journal-check" />
+            </span>
+            <div>
+              <h2>Pedidos</h2>
+              <p>Validacion de pago, cocina y entrega</p>
             </div>
-            <div className="inv-prod-subtitle">Flujo operativo: validar pago, enviar a cocina, marcar listo y entregar.</div>
           </div>
 
-          <div className="inv-prod-header-actions inv-ins-header-actions ventas-page__toolbar-actions">
-            <CollapsibleSearchInput
-              value={search}
-              onValueChange={setSearch}
-              onSubmit={() => {}}
-              placeholder="Buscar por ticket o cliente..."
-              ariaLabel="Buscar pedidos"
-              className="ventas-pedidos__search"
-              disabled={loading}
-            />
+          <div className="ventas-pedidos-header__actions">
+            <label className="ventas-pedidos-search">
+              <i className="bi bi-search" aria-hidden="true" />
+              <input
+                type="search"
+                value={search}
+                placeholder="Buscar ticket, cliente o telefono"
+                onChange={(event) => setSearch(event.target.value)}
+                disabled={loading}
+              />
+            </label>
+
+            {isSuperAdmin ? (
+              <AppSelect
+                value={selectedSucursalId ? String(selectedSucursalId) : ''}
+                options={sucursalOptions}
+                onChange={(value) => {
+                  const nextId = toPositiveId(value);
+                  requestIdRef.current += 1;
+                  forbiddenErrorKeyRef.current = '';
+                  inFlightKeyRef.current = '';
+                  setErrorMessage('');
+                  setPedidos([]);
+                  setSelectedSucursalId(nextId);
+                }}
+                placeholder="Selecciona sucursal"
+                className="app-select--warm app-select--compact ventas-pedidos-sucursal-select"
+                disabled={sucursalOptions.length === 0}
+              />
+            ) : selectedSucursalName ? (
+              <span className="ventas-pedidos-scope">
+                <i className="bi bi-shop" />
+                {selectedSucursalName}
+              </span>
+            ) : null}
+
             <button
-              className="ventas-modal__ghost-btn ms-2"
+              className="ventas-pedidos-refresh"
               onClick={() => void loadPedidos()}
-              title="Actualizar"
+              title="Actualizar pedidos"
               disabled={loading}
               type="button"
             >
               <i className={`bi ${loading ? 'bi-arrow-repeat spin' : 'bi-arrow-clockwise'}`} />
+              <span>Actualizar</span>
             </button>
           </div>
+        </header>
+
+        <div className="ventas-pedidos-summary">
+          <span><strong>{filteredPedidos.length}</strong> pedidos visibles</span>
+          {selectedSucursalName ? <span>{selectedSucursalName}</span> : null}
+          {loading ? <span><i className="bi bi-hourglass-split" /> Cargando...</span> : null}
         </div>
 
-        <div className="inv-catpro-body inv-prod-body p-3">
-          <div className="ventas-pedidos__meta mb-3">
-            <span>{filteredPedidos.length} pedidos visibles</span>
-            {loading ? (
-              <span className="ms-3 text-muted">
-                <i className="bi bi-hourglass-split" /> Cargando...
-              </span>
-            ) : null}
+        {errorMessage ? (
+          <div className="ventas-pedidos-alert" role="alert">
+            <i className="bi bi-exclamation-triangle" />
+            <span>{errorMessage}</span>
           </div>
+        ) : null}
 
-          {errorMessage ? (
-            <div className="alert alert-warning mb-3" role="alert">
-              {errorMessage}
-            </div>
-          ) : null}
-
-          <div className="ventas-pedidos__grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-            <section className="ventas-pedidos__lane">
-              <header className="ventas-pedidos__lane-head">
-                <div>
-                  <span className="ventas-pedidos__lane-dot" style={{ background: '#f59e0b' }} />
-                  <strong>Pendientes / Validacion de pago</strong>
-                </div>
-                <span className="ventas-pedidos__lane-count">{pendientes.length}</span>
-              </header>
-              <div className="ventas-pedidos__lane-body mt-2">
-                {pendientes.length === 0 ? (
-                  <PedidosEmptyState title="Sin pendientes" />
-                ) : (
-                  pendientes.map((pedido) => (
-                    <PedidoCard
-                      key={pedido.id_pedido}
-                      pedido={pedido}
-                      busy={actionBusyId === pedido.id_pedido}
-                      onSendKitchen={() => handleStateChange(pedido.id_pedido, 'EN_COCINA')}
-                      onCobrar={() => openPagoPedidoModal(pedido)}
-                    />
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="ventas-pedidos__lane">
-              <header className="ventas-pedidos__lane-head">
-                <div>
-                  <span className="ventas-pedidos__lane-dot" style={{ background: '#3b82f6' }} />
-                  <strong>En Cocina</strong>
-                </div>
-                <span className="ventas-pedidos__lane-count">{enCocina.length}</span>
-              </header>
-              <div className="ventas-pedidos__lane-body mt-2">
-                {enCocina.length === 0 ? (
-                  <PedidosEmptyState title="Sin pedidos en cocina" />
-                ) : (
-                  enCocina.map((pedido) => (
-                    <PedidoCard
-                      key={pedido.id_pedido}
-                      pedido={pedido}
-                      busy={actionBusyId === pedido.id_pedido}
-                      onComplete={isPedidoKdsVencido(pedido) ? () => handleCompletePedido(pedido) : undefined}
-                      onNoEntregado={isPedidoKdsVencido(pedido) ? () => handleNoEntregadoPedido(pedido) : undefined}
-                      onCobrar={() => openPagoPedidoModal(pedido)}
-                    />
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="ventas-pedidos__lane">
-              <header className="ventas-pedidos__lane-head">
-                <div>
-                  <span className="ventas-pedidos__lane-dot" style={{ background: '#10b981' }} />
-                  <strong>Listo para Entrega</strong>
-                </div>
-                <span className="ventas-pedidos__lane-count">{listos.length}</span>
-              </header>
-              <div className="ventas-pedidos__lane-body mt-2">
-                {listos.length === 0 ? (
-                  <PedidosEmptyState title="Sin pedidos listos" />
-                ) : (
-                  listos.map((pedido) => (
-                    <PedidoCard
-                      key={pedido.id_pedido}
-                      pedido={pedido}
-                      busy={actionBusyId === pedido.id_pedido}
-                      onComplete={() => handleCompletePedido(pedido)}
-                      onNoEntregado={() => handleNoEntregadoPedido(pedido)}
-                      onCobrar={() => openPagoPedidoModal(pedido)}
-                    />
-                  ))
-                )}
-              </div>
-            </section>
-          </div>
+        <div className="ventas-pedidos-lane-tabs" role="tablist" aria-label="Columnas de pedidos">
+          {lanes.map((lane) => (
+            <button
+              key={lane.key}
+              type="button"
+              role="tab"
+              aria-selected={activeLaneKey === lane.key}
+              className={`ventas-pedidos-lane-tabs__item ventas-pedidos-lane-tabs__item--${lane.tone}${activeLaneKey === lane.key ? ' is-active' : ''}`}
+              onClick={() => setActiveLaneKey(lane.key)}
+            >
+              <span className="ventas-pedidos-lane-tabs__dot" />
+              <span>{lane.tabLabel}</span>
+              <strong>{lane.count}</strong>
+            </button>
+          ))}
         </div>
-      </div>
+
+        <div className="ventas-pedidos__grid">
+          {lanes.map((lane) => (
+            <PedidoLane
+              key={lane.key}
+              tone={lane.tone}
+              title={lane.title}
+              count={lane.count}
+              emptyTitle={lane.emptyTitle}
+              emptyDescription={lane.emptyDescription}
+              pedidos={lane.pedidos}
+              active={activeLaneKey === lane.key}
+              renderPedido={lane.renderPedido}
+            />
+          ))}
+        </div>
+      </section>
 
       <ConfirmActionModal
         open={confirmDialog.open}
@@ -533,6 +748,18 @@ export default function PedidosView() {
         onClose={closePagoPedidoModal}
         onRegistrarPago={handleRegistrarPagoPedido}
         initialPedido={pagoPedidoModal.pedido}
+        selectedSucursalId={effectivePagoSucursalId}
+        selectedSessionId={selectedSessionId}
+      />
+
+      <VentaDetalleModal
+        open={ventaDetailModal.open}
+        venta={ventaDetailModal.venta}
+        loading={ventaDetailLoading}
+        onClose={closePedidoDetail}
+        canReversion={false}
+        canExport={false}
+        canPrint={false}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />
@@ -540,9 +767,30 @@ export default function PedidosView() {
   );
 }
 
-function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntregado, onCobrar }) {
+function PedidoLane({ tone, title, count, emptyTitle, emptyDescription, pedidos, active = false, renderPedido }) {
+  return (
+    <section className={`ventas-pedidos__lane ventas-pedidos__lane--${tone}${active ? ' is-active' : ''}`}>
+      <header className="ventas-pedidos__lane-head">
+        <div>
+          <span className="ventas-pedidos__lane-dot" />
+          <strong>{title}</strong>
+        </div>
+        <span className="ventas-pedidos__lane-count">{count}</span>
+      </header>
+      <div className="ventas-pedidos__lane-body">
+        {pedidos.length === 0 ? (
+          <PedidosEmptyState title={emptyTitle} description={emptyDescription} />
+        ) : (
+          pedidos.map(renderPedido)
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntregado, onCobrar, onViewDetail }) {
   const clienteName = pedido?.nombres_cliente
-    ? `${pedido.nombres_cliente} ${pedido.apellidos_cliente || ''}`
+    ? `${pedido.nombres_cliente} ${pedido.apellidos_cliente || ''}`.trim()
     : String(pedido?.nombre_contacto || 'Consumidor final').trim();
 
   const cleanDescription = cleanPedidoDescription(pedido?.descripcion_pedido);
@@ -550,140 +798,92 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
   const visibleCode = buildPedidoVisibleCode(pedido);
   const pendingPago = isPedidoPendientePago(pedido);
   const kdsVencido = isPedidoKdsVencido(pedido);
+  const total = Number(pedido?.total || 0);
 
   return (
-    <div className="ventas-create-modal__cart-item mb-2">
-      <div className="ventas-create-modal__cart-item-head">
+    <article className={`ventas-pedidos-card ventas-pedidos-card--${laneCode.toLowerCase()}`}>
+      <header className="ventas-pedidos-card__header ventas-pedidos-card__head">
         <div>
-          <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
-            <span className={`badge ${visibleCode === 'Sin VTA' ? 'bg-warning text-dark' : 'bg-dark'}`} style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-              {visibleCode}
-            </span>
-            {pendingPago ? (
-              <span className="badge bg-warning text-dark" style={{ fontSize: '0.65rem', fontWeight: 'bold' }}>
-                Pendiente de pago
-              </span>
-            ) : null}
+          <div className="ventas-pedidos-card__badges">
+            <span className="ventas-pedidos-card__code">{visibleCode}</span>
+            {pendingPago ? <span className="ventas-pedidos-card__badge is-payment">Pago pendiente</span> : null}
+            {kdsVencido ? <span className="ventas-pedidos-card__badge is-overdue">Retrasado</span> : null}
           </div>
-
-          <strong className="d-flex align-items-center gap-2">
-            <span>{visibleCode} - {clienteName}</span>
-          </strong>
-
-          <small className="text-muted">
-            <i className="bi bi-clock" /> {new Date(pedido.fecha_hora_pedido).toLocaleTimeString()}
-          </small>
-
-          {laneCode === 'EN_COCINA' && kdsVencido ? (
-            <div className="mt-1">
-              <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
-                Pendiente vencido
-              </span>
-            </div>
-          ) : null}
+          <strong className="ventas-pedidos-card__client">{clienteName}</strong>
+          <span className="ventas-pedidos-card__meta ventas-pedidos-card__time">
+            <i className="bi bi-clock" />
+            {formatPedidoTime(pedido?.fecha_hora_pedido)}
+          </span>
         </div>
-
-        <div className="ventas-create-modal__line-total" style={{ fontSize: '1.1rem' }}>
-          L {Number(pedido.total || 0).toFixed(2)}
+        <div className="ventas-pedidos-card__total">
+          <span>Total</span>
+          <strong>{formatCurrency(total)}</strong>
         </div>
-      </div>
+      </header>
 
       {cleanDescription ? (
-        <div className="ventas-create-modal__cart-item-meta" style={{ fontSize: '0.85rem' }}>
-          <em>{cleanDescription}</em>
-        </div>
+        <p className="ventas-pedidos-card__description">{cleanDescription}</p>
       ) : null}
 
-      <div className="ventas-create-modal__cart-item-actions mt-2 justify-content-end">
+      <div className="ventas-pedidos-card__actions">
+        <button
+          className="ventas-pedidos-card__action ventas-pedidos-card__action--secondary ventas-pedidos-card__btn is-secondary"
+          onClick={onViewDetail}
+          disabled={busy}
+          type="button"
+        >
+          <i className="bi bi-eye" />
+          Ver detalle
+        </button>
+
         {pendingPago ? (
           <button
-            className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+            className="ventas-pedidos-card__action ventas-pedidos-card__action--primary ventas-pedidos-card__btn is-primary"
             onClick={onCobrar}
             disabled={busy}
             type="button"
-            style={{ minHeight: '36px', fontSize: '0.85rem' }}
           >
-            {busy ? 'Procesando...' : 'Cobrar'} <i className="bi bi-cash-coin" />
+            <i className="bi bi-cash-coin" />
+            {busy ? 'Procesando...' : 'Cobrar'}
           </button>
         ) : null}
 
-        {laneCode === 'PENDIENTE' ? (
-          <div className="d-grid w-100">
-            <button
-              className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
-              onClick={onSendKitchen}
-              disabled={busy}
-              type="button"
-              style={{ minHeight: '36px', fontSize: '0.85rem' }}
-            >
-              {busy ? 'Procesando...' : 'Mandar a cocina'} <i className="bi bi-arrow-right" />
-            </button>
-          </div>
+        {!pendingPago && laneCode === 'PENDIENTE' ? (
+          <button
+            className="ventas-pedidos-card__action ventas-pedidos-card__action--primary ventas-pedidos-card__btn is-primary"
+            onClick={onSendKitchen}
+            disabled={busy}
+            type="button"
+          >
+            <i className="bi bi-arrow-right" />
+            {busy ? 'Procesando...' : 'Mandar a cocina'}
+          </button>
         ) : null}
 
-        {laneCode === 'LISTO_PARA_ENTREGA' ? (
-          <div className="d-grid w-100 gap-2">
+        {!pendingPago && laneCode === 'LISTO_PARA_ENTREGA' ? (
+          <>
             <button
-              className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+              className="ventas-pedidos-card__action ventas-pedidos-card__action--primary ventas-pedidos-card__btn is-primary"
               onClick={onComplete}
               disabled={busy}
               type="button"
-              style={{ minHeight: '36px', fontSize: '0.85rem' }}
             >
-              {busy ? 'Procesando...' : 'Completar'} <i className="bi bi-check2-circle" />
+              <i className="bi bi-check2-circle" />
+              {busy ? 'Procesando...' : 'Completar'}
             </button>
             <button
-              className="w-100 py-2 d-flex align-items-center justify-content-center gap-2"
+              className="ventas-pedidos-card__action ventas-pedidos-card__action--danger ventas-pedidos-card__btn is-danger"
               onClick={onNoEntregado}
               disabled={busy}
               type="button"
-              style={{
-                minHeight: '36px',
-                fontSize: '0.85rem',
-                borderRadius: '10px',
-                border: '1px solid #f59e0b',
-                background: '#fff7ed',
-                color: '#9a3412',
-                fontWeight: 600
-              }}
             >
-              {busy ? 'Procesando...' : 'No entregado'} <i className="bi bi-x-circle" />
+              <i className="bi bi-x-circle" />
+              {busy ? 'Procesando...' : 'No entregado'}
             </button>
-          </div>
-        ) : null}
-
-        {laneCode === 'EN_COCINA' && kdsVencido ? (
-          <div className="d-grid w-100 gap-2">
-            <button
-              className="ventas-create-modal__payment-btn is-active w-100 py-2 d-flex align-items-center justify-content-center gap-2"
-              onClick={onComplete}
-              disabled={busy}
-              type="button"
-              style={{ minHeight: '36px', fontSize: '0.85rem' }}
-            >
-              {busy ? 'Procesando...' : 'Completar'} <i className="bi bi-check2-circle" />
-            </button>
-            <button
-              className="w-100 py-2 d-flex align-items-center justify-content-center gap-2"
-              onClick={onNoEntregado}
-              disabled={busy}
-              type="button"
-              style={{
-                minHeight: '36px',
-                fontSize: '0.85rem',
-                borderRadius: '10px',
-                border: '1px solid #f59e0b',
-                background: '#fff7ed',
-                color: '#9a3412',
-                fontWeight: 600
-              }}
-            >
-              {busy ? 'Procesando...' : 'No entregado'} <i className="bi bi-x-circle" />
-            </button>
-          </div>
+          </>
         ) : null}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -692,14 +892,14 @@ function ConfirmActionModal({ open, title, message, busy = false, onCancel, onCo
 
   return (
     <div className="ventas-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ventas-confirm-title">
-      <div className="ventas-modal-card" style={{ maxWidth: '480px', width: '100%' }}>
+      <div className="ventas-modal-card ventas-pedidos-confirm">
         <div className="ventas-modal-header">
-          <h5 className="mb-0" id="ventas-confirm-title">{title}</h5>
+          <h5 id="ventas-confirm-title">{title}</h5>
         </div>
         <div className="ventas-modal-body">
-          <p className="mb-0">{message}</p>
+          <p>{message}</p>
         </div>
-        <div className="ventas-modal-footer d-flex justify-content-end gap-2">
+        <div className="ventas-modal-footer ventas-pedidos-confirm__footer">
           <button type="button" className="btn btn-outline-secondary" onClick={onCancel} disabled={busy}>
             Cancelar
           </button>
