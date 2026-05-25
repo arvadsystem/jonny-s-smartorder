@@ -1,5 +1,8 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import { toUpperSafe } from '../../../utils/toUpperSafe';
 
 // NEW: panel de Categorias de Insumos clonado desde el panel de Categorias (Productos) para mantener paridad visual/UX.
@@ -116,6 +119,13 @@ const CategoriasInsumosPanel = ({
   const safeSetError = (msg) => {
     if (typeof setError === 'function') setError(msg);
   };
+  const { can, loading: permisosLoading } = usePermisos();
+  const canVerCategoriasInsumos = can(PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_VER);
+  const canCrearCategoriasInsumos = can(PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_CREAR);
+  const canEditarCategoriasInsumos = can(PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_EDITAR);
+  const canCambiarEstadoCategoriasInsumos = can(PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_ESTADO_CAMBIAR);
+  const canBuscarCategoriasInsumos = can(PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_BUSCAR);
+  const canUsarFiltrosCategoriasInsumos = can(PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_FILTROS_USAR);
   // NEW: copy visible normalizado del panel de categorías de insumos (incluye fallback y evita mojibake en UI).
   // WHY: el archivo base clonado arrastró cadenas con codificación incorrecta y el título ahora debe venir del switch.
   // IMPACT: solo textos/labels del panel; no altera lógica de filtros, CRUD ni endpoints.
@@ -217,6 +227,7 @@ const CategoriasInsumosPanel = ({
   }, []);
 
   const openCreate = () => {
+    if (!canCrearCategoriasInsumos) return;
     // FUNCIONALIDAD: ABRIR DRAWER CREAR
     // NEW: se cierra drawer de filtros para mantener un solo panel lateral abierto.
     // WHY: mismo patron de exclusividad usado en Insumos/Productos.
@@ -230,6 +241,7 @@ const CategoriasInsumosPanel = ({
   };
 
   const openEdit = (c) => {
+    if (!canEditarCategoriasInsumos) return;
     // FUNCIONALIDAD: ABRIR DRAWER EDITAR
     // NEW: se cierra drawer de filtros para mantener un solo panel lateral abierto.
     // WHY: evita superposicion de drawers derechos.
@@ -259,6 +271,7 @@ const CategoriasInsumosPanel = ({
   // WHY: replicar UX de drawer derecho de Insumos/Productos.
   // IMPACT: solo afecta estados locales de filtros.
   const openFiltersDrawer = () => {
+    if (!canUsarFiltrosCategoriasInsumos) return;
     setDrawerOpen(false);
     setFiltersDraft({ estadoFiltro, sortBy });
     setFiltersOpen(true);
@@ -286,6 +299,7 @@ const CategoriasInsumosPanel = ({
   // WHY: el backend filtra por `estado=true` por defecto despues del cambio a soft delete.
   // IMPACT: recarga solo datos del tab; no altera filtros visuales ni contratos existentes.
   const toggleIncludeInactive = async () => {
+    if (!canUsarFiltrosCategoriasInsumos) return;
     const next = !includeInactive;
     safeSetError('');
     // NEW: el toggle ahora solo cambia el filtro local visible; ya no recarga cards.
@@ -334,6 +348,7 @@ const CategoriasInsumosPanel = ({
 
   const closeConfirmDelete = () => setConfirmModal({ show: false, idToDelete: null, nombre: '' });
   const openConfirmDelete = (id, nombre) => {
+    if (!canCambiarEstadoCategoriasInsumos) return;
     const categoriaActual = (categoriasLocal || []).find((c) => Number(c?.id_categoria_insumo ?? 0) === Number(id ?? 0));
     const countInsumos = getInsumosAsignadosCount(categoriaActual);
     if (countInsumos !== null && countInsumos > 0) {
@@ -629,6 +644,7 @@ const CategoriasInsumosPanel = ({
   // ==============================
   const onSave = async (e) => {
     e?.preventDefault?.();
+    if ((drawerMode === 'create' && !canCrearCategoriasInsumos) || (drawerMode === 'edit' && !canEditarCategoriasInsumos)) return;
     if (saveLockRef.current || isSaving) return;
     safeSetError('');
 
@@ -706,6 +722,7 @@ const CategoriasInsumosPanel = ({
   // WHY: homogeneizar acciones hover con el patron de Insumos.
   // IMPACT: reutiliza `actualizarCategoriaCampo` y recarga categorias existente.
   const _toggleEstadoCategoriaRapido = async (categoria, nextEstado) => {
+    if (!canCambiarEstadoCategoriasInsumos) return;
     if (!categoria || quickTogglingEstadoId) return;
     setQuickTogglingEstadoId(categoria.id_categoria_insumo);
     safeSetError('');
@@ -715,7 +732,7 @@ const CategoriasInsumosPanel = ({
       let lastError = null;
       for (const candidate of candidates) {
         try {
-          await inventarioService.actualizarCategoriaInsumoCampo(categoria.id_categoria_insumo, 'estado', candidate);
+          await inventarioService.actualizarEstadoCategoriaInsumo(categoria.id_categoria_insumo, candidate);
           updated = true;
           break;
         } catch (err) {
@@ -741,6 +758,7 @@ const CategoriasInsumosPanel = ({
   // ELIMINAR
   // ==============================
   const eliminarConfirmado = async () => {
+    if (!canCambiarEstadoCategoriasInsumos) return;
     const id = confirmModal.idToDelete;
     if (!id || deleteLockRef.current || isDeleting) return;
 
@@ -757,7 +775,7 @@ const CategoriasInsumosPanel = ({
         return;
       }
 
-      await inventarioService.eliminarCategoriaInsumo(id);
+      await inventarioService.actualizarEstadoCategoriaInsumo(id, false);
       closeConfirmDelete();
       // NEW: la categoria de insumo inactivada se conserva en memoria para verse al instante en "Ver inactivos".
       // WHY: evitar recarga global de cards y cumplir la UX pedida para cambios de estado.
@@ -805,7 +823,13 @@ const CategoriasInsumosPanel = ({
     setDrawerOpen(false);
     setFiltersOpen(false);
   };
-  const canTapCardToEdit = !isResponsiveViewport;
+  const canTapCardToEdit = !isResponsiveViewport && canEditarCategoriasInsumos;
+
+  if (permisosLoading) return null;
+
+  if (!canVerCategoriasInsumos) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_VER} />;
+  }
 
   return (
     <>
@@ -833,38 +857,44 @@ const CategoriasInsumosPanel = ({
               {catalogSwitch}
             </div>
 
-            <label className="inv-ins-search inv-cat-v3__search" aria-label="Buscar categorías de insumos">
-              <i className="bi bi-search" />
-              <input
-                type="search"
-                placeholder="Buscar por nombre, código o descripción..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </label>
+            {canBuscarCategoriasInsumos ? (
+              <label className="inv-ins-search inv-cat-v3__search" aria-label="Buscar categorías de insumos">
+                <i className="bi bi-search" />
+                <input
+                  type="search"
+                  placeholder="Buscar por nombre, código o descripción..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </label>
+            ) : null}
 
             <div className="inv-prod-header-actions inv-ins-header-actions inv-cat-v2__actions inv-cat-v3__actions-stack">
-              <button
-                type="button"
-                className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
-                onClick={openFiltersDrawer}
-                title="Filtros"
-                aria-expanded={filtersOpen}
-                aria-controls="inv-cat-filters-drawer"
-              >
-                <i className="bi bi-funnel" /> <span>Filtros</span>
-              </button>
+              {canUsarFiltrosCategoriasInsumos ? (
+                <button
+                  type="button"
+                  className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
+                  onClick={openFiltersDrawer}
+                  title="Filtros"
+                  aria-expanded={filtersOpen}
+                  aria-controls="inv-cat-filters-drawer"
+                >
+                  <i className="bi bi-funnel" /> <span>Filtros</span>
+                </button>
+              ) : null}
 
-              <button
-                type="button"
-                className={`inv-prod-toolbar-btn inv-cat-v3__new-btn ${drawerOpen && drawerMode === 'create' ? 'is-on' : ''}`}
-                onClick={openCreate}
-                title="Nueva"
-                aria-expanded={drawerOpen && drawerMode === 'create'}
-                aria-controls="inv-cat-form-drawer"
-              >
-                <i className="bi bi-plus-circle" /> <span>Nuevo</span>
-              </button>
+              {canCrearCategoriasInsumos ? (
+                <button
+                  type="button"
+                  className={`inv-prod-toolbar-btn inv-cat-v3__new-btn ${drawerOpen && drawerMode === 'create' ? 'is-on' : ''}`}
+                  onClick={openCreate}
+                  title="Nueva"
+                  aria-expanded={drawerOpen && drawerMode === 'create'}
+                  aria-controls="inv-cat-form-drawer"
+                >
+                  <i className="bi bi-plus-circle" /> <span>Nuevo</span>
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -900,17 +930,19 @@ const CategoriasInsumosPanel = ({
             {/* NEW: toggle admin para pedir categorias inactivas al backend sin cambiar filtros locales. */}
             {/* WHY: los GET de inventario retornan activos por defecto tras el cambio a soft delete. */}
             {/* IMPACT: recarga usando el mismo endpoint; no altera contratos ni layout principal. */}
-            <label className="form-check form-switch mb-0 inv-catpro-inline-toggle">
-              <input
-                className="form-check-input"
-                type="checkbox"
-                checked={!!includeInactive}
-                onChange={() => { void toggleIncludeInactive(); }}
-                disabled={loading}
-              />
-              <span className="form-check-label">Ver inactivos</span>
-            </label>
-            {hasActiveFilters ? (
+            {canUsarFiltrosCategoriasInsumos ? (
+              <label className="form-check form-switch mb-0 inv-catpro-inline-toggle">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={!!includeInactive}
+                  onChange={() => { void toggleIncludeInactive(); }}
+                  disabled={loading}
+                />
+                <span className="form-check-label">Ver inactivos</span>
+              </label>
+            ) : null}
+            {canUsarFiltrosCategoriasInsumos && hasActiveFilters ? (
               <span className="inv-prod-active-filter-pill">
                 <span>Filtros activos</span>
                 {/* NEW: acceso rÃ¡pido para limpiar todos los filtros desde el resumen. */}
@@ -957,9 +989,11 @@ const CategoriasInsumosPanel = ({
                     </button>
                   ) : null}
 
-                  <button type="button" className="btn btn-primary" onClick={openCreate}>
-                    Nueva categoria de insumo
-                  </button>
+                  {canCrearCategoriasInsumos ? (
+                    <button type="button" className="btn btn-primary" onClick={openCreate}>
+                      Nueva categoria de insumo
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : (
@@ -989,6 +1023,7 @@ const CategoriasInsumosPanel = ({
                             const dotClass = isActive ? 'ok' : 'off';
                             const isToggling = quickTogglingEstadoId === c?.id_categoria_insumo;
                             const isInactivateUiBlocked = isActive && isCategoriaUiBlockedForInactivation(c);
+                            const canRunEstadoAction = canCambiarEstadoCategoriasInsumos;
 
                             // AJUSTE: se mantiene fallback del card actual cuando el modo premium esta desactivado.
                             if (!USE_PREMIUM_CATEGORY_CARDS) {
@@ -1036,28 +1071,30 @@ const CategoriasInsumosPanel = ({
                                       {/* NEW: el boton restante cambia de accion segun `isActive` para soportar activacion directa. */}
                                       {/* WHY: corregir coherencia de cards en modo "solo inactivos" sin duplicar botones. */}
                                       {/* IMPACT: usa el mismo flujo de confirmacion para inactivar y el update existente para activar. */}
-                                      <button
-                                        type="button"
-                                        className={`inv-catpro-action ${isActive ? 'danger' : 'edit'} inv-catpro-action-compact`}
-                                        // NEW: accion de estado dinamica en card (activo => inactivar, inactivo => activar).
-                                        // WHY: permitir reactivacion directa desde el listado de inactivos sin romper el flujo de confirmacion al inactivar.
-                                        // IMPACT: reutiliza handlers/endpoints existentes (`openConfirmDelete` y `_toggleEstadoCategoriaRapido`).
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (isActive) {
-                                            openConfirmDelete(c?.id_categoria_insumo, c?.nombre_categoria);
-                                            return;
-                                          }
-                                          void _toggleEstadoCategoriaRapido(c, true);
-                                        }}
-                                        onKeyDown={(e) => e.stopPropagation()}
-                                        title={isInactivateUiBlocked ? 'No se puede inactivar: tiene insumos activos asignados' : (isActive ? 'Inactivar' : 'Activar')}
-                                        aria-label={`${isActive ? 'Inactivar' : 'Activar'} ${c?.nombre_categoria || 'categoria de insumo'}`}
-                                        disabled={isToggling || isInactivateUiBlocked}
-                                      >
-                                        <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
-                                        <span className="inv-catpro-action-label">{isActive ? 'Inactivar' : 'Activar'}</span>
-                                      </button>
+                                      {canRunEstadoAction ? (
+                                        <button
+                                          type="button"
+                                          className={`inv-catpro-action ${isActive ? 'danger' : 'edit'} inv-catpro-action-compact`}
+                                          // NEW: accion de estado dinamica en card (activo => inactivar, inactivo => activar).
+                                          // WHY: permitir reactivacion directa desde el listado de inactivos sin romper el flujo de confirmacion al inactivar.
+                                          // IMPACT: reutiliza handlers/endpoints existentes (`openConfirmDelete` y `_toggleEstadoCategoriaRapido`).
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (isActive) {
+                                              openConfirmDelete(c?.id_categoria_insumo, c?.nombre_categoria);
+                                              return;
+                                            }
+                                            void _toggleEstadoCategoriaRapido(c, true);
+                                          }}
+                                          onKeyDown={(e) => e.stopPropagation()}
+                                          title={isInactivateUiBlocked ? 'No se puede inactivar: tiene insumos activos asignados' : (isActive ? 'Inactivar' : 'Activar')}
+                                          aria-label={`${isActive ? 'Inactivar' : 'Activar'} ${c?.nombre_categoria || 'categoria de insumo'}`}
+                                          disabled={isToggling || isInactivateUiBlocked}
+                                        >
+                                          <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
+                                          <span className="inv-catpro-action-label">{isActive ? 'Inactivar' : 'Activar'}</span>
+                                        </button>
+                                      ) : null}
                                     </div>
                                   </div>
                                 </div>
@@ -1118,44 +1155,48 @@ const CategoriasInsumosPanel = ({
                                       {/* NEW: acciones hover para igualar patrÃ³n de Insumos/Productos. */}
                                       {/* WHY: exponer ediciÃ³n/estado/eliminaciÃ³n de forma consistente sin perder click en card. */}
                                       {/* IMPACT: reutiliza los mismos handlers/endpoints existentes. */}
-                                      <button
-                                        type="button"
-                                        className="inv-catpro-action edit inv-catpro-action-compact"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          openEdit(c);
-                                        }}
-                                        onKeyDown={(e) => e.stopPropagation()}
-                                        title="Editar"
-                                        disabled={isToggling}
-                                      >
-                                        <i className="bi bi-pencil-square" />
-                                        <span className="inv-catpro-action-label">Editar</span>
-                                      </button>
+                                      {canEditarCategoriasInsumos ? (
+                                        <button
+                                          type="button"
+                                          className="inv-catpro-action edit inv-catpro-action-compact"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openEdit(c);
+                                          }}
+                                          onKeyDown={(e) => e.stopPropagation()}
+                                          title="Editar"
+                                          disabled={isToggling}
+                                        >
+                                          <i className="bi bi-pencil-square" />
+                                          <span className="inv-catpro-action-label">Editar</span>
+                                        </button>
+                                      ) : null}
 
                                       {/* NEW: se oculta el botÃ³n intermedio de activar/inactivar para evitar acciÃ³n duplicada en el card. */}
                                       {/* WHY: dejar solo el botÃ³n de advertencia/confirmaciÃ³n (`openConfirmDelete`) como flujo correcto en CategorÃ­as. */}
                                       {/* IMPACT: no elimina handlers ni lÃ³gica; solo quita un render duplicado en la UI del card. */}
 
-                                      <button
-                                        type="button"
-                                        className={`inv-catpro-action ${isActive ? 'danger' : 'edit'} inv-catpro-action-compact`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (isActive) {
-                                          openConfirmDelete(c?.id_categoria_insumo, c?.nombre_categoria);
-                                          return;
-                                        }
-                                        void _toggleEstadoCategoriaRapido(c, true);
-                                      }}
-                                      onKeyDown={(e) => e.stopPropagation()}
-                                        title={isInactivateUiBlocked ? 'No se puede inactivar: tiene insumos activos asignados' : (isActive ? 'Inactivar' : 'Activar')}
-                                        aria-label={`${isActive ? 'Inactivar' : 'Activar'} ${c?.nombre_categoria || 'categoria de insumo'}`}
-                                        disabled={isToggling || isInactivateUiBlocked}
-                                      >
-                                        <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
-                                        <span className="inv-catpro-action-label">{isActive ? 'Inactivar' : 'Activar'}</span>
+                                      {canRunEstadoAction ? (
+                                        <button
+                                          type="button"
+                                          className={`inv-catpro-action ${isActive ? 'danger' : 'edit'} inv-catpro-action-compact`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isActive) {
+                                            openConfirmDelete(c?.id_categoria_insumo, c?.nombre_categoria);
+                                            return;
+                                          }
+                                          void _toggleEstadoCategoriaRapido(c, true);
+                                        }}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                          title={isInactivateUiBlocked ? 'No se puede inactivar: tiene insumos activos asignados' : (isActive ? 'Inactivar' : 'Activar')}
+                                          aria-label={`${isActive ? 'Inactivar' : 'Activar'} ${c?.nombre_categoria || 'categoria de insumo'}`}
+                                          disabled={isToggling || isInactivateUiBlocked}
+                                        >
+                                          <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} />
+                                          <span className="inv-catpro-action-label">{isActive ? 'Inactivar' : 'Activar'}</span>
                                     </button>
+                                      ) : null}
                                   </div>
                                 </div>
                               </div>
@@ -1181,14 +1222,16 @@ const CategoriasInsumosPanel = ({
       </div>
 
       {/* FUNCIONALIDAD: FAB SOLO RESPONSIVE */}
-      <button
-        type="button"
-        className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`}
-        onClick={openCreate}
-        title="Nueva"
-      >
-        <i className="bi bi-plus" />
-      </button>
+      {canCrearCategoriasInsumos ? (
+        <button
+          type="button"
+          className={`inv-catpro-fab d-md-none ${isAnyDrawerOpen ? 'is-hidden' : ''}`}
+          onClick={openCreate}
+          title="Nueva"
+        >
+          <i className="bi bi-plus" />
+        </button>
+      ) : null}
 
       {/* NEW: backdrop compartido para drawers laterales (filtros y formulario). */}
       {/* WHY: mantener el patron visual de Insumos/Productos y evitar overlays duplicados. */}
@@ -1387,7 +1430,7 @@ const CategoriasInsumosPanel = ({
               // NEW: bloquea la inactivación desde el checkbox cuando la categoría tiene insumos activos (si el conteo está disponible).
               // WHY: mantener la misma regla de UX que el botón de card en desktop y responsive.
               // IMPACT: solo UI del drawer; el backend valida siempre con 409.
-              disabled={Boolean(loading) || (editDrawerInactivationBlocked && !!form.estado)}
+              disabled={Boolean(loading) || !canCambiarEstadoCategoriasInsumos || (editDrawerInactivationBlocked && !!form.estado)}
               onChange={(e) => setForm((s) => ({ ...s, estado: e.target.checked }))}
               />
               <label className="form-check-label" htmlFor="cat_estado">
@@ -1402,7 +1445,7 @@ const CategoriasInsumosPanel = ({
             <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={closeDrawer}>
               Cancelar
             </button>
-            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={loading || isSaving || hasLiveDuplicates}>
+            <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={loading || isSaving || hasLiveDuplicates || (drawerMode === 'create' && !canCrearCategoriasInsumos) || (drawerMode === 'edit' && !canEditarCategoriasInsumos)}>
               {isSaving ? (drawerMode === 'create' ? 'Creando...' : 'Guardando...') : loading ? 'Cargando...' : drawerMode === 'create' ? 'Crear' : 'Guardar'}
             </button>
           </div>
@@ -1457,7 +1500,7 @@ const CategoriasInsumosPanel = ({
               <button type="button" className="btn inv-pro-btn-cancel" onClick={closeConfirmDelete}>
                 Cancelar
               </button>
-              <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado} disabled={isDeleting}>
+              <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado} disabled={isDeleting || !canCambiarEstadoCategoriasInsumos}>
                 <i className={INACTIVATE_CONFIRM_COPY.iconClass} />
                 <span>{isDeleting ? 'Inactivando...' : 'Inactivar'}</span>
               </button>
@@ -1470,5 +1513,6 @@ const CategoriasInsumosPanel = ({
 };
 
 export default CategoriasInsumosPanel;
+
 
 

@@ -112,6 +112,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   ]);
   const canCrear = can(PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR);
   const canEditar = can(PERMISSIONS.INVENTARIO_PRODUCTOS_EDITAR);
+  const canSubirImagenProducto = can(PERMISSIONS.INVENTARIO_PRODUCTOS_IMAGEN_SUBIR);
+  const canEliminarImagenProducto = can(PERMISSIONS.INVENTARIO_PRODUCTOS_IMAGEN_ELIMINAR);
   const canInactivar = canAny([
     PERMISSIONS.INVENTARIO_PRODUCTOS_ELIMINAR,
     PERMISSIONS.INVENTARIO_PRODUCTOS_ESTADO_CAMBIAR
@@ -915,6 +917,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const onCreateImageChange = useCallback((event) => {
     const input = event.target;
     const file = input.files?.[0];
+    if (!canSubirImagenProducto) {
+      if (input) input.value = '';
+      return;
+    }
 
     if (!file) {
       clearCreateImage();
@@ -959,7 +965,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       resetCreateModalScroll();
     };
     probe.src = previewUrl;
-  }, [clearCreateImage, resetCreateModalScroll, setCreateImageError]);
+  }, [canSubirImagenProducto, clearCreateImage, resetCreateModalScroll, setCreateImageError]);
 
   const onCreatePreviewError = useCallback(() => {
     setCreateImageError('No se pudo mostrar la vista previa de la imagen.');
@@ -1413,18 +1419,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, []);
 
   const openDrawerImagePicker = useCallback(() => {
-    if (drawerImageAction.loading) return;
+    if (drawerImageAction.loading || !canSubirImagenProducto) return;
     drawerImageInputRef.current.click();
-  }, [drawerImageAction.loading]);
+  }, [canSubirImagenProducto, drawerImageAction.loading]);
 
   const onDrawerImageChange = useCallback(async (event) => {
     const input = event.target;
     const file = input.files?.[0];
 
-    if (!canEditar) {
+    if (!canSubirImagenProducto) {
       setDrawerImageAction({
         loading: false,
-        error: 'No tienes permisos para editar productos.'
+        error: 'No tienes permisos para subir imagenes de productos.'
       });
       if (input) input.value = '';
       return;
@@ -1509,12 +1515,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     syncProductosSilently,
     upsertProductoLocal,
     uploadProductoImageFile,
-    canEditar
+    canSubirImagenProducto
   ]);
 
   const removeDrawerImage = useCallback(async () => {
-    if (!canEditar) {
-      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+    if (!canEliminarImagenProducto) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para eliminar imagenes de productos.', 'warning');
       return;
     }
     if (drawerImageAction.loading || !selectedProducto) return;
@@ -1577,7 +1583,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     selectedProducto,
     syncProductosSilently,
     upsertProductoLocal,
-    canEditar
+    canEliminarImagenProducto
   ]);
 
   const duplicarProductoDesdeDrawer = () => {
@@ -2341,6 +2347,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const productsAuxDrawerOpen = filtersOpen || createPanelOpen;
 
   const renderCreateImageField = (className = 'col-12') => (
+    !canSubirImagenProducto ? null : (
     <div className={className}>
       <label className="form-label mb-1">Imagen (opcional)</label>
       <div className={`inv-prod-image-field ${createImage.loading ? 'is-loading' : ''}`}>
@@ -2384,6 +2391,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         )}
       </div>
     </div>
+    )
   );
 
   // AJUSTE: renderiza cada KPI con sparkline de fondo sin duplicar contenido principal.
@@ -4067,18 +4075,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         type="button"
                         className="btn inv-prod-btn-subtle"
                         onClick={openDrawerImagePicker}
-                        disabled={drawerImageAction.loading || !canEditar}
+                        disabled={drawerImageAction.loading || !canSubirImagenProducto}
                       >
                         <i className="bi bi-upload" /> {drawerImageSrc ? 'Cambiar imagen' : 'Agregar imagen'}
                       </button>
-                      <button
-                        type="button"
-                        className="btn inv-prod-btn-outline"
-                        onClick={removeDrawerImage}
-                        disabled={drawerImageAction.loading || !canEditar || (!drawerImageSrc && !selectedProducto.id_archivo_imagen_principal)}
-                      >
-                        Quitar
-                      </button>
+                      {canEliminarImagenProducto ? (
+                        <button
+                          type="button"
+                          className="btn inv-prod-btn-outline"
+                          onClick={removeDrawerImage}
+                          disabled={drawerImageAction.loading || (!drawerImageSrc && !selectedProducto.id_archivo_imagen_principal)}
+                        >
+                          Quitar
+                        </button>
+                      ) : null}
                     </div>
                     {drawerImageAction.loading ? (
                       <div className="inv-prod-image-feedback">Procesando imagen...</div>

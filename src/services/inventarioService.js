@@ -315,6 +315,11 @@ export const inventarioService = {
       id_campo: 'id_categoria_producto',
       id_valor: id
     }),
+  actualizarEstadoCategoria: (id, estado) =>
+    apiFetch('/categorias_productos/estado', 'PATCH', {
+      id_categoria_producto: id,
+      estado
+    }),
   eliminarCategoria: (id) =>
     apiFetch('/categorias_productos', 'DELETE', {
       columna_id: 'id_categoria_producto',
@@ -337,6 +342,11 @@ export const inventarioService = {
       valor,
       id_campo: 'id_categoria_insumo',
       id_valor: id
+    }),
+  actualizarEstadoCategoriaInsumo: (id, estado) =>
+    apiFetch('/categorias_insumos/estado', 'PATCH', {
+      id_categoria_insumo: id,
+      estado
     }),
   eliminarCategoriaInsumo: (id) =>
     apiFetch('/categorias_insumos', 'DELETE', {

@@ -607,12 +607,10 @@ const OrdenesCompraTab = ({ openToast }) => {
   ]);
   const canVerProductosCatalogo = canAny([
     PERMISSIONS.INVENTARIO_PRODUCTOS_VER,
-    PERMISSIONS.INVENTARIO_PRODUCTOS_LISTADO_VER,
     PERMISSIONS.INVENTARIO_PRODUCTOS_DETALLE_VER
   ]);
   const canVerInsumosCatalogo = canAny([
     PERMISSIONS.INVENTARIO_INSUMOS_VER,
-    PERMISSIONS.INVENTARIO_INSUMOS_LISTADO_VER,
     PERMISSIONS.INVENTARIO_INSUMOS_DETALLE_VER
   ]);
   const canSolicitarItemNuevo = canCrear && !canCrearCatalogoDirecto;
