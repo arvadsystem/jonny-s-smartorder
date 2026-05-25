@@ -77,7 +77,12 @@ export const useCocina = ({
     const normalizedRows = Array.isArray(rows) ? rows : [];
     return normalizedRows.map((pedido) => ({
       ...pedido,
-      expected_minutes_kds: Number(pedido?.kds_expected_minutes ?? 0) || 20,
+      // AM: Prioriza minutos oficiales del pedido y usa fallback seguro solo si no son validos.
+      expected_minutes_kds:
+        Number.isFinite(Number(pedido?.kds_expected_minutes)) && Number(pedido?.kds_expected_minutes) > 0
+          ? Number(pedido.kds_expected_minutes)
+          : 20,
+      // AM: Base del temporizador prioriza kds_started_at para alinear contador/alerta visual.
       kds_timer_base_at:
         pedido?.kds_started_at ||
         pedido?.visible_en_cocina_at ||

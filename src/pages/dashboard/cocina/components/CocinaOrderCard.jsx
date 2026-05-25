@@ -143,13 +143,14 @@ export default function CocinaOrderCard({
   const action = getOrderAction(pedido);
 
   const countdown = buildKitchenCountdown({
-    baseDateValue:
-      pedido.kds_timer_base_at || pedido.visible_en_cocina_at || pedido.fecha_hora_facturacion || pedido.fecha_hora_pedido,
+    // AM: Usa la base ya normalizada para evitar discrepancias entre backend y timer del card.
+    baseDateValue: pedido.kds_timer_base_at || null,
     expectedMinutes: pedido.expected_minutes_kds || 20,
     now
   });
   const timerClass = countdown.isDelayed ? 'is-critical' : 'is-normal';
-  const isExpiring = countdown.isDelayed || pedido.esta_proximo_a_expirar === true;
+  // AM: La alerta roja debe depender solo del contador real del pedido.
+  const isExpiring = countdown.isDelayed;
 
   const allItems = Array.isArray(pedido.items) ? pedido.items : [];
   const isDensePendingCard = isPendingColumn && allItems.length > 3;
