@@ -168,6 +168,125 @@ const ROLE_PREVIEW_GROUPS = [
   { key: 'otros', label: 'Otros', prefixes: [] }
 ];
 
+const INVENTARIO_SUBGROUPS = [
+  { key: "inventario_general", label: "Inventario general", order: 1 },
+  { key: "almacenes", label: "Almacenes", order: 2 },
+  { key: "proveedores", label: "Proveedores", order: 3 },
+  { key: "categorias_productos", label: "Categorias de productos", order: 4 },
+  { key: "categorias_insumos", label: "Categorias de insumos", order: 5 },
+  { key: "productos", label: "Productos", order: 6 },
+  { key: "insumos", label: "Insumos", order: 7 },
+  { key: "mobiliario", label: "Mobiliario", order: 8 },
+  { key: "movimientos_kardex", label: "Movimientos / Kardex", order: 9 },
+  { key: "archivos", label: "Archivos", order: 10 },
+  { key: "ordenes_compra", label: "Ordenes de compra", order: 11 },
+  { key: "ordenes_compra_legacy", label: "Ordenes de compra legacy", order: 12 },
+  { key: "alertas", label: "Alertas", order: 13 },
+  { key: "otros", label: "Inventario / Otros", order: 99 }
+];
+
+const INVENTARIO_SUBGROUPS_BY_KEY = new Map(
+  INVENTARIO_SUBGROUPS.map((group) => [group.key, group])
+);
+
+const isInventarioPermiso = (nombrePermiso) =>
+  String(nombrePermiso ?? "").trim().toUpperCase().startsWith("INVENTARIO_");
+
+const resolveInventarioSubgroup = (nombrePermiso) => {
+  const technicalName = String(nombrePermiso ?? "").trim().toUpperCase();
+  const fallback = INVENTARIO_SUBGROUPS_BY_KEY.get("otros");
+  if (!technicalName.startsWith("INVENTARIO_")) return fallback;
+
+  if (technicalName === "INVENTARIO_VER") {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("inventario_general");
+  }
+  if (technicalName.startsWith("INVENTARIO_ALMACENES_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("almacenes");
+  }
+  if (technicalName.startsWith("INVENTARIO_PROVEEDORES_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("proveedores");
+  }
+  if (technicalName.startsWith("INVENTARIO_CATEGORIAS_INSUMOS_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("categorias_insumos");
+  }
+  if (technicalName.startsWith("INVENTARIO_CATEGORIAS_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("categorias_productos");
+  }
+  if (technicalName.startsWith("INVENTARIO_PRODUCTOS_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("productos");
+  }
+  if (technicalName.startsWith("INVENTARIO_INSUMOS_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("insumos");
+  }
+  if (technicalName.startsWith("INVENTARIO_MOBILIARIO_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("mobiliario");
+  }
+  if (technicalName.startsWith("INVENTARIO_MOVIMIENTOS_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("movimientos_kardex");
+  }
+  if (technicalName.startsWith("INVENTARIO_ARCHIVOS_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("archivos");
+  }
+  if (technicalName.startsWith("INVENTARIO_OC_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("ordenes_compra");
+  }
+  if (technicalName.startsWith("INVENTARIO_ORDENES_COMPRA_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("ordenes_compra_legacy");
+  }
+  if (technicalName.startsWith("INVENTARIO_ALERTAS_")) {
+    return INVENTARIO_SUBGROUPS_BY_KEY.get("alertas");
+  }
+
+  return fallback;
+};
+
+const groupInventarioPermisos = (rows) => {
+  const grouped = new Map(INVENTARIO_SUBGROUPS.map((group) => [group.key, []]));
+
+  (Array.isArray(rows) ? rows : []).forEach((permiso) => {
+    if (!isInventarioPermiso(permiso?.nombre_permiso)) return;
+    const group = resolveInventarioSubgroup(permiso?.nombre_permiso);
+    grouped.get(group.key)?.push(permiso);
+  });
+
+  return INVENTARIO_SUBGROUPS.map((group) => ({
+    ...group,
+    permisos: (grouped.get(group.key) || []).sort((left, right) =>
+      String(left?.nombre_permiso || "").localeCompare(String(right?.nombre_permiso || ""), "es", {
+        sensitivity: "base"
+      })
+    )
+  })).filter((group) => group.permisos.length > 0);
+};
+
+const buildPermisoRenderBlocks = (rows) => {
+  const source = Array.isArray(rows) ? rows : [];
+  const blocks = [];
+  let index = 0;
+
+  while (index < source.length) {
+    const row = source[index];
+    if (!isInventarioPermiso(row?.nombre_permiso)) {
+      blocks.push({ type: "permiso", permiso: row });
+      index += 1;
+      continue;
+    }
+
+    const inventoryRows = [];
+    while (index < source.length && isInventarioPermiso(source[index]?.nombre_permiso)) {
+      inventoryRows.push(source[index]);
+      index += 1;
+    }
+
+    blocks.push({
+      type: "inventario",
+      groups: groupInventarioPermisos(inventoryRows)
+    });
+  }
+
+  return blocks;
+};
+
 const resolvePreviewGroup = (nombrePermiso) => {
   const technicalName = String(nombrePermiso ?? '').trim().toUpperCase();
   const group =
@@ -915,9 +1034,14 @@ const RolesPermisosTab = () => {
     return false;
   }, [allPermisos, checkedPermisos]);
 
+  const permisoRenderBlocks = useMemo(() => buildPermisoRenderBlocks(permisos), [permisos]);
   const previewGroups = useMemo(() => groupPreviewPermisos(previewPermisos), [previewPermisos]);
   const activePreviewGroup =
     previewGroups.find((group) => group.key === activePreviewGroupKey) || previewGroups[0] || null;
+  const activePreviewInventarioGroups = useMemo(() => {
+    if (activePreviewGroup?.key !== "inventario") return [];
+    return groupInventarioPermisos(activePreviewGroup?.permisos || []);
+  }, [activePreviewGroup]);
   const deleteImpact = deleteDialog.impact;
   const deleteBlocked = Number(deleteImpact?.total_usuarios || 0) > 0;
 
@@ -956,6 +1080,45 @@ const RolesPermisosTab = () => {
       activeElement.blur();
     }
   }, [isMobileLayout, mobileSection]);
+
+  const renderPermisoItem = (permiso) => {
+    const idPermiso = Number(permiso.id_permiso);
+    const checked = checkedPermisos.has(idPermiso);
+    const inputId = `permiso-${idPermiso}`;
+
+    return (
+      <div key={idPermiso} className="roles-permisos-item">
+        <div className="roles-permisos-item-main">
+          <span className="roles-permisos-item-icon" aria-hidden="true">
+            <i className={getPermissionIconClass(permiso.nombre_permiso)} />
+          </span>
+          <div className="roles-permisos-item-copy">
+            <label htmlFor={inputId} className="roles-permisos-item-label">
+              {humanizePermissionName(permiso.nombre_permiso)}
+            </label>
+            <small className="roles-permisos-item-technical">
+              {permiso.nombre_permiso}
+            </small>
+            <small className="roles-permisos-item-description">
+              {permiso.descripcion || "Sin descripcion registrada."}
+            </small>
+          </div>
+        </div>
+
+        <div className="form-check form-switch m-0">
+          <input
+            id={inputId}
+            className="form-check-input"
+            type="checkbox"
+            role="switch"
+            checked={checked}
+            disabled={!canEditRolesPermisos}
+            onChange={() => handleTogglePermiso(idPermiso)}
+          />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -1248,39 +1411,25 @@ const RolesPermisosTab = () => {
                         </p>
                       </div>
                     ) : (
-                      permisos.map((permiso) => {
-                        const idPermiso = Number(permiso.id_permiso);
-                        const checked = checkedPermisos.has(idPermiso);
-                        const inputId = `permiso-${idPermiso}`;
+                      permisoRenderBlocks.map((block, blockIndex) => {
+                        if (block.type === "permiso") {
+                          return renderPermisoItem(block.permiso);
+                        }
 
                         return (
-                          <div key={idPermiso} className="roles-permisos-item">
-                            <div className="roles-permisos-item-main">
-                              <span className="roles-permisos-item-icon" aria-hidden="true">
-                                <i className={getPermissionIconClass(permiso.nombre_permiso)} />
-                              </span>
-                              <div className="roles-permisos-item-copy">
-                                <label htmlFor={inputId} className="roles-permisos-item-label">
-                                  {humanizePermissionName(permiso.nombre_permiso)}
-                                </label>
-                                <small className="roles-permisos-item-description">
-                                  {permiso.descripcion || "Sin descripcion registrada."}
-                                </small>
+                          <section key={`inventario-block-${blockIndex}`} className="roles-permisos-inv-grouped">
+                            {block.groups.map((group) => (
+                              <div key={group.key} className="roles-permisos-inv-group">
+                                <div className="roles-permisos-inv-group__head">
+                                  <strong>{group.label}</strong>
+                                  <span>{group.permisos.length}</span>
+                                </div>
+                                <div className="roles-permisos-inv-group__list">
+                                  {group.permisos.map((permiso) => renderPermisoItem(permiso))}
+                                </div>
                               </div>
-                            </div>
-
-                            <div className="form-check form-switch m-0">
-                              <input
-                                id={inputId}
-                                className="form-check-input"
-                                type="checkbox"
-                                role="switch"
-                                checked={checked}
-                                disabled={!canEditRolesPermisos}
-                                onChange={() => handleTogglePermiso(idPermiso)}
-                              />
-                            </div>
-                          </div>
+                            ))}
+                          </section>
                         );
                       })
                     )}
@@ -1448,19 +1597,43 @@ const RolesPermisosTab = () => {
 
                   <div className="roles-preview-list-shell">
                     <div className="roles-preview-group__list">
-                      {(activePreviewGroup?.permisos || []).map((permiso) => (
-                        <article key={permiso.id_permiso} className="roles-preview-permiso">
-                          <div className="roles-preview-permiso__label">
-                            {humanizePermissionName(permiso.nombre_permiso)}
-                          </div>
-                          <div className="roles-preview-permiso__tech">
-                            {permiso.nombre_permiso}
-                          </div>
-                          <div className="roles-preview-permiso__description">
-                            {permiso.descripcion || "Sin descripcion registrada."}
-                          </div>
-                        </article>
-                      ))}
+                      {activePreviewGroup?.key === "inventario"
+                        ? activePreviewInventarioGroups.map((group) => (
+                          <section key={group.key} className="roles-preview-inv-subgroup">
+                            <div className="roles-preview-inv-subgroup__head">
+                              <strong>{group.label}</strong>
+                              <span>{group.permisos.length}</span>
+                            </div>
+                            <div className="roles-preview-inv-subgroup__list">
+                              {group.permisos.map((permiso) => (
+                                <article key={permiso.id_permiso} className="roles-preview-permiso">
+                                  <div className="roles-preview-permiso__label">
+                                    {humanizePermissionName(permiso.nombre_permiso)}
+                                  </div>
+                                  <div className="roles-preview-permiso__tech">
+                                    {permiso.nombre_permiso}
+                                  </div>
+                                  <div className="roles-preview-permiso__description">
+                                    {permiso.descripcion || "Sin descripcion registrada."}
+                                  </div>
+                                </article>
+                              ))}
+                            </div>
+                          </section>
+                        ))
+                        : (activePreviewGroup?.permisos || []).map((permiso) => (
+                          <article key={permiso.id_permiso} className="roles-preview-permiso">
+                            <div className="roles-preview-permiso__label">
+                              {humanizePermissionName(permiso.nombre_permiso)}
+                            </div>
+                            <div className="roles-preview-permiso__tech">
+                              {permiso.nombre_permiso}
+                            </div>
+                            <div className="roles-preview-permiso__description">
+                              {permiso.descripcion || "Sin descripcion registrada."}
+                            </div>
+                          </article>
+                        ))}
                     </div>
                   </div>
                 </section>
