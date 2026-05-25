@@ -56,6 +56,9 @@ export default function VentaDetalleModal({
   const statusLabel = venta?.statusLabel || 'Pendiente';
   const ticketDateTime = venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido;
   const detailItems = Array.isArray(venta?.items) ? venta.items : [];
+  const reversiones = Array.isArray(venta?.reversiones) ? venta.reversiones : [];
+  const hasReversiones = reversiones.length > 0;
+  const montoReversadoTotal = Number(venta?.monto_reversado_total || 0);
   const hasExplicitDiscountSplit = detailItems.some(
     (item) => Number(item?.descuento_linea || 0) > 0 || Number(item?.descuento_global || 0) > 0
   );
@@ -148,67 +151,131 @@ export default function VentaDetalleModal({
                 <div className="ventas-detail-modal__section-title">Items</div>
 
                 {detailItems.length ? (
-                  <div className="ventas-detail-modal__table-wrap">
-                    <table className="table ventas-detail-modal__table">
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>Item</th>
-                          <th>Tipo</th>
-                          <th>Cant.</th>
-                          <th>P. Unit.</th>
-                          {shouldShowItemDiscount ? <th>Desc.</th> : null}
-                          <th>Subtotal</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detailItems.map((item, index) => (
-                          <tr
-                            key={
-                              item.id_detalle ||
-                              item.id_producto ||
-                              item.id_combo ||
-                              item.id_receta ||
-                              `${item.tipo_item}-${index}`
-                            }
-                          >
-                            <td>{index + 1}</td>
-                            <td>
-                              <div className="ventas-detail-modal__item-name">
-                                <span>{item.nombre_item || item.nombre_producto}</span>
-                                {item.observacion ? (
-                                  <small className="ventas-detail-modal__item-note">{item.observacion}</small>
-                                ) : null}
-                              </div>
-                            </td>
-                            <td>{item.tipo_item}</td>
-                            <td>{item.cantidad}</td>
-                            <td>{formatCurrency(item.precio_unitario)}</td>
-                            {shouldShowItemDiscount ? (
-                              <td>
-                                {Number(item.descuento || 0) > 0 ? (
-                                  <div className="ventas-detail-modal__discount-cell">
-                                    <strong>-{formatCurrency(item.descuento)}</strong>
-                                    {Number(item.descuento_linea || 0) > 0 ? (
-                                      <small>Linea: {formatCurrency(item.descuento_linea)}</small>
-                                    ) : null}
-                                    {Number(item.descuento_global || 0) > 0 ? (
-                                      <small>Global: {formatCurrency(item.descuento_global)}</small>
-                                    ) : null}
-                                  </div>
-                                ) : '--'}
-                              </td>
-                            ) : null}
-                            <td>{formatCurrency(item.total_linea || item.sub_total)}</td>
+                  <>
+                    <div className="ventas-detail-modal__table-wrap">
+                      <table className="table ventas-detail-modal__table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Item</th>
+                            <th>Tipo</th>
+                            <th>Cant.</th>
+                            <th>P. Unit.</th>
+                            {shouldShowItemDiscount ? <th>Desc.</th> : null}
+                            <th>Subtotal</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {detailItems.map((item, index) => (
+                            <tr
+                              key={
+                                item.id_detalle ||
+                                item.id_producto ||
+                                item.id_combo ||
+                                item.id_receta ||
+                                `${item.tipo_item}-${index}`
+                              }
+                            >
+                              <td>{index + 1}</td>
+                              <td>
+                                <div className="ventas-detail-modal__item-name">
+                                  <span>{item.nombre_item || item.nombre_producto}</span>
+                                  {Number(item.cantidad_revertida || 0) > 0 ? (
+                                    <small className="ventas-detail-modal__reversed-note">
+                                      Revertido: {item.cantidad_revertida} de {item.cantidad}
+                                    </small>
+                                  ) : null}
+                                  {item.observacion ? (
+                                    <small className="ventas-detail-modal__item-note">{item.observacion}</small>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td>{item.tipo_item}</td>
+                              <td>{item.cantidad}</td>
+                              <td>{formatCurrency(item.precio_unitario)}</td>
+                              {shouldShowItemDiscount ? (
+                                <td>
+                                  {Number(item.descuento || 0) > 0 ? (
+                                    <div className="ventas-detail-modal__discount-cell">
+                                      <strong>-{formatCurrency(item.descuento)}</strong>
+                                      {Number(item.descuento_linea || 0) > 0 ? (
+                                        <small>Linea: {formatCurrency(item.descuento_linea)}</small>
+                                      ) : null}
+                                      {Number(item.descuento_global || 0) > 0 ? (
+                                        <small>Global: {formatCurrency(item.descuento_global)}</small>
+                                      ) : null}
+                                    </div>
+                                  ) : '--'}
+                                </td>
+                              ) : null}
+                              <td>{formatCurrency(item.total_linea || item.sub_total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="ventas-detail-modal__item-cards">
+                      {detailItems.map((item, index) => (
+                        <article
+                          className="ventas-detail-modal__item-card"
+                          key={`mobile-${item.id_detalle || item.id_producto || item.id_combo || item.id_receta || index}`}
+                        >
+                          <div>
+                            <strong>{item.nombre_item || item.nombre_producto}</strong>
+                            <span>{item.tipo_item}</span>
+                          </div>
+                          <dl>
+                            <div><dt>Cant.</dt><dd>{item.cantidad}</dd></div>
+                            <div><dt>P. unit.</dt><dd>{formatCurrency(item.precio_unitario)}</dd></div>
+                            {Number(item.cantidad_revertida || 0) > 0 ? (
+                              <div><dt>Revertido</dt><dd>{item.cantidad_revertida} de {item.cantidad}</dd></div>
+                            ) : null}
+                            {Number(item.descuento || 0) > 0 ? (
+                              <div><dt>Descuento</dt><dd>-{formatCurrency(item.descuento)}</dd></div>
+                            ) : null}
+                            <div><dt>Subtotal</dt><dd>{formatCurrency(item.total_linea || item.sub_total)}</dd></div>
+                          </dl>
+                        </article>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <div className="ventas-detail-modal__empty">No hay items asociados a esta venta.</div>
                 )}
               </div>
+
+              {hasReversiones ? (
+                <div className="ventas-detail-modal__section">
+                  <div className="ventas-detail-modal__section-title">Reversiones registradas</div>
+                  <div className="ventas-detail-modal__reversions">
+                    {reversiones.map((reversion) => (
+                      <article className="ventas-detail-modal__reversion-card" key={reversion.id_reversion || reversion.codigo_reversion}>
+                        <div className="ventas-detail-modal__reversion-head">
+                          <div>
+                            <strong>{reversion.codigo_reversion || 'REV'}</strong>
+                            <span>{reversion.tipo_reversion || 'Reversion'} - {reversion.motivo || 'Sin motivo'}</span>
+                          </div>
+                          <strong className="ventas-detail-modal__reversion-amount">
+                            -{formatCurrency(reversion.monto_reversado)}
+                          </strong>
+                        </div>
+                        {reversion.observacion ? (
+                          <p className="ventas-detail-modal__reversion-note">{reversion.observacion}</p>
+                        ) : null}
+                        <div className="ventas-detail-modal__reversion-lines">
+                          {(Array.isArray(reversion.lineas) ? reversion.lineas : []).map((linea, index) => (
+                            <div key={`${reversion.id_reversion}-${linea.id_detalle_factura || index}`}>
+                              <span>{linea.nombre_item || 'Item'}</span>
+                              <strong>{linea.cantidad_revertida} x {formatCurrency(linea.precio_unitario_original)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="ventas-detail-modal__totals-card">
                 <div>
@@ -239,6 +306,12 @@ export default function VentaDetalleModal({
                   <span>Total</span>
                   <strong>{formatCurrency(venta?.total)}</strong>
                 </div>
+                {montoReversadoTotal > 0 ? (
+                  <div className="is-reversed">
+                    <span>Total reversado</span>
+                    <strong>-{formatCurrency(montoReversadoTotal)}</strong>
+                  </div>
+                ) : null}
               </div>
 
               <footer className="ventas-detail-modal__footer">
