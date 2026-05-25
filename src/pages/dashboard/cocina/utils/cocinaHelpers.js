@@ -50,8 +50,13 @@ const parseDate = (value) => {
 };
 
 export const resolveKitchenBaseDate = (order) =>
+  // AM: Base temporal coherente para KDS: prioriza kds_started_at.
   parseDate(
-    order?.visible_en_cocina_at || order?.fecha_hora_facturacion || order?.fecha_hora_pedido || order?.created_at
+    order?.kds_started_at ||
+      order?.visible_en_cocina_at ||
+      order?.fecha_hora_facturacion ||
+      order?.fecha_hora_pedido ||
+      order?.created_at
   );
 
 const roundMoney = (value) => Number(Number(value || 0).toFixed(2));
