@@ -97,7 +97,10 @@ export const normalizeSesionActiva = (payload = {}) => {
     codigo_caja: String(session.codigo_caja ?? '').trim(),
     nombre_caja: String(session.nombre_caja ?? '').trim(),
     nombre_sucursal: String(session.nombre_sucursal ?? '').trim(),
-    rol_codigo: String(session.rol_codigo ?? '').trim().toUpperCase()
+    rol_codigo: String(session.rol_codigo ?? session.rol_participacion ?? '').trim().toUpperCase(),
+    rol_participacion: String(session.rol_participacion ?? session.rol_codigo ?? '').trim().toUpperCase(),
+    responsable_usuario: String(session.responsable_usuario ?? '').trim(),
+    responsable_nombre: String(session.responsable_nombre ?? '').trim()
   };
 };
 
@@ -126,6 +129,8 @@ export const normalizeSesion = (row = {}) => ({
   nombre_sucursal: String(row.nombre_sucursal ?? '').trim(),
   estado_codigo: String(row.estado_codigo ?? '').trim().toUpperCase(),
   estado_nombre: String(row.estado_nombre ?? '').trim(),
+  resolucion_codigo: String(row.resolucion_codigo ?? '').trim().toUpperCase(),
+  resolucion_nombre: String(row.resolucion_nombre ?? '').trim(),
   responsable_usuario: String(row.responsable_usuario ?? '').trim(),
   responsable_nombre: String(row.responsable_nombre ?? '').trim()
 });
@@ -143,7 +148,49 @@ export const normalizeCierreReporte = (row = {}) => ({
   resolucion_codigo: String(row.resolucion_codigo ?? '').trim().toUpperCase(),
   resolucion_nombre: String(row.resolucion_nombre ?? '').trim(),
   usuario_cierre: String(row.usuario_cierre ?? '').trim(),
-  usuario_cierre_nombre: String(row.usuario_cierre_nombre ?? '').trim()
+  usuario_cierre_nombre: String(row.usuario_cierre_nombre ?? '').trim(),
+  recuentos_count: toNumber(row.recuentos_count ?? row.validaciones_count, 0),
+  ultimo_recuento_numero: toNumber(row.ultimo_recuento_numero ?? row.ultima_validacion_numero, 0) || null,
+  ultima_revision_fecha: row.ultima_revision_fecha ?? row.ultima_validacion_fecha ?? null
+});
+
+const normalizeCierreRecuentoMetodo = (row = {}) => ({
+  metodo_pago_codigo: String(row.metodo_pago_codigo ?? '').trim().toUpperCase(),
+  monto_teorico: row.monto_teorico === null || row.monto_teorico === undefined
+    ? null
+    : toNumber(row.monto_teorico, 0),
+  monto_declarado: toNumber(row.monto_declarado, 0),
+  diferencia: row.diferencia === null || row.diferencia === undefined
+    ? null
+    : toNumber(row.diferencia, 0),
+  cantidad_referencias: row.cantidad_referencias === null || row.cantidad_referencias === undefined
+    ? null
+    : toNumber(row.cantidad_referencias, 0),
+  resultado: String(row.resultado ?? '').trim().toUpperCase(),
+  requiere_revision: truthy(row.requiere_revision),
+  observacion: String(row.observacion ?? '').trim()
+});
+
+const normalizeCierreRecuento = (row = {}) => ({
+  id_validacion_cierre: toNumber(row.id_validacion_cierre, 0) || null,
+  numero_intento: toNumber(row.numero_intento, 0),
+  id_cierre_caja: toNumber(row.id_cierre_caja, 0) || null,
+  usado_para_cierre: truthy(row.usado_para_cierre),
+  id_usuario_valida: toNumber(row.id_usuario_valida, 0) || null,
+  usuario_valida_nombre: String(row.usuario_valida_nombre ?? row.usuario_valida ?? '').trim(),
+  fecha_validacion: row.fecha_validacion ?? null,
+  total_teorico: row.total_teorico === null || row.total_teorico === undefined
+    ? null
+    : toNumber(row.total_teorico, 0),
+  total_declarado: row.total_declarado === null || row.total_declarado === undefined
+    ? null
+    : toNumber(row.total_declarado, 0),
+  diferencia_total: row.diferencia_total === null || row.diferencia_total === undefined
+    ? null
+    : toNumber(row.diferencia_total, 0),
+  hay_diferencia: truthy(row.hay_diferencia),
+  observacion_general: String(row.observacion_general ?? '').trim(),
+  metodos: (Array.isArray(row.metodos) ? row.metodos : []).map(normalizeCierreRecuentoMetodo)
 });
 
 export const normalizeSesionDetalle = (payload = {}) => {
@@ -151,6 +198,9 @@ export const normalizeSesionDetalle = (payload = {}) => {
   const cobrosPorUsuario = Array.isArray(payload.cobros_por_usuario) ? payload.cobros_por_usuario : [];
   const arqueos = Array.isArray(payload.arqueos) ? payload.arqueos : [];
   const movimientos = Array.isArray(payload.movimientos) ? payload.movimientos : [];
+  const recuentos = Array.isArray(payload.recuentos)
+    ? payload.recuentos
+    : (Array.isArray(payload.validaciones_cierre) ? payload.validaciones_cierre : []);
   const resumen = payload.resumen_operativo ?? {};
 
   const equipoCaja = participantes.map((row) => ({
@@ -249,6 +299,8 @@ export const normalizeSesionDetalle = (payload = {}) => {
       fecha_movimiento: row.fecha_movimiento ?? null,
       fecha_creacion: row.fecha_creacion ?? null
     })),
+    recuentos: recuentos.map(normalizeCierreRecuento),
+    validaciones_cierre: recuentos.map(normalizeCierreRecuento),
     incidencias: [],
     cierre: payload.cierre
       ? {
@@ -360,7 +412,7 @@ export const resolveDifferenceBadge = (value) => {
   const amount = toNumber(value, 0);
   if (amount === 0) {
     return {
-      label: 'Cuadrada',
+      label: 'Cuadrado',
       className: 'bg-success border-success text-white'
     };
   }
@@ -368,34 +420,94 @@ export const resolveDifferenceBadge = (value) => {
   return {
     label: amount > 0 ? 'Sobrante' : 'Faltante',
     className: amount > 0
-      ? 'bg-info border-info text-white'
+      ? 'bg-info-subtle border-info text-info'
       : 'bg-danger border-danger text-white'
   };
 };
 
 export const resolveClosureStateBadge = (closure) => {
-  const difference = toNumber(closure?.diferencia, 0);
-  const hasResolution = Boolean(String(closure?.resolucion_nombre || closure?.resolucion_codigo || '').trim());
-
-  if (difference === 0) {
+  if (!closure) {
     return {
-      key: 'CUADRADO',
-      label: 'Cuadrado',
-      className: 'bg-success border-success text-white'
+      key: 'SIN_CIERRE',
+      label: 'Sin cierre',
+      className: 'bg-light border-secondary text-secondary',
+      severity: 'neutral'
     };
   }
 
-  if (hasResolution) {
+  const rawDifference = closure?.diferencia ?? closure?.diferencia_cierre;
+  if (rawDifference === null || rawDifference === undefined) {
+    return {
+      key: 'SIN_CIERRE',
+      label: 'Sin cierre',
+      className: 'bg-light border-secondary text-secondary',
+      severity: 'neutral'
+    };
+  }
+
+  const difference = toNumber(rawDifference, 0);
+  const resolutionCode = String(closure?.resolucion_codigo || '').trim().toUpperCase();
+
+  if (difference === 0 || resolutionCode === 'CAJA_CUADRA') {
+    return {
+      key: 'CUADRADO',
+      label: 'Cuadrado',
+      className: 'bg-success border-success text-white',
+      severity: 'success'
+    };
+  }
+
+  if (resolutionCode === 'DESCUENTO_EMPLEADO') {
     return {
       key: 'RESUELTO',
-      label: 'Con resolucion',
-      className: 'bg-warning border-warning text-dark'
+      label: 'Faltante asignado a empleado',
+      className: 'bg-danger border-danger text-white',
+      severity: 'critical'
+    };
+  }
+
+  if (resolutionCode === 'GASTO_EMPRESA') {
+    return {
+      key: 'RESUELTO',
+      label: 'Asumido por empresa',
+      className: 'bg-warning border-warning text-dark',
+      severity: 'resolved'
+    };
+  }
+
+  if (resolutionCode === 'PENDIENTE_REVISION') {
+    if (difference < 0) {
+      return {
+        key: 'PENDIENTE',
+        label: 'Faltante - pendiente auditoria',
+        className: 'bg-danger border-danger text-white',
+        severity: 'critical'
+      };
+    }
+
+    return {
+      key: 'PENDIENTE',
+      label: difference > 0 ? 'Sobrante - pendiente auditoria' : 'Pendiente auditoria',
+      className: difference > 0
+        ? 'bg-info-subtle border-info text-info'
+        : 'bg-warning border-warning text-dark',
+      severity: difference > 0 ? 'info' : 'warning'
+    };
+  }
+
+  if (difference > 0) {
+    return {
+      key: 'SOBRANTE',
+      label: 'Sobrante',
+      className: 'bg-info-subtle border-info text-info',
+      severity: 'info'
     };
   }
 
   return {
     key: 'PENDIENTE',
-    label: 'Pendiente',
-    className: 'bg-danger border-danger text-white'
+    label: 'Faltante',
+    className: 'bg-danger border-danger text-white',
+    severity: 'critical'
   };
 };

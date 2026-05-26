@@ -134,6 +134,7 @@ export default function CierresCajaView() {
     validateCloseSesion,
     createMiSesionMovimientoManual,
     createArqueo,
+    resolveCloseDifference,
     listUsuariosOperativos,
     listCajaCatalogo
   } = useCierresCaja();
@@ -326,6 +327,15 @@ export default function CierresCajaView() {
       loadSesionActiva(scopeQuery),
       loadSesiones(query)
     ]);
+  };
+
+  const handleResolveDifference = async (payload) => {
+    const idCierreCaja = selectedDetalle?.cierre?.id_cierre_caja;
+    if (!idCierreCaja) return null;
+    const response = await resolveCloseDifference(idCierreCaja, payload);
+    await refreshCurrentScope();
+    await ensureDetalle(selectedSesion || selectedDetalle?.sesion, { contexto: 'DETALLE' });
+    return response;
   };
 
   const loadMiAsignacionCaja = useCallback(async () => {
@@ -734,6 +744,8 @@ export default function CierresCajaView() {
         canCloseSession={canCloseSession}
         canUseCloseFlow={canUseCloseFlow}
         canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
+        canResolveDifference={canResolveDifference}
+        saving={saving}
         onClose={() => {
           setDetailOpen(false);
           setSelectedSesion(null);
@@ -741,6 +753,7 @@ export default function CierresCajaView() {
         }}
         onOpenArqueo={openArqueo}
         onOpenCerrar={openCerrar}
+        onResolveDifference={handleResolveDifference}
       />
 
       <CierreCajaAbrirModal

@@ -5,6 +5,9 @@ import sucursalesService from '../../../../services/sucursalesService';
 import cajasService from '../../../../services/cajasService';
 import VentasToast from '../../ventas/components/VentasToast';
 import CierreCajaDetalleModal from '../../ventas/components/cierres/CierreCajaDetalleModal';
+import CierreCajaResolverDiferenciaModal, {
+  canResolveCierreDifference
+} from '../../ventas/components/cierres/CierreCajaResolverDiferenciaModal';
 import CierresCajaFiltersDrawer from './CierresCajaFiltersDrawer';
 import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
 import {
@@ -29,6 +32,13 @@ const isTruthyState = (value) =>
 const countActiveFilters = ({ estado = '', desde = '', hasta = '', sucursal = '' }) =>
   [estado, desde, hasta, sucursal].filter((value) => String(value || '').trim() !== '').length;
 
+const resolveAdministrativeResolutionLabel = (closure = {}) => {
+  const code = String(closure.resolucion_codigo || '').trim().toUpperCase();
+  if (!code || code === 'PENDIENTE_REVISION') return 'Pendiente auditoria';
+  if (code === 'CAJA_CUADRA') return 'Cuadrado';
+  return closure.resolucion_nombre || closure.resolucion_label || 'Resuelto';
+};
+
 const withinDateRange = (value, from, to) => {
   if (!value) return false;
   const date = new Date(value);
@@ -49,7 +59,8 @@ export default function CierresCajaHistorialView() {
     openToast,
     closeToast,
     getSesionDetalle,
-    editCierre
+    editCierre,
+    resolveCloseDifference
   } = useCierresCaja();
 
   const [selectedSucursalId, setSelectedSucursalId] = useState('');
@@ -74,6 +85,8 @@ export default function CierresCajaHistorialView() {
   const [cierres, setCierres] = useState([]);
   const [selectedDetalle, setSelectedDetalle] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [resolveDetalle, setResolveDetalle] = useState(null);
+  const [resolveOpen, setResolveOpen] = useState(false);
   const historyRequestIdRef = useRef(0);
 
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
@@ -85,6 +98,7 @@ export default function CierresCajaHistorialView() {
   ]);
   const canViewHistory = canAny([PERMISSIONS.VENTAS_CAJAS_REPORTE_VER]);
   const canEditClose = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_CERRAR]);
+  const canResolveDifference = canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
 
   const deferredSearch = useDeferredValue(search);
   const scopeQuery = useMemo(
@@ -233,11 +247,7 @@ export default function CierresCajaHistorialView() {
   const stats = useMemo(() => {
     const totalCierres = cierres.length;
     const cuadrados = cierres.filter((item) => Number(item.diferencia || 0) === 0).length;
-    const pendientes = cierres.filter(
-      (item) =>
-        Number(item.diferencia || 0) !== 0 &&
-        !String(item.resolucion_nombre || item.resolucion_codigo || '').trim()
-    ).length;
+    const pendientes = cierres.filter((item) => resolveClosureStateBadge(item).key === 'PENDIENTE').length;
     const diferenciaAcumulada = cierres.reduce((sum, item) => sum + Number(item.diferencia || 0), 0);
 
     return {
@@ -259,6 +269,42 @@ export default function CierresCajaHistorialView() {
     } catch {
       setDetailOpen(false);
       setSelectedDetalle(null);
+    }
+  };
+
+  const handleResolveDifference = async (payload) => {
+    const sourceDetalle = resolveDetalle || selectedDetalle;
+    const idCierreCaja = sourceDetalle?.cierre?.id_cierre_caja;
+    const idSesionCaja = sourceDetalle?.sesion?.id_sesion_caja;
+    if (!idCierreCaja || !idSesionCaja) return null;
+
+    const response = await resolveCloseDifference(idCierreCaja, payload);
+    const detail = await getSesionDetalle(idSesionCaja);
+    if (selectedDetalle?.sesion?.id_sesion_caja === idSesionCaja) {
+      setSelectedDetalle(detail);
+    }
+    setResolveDetalle(detail);
+    await loadHistory();
+    return response;
+  };
+
+  const openResolveDifference = async (closure) => {
+    if (!canResolveCierreDifference({
+      cierre: closure,
+      sesion: closure,
+      canResolveDifference,
+      canViewCajaTheoreticalAmounts: true
+    })) {
+      return;
+    }
+    setResolveDetalle(null);
+    setResolveOpen(true);
+    try {
+      const detail = await getSesionDetalle(closure.id_sesion_caja);
+      setResolveDetalle(detail);
+    } catch {
+      setResolveOpen(false);
+      setResolveDetalle(null);
     }
   };
 
@@ -293,8 +339,9 @@ export default function CierresCajaHistorialView() {
   const estadoOptions = useMemo(
     () => [
       { key: 'CUADRADO', label: 'Cuadrados' },
-      { key: 'RESUELTO', label: 'Con resolucion' },
-      { key: 'PENDIENTE', label: 'Pendientes' }
+      { key: 'SOBRANTE', label: 'Sobrantes' },
+      { key: 'RESUELTO', label: 'Resueltos' },
+      { key: 'PENDIENTE', label: 'Pendientes auditoria' }
     ],
     []
   );
@@ -487,6 +534,13 @@ export default function CierresCajaHistorialView() {
                 ) : (
                   visibleCierres.map((closure) => {
                     const closureBadge = resolveClosureStateBadge(closure);
+                    const resolutionLabel = resolveAdministrativeResolutionLabel(closure);
+                    const canResolveClosure = canResolveCierreDifference({
+                      cierre: closure,
+                      sesion: closure,
+                      canResolveDifference,
+                      canViewCajaTheoreticalAmounts: true
+                    });
 
                     return (
                       <tr
@@ -497,19 +551,16 @@ export default function CierresCajaHistorialView() {
                         <td>
                           <div className="ventas-page__table-sale">
                             <strong>CIE-{String(closure.id_cierre_caja).padStart(5, '0')}</strong>
-                            <span>SES-{String(closure.id_sesion_caja).padStart(5, '0')}</span>
                           </div>
                         </td>
                         <td className="align-middle">
                           <div className="ventas-page__table-sale">
                             <strong>{closure.nombre_caja || 'Caja sin nombre'}</strong>
-                            <span>{closure.nombre_sucursal || 'Sin sucursal'}</span>
                           </div>
                         </td>
                         <td className="align-middle">
                           <div className="ventas-page__table-sale">
                             <strong>{closure.responsable_nombre || 'Sin responsable'}</strong>
-                            <span>{closure.usuario_cierre_nombre || closure.usuario_cierre || 'Sin usuario de cierre'}</span>
                           </div>
                         </td>
                         <td className="align-middle text-muted small fw-semibold">
@@ -524,7 +575,7 @@ export default function CierresCajaHistorialView() {
                           </span>
                         </td>
                         <td className="align-middle text-muted small fw-semibold">
-                          {closure.resolucion_nombre || 'Sin resolucion'}
+                          {resolutionLabel}
                         </td>
                         <td className="text-end align-middle" onClick={(event) => event.stopPropagation()}>
                           <div className="d-inline-flex gap-2">
@@ -537,13 +588,24 @@ export default function CierresCajaHistorialView() {
                             >
                               <i className="bi bi-eye" />
                             </button>
-                            {canEditClose ? (
+                            {canResolveClosure ? (
+                              <button
+                                type="button"
+                                className="ventas-page__table-detail-btn bg-white border-danger text-danger"
+                                title="Resolver diferencia"
+                                onClick={() => void openResolveDifference(closure)}
+                                disabled={saving || detailLoading}
+                              >
+                                <i className="bi bi-shield-check" />
+                              </button>
+                            ) : null}
+                            {canEditClose && closure.editable_en_ventana ? (
                               <button
                                 type="button"
                                 className="ventas-page__table-detail-btn bg-white border-warning text-warning"
-                                title={closure.editable_en_ventana ? 'Editar cierre' : 'Ventana de edicion expirada'}
+                                title="Editar cierre"
                                 onClick={() => void handleQuickEdit(closure)}
-                                disabled={!closure.editable_en_ventana || saving}
+                                disabled={saving}
                               >
                                 <i className="bi bi-pencil-square" />
                               </button>
@@ -584,12 +646,18 @@ export default function CierresCajaHistorialView() {
             ) : (
               visibleCierres.map((closure) => {
                 const closureBadge = resolveClosureStateBadge(closure);
+                const resolutionLabel = resolveAdministrativeResolutionLabel(closure);
+                const canResolveClosure = canResolveCierreDifference({
+                  cierre: closure,
+                  sesion: closure,
+                  canResolveDifference,
+                  canViewCajaTheoreticalAmounts: true
+                });
                 return (
                   <article key={closure.id_cierre_caja} className="cierres-caja-mobile-card">
                     <div className="cierres-caja-mobile-card__head">
                       <div>
                         <strong>CIE-{String(closure.id_cierre_caja).padStart(5, '0')}</strong>
-                        <small>SES-{String(closure.id_sesion_caja).padStart(5, '0')}</small>
                       </div>
                       <span className={`ventas-page__table-pill ${closureBadge.className}`}>
                         {closureBadge.label}
@@ -611,7 +679,7 @@ export default function CierresCajaHistorialView() {
                       </div>
                       <div>
                         <span>Resolucion</span>
-                        <strong>{closure.resolucion_nombre || 'Sin resolucion'}</strong>
+                        <strong>{resolutionLabel}</strong>
                       </div>
                     </div>
 
@@ -633,6 +701,26 @@ export default function CierresCajaHistorialView() {
                       >
                         Ver detalle
                       </button>
+                      {canResolveClosure ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => void openResolveDifference(closure)}
+                          disabled={saving || detailLoading}
+                        >
+                          Resolver diferencia
+                        </button>
+                      ) : null}
+                      {canEditClose && closure.editable_en_ventana ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-warning"
+                          onClick={() => void handleQuickEdit(closure)}
+                          disabled={saving}
+                        >
+                          Editar cierre
+                        </button>
+                      ) : null}
                     </div>
                   </article>
                 );
@@ -724,12 +812,27 @@ export default function CierresCajaHistorialView() {
         canRegisterArqueo={false}
         canCloseSession={false}
         canUseCloseFlow={false}
+        canResolveDifference={canResolveDifference}
+        saving={saving}
         onClose={() => {
           setDetailOpen(false);
           setSelectedDetalle(null);
         }}
         onOpenArqueo={() => {}}
         onOpenCerrar={() => {}}
+        onResolveDifference={handleResolveDifference}
+      />
+
+      <CierreCajaResolverDiferenciaModal
+        open={resolveOpen}
+        detalle={resolveDetalle}
+        saving={saving || detailLoading || !resolveDetalle}
+        onClose={() => {
+          if (saving) return;
+          setResolveOpen(false);
+          setResolveDetalle(null);
+        }}
+        onSubmit={handleResolveDifference}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />
