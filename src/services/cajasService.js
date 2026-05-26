@@ -121,6 +121,9 @@ const cajasService = {
   editCierre: (idCierreCaja, payload) =>
     apiFetch(`/ventas/cajas/cierres/${idCierreCaja}`, 'PATCH', payload),
 
+  resolveCloseDifference: (idCierreCaja, payload) =>
+    apiFetch(`/ventas/cajas/cierres/${idCierreCaja}/resolucion`, 'PATCH', payload),
+
   createArqueo: (idSesionCaja, payload) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/arqueos`, 'POST', payload),
 

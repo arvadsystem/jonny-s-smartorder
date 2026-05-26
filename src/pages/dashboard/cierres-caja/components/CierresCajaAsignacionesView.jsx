@@ -605,7 +605,7 @@ export default function CierresCajaAsignacionesView() {
 
       {modalOpen ? (
         <div className="ventas-modal-backdrop" onClick={() => setModalOpen(false)}>
-          <section className="ventas-modal cierres-caja-action-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+          <section className="ventas-modal cierres-caja-action-modal cierres-caja-confirm-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className="ventas-modal__header"><div className="ventas-modal__title-wrap"><span className="ventas-modal__icon"><i className="bi bi-person-plus" /></span><div><h3>{editing ? 'Editar asignacion' : 'Nueva asignacion'}</h3><p>Define roles permanentes del usuario en la caja.</p></div></div><button type="button" className="ventas-modal__close-btn" onClick={() => setModalOpen(false)}><i className="bi bi-x-lg" /></button></header>
             <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={submitModal}>
               <div className="cierres-caja-action-modal__grid">
@@ -637,9 +637,13 @@ export default function CierresCajaAsignacionesView() {
             </header>
             <div className="ventas-modal__body cierres-caja-action-modal__body">
               <p className="mb-0">{confirmDeactivateMessage}</p>
+              <div className="cierres-caja-resolution-note">
+                <i className="bi bi-info-circle" />
+                <span>Si la caja tiene una sesion abierta, primero debes cerrar la sesion antes de desactivar esta asignacion.</span>
+              </div>
             </div>
             <footer className="ventas-detail-modal__footer">
-              <div className="ventas-detail-modal__footer-actions">
+              <div className="ventas-detail-modal__footer-actions cierres-caja-confirm-modal__actions">
                 <button type="button" className="btn btn-outline-secondary" onClick={closeDeactivateConfirm} disabled={saving}>Cancelar</button>
                 <button type="button" className="btn btn-danger" onClick={() => void confirmDeactivate()} disabled={saving}>{saving ? 'Procesando...' : 'Desactivar'}</button>
               </div>

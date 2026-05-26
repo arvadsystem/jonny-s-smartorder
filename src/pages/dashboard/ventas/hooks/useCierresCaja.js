@@ -472,6 +472,31 @@ export function useCierresCaja() {
     [openToast]
   );
 
+  const resolveCloseDifference = useCallback(
+    async (idCierreCaja, payload) => {
+      setSaving(true);
+      try {
+        const response = await cajasService.resolveCloseDifference(idCierreCaja, payload);
+        openToast(
+          'DIFERENCIA RESUELTA',
+          response?.message || 'La diferencia de cierre se resolvio correctamente.',
+          'success'
+        );
+        return response;
+      } catch (errorResponse) {
+        openToast(
+          'ERROR',
+          extractCajasApiMessage(errorResponse, 'No se pudo resolver la diferencia del cierre.'),
+          'danger'
+        );
+        throw errorResponse;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [openToast]
+  );
+
   const createArqueo = useCallback(
     async (idSesionCaja, payload) => {
       setSaving(true);
@@ -534,6 +559,7 @@ export function useCierresCaja() {
     createMiSesionEgreso,
     createMiSesionMovimientoManual,
     editCierre,
+    resolveCloseDifference,
     createArqueo
   };
 }

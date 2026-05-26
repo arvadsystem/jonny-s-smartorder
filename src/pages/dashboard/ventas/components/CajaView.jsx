@@ -101,7 +101,11 @@ const normalizeCajaSession = (row) => {
     codigo_caja: String(row?.codigo_caja || '').trim(),
     nombre_caja: String(row?.nombre_caja || '').trim(),
     nombre_sucursal: String(row?.nombre_sucursal || '').trim(),
-    rol_participacion: String(row?.rol_participacion || '').trim().toUpperCase(),
+    rol_codigo: String(row?.rol_codigo || row?.rol_participacion || '').trim().toUpperCase(),
+    rol_participacion: String(row?.rol_participacion || row?.rol_codigo || '').trim().toUpperCase(),
+    id_usuario_responsable: toPositiveId(row?.id_usuario_responsable),
+    responsable_usuario: String(row?.responsable_usuario || '').trim(),
+    responsable_nombre: String(row?.responsable_nombre || '').trim(),
     estado_codigo: String(row?.estado_codigo || 'ABIERTA').trim().toUpperCase(),
     fecha_apertura: row?.fecha_apertura || null,
     monto_apertura: Number(row?.monto_apertura ?? 0) || 0
@@ -151,6 +155,13 @@ const buildCajaAssignmentFromSession = (session) => {
 const resolveCajaAssignmentLabel = (assignment) => {
   if (!assignment) return '';
   return assignment.nombre_caja || assignment.codigo_caja || `Caja #${assignment.id_caja}`;
+};
+
+const resolveCajaRoleLabel = (session) => {
+  const role = String(session?.rol_codigo || session?.rol_participacion || '').trim().toUpperCase();
+  if (role === 'RESPONSABLE') return 'Responsable';
+  if (role === 'AUXILIAR') return 'Auxiliar';
+  return 'Operador';
 };
 
 const isCajaAssignmentNotFound = (error) => {
@@ -1015,8 +1026,24 @@ export default function CajaView({
             {cajaSesionActiva ? (
               <div className="ventas-caja__session-metrics ventas-caja__session-metrics--compact">
                 <div>
+                  <span>Caja</span>
+                  <strong>{cajaSesionActiva?.nombre_caja || cajaSesionActiva?.codigo_caja || `Caja #${cajaSesionActiva?.id_caja}`}</strong>
+                </div>
+                <div>
+                  <span>Sesión</span>
+                  <strong>SES-{String(cajaSesionActiva?.id_sesion_caja || '').padStart(5, '0')}</strong>
+                </div>
+                <div>
+                  <span>Rol en caja</span>
+                  <strong>{resolveCajaRoleLabel(cajaSesionActiva)}</strong>
+                </div>
+                <div>
+                  <span>Responsable</span>
+                  <strong>{cajaSesionActiva?.responsable_nombre || cajaSesionActiva?.responsable_usuario || 'No disponible'}</strong>
+                </div>
+                <div>
                   <span>Sucursal</span>
-                  <strong>{cajaAsignacion?.nombre_sucursal || composer.selectedSucursalLabel || 'Sucursal'}</strong>
+                  <strong>{cajaSesionActiva?.nombre_sucursal || cajaAsignacion?.nombre_sucursal || composer.selectedSucursalLabel || 'Sucursal'}</strong>
                 </div>
                 <div>
                   <span>Fecha apertura</span>
