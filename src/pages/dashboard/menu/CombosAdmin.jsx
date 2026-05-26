@@ -16,10 +16,12 @@ const CombosAdmin = () => {
       error,
       success,
       search,
+      showInactiveOnly,
       drawerOpen,
       drawerMode,
       editingId,
       form,
+      menusCatalog,
       cardImageErrors,
       formPreviewError,
       selectedImageFileName,
@@ -32,6 +34,7 @@ const CombosAdmin = () => {
     },
     actions: {
       setSearch,
+      setShowInactiveOnly,
       setFormPreviewError,
       onChangeField,
       openCreateDrawer,
@@ -88,12 +91,13 @@ const CombosAdmin = () => {
             onSearchChange={setSearch}
             drawerOpen={drawerOpen}
             onOpenCreate={openCreateDrawer}
+            showInactiveOnly={showInactiveOnly}
+            onToggleInactiveOnly={setShowInactiveOnly}
           />
         </div>
 
         <div className="card-body inv-prod-body">
           {error ? <div className="alert alert-danger inv-prod-alert">{error}</div> : null}
-          {success ? <div className="alert alert-success inv-prod-alert">{success}</div> : null}
 
           <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
             <span>{combosFiltrados.length} combos</span>
@@ -116,6 +120,7 @@ const CombosAdmin = () => {
         drawerMode={drawerMode}
         editingId={editingId}
         form={form}
+        menusCatalog={menusCatalog}
         saving={saving}
         recetasDisponibles={recetasDisponibles}
         onChangeField={onChangeField}

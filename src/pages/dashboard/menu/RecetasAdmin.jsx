@@ -23,7 +23,10 @@ const RecetasAdmin = () => {
       detalleReceta,
       insumosDetalleCatalog,
       loadingDetalleCatalog,
+      menusCatalog,
+      departamentosCatalog,
       filtersOpen,
+      filters,
       filtersDraft,
       viewMode,
       cardImageErrors,
@@ -41,6 +44,7 @@ const RecetasAdmin = () => {
       setFiltersDraft,
       setFormPreviewError,
       onChangeField,
+      onChangeSelectField,
       addDetalleRow,
       removeDetalleRow,
       updateDetalleRow,
@@ -54,6 +58,7 @@ const RecetasAdmin = () => {
       onCambiarEstado,
       applyFilters,
       clearFilters,
+      setShowInactiveOnly,
       clearFormImage,
       onPickImageFile,
       setCardImageError
@@ -127,12 +132,13 @@ const RecetasAdmin = () => {
               onOpenFilters={openFiltersDrawer}
               drawerOpen={drawerOpen}
               onOpenCreate={openCreateDrawer}
+              showInactiveOnly={filters.estado === 'inactivos'}
+              onToggleInactiveOnly={setShowInactiveOnly}
             />
           </div>
 
           <div className="card-body inv-prod-body">
             {error ? <div className="alert alert-danger inv-prod-alert">{error}</div> : null}
-            {success ? <div className="alert alert-success inv-prod-alert">{success}</div> : null}
 
             <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
               <span>{recetasFiltradas.length} recetas</span>
@@ -142,6 +148,7 @@ const RecetasAdmin = () => {
             <RecetasTable
               loading={loading}
               recetas={recetasFiltradas}
+              showInactiveOnly={filters.estado === 'inactivos'}
               viewMode={viewMode}
               togglingId={togglingId}
               cardImageErrors={cardImageErrors}
@@ -250,6 +257,7 @@ const RecetasAdmin = () => {
         loadingDetalleCatalog={loadingDetalleCatalog}
         saving={saving}
         onChangeField={onChangeField}
+        onChangeSelectField={onChangeSelectField}
         onAddDetalleRow={addDetalleRow}
         onRemoveDetalleRow={removeDetalleRow}
         onUpdateDetalleRow={updateDetalleRow}
@@ -260,6 +268,8 @@ const RecetasAdmin = () => {
         selectedImageFileName={selectedImageFileName}
         formPreviewUrl={formPreviewUrl}
         formPreviewError={formPreviewError}
+        menusCatalog={menusCatalog}
+        departamentosCatalog={departamentosCatalog}
         onPreviewError={() => setFormPreviewError(true)}
       />
 

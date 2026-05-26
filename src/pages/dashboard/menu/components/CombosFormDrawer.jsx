@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Select from 'react-select';
 import RecetasImagePreview from './RecetasImagePreview';
 
 const CombosFormDrawer = ({
@@ -7,6 +8,7 @@ const CombosFormDrawer = ({
   editingId,
   form,
   saving,
+  menusCatalog = [],
   recetasDisponibles,
   onChangeField,
   onSubmit,
@@ -64,6 +66,7 @@ const CombosFormDrawer = ({
   };
 
   const totalDetalle = Array.isArray(form.detalle) ? form.detalle.length : 0;
+  const selectedMenuOption = menusCatalog.find((option) => String(option.value) === String(form.id_menu)) || null;
 
   if (!drawerOpen) return null;
 
@@ -163,16 +166,17 @@ const CombosFormDrawer = ({
           </div>
 
           <div className="col-12 col-md-6">
-            <label className="form-label" htmlFor="combo_id_menu">ID menu</label>
-            <input
-              id="combo_id_menu"
-              type="number"
-              min="1"
-              className="form-control"
-              name="id_menu"
-              value={form.id_menu}
-              onChange={onChangeField}
-              required
+            <label className="form-label" htmlFor="combo_id_menu">Menu</label>
+            <Select
+              inputId="combo_id_menu"
+              classNamePrefix="menu-salsas-receta-select"
+              options={menusCatalog}
+              value={selectedMenuOption}
+              onChange={(option) => onChangeField({ target: { name: 'id_menu', value: option?.value || '' } })}
+              placeholder="Ej: #1 - Menu Normal"
+              isClearable={false}
+              isDisabled={saving}
+              maxMenuHeight={192}
             />
           </div>
 

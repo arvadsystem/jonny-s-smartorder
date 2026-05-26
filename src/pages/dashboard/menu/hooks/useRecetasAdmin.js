@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import recetasAdminService from '../../../../services/recetasAdminService';
+import { inventarioService } from '../../../../services/inventarioService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
   defaultFilters,
@@ -256,6 +257,8 @@ const useRecetasAdmin = () => {
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
   const [detalleReceta, setDetalleReceta] = useState([]);
   const [insumosDetalleCatalog, setInsumosDetalleCatalog] = useState([]);
+  const [menusCatalog, setMenusCatalog] = useState([]);
+  const [departamentosCatalog, setDepartamentosCatalog] = useState([]);
   const [loadingDetalleCatalog, setLoadingDetalleCatalog] = useState(false);
   // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
@@ -326,6 +329,63 @@ const useRecetasAdmin = () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCatalogosBase = async () => {
+      try {
+        const [menusResponse, departamentosResponse] = await Promise.all([
+          menuPublicacionAdminService.getMenusProgramables(),
+          inventarioService.getTipoDepartamentos()
+        ]);
+
+        if (!isMounted) return;
+
+        const menusRows = (Array.isArray(menusResponse) ? menusResponse : [])
+          .map((row, index) => {
+            const id = Number(row?.id_menu || row?.id || 0);
+            const label = String(row?.nombre_menu || row?.nombre || `Menu ${index + 1}`).trim();
+            return id > 0 ? { value: String(id), label: `#${id} - ${label}` } : null;
+          })
+          .filter(Boolean);
+
+        const departamentosRows = normalizeRows(departamentosResponse)
+          .map((row, index) => {
+            const id = Number(row?.id_tipo_departamento || row?.id || 0);
+            const label = String(
+              row?.nombre_departamento ||
+              row?.nombre_tipo_departamento ||
+              row?.tipo_departamento ||
+              row?.nombre ||
+              `Departamento ${index + 1}`
+            ).trim();
+            const orden = Number(row?.orden_menu || 0);
+            return id > 0 ? { value: String(id), label, orden } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => {
+            const ao = Number(a?.orden || 0);
+            const bo = Number(b?.orden || 0);
+            if (ao > 0 && bo > 0) return ao - bo;
+            return String(a?.label || '').localeCompare(String(b?.label || ''), 'es');
+          });
+
+        setMenusCatalog(menusRows);
+        setDepartamentosCatalog(departamentosRows);
+      } catch {
+        if (!isMounted) return;
+        setMenusCatalog([]);
+        setDepartamentosCatalog([]);
+      }
+    };
+
+    void loadCatalogosBase();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const recetasFiltradas = useMemo(() => {
     const searchTerm = String(search || '').trim().toLowerCase();
 
@@ -352,7 +412,12 @@ const useRecetasAdmin = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   }, []);
 
-  const cargarCatalogoDetalle = useCallback(async () => {
+  const onChangeSelectField = useCallback((field, value) => {
+    setForm((prev) => ({ ...prev, [field]: String(value || '') }));
+  }, []);
+
+  const cargarCatalogoDetalle = useCallback(async (force = false) => {
+    if (!force && Array.isArray(insumosDetalleCatalog) && insumosDetalleCatalog.length > 0) return;
     try {
       setLoadingDetalleCatalog(true);
       const response = await recetasAdminService.listarInsumosDetalleReceta();
@@ -363,7 +428,11 @@ const useRecetasAdmin = () => {
     } finally {
       setLoadingDetalleCatalog(false);
     }
-  }, []);
+  }, [insumosDetalleCatalog]);
+
+  useEffect(() => {
+    void cargarCatalogoDetalle(false);
+  }, [cargarCatalogoDetalle]);
 
   const addDetalleRow = useCallback(() => {
     setDetalleReceta((prev) => [...prev, { id_insumo: '', id_unidad_medida: '', cant: '' }]);
@@ -401,7 +470,7 @@ const useRecetasAdmin = () => {
     setSelectedImageFile(null);
     setSelectedImagePreviewUrl('');
     setDetalleReceta([{ id_insumo: '', id_unidad_medida: '', cant: '' }]);
-    void cargarCatalogoDetalle();
+    void cargarCatalogoDetalle(false);
   }, [cargarCatalogoDetalle, defaultIds.id_menu]);
 
   const closeCreateDrawer = useCallback(() => {
@@ -483,34 +552,57 @@ const useRecetasAdmin = () => {
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {
+    setDrawerMode('edit');
+    setFiltersOpen(false);
+    setFormPreviewError(false);
+    setSelectedImageFile(null);
+    setSelectedImagePreviewUrl('');
+
     try {
       setError('');
       setSuccess('');
-      const receta = await recetasAdminService.obtenerRecetaAdmin(idReceta);
-      const [detalleResponse] = await Promise.all([
-        recetasAdminService.obtenerDetalleReceta(idReceta),
-        cargarCatalogoDetalle()
-      ]);
+      let receta = null;
+      let detalleResponse = [];
+
+      try {
+        const contexto = await recetasAdminService.obtenerContextoEdicionReceta(idReceta);
+        receta = contexto?.receta || null;
+        detalleResponse = contexto?.detalle_receta || [];
+
+        const catalogoInsumos = contexto?.catalogos?.insumos;
+        if (Array.isArray(catalogoInsumos) && catalogoInsumos.length > 0) {
+          setInsumosDetalleCatalog(normalizeInsumoCatalog(catalogoInsumos));
+        } else {
+          await cargarCatalogoDetalle(false);
+        }
+      } catch {
+        const [recetaFallback, detalleFallback] = await Promise.all([
+          recetasAdminService.obtenerRecetaAdmin(idReceta),
+          recetasAdminService.obtenerDetalleReceta(idReceta),
+          cargarCatalogoDetalle(false)
+        ]);
+        receta = recetaFallback;
+        detalleResponse = detalleFallback;
+      }
 
       setEditingId(Number(receta?.id_receta || idReceta));
-      setForm(normalizeRecetaForForm(receta));
+      setForm(normalizeRecetaForForm(receta || {}));
       const detalleRows = normalizeDetalleFromApi(detalleResponse);
       setDetalleReceta(detalleRows.length > 0 ? detalleRows : [{ id_insumo: '', id_unidad_medida: '', cant: '' }]);
-      setDrawerMode('edit');
-      setFiltersOpen(false);
       setDrawerOpen(true);
-      setFormPreviewError(false);
-      setSelectedImageFile(null);
-      setSelectedImagePreviewUrl('');
     } catch (e) {
       setError(e?.message || 'No se pudo cargar la receta para edicion.');
     }
   }, [cargarCatalogoDetalle]);
 
   // Cambia estado activo/inactivo usando el endpoint PATCH del backend.
-  const onCambiarEstado = useCallback(async (receta) => {
+  const onCambiarEstado = useCallback(async (receta, nextEstado = null) => {
     const recetaId = Number(receta?.id_receta || 0);
     if (!recetaId) return;
+    const estadoObjetivo =
+      typeof nextEstado === 'boolean'
+        ? nextEstado
+        : !resolveRecetaActiva(receta);
 
     try {
       setTogglingId(recetaId);
@@ -518,7 +610,7 @@ const useRecetasAdmin = () => {
       setSuccess('');
 
       await recetasAdminService.cambiarEstadoRecetaAdmin(recetaId, {
-        estado: !resolveRecetaActiva(receta)
+        estado: estadoObjetivo
       });
 
       setSuccess('Estado de receta actualizado correctamente.');
@@ -539,6 +631,12 @@ const useRecetasAdmin = () => {
     setFilters({ ...defaultFilters });
     setFiltersDraft({ ...defaultFilters });
     setFiltersOpen(false);
+  }, []);
+
+  const setShowInactiveOnly = useCallback((enabled) => {
+    const nextEstado = enabled ? 'inactivos' : 'activos';
+    setFilters((state) => ({ ...state, estado: nextEstado }));
+    setFiltersDraft((state) => ({ ...state, estado: nextEstado }));
   }, []);
 
   const clearFormImage = useCallback(() => {
@@ -592,6 +690,8 @@ const useRecetasAdmin = () => {
       detalleReceta,
       insumosDetalleCatalog,
       loadingDetalleCatalog,
+      menusCatalog,
+      departamentosCatalog,
       filtersOpen,
       filters,
       filtersDraft,
@@ -614,6 +714,7 @@ const useRecetasAdmin = () => {
       setFiltersDraft,
       setFormPreviewError,
       onChangeField,
+      onChangeSelectField,
       addDetalleRow,
       removeDetalleRow,
       updateDetalleRow,
@@ -627,6 +728,7 @@ const useRecetasAdmin = () => {
       onCambiarEstado,
       applyFilters,
       clearFilters,
+      setShowInactiveOnly,
       clearFormImage,
       onPickImageFile,
       setCardImageError

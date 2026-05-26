@@ -12,6 +12,7 @@ const CARDS_PER_PAGE = 10;
 const RecetasTable = ({
   loading,
   recetas,
+  showInactiveOnly = false,
   viewMode,
   togglingId,
   cardImageErrors,
@@ -45,7 +46,11 @@ const RecetasTable = ({
   }
 
   if (!Array.isArray(recetas) || recetas.length === 0) {
-    return <RecetasEmptyState />;
+    return (
+      <RecetasEmptyState
+        message={showInactiveOnly ? 'No hay recetas inactivas para mostrar.' : 'No hay recetas para mostrar.'}
+      />
+    );
   }
 
   if (viewMode === 'table') {
@@ -154,7 +159,6 @@ const RecetasTable = ({
                   src={imageUrl}
                   alt={`Imagen de ${String(receta?.nombre_receta || 'receta')}`}
                   referrerPolicy="no-referrer"
-                  loading="lazy"
                   onError={() => onCardImageError(id)}
                 />
               ) : (
