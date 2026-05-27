@@ -48,14 +48,20 @@ const DetailField = ({ label, value }) => (
   </div>
 );
 
-const AmountCard = ({ label, value, tone = 'neutral', icon = 'bi-cash-stack' }) => (
+const formatMoneyOrLabel = (value, fallback = 'No disponible') =>
+  value === null || value === undefined ? fallback : `L. ${formatCajaCurrency(value)}`;
+
+const firstPresent = (...values) =>
+  values.find((value) => value !== null && value !== undefined);
+
+const AmountCard = ({ label, value, tone = 'neutral', icon = 'bi-cash-stack', fallback = 'No disponible' }) => (
   <article className={`cierres-caja-detail-amount-card is-${tone}`}>
     <span className="cierres-caja-detail-amount-card__icon">
       <i className={`bi ${icon}`} />
     </span>
     <div>
       <span>{label}</span>
-      <strong>L. {formatCajaCurrency(value)}</strong>
+      <strong>{formatMoneyOrLabel(value, fallback)}</strong>
     </div>
   </article>
 );
@@ -119,19 +125,34 @@ export default function CierreCajaDetalleModal({
   const recuentos = Array.isArray(detalle?.recuentos)
     ? detalle.recuentos
     : (Array.isArray(detalle?.validaciones_cierre) ? detalle.validaciones_cierre : []);
+  const recuentoUsadoParaCierre = recuentos.find((recuento) => recuento?.usado_para_cierre) || null;
   const isOpen = sesion?.estado_codigo === 'ABIERTA';
   const sessionCode = formatSessionCode(sesion?.id_sesion_caja);
   const statusBadge = resolveSessionStatusBadge(sesion);
   const closeBadge = cierre?.id_cierre_caja
     ? resolveClosureStateBadge(canViewCajaTheoreticalAmounts ? cierre : null)
     : { label: 'Sin cierre', className: 'bg-light border-secondary text-secondary' };
-  const declaredAmount =
-    cierre?.monto_declarado_cierre
-    ?? resumen?.monto_declarado
-    ?? resumen?.monto_declarado_cierre
-    ?? null;
-  const theoreticalAmount = resumen?.monto_teorico ?? resumen?.efectivo_teorico ?? cierre?.monto_teorico_cierre;
-  const differenceAmount = cierre?.diferencia ?? resumen?.diferencia_cierre ?? sesion?.diferencia_cierre ?? null;
+  const declaredAmount = firstPresent(
+    cierre?.monto_declarado_cierre,
+    recuentoUsadoParaCierre?.total_declarado,
+    resumen?.monto_declarado_total,
+    resumen?.monto_declarado,
+    resumen?.monto_declarado_cierre
+  ) ?? null;
+  const theoreticalAmount = firstPresent(
+    cierre?.monto_teorico_cierre,
+    recuentoUsadoParaCierre?.total_teorico,
+    resumen?.monto_teorico_total,
+    resumen?.total_teorico,
+    resumen?.monto_teorico
+  ) ?? null;
+  const differenceAmount = firstPresent(
+    cierre?.diferencia,
+    recuentoUsadoParaCierre?.diferencia_total,
+    resumen?.diferencia_total,
+    resumen?.diferencia_cierre,
+    sesion?.diferencia_cierre
+  ) ?? null;
   const cierreObservacion = cierre?.observacion || cierre?.observacion_cierre || resumen?.observacion_cierre || '';
   const canSubmitResolution = canResolveCierreDifference({
     cierre,
@@ -232,8 +253,8 @@ export default function CierreCajaDetalleModal({
                 <td className="text-end">L. {formatCajaCurrency(resumen.egresos_manuales)}</td>
                 <td className="text-end">L. {formatCajaCurrency(resumen.total_responsable)}</td>
                 <td className="text-end">L. {formatCajaCurrency(resumen.total_auxiliares)}</td>
-                <td className="text-end">L. {formatCajaCurrency(theoreticalAmount)}</td>
-                <td className="text-end">L. {formatCajaCurrency(declaredAmount)}</td>
+                <td className="text-end">{formatMoneyOrLabel(theoreticalAmount)}</td>
+                <td className="text-end">{formatMoneyOrLabel(declaredAmount)}</td>
               </tr>
             </tbody>
           </table>
@@ -249,8 +270,8 @@ export default function CierreCajaDetalleModal({
               { label: 'Egresos manuales', value: `L. ${formatCajaCurrency(resumen.egresos_manuales)}` },
               { label: 'Total responsable', value: `L. ${formatCajaCurrency(resumen.total_responsable)}` },
               { label: 'Total auxiliares', value: `L. ${formatCajaCurrency(resumen.total_auxiliares)}` },
-              { label: 'Monto teorico', value: `L. ${formatCajaCurrency(theoreticalAmount)}` },
-              { label: 'Monto declarado', value: `L. ${formatCajaCurrency(declaredAmount)}` }
+              { label: 'Monto teorico', value: formatMoneyOrLabel(theoreticalAmount) },
+              { label: 'Monto declarado', value: formatMoneyOrLabel(declaredAmount) }
             ]
           }]}
         />
@@ -348,9 +369,9 @@ export default function CierreCajaDetalleModal({
                     </td>
                     <td className="text-center align-middle">{resolveRolCobroLabel(row)}</td>
                     <td className="text-center align-middle">{row.cobros_registrados}</td>
-                    <td className="text-end align-middle">L. {formatCajaCurrency(row.total_efectivo)}</td>
-                    <td className="text-end align-middle">L. {formatCajaCurrency(row.total_no_efectivo)}</td>
-                    <td className="text-end align-middle ventas-page__table-total">L. {formatCajaCurrency(row.total_cobrado)}</td>
+                    <td className="text-end align-middle">{formatMoneyOrLabel(row.total_efectivo)}</td>
+                    <td className="text-end align-middle">{formatMoneyOrLabel(row.total_no_efectivo)}</td>
+                    <td className="text-end align-middle ventas-page__table-total">{formatMoneyOrLabel(row.total_cobrado)}</td>
                   </tr>
                 ))}
           </tbody>
@@ -364,9 +385,9 @@ export default function CierreCajaDetalleModal({
           badge: resolveRolCobroLabel(row),
           items: [
             { label: 'Cobros', value: row.cobros_registrados },
-            { label: 'Total efectivo', value: `L. ${formatCajaCurrency(row.total_efectivo)}` },
-            { label: 'Total no efectivo', value: `L. ${formatCajaCurrency(row.total_no_efectivo)}` },
-            { label: 'Total cobrado', value: `L. ${formatCajaCurrency(row.total_cobrado)}` }
+            { label: 'Total efectivo', value: formatMoneyOrLabel(row.total_efectivo) },
+            { label: 'Total no efectivo', value: formatMoneyOrLabel(row.total_no_efectivo) },
+            { label: 'Total cobrado', value: formatMoneyOrLabel(row.total_cobrado) }
           ]
         }))}
       />
