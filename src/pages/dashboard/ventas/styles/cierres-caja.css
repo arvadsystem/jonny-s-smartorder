@@ -1243,6 +1243,10 @@
 }
 
 @media (max-width: 767.98px) {
+  .cierres-caja-page {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
   .cierres-caja-page .ventas-page__toolbar {
     align-items: flex-start !important;
     gap: 12px;
@@ -1291,10 +1295,27 @@
 
   .cierres-caja-page .inv-prod-kpis {
     grid-template-columns: 1fr;
+    gap: 9px;
   }
 
   .cierres-caja-mobile-card__body {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cierres-caja-mobile-card__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cierres-caja-mobile-card__actions .btn {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .cierres-caja-mobile-card__actions .btn:first-child:last-child,
+  .cierres-caja-mobile-card__actions .btn:nth-child(3) {
+    grid-column: 1 / -1;
   }
 
   .cierres-caja-detail-summary__grid,
@@ -1321,6 +1342,14 @@
 
   .cierres-caja-detail-panel.has-mobile-cards .cierres-caja-detail-card-list {
     display: grid;
+  }
+
+  .cierres-caja-detail-card-list {
+    gap: 9px;
+  }
+
+  .cierres-caja-detail-mobile-card__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cierres-caja-action-modal__body {
@@ -1385,6 +1414,12 @@
   .cierres-caja-mobile-card {
     border-radius: 14px;
     padding: 10px;
+  }
+
+  .cierres-caja-mobile-card__body,
+  .cierres-caja-mobile-card__actions,
+  .cierres-caja-detail-mobile-card__grid {
+    grid-template-columns: 1fr;
   }
 
   .cierres-caja-detail-modal,

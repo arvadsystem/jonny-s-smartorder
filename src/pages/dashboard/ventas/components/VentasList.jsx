@@ -69,21 +69,21 @@ export default function VentasList({
           </div>
         ) : (
           <>
-            {view === 'list' ? (
+            <div className={`ventas-page__desktop-list ${view === 'list' ? 'is-active' : ''}`}>
               <VentasTable ventas={ventas} onOpenDetail={onOpenDetail} />
-            ) : (
-              <div className="inv-catpro-grid ventas-page__sales-grid">
-                {ventas.map((venta, index) => (
-                  <VentaCard
-                    key={venta?.id_factura ?? `${venta?.numero_venta}-${index}`}
-                    venta={venta}
-                    index={index}
-                    view={view}
-                    onOpenDetail={onOpenDetail}
-                  />
-                ))}
-              </div>
-            )}
+            </div>
+
+            <div className={`inv-catpro-grid ventas-page__sales-grid ventas-page__mobile-cards ${view === 'list' ? 'is-list-fallback' : ''}`}>
+              {ventas.map((venta, index) => (
+                <VentaCard
+                  key={venta?.id_factura ?? `${venta?.numero_venta}-${index}`}
+                  venta={venta}
+                  index={index}
+                  view={view}
+                  onOpenDetail={onOpenDetail}
+                />
+              ))}
+            </div>
 
             {totalPages > 1 ? (
               <div className="ventas-page__pagination">
