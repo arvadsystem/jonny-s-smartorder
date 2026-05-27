@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import clientePublicoService from '../../services/clientePublicoService';
 import logo from '../../assets/images/logo-sin-fondo.png';
@@ -120,7 +120,7 @@ const Registro = () => {
     setRequiresVerification(false);
 
     if (!nombre.trim() || !apellido.trim() || !genero.trim() || !email.trim() || !password.trim()) {
-      setError('Todos los campos son obligatorios (Nombre, Apellido, Genero, Correo y Contrasena).');
+      setError('Todos los campos son obligatorios (Nombre, Apellido, Género, Correo y Contraseña).');
       return;
     }
 
@@ -188,10 +188,6 @@ const Registro = () => {
         <div className="vignette" />
         <div className="side-fade" />
         <div className="left-content">
-          <div className="badge">
-            <span className="dot" />
-            SISTEMA DE GESTIÓN · HONDURAS
-          </div>
           <div className="brand">
             <div className="logo-ring">
               <div className="halo" />
@@ -252,7 +248,7 @@ const Registro = () => {
                   <input
                     id="register-nombre"
                     type="text"
-                    placeholder="Juan"
+                    placeholder="María"
                     value={nombre}
                     onChange={(e) => setNombre(e.target.value)}
                   />
@@ -265,7 +261,7 @@ const Registro = () => {
                   <input
                     id="register-apellido"
                     type="text"
-                    placeholder="Pérez"
+                    placeholder="Sánchez"
                     value={apellido}
                     onChange={(e) => setApellido(e.target.value)}
                   />
@@ -389,3 +385,4 @@ const Registro = () => {
 };
 
 export default Registro;
+

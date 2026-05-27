@@ -48,10 +48,17 @@ const HeroSection = ({
       </h2>
       {branchName || orderTypeLabel ? (
         <p className="pm-hero-section__context">
-          <i className="bi bi-geo-alt-fill" aria-hidden="true" />
-          <span>{branchName}</span>
-          {orderTypeLabel ? <span className="pm-hero-section__context-sep">·</span> : null}
-          {orderTypeLabel ? <span>{orderTypeLabel}</span> : null}
+          {branchName ? (
+            <span className="pm-hero-section__context-branch">
+              <i className="bi bi-geo-alt-fill" aria-hidden="true" />
+              <span>{branchName}</span>
+            </span>
+          ) : null}
+          {orderTypeLabel && String(orderTypeLabel).trim().toLowerCase() !== 'pedido' ? (
+            <span className="pm-hero-section__context-order">
+              {`Su pedido esta seleccionado para: ${orderTypeLabel}`}
+            </span>
+          ) : null}
         </p>
       ) : null}
     </div>

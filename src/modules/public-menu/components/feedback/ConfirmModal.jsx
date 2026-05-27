@@ -9,6 +9,7 @@ const ConfirmModal = ({
   onCancel
 }) => {
   if (!open) return null;
+  const hasCancelAction = typeof cancelLabel === 'string' ? cancelLabel.trim().length > 0 : Boolean(cancelLabel);
 
   return (
     <div className="pm-confirm-modal__backdrop" role="presentation" onClick={onCancel}>
@@ -28,10 +29,12 @@ const ConfirmModal = ({
         </h2>
         <p className="pm-confirm-modal__message">{message}</p>
 
-        <div className="pm-confirm-modal__actions">
-          <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
-            {cancelLabel}
-          </button>
+        <div className={`pm-confirm-modal__actions ${hasCancelAction ? '' : 'pm-confirm-modal__actions--single'}`.trim()}>
+          {hasCancelAction ? (
+            <button type="button" className="btn btn-outline-secondary" onClick={onCancel}>
+              {cancelLabel}
+            </button>
+          ) : null}
           <button type="button" className="btn btn-dark" onClick={onConfirm}>
             {confirmLabel}
           </button>

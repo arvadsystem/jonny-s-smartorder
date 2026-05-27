@@ -2775,6 +2775,30 @@
   background: rgba(247, 241, 231, 0.65);
 }
 
+.menu-pub-admin__table .form-check-input[type='checkbox'] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0;
+  border: 1.6px solid rgba(176, 119, 70, 0.78);
+  background-color: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.96) inset;
+  cursor: pointer;
+}
+
+.menu-pub-admin__table .form-check-input[type='checkbox']:checked {
+  border-color: #9b5a2d;
+  background-color: #b66d38;
+}
+
+.menu-pub-admin__table .form-check-input[type='checkbox']:focus {
+  box-shadow: 0 0 0 0.18rem rgba(182, 109, 56, 0.22);
+}
+
+.menu-pub-admin__table .form-check-input[type='checkbox']:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
 .menu-pub-admin__type-badge {
   display: inline-flex;
   align-items: center;

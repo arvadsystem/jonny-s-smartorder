@@ -218,9 +218,9 @@
 .pm-hero-section__title {
   margin: 0;
   display: grid;
-  gap: 0.04rem;
+  gap: 0.09rem;
   text-transform: uppercase;
-  line-height: 0.9;
+  line-height: 0.98;
   justify-items: start;
   text-align: left;
 }

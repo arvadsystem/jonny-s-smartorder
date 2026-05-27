@@ -18,9 +18,20 @@ const parseDraftOrder = (value) => {
   return parsed;
 };
 
+const parseDraftVisible = (value) => {
+  if (value === true || value === 1 || value === '1') return true;
+  if (value === false || value === 0 || value === '0') return false;
+
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['true', 't', 'yes', 'y', 'si', 'sí'].includes(normalized)) return true;
+  if (['false', 'f', 'no', 'n'].includes(normalized)) return false;
+
+  return Boolean(value);
+};
+
 const normalizeDraftRow = (row, index) => ({
   ...row,
-  visible: Boolean(row?.visible),
+  visible: parseDraftVisible(row?.visible),
   precio_publico_input:
     row?.precio_publico === null || row?.precio_publico === undefined ? '' : String(row.precio_publico),
   orden_input: row?.orden === null || row?.orden === undefined ? String(index + 1) : String(row.orden)
@@ -355,15 +366,36 @@ const useMenuPublicacionAdmin = () => {
 
       setSuccess(response?.message || 'Publicacion guardada correctamente.');
 
+      // Conserva en UI el estado recien guardado para evitar parpadeos/desmarcados
+      // visuales inmediatamente despues del guardado.
+      const savedByKey = new Map(
+        validation.payload.map((entry) => [`${entry.tipo_item}:${entry.id_item_origen}`, entry])
+      );
+      setItems((current) => (Array.isArray(current) ? current : []).map((row) => {
+        const key = String(row?.item_key || '');
+        const saved = savedByKey.get(key);
+        if (!saved) return row;
+
+        return {
+          ...row,
+          visible: Boolean(saved.visible),
+          precio_publico_input:
+            saved.precio_publico === null || saved.precio_publico === undefined
+              ? ''
+              : String(saved.precio_publico),
+          orden_input:
+            saved.orden === null || saved.orden === undefined
+              ? ''
+              : String(saved.orden)
+        };
+      }));
+
       const responseWarnings = Array.isArray(response?.data?.warnings) ? response.data.warnings : [];
       setWarnings([...validation.warnings, ...responseWarnings]);
       setSharedMenuImpact(response?.data?.shared_menu_impact || null);
       setAppliedScope(String(response?.data?.applied_scope || ''));
 
-      await Promise.all([
-        loadCatalogo(idSucursal, selectedCatalogMenuId || null),
-        loadPreview(idSucursal, selectedCatalogMenuId || null)
-      ]);
+      await loadPreview(idSucursal, selectedCatalogMenuId || null);
     } catch (e) {
       setError(e?.message || 'No se pudo guardar la publicacion.');
       const serverErrors = Array.isArray(e?.data?.errors) ? e.data.errors : [];
