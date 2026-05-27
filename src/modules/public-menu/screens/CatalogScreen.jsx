@@ -38,6 +38,11 @@ const HERO_AUTOPLAY_MS = 5000;
 const HERO_CONFIG_GLOBAL_BRANCH_KEY = '0';
 const CLOSED_HOURS_DISMISS_STORAGE_KEY = 'pm_closed_hours_dismissed_branches';
 const ENTRY_SETUP_DISMISS_STORAGE_KEY = 'pm_entry_setup_dismissed';
+const EMPTY_HERO_CONTACT_PHONES = Object.freeze({
+  primary: '',
+  secondary: '',
+  whatsapp: ''
+});
 const FALLBACK_TOP_NAV_CATEGORIES = Object.freeze([
   'Combos',
   'Tacos de Birria',
@@ -93,14 +98,26 @@ const saveEntrySetupDismissed = () => {
   }
 };
 
+const normalizeHeroContactPhones = (value) => {
+  if (!value || typeof value !== 'object') return { ...EMPTY_HERO_CONTACT_PHONES };
+  return {
+    primary: String(value.primary || value.telefono_principal || value.phone_primary || '').trim(),
+    secondary: String(value.secondary || value.telefono_secundario || value.phone_secondary || '').trim(),
+    whatsapp: String(value.whatsapp || value.telefono_whatsapp || '').trim()
+  };
+};
+
 const normalizeHeroCarouselConfig = (value) => {
-  if (!value || typeof value !== 'object') return { byBranch: {}, customByBranch: {} };
+  if (!value || typeof value !== 'object') {
+    return { byBranch: {}, customByBranch: {}, contactPhones: { ...EMPTY_HERO_CONTACT_PHONES } };
+  }
   return {
     byBranch: value.byBranch && typeof value.byBranch === 'object' ? value.byBranch : {},
     customByBranch:
       value.customByBranch && typeof value.customByBranch === 'object'
         ? value.customByBranch
-        : {}
+        : {},
+    contactPhones: normalizeHeroContactPhones(value.contactPhones)
   };
 };
 
@@ -341,7 +358,11 @@ const CatalogScreen = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
   const [heroIndex, setHeroIndex] = useState(0);
-  const [heroCarouselConfig, setHeroCarouselConfig] = useState({ byBranch: {}, customByBranch: {} });
+  const [heroCarouselConfig, setHeroCarouselConfig] = useState({
+    byBranch: {},
+    customByBranch: {},
+    contactPhones: { ...EMPTY_HERO_CONTACT_PHONES }
+  });
   const [cartFabPulse, setCartFabPulse] = useState(false);
   const [recentlyAddedId, setRecentlyAddedId] = useState(null);
   const [categorySwitching, setCategorySwitching] = useState(false);
@@ -425,7 +446,11 @@ const CatalogScreen = () => {
         setHeroCarouselConfig(normalizeHeroCarouselConfig(response));
       } catch {
         if (!isMounted) return;
-        setHeroCarouselConfig({ byBranch: {}, customByBranch: {} });
+        setHeroCarouselConfig({
+          byBranch: {},
+          customByBranch: {},
+          contactPhones: { ...EMPTY_HERO_CONTACT_PHONES }
+        });
       }
     };
 
@@ -484,6 +509,26 @@ const CatalogScreen = () => {
   const customHeroSlides = useMemo(
     () => resolveHeroCustomByBranch(heroCarouselConfig, branchId),
     [branchId, heroCarouselConfig]
+  );
+  const heroContactPhones = useMemo(
+    () => normalizeHeroContactPhones(heroCarouselConfig?.contactPhones),
+    [heroCarouselConfig]
+  );
+  const landingContactPhones = useMemo(
+    () => {
+      const fallbackWhatsapp = String(state.selectedBranch?.whatsapp || '').trim();
+      return {
+        primary: heroContactPhones.primary || fallbackWhatsapp,
+        secondary: heroContactPhones.secondary,
+        whatsapp: heroContactPhones.whatsapp || fallbackWhatsapp
+      };
+    },
+    [
+      heroContactPhones.primary,
+      heroContactPhones.secondary,
+      heroContactPhones.whatsapp,
+      state.selectedBranch?.whatsapp
+    ]
   );
   const heroSlides = useMemo(
     () =>
@@ -955,7 +1000,7 @@ const CatalogScreen = () => {
         />
       ) : null}
 
-      {showJonnyExperience ? <JonnyExperienceSection /> : null}
+      {showJonnyExperience ? <JonnyExperienceSection contactPhones={landingContactPhones} /> : null}
 
       {!selectedBranchOpen ? (
         <div className="pm-branch-hours-alert" role="status">

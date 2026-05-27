@@ -2130,6 +2130,31 @@
   margin-bottom: 1rem;
 }
 
+.menu-carrusel-admin__contact {
+  border: 1px solid #eadfce;
+  border-radius: 12px;
+  background: #fffdfa;
+  padding: 0.8rem;
+  margin-bottom: 0.9rem;
+}
+
+.menu-carrusel-admin__contact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.7rem;
+}
+
+.menu-carrusel-admin__contact-field {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.menu-carrusel-admin__contact-field > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #654d3a;
+}
+
 .menu-carrusel-admin__upload-head {
   margin-bottom: 0.6rem;
 }

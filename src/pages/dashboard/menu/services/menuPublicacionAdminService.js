@@ -2,6 +2,12 @@
 
 // Servicio HTTP del modulo menu admin (publicacion por sucursal).
 const BASE_ENDPOINT = '/api/admin/menu-publicacion';
+const CARRUSEL_CONTACT_STORAGE_KEY = 'pm_carrusel_contact_phones_v1';
+const DEFAULT_CARRUSEL_CONTACT_PHONES = Object.freeze({
+  primary: '',
+  secondary: '',
+  whatsapp: ''
+});
 
 const withQueryParams = (endpoint, params = {}) => {
   const searchParams = new URLSearchParams();
@@ -19,6 +25,59 @@ const toRows = (response) => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.data)) return response.data;
   return [];
+};
+
+const normalizeCarruselContactPhones = (value) => {
+  if (!value || typeof value !== 'object') return { ...DEFAULT_CARRUSEL_CONTACT_PHONES };
+  return {
+    primary: String(value.primary || value.telefono_principal || value.phone_primary || '').trim(),
+    secondary: String(value.secondary || value.telefono_secundario || value.phone_secondary || '').trim(),
+    whatsapp: String(value.whatsapp || value.telefono_whatsapp || '').trim()
+  };
+};
+
+const hasAnyCarruselContactPhone = (value = {}) =>
+  Boolean(
+    String(value?.primary || '').trim() ||
+      String(value?.secondary || '').trim() ||
+      String(value?.whatsapp || '').trim()
+  );
+
+const readCarruselContactPhonesCache = () => {
+  if (typeof window === 'undefined') return { ...DEFAULT_CARRUSEL_CONTACT_PHONES };
+  try {
+    const raw = window.localStorage.getItem(CARRUSEL_CONTACT_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_CARRUSEL_CONTACT_PHONES };
+    return normalizeCarruselContactPhones(JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_CARRUSEL_CONTACT_PHONES };
+  }
+};
+
+const saveCarruselContactPhonesCache = (value) => {
+  if (typeof window === 'undefined') return;
+  const normalized = normalizeCarruselContactPhones(value);
+  try {
+    if (hasAnyCarruselContactPhone(normalized)) {
+      window.localStorage.setItem(CARRUSEL_CONTACT_STORAGE_KEY, JSON.stringify(normalized));
+    } else {
+      window.localStorage.removeItem(CARRUSEL_CONTACT_STORAGE_KEY);
+    }
+  } catch {
+    // Silencioso: no interrumpimos guardado principal si localStorage falla.
+  }
+};
+
+const normalizeCarruselConfig = (value) => {
+  if (!value || typeof value !== 'object') {
+    return { byBranch: {}, customByBranch: {}, contactPhones: { ...DEFAULT_CARRUSEL_CONTACT_PHONES } };
+  }
+  return {
+    byBranch: value.byBranch && typeof value.byBranch === 'object' ? value.byBranch : {},
+    customByBranch:
+      value.customByBranch && typeof value.customByBranch === 'object' ? value.customByBranch : {},
+    contactPhones: normalizeCarruselContactPhones(value.contactPhones || value)
+  };
 };
 
 // Servicio del panel admin de publicacion de menu por sucursal.
@@ -75,28 +134,26 @@ const menuPublicacionAdminService = {
 
   async getCarruselConfig() {
     const response = await apiFetch(`${BASE_ENDPOINT}/carrusel-config`, 'GET', null, { noCache: true });
-    const payload = response?.data;
-    if (!payload || typeof payload !== 'object') {
-      return { byBranch: {}, customByBranch: {} };
+    const normalized = normalizeCarruselConfig(response?.data);
+    const cachedPhones = readCarruselContactPhonesCache();
+    const contactPhones = hasAnyCarruselContactPhone(normalized.contactPhones)
+      ? normalized.contactPhones
+      : cachedPhones;
+    if (hasAnyCarruselContactPhone(contactPhones)) {
+      saveCarruselContactPhonesCache(contactPhones);
     }
-    return {
-      byBranch: payload.byBranch && typeof payload.byBranch === 'object' ? payload.byBranch : {},
-      customByBranch:
-        payload.customByBranch && typeof payload.customByBranch === 'object' ? payload.customByBranch : {}
-    };
+    return { ...normalized, contactPhones };
   },
 
   async saveCarruselConfig(config = {}) {
+    const requestedPhones = normalizeCarruselContactPhones(config?.contactPhones || config);
     const response = await apiFetch(`${BASE_ENDPOINT}/carrusel-config`, 'PUT', config);
-    const payload = response?.data;
-    if (!payload || typeof payload !== 'object') {
-      return { byBranch: {}, customByBranch: {} };
-    }
-    return {
-      byBranch: payload.byBranch && typeof payload.byBranch === 'object' ? payload.byBranch : {},
-      customByBranch:
-        payload.customByBranch && typeof payload.customByBranch === 'object' ? payload.customByBranch : {}
-    };
+    const normalized = normalizeCarruselConfig(response?.data);
+    const contactPhones = hasAnyCarruselContactPhone(normalized.contactPhones)
+      ? normalized.contactPhones
+      : requestedPhones;
+    saveCarruselContactPhonesCache(contactPhones);
+    return { ...normalized, contactPhones };
   },
 
   async saveCatalogoPublicacion({ idSucursal, idMenu = null, items }) {
