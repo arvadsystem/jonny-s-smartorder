@@ -566,8 +566,14 @@ export default function CierresCajaAsignacionesView() {
           </div>
 
           <div className="cierres-caja-mobile-list">
+            {loading ? (
+              <div className="text-center py-5">
+                <div className="spinner-border text-danger" role="status" />
+              </div>
+            ) : null}
+            {!loading && error ? <div className="text-center py-4">{error}</div> : null}
             {!loading && !error && visible.length === 0 ? <div className="text-center py-4">No hay asignaciones para los filtros aplicados.</div> : null}
-            {assignmentsPageData.rows.map((row) => (
+            {!loading && !error ? assignmentsPageData.rows.map((row) => (
               <article key={row.id_caja_usuario_autorizado} className="cierres-caja-mobile-card">
                 <div className="cierres-caja-mobile-card__head"><div><strong>{row.nombre_caja || 'Caja sin nombre'}</strong><small>{row.nombre_sucursal || 'Sin sucursal'}</small></div><span className={`ventas-page__table-pill ${row.estado ? 'bg-success border-success text-white' : 'bg-secondary border-secondary text-white'}`}>{row.estado ? 'Activa' : 'Inactiva'}</span></div>
                 <div className="cierres-caja-mobile-card__body"><div><span>Usuario</span><strong>{row.nombre_completo || row.nombre_usuario || 'Sin usuario'}</strong></div><div><span>Roles</span><strong>{roleLabel(row)}</strong></div><div><span>Estado</span><strong>{row.estado ? 'Activa' : 'Inactiva'}</strong></div><div><span>Actualizacion</span><strong>{formatCajaDateTime(row.fecha_actualizacion)}</strong></div></div>
@@ -582,7 +588,7 @@ export default function CierresCajaAsignacionesView() {
                   </div>
                 ) : null}
               </article>
-            ))}
+            )) : null}
           </div>
 
           {!loading && !error && assignmentsPageData.total > 0 ? (
