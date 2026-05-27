@@ -8,6 +8,9 @@ import CierreCajaDetalleModal from '../../ventas/components/cierres/CierreCajaDe
 import CierreCajaResolverDiferenciaModal, {
   canResolveCierreDifference
 } from '../../ventas/components/cierres/CierreCajaResolverDiferenciaModal';
+import CierresCajaPagination, {
+  getPaginatedRows
+} from '../../ventas/components/cierres/CierresCajaPagination';
 import CierresCajaFiltersDrawer from './CierresCajaFiltersDrawer';
 import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
 import {
@@ -19,7 +22,7 @@ import {
   resolveClosureStateBadge
 } from '../../ventas/utils/cajasHelpers';
 import { useCierresCaja } from '../../ventas/hooks/useCierresCaja';
-import { PERMISSIONS } from '../../../../utils/permissions';
+import { normalizeRoles, PERMISSIONS } from '../../../../utils/permissions';
 
 const buildScopeQuery = (value) => {
   const parsed = Number.parseInt(String(value || ''), 10);
@@ -32,10 +35,39 @@ const isTruthyState = (value) =>
 const countActiveFilters = ({ estado = '', desde = '', hasta = '', sucursal = '' }) =>
   [estado, desde, hasta, sucursal].filter((value) => String(value || '').trim() !== '').length;
 
+const CIERRES_HISTORIAL_PAGE_SIZE = 6;
+
+const extractUserRoleNames = (user) => {
+  const roleRows = Array.isArray(user?.roles) ? user.roles : [];
+  const candidates = [
+    user?.rol,
+    user?.role,
+    user?.rol_codigo,
+    user?.codigo_rol,
+    user?.rol_nombre,
+    user?.nombre_rol,
+    ...roleRows.flatMap((role) => {
+      if (!role || typeof role !== 'object') return [role];
+      return [
+        role.codigo,
+        role.codigo_rol,
+        role.rol,
+        role.role,
+        role.nombre,
+        role.nombre_rol,
+        role.name
+      ];
+    })
+  ];
+
+  return normalizeRoles(candidates.filter(Boolean));
+};
+
 const resolveAdministrativeResolutionLabel = (closure = {}) => {
   const code = String(closure.resolucion_codigo || '').trim().toUpperCase();
   if (!code || code === 'PENDIENTE_REVISION') return 'Pendiente auditoria';
   if (code === 'CAJA_CUADRA') return 'Cuadrado';
+  if (code === 'GASTO_EMPRESA') return 'Asumido por empresa';
   return closure.resolucion_nombre || closure.resolucion_label || 'Resuelto';
 };
 
@@ -83,6 +115,7 @@ export default function CierresCajaHistorialView() {
     estado: ''
   });
   const [cierres, setCierres] = useState([]);
+  const [historyPage, setHistoryPage] = useState(1);
   const [selectedDetalle, setSelectedDetalle] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [resolveDetalle, setResolveDetalle] = useState(null);
@@ -98,7 +131,10 @@ export default function CierresCajaHistorialView() {
   ]);
   const canViewHistory = canAny([PERMISSIONS.VENTAS_CAJAS_REPORTE_VER]);
   const canEditClose = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_CERRAR]);
-  const canResolveDifference = canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
+  const roleSet = useMemo(() => new Set(extractUserRoleNames(user)), [user]);
+  const isAdminRole = roleSet.has('ADMIN') || roleSet.has('ADMINISTRADOR') || roleSet.has('SUPER_ADMIN');
+  const canResolveDifference =
+    (isSuperAdmin || isAdminRole) && canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
 
   const deferredSearch = useDeferredValue(search);
   const scopeQuery = useMemo(
@@ -243,6 +279,20 @@ export default function CierresCajaHistorialView() {
       return true;
     });
   }, [cierres, deferredSearch, filters.estado, filters.fecha_desde, filters.fecha_hasta]);
+  const historyPageData = useMemo(
+    () => getPaginatedRows(visibleCierres, historyPage, CIERRES_HISTORIAL_PAGE_SIZE),
+    [historyPage, visibleCierres]
+  );
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [
+    deferredSearch,
+    filters.estado,
+    filters.fecha_desde,
+    filters.fecha_hasta,
+    selectedSucursalId
+  ]);
 
   const stats = useMemo(() => {
     const totalCierres = cierres.length;
@@ -405,6 +455,8 @@ export default function CierresCajaHistorialView() {
                 onSubmit={(value) => setSearch(String(value || '').trim())}
                 placeholder="Buscar por caja, responsable, usuario de cierre o resolucion..."
                 ariaLabel="Buscar cierres de caja"
+                expandDirection="left"
+                className="cierres-caja-toolbar__search-compact"
               />
 
               <button
@@ -488,6 +540,21 @@ export default function CierresCajaHistorialView() {
         </section>
 
         <div className="ventas-page__table-card flex-grow-1 d-flex flex-column min-h-0">
+          <div className="inv-prod-results-meta cierres-caja-results-meta">
+            <span>{loading ? 'Cargando cierres...' : `${historyPageData.rows.length} resultados`}</span>
+            <span>
+              {loading
+                ? ''
+                : `Mostrando ${
+                  historyPageData.total === 0 ? 0 : ((historyPageData.page - 1) * historyPageData.pageSize) + 1
+                }-${
+                  historyPageData.total === 0
+                    ? 0
+                    : Math.min(((historyPageData.page - 1) * historyPageData.pageSize) + historyPageData.rows.length, historyPageData.total)
+                } de ${historyPageData.total}`}
+            </span>
+          </div>
+
           <div className="ventas-page__table-wrap flex-grow-1 cierres-caja-table-desktop">
             <table className="table ventas-page__table">
               <thead>
@@ -532,7 +599,7 @@ export default function CierresCajaHistorialView() {
                     </td>
                   </tr>
                 ) : (
-                  visibleCierres.map((closure) => {
+                  historyPageData.rows.map((closure) => {
                     const closureBadge = resolveClosureStateBadge(closure);
                     const resolutionLabel = resolveAdministrativeResolutionLabel(closure);
                     const canResolveClosure = canResolveCierreDifference({
@@ -644,7 +711,7 @@ export default function CierresCajaHistorialView() {
                 </div>
               </div>
             ) : (
-              visibleCierres.map((closure) => {
+              historyPageData.rows.map((closure) => {
                 const closureBadge = resolveClosureStateBadge(closure);
                 const resolutionLabel = resolveAdministrativeResolutionLabel(closure);
                 const canResolveClosure = canResolveCierreDifference({
@@ -727,6 +794,15 @@ export default function CierresCajaHistorialView() {
               })
             )}
           </div>
+
+          {!loading && !error && historyPageData.total > 0 ? (
+            <CierresCajaPagination
+              totalItems={historyPageData.total}
+              pageSize={historyPageData.pageSize}
+              currentPage={historyPageData.page}
+              onPageChange={setHistoryPage}
+            />
+          ) : null}
         </div>
       </div>
 

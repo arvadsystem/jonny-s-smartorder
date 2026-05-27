@@ -315,9 +315,18 @@ export default function VentasPage() {
         scopeInfo={scopeInfo}
         sucursales={sucursales}
         selectedVenta={selectedVentaReversion}
-        onSuccess={() => {
-          refreshVentas?.();
-          const idFactura = selectedVentaReversion?.id_factura || selectedVenta?.id_factura;
+        onSuccess={(result, refreshedDetail) => {
+          void refreshVentas?.({ suppressErrors: true });
+          if (refreshedDetail?.id_factura) {
+            setSelectedVenta(refreshedDetail);
+            setSelectedVentaReversion(refreshedDetail);
+            return;
+          }
+          const idFactura =
+            result?.id_factura_original ||
+            result?.id_factura ||
+            selectedVentaReversion?.id_factura ||
+            selectedVenta?.id_factura;
           if (idFactura) {
             void getVentaDetail(idFactura)
               .then((detail) => {
