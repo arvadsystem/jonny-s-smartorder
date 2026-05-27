@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 const buildComplementSummaryLabel = (line) => {
   const count = Array.isArray(line?.complementos) ? line.complementos.length : 0;
   if (count <= 0) return 'Sin complementos';
@@ -17,11 +15,6 @@ export default function VentaComposerSummary({
   variant = 'side',
   onClose
 }) {
-  const [totalsExpanded, setTotalsExpanded] = useState(false);
-  const safeDeliveryCost = Number.isFinite(Number(deliveryCost)) && Number(deliveryCost) >= 0
-    ? Number(deliveryCost)
-    : 0;
-  const totalWithDelivery = composer.total + safeDeliveryCost;
   const pendingCount = Number(pendingPaymentsSummary?.total ?? 0) || 0;
   const pendingAmount = Number(pendingPaymentsSummary?.monto ?? 0) || 0;
   const pendingLabel = pendingPaymentsSummary?.error
@@ -188,48 +181,9 @@ export default function VentaComposerSummary({
       </section>
 
       <footer className="ventas-create-modal__totals">
-        <button
-          type="button"
-          className="ventas-totals__toggle-btn"
-          onClick={() => setTotalsExpanded(!totalsExpanded)}
-          aria-expanded={totalsExpanded}
-        >
-          <i className={`bi bi-chevron-${totalsExpanded ? 'down' : 'up'}`} />
-          {totalsExpanded ? 'Ocultar detalles' : 'Ver detalles'}
-        </button>
-
-        {totalsExpanded && (
-          <div className="ventas-totals__details">
-            <div className="ventas-totals__row">
-              <span>Subtotal</span>
-              <strong>{composer.formatCurrency(composer.subtotal)}</strong>
-            </div>
-            {composer.discountValue > 0 ? (
-              <div className="ventas-totals__row">
-                <span>Descuento</span>
-                <strong>{composer.formatCurrency(composer.discountValue)}</strong>
-              </div>
-            ) : null}
-            <div className="ventas-totals__row">
-              <span>ISV (15%)</span>
-              <strong>{composer.formatCurrency(composer.isv)}</strong>
-            </div>
-          </div>
-        )}
-
-        <div className="ventas-totals__row">
+        <div className="ventas-totals__row ventas-totals__row--subtotal-only">
           <span>Subtotal</span>
-          <strong>{composer.formatCurrency(composer.total)}</strong>
-        </div>
-        {safeDeliveryCost > 0 ? (
-          <div className="ventas-totals__row">
-            <span>Costo delivery</span>
-            <strong>{composer.formatCurrency(safeDeliveryCost)}</strong>
-          </div>
-        ) : null}
-        <div className="is-total ventas-totals__row">
-          <span>Total</span>
-          <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
+          <strong>{composer.formatCurrency(composer.subtotal)}</strong>
         </div>
 
         {composer.submitError ? <div className="ventas-create-modal__error">{composer.submitError}</div> : null}

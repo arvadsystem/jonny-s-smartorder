@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ventasService from '../../../../services/ventasService';
 import sucursalesService from '../../../../services/sucursalesService';
 import {
@@ -33,6 +33,11 @@ const normalizeDiscountScope = (value) => {
   if (normalized === 'RECETAS') return 'RECETA';
   if (normalized === 'COMBOS') return 'COMBO';
   return normalized || 'FACTURA_COMPLETA';
+};
+
+const parsePositiveId = (value) => {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
 export const useVentas = () => {
@@ -84,6 +89,7 @@ export const useVentas = () => {
   const [error, setError] = useState('');
   const [catalogErrors, setCatalogErrors] = useState({});
   const [toast, setToast] = useState(initialToast);
+  const catalogRequestRef = useRef(0);
 
   const openToast = useCallback((title, message, variant = 'success') => {
     setToast({
@@ -174,16 +180,22 @@ export const useVentas = () => {
   }, [openToast, ventasFilters]);
 
   const loadCatalogs = useCallback(async (options = {}) => {
+    const requestId = catalogRequestRef.current + 1;
+    catalogRequestRef.current = requestId;
+    const isCurrentRequest = () => catalogRequestRef.current === requestId;
+    const catalogSucursalId = parsePositiveId(options.id_sucursal ?? options.idSucursal);
+    const scopedCatalogParams = catalogSucursalId ? { id_sucursal: catalogSucursalId } : {};
+
     setCatalogLoading(true);
     setCatalogErrors({});
 
     const endpointRequests = [
       { key: 'categorias', label: '/ventas/catalogos/categorias', request: () => ventasService.getCategoriasCatalog() },
-      { key: 'productos', label: '/ventas/catalogos/productos', request: () => ventasService.getProductosCatalog() },
+      { key: 'productos', label: '/ventas/catalogos/productos', request: () => ventasService.getProductosCatalog(scopedCatalogParams) },
       { key: 'clientes', label: '/ventas/catalogos/clientes', request: () => ventasService.getClientesCatalog() },
-      { key: 'combos', label: '/ventas/catalogos/combos', request: () => ventasService.getCombosCatalog() },
-      { key: 'recetas', label: '/ventas/catalogos/recetas', request: () => ventasService.getRecetasCatalog() },
-      { key: 'descuentos', label: '/ventas/catalogos/descuentos', request: () => ventasService.getDescuentosCatalog() },
+      { key: 'combos', label: '/ventas/catalogos/combos', request: () => ventasService.getCombosCatalog(scopedCatalogParams) },
+      { key: 'recetas', label: '/ventas/catalogos/recetas', request: () => ventasService.getRecetasCatalog(scopedCatalogParams) },
+      { key: 'descuentos', label: '/ventas/catalogos/descuentos', request: () => ventasService.getDescuentosCatalog(scopedCatalogParams) },
       { key: 'tiposDescuento', label: '/ventas/catalogos/tipos-descuento', request: () => ventasService.getTiposDescuentoCatalog() },
       { key: 'tiposDepartamento', label: '/ventas/catalogos/tipo-departamento', request: () => ventasService.getTipoDepartamentos() }
     ];
@@ -195,6 +207,8 @@ export const useVentas = () => {
       const settledResponses = await Promise.allSettled(
         endpointRequests.map((entry) => entry.request())
       );
+      if (!isCurrentRequest()) return;
+
       const responsesByKey = {};
       const nextCatalogErrors = {};
 
@@ -226,11 +240,13 @@ export const useVentas = () => {
       if (Object.keys(nextCatalogErrors).length > 0) {
         setCatalogErrors(nextCatalogErrors);
         const firstError = Object.values(nextCatalogErrors)[0];
-        openToast(
-          'ERROR CATALOGO',
-          `${firstError.endpoint}: ${firstError.message}`,
-          'danger'
-        );
+        if (isCurrentRequest()) {
+          openToast(
+            'ERROR CATALOGO',
+            `${firstError.endpoint}: ${firstError.message}`,
+            'danger'
+          );
+        }
       }
 
       const categoriasResponse = responsesByKey.categorias;
@@ -352,7 +368,9 @@ export const useVentas = () => {
       setClientes(normalizedClientes);
       setSucursales(normalizedSucursales);
     } finally {
-      setCatalogLoading(false);
+      if (isCurrentRequest()) {
+        setCatalogLoading(false);
+      }
     }
   }, [openToast]);
 
@@ -370,9 +388,30 @@ export const useVentas = () => {
   }, [loadCatalogs, loadVentas]);
 
   const refreshCatalogs = useCallback(
-    () => loadCatalogs({ includeSucursales: Boolean(scopeInfo?.canSelectSucursal) }),
+    (options = {}) => loadCatalogs({
+      includeSucursales: Boolean(scopeInfo?.canSelectSucursal),
+      ...options
+    }),
     [loadCatalogs, scopeInfo?.canSelectSucursal]
   );
+
+  const refreshClientesCatalog = useCallback(async () => {
+    const clientesResponse = await ventasService.getClientesCatalog();
+    const normalizedClientes = [
+      {
+        id_cliente: null,
+        value: 'cf',
+        label: 'Consumidor final',
+        nombre_cliente: 'Consumidor final',
+        es_consumidor_final: true
+      },
+      ...(Array.isArray(clientesResponse) ? clientesResponse : [])
+        .map(normalizeClienteOption)
+        .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
+    ];
+    setClientes(normalizedClientes);
+    return normalizedClientes;
+  }, []);
 
   const setVentasSearch = useCallback((search) => {
     setVentasFilters((prev) => ({
@@ -526,6 +565,7 @@ export const useVentas = () => {
     closeToast,
     refreshVentas: loadVentas,
     refreshCatalogs,
+    refreshClientesCatalog,
     setVentasSearch,
     setVentasPage,
     setVentasPageSize,

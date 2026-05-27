@@ -64,7 +64,9 @@ export default function VentasPage() {
     createPedidoPendiente,
     registrarPagoPedido,
     getVentaDetail,
-    refreshVentas
+    refreshVentas,
+    refreshCatalogs,
+    refreshClientesCatalog
   } = useVentas();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -256,6 +258,8 @@ export default function VentasPage() {
           onSubmit={handleCreateVenta}
           onCreatePedidoPendiente={createPedidoPendiente}
           onRegistrarPagoPedido={registrarPagoPedido}
+          onCatalogSucursalChange={refreshCatalogs}
+          onClientesRefresh={refreshClientesCatalog}
           onNotify={openToast}
         />
       ) : null}

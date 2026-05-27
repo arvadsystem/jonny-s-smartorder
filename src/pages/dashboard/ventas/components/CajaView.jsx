@@ -185,6 +185,8 @@ export default function CajaView({
   onSubmit,
   onCreatePedidoPendiente,
   onRegistrarPagoPedido,
+  onCatalogSucursalChange,
+  onClientesRefresh,
   onNotify
 }) {
   const { user } = useAuth();
@@ -253,6 +255,7 @@ export default function CajaView({
   const sesionesAbiertasInFlightRef = useRef(null);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
+  const catalogSucursalRequestRef = useRef('');
 
   const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
@@ -307,6 +310,19 @@ export default function CajaView({
     }
   };
 
+  const handleScopedSubmit = useCallback(async (payload) => {
+    const selectedSucursalId = toPositiveId(payload?.id_sucursal);
+    const sessionSucursalId = toPositiveId(cajaSesionActiva?.id_sucursal);
+    if (selectedSucursalId && sessionSucursalId && selectedSucursalId !== sessionSucursalId) {
+      const error = new Error('La sesión de caja activa no pertenece a la sucursal seleccionada.');
+      error.code = 'SESSION_SCOPE_MISMATCH';
+      error.status = 403;
+      throw error;
+    }
+
+    return onSubmit(payload);
+  }, [cajaSesionActiva?.id_sucursal, onSubmit]);
+
   const composer = useVentaComposer({
     productos,
     categorias,
@@ -319,10 +335,27 @@ export default function CajaView({
     sucursales,
     isSuperAdmin,
     defaultSucursalId,
-    onSubmit,
+    onSubmit: handleScopedSubmit,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
   });
   composerRef.current = composer;
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!selectedSucursalId) return;
+
+    const key = `sucursal:${selectedSucursalId}`;
+    if (catalogSucursalRequestRef.current === key) return;
+    catalogSucursalRequestRef.current = key;
+
+    void onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId });
+  }, [
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    isSuperAdmin,
+    onCatalogSucursalChange
+  ]);
 
   const syncComposerSession = useCallback((session) => {
     const idSesionCaja = toPositiveId(session?.id_sesion_caja);
@@ -776,6 +809,23 @@ export default function CajaView({
     }
   };
 
+  const handleSucursalChange = (value) => {
+    const changed = String(value || '') !== String(composer.selectedSucursal || '');
+    const hadCartItems = composer.cart.length > 0;
+
+    composer.setSelectedSucursal(value);
+
+    if (!changed) return;
+    setFinalizarOpen(false);
+    setRegistrarPagoOpen(false);
+    setCartSheetOpen(false);
+    setDeliveryCostPreview(0);
+
+    if (hadCartItems) {
+      onNotify?.('VENTA ACTUALIZADA', 'Carrito limpiado al cambiar de sucursal.', 'info');
+    }
+  };
+
   return (
     <div className="ventas-page ventas-caja-page ventas-caja-shell">
       <div className="inv-catpro-card inv-prod-card ventas-caja-card">
@@ -789,7 +839,7 @@ export default function CajaView({
                   value: String(sucursal.id_sucursal),
                   label: sucursal.nombre_sucursal
                 }))}
-                onChange={composer.setSelectedSucursal}
+                onChange={handleSucursalChange}
                 placeholder="Selecciona sucursal"
                 className="app-select--compact app-select--warm"
               />
@@ -975,6 +1025,7 @@ export default function CajaView({
           }}
           onCreatePedidoPendiente={handleCreatePedidoPendiente}
           onDeliveryCostChange={setDeliveryCostPreview}
+          onClientesRefresh={onClientesRefresh}
         />
       ) : null}
       {registrarPagoOpen ? (
