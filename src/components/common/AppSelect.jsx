@@ -29,7 +29,7 @@ const normalizeSearch = (value) =>
 
 export default function AppSelect({
   label,
-  placeholder = 'Selecciona una opción',
+  placeholder = 'Selecciona una opcion',
   value,
   options = [],
   onChange,
@@ -71,6 +71,34 @@ export default function AppSelect({
   const listboxId = `${id}-listbox`;
   const helperId = helperText || error ? `${id}-helper` : undefined;
 
+  const getNextEnabledIndex = (startIndex, direction) => {
+    if (filteredOptions.length === 0) return -1;
+    for (let offset = 0; offset < filteredOptions.length; offset += 1) {
+      const index = (startIndex + direction * offset + filteredOptions.length) % filteredOptions.length;
+      if (!filteredOptions[index]?.disabled) return index;
+    }
+    return -1;
+  };
+
+  const closeList = () => {
+    setOpen(false);
+    setActiveIndex(-1);
+  };
+
+  const selectOption = (option) => {
+    if (!option || option.disabled) return;
+    onChange?.(option.value);
+    closeList();
+    buttonRef.current?.focus();
+  };
+
+  const openList = () => {
+    if (disabled) return;
+    const preferredIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    setActiveIndex(getNextEnabledIndex(preferredIndex, 1));
+    setOpen(true);
+  };
+
   useEffect(() => {
     if (!open) return undefined;
 
@@ -96,34 +124,6 @@ export default function AppSelect({
     }
     setActiveIndex(getNextEnabledIndex(0, 1));
   }, [open, search, filteredOptions.length]);
-
-  const getNextEnabledIndex = (startIndex, direction) => {
-    if (filteredOptions.length === 0) return -1;
-    for (let offset = 0; offset < filteredOptions.length; offset += 1) {
-      const index = (startIndex + direction * offset + filteredOptions.length) % filteredOptions.length;
-      if (!filteredOptions[index]?.disabled) return index;
-    }
-    return -1;
-  };
-
-  const openList = () => {
-    if (disabled) return;
-    const preferredIndex = selectedIndex >= 0 ? selectedIndex : 0;
-    setActiveIndex(getNextEnabledIndex(preferredIndex, 1));
-    setOpen(true);
-  };
-
-  const closeList = () => {
-    setOpen(false);
-    setActiveIndex(-1);
-  };
-
-  const selectOption = (option) => {
-    if (!option || option.disabled) return;
-    onChange?.(option.value);
-    closeList();
-    buttonRef.current?.focus();
-  };
 
   const handleButtonKeyDown = (event) => {
     if (disabled) return;

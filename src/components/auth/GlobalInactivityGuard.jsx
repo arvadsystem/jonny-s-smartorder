@@ -8,9 +8,37 @@ import '../layout/inactivity-timeout-modal.css';
 const INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000;
 const WARNING_BEFORE_MS = 2 * 60 * 1000;
 const PROTECTED_PREFIXES = Object.freeze(['/dashboard', '/cambiar-password', '/cliente']);
+const INACTIVITY_EXCLUDED_ROLE_CODES = new Set([
+  'COCINA',
+  'MESERO',
+  'AUXILIAR_COCINA',
+  'P_COCINA'
+]);
 
 const isProtectedPath = (pathname) =>
   PROTECTED_PREFIXES.some((prefix) => String(pathname || '').startsWith(prefix));
+
+const normalizeRoleName = (value) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/[\s-]+/g, '_')
+    .toUpperCase();
+
+const hasInactivityExemptRole = (user) => {
+  if (!user || typeof user !== 'object') return false;
+
+  const roleCandidates = [
+    ...(Array.isArray(user.roles) ? user.roles : []),
+    user.tipo_usuario
+  ];
+
+  return roleCandidates
+    .map(normalizeRoleName)
+    .filter(Boolean)
+    .some((roleCode) => INACTIVITY_EXCLUDED_ROLE_CODES.has(roleCode));
+};
 
 const GlobalInactivityGuard = () => {
   const navigate = useNavigate();
@@ -18,7 +46,7 @@ const GlobalInactivityGuard = () => {
   const { user } = useAuth();
   const [isKeepingAlive, setKeepingAlive] = useState(false);
 
-  const enabled = Boolean(user) && isProtectedPath(location.pathname);
+  const enabled = Boolean(user) && isProtectedPath(location.pathname) && !hasInactivityExemptRole(user);
 
   const closeSessionLocally = useCallback(() => {
     // HU162: cierre por inactividad solo en cliente (sin request backend)

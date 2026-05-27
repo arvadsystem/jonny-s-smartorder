@@ -9,6 +9,7 @@ import { useCierresCaja } from '../../hooks/useCierresCaja';
 import { matchesCajaSession } from '../../utils/cajasHelpers';
 import CierresCajaOverview from './CierresCajaOverview';
 import CierresCajaList from './CierresCajaList';
+import { getPaginatedRows } from './CierresCajaPagination';
 import CierreCajaDetalleModal from './CierreCajaDetalleModal';
 import CierreCajaAbrirModal from './CierreCajaAbrirModal';
 import CierreCajaArqueoModal from './CierreCajaArqueoModal';
@@ -24,6 +25,8 @@ const buildScopeQuery = (value) => {
 
 const isTruthyState = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
+
+const CIERRES_CAJA_PAGE_SIZE = 6;
 
 const toPositiveId = (value) => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -134,6 +137,7 @@ export default function CierresCajaView() {
     validateCloseSesion,
     createMiSesionMovimientoManual,
     createArqueo,
+    resolveCloseDifference,
     listUsuariosOperativos,
     listCajaCatalogo
   } = useCierresCaja();
@@ -158,6 +162,7 @@ export default function CierresCajaView() {
   const [movimientoManualOpen, setMovimientoManualOpen] = useState(false);
   const [movimientoManualContext, setMovimientoManualContext] = useState(null);
   const [movimientoManualTipoInicial, setMovimientoManualTipoInicial] = useState('INGRESO');
+  const [sessionsPage, setSessionsPage] = useState(1);
   const [cierreMovementInvalidationKey, setCierreMovementInvalidationKey] = useState(0);
   const [cierreMovementInvalidationMessage, setCierreMovementInvalidationMessage] = useState('');
   const [usuariosOperativos, setUsuariosOperativos] = useState([]);
@@ -201,7 +206,8 @@ export default function CierresCajaView() {
   const canAccessMovimientoManual = hasMovimientoPermission || isCashierOnly;
   const canRegisterMovimientoManual = hasActiveCajaSession && canAccessMovimientoManual;
   const canOpenSession = canAny([PERMISSIONS.VENTAS_CAJAS_SESION_ABRIR]);
-  const canResolveDifference = canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
+  const canResolveDifference =
+    (isSuperAdmin || isAdminRole) && canAny([PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER]);
   const canUseCloseFlow = canCloseSession;
   const canListSesiones = canAny([
     PERMISSIONS.VENTAS_CAJAS_LISTADO_VER,
@@ -219,6 +225,20 @@ export default function CierresCajaView() {
     () => sesiones.filter((session) => matchesCajaSession(session, deferredSearch)),
     [deferredSearch, sesiones]
   );
+  const sessionsPageData = useMemo(
+    () => getPaginatedRows(visibleSesiones, sessionsPage, CIERRES_CAJA_PAGE_SIZE),
+    [sessionsPage, visibleSesiones]
+  );
+
+  useEffect(() => {
+    setSessionsPage(1);
+  }, [
+    deferredSearch,
+    filters.fecha_desde,
+    filters.fecha_hasta,
+    filters.id_estado_sesion_caja,
+    selectedSucursalId
+  ]);
 
   useEffect(() => {
     if (scopeInitialized) return;
@@ -326,6 +346,15 @@ export default function CierresCajaView() {
       loadSesionActiva(scopeQuery),
       loadSesiones(query)
     ]);
+  };
+
+  const handleResolveDifference = async (payload) => {
+    const idCierreCaja = selectedDetalle?.cierre?.id_cierre_caja;
+    if (!idCierreCaja) return null;
+    const response = await resolveCloseDifference(idCierreCaja, payload);
+    await refreshCurrentScope();
+    await ensureDetalle(selectedSesion || selectedDetalle?.sesion, { contexto: 'DETALLE' });
+    return response;
   };
 
   const loadMiAsignacionCaja = useCallback(async () => {
@@ -688,7 +717,6 @@ export default function CierresCajaView() {
       <div className="cierres-caja-page ventas-page d-flex flex-column gap-3 h-100 min-h-0">
         <CierresCajaOverview
           stats={stats}
-          sesionActiva={sesionActiva}
           loading={loadingCatalogos || loadingSesiones}
           hideKpis={false}
           canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
@@ -712,9 +740,14 @@ export default function CierresCajaView() {
         />
 
         <CierresCajaList
-          sesiones={visibleSesiones}
+          sesiones={sessionsPageData.rows}
           loading={loadingSesiones}
           error={error}
+          totalSesiones={sessionsPageData.total}
+          currentPage={sessionsPageData.page}
+          pageSize={sessionsPageData.pageSize}
+          totalPages={sessionsPageData.totalPages}
+          onPageChange={setSessionsPage}
           canViewDetail={canViewDetail}
           canCloseSession={canCloseSession}
           canRegisterArqueo={canRegisterArqueo}
@@ -734,6 +767,8 @@ export default function CierresCajaView() {
         canCloseSession={canCloseSession}
         canUseCloseFlow={canUseCloseFlow}
         canViewCajaTheoreticalAmounts={canViewCajaTheoreticalAmounts}
+        canResolveDifference={canResolveDifference}
+        saving={saving}
         onClose={() => {
           setDetailOpen(false);
           setSelectedSesion(null);
@@ -741,6 +776,7 @@ export default function CierresCajaView() {
         }}
         onOpenArqueo={openArqueo}
         onOpenCerrar={openCerrar}
+        onResolveDifference={handleResolveDifference}
       />
 
       <CierreCajaAbrirModal

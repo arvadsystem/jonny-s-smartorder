@@ -37,6 +37,24 @@ const getOrderTypeLabel = (orderTypeId) =>
 const HERO_AUTOPLAY_MS = 5000;
 const HERO_CONFIG_GLOBAL_BRANCH_KEY = '0';
 const CLOSED_HOURS_DISMISS_STORAGE_KEY = 'pm_closed_hours_dismissed_branches';
+const ENTRY_SETUP_DISMISS_STORAGE_KEY = 'pm_entry_setup_dismissed';
+const EMPTY_HERO_CONTACT_PHONES = Object.freeze({
+  primary: '',
+  secondary: '',
+  whatsapp: ''
+});
+const FALLBACK_TOP_NAV_CATEGORIES = Object.freeze([
+  'Combos',
+  'Tacos de Birria',
+  'Hamburguesas',
+  'Cervezas',
+  'Refrescos / Agua',
+  'Hot Dogs',
+  'Alitas y Tenders',
+  'Jugos naturales',
+  'Snacks',
+  'Helados'
+]);
 
 const loadDismissedClosedHoursBranches = () => {
   if (typeof window === 'undefined') return {};
@@ -60,14 +78,46 @@ const loadDismissedClosedHoursBranches = () => {
   }
 };
 
+const loadEntrySetupDismissed = () => {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    return window.sessionStorage.getItem(ENTRY_SETUP_DISMISS_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const saveEntrySetupDismissed = () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(ENTRY_SETUP_DISMISS_STORAGE_KEY, '1');
+  } catch {
+    // Silencioso: si sessionStorage falla, no bloqueamos el flujo.
+  }
+};
+
+const normalizeHeroContactPhones = (value) => {
+  if (!value || typeof value !== 'object') return { ...EMPTY_HERO_CONTACT_PHONES };
+  return {
+    primary: String(value.primary || value.telefono_principal || value.phone_primary || '').trim(),
+    secondary: String(value.secondary || value.telefono_secundario || value.phone_secondary || '').trim(),
+    whatsapp: String(value.whatsapp || value.telefono_whatsapp || '').trim()
+  };
+};
+
 const normalizeHeroCarouselConfig = (value) => {
-  if (!value || typeof value !== 'object') return { byBranch: {}, customByBranch: {} };
+  if (!value || typeof value !== 'object') {
+    return { byBranch: {}, customByBranch: {}, contactPhones: { ...EMPTY_HERO_CONTACT_PHONES } };
+  }
   return {
     byBranch: value.byBranch && typeof value.byBranch === 'object' ? value.byBranch : {},
     customByBranch:
       value.customByBranch && typeof value.customByBranch === 'object'
         ? value.customByBranch
-        : {}
+        : {},
+    contactPhones: normalizeHeroContactPhones(value.contactPhones)
   };
 };
 
@@ -138,8 +188,10 @@ const getGreetingName = (user) => {
 };
 
 const buildCatalogHeroSlides = ({
+  products = [],
   branchName = 'Sucursal',
   orderTypeLabel = 'Pedido',
+  preferredDetailIds = [],
   customImages = []
 }) => {
   const customSlides = (Array.isArray(customImages) ? customImages : [])
@@ -152,7 +204,42 @@ const buildCatalogHeroSlides = ({
     .filter((row) => Boolean(row.imageUrl))
     .slice(0, 6);
 
-  return customSlides;
+  if (customSlides.length > 0) return customSlides;
+
+  const productsWithImage = (Array.isArray(products) ? products : [])
+    .map((product) => ({
+      id: Number(product?.id_detalle_menu || 0),
+      imageUrl: resolveInventarioImageUrl(String(product?.imagen_url || '').trim()),
+      title: String(product?.nombre || '').trim() || 'Especialidad de la casa'
+    }))
+    .filter((product) => Boolean(product.id) && Boolean(product.imageUrl));
+
+  if (productsWithImage.length === 0) return [];
+
+  const productById = new Map(productsWithImage.map((product) => [product.id, product]));
+  const preferredIds = Array.isArray(preferredDetailIds) ? preferredDetailIds : [];
+  const selectedIds = [];
+
+  preferredIds.forEach((id) => {
+    const parsedId = Number(id || 0);
+    if (!productById.has(parsedId) || selectedIds.includes(parsedId)) return;
+    selectedIds.push(parsedId);
+  });
+
+  productsWithImage.forEach((product) => {
+    if (selectedIds.includes(product.id)) return;
+    selectedIds.push(product.id);
+  });
+
+  return selectedIds.slice(0, 6).map((id, index) => {
+    const product = productById.get(id);
+    return {
+      id: `hero-product-${id || index}`,
+      imageUrl: product?.imageUrl || '',
+      title: product?.title || 'Especialidad de la casa',
+      subtitle: `${branchName} - ${orderTypeLabel} - Entrega estimada 20-30 min`
+    };
+  });
 };
 
 const buildOrderPayloadFingerprint = (payload) => {
@@ -202,6 +289,13 @@ const formatWhatsAppNumber = (value) => {
   return clean || '';
 };
 
+const getOrderTypeIconById = (orderTypeId) => {
+  if (orderTypeId === PUBLIC_MENU_ORDER_TYPES.DELIVERY) return 'bi-truck';
+  if (orderTypeId === PUBLIC_MENU_ORDER_TYPES.PICKUP) return 'bi-bag-check-fill';
+  if (orderTypeId === PUBLIC_MENU_ORDER_TYPES.DINE_IN) return 'bi-shop';
+  return 'bi-receipt-cutoff';
+};
+
 // Paso 3: catalogo real basado en menu_vigente + detalle_menu.
 const CatalogScreen = () => {
   const navigate = useNavigate();
@@ -243,10 +337,18 @@ const CatalogScreen = () => {
     if (!state.selectedBranch?.id) return state.selectedBranch || null;
     return branches.find((branch) => Number(branch?.id) === Number(state.selectedBranch?.id)) || state.selectedBranch;
   }, [branches, state.selectedBranch]);
+  const hasOpenBranches = useMemo(
+    () => (Array.isArray(branches) ? branches.some((branch) => branch?.isOpen !== false) : false),
+    [branches]
+  );
 
   const [cartOpen, setCartOpen] = useState(false);
   const [authRequired, setAuthRequired] = useState({ open: false, message: '' });
   const [homeConfirmOpen, setHomeConfirmOpen] = useState(false);
+  const [entrySetupDismissed, setEntrySetupDismissed] = useState(loadEntrySetupDismissed);
+  const [entrySetupOpen, setEntrySetupOpen] = useState(false);
+  const [entrySetupBranchId, setEntrySetupBranchId] = useState('');
+  const [entrySetupOrderType, setEntrySetupOrderType] = useState('');
   const [closedHoursConfirmOpen, setClosedHoursConfirmOpen] = useState(false);
   const [closedHoursDismissedByBranch, setClosedHoursDismissedByBranch] = useState(
     loadDismissedClosedHoursBranches
@@ -256,7 +358,11 @@ const CatalogScreen = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
   const [heroIndex, setHeroIndex] = useState(0);
-  const [heroCarouselConfig, setHeroCarouselConfig] = useState({ byBranch: {}, customByBranch: {} });
+  const [heroCarouselConfig, setHeroCarouselConfig] = useState({
+    byBranch: {},
+    customByBranch: {},
+    contactPhones: { ...EMPTY_HERO_CONTACT_PHONES }
+  });
   const [cartFabPulse, setCartFabPulse] = useState(false);
   const [recentlyAddedId, setRecentlyAddedId] = useState(null);
   const [categorySwitching, setCategorySwitching] = useState(false);
@@ -270,6 +376,13 @@ const CatalogScreen = () => {
   const catalogAnchorRef = useRef(null);
   const prefersReducedMotion = usePrefersReducedMotion();
   const playOrderSuccessSound = useOrderSuccessSound();
+  const shouldPromptEntrySetup =
+    !branchesLoading &&
+    !entrySetupDismissed &&
+    hasOpenBranches &&
+    !state.selectedBranch?.id &&
+    !state.orderType;
+  const pauseAutoContextBootstrap = shouldPromptEntrySetup || entrySetupOpen;
 
   const {
     items: cartItems,
@@ -288,10 +401,16 @@ const CatalogScreen = () => {
   });
 
   useEffect(() => {
+    if (!shouldPromptEntrySetup || entrySetupDismissed) return;
+    setEntrySetupOpen(true);
+  }, [entrySetupDismissed, shouldPromptEntrySetup]);
+
+  useEffect(() => {
+    if (pauseAutoContextBootstrap) return;
     if (!state.selectedBranch?.id && preferredBranch?.id) {
       actions.selectBranch(preferredBranch);
     }
-  }, [actions, preferredBranch, state.selectedBranch?.id]);
+  }, [actions, pauseAutoContextBootstrap, preferredBranch, state.selectedBranch?.id]);
 
   useEffect(() => {
     if (!state.selectedBranch?.id || !liveSelectedBranch?.id) return;
@@ -310,10 +429,12 @@ const CatalogScreen = () => {
   }, [actions, liveSelectedBranch, state.selectedBranch]);
 
   useEffect(() => {
+    if (pauseAutoContextBootstrap) return;
+    if (!state.selectedBranch?.id) return;
     if (!state.orderType) {
       actions.selectOrderType(PUBLIC_MENU_ORDER_TYPES.DINE_IN);
     }
-  }, [actions, state.orderType]);
+  }, [actions, pauseAutoContextBootstrap, state.orderType, state.selectedBranch?.id]);
 
   useEffect(() => {
     let isMounted = true;
@@ -325,7 +446,11 @@ const CatalogScreen = () => {
         setHeroCarouselConfig(normalizeHeroCarouselConfig(response));
       } catch {
         if (!isMounted) return;
-        setHeroCarouselConfig({ byBranch: {}, customByBranch: {} });
+        setHeroCarouselConfig({
+          byBranch: {},
+          customByBranch: {},
+          contactPhones: { ...EMPTY_HERO_CONTACT_PHONES }
+        });
       }
     };
 
@@ -359,17 +484,22 @@ const CatalogScreen = () => {
   const topNavCategories = useMemo(
     () => {
       const visibleCategories = categories.filter((category) => category !== 'all');
+      if (visibleCategories.length === 0) {
+        // Evita el "flash" inicial de solo Snacks/Helados mientras termina de cargar QA.
+        return loading ? [...FALLBACK_TOP_NAV_CATEGORIES] : [];
+      }
       ['Snacks', 'Helados'].forEach((category) => {
         if (!visibleCategories.includes(category)) visibleCategories.push(category);
       });
       return visibleCategories.slice(0, 10);
     },
-    [categories]
+    [categories, loading]
   );
   const activeCategoryLabel = selectedCategory === 'all' ? 'Todo el menu' : formatPublicMenuCategoryLabel(selectedCategory);
   const isCatalogLanding = selectedCategory === 'all';
   const hasVisibleProducts = !isCatalogLanding && filteredProducts.length > 0;
   const hasSelectedCategory = !isCatalogLanding;
+  const shouldUseFixedHeader = hasSelectedCategory || detailOpen;
   const shouldShowSyncWarning = Boolean(syncWarning) && !hasVisibleProducts;
   const [showJonnyExperience, setShowJonnyExperience] = useState(true);
   const preferredHeroDetailIds = useMemo(
@@ -379,6 +509,26 @@ const CatalogScreen = () => {
   const customHeroSlides = useMemo(
     () => resolveHeroCustomByBranch(heroCarouselConfig, branchId),
     [branchId, heroCarouselConfig]
+  );
+  const heroContactPhones = useMemo(
+    () => normalizeHeroContactPhones(heroCarouselConfig?.contactPhones),
+    [heroCarouselConfig]
+  );
+  const landingContactPhones = useMemo(
+    () => {
+      const fallbackWhatsapp = String(state.selectedBranch?.whatsapp || '').trim();
+      return {
+        primary: heroContactPhones.primary || fallbackWhatsapp,
+        secondary: heroContactPhones.secondary,
+        whatsapp: heroContactPhones.whatsapp || fallbackWhatsapp
+      };
+    },
+    [
+      heroContactPhones.primary,
+      heroContactPhones.secondary,
+      heroContactPhones.whatsapp,
+      state.selectedBranch?.whatsapp
+    ]
   );
   const heroSlides = useMemo(
     () =>
@@ -577,6 +727,32 @@ const CatalogScreen = () => {
     }
 
     navigate('/menu-publico');
+  };
+
+  const markEntrySetupDismissed = () => {
+    setEntrySetupDismissed(true);
+    saveEntrySetupDismissed();
+  };
+
+  const handleEntrySetupContinue = () => {
+    const nextBranchId = Number(entrySetupBranchId || 0);
+    const selectedBranchFromModal =
+      branches.find((branch) => Number(branch?.id || 0) === nextBranchId) || null;
+    const normalizedOrderType = String(entrySetupOrderType || '').trim();
+    if (!selectedBranchFromModal || !normalizedOrderType) return;
+
+    actions.selectBranch(selectedBranchFromModal);
+    actions.selectOrderType(normalizedOrderType);
+    if (normalizedOrderType === PUBLIC_MENU_ORDER_TYPES.PICKUP && !state.pickupPaymentMethod) {
+      actions.setPickupPaymentMethod('caja');
+    }
+    setEntrySetupOpen(false);
+    markEntrySetupDismissed();
+  };
+
+  const handleEntrySetupViewMenu = () => {
+    setEntrySetupOpen(false);
+    markEntrySetupDismissed();
   };
 
   const cancelHomeNavigation = () => {
@@ -783,7 +959,7 @@ const CatalogScreen = () => {
 
   return (
     <section
-      className={`pm-screen pm-catalog-screen ${totalItems > 0 ? 'pm-catalog-screen--with-cart' : ''}`}
+      className={`pm-screen pm-catalog-screen ${totalItems > 0 ? 'pm-catalog-screen--with-cart' : ''} ${shouldUseFixedHeader ? 'pm-catalog-screen--header-fixed' : ''}`.trim()}
       aria-label="Catalogo publico"
     >
       <PremiumCatalogHeader
@@ -824,7 +1000,7 @@ const CatalogScreen = () => {
         />
       ) : null}
 
-      {showJonnyExperience ? <JonnyExperienceSection /> : null}
+      {showJonnyExperience ? <JonnyExperienceSection contactPhones={landingContactPhones} /> : null}
 
       {!selectedBranchOpen ? (
         <div className="pm-branch-hours-alert" role="status">
@@ -905,7 +1081,7 @@ const CatalogScreen = () => {
       </div>
 
       <footer className="pm-public-footer" aria-label="Creditos del sistema">
-        <span>© 2026 ARVAD SYSTEM</span>
+        <span>© 2026 AVAD SYSTEM</span>
       </footer>
 
       <PremiumStickyCart
@@ -947,6 +1123,122 @@ const CatalogScreen = () => {
         onClose={closeAuthRequiredModal}
       />
 
+      {entrySetupOpen ? (
+        <div className="pm-confirm-modal__backdrop pm-entry-setup-modal__backdrop" role="presentation">
+          <div
+            className="pm-confirm-modal pm-entry-setup-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pm-entry-setup-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="pm-confirm-modal__icon" aria-hidden="true">
+              <i className="bi bi-compass" />
+            </div>
+            <h2 id="pm-entry-setup-title" className="pm-confirm-modal__title">
+              SELECCIONE LA SUCURSAL DONDE PEDIRA
+            </h2>
+            <p className="pm-confirm-modal__message">
+              Configure su pedido desde el inicio. Puede cambiar esta informacion luego en la barra superior.
+            </p>
+
+            <div className="pm-entry-setup-modal__section">
+              <h3 className="pm-entry-setup-modal__section-title">
+                <i className="bi bi-geo-alt-fill" aria-hidden="true" />
+                <span>Sucursal</span>
+              </h3>
+              <div className="pm-entry-setup-modal__list" role="listbox" aria-label="Sucursales disponibles">
+                {branchesLoading ? (
+                  <div className="pm-premium-header__location-menu-state">Cargando sucursales...</div>
+                ) : null}
+
+                {!branchesLoading && branchesError ? (
+                  <button
+                    type="button"
+                    className="pm-premium-header__location-menu-item"
+                    onClick={() => reloadBranches?.()}
+                  >
+                    <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+                    <span>Reintentar carga</span>
+                  </button>
+                ) : null}
+
+                {!branchesLoading && !branchesError && branches.length > 0 ? (
+                  branches.map((branch) => {
+                    const branchNumericId = Number(branch?.id || 0);
+                    const isCurrent = Number(entrySetupBranchId || 0) === branchNumericId;
+                    return (
+                      <button
+                        type="button"
+                        key={`entry-branch-${branchNumericId}`}
+                        className={`pm-premium-header__location-menu-item ${isCurrent ? 'is-current' : ''}`}
+                        onClick={() => setEntrySetupBranchId(String(branchNumericId))}
+                      >
+                        <i className="bi bi-shop" aria-hidden="true" />
+                        <span className="pm-entry-setup-modal__item-copy">
+                          <strong>{branch.displayName || branch.name || 'Sucursal'}</strong>
+                          <small className="pm-entry-setup-modal__item-meta">
+                            {branch.statusLabel || (branch?.isOpen ? 'Abierto ahora' : 'Cerrado')}
+                          </small>
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : null}
+
+                {!branchesLoading && !branchesError && branches.length === 0 ? (
+                  <div className="pm-premium-header__location-menu-state">No hay sucursales disponibles.</div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="pm-entry-setup-modal__section">
+              <h3 className="pm-entry-setup-modal__section-title">
+                <i className="bi bi-house-door-fill" aria-hidden="true" />
+                <span>Tipo de pedido</span>
+              </h3>
+              <div className="pm-entry-setup-modal__list" role="listbox" aria-label="Tipos de pedido">
+                {PUBLIC_MENU_ORDER_TYPE_OPTIONS.map((option) => {
+                  const isCurrent = option.id === entrySetupOrderType;
+                  return (
+                    <button
+                      type="button"
+                      key={`entry-order-${option.id}`}
+                      className={`pm-premium-header__location-menu-item ${isCurrent ? 'is-current' : ''}`}
+                      onClick={() => setEntrySetupOrderType(option.id)}
+                    >
+                      <i className={`bi ${getOrderTypeIconById(option.id)}`} aria-hidden="true" />
+                      <span className="pm-entry-setup-modal__item-copy">
+                        <strong>{option.title}</strong>
+                        <small className="pm-entry-setup-modal__item-meta">{option.description}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <p className="pm-entry-setup-modal__note">
+              Nota adicional: Podrá cambiar la sucursal o tipo de pedido en los iconos de la barra superior.
+            </p>
+
+            <div className="pm-confirm-modal__actions pm-entry-setup-modal__actions">
+              <button type="button" className="btn btn-outline-secondary" onClick={handleEntrySetupViewMenu}>
+                Ver menú
+              </button>
+              <button
+                type="button"
+                className="btn btn-dark"
+                onClick={handleEntrySetupContinue}
+                disabled={!entrySetupBranchId || !entrySetupOrderType}
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <ConfirmModal
         open={homeConfirmOpen}
         title="¿Volver al inicio?"
@@ -961,9 +1253,9 @@ const CatalogScreen = () => {
         open={closedHoursConfirmOpen && !homeConfirmOpen}
         title="RESTAURANTE CERRADO"
         message={`En este momento no estamos recibiendo pedidos. ${branchClosedReason}. Puedes seguir viendo el menu.`}
-        cancelLabel="Volver al inicio"
+        cancelLabel={null}
         confirmLabel="Seguir viendo menu"
-        onCancel={leaveClosedMenu}
+        onCancel={continueBrowsingClosedMenu}
         onConfirm={continueBrowsingClosedMenu}
       />
 

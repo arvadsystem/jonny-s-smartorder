@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
+import SinPermiso from '../../../components/common/SinPermiso';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import { normalizeVisualText } from '../../../utils/normalizeVisualText';
 import {
   buildInventarioImageUploadPayload,
@@ -185,6 +188,15 @@ const getStockPriorityRank = (snap) => {
 };
 
 const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
+  const { can, loading: permisosLoading } = usePermisos();
+  const canVerInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_VER);
+  const canVerDetalleInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_DETALLE_VER);
+  const canCrearInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_CREAR);
+  const canEditarInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_EDITAR);
+  const canCambiarEstadoInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_ESTADO_CAMBIAR);
+  const canBuscarInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_BUSCAR);
+  const canUsarFiltrosInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_FILTROS_USAR);
+
   const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
   }, [openToast]);
@@ -234,6 +246,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [togglingEstado, setTogglingEstado] = useState(false);
   const [togglingEstadoId, setTogglingEstadoId] = useState(null);
+  const [duplicateSourceContext, setDuplicateSourceContext] = useState(null);
   const [localEstadoMap, setLocalEstadoMap] = useState({});
   const [drawerImage, setDrawerImage] = useState(() => buildDrawerImageState());
   const [imageErrorMap, setImageErrorMap] = useState({});
@@ -663,7 +676,59 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const apiError = useCallback((e, fallback, setFieldErrors) => {
     const data = e?.data;
-    const msg = String((data && typeof data === 'object' && (data.message || data.mensaje)) || e?.message || fallback || 'ERROR');
+    const backendCode = String(data?.code || '').trim().toUpperCase();
+    let msg = String((data && typeof data === 'object' && (data.message || data.mensaje)) || e?.message || fallback || 'ERROR');
+    if (backendCode === 'INSUMO_IN_USE') {
+      // AM: detalle humano para bloqueo por recetas activas y stock disponible usando dependency_summary.
+      const modules = Array.isArray(data?.dependency_summary?.blocking_modules) ? data.dependency_summary.blocking_modules : [];
+      const lines = [];
+      for (const moduleEntry of modules) {
+        const modulo = String(moduleEntry?.modulo || '').trim();
+        const items = Array.isArray(moduleEntry?.items) ? moduleEntry.items.slice(0, 10) : [];
+        const remainingRaw = Number(moduleEntry?.remaining ?? 0);
+        const remaining = Number.isFinite(remainingRaw) && remainingRaw > 0 ? remainingRaw : 0;
+        if (modulo === 'recetas_activas') {
+          lines.push('Recetas activas:');
+          if (items.length) {
+            items.forEach((item) => lines.push(`- ${String(item?.nombre || `Receta #${item?.id_receta ?? ''}`).trim()}`));
+          } else if (Number(moduleEntry?.total ?? 0) > 0) {
+            lines.push(`- ${Number(moduleEntry.total)} receta(s) relacionada(s).`);
+          }
+          if (remaining > 0) lines.push(`- Y ${remaining} recetas mas.`);
+          continue;
+        }
+        if (modulo === 'stock_disponible') {
+          lines.push('Stock disponible:');
+          if (items.length) {
+            items.forEach((item) => {
+              const sucursal = String(item?.sucursal || 'Sucursal sin asignar').trim();
+              const almacen = String(item?.almacen || 'Almacen sin asignar').trim();
+              const stock = Number(item?.stock ?? 0);
+              lines.push(`- ${sucursal} / ${almacen}: ${Number.isFinite(stock) ? stock : 0} unidades`);
+            });
+          } else if (Number(moduleEntry?.total ?? 0) > 0) {
+            lines.push(`- ${Number(moduleEntry.total)} ubicaciones con existencia.`);
+          }
+          if (remaining > 0) lines.push(`- Y ${remaining} ubicaciones mas.`);
+          continue;
+        }
+        if (modulo === 'ordenes_compra_en_proceso') {
+          lines.push('Ordenes de compra en proceso:');
+          if (items.length) {
+            items.forEach((item) => {
+              const idOrden = item?.id_orden_compra;
+              const codigo = String(item?.codigo || `OC #${idOrden ?? ''}`).trim();
+              const estado = String(item?.estado || '').trim();
+              lines.push(`- ${codigo}${estado ? ` - ${estado}` : ''}`);
+            });
+          } else if (Number(moduleEntry?.total ?? 0) > 0) {
+            lines.push(`- ${Number(moduleEntry.total)} orden(es) relacionada(s).`);
+          }
+          if (remaining > 0) lines.push(`- Y ${remaining} ordenes mas.`);
+        }
+      }
+      if (lines.length) msg = `${msg}\n\n${lines.join('\n')}`;
+    }
     if (typeof setFieldErrors === 'function' && data?.errors && typeof data.errors === 'object') {
       const mapped = {};
       for (const [k, v] of Object.entries(data.errors)) mapped[k] = String(Array.isArray(v) ? v[0] : v || '').toUpperCase();
@@ -769,6 +834,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const resetCreate = useCallback(() => {
     setForm(emptyForm());
     setCreateErrors({});
+    setDuplicateSourceContext(null);
     resetDrawerImage();
   }, [resetDrawerImage]);
 
@@ -800,15 +866,17 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   }, []);
 
   const openFilters = useCallback(() => {
+    if (!canUsarFiltrosInsumos) return;
     // NEW: drawer de filtros con estado draft para aplicar/limpiar sin re-filtrar en cada clic.
     // WHY: replica el patrón UX lateral de Productos.
     // IMPACT: filtrado sigue siendo local; no toca integración backend.
     setDraftFilters(cloneFilters(appliedFilters));
     setDrawerMsg('');
     setDrawer('filters');
-  }, [appliedFilters]);
+  }, [appliedFilters, canUsarFiltrosInsumos]);
 
   const openCreate = useCallback(() => {
+    if (!canCrearInsumos) return;
     resetCreate();
     cancelEdit();
     setDrawerMode('create');
@@ -816,9 +884,43 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setSelectedId(null);
     setDrawerMsg('');
     setFocusCantidad(false);
-  }, [cancelEdit, resetCreate]);
+  }, [canCrearInsumos, cancelEdit, resetCreate]);
+
+  const duplicarInsumoDesdeDrawer = useCallback(() => {
+    if (!canCrearInsumos) return;
+    if (!selectedInsumo) return;
+
+    const sourceAlmacenId = Number.parseInt(String(selectedInsumo?.id_almacen ?? ''), 10);
+    // AM: reutiliza create con datos base y conserva el contexto para bloquear el mismo almacen origen.
+    setDuplicateSourceContext({
+      sourceInsumoId: Number.parseInt(String(selectedInsumo?.id_insumo ?? ''), 10) || null,
+      sourceAlmacenId: Number.isInteger(sourceAlmacenId) && sourceAlmacenId > 0 ? sourceAlmacenId : null
+    });
+
+    setCreateErrors({});
+    setForm({
+      nombre_insumo: String(selectedInsumo?.nombre_insumo ?? ''),
+      precio: String(selectedInsumo?.precio ?? ''),
+      cantidad: '',
+      stock_minimo: String(selectedInsumo?.stock_minimo ?? '0'),
+      fecha_ingreso_insumo: toDateInputValue(selectedInsumo?.fecha_ingreso_insumo),
+      id_almacen: '',
+      id_categoria_insumo: String(selectedInsumo?.id_categoria_insumo ?? ''),
+      id_unidad_medida: String(selectedInsumo?.id_unidad_medida ?? ''),
+      fecha_caducidad: toDateInputValue(selectedInsumo?.fecha_caducidad),
+      descripcion: String(selectedInsumo?.descripcion ?? '')
+    });
+    resetDrawerImage();
+    cancelEdit();
+    setSelectedId(null);
+    setDrawerMode('create');
+    setDrawer('form');
+    setDrawerMsg('');
+    setFocusCantidad(false);
+  }, [canCrearInsumos, cancelEdit, resetDrawerImage, selectedInsumo]);
 
   const openEdit = useCallback((i, opts = {}) => {
+    if (!canEditarInsumos) return;
     if (!i) return;
     startEdit(i);
     clearInsumoImageError(i?.id_insumo);
@@ -830,7 +932,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setDrawer('form');
     setDrawerMsg('');
     setFocusCantidad(Boolean(opts.focusCantidad));
-  }, [clearInsumoImageError, resetDrawerImage, startEdit]);
+  }, [canEditarInsumos, clearInsumoImageError, resetDrawerImage, startEdit]);
 
   const hasCreateFormUnsavedChanges = useMemo(() => {
     return !areInsumoFormsEqual(form, emptyForm()) || Boolean(drawerImage?.file);
@@ -854,6 +956,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setDrawer(null);
     setDrawerMsg('');
     setFocusCantidad(false);
+    if (drawerMode === 'create') setDuplicateSourceContext(null);
     resetDrawerImage();
   }, [
     creating,
@@ -880,10 +983,11 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   }, [cancelEdit, discardConfirm.target, resetDrawerImage]);
 
   const openDetailModal = useCallback((insumo) => {
+    if (!canVerDetalleInsumos) return;
     if (!insumo) return;
     setDetailSection(DETAIL_SECTION_DEFAULT);
     setDetailInsumoId(insumo.id_insumo);
-  }, []);
+  }, [canVerDetalleInsumos]);
 
   const closeDetailModal = useCallback(() => {
     setDetailSection(DETAIL_SECTION_DEFAULT);
@@ -1080,10 +1184,21 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     selectedInsumo
   ]);
 
+
   const saveCreate = useCallback(async () => {
+    if (!canCrearInsumos) return;
     const v = validarInsumo(form);
     setCreateErrors(v.errors);
     if (!v.ok) return;
+    if (
+      duplicateSourceContext?.sourceAlmacenId &&
+      Number(v.cleaned?.id_almacen) === Number(duplicateSourceContext.sourceAlmacenId)
+    ) {
+      const duplicateWarehouseMessage = 'Seleccione un almacén diferente al original para duplicar el insumo.';
+      setCreateErrors((prev) => ({ ...prev, id_almacen: duplicateWarehouseMessage }));
+      setDrawerMsg(duplicateWarehouseMessage);
+      return;
+    }
     if (createSubmitLockRef.current || creating) return;
     createSubmitLockRef.current = true;
     setCreating(true);
@@ -1123,9 +1238,10 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       setCreating(false);
       createSubmitLockRef.current = false;
     }
-  }, [apiError, buildLocalInsumoFromCreate, buildPayload, closeDrawer, creating, drawerImage.file, form, resetCreate, safeToast, syncInsumosSilently, uploadInsumoImageFile, upsertInsumoLocal, validarInsumo]);
+  }, [apiError, buildLocalInsumoFromCreate, buildPayload, canCrearInsumos, closeDrawer, creating, drawerImage.file, duplicateSourceContext?.sourceAlmacenId, form, resetCreate, safeToast, syncInsumosSilently, uploadInsumoImageFile, upsertInsumoLocal, validarInsumo]);
 
   const saveEdit = useCallback(async () => {
+    if (!canEditarInsumos) return;
     if (!editId || !editForm || savingEdit) return;
     const v = validarInsumo(editForm, { includeCantidad: false });
     setEditErrors(v.errors);
@@ -1183,6 +1299,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     }
   }, [
     apiError,
+    canEditarInsumos,
     closeDrawer,
     editForm,
     editId,
@@ -1197,12 +1314,13 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const closeConfirm = useCallback(() => { setConfirmModal({ show: false, idToDelete: null, nombre: '' }); setDeleting(false); }, []);
 
   const deleteConfirmed = useCallback(async () => {
+    if (!canCambiarEstadoInsumos) return;
     if (!confirmModal.idToDelete || deleting || deleteSubmitLockRef.current) return;
     deleteSubmitLockRef.current = true;
     setDeleting(true);
     setError('');
     try {
-      await inventarioService.eliminarInsumo(confirmModal.idToDelete);
+      await inventarioService.actualizarEstadoInsumo(confirmModal.idToDelete, false);
       if (Number(selectedId) === Number(confirmModal.idToDelete)) { closeDrawer({ force: true }); cancelEdit(); }
       if (estadoField) {
         patchInsumoLocalById(confirmModal.idToDelete, { [estadoField]: false });
@@ -1216,9 +1334,10 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       setDeleting(false);
       deleteSubmitLockRef.current = false;
     }
-  }, [cancelEdit, closeConfirm, closeDrawer, confirmModal.idToDelete, deleting, estadoField, patchInsumoLocalById, selectedId, showInsumoEstadoErrorToast, showInsumoInactivatedToast]);
+  }, [canCambiarEstadoInsumos, cancelEdit, closeConfirm, closeDrawer, confirmModal.idToDelete, deleting, estadoField, patchInsumoLocalById, selectedId, showInsumoEstadoErrorToast, showInsumoInactivatedToast]);
 
   const toggleEstado = useCallback(async (insumo, nextActive) => {
+    if (!canCambiarEstadoInsumos) return;
     if (!estadoField || !insumo || togglingEstado) return;
     setTogglingEstado(true);
     setTogglingEstadoId(Number(insumo.id_insumo));
@@ -1244,19 +1363,20 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       setTogglingEstado(false);
       setTogglingEstadoId(null);
     }
-  }, [estadoField, safeToast, showInsumoEstadoErrorToast, showInsumoInactivatedToast, togglingEstado]);
+  }, [canCambiarEstadoInsumos, estadoField, safeToast, showInsumoEstadoErrorToast, showInsumoInactivatedToast, togglingEstado]);
 
   // NEW: ruta única para el cambio de estado desde cards/listado de Insumos.
   // WHY: al inactivar debe mostrarse el mismo modal de confirmación que ya usan los otros módulos.
   // IMPACT: activar sigue siendo directo; inactivar abre `confirmModal` sin cambiar endpoints ni persistencia.
   const requestEstadoChange = useCallback((insumo, nextActive) => {
+    if (!canCambiarEstadoInsumos) return;
     if (!insumo || !estadoField) return;
     if (nextActive) {
       void toggleEstado(insumo, true);
       return;
     }
     setConfirm(insumo?.id_insumo, insumo?.nombre_insumo);
-  }, [estadoField, setConfirm, toggleEstado]);
+  }, [canCambiarEstadoInsumos, estadoField, setConfirm, toggleEstado]);
 
   const clearFilters = useCallback(() => {
     setSearch('');
@@ -1707,6 +1827,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const cadLabel = toDateInputValue(i?.fecha_caducidad) ? dateLabel(i?.fecha_caducidad) : 'Sin caducidad';
     const estadoLabel = inactive ? 'Inactivo' : 'Activo';
     const showStockAlert = ui.key === 'bajo' || ui.key === 'sin_stock';
+    const canRunEstadoAction = canCambiarEstadoInsumos;
     const desc = sanitizeSpaces(i?.descripcion) || 'Sin descripcion';
     const stockRatioBase = s.stockMin > 0 ? s.cantidad / (s.stockMin * 2) : s.cantidad / 20;
     const stockRatio = Math.max(0, Math.min(1, Number.isNaN(stockRatioBase) ? 0 : stockRatioBase));
@@ -1715,15 +1836,15 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       <article
         key={i?.id_insumo}
         className={`inv-prod-catalog-card inv-ins-card-v3 ${isSel ? 'is-selected' : ''} ${inactive ? 'is-inactive' : ''}`}
-        role="button"
-        tabIndex={0}
-        onClick={() => openEdit(i)}
-        onKeyDown={(e) => {
+        role={canEditarInsumos ? 'button' : undefined}
+        tabIndex={canEditarInsumos ? 0 : -1}
+        onClick={canEditarInsumos ? () => openEdit(i) : undefined}
+        onKeyDown={canEditarInsumos ? ((e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             openEdit(i);
           }
-        }}
+        }) : undefined}
       >
         <div className="inv-ins-card-v3__header">
           <div className="inv-ins-card-v3__media">
@@ -1784,29 +1905,33 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           </div>
 
           <div className="inv-ins-card-v3__actions-primary">
-            <button
-              type="button"
-              className="btn inv-prod-btn-subtle inv-ins-card-v3__action"
-              onClick={(e) => {
-                e.stopPropagation();
-                openDetailModal(i);
-              }}
-            >
-              <i className="bi bi-eye" />
-              <span>Ver detalle</span>
-            </button>
-            <button
-              type="button"
-              className="btn inv-prod-btn-outline inv-ins-card-v3__action"
-              onClick={(e) => {
-                e.stopPropagation();
-                openEdit(i, { focusCantidad: true });
-              }}
-            >
-              <i className="bi bi-pencil-square" />
-              <span>Editar</span>
-            </button>
-            {estadoField ? (
+            {canVerDetalleInsumos ? (
+              <button
+                type="button"
+                className="btn inv-prod-btn-subtle inv-ins-card-v3__action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openDetailModal(i);
+                }}
+              >
+                <i className="bi bi-eye" />
+                <span>Ver detalle</span>
+              </button>
+            ) : null}
+            {canEditarInsumos ? (
+              <button
+                type="button"
+                className="btn inv-prod-btn-outline inv-ins-card-v3__action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEdit(i, { focusCantidad: true });
+                }}
+              >
+                <i className="bi bi-pencil-square" />
+                <span>Editar</span>
+              </button>
+            ) : null}
+            {estadoField && canRunEstadoAction ? (
               <button
                 type="button"
                 className={`btn inv-ins-card-v3__action ${inactive ? 'inv-prod-btn-success-lite' : 'inv-prod-btn-inactivate'}`}
@@ -1857,19 +1982,21 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
             </div>
 
             <div className="inv-ins-card-v3__actions">
-              <button
-                type="button"
-                className="btn inv-prod-btn-subtle inv-ins-card-v3__action"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEdit(i, { focusCantidad: true });
-                }}
-                disabled={inactive}
-              >
-                <i className="bi bi-sliders2-vertical" />
-                <span>Ajustar</span>
-              </button>
-              {estadoField ? (
+              {canEditarInsumos ? (
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-subtle inv-ins-card-v3__action"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEdit(i, { focusCantidad: true });
+                  }}
+                  disabled={inactive}
+                >
+                  <i className="bi bi-sliders2-vertical" />
+                  <span>Ajustar</span>
+                </button>
+              ) : null}
+              {estadoField && canRunEstadoAction ? (
                 <button
                   type="button"
                   className={`btn inv-prod-card-action inv-prod-card-action-compact ${inactive ? '' : 'inactivate'}`}
@@ -1899,6 +2026,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const categoriaText = getCategoriaLabel(i) || 'Sin categoria';
     const unidadText = getUnidadMedidaLabel(i?.id_unidad_medida);
     const rowNumber = (listPage - 1) * INSUMOS_LIST_PAGE_SIZE + index + 1;
+    const canRunEstadoAction = canCambiarEstadoInsumos;
 
     return (
       <tr key={i?.id_insumo}>
@@ -1939,13 +2067,17 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
         </td>
         <td>
           <div className="inv-ins-table-actions">
-            <button type="button" className="btn inv-prod-btn-subtle inv-ins-table-action" onClick={() => openDetailModal(i)} title="Ver detalle" aria-label={`Ver detalle de ${i?.nombre_insumo || 'insumo'}`}>
-              <i className="bi bi-eye" /> <span>Ver</span>
-            </button>
-            <button type="button" className="btn inv-prod-btn-outline inv-ins-table-action" onClick={() => openEdit(i)} title="Editar" aria-label={`Editar ${i?.nombre_insumo || 'insumo'}`}>
-              <i className="bi bi-pencil-square" /> <span>Editar</span>
-            </button>
-            {estadoField ? (
+            {canVerDetalleInsumos ? (
+              <button type="button" className="btn inv-prod-btn-subtle inv-ins-table-action" onClick={() => openDetailModal(i)} title="Ver detalle" aria-label={`Ver detalle de ${i?.nombre_insumo || 'insumo'}`}>
+                <i className="bi bi-eye" /> <span>Ver</span>
+              </button>
+            ) : null}
+            {canEditarInsumos ? (
+              <button type="button" className="btn inv-prod-btn-outline inv-ins-table-action" onClick={() => openEdit(i)} title="Editar" aria-label={`Editar ${i?.nombre_insumo || 'insumo'}`}>
+                <i className="bi bi-pencil-square" /> <span>Editar</span>
+              </button>
+            ) : null}
+            {estadoField && canRunEstadoAction ? (
               <button
                 type="button"
                 className={`btn inv-ins-table-action ${inactive ? 'inv-prod-btn-success-lite' : 'inv-prod-btn-inactivate'}`}
@@ -1972,20 +2104,21 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const caducidadLabel = toDateInputValue(insumo?.fecha_caducidad) ? dateLabel(insumo?.fecha_caducidad) : 'No registrada';
     const isSelected = drawer === 'form' && Number(selectedId) === Number(insumo?.id_insumo);
     const isCardTogglePending = Number(togglingEstadoId) === Number(insumo?.id_insumo);
+    const canRunEstadoAction = canCambiarEstadoInsumos;
 
     return (
       <article
         key={insumo?.id_insumo}
         className={`inv-prod-catalog-card inv-ins-card-v4 ${isSelected ? 'is-selected' : ''} ${inactive ? 'is-inactive' : ''} ${resolveInsumoStatusClass(snapInfo.ui.key)}`}
-        role="button"
-        tabIndex={0}
-        onClick={() => openEdit(insumo)}
-        onKeyDown={(e) => {
+        role={canEditarInsumos ? 'button' : undefined}
+        tabIndex={canEditarInsumos ? 0 : -1}
+        onClick={canEditarInsumos ? () => openEdit(insumo) : undefined}
+        onKeyDown={canEditarInsumos ? ((e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             openEdit(insumo);
           }
-        }}
+        }) : undefined}
       >
         {/* NEW: card ultra-limpio con solo los datos operativos requeridos y edicion al click. */}
         {/* WHY: reducir densidad visual y usar el modal para el detalle completo sin perder rapidez operativa. */}
@@ -2047,18 +2180,20 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
             </div>
 
             <div className="inv-ins-card-v4__actions">
-              <button
-                type="button"
-                className="btn inv-prod-btn-subtle inv-ins-card-v4__action"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openDetailModal(insumo);
-                }}
-              >
-                <i className="bi bi-eye" />
-                <span>Ver detalle</span>
-              </button>
-              {estadoField ? (
+              {canVerDetalleInsumos ? (
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-subtle inv-ins-card-v4__action"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDetailModal(insumo);
+                  }}
+                >
+                  <i className="bi bi-eye" />
+                  <span>Ver detalle</span>
+                </button>
+              ) : null}
+              {estadoField && canRunEstadoAction ? (
                 <button
                   type="button"
                   className={`btn inv-ins-card-v4__action ${inactive ? 'inv-prod-btn-success-lite' : 'inv-prod-btn-inactivate'}`}
@@ -2081,6 +2216,12 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     );
   };
 
+  if (permisosLoading) return null;
+
+  if (!canVerInsumos) {
+    return <SinPermiso permiso={PERMISSIONS.INVENTARIO_INSUMOS_VER} />;
+  }
+
 
   return (
     <>
@@ -2098,16 +2239,22 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           </div>
 
           <div className="inv-prod-header-actions inv-ins-header-actions">
-            <label className="inv-ins-search" aria-label="Buscar insumos">
-              <i className="bi bi-search" />
-              <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar..." />
-            </label>
-            <button type="button" className={`inv-prod-toolbar-btn ${drawer === 'filters' ? 'is-on' : ''}`} onClick={openFilters}>
-              <i className="bi bi-funnel" /> <span>Filtros</span>
-            </button>
-            <button type="button" className={`inv-prod-toolbar-btn ${drawer === 'form' && drawerMode === 'create' ? 'is-on' : ''}`} onClick={openCreate}>
-              <i className="bi bi-plus-circle" /> <span>Nuevo</span>
-            </button>
+            {canBuscarInsumos ? (
+              <label className="inv-ins-search" aria-label="Buscar insumos">
+                <i className="bi bi-search" />
+                <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar..." />
+              </label>
+            ) : null}
+            {canUsarFiltrosInsumos ? (
+              <button type="button" className={`inv-prod-toolbar-btn ${drawer === 'filters' ? 'is-on' : ''}`} onClick={openFilters}>
+                <i className="bi bi-funnel" /> <span>Filtros</span>
+              </button>
+            ) : null}
+            {canCrearInsumos ? (
+              <button type="button" className={`inv-prod-toolbar-btn ${drawer === 'form' && drawerMode === 'create' ? 'is-on' : ''}`} onClick={openCreate}>
+                <i className="bi bi-plus-circle" /> <span>Nuevo</span>
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -2138,7 +2285,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
               />
               <span className="form-check-label">Ver inactivos</span>
             </label>
-            {hasActiveFilters ? (
+            {canUsarFiltrosInsumos && hasActiveFilters ? (
               <span className="inv-prod-active-filter-pill">
                 <span>Filtros activos</span>
                 {/* NEW: atajo de limpieza total de filtros desde el resumen del listado. */}
@@ -2447,8 +2594,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                         );
                       })}
                     </select>
-                    {fieldErr('id_almacen')}
-                  </>
+                    {fieldErr('id_almacen')}                  </>
                 ) : (
                   <>
                     <input className="form-control" value={getAlmacenLabel(formValues.id_almacen)} readOnly disabled />
@@ -2522,11 +2668,25 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           <div className="inv-ins-drawer-footer">
             <button type="button" className="btn inv-prod-btn-subtle" onClick={closeDrawer} disabled={creating || savingEdit || togglingEstado}>Cancelar</button>
             {drawerMode === 'edit' ? (
-              <button type="button" className="btn inv-prod-btn-inactivate" onClick={() => setConfirm(selectedInsumo?.id_insumo, selectedInsumo?.nombre_insumo)} disabled={savingEdit || togglingEstado || !selectedInsumo}>Inactivar</button>
+              <>
+                {canCrearInsumos ? (
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle"
+                    onClick={duplicarInsumoDesdeDrawer}
+                    disabled={savingEdit || togglingEstado || !selectedInsumo}
+                  >
+                    Duplicar
+                  </button>
+                ) : null}
+                {canCambiarEstadoInsumos ? (
+                  <button type="button" className="btn inv-prod-btn-inactivate" onClick={() => setConfirm(selectedInsumo?.id_insumo, selectedInsumo?.nombre_insumo)} disabled={savingEdit || togglingEstado || !selectedInsumo}>Inactivar</button>
+                ) : null}
+              </>
             ) : (
               <button type="button" className="btn inv-prod-btn-subtle" onClick={resetCreate} disabled={creating}>Limpiar</button>
             )}
-            <button type="submit" className="btn inv-prod-btn-primary" disabled={creating || savingEdit || togglingEstado || (drawerMode === 'edit' && !editForm)}>
+            <button type="submit" className="btn inv-prod-btn-primary" disabled={creating || savingEdit || togglingEstado || (drawerMode === 'edit' && !editForm) || (drawerMode === 'create' && !canCrearInsumos) || (drawerMode === 'edit' && !canEditarInsumos)}>
               {drawerMode === 'create' ? (creating ? 'Creando...' : 'Crear') : (savingEdit ? 'Guardando...' : 'Guardar cambios')}
             </button>
           </div>
@@ -2675,7 +2835,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
             <div className="inv-pro-confirm-footer">
               <button className="btn inv-pro-btn-cancel" type="button" onClick={closeConfirm} disabled={deleting}>Cancelar</button>
-              <button className="btn inv-pro-btn-danger" type="button" onClick={deleteConfirmed} disabled={deleting}>
+              <button className="btn inv-pro-btn-danger" type="button" onClick={deleteConfirmed} disabled={deleting || !canCambiarEstadoInsumos}>
                 <i className={INACTIVATE_CONFIRM_COPY.iconClass} aria-hidden="true" />
                 <span>{deleting ? 'Inactivando...' : 'Inactivar'}</span>
               </button>

@@ -2069,9 +2069,13 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   }, [validatePersonaStep]);
 
   const handleInlinePersonaFieldChange = useCallback((field, value) => {
-    setInlinePersonaForm((state) =>
-      normalizePersonaFormValues({ ...state, [field]: value }, { preserveNameTrailingSpace: true })
-    );
+    setInlinePersonaForm((state) => {
+      const nextState = { ...state, [field]: value };
+      if (field === "id_telefono") {
+        return nextState;
+      }
+      return normalizePersonaFormValues(nextState, { preserveNameTrailingSpace: true });
+    });
     setErrors((state) => ({ ...state, [field]: undefined, id_persona: undefined }));
   }, []);
 
@@ -2583,10 +2587,24 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
     const shouldActivate = confirmModal.estadoActual === false;
+    let linkedUserSyncError = "";
 
     setDeletingId(id);
     try {
       await personaService.updateEmpleado(id, { estado: shouldActivate ? true : false });
+      try {
+        const empleadoSnapshot = (Array.isArray(empleados) ? empleados : []).find(
+          (row) => String(row?.id_empleado ?? row?.id ?? row?.empleado_id) === String(id)
+        ) || null;
+        const linkedUsuarioId = await resolveLinkedUsuarioIdForEmpleado(id, empleadoSnapshot);
+        if (linkedUsuarioId) {
+          await personaService.updateUsuarioV2(linkedUsuarioId, { estado: shouldActivate ? true : false });
+        }
+      } catch (syncError) {
+        linkedUserSyncError = shouldActivate
+          ? (syncError?.message || "El empleado fue activado, pero no se pudo activar su usuario vinculado.")
+          : (syncError?.message || "El empleado fue inactivado, pero no se pudo inactivar su usuario vinculado.");
+      }
       setEmployeeSignedImages((prev) => {
         const next = { ...prev };
         delete next[String(id)];
@@ -2625,6 +2643,9 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       }
 
       safeToast("OK", shouldActivate ? "Empleado activado" : "Empleado inactivado");
+      if (linkedUserSyncError) {
+        safeToast("ERROR", linkedUserSyncError, "danger");
+      }
       closeConfirmDelete();
       await cargarEmpleadosGlobalStats();
     } catch (error) {

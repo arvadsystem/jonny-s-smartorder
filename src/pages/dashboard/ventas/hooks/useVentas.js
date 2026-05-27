@@ -51,7 +51,7 @@ export const useVentas = () => {
   });
   const [pagination, setPagination] = useState({
     page: 1,
-    pageSize: 30,
+    pageSize: 6,
     total: 0,
     totalPages: 1,
     hasNextPage: false,
@@ -68,10 +68,11 @@ export const useVentas = () => {
   const [ventasFilters, setVentasFilters] = useState({
     search: '',
     idSucursal: null,
+    estado: '',
     fechaDesde: '',
     fechaHasta: '',
     page: 1,
-    pageSize: 30
+    pageSize: 6
   });
   const [sucursales, setSucursales] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -123,6 +124,7 @@ export const useVentas = () => {
         pageSize: ventasFilters.pageSize,
         search: ventasFilters.search,
         idSucursal: ventasFilters.idSucursal,
+        estado: ventasFilters.estado,
         fechaDesde: ventasFilters.fechaDesde,
         fechaHasta: ventasFilters.fechaHasta
       });
@@ -134,7 +136,7 @@ export const useVentas = () => {
 
       const serverPagination = response?.pagination || {};
       const resolvedPage = Number.parseInt(String(serverPagination.page ?? ventasFilters.page), 10) || 1;
-      const resolvedPageSize = Number.parseInt(String(serverPagination.pageSize ?? ventasFilters.pageSize), 10) || 30;
+      const resolvedPageSize = Number.parseInt(String(serverPagination.pageSize ?? ventasFilters.pageSize), 10) || 6;
       const resolvedTotal = Number.parseInt(String(serverPagination.total ?? rows.length), 10) || 0;
       const resolvedTotalPages = Number.parseInt(String(serverPagination.totalPages ?? 1), 10) || 1;
       const backendSummary = response?.summary || {};
@@ -328,6 +330,12 @@ export const useVentas = () => {
           id_producto: Number(row.id_producto ?? 0) || null,
           id_receta: Number(row.id_receta ?? 0) || null,
           id_combo: Number(row.id_combo ?? 0) || null,
+          objetivos: {
+            productos: Array.isArray(row.objetivos?.productos) ? row.objetivos.productos : [],
+            recetas: Array.isArray(row.objetivos?.recetas) ? row.objetivos.recetas : [],
+            combos: Array.isArray(row.objetivos?.combos) ? row.objetivos.combos : []
+          },
+          objetivos_count: row.objetivos_count || null,
           id_sucursal: Number(row.id_sucursal ?? 0) || null,
           fecha_inicio: row.fecha_inicio ?? null,
           fecha_fin: row.fecha_fin ?? null,
@@ -416,7 +424,7 @@ export const useVentas = () => {
   const setVentasSearch = useCallback((search) => {
     setVentasFilters((prev) => ({
       ...prev,
-      search: String(search || ''),
+      search: String(search || '').slice(0, 120),
       page: 1
     }));
   }, []);
@@ -433,7 +441,7 @@ export const useVentas = () => {
     const parsed = Number.parseInt(String(pageSize ?? ''), 10);
     setVentasFilters((prev) => ({
       ...prev,
-      pageSize: Number.isInteger(parsed) && parsed > 0 ? parsed : prev.pageSize,
+      pageSize: Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 6) : 6,
       page: 1
     }));
   }, []);
@@ -443,6 +451,48 @@ export const useVentas = () => {
     setVentasFilters((prev) => ({
       ...prev,
       idSucursal: Number.isInteger(parsed) && parsed > 0 ? parsed : null,
+      page: 1
+    }));
+  }, []);
+
+  const setVentasFilterPatch = useCallback((patch = {}) => {
+    setVentasFilters((prev) => {
+      const next = { ...prev };
+
+      if (Object.prototype.hasOwnProperty.call(patch, 'search')) {
+        next.search = String(patch.search || '').trim().slice(0, 120);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'idSucursal')) {
+        const parsed = Number.parseInt(String(patch.idSucursal ?? ''), 10);
+        next.idSucursal = Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'estado')) {
+        const allowedEstados = new Set(['', 'VENTA_DIRECTA', 'EN_COCINA', 'LISTO', 'COMPLETADA', 'PENDIENTE']);
+        const value = String(patch.estado || '').trim().toUpperCase().slice(0, 40);
+        next.estado = allowedEstados.has(value) ? value : '';
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'fechaDesde')) {
+        const value = String(patch.fechaDesde || '').trim();
+        next.fechaDesde = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'fechaHasta')) {
+        const value = String(patch.fechaHasta || '').trim();
+        next.fechaHasta = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
+      }
+
+      next.page = 1;
+      return next;
+    });
+  }, []);
+
+  const clearVentasFilters = useCallback(() => {
+    setVentasFilters((prev) => ({
+      ...prev,
+      search: '',
+      idSucursal: null,
+      estado: '',
+      fechaDesde: '',
+      fechaHasta: '',
       page: 1
     }));
   }, []);
@@ -570,6 +620,8 @@ export const useVentas = () => {
     setVentasPage,
     setVentasPageSize,
     setVentasSucursal,
+    setVentasFilterPatch,
+    clearVentasFilters,
     getVentaDetail,
     createVenta,
     createPedidoPendiente,

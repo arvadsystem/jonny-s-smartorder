@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { inventarioService } from '../../../services/inventarioService';
 import { usePermisos } from '../../../context/PermisosContext';
 import { useAuth } from '../../../hooks/useAuth';
@@ -12,14 +12,13 @@ import {
   resolveInventarioImageUrl
 } from '../../../utils/inventarioImagenes';
 
-const ORDER_LIMIT = 20;
+// AM: tamano inicial reducido para listado OC; mejora lectura operativa sin saturar pantalla.
+const ORDER_DEFAULT_PAGE_SIZE = 5;
 const ESTADOS = ['PENDIENTE', 'APROBADA', 'RECHAZADA', 'EN_COMPRA', 'ABASTECIDA', 'CANCELADA'];
 // AM: polling conservador para flujo de OC; prioriza estabilidad sobre "tiempo real".
 const ORDERS_POLLING_MS = 15000;
 // AM: ajusta Nueva Solicitud a 8 cards por pagina para mostrar 4x2 en desktop.
 const CATALOG_CARDS_PER_PAGE = 8;
-// AM: Flujo reutiliza el mismo tamano de pagina visual del carrusel de Nueva Solicitud.
-const FLOW_CARDS_PER_PAGE = CATALOG_CARDS_PER_PAGE;
 // AM: modos de descuento administrativos para compra real (monto fijo o porcentaje).
 const DISCOUNT_TYPE_MONTO = 'MONTO';
 const DISCOUNT_TYPE_PORCENTAJE = 'PORCENTAJE';
@@ -133,6 +132,7 @@ const estadoIconClass = (estado) => {
 };
 
 const formatEstadoLabel = (estado) => {
+  // AM: se conserva compatibilidad con estados legacy visuales sin forzarlos en APROBADA.
   if (estado === 'EN_ESPERA') return 'EN ESPERA';
   if (estado === 'ENVIADO') return 'ENVIADO';
   return String(estado || '').replace('_', ' ');
@@ -227,6 +227,26 @@ const stockStateLabel = (stockState) => {
 
 const resolveItemIcon = (itemTipo) => (itemTipo === 'producto' ? 'bi bi-basket2-fill' : 'bi bi-box-seam-fill');
 
+// AM: etiqueta UX compacta del origen de proveedor sugerido para el draft de creacion de OC.
+const formatProveedorSugeridoOrigen = (origen) => {
+  const normalized = String(origen || '')
+    .trim()
+    .toUpperCase();
+  if (normalized === 'HISTORIAL_SUCURSAL') return 'Historial sucursal';
+  if (normalized === 'HISTORIAL_GLOBAL') return 'Historial general';
+  return 'Sin historial';
+};
+
+// AM: tono visual por origen del proveedor sugerido dentro del modal, sin alterar logica de seleccion.
+const proveedorSugeridoOrigenClass = (origen) => {
+  const normalized = String(origen || '')
+    .trim()
+    .toUpperCase();
+  if (normalized === 'HISTORIAL_SUCURSAL') return 'is-sucursal';
+  if (normalized === 'HISTORIAL_GLOBAL') return 'is-global';
+  return 'is-none';
+};
+
 const formatDate = (rawValue) => {
   if (!rawValue) return '-';
   const text = String(rawValue);
@@ -278,6 +298,33 @@ const formatEvidenceOriginLabel = (origen) => {
 };
 
 const resolveEvidenceKindFromPayload = (mimeType, rawUrl) => resolveInventarioEvidenceKind(mimeType, rawUrl);
+
+// AM: interpreta respuesta 200 de abastecimiento con advertencias administrativas de evidencias pendientes.
+const resolveSupplyWarningMeta = (responsePayload) => {
+  const warningCode = String(responsePayload?.warning_code || '')
+    .trim()
+    .toUpperCase();
+  const hasWarning = Boolean(responsePayload?.warning) || warningCode === 'OC_EVIDENCIAS_PENDIENTES';
+
+  const warningRows = Array.isArray(responsePayload?.warnings)
+    ? responsePayload.warnings
+    : Array.isArray(responsePayload?.data?.evidencias_pendientes)
+    ? responsePayload.data.evidencias_pendientes
+    : [];
+
+  const normalizedMessages = Array.from(
+    new Set(
+      warningRows
+        .map((row) => normalizeText(row?.message || row?.detalle || row?.descripcion, 220))
+        .filter(Boolean)
+    )
+  );
+
+  return {
+    hasWarning,
+    summary: normalizedMessages.slice(0, 2).join(' | ')
+  };
+};
 
 // AM: mensaje de negocio uniforme para incoherencia item-vs-almacen destino devuelta por backend (409).
 const getWarehouseMismatchMessage = (error) => {
@@ -344,6 +391,10 @@ const toCatalog = (productos, insumos) => {
         id_item: Number(row.id_producto),
         id_almacen: idAlmacenes[0] || null,
         id_almacenes: idAlmacenes,
+        // AM: precio de referencia para resumen estimado durante creacion de OC.
+        precio_estimado: parseNonNegativeNumber(row?.precio) ?? 0,
+        // AM: unidad opcional solo informativa en draft de creacion.
+        unidad_nombre: normalizeText(row?.unidad_medida_nombre || row?.unidad_nombre, 80),
         nombre: row.nombre_producto || `Producto #${row.id_producto}`,
         categoria: getCategoriaLabel(row, 'Sin categoria'),
         descripcion: row.descripcion_producto || '',
@@ -362,6 +413,13 @@ const toCatalog = (productos, insumos) => {
         id_item: Number(row.id_insumo),
         id_almacen: idAlmacenes[0] || null,
         id_almacenes: idAlmacenes,
+        // AM: precio de referencia para resumen estimado durante creacion de OC.
+        precio_estimado: parseNonNegativeNumber(row?.precio) ?? 0,
+        // AM: unidad opcional solo informativa en draft de creacion.
+        unidad_nombre: normalizeText(
+          row?.unidad_medida_nombre || row?.nombre_unidad_medida || row?.unidad_nombre,
+          80
+        ),
         nombre: row.nombre_insumo || `Insumo #${row.id_insumo}`,
         categoria: getCategoriaLabel(row, 'Sin categoria'),
         descripcion: row.descripcion || '',
@@ -389,12 +447,170 @@ const formatAlmacenDisplay = (almacen) => {
   return `${almacen.nombre} (${almacen.nombre_sucursal})`;
 };
 
+// AM: estado visual minimo por proveedor en conversion multi-proveedor sin cambiar contrato API.
+const getProviderGroupVisualState = (group, idProveedorSeleccionado, idProveedorCompraActual, hasCompraActual) => {
+  const idProveedorGrupo = parsePositiveInt(group?.idProveedor);
+  const isSelected =
+    idProveedorGrupo &&
+    parsePositiveInt(idProveedorSeleccionado) &&
+    idProveedorGrupo === parsePositiveInt(idProveedorSeleccionado);
+  const hasCompraRegistrada = Boolean(
+    group?.hasCompraDetalle || (hasCompraActual && idProveedorGrupo && idProveedorGrupo === idProveedorCompraActual)
+  );
+  if (hasCompraRegistrada) return 'CONVERTIDO';
+  if (isSelected) return 'EN_COMPRA';
+  return 'PENDIENTE';
+};
+
+// AM: helper local para agrupar lineas por proveedor; prioriza resumen backend compras_por_proveedor.
+const buildProviderGroupsForOrden = (ordenDetalle, selectedProveedorRaw) => {
+  const detalles = Array.isArray(ordenDetalle?.detalles) ? ordenDetalle.detalles : [];
+  const comprasPorProveedor = Array.isArray(ordenDetalle?.compras_por_proveedor)
+    ? ordenDetalle.compras_por_proveedor
+    : [];
+  const compraActual = ordenDetalle?.compra_actual || null;
+  const idProveedorCompraActual = parsePositiveInt(compraActual?.id_proveedor);
+  const hasCompraActual = Boolean(parsePositiveInt(compraActual?.id_compra));
+  const idProveedorSeleccionado = parsePositiveInt(selectedProveedorRaw);
+  const groupsMap = new Map();
+
+  for (const detail of detalles) {
+    const idProveedor = parsePositiveInt(detail?.id_proveedor_sugerido);
+    const groupKey = idProveedor ? `prov-${idProveedor}` : 'prov-sin-definir';
+    const providerNameRaw =
+      detail?.proveedor_sugerido_nombre || detail?.nombre_proveedor_sugerido || detail?.nombre_proveedor || '';
+    const nombreProveedor = normalizeText(providerNameRaw, 120) || (idProveedor ? `Proveedor #${idProveedor}` : 'Proveedor sin definir');
+    const cantidad = parsePositiveInt(detail?.cantidad_orden) || 0;
+    const hasCompraDetalle = Boolean(parsePositiveInt(detail?.id_compra) || parsePositiveInt(detail?.id_detalle_compra));
+    const currentGroup =
+      groupsMap.get(groupKey) ||
+      ({
+        idProveedor: idProveedor || null,
+        nombreProveedor,
+        totalLineas: 0,
+        totalCantidad: 0,
+        estadoGrupo: 'PENDIENTE',
+        missingCompra: true,
+        hasCompraDetalle: false,
+        lineas: []
+      });
+    currentGroup.totalLineas += 1;
+    currentGroup.totalCantidad += cantidad;
+    currentGroup.hasCompraDetalle = currentGroup.hasCompraDetalle || hasCompraDetalle;
+    currentGroup.lineas.push(detail);
+    groupsMap.set(groupKey, currentGroup);
+  }
+
+  // AM: si backend expone compras_por_proveedor, esa data manda para evitar inferencias aproximadas.
+  if (comprasPorProveedor.length > 0) {
+    const groupsFromBackend = comprasPorProveedor.map((groupRow) => {
+      const idProveedor = parsePositiveInt(groupRow?.id_proveedor);
+      const groupKey = idProveedor ? `prov-${idProveedor}` : 'prov-sin-definir';
+      const detailsGroup = groupsMap.get(groupKey) || null;
+      const rawEstado = String(groupRow?.estado_grupo || '')
+        .trim()
+        .toUpperCase();
+      const estadoGrupo =
+        rawEstado === 'PENDIENTE' || rawEstado === 'EN_COMPRA' || rawEstado === 'CONVERTIDO'
+          ? rawEstado
+          : getProviderGroupVisualState(
+              detailsGroup || {},
+              idProveedorSeleccionado,
+              idProveedorCompraActual,
+              hasCompraActual
+            );
+      const totalLineasOcRaw = Number(groupRow?.total_lineas_oc);
+      const totalCantidadOcRaw = Number(groupRow?.total_cantidad_oc);
+      const totalLineasCompraRaw = Number(groupRow?.total_lineas_compra);
+      const totalCantidadCompraRaw = Number(groupRow?.total_cantidad_compra);
+      const evidenciasPendientes = Array.isArray(groupRow?.evidencias_pendientes)
+        ? groupRow.evidencias_pendientes
+            .map((row) => normalizeText(row, 220))
+            .filter(Boolean)
+        : [];
+      const cantidadesCuadran = boolish(groupRow?.cantidades_cuadran);
+      const tieneCompra = boolish(groupRow?.tiene_compra);
+      return {
+        idProveedor: idProveedor || null,
+        nombreProveedor:
+          normalizeText(groupRow?.nombre_proveedor, 120) ||
+          (idProveedor ? `Proveedor #${idProveedor}` : 'Proveedor sin definir'),
+        totalLineas:
+          Number.isFinite(totalLineasOcRaw) && totalLineasOcRaw >= 0
+            ? Math.round(totalLineasOcRaw)
+            : detailsGroup?.totalLineas || 0,
+        totalCantidad:
+          Number.isFinite(totalCantidadOcRaw) && totalCantidadOcRaw >= 0
+            ? round2(totalCantidadOcRaw)
+            : detailsGroup?.totalCantidad || 0,
+        totalLineasCompra:
+          Number.isFinite(totalLineasCompraRaw) && totalLineasCompraRaw >= 0
+            ? Math.round(totalLineasCompraRaw)
+            : 0,
+        totalCantidadCompra:
+          Number.isFinite(totalCantidadCompraRaw) && totalCantidadCompraRaw >= 0
+            ? round2(totalCantidadCompraRaw)
+            : 0,
+        idCompra: parsePositiveInt(groupRow?.id_compra) || null,
+        estadoGrupo,
+        tieneCompra,
+        missingCompra: !tieneCompra,
+        hasCompraDetalle: Boolean(detailsGroup?.hasCompraDetalle),
+        lineas: Array.isArray(detailsGroup?.lineas) ? detailsGroup.lineas : [],
+        cantidadesCuadran,
+        tieneTransferencia: boolish(groupRow?.tiene_transferencia),
+        metodoPago: normalizeText(groupRow?.metodo_pago, 120) || '',
+        evidenciasPendientes,
+        hasEvidenciasPendientes: evidenciasPendientes.length > 0
+      };
+    });
+    groupsFromBackend.sort((a, b) => a.nombreProveedor.localeCompare(b.nombreProveedor, 'es'));
+    return groupsFromBackend;
+  }
+
+  // AM: fallback legacy para entornos que aun no exponen compras_por_proveedor.
+  const groups = Array.from(groupsMap.values()).map((group) => {
+    const estadoGrupo = getProviderGroupVisualState(
+      group,
+      idProveedorSeleccionado,
+      idProveedorCompraActual,
+      hasCompraActual
+    );
+    return {
+      ...group,
+      estadoGrupo,
+      tieneCompra: estadoGrupo !== 'PENDIENTE',
+      missingCompra: estadoGrupo !== 'CONVERTIDO',
+      totalLineasCompra: 0,
+      totalCantidadCompra: 0,
+      idCompra: null,
+      cantidadesCuadran: estadoGrupo === 'CONVERTIDO',
+      tieneTransferencia: false,
+      metodoPago: '',
+      evidenciasPendientes: [],
+      hasEvidenciasPendientes: false
+    };
+  });
+
+  groups.sort((a, b) => a.nombreProveedor.localeCompare(b.nombreProveedor, 'es'));
+  return groups;
+};
+
+// AM: badge compacta por estado de proveedor dentro del modal de conversion.
+const providerGroupBadgeClass = (estadoGrupo) => {
+  if (estadoGrupo === 'CONVERTIDO') return 'bg-success';
+  if (estadoGrupo === 'EN_COMPRA') return 'bg-info text-dark';
+  return 'bg-warning text-dark';
+};
+
 const emptyConvertPanel = () => ({
   open: false,
   loading: false,
   submit_action: '',
   error: '',
   orden: null,
+  compra_actual: null,
+  compras_por_proveedor: [],
   id_proveedor: '',
   fecha_compra: '',
   observacion_admin: '',
@@ -607,12 +823,10 @@ const OrdenesCompraTab = ({ openToast }) => {
   ]);
   const canVerProductosCatalogo = canAny([
     PERMISSIONS.INVENTARIO_PRODUCTOS_VER,
-    PERMISSIONS.INVENTARIO_PRODUCTOS_LISTADO_VER,
     PERMISSIONS.INVENTARIO_PRODUCTOS_DETALLE_VER
   ]);
   const canVerInsumosCatalogo = canAny([
     PERMISSIONS.INVENTARIO_INSUMOS_VER,
-    PERMISSIONS.INVENTARIO_INSUMOS_LISTADO_VER,
     PERMISSIONS.INVENTARIO_INSUMOS_DETALLE_VER
   ]);
   const canSolicitarItemNuevo = canCrear && !canCrearCatalogoDirecto;
@@ -623,6 +837,11 @@ const OrdenesCompraTab = ({ openToast }) => {
   const isSuperAdmin = isSuperAdminRoleList(user?.roles);
   // AM: cancelacion administrativa reservada para Admin/Super Admin.
   const canCancelarOrden = canCancelar || isSuperAdmin;
+  // AM: edicion manual de proveedor por linea solo para perfiles administrativos.
+  const canEditarProveedorDraft =
+    isSuperAdmin || canGestionar || canVerTodas;
+  // AM: secuencia de solicitud para ignorar respuestas antiguas de sugerencias por lote.
+  const providerSuggestionReqSeqRef = useRef(0);
   const toast = useCallback(
     (title, message, variant = 'success') => {
       if (typeof openToast === 'function') openToast(title, message, variant);
@@ -649,13 +868,13 @@ const OrdenesCompraTab = ({ openToast }) => {
   const [catalogSearch, setCatalogSearch] = useState('');
   const [soloAlertas, setSoloAlertas] = useState(true);
   const [catalogPage, setCatalogPage] = useState(0);
-// AM: pagina visual del carrusel del flujo de OC, sin tocar la paginacion backend existente.
-  const [flowCarouselPage, setFlowCarouselPage] = useState(0);
   const [flowFiltersOpen, setFlowFiltersOpen] = useState(false);
   // AM: controla desplegables del layout OC sin alterar la logica interna de cada bloque.
   const [flowSectionOpen, setFlowSectionOpen] = useState(true);
   const [createSectionOpen, setCreateSectionOpen] = useState(false);
   const [draftSectionOpen, setDraftSectionOpen] = useState(false);
+  // AM: modal principal de creacion para evitar flujo largo/desplegable en la vista base.
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [draft, setDraft] = useState([]);
   const [draftItemRequests, setDraftItemRequests] = useState([]);
   const [observacion, setObservacion] = useState('');
@@ -665,10 +884,26 @@ const OrdenesCompraTab = ({ openToast }) => {
   const [scope, setScope] = useState('branch');
   const [scopeInitialized, setScopeInitialized] = useState(false);
   const [estadoFiltro, setEstadoFiltro] = useState('');
+  // AM: filtro visual por proveedor sobre el listado ya cargado; no altera contrato API.
+  const [flowProveedorFiltro, setFlowProveedorFiltro] = useState('');
+  // AM: filtros de rango de fechas para lectura operativa del periodo en flujo OC.
+  const [flowFechaDesde, setFlowFechaDesde] = useState('');
+  const [flowFechaHasta, setFlowFechaHasta] = useState('');
+  // AM: filtro visual de evidencias pendientes (SI/NO) sin llamadas extra por fila.
+  const [flowEvidenciasFiltro, setFlowEvidenciasFiltro] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  // AM: selector profesional de tamano de pagina en listado OC.
+  const [pageSize, setPageSize] = useState(ORDER_DEFAULT_PAGE_SIZE);
   const [ordenes, setOrdenes] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, total: 0, totalPages: 1 });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: ORDER_DEFAULT_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    hasNext: false,
+    hasPrev: false
+  });
   const [loadingOrdenes, setLoadingOrdenes] = useState(false);
   const [rowBusy, setRowBusy] = useState({});
   const hasBusyRows = useMemo(() => Object.values(rowBusy || {}).some(Boolean), [rowBusy]);
@@ -729,13 +964,19 @@ const OrdenesCompraTab = ({ openToast }) => {
     }
     return Array.from(map.values()).sort((a, b) => a.id_sucursal - b.id_sucursal);
   }, [almacenesCatalog]);
+  // AM: en creacion OC se maneja una sola sucursal efectiva (auto para operativo, seleccionable para admin).
+  const selectedCreateSucursalId = useMemo(
+    () =>
+      isOperationalCreateRestricted
+        ? parseOptionalPositiveInt(workflowCreateContext?.id_sucursal_usuario)
+        : parseOptionalPositiveInt(catalogSucursalFilter),
+    [catalogSucursalFilter, isOperationalCreateRestricted, workflowCreateContext?.id_sucursal_usuario]
+  );
   const almacenesCatalogFiltradosPorSucursal = useMemo(() => {
-    const idSucursal = isOperationalCreateRestricted
-      ? parseOptionalPositiveInt(workflowCreateContext?.id_sucursal_usuario)
-      : parseOptionalPositiveInt(catalogSucursalFilter);
+    const idSucursal = selectedCreateSucursalId;
     if (!idSucursal) return almacenesCatalog;
     return almacenesCatalog.filter((row) => Number(row.id_sucursal) === Number(idSucursal));
-  }, [almacenesCatalog, catalogSucursalFilter, isOperationalCreateRestricted, workflowCreateContext?.id_sucursal_usuario]);
+  }, [almacenesCatalog, selectedCreateSucursalId]);
   const almacenesMap = useMemo(
     () => new Map(almacenesCatalog.map((row) => [Number(row.id_almacen), row])),
     [almacenesCatalog]
@@ -747,9 +988,33 @@ const OrdenesCompraTab = ({ openToast }) => {
       ),
     [almacenesMap, draftAlmacenesBase]
   );
+  // AM: almacenes operativos permitidos en el contexto actual de creacion (sucursal unica).
+  const createOperationalWarehouses = useMemo(() => {
+    if (!selectedCreateSucursalId) return [];
+    return almacenesCatalog.filter(
+      (row) => Number(parsePositiveInt(row?.id_sucursal) || 0) === Number(selectedCreateSucursalId)
+    );
+  }, [almacenesCatalog, selectedCreateSucursalId]);
+  // AM: almacen destino automatico por sucursal para todas las lineas del draft.
+  const resolvedCreateWarehouseId = useMemo(() => {
+    const selectedWarehouse = normalizeAlmacenesSelection(selectedBaseAlmacenes, 1)[0];
+    if (selectedWarehouse && createOperationalWarehouses.some((row) => Number(row.id_almacen) === Number(selectedWarehouse))) {
+      return selectedWarehouse;
+    }
+    return parsePositiveInt(createOperationalWarehouses?.[0]?.id_almacen) || null;
+  }, [createOperationalWarehouses, selectedBaseAlmacenes]);
+  const resolvedCreateWarehouse = useMemo(
+    () => (resolvedCreateWarehouseId ? almacenesMap.get(resolvedCreateWarehouseId) || null : null),
+    [almacenesMap, resolvedCreateWarehouseId]
+  );
 
   useEffect(() => {
     if (almacenesCatalog.length === 0) {
+      setDraftAlmacenesBase([]);
+      return;
+    }
+    if (!selectedCreateSucursalId) {
+      // AM: para admin, obliga seleccionar sucursal antes de resolver almacen automatico.
       setDraftAlmacenesBase([]);
       return;
     }
@@ -758,20 +1023,29 @@ const OrdenesCompraTab = ({ openToast }) => {
       almacenesCatalogFiltradosPorSucursal.length > 0
         ? almacenesCatalogFiltradosPorSucursal
         : almacenesCatalog;
+    if (visibleAlmacenes.length === 0) {
+      setDraftAlmacenesBase([]);
+      return;
+    }
 
     setDraftAlmacenesBase((prev) => {
       const valid = normalizeAlmacenesSelection(prev, 1).filter((idAlmacen) =>
         visibleAlmacenes.some((row) => Number(row.id_almacen) === Number(idAlmacen))
       );
       if (valid.length > 0) return valid;
+      // AM: autoselecciona un unico almacen de la sucursal para impedir mezcla manual.
       return [Number(visibleAlmacenes[0].id_almacen)];
     });
-  }, [almacenesCatalog, almacenesCatalogFiltradosPorSucursal]);
+  }, [almacenesCatalog, almacenesCatalogFiltradosPorSucursal, selectedCreateSucursalId]);
 
   const filteredCatalog = useMemo(() => {
     const query = normalizeText(catalogSearch, 120).toLowerCase();
     // AM: el catalogo se gobierna por la sucursal/almacen destino seleccionado en la solicitud.
-    const warehouseFilterSet = new Set(selectedBaseAlmacenes);
+    const warehouseFilterSet = new Set(
+      resolvedCreateWarehouseId ? [resolvedCreateWarehouseId] : []
+    );
+    if (!selectedCreateSucursalId) return [];
+    if (!resolvedCreateWarehouseId) return [];
     // AM: evita mostrar catalogo fuera de alcance cuando el flujo operativo aun no resolvio su almacen base.
     if (isOperationalCreateRestricted && warehouseFilterSet.size === 0) return [];
     const shouldFilterByWarehouse = warehouseFilterSet.size > 0;
@@ -797,7 +1071,14 @@ const OrdenesCompraTab = ({ openToast }) => {
         return a.nombre.localeCompare(b.nombre, 'es');
       })
       .slice(0, 120);
-  }, [catalog, catalogSearch, isOperationalCreateRestricted, selectedBaseAlmacenes, soloAlertas]);
+  }, [
+    catalog,
+    catalogSearch,
+    isOperationalCreateRestricted,
+    resolvedCreateWarehouseId,
+    selectedCreateSucursalId,
+    soloAlertas
+  ]);
 
   const catalogPages = useMemo(() => {
     const pages = [];
@@ -962,49 +1243,36 @@ const OrdenesCompraTab = ({ openToast }) => {
     }
   }, [catalogPage, catalogPages.length]);
 
-useEffect(() => {
-  // AM: evita depender de memos declarados despues; calcula paginas desde el estado base ya disponible.
-  const pagesCount = Math.ceil((ordenes.length || 0) / FLOW_CARDS_PER_PAGE);
-
-  if (pagesCount === 0) {
-    if (flowCarouselPage !== 0) setFlowCarouselPage(0);
-    return;
-  }
-
-  if (flowCarouselPage > pagesCount - 1) {
-    setFlowCarouselPage(0);
-  }
-}, [flowCarouselPage, ordenes.length]);
-
-// AM: al cambiar filtros o pagina backend del flujo, reinicia el carrusel visual local.
-useEffect(() => {
-  setFlowCarouselPage(0);
-}, [page, scope, estadoFiltro, search, flowSucursalFilter]);
+  const hasCreateSucursalSelected = Boolean(selectedCreateSucursalId);
+  const hasCreateWarehouseResolved = Boolean(resolvedCreateWarehouseId);
 
   const draftValidation = useMemo(() => {
     const errors = {};
+    if (!hasCreateSucursalSelected) {
+      errors.__context = 'Selecciona una sucursal para crear la orden de compra.';
+      return errors;
+    }
+    if (!hasCreateWarehouseResolved) {
+      errors.__context = 'No hay almacen operativo configurado para esta sucursal.';
+      return errors;
+    }
     for (const row of draft) {
       const cantidad = parsePositiveInt(row?.cantidad);
-      const almacenesSeleccionados = normalizeAlmacenesSelection(row?.id_almacenes, 1);
       const almacenesDisponiblesItem = normalizeAlmacenesSelection(
         row?.id_almacenes_disponibles ?? row?.id_almacenes,
         50
       );
       if (!cantidad) {
         errors[row.key] = 'Cantidad invalida. Debe ser entero mayor a 0.';
-      } else if (almacenesSeleccionados.length !== 1) {
-        errors[row.key] = 'Selecciona exactamente 1 almacen destino.';
-      } else if (almacenesSeleccionados.some((id) => !almacenesMap.has(id))) {
-        errors[row.key] = 'Uno de los almacenes seleccionados ya no existe o esta inactivo.';
       } else if (
         almacenesDisponiblesItem.length > 0 &&
-        almacenesSeleccionados.some((id) => !almacenesDisponiblesItem.includes(id))
+        !almacenesDisponiblesItem.includes(resolvedCreateWarehouseId)
       ) {
-        errors[row.key] = 'El item no esta asignado al almacen seleccionado.';
+        errors[row.key] = 'El item no esta asignado al almacen operativo de la sucursal.';
       }
     }
     return errors;
-  }, [draft, almacenesMap]);
+  }, [draft, hasCreateSucursalSelected, hasCreateWarehouseResolved, resolvedCreateWarehouseId]);
 
   const draftTotals = useMemo(() => {
     const totals = { productos: 0, insumos: 0, unidades: 0 };
@@ -1016,6 +1284,28 @@ useEffect(() => {
     }
     return totals;
   }, [draft]);
+  const draftEstimatedTotals = useMemo(() => {
+    let subtotal = 0;
+    let totalLineasSinPrecio = 0;
+    for (const row of draft) {
+      const cantidad = parsePositiveInt(row?.cantidad) || 0;
+      const precioEstimado = parseNonNegativeNumber(row?.precio_estimado);
+      if (precioEstimado === null || precioEstimado <= 0) {
+        totalLineasSinPrecio += 1;
+        continue;
+      }
+      subtotal += round2(cantidad * precioEstimado);
+    }
+    subtotal = round2(subtotal);
+    const isv = round2(subtotal * 0.15);
+    const total = round2(subtotal + isv);
+    return {
+      subtotal,
+      isv,
+      total,
+      lineasSinPrecio: totalLineasSinPrecio
+    };
+  }, [draft]);
 
   const hasDraftErrors = Object.keys(draftValidation).length > 0;
   const hasDraftContent = draft.length > 0 || draftItemRequests.length > 0;
@@ -1025,11 +1315,26 @@ useEffect(() => {
     return ordenes;
   }, [ordenes]);
 
+  // AM: resumen visual de evidencias desde listado (sin llamadas extra por OC) con criterio conservador.
+  const getFlowOrderEvidenceSummary = useCallback((row) => {
+    const estado = resolveEstado(row);
+    const hasCompra = Boolean(parsePositiveInt(row?.id_compra_actual));
+    const hasFactura = Boolean(parsePositiveInt(row?.id_archivo_factura_recepcion));
+    const hasTransfer = Boolean(parsePositiveInt(row?.id_archivo_transferencia_actual));
+    if (!hasCompra || (estado !== 'EN_COMPRA' && estado !== 'ABASTECIDA')) {
+      return { label: 'No aplica', toneClass: 'bg-secondary', pending: false };
+    }
+    // AM: marca pendiente cuando falta factura o comprobante visible en listado; puede subestimar casos multi-proveedor.
+    if (!hasFactura || !hasTransfer) {
+      return { label: 'Pendientes', toneClass: 'bg-warning text-dark', pending: true };
+    }
+    return { label: 'OK', toneClass: 'bg-success', pending: false };
+  }, []);
+
   const resolveEstadoVisual = useCallback(
     (row) => {
       const estado = resolveEstado(row);
-      // AM: admin ve APROBADA como "EN ESPERA" hasta que sucursal registre recepcion.
-      if (estado === 'APROBADA' && isAdminFlowActor && !hasReceptionRegistered(row)) return 'EN_ESPERA';
+      // AM: APROBADA se mantiene explicita para evitar ambiguedad visual de "EN ESPERA".
       // AM: para cocina/cajero, una OC recepcionada pasa a visual historica "ENVIADO" sin habilitar acciones operativas.
       if (estado === 'EN_COMPRA' && isSucursalOperativeActor && hasReceptionRegistered(row)) return 'ENVIADO';
       return estado;
@@ -1037,71 +1342,183 @@ useEffect(() => {
     [isAdminFlowActor, isSucursalOperativeActor]
   );
 
-  // AM: replica el mismo patron del carrusel de Nueva Solicitud para el flujo visible actual.
-const flowPages = useMemo(() => {
-  const pages = [];
-  for (let i = 0; i < ordenesVisibles.length; i += FLOW_CARDS_PER_PAGE) {
-    pages.push(ordenesVisibles.slice(i, i + FLOW_CARDS_PER_PAGE));
-  }
-  return pages;
-}, [ordenesVisibles]);
-
-const flowDotItems = useMemo(() => {
-  const totalPages = flowPages.length;
-  if (totalPages <= 0) return [];
-
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => ({ type: 'page', index }));
-  }
-
-  const pageSet = new Set([0, totalPages - 1, flowCarouselPage, flowCarouselPage - 1, flowCarouselPage + 1]);
-  if (flowCarouselPage <= 2) {
-    pageSet.add(1);
-    pageSet.add(2);
-  }
-  if (flowCarouselPage >= totalPages - 3) {
-    pageSet.add(totalPages - 2);
-    pageSet.add(totalPages - 3);
-  }
-
-  const sortedPages = Array.from(pageSet)
-    .filter((index) => index >= 0 && index < totalPages)
-    .sort((a, b) => a - b);
-
-  const dots = [];
-  for (let i = 0; i < sortedPages.length; i += 1) {
-    const index = sortedPages[i];
-    dots.push({ type: 'page', index });
-
-    const next = sortedPages[i + 1];
-    if (next !== undefined && next - index > 1) {
-      dots.push({ type: 'ellipsis', key: `flow-ellipsis-${index}-${next}` });
+  // AM: opciones de proveedor derivadas del listado actual + catalogo cargado, sin endpoint adicional.
+  const flowProviderOptions = useMemo(() => {
+    const map = new Map();
+    for (const row of ordenesVisibles) {
+      const idProveedor = parsePositiveInt(row?.id_proveedor_actual);
+      if (!idProveedor) continue;
+      const nombreProveedor =
+        normalizeText(row?.nombre_proveedor_actual, 120) || `Proveedor #${idProveedor}`;
+      map.set(idProveedor, nombreProveedor);
     }
-  }
+    for (const row of proveedores) {
+      const idProveedor = parsePositiveInt(row?.id_proveedor);
+      if (!idProveedor || map.has(idProveedor)) continue;
+      const nombreProveedor =
+        normalizeText(row?.nombre_proveedor, 120) || `Proveedor #${idProveedor}`;
+      map.set(idProveedor, nombreProveedor);
+    }
+    return Array.from(map.entries())
+      .map(([id_proveedor, nombre_proveedor]) => ({ id_proveedor, nombre_proveedor }))
+      .sort((a, b) => a.nombre_proveedor.localeCompare(b.nombre_proveedor, 'es'));
+  }, [ordenesVisibles, proveedores]);
 
-  return dots;
-}, [flowCarouselPage, flowPages.length]);
+  // AM: catalogo de proveedores para selector por linea en draft, incluyendo proveedor ya asignado en la fila.
+  const draftProviderOptions = useMemo(() => {
+    const map = new Map();
+    for (const row of proveedores) {
+      const idProveedor = parsePositiveInt(row?.id_proveedor);
+      if (!idProveedor) continue;
+      const isActive = boolish(row?.estado ?? true);
+      if (!isActive) continue;
+      const nombreProveedor =
+        normalizeText(row?.nombre_proveedor, 120) || `Proveedor #${idProveedor}`;
+      map.set(idProveedor, nombreProveedor);
+    }
+    for (const row of draft) {
+      const idProveedor = parsePositiveInt(row?.id_proveedor_sugerido);
+      if (!idProveedor || map.has(idProveedor)) continue;
+      const nombreProveedor =
+        normalizeText(row?.proveedor_sugerido_nombre, 120) || `Proveedor #${idProveedor}`;
+      map.set(idProveedor, nombreProveedor);
+    }
+    return Array.from(map.entries())
+      .map(([id_proveedor, nombre_proveedor]) => ({ id_proveedor, nombre_proveedor }))
+      .sort((a, b) => a.nombre_proveedor.localeCompare(b.nombre_proveedor, 'es'));
+  }, [draft, proveedores]);
+
+  // AM: sucursal efectiva para sugerencias por historial, priorizando almacen seleccionado en draft/base.
+  const draftSuggestionSucursalId = useMemo(() => {
+    return parsePositiveInt(selectedCreateSucursalId) || null;
+  }, [selectedCreateSucursalId]);
+
+  // AM: paginacion profesional delega filtros principales al backend para evitar doble filtrado inconsistente.
+  const ordenesFlujoFiltradas = useMemo(() => {
+    return ordenesVisibles;
+  }, [ordenesVisibles]);
 
   const workflowStats = useMemo(() => {
-  const stats = {
-    total: ordenesVisibles.length,
-    pendientes: 0,
-    aprobadas: 0,
-    enCompra: 0,
-    abastecidas: 0
-  };
-  for (const row of ordenesVisibles) {
-    const estado = resolveEstadoVisual(row);
-    if (estado === 'PENDIENTE') stats.pendientes += 1;
-    if (estado === 'APROBADA' || estado === 'EN_ESPERA') stats.aprobadas += 1;
-    if (estado === 'EN_COMPRA' || estado === 'ENVIADO') stats.enCompra += 1;
-    if (estado === 'ABASTECIDA') stats.abastecidas += 1;
-  }
-  return stats;
-}, [ordenesVisibles, resolveEstadoVisual]);
+    const stats = {
+      total: ordenesFlujoFiltradas.length,
+      pendientes: 0,
+      enCompra: 0,
+      abastecidas: 0,
+      evidenciasPendientes: 0,
+      montoTotalReal: 0
+    };
+    for (const row of ordenesFlujoFiltradas) {
+      const estado = resolveEstado(row);
+      if (estado === 'PENDIENTE') stats.pendientes += 1;
+      if (estado === 'EN_COMPRA') stats.enCompra += 1;
+      if (estado === 'ABASTECIDA') stats.abastecidas += 1;
+      if (getFlowOrderEvidenceSummary(row).pending) stats.evidenciasPendientes += 1;
+      const totalReal = Number(row?.total_compra_actual || 0);
+      if (Number.isFinite(totalReal) && totalReal > 0) {
+        stats.montoTotalReal = round2(stats.montoTotalReal + totalReal);
+      }
+    }
+    return stats;
+  }, [getFlowOrderEvidenceSummary, ordenesFlujoFiltradas]);
 
-  // AM: layout operativo: arriba solicitud + flujo (si ambos permisos); abajo detalle de solicitud.
-  const showDualTopPanels = canCrear && canVerFlujo;
+  const getFlowProviderSummary = useCallback((row) => {
+    const idProveedor = parsePositiveInt(row?.id_proveedor_actual);
+    const nombreProveedor = normalizeText(row?.nombre_proveedor_actual, 120);
+    if (idProveedor) {
+      return {
+        count: 1,
+        primary: nombreProveedor || `Proveedor #${idProveedor}`,
+        secondary: '1 proveedor con compra registrada'
+      };
+    }
+    return {
+      count: 0,
+      primary: 'Sin compra por proveedor',
+      secondary: 'Pendiente de conversion por proveedor'
+    };
+  }, []);
+
+  const getFlowTotalLabel = useCallback((row) => {
+    const totalReal = Number(row?.total_compra_actual || 0);
+    if (Number.isFinite(totalReal) && totalReal > 0) {
+      return {
+        label: formatMoney(totalReal),
+        micro: 'Monto real'
+      };
+    }
+    return {
+      label: 'L. 0.00',
+      micro: 'Sin monto real registrado'
+    };
+  }, []);
+
+  // AM: limpia filtros del listado principal sin alterar contexto de creacion ni contratos.
+  const resetFlowFilters = useCallback(() => {
+    setFlowSucursalFilter('');
+    setEstadoFiltro('');
+    setFlowProveedorFiltro('');
+    setFlowFechaDesde('');
+    setFlowFechaHasta('');
+    setFlowEvidenciasFiltro('');
+    setSearch('');
+    setPage(1);
+  }, []);
+
+  // AM: ventana compacta de paginas para no saturar UI cuando hay muchas paginas.
+  const flowPageItems = useMemo(() => {
+    const totalPages = Math.max(1, parsePositiveInt(pagination?.totalPages) || 1);
+    const currentPage = Math.min(Math.max(1, parsePositiveInt(pagination?.page) || 1), totalPages);
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, idx) => ({ type: 'page', page: idx + 1 }));
+    }
+    const set = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+    if (currentPage <= 3) {
+      set.add(2);
+      set.add(3);
+    }
+    if (currentPage >= totalPages - 2) {
+      set.add(totalPages - 1);
+      set.add(totalPages - 2);
+    }
+    const pages = Array.from(set)
+      .filter((value) => value >= 1 && value <= totalPages)
+      .sort((a, b) => a - b);
+    const items = [];
+    for (let i = 0; i < pages.length; i += 1) {
+      const pageValue = pages[i];
+      items.push({ type: 'page', page: pageValue });
+      const next = pages[i + 1];
+      if (next && next - pageValue > 1) {
+        items.push({ type: 'ellipsis', key: `flow-page-gap-${pageValue}-${next}` });
+      }
+    }
+    return items;
+  }, [pagination?.page, pagination?.totalPages]);
+
+  const flowRangeLabel = useMemo(() => {
+    const total = Number(pagination?.total || 0);
+    const currentPage = Math.max(1, parsePositiveInt(pagination?.page) || page);
+    const effectivePageSize = Math.max(1, parsePositiveInt(pagination?.pageSize) || pageSize);
+    if (total <= 0) return 'Mostrando 0-0 de 0 ordenes';
+    const start = (currentPage - 1) * effectivePageSize + 1;
+    const end = Math.min(total, start + Math.max(0, ordenesFlujoFiltradas.length - 1));
+    return `Mostrando ${start}-${end} de ${total} ordenes`;
+  }, [ordenesFlujoFiltradas.length, page, pageSize, pagination?.page, pagination?.pageSize, pagination?.total]);
+
+  // AM: la vista base prioriza flujo; creacion se mueve a modal para reducir longitud visual.
+  const showDualTopPanels = false;
+
+  // AM: abre modal de creacion y deja secciones internas expandidas para acelerar operacion.
+  const openCreateModal = useCallback(() => {
+    setCreateModalOpen(true);
+    setCreateSectionOpen(true);
+    setDraftSectionOpen(true);
+  }, []);
+
+  // AM: cierre controlado de modal de creacion sin alterar datos en borrador.
+  const closeCreateModal = useCallback(() => {
+    setCreateModalOpen(false);
+  }, []);
 
   const loadCatalogs = useCallback(async (options = {}) => {
     if (!(canCrear || canConvertir || canGestionar || canAtenderSolicitudItem)) return;
@@ -1109,7 +1526,8 @@ const flowDotItems = useMemo(() => {
     try {
       // AM: primero resuelve contexto de creacion para derivar filtros seguros de catalogo operativo.
       const [prov, alm, contextoCreacion, catsProd, catsIns, units] = await Promise.all([
-        canConvertir && canVerProveedoresCatalogo
+        // AM: habilita catalogo de proveedores tambien para ajuste manual por linea en creacion (admin/super admin).
+        (canConvertir || canEditarProveedorDraft) && canVerProveedoresCatalogo
           ? inventarioService.getProveedores()
           : Promise.resolve([]),
         (canCrear || canGestionar) && canVerAlmacenesCatalogo
@@ -1175,6 +1593,7 @@ const flowDotItems = useMemo(() => {
     canAtenderSolicitudItem,
     canConvertir,
     canCrear,
+    canEditarProveedorDraft,
     canEditarSolicitud,
     canGestionar,
     canVerAlmacenesCatalogo,
@@ -1200,16 +1619,35 @@ const flowDotItems = useMemo(() => {
       const response = await inventarioService.getOrdenesCompraWorkflow({
         scope,
         estado: estadoFiltro || undefined,
-        q: search || undefined,
+        // AM: busqueda por numero OC en backend usando el campo q existente.
+        q: normalizeText(search, 120) || undefined,
         page,
-        limit: ORDER_LIMIT,
-        id_sucursal: flowSucursalFilter || undefined
+        page_size: pageSize,
+        limit: pageSize,
+        id_sucursal: flowSucursalFilter || undefined,
+        id_proveedor: flowProveedorFiltro || undefined,
+        fecha_desde: flowFechaDesde || undefined,
+        fecha_hasta: flowFechaHasta || undefined,
+        evidencias_pendientes: flowEvidenciasFiltro || undefined
       });
       setOrdenes(Array.isArray(response?.data) ? response.data : []);
+      const backendPage = parsePositiveInt(response?.pagination?.page) || page;
+      const backendPageSize =
+        parsePositiveInt(response?.pagination?.page_size) ||
+        parsePositiveInt(response?.pagination?.limit) ||
+        pageSize;
+      const backendTotal = Number(response?.pagination?.total || 0);
+      const backendTotalPages =
+        parsePositiveInt(response?.pagination?.total_pages) ||
+        parsePositiveInt(response?.pagination?.totalPages) ||
+        1;
       setPagination({
-        page: parsePositiveInt(response?.pagination?.page) || page,
-        total: Number(response?.pagination?.total || 0),
-        totalPages: parsePositiveInt(response?.pagination?.totalPages) || 1
+        page: backendPage,
+        pageSize: backendPageSize,
+        total: backendTotal,
+        totalPages: backendTotalPages,
+        hasNext: Boolean(response?.pagination?.has_next) || backendPage < backendTotalPages,
+        hasPrev: Boolean(response?.pagination?.has_prev) || backendPage > 1
       });
     } catch (error) {
       if (!options?.silent) {
@@ -1218,7 +1656,20 @@ const flowDotItems = useMemo(() => {
     } finally {
       if (!options?.silent) setLoadingOrdenes(false);
     }
-  }, [canVerFlujo, estadoFiltro, flowSucursalFilter, page, scope, search, toast]);
+  }, [
+    canVerFlujo,
+    estadoFiltro,
+    flowEvidenciasFiltro,
+    flowFechaDesde,
+    flowFechaHasta,
+    flowProveedorFiltro,
+    flowSucursalFilter,
+    page,
+    pageSize,
+    scope,
+    search,
+    toast
+  ]);
 
   useEffect(() => {
     if (permisosLoading) return;
@@ -1235,7 +1686,31 @@ const flowDotItems = useMemo(() => {
     return () => window.clearInterval(intervalId);
   }, [canVerFlujo, hasBusyRows, loadOrdenes, permisosLoading]);
 
+  useEffect(() => {
+    // AM: al cambiar filtros o tamano de pagina, reinicia a pagina 1 para evitar offsets invalidos.
+    setPage(1);
+  }, [
+    estadoFiltro,
+    flowEvidenciasFiltro,
+    flowFechaDesde,
+    flowFechaHasta,
+    flowProveedorFiltro,
+    flowSucursalFilter,
+    pageSize,
+    scope,
+    search
+  ]);
+
   const addToDraft = (item) => {
+    if (!hasCreateSucursalSelected) {
+      toast('VALIDACION', 'Selecciona una sucursal antes de agregar items.', 'warning');
+      return;
+    }
+    if (!hasCreateWarehouseResolved) {
+      toast('VALIDACION', 'No hay almacen operativo configurado para esta sucursal.', 'warning');
+      return;
+    }
+
     setDraft((prev) => {
       const rows = Array.isArray(prev) ? prev : [];
       const current = rows.find((row) => row.key === item.key);
@@ -1244,8 +1719,14 @@ const flowDotItems = useMemo(() => {
           item?.id_almacenes_disponibles ?? item?.id_almacenes,
           50
         );
-        const validFromBase = selectedBaseAlmacenes.filter((idAlmacen) => itemAlmacenes.includes(idAlmacen));
-        const fallbackAlmacen = itemAlmacenes.length > 0 ? [itemAlmacenes[0]] : [];
+        if (itemAlmacenes.length > 0 && !itemAlmacenes.includes(resolvedCreateWarehouseId)) {
+          toast(
+            'VALIDACION',
+            `${item?.nombre || 'El item seleccionado'} no pertenece al almacen operativo de la sucursal.`,
+            'warning'
+          );
+          return rows;
+        }
 
         return [
           ...rows,
@@ -1253,7 +1734,13 @@ const flowDotItems = useMemo(() => {
             ...item,
             cantidad: '1',
             id_almacenes_disponibles: itemAlmacenes,
-            id_almacenes: validFromBase.length > 0 ? [validFromBase[0]] : fallbackAlmacen
+            // AM: una sola OC = un solo almacen destino automatico por sucursal.
+            id_almacenes: [resolvedCreateWarehouseId],
+            // AM: campos iniciales de sugerencia por historial; se completan por endpoint en lote.
+            id_proveedor_sugerido: null,
+            proveedor_sugerido_nombre: '',
+            proveedor_sugerido_origen: 'SIN_HISTORIAL',
+            proveedor_sugerido_manual: false
           }
         ];
       }
@@ -1295,29 +1782,126 @@ const flowDotItems = useMemo(() => {
     );
   };
 
-  // AM: permite elegir exactamente 1 almacen destino por linea de solicitud.
-  const toggleDraftAlmacen = (key, idAlmacen) => {
-    const safeAlmacenId = parsePositiveInt(idAlmacen);
-    if (!safeAlmacenId || !almacenesMap.has(safeAlmacenId)) return;
-
+  // AM: edicion manual por linea habilitada solo para perfiles administrativos.
+  const setDraftProveedorSugerido = (key, rawProveedorId) => {
+    const idProveedor = parsePositiveInt(rawProveedorId);
     setDraft((prev) =>
       prev.map((item) => {
         if (item.key !== key) return item;
-        const itemAlmacenes = normalizeAlmacenesSelection(item?.id_almacenes, 50);
-        if (itemAlmacenes.length > 0 && !itemAlmacenes.includes(safeAlmacenId)) return item;
+        const proveedorRow = (Array.isArray(proveedores) ? proveedores : []).find(
+          (row) => parsePositiveInt(row?.id_proveedor) === idProveedor
+        );
+        const proveedorNombre =
+          idProveedor
+            ? normalizeText(proveedorRow?.nombre_proveedor, 120) || item?.proveedor_sugerido_nombre || `Proveedor #${idProveedor}`
+            : '';
         return {
           ...item,
-          id_almacenes: [safeAlmacenId]
+          id_proveedor_sugerido: idProveedor || null,
+          proveedor_sugerido_nombre: proveedorNombre,
+          proveedor_sugerido_origen: idProveedor ? item?.proveedor_sugerido_origen || 'SIN_HISTORIAL' : 'SIN_HISTORIAL',
+          proveedor_sugerido_manual: true
         };
       })
     );
   };
 
-  const toggleDraftAlmacenBase = (idAlmacen) => {
-    const safeAlmacenId = parsePositiveInt(idAlmacen);
-    if (!safeAlmacenId || !almacenesMap.has(safeAlmacenId)) return;
-    setDraftAlmacenesBase([safeAlmacenId]);
-  };
+  useEffect(() => {
+    if (!canCrear) return undefined;
+    if (!Array.isArray(draft) || draft.length === 0) return undefined;
+    const idSucursal = parsePositiveInt(draftSuggestionSucursalId);
+    if (!idSucursal) return undefined;
+
+    const payloadItemsMap = new Map();
+    for (const row of draft) {
+      const idItem = parsePositiveInt(row?.id_item);
+      const itemTipoRaw = String(row?.item_tipo || '')
+        .trim()
+        .toLowerCase();
+      const itemTipo = itemTipoRaw === 'producto' ? 'PRODUCTO' : itemTipoRaw === 'insumo' ? 'INSUMO' : null;
+      if (!idItem || !itemTipo) continue;
+      const itemKey = `${itemTipo}:${idItem}`;
+      if (!payloadItemsMap.has(itemKey)) {
+        payloadItemsMap.set(itemKey, { item_tipo: itemTipo, id_item: idItem });
+      }
+    }
+    const payloadItems = Array.from(payloadItemsMap.values());
+    if (payloadItems.length === 0) return undefined;
+
+    // AM: debounce minimo para evitar llamada por cada cambio individual de cantidad/algun input.
+    const timeoutId = window.setTimeout(async () => {
+      const requestSeq = providerSuggestionReqSeqRef.current + 1;
+      providerSuggestionReqSeqRef.current = requestSeq;
+      try {
+        const response = await inventarioService.getOrdenCompraProveedoresSugeridos({
+          id_sucursal: idSucursal,
+          items: payloadItems
+        });
+        if (providerSuggestionReqSeqRef.current !== requestSeq) return;
+
+        const suggestionRows = Array.isArray(response?.data) ? response.data : [];
+        const suggestionMap = new Map();
+        for (const suggestion of suggestionRows) {
+          const idItem = parsePositiveInt(suggestion?.id_item);
+          const itemTipo = String(suggestion?.item_tipo || '')
+            .trim()
+            .toUpperCase();
+          if (!idItem || !['PRODUCTO', 'INSUMO'].includes(itemTipo)) continue;
+          suggestionMap.set(`${itemTipo}:${idItem}`, suggestion);
+        }
+
+        setDraft((prev) => {
+          let changed = false;
+          const next = prev.map((item) => {
+            if (item?.proveedor_sugerido_manual) return item;
+            const idItem = parsePositiveInt(item?.id_item);
+            const itemTipoRaw = String(item?.item_tipo || '')
+              .trim()
+              .toLowerCase();
+            const itemTipo = itemTipoRaw === 'producto' ? 'PRODUCTO' : itemTipoRaw === 'insumo' ? 'INSUMO' : null;
+            if (!idItem || !itemTipo) return item;
+            const suggestion = suggestionMap.get(`${itemTipo}:${idItem}`) || null;
+            const nextProveedorId = parsePositiveInt(suggestion?.id_proveedor_sugerido) || null;
+            const nextProveedorNombre = normalizeText(suggestion?.proveedor_sugerido_nombre, 120) || '';
+            const nextOrigenRaw = String(suggestion?.proveedor_sugerido_origen || 'SIN_HISTORIAL')
+              .trim()
+              .toUpperCase();
+            const nextOrigen = ['HISTORIAL_SUCURSAL', 'HISTORIAL_GLOBAL', 'SIN_HISTORIAL'].includes(nextOrigenRaw)
+              ? nextOrigenRaw
+              : 'SIN_HISTORIAL';
+
+            const currentProveedorId = parsePositiveInt(item?.id_proveedor_sugerido) || null;
+            const currentProveedorNombre = normalizeText(item?.proveedor_sugerido_nombre, 120) || '';
+            const currentOrigen = String(item?.proveedor_sugerido_origen || 'SIN_HISTORIAL')
+              .trim()
+              .toUpperCase();
+
+            if (
+              currentProveedorId === nextProveedorId &&
+              currentProveedorNombre === nextProveedorNombre &&
+              currentOrigen === nextOrigen
+            ) {
+              return item;
+            }
+
+            changed = true;
+            return {
+              ...item,
+              id_proveedor_sugerido: nextProveedorId,
+              proveedor_sugerido_nombre: nextProveedorNombre,
+              proveedor_sugerido_origen: nextOrigen,
+              proveedor_sugerido_manual: false
+            };
+          });
+          return changed ? next : prev;
+        });
+      } catch {
+        // AM: si falla sugerencia, no bloquea creacion y conserva "Proveedor sin definir".
+      }
+    }, 320);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [canCrear, draft, draftSuggestionSucursalId]);
 
   const addItemRequestToDraft = () => {
     // AM: defensa extra en frontend para impedir solicitudes_item en perfiles con alta directa.
@@ -1355,6 +1939,14 @@ const flowDotItems = useMemo(() => {
 
   const createSolicitud = async () => {
     if (!canCrear) return;
+    if (!hasCreateSucursalSelected) {
+      toast('VALIDACION', 'Selecciona una sucursal para crear la orden de compra.', 'warning');
+      return;
+    }
+    if (!hasCreateWarehouseResolved) {
+      toast('VALIDACION', 'No hay almacén operativo configurado para esta sucursal.', 'warning');
+      return;
+    }
     if (!hasDraftContent) {
       toast('VALIDACION', 'Agrega items existentes o solicitudes de items nuevos para crear la solicitud.', 'warning');
       return;
@@ -1368,22 +1960,18 @@ const flowDotItems = useMemo(() => {
     for (const row of draft) {
       const idItem = parsePositiveInt(row.id_item);
       const cantidad = parsePositiveInt(row.cantidad);
-      const idAlmacenes = normalizeAlmacenesSelection(row.id_almacenes, 1).filter((idAlmacen) =>
-        almacenesMap.has(idAlmacen)
-      );
       if (!idItem || !cantidad || !['producto', 'insumo'].includes(row.item_tipo)) {
         toast('VALIDACION', `Detalle invalido en ${row.nombre}.`, 'warning');
-        return;
-      }
-      if (idAlmacenes.length !== 1) {
-        toast('VALIDACION', `Selecciona 1 almacen destino en ${row.nombre}.`, 'warning');
         return;
       }
       detalles.push({
         item_tipo: row.item_tipo,
         id_item: idItem,
         cantidad,
-        id_almacen_destino: idAlmacenes[0]
+        // AM: almacén destino automático por sucursal, uniforme para todas las líneas de la OC.
+        id_almacen_destino: resolvedCreateWarehouseId,
+        // AM: envia proveedor sugerido por linea (o null) sin cambiar contrato principal de creacion.
+        id_proveedor_sugerido: parsePositiveInt(row?.id_proveedor_sugerido) || null
       });
     }
 
@@ -1407,6 +1995,8 @@ const flowDotItems = useMemo(() => {
       setDraft([]);
       setDraftItemRequests([]);
       setObservacion('');
+      // AM: al crear exitosamente se cierra modal para regresar al flujo principal.
+      setCreateModalOpen(false);
       setPage(1);
       await loadOrdenes();
     } catch (error) {
@@ -2071,6 +2661,9 @@ const flowDotItems = useMemo(() => {
       const response = await inventarioService.getOrdenCompraWorkflowById(idOrden);
       const orderData = response?.data?.orden || orden || {};
       const compraActual = response?.data?.compra_actual || {};
+      const comprasPorProveedor = Array.isArray(response?.data?.compras_por_proveedor)
+        ? response.data.compras_por_proveedor
+        : [];
       const detalles = Array.isArray(response?.data?.detalles) ? response.data.detalles : [];
       if (detalles.length === 0) {
         toast('VALIDACION', 'La orden no tiene detalle para convertir.', 'warning');
@@ -2100,6 +2693,12 @@ const flowDotItems = useMemo(() => {
         return {
           id_detalle_orden: idDetalleOrden,
           item_nombre: row?.item_nombre || row?.item_tipo || `Detalle #${idDetalleOrden || '-'}`,
+          // AM: conserva proveedor por linea para agrupacion visual sin alterar contratos de guardado.
+          id_proveedor_sugerido: parsePositiveInt(row?.id_proveedor_sugerido) || null,
+          proveedor_sugerido_nombre:
+            normalizeText(row?.proveedor_sugerido_nombre || row?.nombre_proveedor_sugerido, 120) || '',
+          id_compra: parsePositiveInt(row?.id_compra) || null,
+          id_detalle_compra: parsePositiveInt(row?.id_detalle_compra) || null,
           cantidad_orden: cantidadOrden,
           precio_unitario: String(precioUnitario),
           descuento: String(descuentoLinea)
@@ -2116,6 +2715,9 @@ const flowDotItems = useMemo(() => {
         submit_action: '',
         error: '',
         orden: { ...orden, ...orderData },
+        compra_actual: compraActual || null,
+        // AM: usa resumen real por proveedor cuando backend lo expone; mantiene fallback legacy.
+        compras_por_proveedor: comprasPorProveedor,
         id_proveedor: sanitizeInt(compraActual?.id_proveedor || ''),
         fecha_compra: hasValue(compraActual?.fecha)
           ? String(compraActual.fecha).replace('T', ' ').split(' ')[0]
@@ -2158,6 +2760,59 @@ const flowDotItems = useMemo(() => {
         : prev.detalles
     }));
   }, []);
+
+  // AM: construye grupos por proveedor para guiar conversion multi-proveedor en una sola OC visual.
+  const convertProviderGroups = useMemo(
+    () =>
+      buildProviderGroupsForOrden(
+        {
+          detalles: Array.isArray(convertPanel?.detalles) ? convertPanel.detalles : [],
+          compras_por_proveedor: Array.isArray(convertPanel?.compras_por_proveedor)
+            ? convertPanel.compras_por_proveedor
+            : [],
+          compra_actual: convertPanel?.compra_actual || null
+        },
+        convertPanel?.id_proveedor
+      ),
+    [
+      convertPanel?.compra_actual,
+      convertPanel?.compras_por_proveedor,
+      convertPanel?.detalles,
+      convertPanel?.id_proveedor
+    ]
+  );
+
+  // AM: muestra/edita solo lineas del proveedor seleccionado para evitar confusion de "toda la OC".
+  const convertProviderDetailRows = useMemo(() => {
+    const details = Array.isArray(convertPanel?.detalles) ? convertPanel.detalles : [];
+    const selectedProviderId = parsePositiveInt(convertPanel?.id_proveedor);
+    if (!selectedProviderId) return details;
+    return details.filter(
+      (row) => parsePositiveInt(row?.id_proveedor_sugerido) === selectedProviderId
+    );
+  }, [convertPanel?.detalles, convertPanel?.id_proveedor]);
+
+  const selectedProviderGroup = useMemo(() => {
+    const selectedProviderId = parsePositiveInt(convertPanel?.id_proveedor);
+    if (!selectedProviderId) return null;
+    return (
+      convertProviderGroups.find(
+        (group) => parsePositiveInt(group?.idProveedor) === selectedProviderId
+      ) || null
+    );
+  }, [convertPanel?.id_proveedor, convertProviderGroups]);
+
+  // AM: mensaje contextual por estado real del proveedor seleccionado (PENDIENTE/EN_COMPRA/CONVERTIDO).
+  const selectedProviderStatusMessage = useMemo(() => {
+    if (!selectedProviderGroup) return '';
+    if (selectedProviderGroup.estadoGrupo === 'CONVERTIDO') {
+      return 'Este proveedor ya tiene compra registrada.';
+    }
+    if (selectedProviderGroup.estadoGrupo === 'EN_COMPRA') {
+      return 'Este proveedor tiene compra en proceso o cantidades por revisar.';
+    }
+    return 'Este proveedor aun no tiene compra registrada.';
+  }, [selectedProviderGroup]);
 
   // AM: calcula resumen financiero en cliente para validacion inmediata antes del POST /convertir.
   const convertPreview = useMemo(() => {
@@ -2306,7 +2961,6 @@ const flowDotItems = useMemo(() => {
     if (accion === 'guardar_y_abastecer' && (!canConvertir || !canAbastecer)) return;
     const idOrden = parsePositiveInt(convertPanel?.orden?.id_orden_compra);
     const idProveedor = parsePositiveInt(convertPanel.id_proveedor);
-    const transferenciaPersistida = hasValue(convertPanel?.transferencia_url_actual);
     const descuentoTipo = resolveDiscountType(convertPanel?.descuento_tipo);
     const descuentoValor = parseNonNegativeNumber(convertPanel?.descuento_valor);
     const isvPct = parseNonNegativeNumber(convertPanel?.isv_pct);
@@ -2366,16 +3020,6 @@ const flowDotItems = useMemo(() => {
       // AM: evita doble envio por doble click o polling concurrente.
       return;
     }
-    if (accion === 'guardar_y_abastecer' && !convertPanel.transferencia_file && !transferenciaPersistida) {
-      setConvertPanel((prev) => ({
-        ...prev,
-        error: 'Para guardar y abastecer debes registrar imagen de deposito/transferencia.',
-        submit_action: '',
-        transferencia_error: 'Adjunta una imagen o usa una ya registrada.'
-      }));
-      return;
-    }
-
     setConvertPanel((prev) => ({
       ...prev,
       loading: true,
@@ -2414,19 +3058,34 @@ const flowDotItems = useMemo(() => {
 
       await inventarioService.convertirOrdenCompraWorkflow(idOrden, payload);
 
+      // AM: captura advertencias administrativas (200 warning) sin tratarlas como error operativo.
+      let supplyWarningMeta = { hasWarning: false, summary: '' };
       if (accion === 'guardar_y_abastecer') {
-        await inventarioService.abastecerOrdenCompraWorkflow(idOrden, {
+        const abastecerResponse = await inventarioService.abastecerOrdenCompraWorkflow(idOrden, {
           observacion: normalizeText(convertPanel.observacion_admin, 200) || undefined
         });
+        supplyWarningMeta = resolveSupplyWarningMeta(abastecerResponse);
       }
 
-      toast(
-        accion === 'guardar_y_abastecer' ? 'GUARDADO Y ABASTECIDO' : 'GUARDADO',
-        accion === 'guardar_y_abastecer'
-          ? `Orden #${formatVisibleOrderNumber(convertPanel?.orden)} guardada y abastecida correctamente.`
-          : `Datos administrativos guardados para orden #${formatVisibleOrderNumber(convertPanel?.orden)}.`,
-        'success'
-      );
+      // AM: diferencia exito normal vs exito con advertencias administrativas de evidencias.
+      if (accion === 'guardar_y_abastecer' && supplyWarningMeta.hasWarning) {
+        const warningBaseMessage =
+          'Orden abastecida correctamente con evidencias pendientes de revision administrativa.';
+        const warningSummary = supplyWarningMeta.summary ? ` ${supplyWarningMeta.summary}` : '';
+        toast(
+          'ABASTECIDA CON ADVERTENCIAS',
+          `${warningBaseMessage}${warningSummary}`,
+          'warning'
+        );
+      } else {
+        toast(
+          accion === 'guardar_y_abastecer' ? 'GUARDADO Y ABASTECIDO' : 'GUARDADO',
+          accion === 'guardar_y_abastecer'
+            ? `Orden #${formatVisibleOrderNumber(convertPanel?.orden)} guardada y abastecida correctamente.`
+            : `Datos administrativos guardados para orden #${formatVisibleOrderNumber(convertPanel?.orden)}.`,
+          'success'
+        );
+      }
       closeConvertPanel();
       await loadOrdenes();
       if (detalleActual?.data?.orden?.id_orden_compra === idOrden) {
@@ -2488,10 +3147,19 @@ const flowDotItems = useMemo(() => {
     setSupplyModal((prev) => ({ ...prev, loading: true, error: '' }));
     setBusy(idOrden, true);
     try {
-      await inventarioService.abastecerOrdenCompraWorkflow(idOrden, {
+      const abastecerResponse = await inventarioService.abastecerOrdenCompraWorkflow(idOrden, {
         observacion: normalizeText(supplyModal.observacion, 200)
       });
-      toast('ABASTECIDA', `Orden #${formatVisibleOrderNumber(supplyModal?.orden)} abastecida correctamente.`, 'success');
+      // AM: si backend responde warning 200, se notifica como advertencia administrativa y no como error.
+      const supplyWarningMeta = resolveSupplyWarningMeta(abastecerResponse);
+      if (supplyWarningMeta.hasWarning) {
+        const warningBaseMessage =
+          'Orden abastecida correctamente con evidencias pendientes de revision administrativa.';
+        const warningSummary = supplyWarningMeta.summary ? ` ${supplyWarningMeta.summary}` : '';
+        toast('ABASTECIDA CON ADVERTENCIAS', `${warningBaseMessage}${warningSummary}`, 'warning');
+      } else {
+        toast('ABASTECIDA', `Orden #${formatVisibleOrderNumber(supplyModal?.orden)} abastecida correctamente.`, 'success');
+      }
       setSupplyModal(emptySupplyModal());
       await loadOrdenes();
       if (detalleActual?.data?.orden?.id_orden_compra === idOrden) {
@@ -2638,11 +3306,13 @@ const flowDotItems = useMemo(() => {
     const canShowApproveAction = estado === 'PENDIENTE' && canAprobar;
     const canShowRejectAction = estado === 'PENDIENTE' && canRechazar;
     const canShowRegisterReceptionAction =
-      isSucursalOperativeActor &&
+      (isSucursalOperativeActor || isAdminFlowActor) &&
       canSubirFactura &&
       (estado === 'APROBADA' || (estado === 'EN_COMPRA' && !recepcionRegistrada));
     const canShowConvertAction =
       estado === 'EN_COMPRA' && isAdminFlowActor && canConvertir && canSubirDeposito && recepcionRegistrada;
+    // AM: habilita abastecer directo desde listado cuando la OC esta en compra y ya tiene recepcion registrada.
+    const canShowSupplyAction = estado === 'EN_COMPRA' && canAbastecer && recepcionRegistrada;
     const canShowCancelAction =
       canCancelarOrden &&
       (estado === 'PENDIENTE' ||
@@ -2699,14 +3369,20 @@ const flowDotItems = useMemo(() => {
         {canShowRegisterReceptionAction && (
           <button className={`${actionClass} is-neutral`} onClick={() => openRecepcionModal(row)} disabled={busy}>
             <i className="bi bi-receipt" aria-hidden="true" />
-            <span>Registrar recepcion</span>
+            <span>{estado === 'APROBADA' ? 'Registrar compra' : 'Continuar compra'}</span>
           </button>
         )}
         {/* AM: al completar recepcion en sucursal, admin continua en modal de gestion/abastecimiento. */}
         {canShowConvertAction && (
           <button className={`${actionClass} is-success`} onClick={() => openConvert(row)} disabled={busy}>
             <i className="bi bi-arrow-repeat" aria-hidden="true" />
-            <span>Convertir</span>
+            <span>Continuar compra</span>
+          </button>
+        )}
+        {canShowSupplyAction && (
+          <button className={`${actionClass} is-primary`} onClick={() => openSupplyModal(row)} disabled={busy}>
+            <i className="bi bi-box-arrow-in-down" aria-hidden="true" />
+            <span>Abastecer</span>
           </button>
         )}
         {canShowCancelAction && (
@@ -2737,47 +3413,61 @@ const flowDotItems = useMemo(() => {
             <div className="inv-prod-subtitle">Solicita, revisa y abastece en un flujo claro para cocina, caja y administracion</div>
           </div>
           <div className="inv-prod-header-actions inv-oc-summary-header-actions">
+            {canCrear && (
+              // AM: accion primaria visible para iniciar creacion sin desplegables largos en la vista principal.
+              <button type="button" className="btn btn-primary btn-sm" onClick={openCreateModal}>
+                <i className="bi bi-plus-circle me-1" aria-hidden="true" />
+                Nueva solicitud
+              </button>
+            )}
             <span className="badge rounded-pill text-bg-light border">Total en flujo: {pagination.total}</span>
           </div>
         </div>
         <div className="card-body inv-oc-summary-body">
-          <div className="inv-oc-stats-band">
-            <article className="inv-oc-stat-card inv-invstat-card is-pending">
-              <div className="inv-invstat-icon" aria-hidden="true">
-                <i className="bi bi-clock-history" />
-              </div>
-              <div className="inv-prod-kpi-content">
-                <span>Pendientes</span>
-                <strong>{workflowStats.pendientes}</strong>
-              </div>
-            </article>
-            <article className="inv-oc-stat-card inv-invstat-card is-approved">
-              <div className="inv-invstat-icon" aria-hidden="true">
-                <i className="bi bi-check-circle" />
-              </div>
-              <div className="inv-prod-kpi-content">
-                <span>Aprobadas</span>
-                <strong>{workflowStats.aprobadas}</strong>
-              </div>
-            </article>
-            <article className="inv-oc-stat-card inv-invstat-card is-buying">
-              <div className="inv-invstat-icon" aria-hidden="true">
-                <i className="bi bi-cart-check" />
-              </div>
-              <div className="inv-prod-kpi-content">
-                <span>En compra</span>
-                <strong>{workflowStats.enCompra}</strong>
-              </div>
-            </article>
-            <article className="inv-oc-stat-card inv-invstat-card is-stocked">
-              <div className="inv-invstat-icon" aria-hidden="true">
-                <i className="bi bi-box-seam" />
-              </div>
-              <div className="inv-prod-kpi-content">
-                <span>Abastecidas</span>
-                <strong>{workflowStats.abastecidas}</strong>
-              </div>
-            </article>
+          {/* AM: KPIs premium del listado operativo; calculados sobre la vista filtrada actual. */}
+          <div className="row g-2">
+            <div className="col-12 col-sm-6 col-xl-2">
+              <article className="border rounded-3 p-2 h-100 bg-white">
+                <small className="text-muted d-block">Total OC del periodo</small>
+                <strong className="fs-5">{workflowStats.total}</strong>
+                <small className="text-muted d-block mt-1">Pagina actual filtrada</small>
+              </article>
+            </div>
+            <div className="col-12 col-sm-6 col-xl-2">
+              <article className="border rounded-3 p-2 h-100 bg-white">
+                <small className="text-muted d-block">Pendientes de aprobacion</small>
+                <strong className="fs-5 text-warning">{workflowStats.pendientes}</strong>
+                <small className="text-muted d-block mt-1">Pagina actual</small>
+              </article>
+            </div>
+            <div className="col-12 col-sm-6 col-xl-2">
+              <article className="border rounded-3 p-2 h-100 bg-white">
+                <small className="text-muted d-block">En compra</small>
+                <strong className="fs-5 text-primary">{workflowStats.enCompra}</strong>
+                <small className="text-muted d-block mt-1">Pagina actual</small>
+              </article>
+            </div>
+            <div className="col-12 col-sm-6 col-xl-2">
+              <article className="border rounded-3 p-2 h-100 bg-white">
+                <small className="text-muted d-block">Abastecidas</small>
+                <strong className="fs-5 text-success">{workflowStats.abastecidas}</strong>
+                <small className="text-muted d-block mt-1">Pagina actual</small>
+              </article>
+            </div>
+            <div className="col-12 col-sm-6 col-xl-2">
+              <article className="border rounded-3 p-2 h-100 bg-white">
+                <small className="text-muted d-block">Evidencias pendientes</small>
+                <strong className="fs-5 text-warning">{workflowStats.evidenciasPendientes}</strong>
+                <small className="text-muted d-block mt-1">Pagina actual</small>
+              </article>
+            </div>
+            <div className="col-12 col-sm-6 col-xl-2">
+              <article className="border rounded-3 p-2 h-100 bg-white">
+                <small className="text-muted d-block">Monto total estimado/real</small>
+                <strong className="fs-6">{formatMoney(workflowStats.montoTotalReal)}</strong>
+                <small className="text-muted d-block mt-1">Real pagina actual; estimado no disponible</small>
+              </article>
+            </div>
           </div>
         </div>
       </section>
@@ -2785,7 +3475,7 @@ const flowDotItems = useMemo(() => {
       {/* AM: layout principal: Nueva solicitud + Flujo en la franja superior para operacion rapida. */}
           {(canCrear || canVerFlujo) && (
         <div className={`inv-oc-top-panels ${showDualTopPanels ? 'is-dual' : ''}`}>
-          {canCrear && (
+          {false && canCrear && (
              <section className="card shadow-sm inv-oc-card inv-oc-create-shell">
               <div className="card-header inv-oc-card__header inv-oc-card__header--stacked">
               <div className="inv-oc-panel-head">
@@ -2836,52 +3526,117 @@ const flowDotItems = useMemo(() => {
                   <span className="badge rounded-pill text-bg-light">Total: {filteredCatalog.length}</span>
                 </div>
 
-                {!isOperationalCreateRestricted && almacenesCatalogFiltradosPorSucursal.length > 0 && (
-                  <div className="inv-oc-header-chipline">
-                    {/* AM: los chips de sucursal suben al header para compactar el cuerpo visualmente. */}
-                    <div className="inv-oc-warehouse-chips">
-                      {almacenesCatalogFiltradosPorSucursal.map((almacen) => {
-                        const idAlmacen = Number(almacen.id_almacen);
-                        const selected = selectedBaseAlmacenes.includes(idAlmacen);
-                        return (
-                          <button
-                            key={`base-almacen-${idAlmacen}`}
-                            type="button"
-                            className={`inv-oc-warehouse-chip ${selected ? 'is-active' : ''}`}
-                            onClick={() => toggleDraftAlmacenBase(idAlmacen)}
-                            title={formatAlmacenDisplay(almacen)}
-                          >
-                            <i className="bi bi-building" aria-hidden="true" />
-                            <span>{almacen.nombre_sucursal || almacen.nombre}</span>
-                          </button>
-                        );
-                      })}
+                <div className="inv-oc-header-chipline">
+                  {/* AM: bloque 1 - contexto OC (sucursal + almacen automatico) sin selector por linea. */}
+                  <div className="row g-2 align-items-end w-100">
+                    <div className="col-12 col-md-4">
+                      <label className="form-label mb-1">Sucursal</label>
+                      {isOperationalCreateRestricted ? (
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          value={
+                            sucursalesCatalog.find(
+                              (row) => Number(row.id_sucursal) === Number(selectedCreateSucursalId)
+                            )?.nombre_sucursal || 'Sucursal asignada'
+                          }
+                          readOnly
+                        />
+                      ) : (
+                        <select
+                          className="form-select form-select-sm"
+                          value={catalogSucursalFilter}
+                          onChange={(e) => setCatalogSucursalFilter(e.target.value)}
+                        >
+                          <option value="">Selecciona sucursal</option>
+                          {sucursalesCatalog.map((row) => (
+                            <option key={`oc-create-suc-${row.id_sucursal}`} value={row.id_sucursal}>
+                              {row.nombre_sucursal}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
-                    <label htmlFor="oc-ver-todos-sucursal" className="inv-oc-toggle inv-oc-toggle--compact mb-0">
+                    <div className="col-12 col-md-4">
+                      <label className="form-label mb-1">Almacén destino automático</label>
                       <input
-                        id="oc-ver-todos-sucursal"
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={!soloAlertas}
-                        onChange={(e) => setSoloAlertas(!e.target.checked)}
+                        type="text"
+                        className={`form-control form-control-sm ${
+                          hasCreateSucursalSelected && !hasCreateWarehouseResolved ? 'is-invalid' : ''
+                        }`}
+                        value={
+                          resolvedCreateWarehouse
+                            ? formatAlmacenDisplay(resolvedCreateWarehouse)
+                            : hasCreateSucursalSelected
+                            ? 'No hay almacén operativo configurado'
+                            : 'Selecciona una sucursal'
+                        }
+                        readOnly
                       />
-                      <span>Ver todos de la sucursal</span>
-                    </label>
+                      {hasCreateSucursalSelected && !hasCreateWarehouseResolved && (
+                        <div className="invalid-feedback d-block">
+                          No hay almacén operativo configurado para esta sucursal.
+                        </div>
+                      )}
+                    </div>
+                    <div className="col-12 col-md-4">
+                      <label className="form-label mb-1">Filtros de catálogo</label>
+                      <label htmlFor="oc-ver-todos-sucursal" className="inv-oc-toggle inv-oc-toggle--compact mb-0 w-100">
+                        <input
+                          id="oc-ver-todos-sucursal"
+                          className="form-check-input"
+                          type="checkbox"
+                          checked={!soloAlertas}
+                          onChange={(e) => setSoloAlertas(!e.target.checked)}
+                        />
+                        <span>Ver todos de la sucursal</span>
+                      </label>
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
             {createSectionOpen && (
             <div id="inv-oc-create-body" className="card-body d-flex flex-column">
+                {/* AM: bloque 2 - agregar items priorizando faltantes y manteniendo busqueda manual. */}
+                {!hasCreateSucursalSelected && (
+                  <div className="alert alert-info py-2 mb-2">
+                    Selecciona una sucursal para ver faltantes detectados y agregar items manualmente.
+                  </div>
+                )}
+                {hasCreateSucursalSelected && !hasCreateWarehouseResolved && (
+                  <div className="alert alert-danger py-2 mb-2">
+                    No hay almacén operativo configurado para esta sucursal.
+                  </div>
+                )}
                 {almacenesCatalog.length === 0 && (
                   <div className="alert alert-warning py-2 mb-2">
                     No hay almacenes activos para enviar la solicitud. Configura al menos un almacen.
                   </div>
                 )}
+                <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                  <div>
+                    <h6 className="mb-0">
+                      {soloAlertas ? 'Faltantes detectados' : 'Búsqueda manual de productos e insumos'}
+                    </h6>
+                    <small className="text-muted">
+                      {soloAlertas
+                        ? 'Prioriza items sin stock o stock bajo en la sucursal seleccionada.'
+                        : 'Complementa la orden con búsqueda manual según necesidad operativa.'}
+                    </small>
+                  </div>
+                  <span className="badge text-bg-light border">
+                    Almacén: {resolvedCreateWarehouse ? resolvedCreateWarehouse.nombre : 'No resuelto'}
+                  </span>
+                </div>
                 {catalogPages.length === 0 ? (
                   <div className="inv-oc-empty-state flex-grow-1">
                     <i className="bi bi-inboxes" aria-hidden="true" />
-                    <span>Sin items para el filtro actual.</span>
+                    <span>
+                      {hasCreateSucursalSelected
+                        ? 'Sin items para el filtro actual.'
+                        : 'Selecciona sucursal para cargar catálogo.'}
+                    </span>
                   </div>
                 ) : (
                   <>
@@ -2994,19 +3749,10 @@ const flowDotItems = useMemo(() => {
                   </div>
 
                   <div className="inv-oc-panel-header-actions">
-                    {/* AM: buscador alineado en una sola fila despues del titulo para mantener lectura compacta. */}
-                    <label className="inv-oc-panel-search" aria-label="Buscar ordenes de compra">
-                      <i className="bi bi-search" aria-hidden="true" />
-                      <input
-                        type="search"
-                        value={search}
-                        onChange={(e) => {
-                          setPage(1);
-                          setSearch(e.target.value);
-                        }}
-                        placeholder="Buscar por ID, usuario o texto..."
-                      />
-                    </label>
+                    {/* AM: cabecera compacta; la busqueda y filtros completos viven en el panel desplegable. */}
+                    <span className="badge rounded-pill text-bg-light border">
+                      Listado operativo premium
+                    </span>
                     <button
                       type="button"
                       className={`inv-oc-panel-toolbar-btn ${flowFiltersOpen ? 'is-on' : ''}`}
@@ -3034,8 +3780,8 @@ const flowDotItems = useMemo(() => {
               <div id="inv-oc-flow-body" className="card-body d-flex flex-column gap-3">
                 {flowFiltersOpen && (
                   <div id="inv-oc-flow-filters" className="inv-oc-flow-filters-panel">
-                    <div className="row g-2">
-                      <div className="col-12 col-md-4">
+                    <div className="row g-2 align-items-end">
+                      <div className="col-12 col-md-3 col-lg-2">
                         <label className="form-label mb-1">Vista</label>
                         <select
                           className="form-select"
@@ -3052,7 +3798,7 @@ const flowDotItems = useMemo(() => {
                           )}
                         </select>
                       </div>
-                      <div className="col-12 col-md-4">
+                      <div className="col-12 col-md-3 col-lg-2">
                         <label className="form-label mb-1">Sucursal</label>
                         <select
                           className="form-select"
@@ -3070,7 +3816,7 @@ const flowDotItems = useMemo(() => {
                           ))}
                         </select>
                       </div>
-                      <div className="col-12 col-md-4">
+                      <div className="col-12 col-md-3 col-lg-2">
                         <label className="form-label mb-1">Estado</label>
                         <select
                           className="form-select"
@@ -3088,134 +3834,278 @@ const flowDotItems = useMemo(() => {
                           ))}
                         </select>
                       </div>
+                      <div className="col-12 col-md-3 col-lg-2">
+                        <label className="form-label mb-1">Proveedor</label>
+                        <select
+                          className="form-select"
+                          value={flowProveedorFiltro}
+                          onChange={(e) => setFlowProveedorFiltro(e.target.value)}
+                        >
+                          <option value="">Todos</option>
+                          {flowProviderOptions.map((row) => (
+                            <option key={`flow-prov-${row.id_proveedor}`} value={row.id_proveedor}>
+                              {row.nombre_proveedor}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-6 col-md-3 col-lg-2">
+                        <label className="form-label mb-1">Fecha desde</label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={flowFechaDesde}
+                          onChange={(e) => setFlowFechaDesde(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-6 col-md-3 col-lg-2">
+                        <label className="form-label mb-1">Fecha hasta</label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={flowFechaHasta}
+                          onChange={(e) => setFlowFechaHasta(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-12 col-md-3 col-lg-2">
+                        <label className="form-label mb-1">Evidencias pendientes</label>
+                        <select
+                          className="form-select"
+                          value={flowEvidenciasFiltro}
+                          onChange={(e) => setFlowEvidenciasFiltro(e.target.value)}
+                        >
+                          <option value="">Todas</option>
+                          <option value="SI">Si</option>
+                          <option value="NO">No</option>
+                        </select>
+                      </div>
+                      <div className="col-12 col-md-6 col-lg-3">
+                        <label className="form-label mb-1">Buscar por numero OC</label>
+                        <input
+                          type="search"
+                          className="form-control"
+                          value={search}
+                          onChange={(e) => {
+                            setPage(1);
+                            setSearch(e.target.value);
+                          }}
+                          placeholder="Ej: 1024"
+                        />
+                      </div>
+                      <div className="col-12 col-md-3 col-lg-2">
+                        <button type="button" className="btn btn-outline-secondary w-100" onClick={resetFlowFilters}>
+                          Limpiar filtros
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {loadingOrdenes ? (
                   <div className="text-muted small">Cargando...</div>
-                ) : ordenesVisibles.length === 0 ? (
+                ) : ordenesFlujoFiltradas.length === 0 ? (
                   <div className="inv-oc-empty-state">
                     <i className="bi bi-inboxes" aria-hidden="true" />
                     <span>Sin ordenes para este filtro.</span>
                   </div>
                 ) : (
                   <>
-                  <div key={`flow-grid-${flowCarouselPage}`} className="inv-oc-flow-grid inv-oc-flow-grid--animated">
-                    {(flowPages[flowCarouselPage] || []).map((row) => {
-                      const estadoVisual = resolveEstadoVisual(row);
-                      const isItemRequestOnlyCard =
-                        Number(row?.total_items || 0) <= 0 && Number(row?.total_solicitudes_item || 0) > 0;
-                      const itemRequestOnlyState = resolveItemRequestOnlyState(row);
-                      const toneClass = isItemRequestOnlyCard
-                        ? `is-item-request ${estadoToneClass(itemRequestOnlyState)}`
-                        : estadoToneClass(estadoVisual);
-                      const usuario = row.solicitante_nombre_usuario || `Usuario #${row.id_usuario}`;
-                      const rol = row.solicitante_roles || 'Rol no disponible';
-                      // AM: usa solo el numero compacto del flujo para evitar huecos visuales tras rechazo/cancelacion.
-                      const flowVisibleNumber = parsePositiveInt(row?.numero_oc_visible_flujo);
-                      const flowVisibleLabel = flowVisibleNumber ? ` #${flowVisibleNumber}` : '';
+                    {/* AM: tabla desktop premium para lectura operativa completa sin saturar cards. */}
+                    <div className="d-none d-lg-block">
+                      <div className="table-responsive border rounded">
+                        <table className="table table-sm align-middle mb-0">
+                          <thead className="table-light">
+                            <tr>
+                              <th>Numero OC</th>
+                              <th>Estado</th>
+                              <th>Sucursal</th>
+                              <th>Proveedores</th>
+                              <th>Lineas / cantidades</th>
+                              <th>Total estimado/real</th>
+                              <th>Evidencias</th>
+                              <th>Fecha</th>
+                              <th style={{ minWidth: 260 }}>Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ordenesFlujoFiltradas.map((row) => {
+                              const estadoVisual = resolveEstadoVisual(row);
+                              const providerSummary = getFlowProviderSummary(row);
+                              const totalSummary = getFlowTotalLabel(row);
+                              const evidenceSummary = getFlowOrderEvidenceSummary(row);
+                              return (
+                                <tr key={`flow-table-${row.id_orden_compra}`}>
+                                  <td>
+                                    <strong>#{formatVisibleOrderNumber(row)}</strong>
+                                    <small className="text-muted d-block">ID {row.id_orden_compra}</small>
+                                  </td>
+                                  <td>
+                                    <span className={`badge ${badgeClass(estadoVisual)}`}>
+                                      {formatEstadoLabel(estadoVisual)}
+                                    </span>
+                                    {estadoVisual === 'APROBADA' && (
+                                      // AM: microtexto explicito para APROBADA; evita ambiguedad de "en espera".
+                                      <small className="text-muted d-block mt-1">Pendiente de registrar compra</small>
+                                    )}
+                                  </td>
+                                  <td>{resolveSucursalLabel(row)}</td>
+                                  <td>
+                                    <strong>{providerSummary.primary}</strong>
+                                    <small className="text-muted d-block">{providerSummary.secondary}</small>
+                                  </td>
+                                  <td>
+                                    <strong>{parsePositiveInt(row?.total_items) || 0} lineas</strong>
+                                    <small className="text-muted d-block">
+                                      {parsePositiveInt(row?.total_cantidad) || 0} unidades
+                                    </small>
+                                  </td>
+                                  <td>
+                                    <strong>{totalSummary.label}</strong>
+                                    <small className="text-muted d-block">{totalSummary.micro}</small>
+                                  </td>
+                                  <td>
+                                    <span className={`badge ${evidenceSummary.toneClass}`}>
+                                      {evidenceSummary.label}
+                                    </span>
+                                    {evidenceSummary.pending && (
+                                      <small className="text-warning d-block mt-1">Evidencias pendientes</small>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <strong>{formatDate(row.fecha_creacion || row.fecha)}</strong>
+                                    <small className="text-muted d-block">{formatTime(row.fecha_creacion)}</small>
+                                  </td>
+                                  <td>{renderActions(row, true)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
 
-                            return (
-                            <article key={row.id_orden_compra} className={`inv-oc-flow-card ${toneClass}`}>
-                              <div className="inv-oc-flow-card__head">
-                                <div className="inv-oc-flow-card__identity">
-                                  <span className="inv-oc-flow-card__order">
-                                    <i
-                                      className={isItemRequestOnlyCard ? 'bi bi-lightbulb' : 'bi bi-journal-check'}
-                                      aria-hidden="true"
-                                    />
-                                    {isItemRequestOnlyCard ? `Solicitud${flowVisibleLabel}` : `Orden${flowVisibleLabel}`}
-                                  </span>
-                                  {/* AM: deja solo el usuario solicitante para simplificar la card del flujo. */}
-                                  <strong className="inv-oc-flow-card__user">{usuario}</strong>
-                                </div>
-
-                                {isItemRequestOnlyCard ? (
-                                  <span className={`badge ${itemRequestOnlyBadgeClass(itemRequestOnlyState)} inv-oc-flow-card__state-badge`}>
-                                    <i className="bi bi-tags me-1" aria-hidden="true" />
-                                    {itemRequestOnlyLabel(itemRequestOnlyState)}
-                                  </span>
-                                ) : (
-                                  <span className={`badge ${badgeClass(estadoVisual)} inv-oc-flow-card__state-badge`}>
-                                    <i className={`${estadoIconClass(estadoVisual)} me-1`} aria-hidden="true" />
-                                    {formatEstadoLabel(estadoVisual)}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* AM: fecha y hora separadas visualmente para lectura rapida. */}
-                              <div className="inv-oc-flow-card__stamp-row">
-                                <span className="inv-oc-flow-card__stamp">
-                                  <i className="bi bi-calendar-event" aria-hidden="true" />
-                                  {formatDate(row.fecha_creacion || row.fecha)}
-                                </span>
-                                <span className="inv-oc-flow-card__stamp">
-                                  <i className="bi bi-clock-history" aria-hidden="true" />
-                                  {formatTime(row.fecha_creacion)}
-                                </span>
-                              </div>
-
-                              <div className="inv-oc-flow-card__actions-wrap">{renderActions(row, true)}</div>
-                            </article>
-                          );
-                    })}
-                  </div>
-
-                  <div className="inv-oc-carousel-footer">
-                    <div className="inv-oc-carousel-dots" role="tablist" aria-label="Paginas del carrusel del flujo">
-                      {flowDotItems.map((dot) => {
-                        if (dot.type === 'ellipsis') {
-                          return (
-                            <span key={dot.key} className="inv-oc-carousel-ellipsis" aria-hidden="true">
-                              ...
-                            </span>
-                          );
-                        }
-
+                    {/* AM: cards moviles/tablet para evitar tabla comprimida y scroll horizontal. */}
+                    <div className="d-lg-none d-flex flex-column gap-2">
+                      {ordenesFlujoFiltradas.map((row) => {
+                        const estadoVisual = resolveEstadoVisual(row);
+                        const providerSummary = getFlowProviderSummary(row);
+                        const totalSummary = getFlowTotalLabel(row);
+                        const evidenceSummary = getFlowOrderEvidenceSummary(row);
                         return (
-                          <button
-                            key={`flow-dot-${dot.index}`}
-                            type="button"
-                            role="tab"
-                            aria-selected={flowCarouselPage === dot.index}
-                            className={`inv-oc-carousel-dot ${flowCarouselPage === dot.index ? 'is-active' : ''}`}
-                            onClick={() => setFlowCarouselPage(dot.index)}
-                            title={`Ir a pagina ${dot.index + 1}`}
-                          />
+                          <article key={`flow-mobile-${row.id_orden_compra}`} className="border rounded-3 p-2 bg-white">
+                            <div className="d-flex align-items-start justify-content-between gap-2">
+                              <div>
+                                <strong>OC #{formatVisibleOrderNumber(row)}</strong>
+                                <small className="text-muted d-block">{resolveSucursalLabel(row)}</small>
+                              </div>
+                              <span className={`badge ${badgeClass(estadoVisual)}`}>
+                                {formatEstadoLabel(estadoVisual)}
+                              </span>
+                            </div>
+                            {estadoVisual === 'APROBADA' && (
+                              // AM: claridad de etapa en tarjetas moviles para siguiente accion operativa.
+                              <small className="text-muted d-block mt-1">Pendiente de registrar compra</small>
+                            )}
+                            <div className="mt-2">
+                              <small className="text-muted d-block">Proveedores</small>
+                              <strong>{providerSummary.primary}</strong>
+                              <small className="text-muted d-block">{providerSummary.secondary}</small>
+                            </div>
+                            <div className="mt-2 d-flex flex-wrap gap-2">
+                              <span className="badge text-bg-light border">
+                                {parsePositiveInt(row?.total_items) || 0} lineas
+                              </span>
+                              <span className="badge text-bg-light border">
+                                {parsePositiveInt(row?.total_cantidad) || 0} unidades
+                              </span>
+                              <span className="badge text-bg-light border">{totalSummary.label}</span>
+                            </div>
+                            <div className="mt-2 d-flex align-items-center justify-content-between gap-2">
+                              <span className={`badge ${evidenceSummary.toneClass}`}>{evidenceSummary.label}</span>
+                              <small className="text-muted">
+                                {formatDate(row.fecha_creacion || row.fecha)} {formatTime(row.fecha_creacion)}
+                              </small>
+                            </div>
+                            {evidenceSummary.pending && (
+                              <small className="text-warning d-block mt-1">Evidencias pendientes</small>
+                            )}
+                            <div className="mt-2">{renderActions(row, true)}</div>
+                          </article>
                         );
                       })}
                     </div>
 
-                    <div className="inv-oc-carousel-controls">
-                      <button
-                        type="button"
-                        className="inv-oc-carousel-nav"
-                        onClick={() =>
-                          setFlowCarouselPage((prev) => (prev <= 0 ? Math.max(0, flowPages.length - 1) : prev - 1))
-                        }
-                        disabled={flowPages.length <= 1}
-                        aria-label="Pagina anterior del flujo"
-                      >
-                        <i className="bi bi-chevron-left" aria-hidden="true" />
-                      </button>
-                      <span className="inv-oc-carousel-counter">
-                        Pagina {flowCarouselPage + 1}/{flowPages.length}
-                      </span>
-                      <button
-                        type="button"
-                        className="inv-oc-carousel-nav"
-                        onClick={() =>
-                          setFlowCarouselPage((prev) => (prev >= flowPages.length - 1 ? 0 : prev + 1))
-                        }
-                        disabled={flowPages.length <= 1}
-                        aria-label="Pagina siguiente del flujo"
-                      >
-                        <i className="bi bi-chevron-right" aria-hidden="true" />
-                      </button>
+                    <div className="d-flex flex-column gap-2 border rounded p-2 bg-light">
+                      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                        <small className="text-muted">{flowRangeLabel}</small>
+                        <div className="d-flex align-items-center gap-2">
+                          <label className="form-label mb-0 small text-muted">Tamano:</label>
+                          <select
+                            className="form-select form-select-sm"
+                            style={{ width: 90 }}
+                            value={pageSize}
+                            onChange={(e) => setPageSize(parsePositiveInt(e.target.value) || ORDER_DEFAULT_PAGE_SIZE)}
+                          >
+                            {[5, 10, 15, 25].map((size) => (
+                              <option key={`oc-page-size-${size}`} value={size}>
+                                {size}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                        <div className="d-flex align-items-center gap-1">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            disabled={!pagination.hasPrev || loadingOrdenes}
+                            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                          >
+                            Anterior
+                          </button>
+                          <div className="d-none d-md-flex align-items-center gap-1">
+                            {flowPageItems.map((item) =>
+                              item.type === 'ellipsis' ? (
+                                <span key={item.key} className="px-1 text-muted">
+                                  ...
+                                </span>
+                              ) : (
+                                <button
+                                  key={`oc-page-${item.page}`}
+                                  type="button"
+                                  className={`btn btn-sm ${
+                                    Number(item.page) === Number(pagination.page)
+                                      ? 'btn-primary'
+                                      : 'btn-outline-secondary'
+                                  }`}
+                                  disabled={loadingOrdenes}
+                                  onClick={() => setPage(item.page)}
+                                >
+                                  {item.page}
+                                </button>
+                              )
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            disabled={!pagination.hasNext || loadingOrdenes}
+                            onClick={() =>
+                              setPage((prev) =>
+                                Math.min(parsePositiveInt(pagination?.totalPages) || prev, prev + 1)
+                              )
+                            }
+                          >
+                            Siguiente
+                          </button>
+                        </div>
+                        <small className="text-muted">
+                          Pagina {pagination.page}/{pagination.totalPages}
+                        </small>
+                      </div>
                     </div>
-                  </div>
-                </>
+                  </>
                 )}
 
               </div>
@@ -3226,7 +4116,7 @@ const flowDotItems = useMemo(() => {
       )}
 
       {/* AM: detalle de solicitud se mantiene abajo como panel unico para evitar saturacion visual. */}
-      {canCrear && (
+      {false && canCrear && (
         <div className="inv-oc-middle-panels">
           <section className="card shadow-sm inv-oc-card inv-oc-draft-card">
                 <div className="card-header inv-oc-card__header inv-oc-card__header--stacked">
@@ -3235,8 +4125,8 @@ const flowDotItems = useMemo(() => {
                     <div className="inv-oc-panel-title-row">
                       <i className="bi bi-list-check inv-oc-panel-title-icon" aria-hidden="true" />
                       <div className="inv-oc-panel-title-copy">
-                        <h4 className="mb-0">Detalle de solicitud</h4>
-                        <p className="mb-0 text-muted small">Revisa las lineas, cantidades, almacenes y observacion antes de enviar.</p>
+                        <h4 className="mb-0">Ítems de la orden de compra</h4>
+                        <p className="mb-0 text-muted small">Bloque 3 y 4: revisa cantidades, proveedor sugerido y resumen estimado antes de guardar.</p>
                       </div>
                     </div>
                   </div>
@@ -3285,16 +4175,16 @@ const flowDotItems = useMemo(() => {
                   <article className="inv-oc-draft-summary-pill">
                     <i className="bi bi-box-seam" aria-hidden="true" />
                     <div>
-                      <span>Productos + insumos</span>
-                      <strong>{draftTotals.productos + draftTotals.insumos}</strong>
+                      <span>Unidades solicitadas</span>
+                      <strong>{draftTotals.unidades}</strong>
                     </div>
                   </article>
 
                   <article className="inv-oc-draft-summary-pill">
-                    <i className="bi bi-lightbulb" aria-hidden="true" />
+                    <i className="bi bi-cash-stack" aria-hidden="true" />
                     <div>
-                      <span>Solicitudes nuevas</span>
-                      <strong>{draftItemRequests.length}</strong>
+                      <span>Total estimado</span>
+                      <strong>{formatMoney(draftEstimatedTotals.total)}</strong>
                     </div>
                   </article>
                 </div>
@@ -3306,15 +4196,6 @@ const flowDotItems = useMemo(() => {
                 ) : (
                   <div className="inv-oc-draft-grid">
                     {draft.map((row) => {
-                      const selectedForRow = normalizeAlmacenesSelection(row.id_almacenes, 1).filter((idAlmacen) =>
-                        almacenesMap.has(idAlmacen)
-                      );
-                      const allowedWarehousesForRow = normalizeAlmacenesSelection(
-                        row?.id_almacenes_disponibles ?? row?.id_almacenes,
-                        50
-                      )
-                        .map((idAlmacen) => almacenesMap.get(idAlmacen))
-                        .filter(Boolean);
                       return (
                         <article key={row.key} className="inv-oc-draft-item-card">
                         <div className="inv-oc-draft-item-card__head">
@@ -3365,25 +4246,65 @@ const flowDotItems = useMemo(() => {
                             <div className="invalid-feedback d-block">{draftValidation[row.key]}</div>
                           )}
 
-                          <label className="form-label mb-1 mt-2">Almacen destino (1)</label>
-                          <div className={`inv-oc-warehouse-chips ${draftValidation[row.key] ? 'is-invalid' : ''}`}>
-                            {allowedWarehousesForRow.map((almacen) => {
-                              const idAlmacen = Number(almacen.id_almacen);
-                              const selected = selectedForRow.includes(idAlmacen);
-                              return (
-                                <button
-                                  key={`${row.key}:almacen:${idAlmacen}`}
-                                  type="button"
-                                  className={`inv-oc-warehouse-chip ${selected ? 'is-active' : ''}`}
-                                  onClick={() => toggleDraftAlmacen(row.key, idAlmacen)}
-                                  title={formatAlmacenDisplay(almacen)}
-                                >
-                                  <i className="bi bi-shop" aria-hidden="true" />
-                                  <span>{almacen.nombre_sucursal || almacen.nombre}</span>
-                                </button>
-                              );
-                            })}
+                          <label className="form-label mb-1 mt-2">Almacén destino</label>
+                          <div className="form-control form-control-sm bg-light">
+                            {resolvedCreateWarehouse
+                              ? formatAlmacenDisplay(resolvedCreateWarehouse)
+                              : 'No hay almacén operativo configurado'}
                           </div>
+                          <label className="form-label mb-1 mt-2">Proveedor sugerido</label>
+                          {canEditarProveedorDraft ? (
+                            <select
+                              className="form-select form-select-sm"
+                              value={sanitizeInt(row?.id_proveedor_sugerido || '')}
+                              onChange={(e) => setDraftProveedorSugerido(row.key, e.target.value)}
+                            >
+                              <option value="">Proveedor sin definir</option>
+                              {draftProviderOptions.map((prov) => (
+                                <option key={`draft-prov-${row.key}-${prov.id_proveedor}`} value={prov.id_proveedor}>
+                                  {prov.nombre_proveedor}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="form-control form-control-sm bg-light">
+                              {normalizeText(row?.proveedor_sugerido_nombre, 120) ||
+                                (parsePositiveInt(row?.id_proveedor_sugerido)
+                                  ? `Proveedor #${parsePositiveInt(row?.id_proveedor_sugerido)}`
+                                  : 'Proveedor sin definir')}
+                            </div>
+                          )}
+                          <small className="text-muted d-block mt-1">
+                            {formatProveedorSugeridoOrigen(row?.proveedor_sugerido_origen)}
+                          </small>
+                          <div className="row g-2 mt-1">
+                            <div className="col-6">
+                              <small className="text-muted d-block">Precio estimado</small>
+                              <strong>
+                                {parseNonNegativeNumber(row?.precio_estimado) !== null
+                                  ? formatMoney(parseNonNegativeNumber(row?.precio_estimado))
+                                  : 'Sin precio estimado'}
+                              </strong>
+                            </div>
+                            <div className="col-6">
+                              <small className="text-muted d-block">Subtotal estimado</small>
+                              <strong>
+                                {parseNonNegativeNumber(row?.precio_estimado) !== null
+                                  ? formatMoney(
+                                      round2(
+                                        (parsePositiveInt(row?.cantidad) || 0) *
+                                          (parseNonNegativeNumber(row?.precio_estimado) || 0)
+                                      )
+                                    )
+                                  : 'Sin precio estimado'}
+                              </strong>
+                            </div>
+                          </div>
+                          {hasValue(row?.unidad_nombre) && (
+                            <small className="text-muted d-block mt-1">
+                              Unidad: {row.unidad_nombre}
+                            </small>
+                          )}
                           <small className="text-muted d-block mt-1">
                             Cantidad solicitada para la sucursal seleccionada.
                           </small>
@@ -3447,11 +4368,23 @@ const flowDotItems = useMemo(() => {
 
                   <section className="inv-oc-draft-submit-panel">
                     <div className="inv-oc-draft-submit-panel__copy">
-                      <span>Resumen para enviar</span>
+                      <span>Resumen estimado</span>
                       <strong>
-                        Productos: {draftTotals.productos} - Insumos: {draftTotals.insumos} - Unidades: {draftTotals.unidades}
+                        Subtotal: {formatMoney(draftEstimatedTotals.subtotal)} - ISV: {formatMoney(draftEstimatedTotals.isv)}
                       </strong>
-                      <small>{hasDraftErrors ? 'Corrige los campos marcados antes de enviar.' : 'Todo listo para aprobacion.'}</small>
+                      <strong>
+                        Total: {formatMoney(draftEstimatedTotals.total)} - Líneas: {draft.length} - Unidades: {draftTotals.unidades}
+                      </strong>
+                      <small>
+                        Los montos finales se ajustan al registrar la compra/factura.
+                        {draftEstimatedTotals.lineasSinPrecio > 0
+                          ? ` (${draftEstimatedTotals.lineasSinPrecio} línea(s) sin precio estimado).`
+                          : ''}
+                      </small>
+                      {draftValidation.__context && (
+                        <small className="text-danger">{draftValidation.__context}</small>
+                      )}
+                      <small>{hasDraftErrors ? 'Corrige los campos marcados antes de enviar.' : 'Todo listo para aprobación.'}</small>
                     </div>
 
                     <button
@@ -3467,7 +4400,7 @@ const flowDotItems = useMemo(() => {
                       ) : (
                         <>
                           <i className="bi bi-send-check me-1" aria-hidden="true" />
-                          Crear solicitud
+                          Crear orden de compra
                         </>
                       )}
                     </button>
@@ -3476,6 +4409,370 @@ const flowDotItems = useMemo(() => {
               </div>
               )}
             </section>
+        </div>
+      )}
+      {canCrear && createModalOpen && (
+        // AM: modal profesional de creacion para reemplazar flujo largo/desplegable en la vista principal.
+        <div className="modal fade show d-block inv-oc-modal-layer" role="dialog" aria-modal="true">
+          <div className="modal-dialog modal-xl modal-dialog-scrollable">
+            <div className="modal-content inv-oc-modal inv-oc-create-modal">
+              {/* AM: header premium de creacion para guiar el flujo sin alterar logica funcional. */}
+              <div className="modal-header inv-oc-create-modal__header">
+                <div className="inv-oc-create-modal__hero">
+                  <span className="inv-oc-create-modal__hero-icon" aria-hidden="true">
+                    <i className="bi bi-bag-plus" />
+                  </span>
+                  <div className="inv-oc-create-modal__hero-copy">
+                    <h5 className="modal-title mb-0">Nueva solicitud de compra</h5>
+                    <p className="mb-0">Agrega faltantes, valida proveedor sugerido y genera una OC para la sucursal.</p>
+                    <div className="inv-oc-create-modal__hero-badges">
+                      <span className="badge rounded-pill text-bg-light border">Almacén automático</span>
+                      <span className="badge rounded-pill text-bg-light border">Proveedor sugerido</span>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" className="btn-close" aria-label="Close" onClick={closeCreateModal} disabled={creating} />
+              </div>
+              <div className="modal-body d-flex flex-column gap-3 inv-oc-create-modal__body">
+                {/* AM: bloque 1 de contexto en tarjetas para lectura rapida de sucursal y almacen destino. */}
+                <section className="inv-oc-create-block">
+                  <div className="inv-oc-create-block__head">
+                    <h6 className="mb-0">
+                      <i className="bi bi-diagram-3 me-2" aria-hidden="true" />
+                      Contexto de la solicitud
+                    </h6>
+                  </div>
+                  {/* AM: contexto premium resumido con iconos para reducir friccion de lectura en la creacion de OC. */}
+                  <div className="inv-oc-create-context-grid mb-2">
+                    <article className="inv-oc-create-context-card">
+                      <span className="inv-oc-create-context-card__icon" aria-hidden="true">
+                        <i className="bi bi-shop-window" />
+                      </span>
+                      <div>
+                        <small>Sucursal</small>
+                        <strong>
+                          {sucursalesCatalog.find((row) => Number(row.id_sucursal) === Number(selectedCreateSucursalId))
+                            ?.nombre_sucursal || 'Pendiente de seleccionar'}
+                        </strong>
+                      </div>
+                    </article>
+                    <article className="inv-oc-create-context-card">
+                      <span className="inv-oc-create-context-card__icon" aria-hidden="true">
+                        <i className="bi bi-box-seam" />
+                      </span>
+                      <div>
+                        <small>Almacen destino</small>
+                        <strong>
+                          {resolvedCreateWarehouse ? formatAlmacenDisplay(resolvedCreateWarehouse) : 'Almacen automatico no resuelto'}
+                        </strong>
+                      </div>
+                    </article>
+                    <article className="inv-oc-create-context-card">
+                      <span className="inv-oc-create-context-card__icon" aria-hidden="true">
+                        <i className="bi bi-person-badge" />
+                      </span>
+                      <div>
+                        <small>Contexto de usuario</small>
+                        <strong>{isOperationalCreateRestricted ? 'Sucursal asignada (operativo)' : 'Control administrativo'}</strong>
+                      </div>
+                    </article>
+                  </div>
+                  <div className="row g-2">
+                    <div className="col-12 col-md-5">
+                      <label className="form-label mb-1">Sucursal</label>
+                      {isOperationalCreateRestricted ? (
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          value={
+                            sucursalesCatalog.find((row) => Number(row.id_sucursal) === Number(selectedCreateSucursalId))?.nombre_sucursal ||
+                            'Sucursal asignada'
+                          }
+                          readOnly
+                        />
+                      ) : (
+                        <select
+                          className="form-select form-select-sm"
+                          value={catalogSucursalFilter}
+                          onChange={(e) => setCatalogSucursalFilter(e.target.value)}
+                        >
+                          <option value="">Selecciona sucursal</option>
+                          {sucursalesCatalog.map((row) => (
+                            <option key={`oc-create-modal-suc-${row.id_sucursal}`} value={row.id_sucursal}>
+                              {row.nombre_sucursal}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <div className="col-12 col-md-7">
+                      <label className="form-label mb-1">Almacén destino automático</label>
+                      <input
+                        type="text"
+                        className={`form-control form-control-sm ${
+                          hasCreateSucursalSelected && !hasCreateWarehouseResolved ? 'is-invalid' : ''
+                        }`}
+                        value={
+                          resolvedCreateWarehouse
+                            ? formatAlmacenDisplay(resolvedCreateWarehouse)
+                            : hasCreateSucursalSelected
+                            ? 'No hay almacén operativo configurado'
+                            : 'Selecciona una sucursal'
+                        }
+                        readOnly
+                      />
+                      {hasCreateSucursalSelected && !hasCreateWarehouseResolved && (
+                        <div className="invalid-feedback d-block">No hay almacén operativo configurado para esta sucursal.</div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                {/* AM: bloque 2 premium para agregar items con faltantes y busqueda manual en un panel guiado. */}
+                <section className="inv-oc-create-block">
+                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 inv-oc-create-block__head">
+                    <h6 className="mb-0">
+                      <i className="bi bi-search-heart me-2" aria-hidden="true" />
+                      Agregar items
+                    </h6>
+                    <label htmlFor="oc-modal-ver-todos" className="inv-oc-toggle inv-oc-toggle--compact mb-0">
+                      <input
+                        id="oc-modal-ver-todos"
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={!soloAlertas}
+                        onChange={(e) => setSoloAlertas(!e.target.checked)}
+                      />
+                      <span>Ver todos</span>
+                    </label>
+                  </div>
+                  {!hasCreateSucursalSelected && (
+                    <div className="alert alert-info py-2 mb-2">Selecciona una sucursal para cargar faltantes y búsqueda manual.</div>
+                  )}
+                  {hasCreateSucursalSelected && !hasCreateWarehouseResolved && (
+                    <div className="alert alert-danger py-2 mb-2">No hay almacén operativo configurado para esta sucursal.</div>
+                  )}
+                  <div className="row g-2 mb-2">
+                    <div className="col-12 col-md-8">
+                      <input
+                        type="search"
+                        className="form-control form-control-sm"
+                        value={catalogSearch}
+                        onChange={(e) => setCatalogSearch(e.target.value)}
+                        placeholder={soloAlertas ? 'Buscar en faltantes detectados...' : 'Buscar producto o insumo...'}
+                      />
+                    </div>
+                    <div className="col-12 col-md-4">
+                      <span className="badge text-bg-light border w-100 text-start p-2">
+                        Almacén: {resolvedCreateWarehouse ? resolvedCreateWarehouse.nombre : 'No resuelto'}
+                      </span>
+                    </div>
+                  </div>
+                  {/* AM: lista visual de catalogo con tarjetas compactas para seleccionar items rapido. */}
+                  <div className="inv-oc-create-catalog-list">
+                    {filteredCatalog.slice(0, 40).map((item) => (
+                      <article
+                        key={`create-modal-item-${item.key}`}
+                        className="inv-oc-create-catalog-item"
+                      >
+                        <div className="d-flex flex-column gap-1">
+                          <strong>{item.nombre}</strong>
+                          <small className="text-muted inv-oc-create-catalog-item__meta">
+                            {String(item.item_tipo || '').toLowerCase() === 'producto' ? 'Producto' : 'Insumo'} · {stockStateLabel(item.stock_state)}
+                          </small>
+                        </div>
+                        <button className="btn btn-sm btn-outline-primary inv-oc-create-catalog-item__action" onClick={() => addToDraft(item)}>
+                          <i className="bi bi-plus-circle me-1" aria-hidden="true" />
+                          Agregar
+                        </button>
+                      </article>
+                    ))}
+                    {filteredCatalog.length === 0 && (
+                      <div className="inv-oc-create-empty-state">
+                        <i className="bi bi-inboxes" aria-hidden="true" />
+                        <span>{soloAlertas ? 'Sin faltantes detectados para este filtro.' : 'Sin items para el filtro actual.'}</span>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* AM: bloque 3 premium con items seleccionados, proveedor sugerido y cantidades editables. */}
+                <section className="inv-oc-create-block">
+                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 inv-oc-create-block__head">
+                    <h6 className="mb-0">
+                      <i className="bi bi-card-checklist me-2" aria-hidden="true" />
+                      Items de la OC
+                    </h6>
+                    {canSolicitarItemNuevo && (
+                      // AM: mantiene solicitud de item no registrado dentro del nuevo modal.
+                      <button
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => setItemRequestModal({ ...emptyItemRequestModal(), open: true })}
+                      >
+                        Solicitar item nuevo
+                      </button>
+                    )}
+                  </div>
+                  {draft.length === 0 ? (
+                    <div className="text-muted small">Aún no hay ítems agregados.</div>
+                  ) : (
+                    <div className="inv-oc-create-draft-list">
+                      {draft.map((row) => (
+                        <article key={`create-modal-draft-${row.key}`} className="inv-oc-create-draft-item">
+                          <div className="d-flex flex-wrap align-items-start justify-content-between gap-2 inv-oc-create-draft-item__head">
+                            <div>
+                              <strong>{row.nombre}</strong>
+                              <small className="text-muted d-block text-capitalize">{row.item_tipo}</small>
+                            </div>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => setDraft((prev) => prev.filter((item) => item.key !== row.key))}
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                          <div className="row g-2 mt-1">
+                            <div className="col-12 col-md-3">
+                              <label className="form-label mb-1">Cantidad</label>
+                              <div className={`inv-oc-qty-control ${draftValidation[row.key] ? 'is-invalid' : ''}`}>
+                                <button
+                                  type="button"
+                                  className="inv-oc-qty-btn"
+                                  onClick={() => stepDraftCantidad(row.key, -1)}
+                                  aria-label={`Disminuir cantidad de ${row.nombre}`}
+                                >
+                                  <i className="bi bi-dash-lg" aria-hidden="true" />
+                                </button>
+                                <input
+                                  className="form-control form-control-sm inv-oc-qty-input"
+                                  value={row.cantidad}
+                                  onChange={(e) => setDraftCantidad(row.key, e.target.value)}
+                                />
+                                <button
+                                  type="button"
+                                  className="inv-oc-qty-btn"
+                                  onClick={() => stepDraftCantidad(row.key, 1)}
+                                  aria-label={`Aumentar cantidad de ${row.nombre}`}
+                                >
+                                  <i className="bi bi-plus-lg" aria-hidden="true" />
+                                </button>
+                              </div>
+                              {draftValidation[row.key] && <div className="invalid-feedback d-block">{draftValidation[row.key]}</div>}
+                            </div>
+                            <div className="col-12 col-md-4">
+                              <label className="form-label mb-1">Proveedor sugerido</label>
+                              {canEditarProveedorDraft ? (
+                                <select
+                                  className="form-select form-select-sm"
+                                  value={sanitizeInt(row?.id_proveedor_sugerido || '')}
+                                  onChange={(e) => setDraftProveedorSugerido(row.key, e.target.value)}
+                                >
+                                  <option value="">Proveedor sin definir</option>
+                                  {draftProviderOptions.map((prov) => (
+                                    <option key={`create-modal-prov-${row.key}-${prov.id_proveedor}`} value={prov.id_proveedor}>
+                                      {prov.nombre_proveedor}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="form-control form-control-sm bg-light">
+                                  {normalizeText(row?.proveedor_sugerido_nombre, 120) ||
+                                    (parsePositiveInt(row?.id_proveedor_sugerido)
+                                      ? `Proveedor #${parsePositiveInt(row?.id_proveedor_sugerido)}`
+                                      : 'Proveedor sin definir')}
+                                </div>
+                              )}
+                              <small className="text-muted d-block mt-1">
+                                <span
+                                  className={`inv-oc-proveedor-origen-chip ${proveedorSugeridoOrigenClass(
+                                    row?.proveedor_sugerido_origen
+                                  )}`}
+                                >
+                                  {formatProveedorSugeridoOrigen(row?.proveedor_sugerido_origen)}
+                                </span>
+                              </small>
+                            </div>
+                            <div className="col-12 col-md-5">
+                              <label className="form-label mb-1">Almacén destino</label>
+                              <div className="form-control form-control-sm bg-light">
+                                {resolvedCreateWarehouse ? formatAlmacenDisplay(resolvedCreateWarehouse) : 'No resuelto'}
+                              </div>
+                              <small className="text-muted d-block mt-1">
+                                Precio estimado:{' '}
+                                {parseNonNegativeNumber(row?.precio_estimado) !== null
+                                  ? formatMoney(parseNonNegativeNumber(row?.precio_estimado))
+                                  : 'Sin precio estimado'}
+                              </small>
+                              <small className="text-muted d-block mt-1">
+                                Subtotal:{' '}
+                                {parseNonNegativeNumber(row?.precio_estimado) !== null
+                                  ? formatMoney((parseNonNegativeNumber(row?.precio_estimado) || 0) * (parsePositiveInt(row?.cantidad) || 0))
+                                  : 'Sin subtotal estimado'}
+                              </small>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* AM: bloque 4 premium para resumen de montos estimados y contexto final de creacion. */}
+                <section className="inv-oc-create-summary">
+                  <div className="inv-oc-create-summary__head">
+                    <h6 className="mb-0">
+                      <i className="bi bi-receipt-cutoff me-2" aria-hidden="true" />
+                      Resumen estimado
+                    </h6>
+                  </div>
+                  <div className="inv-oc-create-summary__grid">
+                    <div className="inv-oc-create-summary__metric">
+                      <span>Subtotal estimado</span>
+                      <strong>{formatMoney(draftEstimatedTotals.subtotal)}</strong>
+                    </div>
+                    <div className="inv-oc-create-summary__metric">
+                      <span>ISV estimado</span>
+                      <strong>{formatMoney(draftEstimatedTotals.isv)}</strong>
+                    </div>
+                    <div className="inv-oc-create-summary__metric inv-oc-create-summary__metric--total">
+                      <span>Total estimado</span>
+                      <strong>{formatMoney(draftEstimatedTotals.total)}</strong>
+                    </div>
+                    <div className="inv-oc-create-summary__metric">
+                      <span>Lineas</span>
+                      <strong>{draft.length}</strong>
+                    </div>
+                    <div className="inv-oc-create-summary__metric">
+                      <span>Unidades</span>
+                      <strong>{draftTotals.unidades}</strong>
+                    </div>
+                  </div>
+                  <small className="text-muted d-block mt-2">Los montos finales se ajustan al registrar la compra/factura.</small>
+                  {draftValidation.__context && <small className="text-danger d-block mt-1">{draftValidation.__context}</small>}
+                </section>
+              </div>
+              {/* AM: footer premium y compacto con accion principal clara para crear la OC. */}
+              <div className="modal-footer inv-oc-create-modal__footer">
+                <button className="btn btn-outline-secondary" onClick={closeCreateModal} disabled={creating}>
+                  Cancelar
+                </button>
+                {/* AM: accion principal del modal para crear OC manteniendo validaciones existentes. */}
+                <button className="btn inv-prod-btn-primary" onClick={createSolicitud} disabled={creating || hasDraftErrors || !hasDraftContent}>
+                  {creating ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                      Creando...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-send-check me-1" aria-hidden="true" />
+                      Crear orden de compra
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
       {detalleActual.loading || detalleActual.error || detalleActual.data ? (
@@ -4814,6 +6111,82 @@ const flowDotItems = useMemo(() => {
                     />
                   </div>
                 </div>
+                {/* AM: resumen compacto por proveedor para evitar confusion entre OC unica y conversion por grupo. */}
+                <div className="mb-3 border rounded p-2 bg-light">
+                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div className="fw-semibold">Proveedores de esta OC</div>
+                    <small className="text-muted">OC con varios proveedores</small>
+                  </div>
+                  <div className="d-flex flex-wrap gap-2 mt-2">
+                    {convertProviderGroups.length === 0 && (
+                      <span className="badge bg-secondary">Sin proveedores detectados en detalle</span>
+                    )}
+                    {convertProviderGroups.map((group) => {
+                      const providerId = parsePositiveInt(group?.idProveedor);
+                      const isSelected =
+                        providerId &&
+                        parsePositiveInt(convertPanel?.id_proveedor) &&
+                        providerId === parsePositiveInt(convertPanel?.id_proveedor);
+                      const statusLabel =
+                        group.estadoGrupo === 'CONVERTIDO'
+                          ? 'Compra registrada para este proveedor'
+                          : group.estadoGrupo === 'EN_COMPRA'
+                            ? 'Compra en proceso para este proveedor'
+                            : 'Proveedor pendiente de registrar compra';
+                      const hasQuantityGap = Boolean(group?.tieneCompra) && !boolish(group?.cantidadesCuadran);
+                      const hasPendingEvidence = Array.isArray(group?.evidenciasPendientes)
+                        ? group.evidenciasPendientes.length > 0
+                        : Boolean(group?.hasEvidenciasPendientes);
+                      return (
+                        <button
+                          key={`provider-group-${providerId || 'sin-definir'}`}
+                          type="button"
+                          className={`btn btn-sm ${isSelected ? 'btn-dark' : 'btn-outline-dark'}`}
+                          disabled={!providerId || convertPanel.loading}
+                          onClick={() =>
+                            providerId &&
+                            setConvertPanel((prev) => ({
+                              ...prev,
+                              id_proveedor: String(providerId),
+                              error: ''
+                            }))
+                          }
+                        >
+                          <span>{group.nombreProveedor}</span>
+                          <span className="ms-2 badge bg-secondary">
+                            {group.totalLineas} linea{group.totalLineas === 1 ? '' : 's'}
+                          </span>
+                          <span className="ms-2 badge bg-light text-dark">{group.totalCantidad} uds</span>
+                          {group.estadoGrupo !== 'PENDIENTE' && (
+                            <span className="ms-2 badge bg-secondary">
+                              {group.totalLineasCompra || 0}/{group.totalLineas || 0} lineas compra
+                            </span>
+                          )}
+                          <span className={`ms-2 badge ${providerGroupBadgeClass(group.estadoGrupo)}`}>
+                            {group.estadoGrupo}
+                          </span>
+                          <span className="d-block small mt-1">{statusLabel}</span>
+                          {hasQuantityGap && (
+                            <span className="d-block small mt-1 text-warning">Cantidades por revisar</span>
+                          )}
+                          {hasPendingEvidence && (
+                            <span className="d-block small mt-1 text-warning">Evidencias pendientes</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <small className="text-muted d-block mt-2">
+                    El abastecimiento final validara que todos los proveedores esten registrados.
+                  </small>
+                </div>
+                {selectedProviderGroup && (
+                  <div className="alert alert-info py-2">
+                    {/* AM: mensaje UX explicito para confirmar alcance de conversion por proveedor seleccionado. */}
+                    Esta conversion registrara compra solo para este proveedor.{' '}
+                    <strong>{selectedProviderGroup.nombreProveedor}</strong>. {selectedProviderStatusMessage}
+                  </div>
+                )}
 
                 {/* AM: captura administrativa de costos reales por item para trazabilidad de compra. */}
                 <div className="mb-3">
@@ -4829,7 +6202,7 @@ const flowDotItems = useMemo(() => {
                         </tr>
                       </thead>
                       <tbody>
-                        {(Array.isArray(convertPanel.detalles) ? convertPanel.detalles : []).map((row) => (
+                        {convertProviderDetailRows.map((row) => (
                           <tr key={`convert-detail-${row.id_detalle_orden}`}>
                             <td>{row.item_nombre || `Detalle #${row.id_detalle_orden || '-'}`}</td>
                             <td className="text-center">{row.cantidad_orden || 0}</td>
@@ -4853,6 +6226,13 @@ const flowDotItems = useMemo(() => {
                             </td>
                           </tr>
                         ))}
+                        {convertProviderDetailRows.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="text-center text-muted py-3">
+                              No hay lineas asociadas al proveedor seleccionado.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>

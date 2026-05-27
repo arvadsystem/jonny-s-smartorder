@@ -5,6 +5,47 @@ const VALID_PREFIX_RE = /^[A-Za-z0-9_-]+$/;
 const TICKET_WIDTH_OPTIONS = [58, 80];
 
 const normalizeText = (value) => String(value ?? '').trim();
+const CONTENT_FLAGS = [
+  ['mostrar_datos_fiscales', 'Mostrar datos fiscales'],
+  ['mostrar_rtn', 'Mostrar RTN emisor'],
+  ['mostrar_direccion', 'Mostrar direccion'],
+  ['mostrar_telefono', 'Mostrar contacto'],
+  ['mostrar_correo', 'Mostrar correo'],
+  ['mostrar_cai_ticket', 'Mostrar CAI'],
+  ['mostrar_numero_fiscal_ticket', 'Mostrar numero fiscal'],
+  ['mostrar_codigo_interno_ticket', 'Mostrar codigo interno']
+];
+const TAX_FLAGS = [
+  ['aplicar_impuestos', 'Aplicar impuestos en venta'],
+  ['mostrar_impuestos_ticket', 'Mostrar impuestos en ticket'],
+  ['mostrar_importe_exento', 'Mostrar importe exento'],
+  ['mostrar_importe_gravado_15', 'Mostrar importe gravado 15%'],
+  ['mostrar_isv_15', 'Mostrar ISV 15%'],
+  ['mostrar_importe_gravado_18', 'Mostrar importe gravado 18%'],
+  ['mostrar_isv_18', 'Mostrar ISV 18%'],
+  ['mostrar_total_isv', 'Mostrar total ISV']
+];
+const DISCOUNT_FLAGS = [
+  ['mostrar_descuento_linea', 'Mostrar descuento por linea'],
+  ['mostrar_descuento_porcentaje_linea', 'Mostrar porcentaje de descuento'],
+  ['mostrar_descuento_total', 'Mostrar descuento total']
+];
+const REVERSION_FLAGS = [
+  ['imprimir_comprobante_reversion', 'Imprimir comprobante de reversion'],
+  ['mostrar_venta_original_reversion', 'Mostrar venta original'],
+  ['mostrar_codigo_reversion', 'Mostrar codigo de reversion'],
+  ['mostrar_usuario_reversion', 'Mostrar usuario que reversa'],
+  ['mostrar_caja_sesion_reversion', 'Mostrar caja/sesion'],
+  ['mostrar_motivo_reversion', 'Mostrar motivo'],
+  ['mostrar_detalle_reversion', 'Mostrar detalle de productos'],
+  ['mostrar_total_reversion', 'Mostrar total reversado']
+];
+const ALL_PRINT_FLAGS = [
+  ...CONTENT_FLAGS,
+  ...TAX_FLAGS,
+  ...DISCOUNT_FLAGS,
+  ...REVERSION_FLAGS
+].map(([field]) => field);
 
 const buildValidationErrors = (form) => {
   const errors = {};
@@ -55,6 +96,10 @@ const toPayload = (form) => ({
   mostrar_direccion: Boolean(form?.mostrar_direccion),
   mostrar_telefono: Boolean(form?.mostrar_telefono),
   mostrar_correo: Boolean(form?.mostrar_correo),
+  ...ALL_PRINT_FLAGS.reduce((acc, field) => ({
+    ...acc,
+    [field]: Boolean(form?.[field])
+  }), {}),
   activo: Boolean(form?.activo)
 });
 
@@ -193,6 +238,65 @@ export default function SucursalFacturacionConfigDrawer({
                       ['mostrar_telefono', 'Mostrar teléfono'],
                       ['mostrar_correo', 'Mostrar correo']
                     ].map(([field, label]) => (
+                      <div className="col-12 col-md-6" key={field}>
+                        <div className="form-check">
+                          <input id={`fac_${field}`} className="form-check-input" type="checkbox" name={field} checked={Boolean(form[field])} onChange={setBooleanField} />
+                          <label className="form-check-label" htmlFor={`fac_${field}`}>{label}</label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="inv-prod-pmodal__section">
+                  <div className="inv-prod-pmodal__section-title">Contenido del ticket</div>
+                  <div className="row g-2 mt-1">
+                    {CONTENT_FLAGS.map(([field, label]) => (
+                      <div className="col-12 col-md-6" key={field}>
+                        <div className="form-check">
+                          <input id={`fac_${field}`} className="form-check-input" type="checkbox" name={field} checked={Boolean(form[field])} onChange={setBooleanField} />
+                          <label className="form-check-label" htmlFor={`fac_${field}`}>{label}</label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="inv-prod-pmodal__section">
+                  <div className="inv-prod-pmodal__section-title">Impuestos</div>
+                  <div className="alert alert-warning py-2 mb-2">
+                    Los impuestos siguen desactivados temporalmente aunque estos controles queden preparados.
+                  </div>
+                  <div className="row g-2 mt-1">
+                    {TAX_FLAGS.map(([field, label]) => (
+                      <div className="col-12 col-md-6" key={field}>
+                        <div className="form-check">
+                          <input id={`fac_${field}`} className="form-check-input" type="checkbox" name={field} checked={Boolean(form[field])} onChange={setBooleanField} />
+                          <label className="form-check-label" htmlFor={`fac_${field}`}>{label}</label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="inv-prod-pmodal__section">
+                  <div className="inv-prod-pmodal__section-title">Descuentos</div>
+                  <div className="row g-2 mt-1">
+                    {DISCOUNT_FLAGS.map(([field, label]) => (
+                      <div className="col-12 col-md-6" key={field}>
+                        <div className="form-check">
+                          <input id={`fac_${field}`} className="form-check-input" type="checkbox" name={field} checked={Boolean(form[field])} onChange={setBooleanField} />
+                          <label className="form-check-label" htmlFor={`fac_${field}`}>{label}</label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="inv-prod-pmodal__section">
+                  <div className="inv-prod-pmodal__section-title">Comprobante de reversión</div>
+                  <div className="row g-2 mt-1">
+                    {REVERSION_FLAGS.map(([field, label]) => (
                       <div className="col-12 col-md-6" key={field}>
                         <div className="form-check">
                           <input id={`fac_${field}`} className="form-check-input" type="checkbox" name={field} checked={Boolean(form[field])} onChange={setBooleanField} />

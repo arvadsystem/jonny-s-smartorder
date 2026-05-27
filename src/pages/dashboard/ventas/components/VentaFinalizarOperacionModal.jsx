@@ -42,6 +42,19 @@ const normalizeOptionalText = (value) => {
   return text || null;
 };
 
+const normalizeOptionSearchText = (cliente) => [
+  cliente.label,
+  cliente.nombre_cliente,
+  cliente.nombre,
+  cliente.apellido,
+  cliente.telefono,
+  cliente.id_telefono,
+  cliente.dni,
+  cliente.rtn,
+  cliente.correo,
+  cliente.id_correo
+].filter(Boolean).join(' ');
+
 export default function VentaFinalizarOperacionModal({
   open,
   composer,
@@ -112,14 +125,14 @@ export default function VentaFinalizarOperacionModal({
       contact.modalidad === 'RECOGER';
 
     if (phoneRequired && !normalizeOptionalText(contact.telefono_contacto)) {
-      setLocalError('Teléfono es obligatorio para este canal o modalidad.');
+      setLocalError('Telefono es obligatorio para este canal o modalidad.');
       return false;
     }
 
     if (activeTab === 'pendiente' && contact.modalidad === 'DELIVERY') {
       const missing = [
         ['nombre_receptor', 'Nombre receptor'],
-        ['telefono_receptor', 'Teléfono receptor'],
+        ['telefono_receptor', 'Telefono receptor'],
         ['direccion_entrega', 'Direccion entrega'],
         ['referencia_entrega', 'Referencia entrega'],
         ['costo_envio', 'Costo envio']
@@ -210,24 +223,17 @@ export default function VentaFinalizarOperacionModal({
 
   const selectedPayment = PAYMENT_OPTIONS.find((option) => option.key === composer.paymentMethod) || PAYMENT_OPTIONS[0];
   const totalWithDelivery = composer.total + (activeTab === 'pendiente' && contact.modalidad === 'DELIVERY' ? deliveryCost : 0);
+  const lineDiscountValue = Number(composer.lineDiscountValue || 0);
+  const globalDiscountValue = Number(composer.globalDiscountValue || 0);
+  const totalDiscountValue = Number(composer.totalDiscountValue ?? composer.discountValue ?? 0);
+  const shouldShowDiscountBreakdown = lineDiscountValue > 0 || globalDiscountValue > 0 || totalDiscountValue > 0;
   const cartCount = Number(composer.cartCount ?? composer.cart?.length ?? 0) || 0;
   const clienteOptions = (Array.isArray(composer.clientes) ? composer.clientes : []).map((cliente) => ({
-      value: String(cliente.value ?? cliente.id_cliente ?? ''),
-      label: String(cliente.label ?? cliente.nombre_cliente ?? 'Cliente'),
-      helperText: cliente.es_consumidor_final ? 'Venta sin cliente registrado' : '',
-      searchText: [
-        cliente.label,
-        cliente.nombre_cliente,
-        cliente.nombre,
-        cliente.apellido,
-        cliente.telefono,
-        cliente.id_telefono,
-        cliente.dni,
-        cliente.rtn,
-        cliente.correo,
-        cliente.id_correo
-      ].filter(Boolean).join(' ')
-    }));
+    value: String(cliente.value ?? cliente.id_cliente ?? ''),
+    label: String(cliente.label ?? cliente.nombre_cliente ?? 'Cliente'),
+    helperText: cliente.es_consumidor_final ? 'Venta sin cliente registrado' : '',
+    searchText: normalizeOptionSearchText(cliente)
+  }));
   const canalOptions = [
     { value: 'LOCAL', label: 'LOCAL' },
     { value: 'TELEFONO', label: 'TELEFONO' },
@@ -273,9 +279,9 @@ export default function VentaFinalizarOperacionModal({
       >
         <header className="ventas-modal-header ventas-finalizar-modal__header">
           <div className="ventas-finalizar-modal__header-copy">
-            <h5 id="ventas-finalizar-title">Finalizar operación</h5>
+            <h5 id="ventas-finalizar-title">Finalizar operacion</h5>
             <p>Selecciona si el pedido se paga ahora o queda pendiente.</p>
-            <div className="ventas-finalizar-modal__summary" aria-label="Resumen de la venta">
+            <div className="ventas-finalizar-modal__summary" aria-label="Resumen de venta">
               <span>{cartCount} {cartCount === 1 ? 'item' : 'items'}</span>
               <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
             </div>
@@ -285,7 +291,7 @@ export default function VentaFinalizarOperacionModal({
           </button>
         </header>
 
-        <div className="ventas-finalizar-modal__tabs" role="tablist" aria-label="Tipo de operación">
+        <div className="ventas-finalizar-modal__tabs" role="tablist" aria-label="Tipo de operacion">
           <button
             type="button"
             role="tab"
@@ -308,18 +314,18 @@ export default function VentaFinalizarOperacionModal({
 
         <div className="ventas-modal-body ventas-finalizar-modal__body">
           <section className="ventas-finalizar-modal__section">
-            <strong>Datos del cliente/pedido</strong>
+            <strong>Datos del cliente y pedido</strong>
             <div className="ventas-finalizar-modal__grid">
               <AppSelect
                 label="Cliente"
                 value={composer.selectedClient}
                 options={clienteOptions}
                 onChange={composer.setSelectedClient}
-                placeholder="Consumidor final"
+                placeholder="Selecciona cliente"
                 searchable
-                searchPlaceholder="Buscar por nombre, telefono, DNI o RTN"
+                searchPlaceholder="Buscar cliente..."
                 emptyText="No se encontro ese cliente."
-                createActionLabel={(query) => query ? `Crear cliente "${query}"` : 'Crear cliente'}
+                createActionLabel={(query) => (query ? `Crear cliente "${query}"` : 'Crear cliente')}
                 onCreateAction={(query) => {
                   setQuickCreateSearch(query);
                   setQuickCreateOpen(true);
@@ -327,14 +333,14 @@ export default function VentaFinalizarOperacionModal({
                 className="app-select--compact app-select--warm ventas-finalizar-modal__field-wide"
               />
 
-            <label className="ventas-create-modal__field">
-              <span>Teléfono</span>
-              <input
-                type="text"
-                value={contact.telefono_contacto}
-                onChange={(event) => setContactField('telefono_contacto', event.target.value)}
-              />
-            </label>
+              <label className="ventas-create-modal__field">
+                <span>Telefono</span>
+                <input
+                  type="text"
+                  value={contact.telefono_contacto}
+                  onChange={(event) => setContactField('telefono_contacto', event.target.value)}
+                />
+              </label>
 
               <AppSelect
                 label="Canal"
@@ -352,14 +358,14 @@ export default function VentaFinalizarOperacionModal({
                 className="app-select--compact app-select--warm"
               />
 
-            <label className="ventas-create-modal__field">
-              <span>Observación</span>
-              <input
-                type="text"
-                value={contact.observacion_contexto}
-                onChange={(event) => setContactField('observacion_contexto', event.target.value)}
-              />
-            </label>
+              <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
+                <span>Observacion</span>
+                <input
+                  type="text"
+                  value={contact.observacion_contexto}
+                  onChange={(event) => setContactField('observacion_contexto', event.target.value)}
+                />
+              </label>
             </div>
           </section>
 
@@ -372,7 +378,7 @@ export default function VentaFinalizarOperacionModal({
                   <input type="text" value={delivery.nombre_receptor} onChange={(event) => setDeliveryField('nombre_receptor', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
-                  <span>Teléfono receptor</span>
+                  <span>Telefono receptor</span>
                   <input type="text" value={delivery.telefono_receptor} onChange={(event) => setDeliveryField('telefono_receptor', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field ventas-finalizar-modal__field-wide">
@@ -388,7 +394,7 @@ export default function VentaFinalizarOperacionModal({
                   <input type="number" min="0" step="0.01" value={delivery.costo_envio} onChange={(event) => setDeliveryField('costo_envio', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
-                  <span>Observación delivery</span>
+                  <span>Observacion delivery</span>
                   <input type="text" value={delivery.observacion_delivery} onChange={(event) => setDeliveryField('observacion_delivery', event.target.value)} />
                 </label>
               </div>
@@ -400,7 +406,7 @@ export default function VentaFinalizarOperacionModal({
               <strong>Pago</strong>
               <div className="ventas-finalizar-modal__grid">
                 <AppSelect
-                  label="Método de pago"
+                  label="Metodo de pago"
                   value={composer.paymentMethod}
                   options={paymentOptions}
                   onChange={composer.setPaymentMethod}
@@ -451,7 +457,7 @@ export default function VentaFinalizarOperacionModal({
             <section className="ventas-finalizar-modal__section">
               <strong>Pago pendiente</strong>
               <label className="ventas-create-modal__field">
-                <span>Observación pago</span>
+                <span>Observacion pago</span>
                 <input
                   type="text"
                   value={contact.observacion_pago}
@@ -462,9 +468,37 @@ export default function VentaFinalizarOperacionModal({
             </section>
           )}
 
-          <div className="ventas-finalizar-modal__total" aria-live="polite">
-            <span>Total</span>
-            <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
+          <div className="ventas-finalizar-modal__total ventas-finalizar-modal__totals-breakdown" aria-live="polite">
+            <div>
+              <span>Subtotal bruto</span>
+              <strong>{composer.formatCurrency(composer.subtotal)}</strong>
+            </div>
+            {shouldShowDiscountBreakdown ? (
+              <>
+                <div>
+                  <span>Descuentos por linea</span>
+                  <strong>-{composer.formatCurrency(lineDiscountValue)}</strong>
+                </div>
+                <div>
+                  <span>Descuento global</span>
+                  <strong>-{composer.formatCurrency(globalDiscountValue)}</strong>
+                </div>
+                <div>
+                  <span>Descuento total</span>
+                  <strong>-{composer.formatCurrency(totalDiscountValue)}</strong>
+                </div>
+              </>
+            ) : null}
+            {activeTab === 'pendiente' && contact.modalidad === 'DELIVERY' && deliveryCost > 0 ? (
+              <div>
+                <span>Envio</span>
+                <strong>{composer.formatCurrency(deliveryCost)}</strong>
+              </div>
+            ) : null}
+            <div className="is-total">
+              <span>Total</span>
+              <strong>{composer.formatCurrency(totalWithDelivery)}</strong>
+            </div>
           </div>
 
           {(localError || composer.submitError) ? (
@@ -472,7 +506,7 @@ export default function VentaFinalizarOperacionModal({
           ) : null}
         </div>
 
-        <footer className="ventas-modal-footer d-flex justify-content-end gap-2">
+        <footer className="ventas-modal-footer">
           <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={isSubmitting}>
             Cancelar
           </button>

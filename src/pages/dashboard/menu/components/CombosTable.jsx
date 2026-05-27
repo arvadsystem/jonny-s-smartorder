@@ -1,9 +1,12 @@
+import { useEffect, useMemo, useState } from 'react';
 import {
   formatMoney,
   resolveComboActivo,
   resolveComboImageCandidates,
   resolveComboNombre
 } from '../utils/combosAdminUtils';
+
+const CARDS_PER_PAGE = 10;
 
 const CombosTable = ({
   loading,
@@ -14,6 +17,23 @@ const CombosTable = ({
   onEditar,
   onCambiarEstado
 }) => {
+  const [cardsPageIndex, setCardsPageIndex] = useState(0);
+
+  const totalCards = Array.isArray(combos) ? combos.length : 0;
+  const combosCardsPages = useMemo(() => {
+    const rows = Array.isArray(combos) ? combos : [];
+    const pages = [];
+    for (let i = 0; i < rows.length; i += CARDS_PER_PAGE) pages.push(rows.slice(i, i + CARDS_PER_PAGE));
+    return pages;
+  }, [combos]);
+  const totalCardsPages = Math.max(1, combosCardsPages.length || 0);
+  const safeCardsPageIndex = Math.min(cardsPageIndex, totalCardsPages - 1);
+  const combosCardsPage = combosCardsPages[safeCardsPageIndex] || [];
+
+  useEffect(() => {
+    setCardsPageIndex((prev) => Math.min(Math.max(0, prev), Math.max(0, totalCardsPages - 1)));
+  }, [totalCardsPages]);
+
   if (loading) {
     return <div className="text-center py-4">Cargando combos...</div>;
   }
@@ -28,8 +48,25 @@ const CombosTable = ({
   }
 
   return (
-    <div className="menu-recetas-admin__cards">
-      {combos.map((combo) => {
+    <>
+      <div className="inv-ins-carousel-shell">
+        <div className="inv-ins-carousel-meta">
+          <span>{`Pagina ${safeCardsPageIndex + 1} de ${totalCardsPages}`}</span>
+          <span>{`${totalCards} combos visibles`}</span>
+        </div>
+        <div className="inv-prod-carousel-stage inv-ins-carousel-stage">
+          <button
+            type="button"
+            className={`btn inv-prod-carousel-float is-prev ${safeCardsPageIndex > 0 ? 'is-visible' : ''}`}
+            aria-label="Pagina anterior del carrusel de combos"
+            onClick={() => setCardsPageIndex((prev) => Math.max(0, prev - 1))}
+            disabled={safeCardsPageIndex <= 0}
+          >
+            <i className="bi bi-chevron-left" />
+          </button>
+
+          <div className="inv-ins-carousel-page menu-recetas-admin__carousel-page" key={`combos-cards-page-${safeCardsPageIndex}`}>
+            {combosCardsPage.map((combo) => {
         const id = Number(combo?.id_combo || 0);
         const estadoActivo = resolveComboActivo(combo);
         const imageCandidates = resolveComboImageCandidates(combo);
@@ -39,7 +76,7 @@ const CombosTable = ({
         return (
           <article
             key={id}
-            className={`menu-recetas-card ${estadoActivo ? 'is-active' : 'is-inactive'}`}
+            className={`menu-recetas-card menu-recetas-card--compact ${estadoActivo ? 'is-active' : 'is-inactive'}`}
           >
             <header className="menu-recetas-card__media">
               {imageUrl ? (
@@ -111,8 +148,21 @@ const CombosTable = ({
             </footer>
           </article>
         );
-      })}
-    </div>
+            })}
+          </div>
+
+          <button
+            type="button"
+            className={`btn inv-prod-carousel-float is-next ${safeCardsPageIndex < totalCardsPages - 1 ? 'is-visible' : ''}`}
+            aria-label="Pagina siguiente del carrusel de combos"
+            onClick={() => setCardsPageIndex((prev) => Math.min(totalCardsPages - 1, prev + 1))}
+            disabled={safeCardsPageIndex >= totalCardsPages - 1}
+          >
+            <i className="bi bi-chevron-right" />
+          </button>
+        </div>
+      </div>
+    </>
   );
 };
 

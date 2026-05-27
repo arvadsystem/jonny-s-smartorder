@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import PremiumNavCategories from './PremiumNavCategories';
 import PremiumHeaderActions from './PremiumHeaderActions';
 
-const MOBILE_MENU_MEDIA_QUERY = '(max-width: 767.98px)';
+const MOBILE_MENU_MEDIA_QUERY = '(max-width: 900.98px)';
 
 // PremiumHeader: header unico del catalogo.
 // En mobile agrega menu desplegable de categorias sin cambiar handlers de negocio.
@@ -62,7 +62,10 @@ const PremiumHeader = ({
   };
 
   return (
-    <header className="pm-premium-header" aria-label="Cabecera principal del catalogo">
+    <header
+      className={`pm-premium-header ${isMobileViewport && mobileMenuOpen ? 'is-mobile-menu-open' : ''}`}
+      aria-label="Cabecera principal del catalogo"
+    >
       <div className="pm-premium-header__brand-row">
         {isMobileViewport ? (
           <button
@@ -72,7 +75,16 @@ const PremiumHeader = ({
             aria-label="Abrir categorias"
             aria-expanded={mobileMenuOpen}
           >
-            <i className={`bi ${mobileMenuOpen ? 'bi-x-lg' : 'bi-list'}`} aria-hidden="true" />
+            <svg className="pm-premium-header__menu-btn-illustration" viewBox="12 14 38 38" aria-hidden="true">
+              <rect x="18.5" y="16" width="28.5" height="33" rx="4.8" ry="4.8" fill="none" stroke="currentColor" strokeWidth="2.8" />
+              <rect x="14.5" y="20" width="5.5" height="3.8" rx="0.9" fill="none" stroke="currentColor" strokeWidth="2.2" />
+              <rect x="14.5" y="27.2" width="5.5" height="3.8" rx="0.9" fill="none" stroke="currentColor" strokeWidth="2.2" />
+              <rect x="14.5" y="34.4" width="5.5" height="3.8" rx="0.9" fill="none" stroke="currentColor" strokeWidth="2.2" />
+              <rect x="14.5" y="41.6" width="5.5" height="3.8" rx="0.9" fill="none" stroke="currentColor" strokeWidth="2.2" />
+              <text x="32.8" y="37.6" textAnchor="middle" fontSize="8.1" fontWeight="900" fill="currentColor">
+                {'MEN\u00da'}
+              </text>
+            </svg>
           </button>
         ) : null}
 

@@ -2,10 +2,13 @@ import { useMemo, useState } from 'react';
 import {
   formatCajaCurrency,
   formatCajaDateTimeHN,
-  resolveDifferenceBadge,
+  resolveClosureStateBadge,
   resolveMovimientoManualKind,
   resolveSessionStatusBadge
 } from '../../utils/cajasHelpers';
+import CierreCajaResolverDiferenciaModal, {
+  canResolveCierreDifference
+} from './CierreCajaResolverDiferenciaModal';
 
 const formatSessionCode = (idSesionCaja) =>
   idSesionCaja ? `SES-${String(idSesionCaja).padStart(5, '0')}` : 'Sesion sin codigo';
@@ -57,6 +60,34 @@ const AmountCard = ({ label, value, tone = 'neutral', icon = 'bi-cash-stack' }) 
   </article>
 );
 
+const DetailMobileCards = ({ rows = [], emptyMessage = 'No hay registros.' }) => {
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  return (
+    <div className="cierres-caja-detail-card-list">
+      {normalizedRows.length === 0 ? (
+        <div className="cierres-caja-detail-mobile-empty">{emptyMessage}</div>
+      ) : (
+        normalizedRows.map((row, index) => (
+          <article key={row.key || index} className="cierres-caja-detail-mobile-card">
+            <div className="cierres-caja-detail-mobile-card__head">
+              <strong>{row.title || 'Registro'}</strong>
+              {row.badge ? <span>{row.badge}</span> : null}
+            </div>
+            <div className="cierres-caja-detail-mobile-card__grid">
+              {(Array.isArray(row.items) ? row.items : []).map((item) => (
+                <div key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value || '-'}</strong>
+                </div>
+              ))}
+            </div>
+          </article>
+        ))
+      )}
+    </div>
+  );
+};
+
 export default function CierreCajaDetalleModal({
   open,
   detalle,
@@ -65,12 +96,16 @@ export default function CierreCajaDetalleModal({
   canCloseSession,
   canUseCloseFlow,
   canViewCajaTheoreticalAmounts = true,
+  canResolveDifference = false,
+  saving = false,
   onClose,
   onOpenArqueo,
-  onOpenCerrar
+  onOpenCerrar,
+  onResolveDifference
 }) {
   const [activeTab, setActiveTab] = useState('RESUMEN');
   const [movimientoFiltro, setMovimientoFiltro] = useState('TODOS');
+  const [resolveOpen, setResolveOpen] = useState(false);
 
   const sesion = detalle?.sesion;
   const resumen = detalle?.resumen_operativo ?? {};
@@ -81,11 +116,14 @@ export default function CierreCajaDetalleModal({
   const cobrosPorUsuario = Array.isArray(detalle?.cobros_por_usuario) ? detalle.cobros_por_usuario : [];
   const arqueos = Array.isArray(detalle?.arqueos) ? detalle.arqueos : [];
   const movimientos = Array.isArray(detalle?.movimientos) ? detalle.movimientos : [];
+  const recuentos = Array.isArray(detalle?.recuentos)
+    ? detalle.recuentos
+    : (Array.isArray(detalle?.validaciones_cierre) ? detalle.validaciones_cierre : []);
   const isOpen = sesion?.estado_codigo === 'ABIERTA';
   const sessionCode = formatSessionCode(sesion?.id_sesion_caja);
   const statusBadge = resolveSessionStatusBadge(sesion);
   const closeBadge = cierre?.id_cierre_caja
-    ? resolveDifferenceBadge(canViewCajaTheoreticalAmounts ? cierre?.diferencia : null)
+    ? resolveClosureStateBadge(canViewCajaTheoreticalAmounts ? cierre : null)
     : { label: 'Sin cierre', className: 'bg-light border-secondary text-secondary' };
   const declaredAmount =
     cierre?.monto_declarado_cierre
@@ -95,6 +133,13 @@ export default function CierreCajaDetalleModal({
   const theoreticalAmount = resumen?.monto_teorico ?? resumen?.efectivo_teorico ?? cierre?.monto_teorico_cierre;
   const differenceAmount = cierre?.diferencia ?? resumen?.diferencia_cierre ?? sesion?.diferencia_cierre ?? null;
   const cierreObservacion = cierre?.observacion || cierre?.observacion_cierre || resumen?.observacion_cierre || '';
+  const canSubmitResolution = canResolveCierreDifference({
+    cierre,
+    sesion,
+    canResolveDifference,
+    canViewCajaTheoreticalAmounts,
+    onResolveDifference
+  });
 
   const movimientosManuales = useMemo(
     () => movimientos
@@ -137,10 +182,12 @@ export default function CierreCajaDetalleModal({
         { key: 'EQUIPO', label: 'Equipo de caja', icon: 'bi-person-badge' },
         { key: 'COBROS', label: 'Cobros por usuario', icon: 'bi-people' },
         { key: 'ARQUEOS', label: 'Arqueos', icon: 'bi-calculator' },
+        { key: 'RECUENTOS', label: 'Recuentos', icon: 'bi-arrow-repeat' },
         { key: 'MOVIMIENTOS', label: 'Movimientos manuales', icon: 'bi-journal-plus' }
       ]
     : [
         { key: 'RESUMEN', label: 'Resumen de cierre', icon: 'bi-check2-square' },
+        { key: 'RECUENTOS', label: 'Recuentos', icon: 'bi-arrow-repeat' },
         { key: 'MOVIMIENTOS', label: 'Movimientos manuales', icon: 'bi-journal-plus' },
         ...(cierreObservacion ? [{ key: 'OBSERVACION', label: 'Observacion de cierre', icon: 'bi-chat-left-text' }] : [])
       ];
@@ -155,13 +202,14 @@ export default function CierreCajaDetalleModal({
       : 'No hay ingresos ni egresos manuales registrados.';
 
   const renderResumen = () => (
-    <section className="cierres-caja-detail-panel">
+    <section className={`cierres-caja-detail-panel ${canViewCajaTheoreticalAmounts ? 'has-mobile-cards' : ''}`}>
       <div className="inv-prod-title-row mb-2">
         <i className="bi bi-clipboard-data text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
         <span className="inv-prod-title">{canViewCajaTheoreticalAmounts ? 'Resumen operativo' : 'Resumen de cierre'}</span>
       </div>
 
       {canViewCajaTheoreticalAmounts ? (
+        <>
         <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap">
           <table className="table ventas-page__table cierres-caja-detail-table">
             <thead>
@@ -190,6 +238,23 @@ export default function CierreCajaDetalleModal({
             </tbody>
           </table>
         </div>
+        <DetailMobileCards
+          rows={[{
+            key: 'resumen-operativo',
+            title: 'Resumen operativo',
+            items: [
+              { label: 'Ventas efectivo', value: `L. ${formatCajaCurrency(resumen.ventas_efectivo)}` },
+              { label: 'Ventas no efectivo', value: `L. ${formatCajaCurrency(resumen.ventas_no_efectivo)}` },
+              { label: 'Ingresos manuales', value: `L. ${formatCajaCurrency(resumen.ingresos_manuales)}` },
+              { label: 'Egresos manuales', value: `L. ${formatCajaCurrency(resumen.egresos_manuales)}` },
+              { label: 'Total responsable', value: `L. ${formatCajaCurrency(resumen.total_responsable)}` },
+              { label: 'Total auxiliares', value: `L. ${formatCajaCurrency(resumen.total_auxiliares)}` },
+              { label: 'Monto teorico', value: `L. ${formatCajaCurrency(theoreticalAmount)}` },
+              { label: 'Monto declarado', value: `L. ${formatCajaCurrency(declaredAmount)}` }
+            ]
+          }]}
+        />
+        </>
       ) : (
         <div className="cierres-caja-detail-safe-grid">
           <DetailField label="Sesion" value={sessionCode} />
@@ -205,7 +270,7 @@ export default function CierreCajaDetalleModal({
   );
 
   const renderEquipo = () => (
-    <section className="cierres-caja-detail-panel">
+    <section className="cierres-caja-detail-panel has-mobile-cards">
       <div className="inv-prod-title-row mb-2">
         <i className="bi bi-person-badge text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
         <span className="inv-prod-title">Equipo de caja</span>
@@ -236,11 +301,24 @@ export default function CierreCajaDetalleModal({
           </tbody>
         </table>
       </div>
+      <DetailMobileCards
+        emptyMessage="No hay registros."
+        rows={participantes.map((row) => ({
+          key: row.id_participacion_caja || row.id_usuario,
+          title: row.nombre_completo || row.nombre_usuario || 'Usuario no disponible',
+          badge: row.activo ? 'Activo' : 'Inactivo',
+          items: [
+            { label: 'Rol', value: resolveParticipantRole(row) },
+            { label: 'Inicio', value: formatCajaDateTimeHN(row.fecha_inicio) },
+            { label: 'Fin', value: formatCajaDateTimeHN(row.fecha_fin) }
+          ]
+        }))}
+      />
     </section>
   );
 
   const renderCobros = () => (
-    <section className="cierres-caja-detail-panel">
+    <section className="cierres-caja-detail-panel has-mobile-cards">
       <div className="inv-prod-title-row mb-2">
         <i className="bi bi-people text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
         <span className="inv-prod-title">Cobros por usuario</span>
@@ -278,6 +356,20 @@ export default function CierreCajaDetalleModal({
           </tbody>
         </table>
       </div>
+      <DetailMobileCards
+        emptyMessage="No hay registros."
+        rows={cobrosPorUsuario.map((row) => ({
+          key: row.id_usuario_ejecutor,
+          title: row.nombre_completo || row.nombre_usuario || 'Usuario no disponible',
+          badge: resolveRolCobroLabel(row),
+          items: [
+            { label: 'Cobros', value: row.cobros_registrados },
+            { label: 'Total efectivo', value: `L. ${formatCajaCurrency(row.total_efectivo)}` },
+            { label: 'Total no efectivo', value: `L. ${formatCajaCurrency(row.total_no_efectivo)}` },
+            { label: 'Total cobrado', value: `L. ${formatCajaCurrency(row.total_cobrado)}` }
+          ]
+        }))}
+      />
     </section>
   );
 
@@ -408,6 +500,138 @@ export default function CierreCajaDetalleModal({
     </section>
   );
 
+  const renderRecuentos = () => (
+    <section className="cierres-caja-detail-panel">
+      <div className="inv-prod-title-row mb-2">
+        <i className="bi bi-arrow-repeat text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
+        <span className="inv-prod-title">Recuentos de cierre</span>
+      </div>
+
+      {recuentos.length === 0 ? (
+        <div className="ventas-create-modal__empty shadow-none border-0">
+          <div className="ventas-create-modal__cart-empty-icon">
+            <i className="bi bi-journal-x text-secondary" />
+          </div>
+          <span>No hay revisiones registradas para esta sesion.</span>
+        </div>
+      ) : (
+        <div className="d-grid gap-3">
+          {recuentos.map((recuento) => {
+            const difference = recuento.diferencia_total;
+            const metodosRecuento = Array.isArray(recuento.metodos) ? recuento.metodos : [];
+            const differenceLabel = difference === null || difference === undefined
+              ? 'No visible'
+              : `L. ${formatCajaCurrency(difference)}`;
+            return (
+              <article
+                key={recuento.id_validacion_cierre || recuento.numero_intento}
+                className={`cierres-caja-review-card ${recuento.usado_para_cierre ? 'border border-success' : ''}`}
+              >
+                <div className="cierres-caja-review-card__head">
+                  <div>
+                    <strong>Revision #{recuento.numero_intento || '-'}</strong>
+                    <div className="text-muted small fw-semibold">
+                      {recuento.usuario_valida_nombre || 'Usuario no disponible'} - {formatCajaDateTimeHN(recuento.fecha_validacion)}
+                    </div>
+                  </div>
+                  {recuento.usado_para_cierre ? (
+                    <span className="ventas-page__table-pill bg-success border-success text-white">
+                      Usado para cierre
+                    </span>
+                  ) : (
+                    <span className="ventas-page__table-pill bg-light border-secondary text-secondary">
+                      Revision previa
+                    </span>
+                  )}
+                </div>
+
+                <div className="cierres-caja-review-card__grid">
+                  {canViewCajaTheoreticalAmounts ? (
+                    <div>
+                      <span>Sistema</span>
+                      <strong>
+                        {recuento.total_teorico === null || recuento.total_teorico === undefined
+                          ? 'No visible'
+                          : `L. ${formatCajaCurrency(recuento.total_teorico)}`}
+                      </strong>
+                    </div>
+                  ) : null}
+                  <div>
+                    <span>Declarado</span>
+                    <strong>
+                      {recuento.total_declarado === null || recuento.total_declarado === undefined
+                        ? 'No disponible'
+                        : `L. ${formatCajaCurrency(recuento.total_declarado)}`}
+                    </strong>
+                  </div>
+                  {canViewCajaTheoreticalAmounts ? (
+                    <div>
+                      <span>Diferencia</span>
+                      <strong>{differenceLabel}</strong>
+                    </div>
+                  ) : null}
+                  <div>
+                    <span>Observacion</span>
+                    <strong>{recuento.observacion_general || 'Sin observacion'}</strong>
+                  </div>
+                </div>
+
+                <div className="ventas-page__table-wrap cierres-caja-detail__table-wrap mt-3">
+                  <table className="table ventas-page__table cierres-caja-detail-table">
+                    <thead>
+                      <tr>
+                        <th>Metodo</th>
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Sistema</th> : null}
+                        <th className="text-end">Declarado</th>
+                        {canViewCajaTheoreticalAmounts ? <th className="text-end">Diferencia</th> : null}
+                        <th className="text-center">Refs.</th>
+                        <th>Resultado</th>
+                        <th>Observacion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {metodosRecuento.length === 0 ? (
+                        renderEmptyRow('Sin detalle por metodo.', canViewCajaTheoreticalAmounts ? 7 : 5)
+                      ) : (
+                        metodosRecuento.map((metodo) => (
+                          <tr key={`${recuento.id_validacion_cierre}-${metodo.metodo_pago_codigo}`}>
+                            <td>{metodo.metodo_pago_codigo || '-'}</td>
+                            {canViewCajaTheoreticalAmounts ? (
+                              <td className="text-end">
+                                {metodo.monto_teorico === null || metodo.monto_teorico === undefined
+                                  ? '-'
+                                  : `L. ${formatCajaCurrency(metodo.monto_teorico)}`}
+                              </td>
+                            ) : null}
+                            <td className="text-end">L. {formatCajaCurrency(metodo.monto_declarado)}</td>
+                            {canViewCajaTheoreticalAmounts ? (
+                              <td className="text-end">
+                                {metodo.diferencia === null || metodo.diferencia === undefined
+                                  ? '-'
+                                  : `L. ${formatCajaCurrency(metodo.diferencia)}`}
+                              </td>
+                            ) : null}
+                            <td className="text-center">{metodo.cantidad_referencias ?? '-'}</td>
+                            <td>
+                              <span className={`ventas-page__table-pill ${metodo.requiere_revision ? 'bg-warning border-warning text-dark' : 'bg-success border-success text-white'}`}>
+                                {metodo.resultado || 'CUADRADO'}
+                              </span>
+                            </td>
+                            <td>{metodo.observacion || '-'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+
   const renderObservacion = () => (
     <section className="cierres-caja-detail-panel">
       <div className="inv-prod-title-row mb-2">
@@ -422,6 +646,7 @@ export default function CierreCajaDetalleModal({
     if (selectedTab === 'EQUIPO') return renderEquipo();
     if (selectedTab === 'COBROS') return renderCobros();
     if (selectedTab === 'ARQUEOS') return renderArqueos();
+    if (selectedTab === 'RECUENTOS') return renderRecuentos();
     if (selectedTab === 'MOVIMIENTOS') return renderMovimientos();
     if (selectedTab === 'OBSERVACION') return renderObservacion();
     return renderResumen();
@@ -470,6 +695,17 @@ export default function CierreCajaDetalleModal({
                 <i className="bi bi-lock" />
               </button>
             ) : null}
+            {canSubmitResolution ? (
+              <button
+                type="button"
+                className="ventas-modal__ghost-btn"
+                title="Resolver diferencia"
+                onClick={() => setResolveOpen(true)}
+                disabled={saving}
+              >
+                <i className="bi bi-shield-check" />
+              </button>
+            ) : null}
             <button type="button" className="ventas-modal__close-btn" onClick={onClose} aria-label="Cerrar">
               <i className="bi bi-x-lg" />
             </button>
@@ -489,7 +725,7 @@ export default function CierreCajaDetalleModal({
                   <div className="cierres-caja-detail__badges">
                     <span className={`ventas-page__table-pill ${statusBadge.className}`}>{statusBadge.label}</span>
                     <span className={`ventas-page__table-pill ${closeBadge.className}`}>{closeBadge.label}</span>
-                    {cierre?.resolucion_nombre ? (
+                    {cierre?.resolucion_codigo && !['CAJA_CUADRA', 'PENDIENTE_REVISION'].includes(cierre.resolucion_codigo) ? (
                       <span className="ventas-page__table-pill bg-white border-secondary text-secondary">
                         {cierre.resolucion_nombre}
                       </span>
@@ -520,12 +756,30 @@ export default function CierreCajaDetalleModal({
                     <AmountCard
                       label="Diferencia"
                       value={differenceAmount}
-                      tone={Number(differenceAmount) === 0 ? 'income' : 'expense'}
+                      tone={Number(differenceAmount) < 0 ? 'expense' : 'income'}
                       icon="bi-activity"
                     />
                   ) : null}
                 </div>
               </section>
+
+              {canSubmitResolution ? (
+                <section className="cierres-caja-detail-resolution-cta">
+                  <div>
+                    <strong>Resolucion administrativa pendiente</strong>
+                    <span>Registra una decision para cerrar la revision de esta diferencia.</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => setResolveOpen(true)}
+                    disabled={saving}
+                  >
+                    <i className="bi bi-shield-check me-2" />
+                    Resolver diferencia
+                  </button>
+                </section>
+              ) : null}
 
               <nav className="cierres-caja-detail-tabs" aria-label="Detalle de cierre">
                 {tabs.map((tab) => (
@@ -546,6 +800,14 @@ export default function CierreCajaDetalleModal({
           )}
         </div>
       </section>
+
+      <CierreCajaResolverDiferenciaModal
+        open={resolveOpen && canSubmitResolution}
+        detalle={detalle}
+        saving={saving}
+        onClose={() => setResolveOpen(false)}
+        onSubmit={onResolveDifference}
+      />
     </div>
   );
 }

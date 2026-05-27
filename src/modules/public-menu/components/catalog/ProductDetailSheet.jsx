@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   calculateRequiredSauces,
   getItemAllowedSauces,
@@ -44,6 +44,7 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
   const [isSauceSectionOpen, setIsSauceSectionOpen] = useState(false);
   const [lineNote, setLineNote] = useState('');
   const [validationError, setValidationError] = useState('');
+  const backdropPressRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -88,6 +89,15 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
   const isSingleSauceSelection = requiresSauceSelection && requiredSauceCount === 1;
   const popularSauce = availableSauces[0] || null;
   const shouldShowWingOrderNotice = isWingsOrTendersItem(item);
+
+  const handleBackdropClick = (event) => {
+    // Evita cierres accidentales cuando el click nace dentro del modal
+    // y por bubbling/touch llega al backdrop.
+    if (!backdropPressRef.current) return;
+    if (event.target !== event.currentTarget) return;
+    backdropPressRef.current = false;
+    onClose?.();
+  };
 
   if (!open) return null;
 
@@ -169,12 +179,22 @@ const ProductDetailSheet = ({ open, item, loading, error, onClose, onRetry, onAd
   };
 
   return (
-    <div className="pm-detail-sheet__backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="pm-detail-sheet__backdrop"
+      role="presentation"
+      onPointerDown={(event) => {
+        backdropPressRef.current = event.target === event.currentTarget;
+      }}
+      onClick={handleBackdropClick}
+    >
       <section
         className="pm-detail-sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="pm-detail-sheet-title"
+        onPointerDownCapture={() => {
+          backdropPressRef.current = false;
+        }}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="pm-detail-sheet__header">

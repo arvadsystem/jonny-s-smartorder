@@ -9,6 +9,9 @@ import { useCierresCaja } from '../../ventas/hooks/useCierresCaja';
 import { PERMISSIONS } from '../../../../utils/permissions';
 import CollapsibleSearchInput from '../../../../components/common/CollapsibleSearchInput';
 import CierreCajaAbrirModal from '../../ventas/components/cierres/CierreCajaAbrirModal';
+import CierresCajaPagination, {
+  getPaginatedRows
+} from '../../ventas/components/cierres/CierresCajaPagination';
 
 const buildScopeQuery = (value) => {
   const parsed = Number.parseInt(String(value || ''), 10);
@@ -20,6 +23,8 @@ const isTruthyState = (value) =>
 
 const countActiveFilters = ({ id_caja = '', solo_activas = true, sucursal = '' }) =>
   (String(id_caja || '').trim() ? 1 : 0) + (solo_activas ? 0 : 1) + (String(sucursal || '').trim() ? 1 : 0);
+
+const CIERRES_ASIGNACIONES_PAGE_SIZE = 6;
 
 const initialForm = Object.freeze({
   id_caja: '',
@@ -65,6 +70,7 @@ export default function CierresCajaAsignacionesView() {
 
   const [cajas, setCajas] = useState([]);
   const [asignaciones, setAsignaciones] = useState([]);
+  const [assignmentsPage, setAssignmentsPage] = useState(1);
   const [usuarios, setUsuarios] = useState([]);
   const [loadingUsuarios, setLoadingUsuarios] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -233,6 +239,14 @@ export default function CierresCajaAsignacionesView() {
       ].some((value) => String(value || '').toLowerCase().includes(raw));
     });
   }, [asignaciones, deferredSearch, filters.solo_activas]);
+  const assignmentsPageData = useMemo(
+    () => getPaginatedRows(visible, assignmentsPage, CIERRES_ASIGNACIONES_PAGE_SIZE),
+    [assignmentsPage, visible]
+  );
+
+  useEffect(() => {
+    setAssignmentsPage(1);
+  }, [deferredSearch, filters.id_caja, filters.solo_activas, selectedSucursalId]);
 
   const stats = useMemo(() => ({
     cajasVisibles: cajas.length,
@@ -510,6 +524,21 @@ export default function CierresCajaAsignacionesView() {
         </section>
 
         <div className="ventas-page__table-card flex-grow-1 d-flex flex-column min-h-0">
+          <div className="inv-prod-results-meta cierres-caja-results-meta">
+            <span>{loading ? 'Cargando asignaciones...' : `${assignmentsPageData.rows.length} resultados`}</span>
+            <span>
+              {loading
+                ? ''
+                : `Mostrando ${
+                  assignmentsPageData.total === 0 ? 0 : ((assignmentsPageData.page - 1) * assignmentsPageData.pageSize) + 1
+                }-${
+                  assignmentsPageData.total === 0
+                    ? 0
+                    : Math.min(((assignmentsPageData.page - 1) * assignmentsPageData.pageSize) + assignmentsPageData.rows.length, assignmentsPageData.total)
+                } de ${assignmentsPageData.total}`}
+            </span>
+          </div>
+
           <div className="ventas-page__table-wrap flex-grow-1 cierres-caja-table-desktop">
             <table className="table ventas-page__table">
               <thead><tr><th>Caja</th><th>Usuario</th><th>Roles</th><th className="text-center">Estado</th><th>Actualizacion</th><th className="text-end">Acciones</th></tr></thead>
@@ -517,7 +546,7 @@ export default function CierresCajaAsignacionesView() {
                 {loading ? <tr><td colSpan="6" className="text-center py-5"><div className="spinner-border text-danger" /></td></tr> : null}
                 {!loading && error ? <tr><td colSpan="6" className="text-center py-4">{error}</td></tr> : null}
                 {!loading && !error && visible.length === 0 ? <tr><td colSpan="6" className="text-center py-4">No hay asignaciones para los filtros aplicados.</td></tr> : null}
-                {!loading && !error ? visible.map((row) => (
+                {!loading && !error ? assignmentsPageData.rows.map((row) => (
                   <tr key={row.id_caja_usuario_autorizado} className="ventas-page__table-row">
                     <td><div className="ventas-page__table-sale"><strong>{row.nombre_caja || 'Caja sin nombre'}</strong></div></td>
                     <td className="align-middle"><div className="ventas-page__table-sale"><strong>{row.nombre_completo || 'Sin nombre'}</strong></div></td>
@@ -537,15 +566,39 @@ export default function CierresCajaAsignacionesView() {
           </div>
 
           <div className="cierres-caja-mobile-list">
+            {loading ? (
+              <div className="text-center py-5">
+                <div className="spinner-border text-danger" role="status" />
+              </div>
+            ) : null}
+            {!loading && error ? <div className="text-center py-4">{error}</div> : null}
             {!loading && !error && visible.length === 0 ? <div className="text-center py-4">No hay asignaciones para los filtros aplicados.</div> : null}
-            {visible.map((row) => (
+            {!loading && !error ? assignmentsPageData.rows.map((row) => (
               <article key={row.id_caja_usuario_autorizado} className="cierres-caja-mobile-card">
                 <div className="cierres-caja-mobile-card__head"><div><strong>{row.nombre_caja || 'Caja sin nombre'}</strong><small>{row.nombre_sucursal || 'Sin sucursal'}</small></div><span className={`ventas-page__table-pill ${row.estado ? 'bg-success border-success text-white' : 'bg-secondary border-secondary text-white'}`}>{row.estado ? 'Activa' : 'Inactiva'}</span></div>
-                <div className="cierres-caja-mobile-card__body"><div><span>Usuario</span><strong>{row.nombre_completo || row.nombre_usuario || 'Sin usuario'}</strong></div><div><span>Roles</span><strong>{roleLabel(row)}</strong></div><div><span>Actualizacion</span><strong>{formatCajaDateTime(row.fecha_actualizacion)}</strong></div></div>
-                {canManage ? <div className="cierres-caja-mobile-card__actions"><button type="button" className="btn btn-sm btn-outline-dark" onClick={() => openEdit(row)}>Editar</button></div> : null}
+                <div className="cierres-caja-mobile-card__body"><div><span>Usuario</span><strong>{row.nombre_completo || row.nombre_usuario || 'Sin usuario'}</strong></div><div><span>Roles</span><strong>{roleLabel(row)}</strong></div><div><span>Estado</span><strong>{row.estado ? 'Activa' : 'Inactiva'}</strong></div><div><span>Actualizacion</span><strong>{formatCajaDateTime(row.fecha_actualizacion)}</strong></div></div>
+                {canManage ? (
+                  <div className="cierres-caja-mobile-card__actions">
+                    <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => openEdit(row)}>
+                      Editar
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => void toggleState(row)}>
+                      {row.estado ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </div>
+                ) : null}
               </article>
-            ))}
+            )) : null}
           </div>
+
+          {!loading && !error && assignmentsPageData.total > 0 ? (
+            <CierresCajaPagination
+              totalItems={assignmentsPageData.total}
+              pageSize={assignmentsPageData.pageSize}
+              currentPage={assignmentsPageData.page}
+              onPageChange={setAssignmentsPage}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -605,7 +658,7 @@ export default function CierresCajaAsignacionesView() {
 
       {modalOpen ? (
         <div className="ventas-modal-backdrop" onClick={() => setModalOpen(false)}>
-          <section className="ventas-modal cierres-caja-action-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+          <section className="ventas-modal cierres-caja-action-modal cierres-caja-confirm-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className="ventas-modal__header"><div className="ventas-modal__title-wrap"><span className="ventas-modal__icon"><i className="bi bi-person-plus" /></span><div><h3>{editing ? 'Editar asignacion' : 'Nueva asignacion'}</h3><p>Define roles permanentes del usuario en la caja.</p></div></div><button type="button" className="ventas-modal__close-btn" onClick={() => setModalOpen(false)}><i className="bi bi-x-lg" /></button></header>
             <form className="ventas-modal__body cierres-caja-action-modal__body" onSubmit={submitModal}>
               <div className="cierres-caja-action-modal__grid">
@@ -637,9 +690,13 @@ export default function CierresCajaAsignacionesView() {
             </header>
             <div className="ventas-modal__body cierres-caja-action-modal__body">
               <p className="mb-0">{confirmDeactivateMessage}</p>
+              <div className="cierres-caja-resolution-note">
+                <i className="bi bi-info-circle" />
+                <span>Si la caja tiene una sesion abierta, primero debes cerrar la sesion antes de desactivar esta asignacion.</span>
+              </div>
             </div>
             <footer className="ventas-detail-modal__footer">
-              <div className="ventas-detail-modal__footer-actions">
+              <div className="ventas-detail-modal__footer-actions cierres-caja-confirm-modal__actions">
                 <button type="button" className="btn btn-outline-secondary" onClick={closeDeactivateConfirm} disabled={saving}>Cancelar</button>
                 <button type="button" className="btn btn-danger" onClick={() => void confirmDeactivate()} disabled={saving}>{saving ? 'Procesando...' : 'Desactivar'}</button>
               </div>

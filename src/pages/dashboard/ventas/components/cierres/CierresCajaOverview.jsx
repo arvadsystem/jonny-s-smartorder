@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  formatCajaCurrency,
-  resolveDifferenceBadge
+  formatCajaCurrency
 } from '../../utils/cajasHelpers';
 import CierresCajaFiltersDrawer from '../../../cierres-caja/components/CierresCajaFiltersDrawer';
 import CollapsibleSearchInput from '../../../../../components/common/CollapsibleSearchInput';
@@ -11,7 +10,6 @@ const countActiveFilters = ({ estado = '', desde = '', hasta = '', sucursal = ''
 
 export default function CierresCajaOverview({
   stats,
-  sesionActiva,
   loading,
   hideKpis = false,
   canViewCajaTheoreticalAmounts = true,
@@ -42,7 +40,6 @@ export default function CierresCajaOverview({
     hasta: filters.fecha_hasta || ''
   });
 
-  const diferenciaBadge = resolveDifferenceBadge(stats?.diferenciaAcumulada ?? null);
   const activeFilters = useMemo(
     () =>
       countActiveFilters({
@@ -213,11 +210,6 @@ export default function CierresCajaOverview({
             <div className="inv-prod-kpi-content">
               <span>Sesiones abiertas</span>
               <strong>{loading ? <div className="spinner-border spinner-border-sm" /> : stats.abiertas}</strong>
-              <small className="fidelizacion-kpi__helper">
-                {sesionActiva?.id_sesion_caja
-                  ? `Sesion activa #${sesionActiva.id_sesion_caja}`
-                  : 'No hay sesion activa para el usuario.'}
-              </small>
             </div>
           </div>
 
@@ -244,11 +236,6 @@ export default function CierresCajaOverview({
                   <strong>
                     {loading ? <div className="spinner-border spinner-border-sm" /> : `L. ${formatCajaCurrency(stats.diferenciaAcumulada)}`}
                   </strong>
-                  <small className="fidelizacion-kpi__helper">
-                    <span className={`ventas-page__table-pill ${diferenciaBadge.className}`}>
-                      {diferenciaBadge.label}
-                    </span>
-                  </small>
                 </div>
               </div>
             </>

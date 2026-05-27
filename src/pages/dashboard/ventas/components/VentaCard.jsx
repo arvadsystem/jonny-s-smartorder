@@ -9,10 +9,12 @@ const getMetodoPagoLabel = (value) => {
 };
 
 export default function VentaCard({ venta, view = 'grid', index = 0, onOpenDetail }) {
-  const isCompleted = venta?.statusKey === 'completed';
+  const isCompleted = venta?.displayStatusKey === 'completed';
+  const isReversed = ['reversed', 'partially_reversed'].includes(String(venta?.displayStatusKey || ''));
   const badgeClass = isCompleted ? 'is-ok' : 'is-low';
   const dotClass = isCompleted ? 'ok' : 'off';
   const metodoPagoLabel = getMetodoPagoLabel(venta?.metodo_pago);
+  const hasReversiones = Number(venta?.reversiones_count || 0) > 0 || Number(venta?.monto_reversado_total || 0) > 0;
 
   return (
     <article
@@ -43,7 +45,14 @@ export default function VentaCard({ venta, view = 'grid', index = 0, onOpenDetai
           </div>
         </div>
 
-        <span className={`inv-ins-card__badge ${badgeClass}`}>{venta?.statusLabel}</span>
+        <div className="ventas-page__sale-badges">
+          {hasReversiones && venta?.reversionStatusLabel ? (
+            <span className="ventas-page__sale-badge is-reversed">Con reversión</span>
+          ) : null}
+          <span className={`inv-ins-card__badge ${isReversed ? 'is-low' : badgeClass}`}>
+            {venta?.displayStatusLabel || venta?.statusLabel}
+          </span>
+        </div>
       </div>
 
       <div className="ventas-page__card-details">
@@ -71,6 +80,12 @@ export default function VentaCard({ venta, view = 'grid', index = 0, onOpenDetai
           <i className="bi bi-person-badge" />
           <span>{venta?.nombre_usuario}</span>
         </div>
+        {hasReversiones ? (
+          <div className="ventas-page__card-row ventas-page__card-row--reversed">
+            <i className="bi bi-arrow-counterclockwise" />
+            <span>{venta?.reversiones_count || 1} reversión(es) · -{formatCurrency(venta?.monto_reversado_total)}</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="inv-catpro-meta inv-catpro-item-footer">

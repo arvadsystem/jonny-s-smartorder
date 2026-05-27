@@ -45,7 +45,7 @@ const ventasService = {
     apiFetch(`/ventas/descuentos-catalogos/${id}/estado`, 'PATCH', { estado }),
 
   // Pedidos menú público
-  getPedidosMenu: () => apiFetch('/ventas/pedidos-menu', 'GET'),
+  getPedidosMenu: (params = {}) => apiFetch(`/ventas/pedidos-menu${buildQuery(params)}`, 'GET'),
   confirmarPagoPedido: (id) =>
     apiFetch(`/ventas/pedidos-menu/${id}/confirmar-pago`, 'POST', {}),
   updatePedidoEstado: (id, estadoDestinoOrId) => {

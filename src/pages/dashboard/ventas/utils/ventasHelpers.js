@@ -31,6 +31,52 @@ const normalizeTextKey = (value) =>
 
 export const formatCurrency = (value) => `L ${roundMoney(value).toFixed(2)}`;
 
+export const getLineDiscountPercent = (line) => {
+  if (!line || typeof line !== 'object') return null;
+
+  const explicitPercent = Number(
+    line.descuento_porcentaje_linea ??
+    line.porcentaje_descuento_linea ??
+    line.porcentaje_descuento ??
+    line.descuento_porcentaje
+  );
+  if (Number.isFinite(explicitPercent) && explicitPercent > 0) {
+    return Math.min(100, explicitPercent);
+  }
+
+  const discount = Number(line.descuento_linea ?? line.descuento ?? 0);
+  if (!Number.isFinite(discount) || discount <= 0) return null;
+
+  const grossSubtotal = Number(
+    line.subtotal_bruto_linea ??
+    line.subtotal_linea ??
+    line.sub_total ??
+    0
+  ) || (Number(line.precio_unitario || 0) * Number(line.cantidad || 0));
+  if (!Number.isFinite(grossSubtotal) || grossSubtotal <= 0) return null;
+
+  return Math.min(100, (discount / grossSubtotal) * 100);
+};
+
+export const formatDiscountPercent = (value) => {
+  const percent = Number(value);
+  if (!Number.isFinite(percent) || percent <= 0) return '--';
+  const rounded = Number(percent.toFixed(2));
+  return `${Number.isInteger(rounded) ? String(rounded) : String(rounded)}%`;
+};
+
+export const resolveVentaReversionStatus = (venta) => {
+  const reversedAmount = roundMoney(venta?.monto_reversado_total);
+  if (reversedAmount <= 0) return { key: '', label: '' };
+
+  const total = roundMoney(venta?.total);
+  const isTotal = total > 0 && reversedAmount >= roundMoney(total - 0.01);
+  return {
+    key: isTotal ? 'reversed' : 'partially_reversed',
+    label: isTotal ? 'Reversada' : 'Parcialmente reversada'
+  };
+};
+
 const HN_TIMEZONE = 'America/Tegucigalpa';
 const SQL_DATE_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
 
@@ -106,6 +152,13 @@ export const extractApiMessage = (error, fallbackMessage) => {
   }
 
   return fallbackMessage;
+};
+
+export const resolveVentasApiErrorMessage = (error, fallbackMessage = 'No se pudo completar la operación.') => {
+  const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+  const message = extractApiMessage(error, fallbackMessage);
+  if (!code || message.includes(code)) return message;
+  return `${message} (${code})`;
 };
 
 export const normalizeCategoriaRecord = (row) => ({
@@ -203,6 +256,7 @@ const inferStatusKey = (row) => {
 
 export const normalizeVentaRecord = (row) => {
   const statusKey = inferStatusKey(row);
+  const reversionStatus = resolveVentaReversionStatus(row);
 
   return {
     ...row,
@@ -211,12 +265,24 @@ export const normalizeVentaRecord = (row) => {
     id_sucursal: Number(row?.id_sucursal ?? 0) || null,
     id_cliente: Number(row?.id_cliente ?? 0) || null,
     id_usuario: Number(row?.id_usuario ?? 0) || null,
+    id_sesion_caja: Number(row?.id_sesion_caja ?? 0) || null,
+    caja_sesion_estado_codigo: String(row?.caja_sesion_estado_codigo ?? '').trim(),
+    caja_sesion_estado_nombre: String(row?.caja_sesion_estado_nombre ?? '').trim(),
+    caja_sesion_fecha_cierre: row?.caja_sesion_fecha_cierre ?? null,
+    caja_sesion_abierta: row?.caja_sesion_abierta === undefined || row?.caja_sesion_abierta === null
+      ? undefined
+      : parseBoolean(row.caja_sesion_abierta),
     total: roundMoney(row?.total),
     sub_total: roundMoney(row?.sub_total),
+    subtotal_bruto: roundMoney(row?.subtotal_bruto),
     isv: roundMoney(row?.isv),
     cambio: roundMoney(row?.cambio),
     efectivo_entregado: roundMoney(row?.efectivo_entregado),
     descuento_total: roundMoney(row?.descuento_total),
+    descuento_lineas: roundMoney(row?.descuento_lineas),
+    descuento_global: roundMoney(row?.descuento_global),
+    monto_reversado_total: roundMoney(row?.monto_reversado_total),
+    reversiones_count: Number(row?.reversiones_count ?? 0) || 0,
     total_items: Number(row?.total_items ?? 0) || 0,
     cliente_nombre: String(row?.cliente_nombre ?? 'Consumidor final'),
     nombre_sucursal: String(row?.nombre_sucursal ?? 'Sucursal no definida'),
@@ -227,14 +293,68 @@ export const normalizeVentaRecord = (row) => {
     ),
     statusKey,
     statusLabel: String(row?.estado_pedido ?? FALLBACK_STATUS[statusKey]),
+    reversionStatusKey: reversionStatus.key,
+    reversionStatusLabel: reversionStatus.label,
+    displayStatusKey: reversionStatus.key || statusKey,
+    displayStatusLabel: reversionStatus.label || String(row?.estado_pedido ?? FALLBACK_STATUS[statusKey]),
     fecha_label: formatDateLabel(row?.fecha_hora_pedido),
     hora_label: formatTimeLabel(row?.fecha_hora_pedido),
     fecha_hora_label: formatDateTimeLabel(row?.fecha_hora_pedido)
   };
 };
 
+export const resolveVentaReversionBlockReason = (venta) => {
+  if (!venta || typeof venta !== 'object') return '';
+
+  const hasSessionOpenFlag = Object.prototype.hasOwnProperty.call(venta, 'caja_sesion_abierta');
+  const sessionCode = String(venta?.caja_sesion_estado_codigo || '').trim().toUpperCase();
+  const sessionClosedAt = venta?.caja_sesion_fecha_cierre || null;
+
+  if (!venta.id_sesion_caja) {
+    return 'La venta no tiene una sesión de caja válida para reversión.';
+  }
+
+  if ((hasSessionOpenFlag && venta.caja_sesion_abierta === false) || sessionClosedAt || (sessionCode && sessionCode !== 'ABIERTA')) {
+    return 'No se puede reversar porque la caja ya fue cerrada.';
+  }
+
+  return '';
+};
+
 export const normalizeVentaDetail = (row) => {
   const base = normalizeVentaRecord(row);
+  const reversiones = (Array.isArray(row?.reversiones) ? row.reversiones : []).map((reversion) => ({
+    ...reversion,
+    id_reversion: Number(reversion?.id_reversion ?? 0) || null,
+    codigo_reversion: String(reversion?.codigo_reversion ?? ''),
+    tipo_reversion: String(reversion?.tipo_reversion ?? ''),
+    motivo: String(reversion?.motivo ?? ''),
+    observacion: String(reversion?.observacion ?? '').trim(),
+    monto_reversado: roundMoney(reversion?.monto_reversado),
+    fecha_operacion: reversion?.fecha_operacion ?? null,
+    creada_en: reversion?.creada_en ?? null,
+    usuario: String(reversion?.usuario ?? 'Sin usuario'),
+    lineas: (Array.isArray(reversion?.lineas) ? reversion.lineas : []).map((linea) => ({
+      ...linea,
+      id_detalle_factura: Number(linea?.id_detalle_factura ?? 0) || null,
+      tipo_item: String(linea?.tipo_item ?? 'ITEM'),
+      nombre_item: String(linea?.nombre_item ?? 'Item'),
+      cantidad_revertida: Number(linea?.cantidad_revertida ?? 0) || 0,
+      precio_unitario_original: roundMoney(linea?.precio_unitario_original),
+      subtotal_revertido: roundMoney(linea?.subtotal_revertido),
+      descuento_revertido: roundMoney(linea?.descuento_revertido),
+      total_revertido: roundMoney(linea?.total_revertido),
+      devuelve_inventario: Boolean(linea?.devuelve_inventario)
+    }))
+  }));
+  const reversedQtyByDetail = reversiones.reduce((map, reversion) => {
+    reversion.lineas.forEach((linea) => {
+      const idDetalle = Number(linea?.id_detalle_factura || 0);
+      if (!idDetalle) return;
+      map.set(idDetalle, (map.get(idDetalle) || 0) + Number(linea?.cantidad_revertida || 0));
+    });
+    return map;
+  }, new Map());
   const items = Array.isArray(row?.items)
     ? row.items.map((item) => ({
       ...item,
@@ -248,14 +368,32 @@ export const normalizeVentaDetail = (row) => {
       sub_total: roundMoney(item?.sub_total),
       total_linea: roundMoney(item?.total_linea),
       descuento: roundMoney(item?.descuento),
+      descuento_linea: roundMoney(item?.descuento_linea),
+      descuento_global: roundMoney(item?.descuento_global),
+      descuento_porcentaje_linea: getLineDiscountPercent(item),
       nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
       nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
+      cantidad_revertida: reversedQtyByDetail.get(Number(item?.id_detalle ?? 0)) || 0,
       observacion: String(item?.observacion ?? '').trim()
     }))
     : [];
+  const resolvedReversedTotal = roundMoney(
+    reversiones.reduce((acc, item) => acc + Number(item?.monto_reversado || 0), 0)
+  ) || base.monto_reversado_total;
+  const reversionStatus = resolveVentaReversionStatus({
+    ...base,
+    monto_reversado_total: resolvedReversedTotal
+  });
 
   return {
     ...base,
+    reversiones,
+    monto_reversado_total: resolvedReversedTotal,
+    reversiones_count: reversiones.length || base.reversiones_count,
+    reversionStatusKey: reversionStatus.key,
+    reversionStatusLabel: reversionStatus.label,
+    displayStatusKey: reversionStatus.key || base.statusKey,
+    displayStatusLabel: reversionStatus.label || base.statusLabel,
     items,
     total_items: items.reduce((acc, item) => acc + Number(item?.cantidad ?? 0), 0) || base.total_items
   };
@@ -313,14 +451,24 @@ export const downloadVentaDetail = (venta) => {
     atendido_por: venta.nombre_usuario,
     metodo_pago: venta.metodo_pago,
     subtotal: venta.sub_total,
-    isv: venta.isv,
+    descuento_total: venta.descuento_total,
     total: venta.total,
+    reversiones: venta.reversiones?.map((reversion) => ({
+      codigo_reversion: reversion.codigo_reversion,
+      tipo_reversion: reversion.tipo_reversion,
+      motivo: reversion.motivo,
+      monto_reversado: reversion.monto_reversado,
+      lineas: reversion.lineas
+    })),
     items: venta.items?.map((item) => ({
       producto: item.nombre_item || item.nombre_producto,
       tipo_item: item.tipo_item,
       cantidad: item.cantidad,
+      cantidad_revertida: item.cantidad_revertida || 0,
       precio_unitario: item.precio_unitario,
       subtotal: item.sub_total,
+      descuento: item.descuento,
+      descuento_porcentaje_linea: getLineDiscountPercent(item),
       total: item.total_linea,
       observacion: item.observacion || null
     }))

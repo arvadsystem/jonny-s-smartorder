@@ -96,6 +96,12 @@ const normalizeItemTipoFilter = (value) => {
 
 const getItemId = (item, itemTipo) =>
   itemTipo === 'producto' ? String(item?.id_producto ?? '').trim() : String(item?.id_insumo ?? '').trim();
+const getItemDisplayName = (item, itemTipo) => {
+  if (itemTipo === 'producto') {
+    return String(item?.nombre_producto ?? item?.nombre ?? '').trim() || `Producto ${item?.id_producto ?? ''}`;
+  }
+  return String(item?.nombre_insumo ?? item?.nombre ?? '').trim() || `Insumo ${item?.id_insumo ?? ''}`;
+};
 
 const MOVIMIENTOS_PAGE_SIZE = 10;
 const MOVIMIENTOS_REFERENCIAS_LIMIT = 300;
@@ -238,6 +244,8 @@ const MovimientosTab = ({
     descripcion: ''
   });
   const [createErrors, setCreateErrors] = useState({});
+  const [itemSearch, setItemSearch] = useState('');
+  const [isItemDropdownOpen, setIsItemDropdownOpen] = useState(false);
 
   const modalPortalTarget = typeof document !== 'undefined' ? document.body : null;
   const kardexRequestIdRef = useRef(0);
@@ -245,6 +253,7 @@ const MovimientosTab = ({
   const referenciasRequestIdRef = useRef(0);
   const referenciasCacheRef = useRef(new Map());
   const referenciasInFlightRef = useRef(new Set());
+  const itemComboboxRef = useRef(null);
 
   const safeToast = (title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
@@ -375,6 +384,25 @@ const MovimientosTab = ({
         )
       );
   }, [form.id_almacen, form.item_tipo, insumos, productos]);
+  const formItemActiveOptions = useMemo(
+    () => formItemOptions.filter((item) => parseEstado(item?.estado ?? true)),
+    [formItemOptions]
+  );
+  const filteredCreateItemOptions = useMemo(() => {
+    const term = String(itemSearch || '').trim().toLowerCase();
+    const source = formItemActiveOptions;
+    if (!term) return source;
+    return source.filter((item) => getItemDisplayName(item, form.item_tipo).toLowerCase().includes(term));
+  }, [form.item_tipo, formItemActiveOptions, itemSearch]);
+  const selectedCreateItem = useMemo(
+    () => formItemActiveOptions.find((item) => getItemId(item, form.item_tipo) === String(form.id_item ?? '').trim()) || null,
+    [form.id_item, form.item_tipo, formItemActiveOptions]
+  );
+  const createItemInputValue = useMemo(() => {
+    if (itemSearch) return itemSearch;
+    if (selectedCreateItem) return getItemDisplayName(selectedCreateItem, form.item_tipo);
+    return '';
+  }, [form.item_tipo, itemSearch, selectedCreateItem]);
 
   const selectedAlmacen = useMemo(() => {
     const safeId = String(almacenFiltro ?? '').trim();
@@ -754,6 +782,21 @@ const MovimientosTab = ({
   }, [itemFiltroId, itemFiltroOptions, itemTipoFiltro]);
 
   useEffect(() => {
+    setItemSearch('');
+    setIsItemDropdownOpen(false);
+  }, [form.item_tipo, form.id_almacen]);
+
+  useEffect(() => {
+    if (!isItemDropdownOpen || typeof document === 'undefined') return undefined;
+    const handleOutsideClick = (event) => {
+      if (!itemComboboxRef.current) return;
+      if (!itemComboboxRef.current.contains(event.target)) setIsItemDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isItemDropdownOpen]);
+
+  useEffect(() => {
     if (filterDraft.item_tipo === 'todos') {
       if (filterDraft.id_item) {
         setFilterDraft((current) => ({ ...current, id_item: '' }));
@@ -809,6 +852,8 @@ const MovimientosTab = ({
       ref_origen: '',
       descripcion: ''
     });
+    setItemSearch('');
+    setIsItemDropdownOpen(false);
     setCreateErrors({});
     setLoadingRefs(false);
   };
@@ -1239,6 +1284,8 @@ const MovimientosTab = ({
                                   id_almacen: nextAlmacen,
                                   id_item: ''
                                 }));
+                                setItemSearch('');
+                                setIsItemDropdownOpen(false);
                                 clearCreateErrors('id_almacen', 'id_item');
                               }}
                               disabled={saving}
@@ -1279,6 +1326,8 @@ const MovimientosTab = ({
                                   item_tipo: nextTipo,
                                   id_item: ''
                                 }));
+                                setItemSearch('');
+                                setIsItemDropdownOpen(false);
                                 clearCreateErrors('item_tipo', 'id_item');
                               }}
                               disabled={saving}
@@ -1291,23 +1340,87 @@ const MovimientosTab = ({
 
                           <div className="col-12 col-md-8">
                             <label className="form-label mb-1" htmlFor="inv-moves-create-item">Item</label>
-                            <select
-                              id="inv-moves-create-item"
-                              className={`form-select ${createErrors.id_item ? 'is-invalid' : ''}`}
-                              value={form.id_item}
-                              onChange={(event) => {
-                                setForm((current) => ({ ...current, id_item: event.target.value }));
-                                clearCreateErrors('id_item');
-                              }}
-                              disabled={loadingRefs || saving || !isCreateItemContextReady}
-                            >
-                              <option value="">{createItemPlaceholder}</option>
-                              {formItemOptions.map((item) => (
-                                <option key={getItemId(item, form.item_tipo)} value={getItemId(item, form.item_tipo)}>
-                                  {formatItemOptionLabel(item, form.item_tipo === 'producto' ? 'Producto' : 'Insumo')}
-                                </option>
-                              ))}
-                            </select>
+                            <div ref={itemComboboxRef} className="position-relative">
+                              <div className="input-group">
+                                <input
+                                  id="inv-moves-create-item"
+                                  type="text"
+                                  className={`form-control ${createErrors.id_item ? 'is-invalid' : ''}`}
+                                  value={createItemInputValue}
+                                  onFocus={() => {
+                                    if (!loadingRefs && !saving && isCreateItemContextReady) setIsItemDropdownOpen(true);
+                                  }}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value;
+                                    setItemSearch(nextValue);
+                                    setIsItemDropdownOpen(true);
+                                    if (form.id_item) {
+                                      setForm((current) => ({ ...current, id_item: '' }));
+                                    }
+                                    clearCreateErrors('id_item');
+                                  }}
+                                  placeholder={
+                                    !isCreateItemContextReady
+                                      ? createItemPlaceholder
+                                      : form.item_tipo === 'producto'
+                                      ? 'Buscar producto...'
+                                      : 'Buscar insumo...'
+                                  }
+                                  autoComplete="off"
+                                  disabled={loadingRefs || saving || !isCreateItemContextReady}
+                                />
+                                {createItemInputValue ? (
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline-secondary"
+                                    onClick={() => {
+                                      setItemSearch('');
+                                      setIsItemDropdownOpen(false);
+                                      setForm((current) => ({ ...current, id_item: '' }));
+                                      clearCreateErrors('id_item');
+                                    }}
+                                    disabled={loadingRefs || saving || !isCreateItemContextReady}
+                                    aria-label="Limpiar seleccion de item"
+                                  >
+                                    <i className="bi bi-x-lg" aria-hidden="true" />
+                                  </button>
+                                ) : null}
+                              </div>
+                              {isItemDropdownOpen && isCreateItemContextReady ? (
+                                <div
+                                  className="dropdown-menu show w-100 mt-1"
+                                  style={{ maxHeight: 220, overflowY: 'auto', zIndex: 1085 }}
+                                >
+                                  {filteredCreateItemOptions.length ? (
+                                    filteredCreateItemOptions.map((item) => {
+                                      const itemId = getItemId(item, form.item_tipo);
+                                      const itemName = getItemDisplayName(item, form.item_tipo);
+                                      return (
+                                        <button
+                                          key={itemId}
+                                          type="button"
+                                          className="dropdown-item"
+                                          onClick={() => {
+                                            setForm((current) => ({ ...current, id_item: itemId }));
+                                            setItemSearch(itemName);
+                                            setIsItemDropdownOpen(false);
+                                            clearCreateErrors('id_item');
+                                          }}
+                                        >
+                                          {itemName}
+                                        </button>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="dropdown-item-text text-muted">
+                                      {form.item_tipo === 'producto'
+                                        ? 'No se encontraron productos activos.'
+                                        : 'No se encontraron insumos activos.'}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
                             {createErrors.id_item ? <div className="invalid-feedback">{createErrors.id_item}</div> : null}
                             {!createErrors.id_item && !isCreateItemContextReady ? (
                               <div className="form-text">{REFERENCIAS_CONTEXT_MESSAGE}</div>

@@ -101,7 +101,11 @@ const normalizeCajaSession = (row) => {
     codigo_caja: String(row?.codigo_caja || '').trim(),
     nombre_caja: String(row?.nombre_caja || '').trim(),
     nombre_sucursal: String(row?.nombre_sucursal || '').trim(),
-    rol_participacion: String(row?.rol_participacion || '').trim().toUpperCase(),
+    rol_codigo: String(row?.rol_codigo || row?.rol_participacion || '').trim().toUpperCase(),
+    rol_participacion: String(row?.rol_participacion || row?.rol_codigo || '').trim().toUpperCase(),
+    id_usuario_responsable: toPositiveId(row?.id_usuario_responsable),
+    responsable_usuario: String(row?.responsable_usuario || '').trim(),
+    responsable_nombre: String(row?.responsable_nombre || '').trim(),
     estado_codigo: String(row?.estado_codigo || 'ABIERTA').trim().toUpperCase(),
     fecha_apertura: row?.fecha_apertura || null,
     monto_apertura: Number(row?.monto_apertura ?? 0) || 0
@@ -135,9 +139,29 @@ const normalizeCajaAssignment = (row) => {
   };
 };
 
+const buildCajaAssignmentFromSession = (session) => {
+  if (!session?.id_sesion_caja || !session?.id_caja) return null;
+  const role = String(session.rol_participacion || '').trim().toUpperCase();
+  return normalizeCajaAssignment({
+    ...session,
+    estado_operativo: 'SESION_ACTIVA_USUARIO',
+    puede_operar: true,
+    puede_abrir: false,
+    puede_responsable: role === 'RESPONSABLE',
+    puede_auxiliar: role !== 'RESPONSABLE'
+  });
+};
+
 const resolveCajaAssignmentLabel = (assignment) => {
   if (!assignment) return '';
   return assignment.nombre_caja || assignment.codigo_caja || `Caja #${assignment.id_caja}`;
+};
+
+const resolveCajaRoleLabel = (session) => {
+  const role = String(session?.rol_codigo || session?.rol_participacion || '').trim().toUpperCase();
+  if (role === 'RESPONSABLE') return 'Responsable';
+  if (role === 'AUXILIAR') return 'Auxiliar';
+  return 'Operador';
 };
 
 const isCajaAssignmentNotFound = (error) => {
@@ -310,19 +334,6 @@ export default function CajaView({
     }
   };
 
-  const handleScopedSubmit = useCallback(async (payload) => {
-    const selectedSucursalId = toPositiveId(payload?.id_sucursal);
-    const sessionSucursalId = toPositiveId(cajaSesionActiva?.id_sucursal);
-    if (selectedSucursalId && sessionSucursalId && selectedSucursalId !== sessionSucursalId) {
-      const error = new Error('La sesión de caja activa no pertenece a la sucursal seleccionada.');
-      error.code = 'SESSION_SCOPE_MISMATCH';
-      error.status = 403;
-      throw error;
-    }
-
-    return onSubmit(payload);
-  }, [cajaSesionActiva?.id_sucursal, onSubmit]);
-
   const composer = useVentaComposer({
     productos,
     categorias,
@@ -335,7 +346,7 @@ export default function CajaView({
     sucursales,
     isSuperAdmin,
     defaultSucursalId,
-    onSubmit: handleScopedSubmit,
+    onSubmit,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
   });
   composerRef.current = composer;
@@ -481,6 +492,130 @@ export default function CajaView({
     }
   }, [cajaUserKey, syncComposerSession]);
 
+  const loadCajaSesionOperativa = useCallback(async (idSucursal) => {
+    const normalizedSucursalId = toPositiveId(idSucursal);
+    if (!normalizedSucursalId) {
+      setCajaAsignacion(null);
+      setCajaSesionActiva(null);
+      syncComposerSession(null);
+      setCajaStatus({ loading: false, error: '', assignmentMissing: true });
+      setDecisionOpen(false);
+      setAbrirSesionOpen(false);
+      setAbrirSesionError('');
+      return;
+    }
+
+    const cacheKey = `sesion:${cajaUserKey}:sucursal:${normalizedSucursalId}`;
+    const cached = cajaAsignacionCacheRef.current;
+    if (isTimedCacheFresh(cached, cacheKey, CAJA_ASIGNACION_CACHE_MS)) {
+      const cachedAssignment = cached.assignment || null;
+      const cachedSession = cached.session || null;
+      setCajaAsignacion(cachedAssignment);
+      setCajaSesionActiva(cachedSession);
+      syncComposerSession(cachedSession);
+      setCajaStatus({
+        loading: false,
+        error: cached.error || '',
+        assignmentMissing: cached.status === 'missing'
+      });
+      setDecisionOpen(false);
+      setAbrirSesionOpen(false);
+      setAbrirSesionError('');
+      return;
+    }
+
+    const currentInFlight = cajaAsignacionInFlightRef.current;
+    if (currentInFlight?.key === cacheKey && currentInFlight.requestId === cajaAsignacionRequestRef.current) {
+      try {
+        await currentInFlight.promise;
+      } catch {
+        // La llamada activa ya refleja el resultado en pantalla.
+      }
+      return;
+    }
+
+    const requestId = cajaAsignacionRequestRef.current + 1;
+    cajaAsignacionRequestRef.current = requestId;
+    const isCurrentRequest = () => cajaAsignacionRequestRef.current === requestId;
+
+    setCajaStatus({ loading: true, error: '', assignmentMissing: false });
+
+    const requestPromise = (async () => {
+      const response = await cajasService.getMiSesionActiva({ id_sucursal: normalizedSucursalId });
+      const session = normalizeCajaSession(response?.session);
+      const belongsToSelectedSucursal = !session || Number(session.id_sucursal) === Number(normalizedSucursalId);
+      if (!isCurrentRequest()) return;
+
+      if (response?.activa && session && belongsToSelectedSucursal) {
+        const assignment = buildCajaAssignmentFromSession(session);
+        cajaAsignacionCacheRef.current = {
+          key: cacheKey,
+          at: Date.now(),
+          status: 'active',
+          assignment,
+          session,
+          error: ''
+        };
+        setCajaAsignacion(assignment);
+        setCajaSesionActiva(session);
+        syncComposerSession(session);
+        setCajaStatus({ loading: false, error: '', assignmentMissing: false });
+        setDecisionOpen(false);
+        setAbrirSesionOpen(false);
+        setAbrirSesionError('');
+        return;
+      }
+
+      cajaAsignacionCacheRef.current = {
+        key: cacheKey,
+        at: Date.now(),
+        status: 'missing',
+        assignment: null,
+        session: null,
+        error: ''
+      };
+      setCajaAsignacion(null);
+      setCajaSesionActiva(null);
+      syncComposerSession(null);
+      setCajaStatus({ loading: false, error: '', assignmentMissing: true });
+      setDecisionOpen(false);
+      setAbrirSesionOpen(false);
+      setAbrirSesionError('');
+    })();
+
+    cajaAsignacionInFlightRef.current = { key: cacheKey, requestId, promise: requestPromise };
+
+    try {
+      await requestPromise;
+    } catch (error) {
+      if (!isCurrentRequest()) return;
+
+      if (import.meta.env.DEV) {
+        console.warn('[Ventas] No se pudo consultar la sesion operativa de caja', {
+          status: error?.status,
+          code: error?.code,
+          message: error?.message
+        });
+      }
+      setCajaAsignacion(null);
+      setCajaSesionActiva(null);
+      syncComposerSession(null);
+      setCajaStatus({
+        loading: false,
+        error: resolveCajaAssignmentErrorMessage(error),
+        assignmentMissing: false
+      });
+      setDecisionOpen(false);
+      setAbrirSesionOpen(false);
+      setAbrirSesionError('');
+    } finally {
+      const inFlight = cajaAsignacionInFlightRef.current;
+      if (inFlight?.key === cacheKey && inFlight.requestId === requestId) {
+        cajaAsignacionInFlightRef.current = null;
+      }
+    }
+  }, [cajaUserKey, syncComposerSession]);
+
   useEffect(() => {
     if (!hasCajaUser) {
       cajaAsignacionRequestRef.current += 1;
@@ -494,6 +629,8 @@ export default function CajaView({
       return undefined;
     }
 
+    if (isSuperAdmin) return undefined;
+
     setCajaAsignacion(null);
     setCajaSesionActiva(null);
     syncComposerSession(null);
@@ -504,7 +641,34 @@ export default function CajaView({
     return () => {
       cajaAsignacionRequestRef.current += 1;
     };
-  }, [cajaUserKey, hasCajaUser, loadCajaAsignada, syncComposerSession]);
+  }, [cajaUserKey, hasCajaUser, isSuperAdmin, loadCajaAsignada, syncComposerSession]);
+
+  useEffect(() => {
+    if (!hasCajaUser || !isSuperAdmin) return undefined;
+
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    cajaAsignacionRequestRef.current += 1;
+    setCajaAsignacion(null);
+    setCajaSesionActiva(null);
+    syncComposerSession(null);
+    setDecisionOpen(false);
+    setAbrirSesionOpen(false);
+    setAbrirSesionError('');
+
+    void loadCajaSesionOperativa(selectedSucursalId);
+
+    return () => {
+      cajaAsignacionRequestRef.current += 1;
+    };
+  }, [
+    cajaUserKey,
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    hasCajaUser,
+    isSuperAdmin,
+    loadCajaSesionOperativa,
+    syncComposerSession
+  ]);
 
   useEffect(() => {
     if (!isSuperAdmin || !cajaSesionActiva?.id_sesion_caja) return;
@@ -561,7 +725,7 @@ export default function CajaView({
   const isCajaSessionError = (error) => {
     const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
     const message = String(error?.message || '').toLowerCase();
-    return ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH'].includes(code)
+    return ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH', 'CAJA_NOT_ACTIVE'].includes(code)
       || message.includes('sesion de caja activa')
       || message.includes('sesión de caja activa')
       || message.includes('caja activa');
@@ -609,6 +773,11 @@ export default function CajaView({
   }, [loadPendientesSummary]);
 
   useEffect(() => {
+    if (cajaStatus.loading) {
+      setStatusExpanded(false);
+      return;
+    }
+
     const shouldCollapse = Boolean(cajaSesionActiva)
       && !cajaStatus.loading
       && !cajaStatus.error
@@ -726,12 +895,16 @@ export default function CajaView({
   };
 
   const cajaAssignmentLabel = resolveCajaAssignmentLabel(cajaAsignacion);
-  const cajaPanelTitle = cajaStatus.assignmentMissing
+  const cajaPanelTitle = cajaStatus.loading
+    ? 'Buscando caja activa'
+    : cajaStatus.assignmentMissing
     ? isSuperAdmin
       ? 'Selecciona una caja activa'
       : 'No tienes una caja asignada activa'
     : cajaAssignmentLabel || 'Caja asignada no disponible';
-  const cajaPanelDescription = cajaStatus.assignmentMissing
+  const cajaPanelDescription = cajaStatus.loading
+    ? 'Consultando la sesión de caja para la sucursal seleccionada.'
+    : cajaStatus.assignmentMissing
     ? isSuperAdmin
       ? 'Regístrate como auxiliar en una sesión abierta antes de vender.'
       : 'No tienes una caja asignada activa. Solicita asignación a un administrador.'
@@ -740,9 +913,14 @@ export default function CajaView({
       : 'Solicita al administrador una asignación activa para operar caja.';
   const cajaSessionChipText = cajaSesionActiva
     ? 'Caja activa'
+    : cajaStatus.loading
+      ? 'Consultando sesión...'
     : cajaStatus.assignmentMissing
-      ? 'Sin caja asignada'
+      ? isSuperAdmin
+        ? 'Selecciona una caja activa'
+        : 'Sin caja asignada'
       : 'No hay sesión de caja activa';
+  const showCajaDetails = statusExpanded && !cajaStatus.loading;
   const ventaTotalPreview = composer.total + (Number(deliveryCostPreview) > 0 ? Number(deliveryCostPreview) : 0);
   const openFinalizeModal = () => {
     if (!composer.validateBaseSale()) return;
@@ -788,8 +966,11 @@ export default function CajaView({
       const assignment = normalizeCajaAssignment(sessionSource);
       setCajaAsignacion(assignment);
       setCajaSesionActiva(session);
+      const cacheKey = isSuperAdmin
+        ? `sesion:${cajaUserKey}:sucursal:${idSucursal}`
+        : `asignacion:${cajaUserKey}`;
       cajaAsignacionCacheRef.current = {
-        key: `asignacion:${cajaUserKey}`,
+        key: cacheKey,
         at: Date.now(),
         status: 'active',
         assignment,
@@ -809,23 +990,6 @@ export default function CajaView({
     }
   };
 
-  const handleSucursalChange = (value) => {
-    const changed = String(value || '') !== String(composer.selectedSucursal || '');
-    const hadCartItems = composer.cart.length > 0;
-
-    composer.setSelectedSucursal(value);
-
-    if (!changed) return;
-    setFinalizarOpen(false);
-    setRegistrarPagoOpen(false);
-    setCartSheetOpen(false);
-    setDeliveryCostPreview(0);
-
-    if (hadCartItems) {
-      onNotify?.('VENTA ACTUALIZADA', 'Carrito limpiado al cambiar de sucursal.', 'info');
-    }
-  };
-
   return (
     <div className="ventas-page ventas-caja-page ventas-caja-shell">
       <div className="inv-catpro-card inv-prod-card ventas-caja-card">
@@ -839,81 +1003,96 @@ export default function CajaView({
                   value: String(sucursal.id_sucursal),
                   label: sucursal.nombre_sucursal
                 }))}
-                onChange={handleSucursalChange}
+                onChange={composer.setSelectedSucursal}
                 placeholder="Selecciona sucursal"
                 className="app-select--compact app-select--warm"
               />
             </div>
           </div>
         ) : null}
-        <section className={`ventas-caja__session-panel ventas-caja-statusbar ventas-caja-status-compact ${cajaSesionActiva ? 'is-active' : ''} ${cajaStatus.assignmentMissing ? 'is-missing' : ''} ${statusExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+        <section className={`ventas-caja__session-panel ventas-caja-statusbar ventas-caja-status-compact ${cajaSesionActiva ? 'is-active' : ''} ${cajaStatus.assignmentMissing ? 'is-missing' : ''} ${cajaStatus.loading ? 'is-loading' : ''} ${showCajaDetails ? 'is-expanded' : 'is-collapsed'}`}>
           <button
             type="button"
             className="ventas-caja-status-compact__toggle"
-            onClick={() => setStatusExpanded((current) => !current)}
-            aria-expanded={statusExpanded}
-            aria-label={statusExpanded ? 'Contraer detalle de caja activa' : 'Expandir detalle de caja activa'}
+            onClick={() => {
+              if (cajaStatus.loading) return;
+              setStatusExpanded((current) => !current);
+            }}
+            aria-expanded={showCajaDetails}
+            aria-label={showCajaDetails ? 'Contraer detalle de caja activa' : 'Expandir detalle de caja activa'}
+            disabled={cajaStatus.loading}
           >
             <strong>{cajaSesionActiva ? 'Caja activa' : cajaPanelTitle}</strong>
             {!cajaSesionActiva ? (
               <span className="ventas-caja-status-compact__state">
+                {cajaStatus.loading ? (
+                  <span className="ventas-caja-status-compact__loader" aria-hidden="true" />
+                ) : null}
                 <small>{cajaSessionChipText}</small>
-                <i className={`bi bi-chevron-${statusExpanded ? 'up' : 'down'}`} aria-hidden="true" />
+                {!cajaStatus.loading ? (
+                  <i className={`bi bi-chevron-${showCajaDetails ? 'up' : 'down'}`} aria-hidden="true" />
+                ) : null}
               </span>
             ) : (
               <i
-                className={`ventas-caja-status-compact__chevron bi bi-chevron-${statusExpanded ? 'up' : 'down'}`}
+                className={`ventas-caja-status-compact__chevron bi bi-chevron-${showCajaDetails ? 'up' : 'down'}`}
                 aria-hidden="true"
               />
             )}
           </button>
 
-          <div className="ventas-caja-status-compact__details" hidden={!statusExpanded}>
-            <div className="ventas-caja__session-main">
-              <strong>{cajaPanelTitle}</strong>
-              <span>{cajaPanelDescription}</span>
-              {cajaStatus.loading ? <small>Consultando caja asignada...</small> : null}
-              {cajaStatus.error ? <small className="is-error">{cajaStatus.error}</small> : null}
-              {isSuperAdmin && cajaStatus.assignmentMissing ? (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-danger align-self-start"
-                  onClick={() => openAutoAuxiliarForSucursal({
-                    idSucursal: composer.selectedSucursalId || composer.selectedSucursal,
-                    force: true
-                  })}
-                  disabled={autoModalLoading || autoModalAssigning}
-                >
-                  Elegir sesión abierta
-                </button>
-              ) : null}
-            </div>
-            <div className="ventas-caja__session-metrics">
-              <div>
-                <span>Caja asignada</span>
-                <strong>{cajaAsignacion ? (cajaAsignacion.codigo_caja || `Caja #${cajaAsignacion.id_caja}`) : 'Sin asignación'}</strong>
+          <div className="ventas-caja-status-compact__details" hidden={!showCajaDetails}>
+            {cajaSesionActiva ? (
+              <div className="ventas-caja__session-metrics ventas-caja__session-metrics--compact">
+                <div>
+                  <span>Caja</span>
+                  <strong>{cajaSesionActiva?.nombre_caja || cajaSesionActiva?.codigo_caja || `Caja #${cajaSesionActiva?.id_caja}`}</strong>
+                </div>
+                <div>
+                  <span>Sesión</span>
+                  <strong>SES-{String(cajaSesionActiva?.id_sesion_caja || '').padStart(5, '0')}</strong>
+                </div>
+                <div>
+                  <span>Rol en caja</span>
+                  <strong>{resolveCajaRoleLabel(cajaSesionActiva)}</strong>
+                </div>
+                <div>
+                  <span>Responsable</span>
+                  <strong>{cajaSesionActiva?.responsable_nombre || cajaSesionActiva?.responsable_usuario || 'No disponible'}</strong>
+                </div>
+                <div>
+                  <span>Sucursal</span>
+                  <strong>{cajaSesionActiva?.nombre_sucursal || cajaAsignacion?.nombre_sucursal || composer.selectedSucursalLabel || 'Sucursal'}</strong>
+                </div>
+                <div>
+                  <span>Fecha apertura</span>
+                  <strong>{formatDateTime(cajaSesionActiva?.fecha_apertura)}</strong>
+                </div>
+                <div>
+                  <span>Monto apertura</span>
+                  <strong>{composer.formatCurrency(cajaSesionActiva?.monto_apertura || 0)}</strong>
+                </div>
               </div>
-              <div>
-                <span>Sesión activa</span>
-                <strong>
-                  {cajaSesionActiva?.id_sesion_caja
-                    ? `SES-${String(cajaSesionActiva.id_sesion_caja).padStart(5, '0')}`
-                    : 'Sin sesión'}
-                </strong>
+            ) : (
+              <div className="ventas-caja__session-main">
+                <strong>{cajaPanelTitle}</strong>
+                <span>{cajaPanelDescription}</span>
+                {cajaStatus.error ? <small className="is-error">{cajaStatus.error}</small> : null}
+                {isSuperAdmin && cajaStatus.assignmentMissing ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger align-self-start"
+                    onClick={() => openAutoAuxiliarForSucursal({
+                      idSucursal: composer.selectedSucursalId || composer.selectedSucursal,
+                      force: true
+                    })}
+                    disabled={autoModalLoading || autoModalAssigning}
+                  >
+                    Elegir sesión abierta
+                  </button>
+                ) : null}
               </div>
-              <div>
-                <span>Monto apertura</span>
-                <strong>{composer.formatCurrency(cajaSesionActiva?.monto_apertura || 0)}</strong>
-              </div>
-              <div>
-                <span>Fecha apertura</span>
-                <strong>{formatDateTime(cajaSesionActiva?.fecha_apertura)}</strong>
-              </div>
-              <div>
-                <span>Sucursal</span>
-                <strong>{cajaAsignacion?.nombre_sucursal || composer.selectedSucursalLabel || 'Sucursal'}</strong>
-              </div>
-            </div>
+            )}
           </div>
         </section>
         <form className="ventas-create-modal__body ventas-caja__body ventas-caja-layout" onSubmit={composer.handleSubmit}>

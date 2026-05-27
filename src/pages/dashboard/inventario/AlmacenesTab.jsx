@@ -197,6 +197,32 @@ const areAlmacenFormsEqual = (left, right) => {
   );
 };
 
+const normalizeDependencyDetailGroup = (group) => {
+  const raw = group && typeof group === 'object' ? group : {};
+  const items = Array.isArray(raw.items) ? raw.items : [];
+  const total = toFiniteNonNegativeNumber(raw.total);
+  const remaining = toFiniteNonNegativeNumber(raw.remaining);
+  return { total, items, remaining };
+};
+
+const normalizeDependencyDetails = (rawDetails) => {
+  const source = rawDetails && typeof rawDetails === 'object' ? rawDetails : {};
+  return {
+    productos_activos: normalizeDependencyDetailGroup(source.productos_activos),
+    insumos_activos: normalizeDependencyDetailGroup(source.insumos_activos),
+    stock_productos: normalizeDependencyDetailGroup(source.stock_productos),
+    stock_insumos: normalizeDependencyDetailGroup(source.stock_insumos),
+    ordenes_compra_abiertas: normalizeDependencyDetailGroup(source.ordenes_compra_abiertas)
+  };
+};
+
+const hasDependencyDetailContent = (details) => {
+  if (!details || typeof details !== 'object') return false;
+  return Object.values(details).some(
+    (group) => toFiniteNonNegativeNumber(group?.total) > 0 || (Array.isArray(group?.items) && group.items.length > 0)
+  );
+};
+
 const normalizeAlmacenDependencies = (payload) => {
   const countsRaw = payload?.counts && typeof payload.counts === 'object' ? payload.counts : {};
   const stockRaw = payload?.stock && typeof payload.stock === 'object' ? payload.stock : {};
@@ -210,6 +236,7 @@ const normalizeAlmacenDependencies = (payload) => {
         .map((reason) => String(reason ?? '').trim())
         .filter(Boolean)
     : [];
+  const dependencyDetails = normalizeDependencyDetails(payload?.dependencyDetails);
 
   const counts = {
     movimientos: toFiniteNonNegativeNumber(countsRaw.movimientos),
@@ -231,7 +258,6 @@ const normalizeAlmacenDependencies = (payload) => {
   const hasStock = payload?.hasStock === true || stock.total > 0;
   const hasActiveOperationalDependencies =
     payload?.hasActiveOperationalDependencies === true ||
-    counts.movimientos_recientes > 0 ||
     counts.productos_activos > 0 ||
     counts.insumos_activos > 0 ||
     counts.ordenes_compra_abiertas > 0;
@@ -254,8 +280,6 @@ const normalizeAlmacenDependencies = (payload) => {
 
   const fallbackReason = hasStock
     ? 'No se puede inactivar el almacen porque tiene stock disponible.'
-    : counts.movimientos_recientes > 0
-    ? 'No se puede inactivar el almacen porque tiene movimientos recientes.'
     : counts.productos_activos > 0 || counts.insumos_activos > 0
     ? 'No se puede inactivar el almacen porque mantiene dependencias operativas activas.'
     : counts.ordenes_compra_abiertas > 0
@@ -315,7 +339,8 @@ const normalizeAlmacenDependencies = (payload) => {
     canChangeBranch: canChangeSucursal,
     canUpdateSucursal: canChangeSucursal,
     sucursalChangeBlockingReasons,
-    sucursalChangePrimaryReason: sucursalChangeBlockingReasons[0] || ''
+    sucursalChangePrimaryReason: sucursalChangeBlockingReasons[0] || '',
+    dependencyDetails
   };
 };
 
@@ -490,6 +515,61 @@ const AlmacenesTab = ({ openToast }) => {
     }));
     return normalized;
   };
+
+  const renderDependencyDetails = useCallback((details) => {
+    if (!hasDependencyDetailContent(details)) return null;
+
+    const sections = [];
+    const addSection = (title, group, renderItem, remainingLabel) => {
+      const safeGroup = group || {};
+      const total = toFiniteNonNegativeNumber(safeGroup.total);
+      const remaining = toFiniteNonNegativeNumber(safeGroup.remaining);
+      const items = Array.isArray(safeGroup.items) ? safeGroup.items : [];
+      if (!total && items.length === 0) return;
+      sections.push({ title, total, remaining, items, renderItem, remainingLabel });
+    };
+
+    // AM: muestra detalle humano por grupo bloqueante manteniendo fallback si backend no envia detalle.
+    addSection('Productos activos', details?.productos_activos, (item) => (
+      <li key={`prod-act-${item?.id_producto ?? item?.nombre}`}>{String(item?.nombre || `Producto #${item?.id_producto ?? ''}`)}</li>
+    ), 'productos');
+    addSection('Insumos activos', details?.insumos_activos, (item) => (
+      <li key={`ins-act-${item?.id_insumo ?? item?.nombre}`}>{String(item?.nombre || `Insumo #${item?.id_insumo ?? ''}`)}</li>
+    ), 'insumos');
+    addSection('Stock de productos', details?.stock_productos, (item) => (
+      <li key={`stock-prod-${item?.id_producto ?? item?.nombre}`}>
+        {`${String(item?.nombre || `Producto #${item?.id_producto ?? ''}`)}: ${toFiniteNonNegativeNumber(item?.cantidad)} unidades`}
+      </li>
+    ), 'productos');
+    addSection('Stock de insumos', details?.stock_insumos, (item) => (
+      <li key={`stock-ins-${item?.id_insumo ?? item?.nombre}`}>
+        {`${String(item?.nombre || `Insumo #${item?.id_insumo ?? ''}`)}: ${toFiniteNonNegativeNumber(item?.cantidad)} unidades`}
+      </li>
+    ), 'insumos');
+    addSection('Ordenes de compra abiertas', details?.ordenes_compra_abiertas, (item) => (
+      <li key={`oc-open-${item?.id_orden_compra ?? item?.codigo}`}>
+        {`${String(item?.codigo || `OC #${item?.id_orden_compra ?? ''}`)} - ${String(item?.estado || '')}`.trim()}
+      </li>
+    ), 'ordenes');
+
+    if (!sections.length) return null;
+
+    return (
+      <div className="mt-2 small">
+        {sections.map((section) => (
+          <div key={section.title} className="mb-2">
+            <div className="fw-semibold">{section.title}:</div>
+            <ul className="mb-1 ps-3">
+              {section.items.length
+                ? section.items.map((item) => section.renderItem(item))
+                : <li>{`${section.total} registro(s) relacionado(s).`}</li>}
+              {section.remaining > 0 ? <li>{`Y ${section.remaining} ${section.remainingLabel} mas.`}</li> : null}
+            </ul>
+          </div>
+        ))}
+      </div>
+    );
+  }, []);
 
   const loadEditDependencyRule = async (idAlmacen, { notifyError = false } = {}) => {
     const id = Number(idAlmacen ?? 0);
@@ -1580,6 +1660,7 @@ const AlmacenesTab = ({ openToast }) => {
               <div className="alert alert-warning mt-3 mb-0" role="status">
                 {detailInactivationRule?.primaryBlockingReason ||
                   'No se puede inactivar este almacen por dependencias operativas.'}
+                {renderDependencyDetails(detailInactivationRule?.dependencyDetails)}
               </div>
             ) : null}
           </div>
@@ -1831,6 +1912,9 @@ const AlmacenesTab = ({ openToast }) => {
           {confirmDeleteError ? (
             <div className="alert alert-danger inv-pro-confirm-error mb-0" role="alert">
               {confirmDeleteError}
+              {renderDependencyDetails(
+                inactivationRulesByAlmacenId[String(confirmModal?.idToDelete ?? '')]?.dependencyDetails
+              )}
             </div>
           ) : null}
         </div>

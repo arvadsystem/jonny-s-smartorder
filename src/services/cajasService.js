@@ -89,6 +89,7 @@ const cajasService = {
     apiFetch(`/ventas/cajas/asignaciones/${idAsignacion}/desactivar`, 'PATCH'),
 
   getSesionActiva: (params = {}) => apiFetch(`/ventas/cajas/sesion-activa${buildQuery(params)}`, 'GET'),
+  getMiSesionActiva: (params = {}) => apiFetch(`/ventas/cajas/mi-sesion-activa${buildQuery(params)}`, 'GET', null, { noCache: true }),
   getMiAsignacionActiva: () => apiFetch('/ventas/cajas/mi-asignacion-activa', 'GET', null, { noCache: true }),
 
   listSesiones: (params = {}) => apiFetch(`/ventas/cajas/sesiones${buildQuery(params)}`, 'GET'),
@@ -119,6 +120,9 @@ const cajasService = {
 
   editCierre: (idCierreCaja, payload) =>
     apiFetch(`/ventas/cajas/cierres/${idCierreCaja}`, 'PATCH', payload),
+
+  resolveCloseDifference: (idCierreCaja, payload) =>
+    apiFetch(`/ventas/cajas/cierres/${idCierreCaja}/resolucion`, 'PATCH', payload),
 
   createArqueo: (idSesionCaja, payload) =>
     apiFetch(`/ventas/cajas/sesiones/${idSesionCaja}/arqueos`, 'POST', payload),

@@ -282,7 +282,7 @@ const Login = () => {
           </div>
 
           <div className="field">
-            <label>CONTRASENA</label>
+            <label>CONTRASEÑA</label>
             <div className="input-wrap">
               <FiLock className="field-icon" />
               <input
@@ -320,7 +320,7 @@ const Login = () => {
               className="forgot-link"
               onClick={() => navigate('/recuperar-password')}
             >
-              Olvidaste tu contrasena?
+              ¿Olvidaste tu contraseña?
             </button>
           </div>
 

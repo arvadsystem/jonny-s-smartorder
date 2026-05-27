@@ -266,6 +266,13 @@ const withOrdenesCompraFilters = (path, options) => {
     params.set('page', String(options.page));
   }
 
+  // AM: page_size explicito para paginacion profesional; mantiene fallback legacy con limit.
+  if (options.page_size !== undefined && options.page_size !== null && options.page_size !== '') {
+    params.set('page_size', String(options.page_size));
+  } else if (options.pageSize !== undefined && options.pageSize !== null && options.pageSize !== '') {
+    params.set('page_size', String(options.pageSize));
+  }
+
   if (options.limit !== undefined && options.limit !== null && options.limit !== '') {
     params.set('limit', String(options.limit));
   }
@@ -276,6 +283,26 @@ const withOrdenesCompraFilters = (path, options) => {
 
   if (options.id_almacen !== undefined && options.id_almacen !== null && options.id_almacen !== '') {
     params.set('id_almacen', String(options.id_almacen));
+  }
+
+  if (options.id_proveedor !== undefined && options.id_proveedor !== null && options.id_proveedor !== '') {
+    params.set('id_proveedor', String(options.id_proveedor));
+  }
+
+  if (options.fecha_desde !== undefined && options.fecha_desde !== null && options.fecha_desde !== '') {
+    params.set('fecha_desde', String(options.fecha_desde));
+  }
+
+  if (options.fecha_hasta !== undefined && options.fecha_hasta !== null && options.fecha_hasta !== '') {
+    params.set('fecha_hasta', String(options.fecha_hasta));
+  }
+
+  if (
+    options.evidencias_pendientes !== undefined &&
+    options.evidencias_pendientes !== null &&
+    options.evidencias_pendientes !== ''
+  ) {
+    params.set('evidencias_pendientes', String(options.evidencias_pendientes));
   }
 
   const query = params.toString();
@@ -315,6 +342,11 @@ export const inventarioService = {
       id_campo: 'id_categoria_producto',
       id_valor: id
     }),
+  actualizarEstadoCategoria: (id, estado) =>
+    apiFetch('/categorias_productos/estado', 'PATCH', {
+      id_categoria_producto: id,
+      estado
+    }),
   eliminarCategoria: (id) =>
     apiFetch('/categorias_productos', 'DELETE', {
       columna_id: 'id_categoria_producto',
@@ -337,6 +369,11 @@ export const inventarioService = {
       valor,
       id_campo: 'id_categoria_insumo',
       id_valor: id
+    }),
+  actualizarEstadoCategoriaInsumo: (id, estado) =>
+    apiFetch('/categorias_insumos/estado', 'PATCH', {
+      id_categoria_insumo: id,
+      estado
     }),
   eliminarCategoriaInsumo: (id) =>
     apiFetch('/categorias_insumos', 'DELETE', {
@@ -501,6 +538,9 @@ export const inventarioService = {
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/evidencias/factura`, 'GET'),
   getOrdenCompraWorkflowEvidenciaTransferencia: (idOrdenCompra) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/evidencias/transferencia`, 'GET'),
+  // AM: sugerencias backend por lote para proveedor recomendado por item durante creacion de OC.
+  getOrdenCompraProveedoresSugeridos: (data = {}) =>
+    apiFetch('/orden_compras/workflow/proveedores-sugeridos', 'POST', data),
   crearOrdenCompraWorkflow: (data) => apiFetch('/orden_compras/workflow', 'POST', data),
   aprobarOrdenCompraWorkflow: (idOrdenCompra, data = {}) =>
     apiFetch(`/orden_compras/workflow/${idOrdenCompra}/aprobar`, 'POST', data),

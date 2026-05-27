@@ -575,8 +575,6 @@ export default function PersonaInlineCreateModal({
                 placeholder="0000-0000"
                 value={form.id_telefono}
                 onChange={handleTelefonoChange}
-                onBeforeInput={(event) => blockInvalidNumericBeforeInput(event, "id_telefono", PHONE_DIGITS_LENGTH)}
-                onKeyDown={(event) => blockInvalidNumericKeyDown(event, "id_telefono", PHONE_DIGITS_LENGTH)}
                 onPaste={handleTelefonoPaste}
                 onBlur={handleFieldBlur("id_telefono")}
                 disabled={saving}

@@ -195,7 +195,7 @@ export default function ClienteQuickCreateModal({
                 {errors.apellido ? <small className="ventas-cliente-quick-modal__error">{errors.apellido}</small> : null}
               </label>
               <AppSelect
-                label="GÃ©nero"
+                label="Genero"
                 value={personaForm.genero}
                 options={[
                   { value: 'M', label: 'Masculino' },
@@ -206,7 +206,7 @@ export default function ClienteQuickCreateModal({
                 className="app-select--compact app-select--warm"
               />
               <label className="ventas-create-modal__field">
-                <span>TelÃ©fono</span>
+                <span>Telefono</span>
                 <input value={personaForm.id_telefono} onChange={(event) => updatePersona('id_telefono', formatPersonaPhone(limitPersonaDigits(digitsOnlyPersona(event.target.value), 8)))} />
                 {errors.id_telefono ? <small className="ventas-cliente-quick-modal__error">{errors.id_telefono}</small> : null}
               </label>
@@ -221,14 +221,14 @@ export default function ClienteQuickCreateModal({
                 {errors.id_correo ? <small className="ventas-cliente-quick-modal__error">{errors.id_correo}</small> : null}
               </label>
               <label className="ventas-create-modal__field ventas-cliente-quick-modal__wide">
-                <span>DirecciÃ³n</span>
+                <span>Direccion</span>
                 <input value={personaForm.id_direccion} onChange={(event) => updatePersona('id_direccion', event.target.value)} />
               </label>
             </div>
           ) : (
             <div className="ventas-cliente-quick-modal__grid">
               <label className="ventas-create-modal__field">
-                <span>RazÃ³n social</span>
+                <span>Razon social</span>
                 <input value={empresaForm.nombre_empresa} onChange={(event) => updateEmpresa('nombre_empresa', event.target.value)} />
                 {errors.nombre_empresa ? <small className="ventas-cliente-quick-modal__error">{errors.nombre_empresa}</small> : null}
               </label>
@@ -238,7 +238,7 @@ export default function ClienteQuickCreateModal({
                 {errors.rtn ? <small className="ventas-cliente-quick-modal__error">{errors.rtn}</small> : null}
               </label>
               <label className="ventas-create-modal__field">
-                <span>TelÃ©fono</span>
+                <span>Telefono</span>
                 <input value={empresaForm.id_telefono} onChange={(event) => updateEmpresa('id_telefono', formatEmpresaPhone(limitEmpresaDigits(digitsOnlyEmpresa(event.target.value), 8)))} />
                 {errors.id_telefono ? <small className="ventas-cliente-quick-modal__error">{errors.id_telefono}</small> : null}
               </label>
@@ -248,7 +248,7 @@ export default function ClienteQuickCreateModal({
                 {errors.id_correo ? <small className="ventas-cliente-quick-modal__error">{errors.id_correo}</small> : null}
               </label>
               <label className="ventas-create-modal__field ventas-cliente-quick-modal__wide">
-                <span>DirecciÃ³n</span>
+                <span>Direccion</span>
                 <input value={empresaForm.id_direccion} onChange={(event) => updateEmpresa('id_direccion', event.target.value)} />
               </label>
             </div>

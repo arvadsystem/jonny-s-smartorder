@@ -1,5 +1,9 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import ventasService from '../../../../services/ventasService';
+import {
+  resolveVentaReversionBlockReason,
+  resolveVentasApiErrorMessage
+} from '../utils/ventasHelpers';
 import VentaReversionTicketPrint from './VentaReversionTicketPrint';
 import './VentaReversionTicketPrint.css';
 
@@ -32,6 +36,13 @@ const normalizeVentaHeader = (rawVenta) => {
     nombre_sucursal: rawVenta.nombre_sucursal || rawVenta.sucursal || '--',
     items: Array.isArray(rawVenta.items) ? rawVenta.items : []
   };
+};
+
+const canPrintReversionTicket = (venta) => {
+  const ticket = venta?.facturacion?.ticket && typeof venta.facturacion.ticket === 'object'
+    ? venta.facturacion.ticket
+    : {};
+  return ticket.imprimir_comprobante_reversion !== false;
 };
 
 export default function VentaReversionModal({
@@ -98,6 +109,8 @@ export default function VentaReversionModal({
       partialApplies: hasMultiplePendingLines || hasPendingQtyGreaterThanOne
     };
   }, [items]);
+  const reversionBlockReason = resolveVentaReversionBlockReason(venta);
+  const reversionPrintEnabled = canPrintReversionTicket(venta);
 
   useEffect(() => {
     if (!open) return;
@@ -198,7 +211,7 @@ export default function VentaReversionModal({
       setLineQty(initialQty);
     } catch (err) {
       setVenta(null);
-      setError(err?.message || 'No se encontró una venta con ese código, fecha y sucursal.');
+      setError(resolveVentasApiErrorMessage(err, 'No se encontró una venta con ese código, fecha y sucursal.'));
     } finally {
       setLoadingVenta(false);
     }
@@ -209,6 +222,10 @@ export default function VentaReversionModal({
     const idFactura = Number(venta?.id_factura || 0);
     if (!idFactura) {
       setError('Primero debes seleccionar una venta válida.');
+      return;
+    }
+    if (reversionBlockReason) {
+      setError(reversionBlockReason);
       return;
     }
 
@@ -245,11 +262,22 @@ export default function VentaReversionModal({
     try {
       const response = await ventasService.createReversion(idFactura, payload);
       const result = response?.data || response;
+      const refreshedDetail = await getVentaDetail(idFactura).catch(() => null);
+      if (refreshedDetail) {
+        const normalized = normalizeVentaHeader(refreshedDetail);
+        setVenta(normalized);
+        const nextQty = {};
+        (Array.isArray(normalized?.items) ? normalized.items : []).forEach((item) => {
+          const detailId = Number(item.id_detalle || 0);
+          if (detailId > 0) nextQty[detailId] = 0;
+        });
+        setLineQty(nextQty);
+      }
       setReversionResult(result);
-      setShowTicketPreview(true);
-      onSuccess?.(result);
+      setShowTicketPreview(reversionPrintEnabled);
+      onSuccess?.(result, refreshedDetail);
     } catch (err) {
-      setError(err?.message || 'No se pudo registrar la reversión.');
+      setError(resolveVentasApiErrorMessage(err, 'No se pudo registrar la reversión.'));
     } finally {
       setSaving(false);
     }
@@ -385,6 +413,12 @@ export default function VentaReversionModal({
             </div>
           ) : null}
 
+          {venta && reversionBlockReason ? (
+            <div className="alert alert-warning mt-3 mb-0">
+              {reversionBlockReason}
+            </div>
+          ) : null}
+
           {venta && tipoReversion === 'PARCIAL' && partialMetrics.partialApplies ? (
             <div className="table-responsive mt-3">
               <table className="table table-sm">
@@ -453,33 +487,40 @@ export default function VentaReversionModal({
 
             {reversionResult ? (
               <>
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  onClick={() => setShowTicketPreview((prev) => !prev)}
-                >
-                  {showTicketPreview ? 'Ocultar comprobante REV' : 'Ver comprobante REV'}
-                </button>
-                <select
-                  className="form-select form-select-sm"
-                  value={ticketWidthMm}
-                  onChange={(event) => setTicketWidthMm(Number(event.target.value) === 58 ? 58 : 80)}
-                  aria-label="Ancho de comprobante de reversión"
-                  style={{ maxWidth: 110 }}
-                >
-                  <option value={80}>80mm</option>
-                  <option value={58}>58mm</option>
-                </select>
-                <button type="button" className="btn btn-primary" onClick={handlePrintTicket}>
-                  <i className="bi bi-printer" /> Imprimir comprobante REV
-                </button>
+                {reversionPrintEnabled ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary"
+                      onClick={() => setShowTicketPreview((prev) => !prev)}
+                    >
+                      {showTicketPreview ? 'Ocultar comprobante REV' : 'Ver comprobante REV'}
+                    </button>
+                    <select
+                      className="form-select form-select-sm"
+                      value={ticketWidthMm}
+                      onChange={(event) => setTicketWidthMm(Number(event.target.value) === 58 ? 58 : 80)}
+                      aria-label="Ancho de comprobante de reversión"
+                      style={{ maxWidth: 110 }}
+                    >
+                      <option value={80}>80mm</option>
+                      <option value={58}>58mm</option>
+                    </select>
+                    <button type="button" className="btn btn-primary" onClick={handlePrintTicket}>
+                      <i className="bi bi-printer" /> Imprimir comprobante REV
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-muted small">Comprobante REV desactivado para esta sucursal.</span>
+                )}
               </>
             ) : (
               <button
                 type="button"
                 className="btn btn-danger"
                 onClick={handleSubmit}
-                disabled={saving || !venta}
+                disabled={saving || !venta || Boolean(reversionBlockReason)}
+                title={reversionBlockReason || 'Registrar reversión'}
               >
                 {saving ? 'Registrando...' : 'Registrar reversión'}
               </button>

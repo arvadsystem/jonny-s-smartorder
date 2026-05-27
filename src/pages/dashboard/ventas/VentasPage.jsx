@@ -60,6 +60,8 @@ export default function VentasPage() {
     setVentasPage,
     setVentasPageSize,
     setVentasSucursal,
+    setVentasFilterPatch,
+    clearVentasFilters,
     createVenta,
     createPedidoPendiente,
     registrarPagoPedido,
@@ -228,6 +230,8 @@ export default function VentasPage() {
           onPageChange={setVentasPage}
           onPageSizeChange={setVentasPageSize}
           onSucursalChange={setVentasSucursal}
+          onFiltersChange={setVentasFilterPatch}
+          onClearFilters={clearVentasFilters}
           onOpenDetail={openDetail}
           onGoToCaja={() => goToTab('caja')}
           canCreate={canCreateVenta}
@@ -264,7 +268,14 @@ export default function VentasPage() {
         />
       ) : null}
 
-      {activeTab === 'pedidos' ? <PedidosView /> : null}
+      {activeTab === 'pedidos' ? (
+        <PedidosView
+          isSuperAdmin={isSuperAdmin}
+          sucursales={sucursales}
+          defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
+          scopeInfo={scopeInfo}
+        />
+      ) : null}
       {activeTab === 'descuentos' ? (
         <DescuentosView
           canView={canViewDescuentos}
@@ -306,8 +317,26 @@ export default function VentasPage() {
         scopeInfo={scopeInfo}
         sucursales={sucursales}
         selectedVenta={selectedVentaReversion}
-        onSuccess={() => {
-          refreshVentas?.();
+        onSuccess={(result, refreshedDetail) => {
+          void refreshVentas?.({ suppressErrors: true });
+          if (refreshedDetail?.id_factura) {
+            setSelectedVenta(refreshedDetail);
+            setSelectedVentaReversion(refreshedDetail);
+            return;
+          }
+          const idFactura =
+            result?.id_factura_original ||
+            result?.id_factura ||
+            selectedVentaReversion?.id_factura ||
+            selectedVenta?.id_factura;
+          if (idFactura) {
+            void getVentaDetail(idFactura)
+              .then((detail) => {
+                setSelectedVenta(detail);
+                setSelectedVentaReversion(detail);
+              })
+              .catch(() => undefined);
+          }
         }}
       />
 

@@ -11,7 +11,7 @@ const toRows = (response) => {
 };
 
 const combosAdminService = {
-  listarCombosAdmin: async () => apiFetch(BASE_ENDPOINT, 'GET', null, { noCache: true }),
+  listarCombosAdmin: async () => apiFetch(`${BASE_ENDPOINT}?incluir_inactivos=1`, 'GET', null, { noCache: true }),
 
   obtenerComboAdmin: async (idCombo) =>
     apiFetch(`${BASE_ENDPOINT}/${idCombo}`, 'GET', null, { noCache: true }),

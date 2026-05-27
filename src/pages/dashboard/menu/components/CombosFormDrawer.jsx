@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Select from 'react-select';
 import RecetasImagePreview from './RecetasImagePreview';
 
 const CombosFormDrawer = ({
@@ -7,6 +8,7 @@ const CombosFormDrawer = ({
   editingId,
   form,
   saving,
+  menusCatalog = [],
   recetasDisponibles,
   onChangeField,
   onSubmit,
@@ -64,35 +66,49 @@ const CombosFormDrawer = ({
   };
 
   const totalDetalle = Array.isArray(form.detalle) ? form.detalle.length : 0;
+  const selectedMenuOption = menusCatalog.find((option) => String(option.value) === String(form.id_menu)) || null;
+
+  if (!drawerOpen) return null;
 
   return (
-    <aside
-      className={`inv-prod-drawer inv-cat-v2__drawer ${drawerOpen ? 'show' : ''}`}
-      id="menu-combos-form-drawer"
-      role="dialog"
-      aria-modal="true"
-      aria-hidden={!drawerOpen}
-    >
-      <div className="inv-prod-drawer-head">
-        <i className="bi bi-collection inv-cat-v2__drawer-mark" aria-hidden="true" />
-        <div>
-          <div className="inv-prod-drawer-title">
-            {drawerMode === 'create' ? 'Nuevo combo' : `Editar combo #${editingId}`}
-          </div>
-          <div className="inv-prod-drawer-sub">Define cabecera, imagen y detalle del combo.</div>
-        </div>
-        <button
-          type="button"
-          className="inv-prod-drawer-close"
-          onClick={onClose}
-          title="Cerrar"
-          aria-label="Cerrar formulario"
+    <div className="inv-prod-pmodal inv-prod-pmodal--create show">
+      <div className="inv-prod-pmodal__overlay" onClick={onClose} />
+      <div className="inv-prod-pmodal__viewport">
+        <section
+          id="menu-combos-form-drawer"
+          className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="menu-combos-modal-title"
+          onClick={(event) => event.stopPropagation()}
         >
-          <i className="bi bi-x-lg" />
-        </button>
-      </div>
+          <form className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create menu-recetas-admin__form" onSubmit={onSubmit}>
+            <div className="inv-prod-pmodal__body">
+              <div className="inv-ins-create-hero is-create">
+                <button
+                  type="button"
+                  className="inv-prod-drawer-close inv-ins-create-hero__close"
+                  onClick={onClose}
+                  title="Cerrar"
+                  aria-label="Cerrar formulario"
+                >
+                  <i className="bi bi-x-lg" />
+                </button>
+                <div className="inv-ins-create-hero__icon">
+                  <i className="bi bi-collection" aria-hidden="true" />
+                </div>
+                <div className="inv-ins-create-hero__copy">
+                  <div className="inv-ins-create-hero__kicker">
+                    {drawerMode === 'create' ? 'Nuevo Registro' : 'Edicion Activa'}
+                  </div>
+                  <div id="menu-combos-modal-title" className="inv-ins-create-hero__title">
+                    {drawerMode === 'create' ? 'Nuevo combo' : `Editar combo #${editingId}`}
+                  </div>
+                </div>
+              </div>
 
-      <form className="inv-prod-drawer-body inv-catpro-drawer-body-lite menu-recetas-admin__form" onSubmit={onSubmit}>
+              <div className="inv-prod-pmodal__sections mt-3">
+                <section className="inv-prod-pmodal__section">
         <div className="row g-2">
           <div className="col-12">
             <label className="form-label" htmlFor="combo_nombre_combo">Nombre</label>
@@ -150,16 +166,17 @@ const CombosFormDrawer = ({
           </div>
 
           <div className="col-12 col-md-6">
-            <label className="form-label" htmlFor="combo_id_menu">ID menu</label>
-            <input
-              id="combo_id_menu"
-              type="number"
-              min="1"
-              className="form-control"
-              name="id_menu"
-              value={form.id_menu}
-              onChange={onChangeField}
-              required
+            <label className="form-label" htmlFor="combo_id_menu">Menu</label>
+            <Select
+              inputId="combo_id_menu"
+              classNamePrefix="menu-salsas-receta-select"
+              options={menusCatalog}
+              value={selectedMenuOption}
+              onChange={(option) => onChangeField({ target: { name: 'id_menu', value: option?.value || '' } })}
+              placeholder="Ej: #1 - Menu Normal"
+              isClearable={false}
+              isDisabled={saving}
+              maxMenuHeight={192}
             />
           </div>
 
@@ -216,6 +233,7 @@ const CombosFormDrawer = ({
             </div>
           </div>
         </div>
+                </section>
 
         <hr className="my-3" />
 
@@ -341,16 +359,21 @@ const CombosFormDrawer = ({
           </>
         ) : null}
 
-        <div className="d-flex gap-2 mt-3">
-          <button type="button" className="btn inv-prod-btn-subtle flex-fill" onClick={onClose} disabled={saving}>
-            Cancelar
-          </button>
-          <button type="submit" className="btn inv-prod-btn-primary flex-fill" disabled={saving}>
-            {saving ? 'Guardando...' : drawerMode === 'create' ? 'Crear combo' : 'Guardar combo'}
-          </button>
-        </div>
-      </form>
-    </aside>
+              </div>
+            </div>
+
+            <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+              <button type="button" className="btn inv-prod-btn-subtle" onClick={onClose} disabled={saving}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn inv-prod-btn-primary" disabled={saving}>
+                {saving ? 'Guardando...' : drawerMode === 'create' ? 'Crear combo' : 'Guardar combo'}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </div>
   );
 };
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import AppSelect from '../../../../components/common/AppSelect';
 import ventasService from '../../../../services/ventasService';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
 import { formatCurrency } from '../utils/ventasHelpers';
@@ -176,8 +177,19 @@ export default function VentaRegistrarPagoPedidoModal({
     () => PAYMENT_OPTIONS.find((option) => option.key === form.metodo_pago) || PAYMENT_OPTIONS[0],
     [form.metodo_pago]
   );
+  const paymentSelectOptions = useMemo(
+    () => PAYMENT_OPTIONS.map((option) => ({
+      value: option.key,
+      label: option.label
+    })),
+    []
+  );
   const isCash = form.metodo_pago === 'efectivo';
   const montoPendiente = Number(selectedPedido?.monto_pendiente ?? 0) || 0;
+  const montoRecibidoValue = Number(form.monto_recibido);
+  const cambioEstimado = isCash && Number.isFinite(montoRecibidoValue)
+    ? Math.max(montoRecibidoValue - montoPendiente, 0)
+    : 0;
 
   if (!open) return null;
 
@@ -247,7 +259,13 @@ export default function VentaRegistrarPagoPedidoModal({
   };
 
   return (
-    <div className="ventas-modal-backdrop" role="presentation">
+    <div
+      className="ventas-modal-backdrop ventas-registrar-pago-backdrop"
+      role="presentation"
+      onClick={() => {
+        if (!isSubmitting) onClose();
+      }}
+    >
       <section
         className="ventas-modal-card ventas-registrar-pago-modal"
         role="dialog"
@@ -255,7 +273,7 @@ export default function VentaRegistrarPagoPedidoModal({
         aria-labelledby="ventas-registrar-pago-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="ventas-modal-header ventas-finalizar-modal__header">
+        <header className="ventas-modal-header ventas-finalizar-modal__header ventas-registrar-pago-modal__header">
           <div>
             <h5 id="ventas-registrar-pago-title">Registrar pago</h5>
             <p>Busca un pedido pendiente real y cobra usando su código PED.</p>
@@ -346,14 +364,16 @@ export default function VentaRegistrarPagoPedidoModal({
             )}
 
             <div className="ventas-finalizar-modal__grid">
-              <label className="ventas-create-modal__field">
+              <div className="ventas-create-modal__field">
                 <span>Método de pago</span>
-                <select value={form.metodo_pago} onChange={(event) => setField('metodo_pago', event.target.value)}>
-                  {PAYMENT_OPTIONS.map((option) => (
-                    <option key={option.key} value={option.key}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
+                <AppSelect
+                  value={form.metodo_pago}
+                  options={paymentSelectOptions}
+                  onChange={(value) => setField('metodo_pago', value)}
+                  placeholder="Selecciona metodo"
+                  className="app-select--warm ventas-registrar-pago-modal__select"
+                />
+              </div>
 
               {isCash ? (
                 <label className="ventas-create-modal__field">
@@ -391,13 +411,16 @@ export default function VentaRegistrarPagoPedidoModal({
             <div className="ventas-finalizar-modal__payment-summary">
               <span><i className={selectedPayment.icon} /> {selectedPayment.label}</span>
               <strong>{selectedPedido ? formatCurrency(montoPendiente) : 'Selecciona un pedido'}</strong>
+              {selectedPedido && isCash ? (
+                <small>Cambio estimado: {formatCurrency(cambioEstimado)}</small>
+              ) : null}
             </div>
 
             {localError ? <div className="ventas-create-modal__error">{localError}</div> : null}
           </section>
         </div>
 
-        <footer className="ventas-modal-footer d-flex justify-content-end gap-2">
+        <footer className="ventas-modal-footer ventas-registrar-pago-modal__footer">
           <button type="button" className="btn btn-outline-secondary" onClick={onClose} disabled={isSubmitting}>
             Cancelar
           </button>

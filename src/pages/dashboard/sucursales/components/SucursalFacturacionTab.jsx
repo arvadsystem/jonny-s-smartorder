@@ -3,6 +3,32 @@ import { sucursalesFacturacionApi } from '../services/sucursalesFacturacionApi';
 import SucursalFacturacionConfigDrawer from './SucursalFacturacionConfigDrawer';
 import SucursalFacturacionPreviewModal from './SucursalFacturacionPreviewModal';
 
+const TICKET_FLAG_DEFAULTS = {
+  mostrar_datos_fiscales: true,
+  mostrar_cai_ticket: true,
+  mostrar_numero_fiscal_ticket: true,
+  mostrar_codigo_interno_ticket: true,
+  aplicar_impuestos: false,
+  mostrar_impuestos_ticket: false,
+  mostrar_importe_exento: false,
+  mostrar_importe_gravado_15: false,
+  mostrar_isv_15: false,
+  mostrar_importe_gravado_18: false,
+  mostrar_isv_18: false,
+  mostrar_total_isv: false,
+  mostrar_descuento_linea: true,
+  mostrar_descuento_porcentaje_linea: true,
+  mostrar_descuento_total: true,
+  imprimir_comprobante_reversion: true,
+  mostrar_venta_original_reversion: true,
+  mostrar_codigo_reversion: true,
+  mostrar_usuario_reversion: true,
+  mostrar_caja_sesion_reversion: true,
+  mostrar_motivo_reversion: true,
+  mostrar_detalle_reversion: true,
+  mostrar_total_reversion: true
+};
+
 const normalizeConfig = (config = {}) => ({
   id_config: config?.id_config ?? null,
   id_sucursal: config?.id_sucursal ?? null,
@@ -24,6 +50,12 @@ const normalizeConfig = (config = {}) => ({
   mostrar_direccion: Boolean(config?.mostrar_direccion),
   mostrar_telefono: Boolean(config?.mostrar_telefono),
   mostrar_correo: Boolean(config?.mostrar_correo),
+  ...Object.entries(TICKET_FLAG_DEFAULTS).reduce((acc, [field, fallback]) => ({
+    ...acc,
+    [field]: config?.[field] === undefined || config?.[field] === null
+      ? fallback
+      : Boolean(config[field])
+  }), {}),
   activo: config?.activo !== false,
   actualizado_en: config?.actualizado_en || null
 });

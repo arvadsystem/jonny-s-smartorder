@@ -112,6 +112,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   ]);
   const canCrear = can(PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR);
   const canEditar = can(PERMISSIONS.INVENTARIO_PRODUCTOS_EDITAR);
+  const canSubirImagenProducto = can(PERMISSIONS.INVENTARIO_PRODUCTOS_IMAGEN_SUBIR);
+  const canEliminarImagenProducto = can(PERMISSIONS.INVENTARIO_PRODUCTOS_IMAGEN_ELIMINAR);
   const canInactivar = canAny([
     PERMISSIONS.INVENTARIO_PRODUCTOS_ELIMINAR,
     PERMISSIONS.INVENTARIO_PRODUCTOS_ESTADO_CAMBIAR
@@ -514,6 +516,57 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return candidate;
   }, []);
 
+  // AM: genera detalle humano para PRODUCT_IN_USE usando dependency_summary sin rediseñar UI.
+  const buildProductInUseDetail = useCallback((dependencySummary) => {
+    const modules = Array.isArray(dependencySummary?.blocking_modules) ? dependencySummary.blocking_modules : [];
+    if (!modules.length) return '';
+
+    const lines = [];
+    for (const moduleEntry of modules) {
+      const modulo = String(moduleEntry?.modulo || '').trim();
+      const items = Array.isArray(moduleEntry?.items) ? moduleEntry.items.slice(0, 10) : [];
+      const remainingRaw = Number(moduleEntry?.remaining ?? 0);
+      const remaining = Number.isFinite(remainingRaw) && remainingRaw > 0 ? remainingRaw : 0;
+
+      if (modulo === 'menu_publicado') {
+        lines.push('Menú activo/publicado:');
+        if (items.length) {
+          items.forEach((item) => lines.push(`- ${String(item?.nombre || `Menu #${item?.id_menu ?? ''}`).trim()}`));
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} registro(s) relacionado(s).`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} registros mas.`);
+      } else if (modulo === 'ordenes_compra_en_proceso') {
+        lines.push('Órdenes de compra en proceso:');
+        if (items.length) {
+          items.forEach((item) => {
+            const code = String(item?.codigo || `OC #${item?.id_orden_compra ?? ''}`).trim();
+            const estado = String(item?.estado || '').trim();
+            lines.push(estado ? `- ${code} - ${estado}` : `- ${code}`);
+          });
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} registro(s) relacionado(s).`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} registros mas.`);
+      } else if (modulo === 'stock_disponible') {
+        lines.push('Stock disponible:');
+        if (items.length) {
+          items.forEach((item) => {
+            const sucursal = String(item?.sucursal || (item?.id_sucursal ? `Sucursal #${item.id_sucursal}` : 'Sucursal sin asignar')).trim();
+            const almacen = String(item?.almacen || (item?.id_almacen ? `Almacen #${item.id_almacen}` : 'Almacen sin asignar')).trim();
+            const stock = Number(item?.stock ?? 0);
+            lines.push(`- ${sucursal} / ${almacen}: ${stock} unidades`);
+          });
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} ubicaciones con existencia.`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} ubicaciones mas.`);
+      }
+    }
+
+    return lines.join('\n').trim();
+  }, []);
+
   // NUEVO: centraliza lectura de mensaje y estado para toasts consistentes.
   const handleApiStatusError = useCallback((apiError, fallbackMessage, setFieldErrors) => {
     const status = Number(apiError.status || 0);
@@ -529,7 +582,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           ? 'No tienes autorizaci\u00F3n para realizar esta acci\u00F3n.'
         : fallbackMessage;
     const rawMessage = String(backendMessage || apiError.message || fallbackByStatus || 'Error inesperado');
-    const message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
+    let message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
+    const backendCode = String(backendData?.code || '').trim().toUpperCase();
+    if (status === 409 && backendCode === 'PRODUCT_IN_USE') {
+      const detailText = buildProductInUseDetail(backendData?.dependency_summary);
+      if (detailText) {
+        message = `${message}\n\n${detailText}`;
+      }
+    }
 
     // NEW: conserva el detalle interno de error solo en desarrollo cuando se oculta en UI.
     // WHY: facilitar diagnóstico sin exponer mensajes de BD al usuario final.
@@ -553,7 +613,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     else safeToast('ERROR', message, 'danger');
 
     return message;
-  }, [mapApiFieldErrors, safeToast, toSafeProductoUiErrorMessage]);
+  }, [buildProductInUseDetail, mapApiFieldErrors, safeToast, toSafeProductoUiErrorMessage]);
 
   // NUEVO: genera puntos SVG normalizados para sparkline de KPI.
   const buildSparklinePoints = useCallback((series, width = 120, height = 44, padding = 4) => {
@@ -915,6 +975,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const onCreateImageChange = useCallback((event) => {
     const input = event.target;
     const file = input.files?.[0];
+    if (!canSubirImagenProducto) {
+      if (input) input.value = '';
+      return;
+    }
 
     if (!file) {
       clearCreateImage();
@@ -959,7 +1023,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       resetCreateModalScroll();
     };
     probe.src = previewUrl;
-  }, [clearCreateImage, resetCreateModalScroll, setCreateImageError]);
+  }, [canSubirImagenProducto, clearCreateImage, resetCreateModalScroll, setCreateImageError]);
 
   const onCreatePreviewError = useCallback(() => {
     setCreateImageError('No se pudo mostrar la vista previa de la imagen.');
@@ -1413,18 +1477,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, []);
 
   const openDrawerImagePicker = useCallback(() => {
-    if (drawerImageAction.loading) return;
+    if (drawerImageAction.loading || !canSubirImagenProducto) return;
     drawerImageInputRef.current.click();
-  }, [drawerImageAction.loading]);
+  }, [canSubirImagenProducto, drawerImageAction.loading]);
 
   const onDrawerImageChange = useCallback(async (event) => {
     const input = event.target;
     const file = input.files?.[0];
 
-    if (!canEditar) {
+    if (!canSubirImagenProducto) {
       setDrawerImageAction({
         loading: false,
-        error: 'No tienes permisos para editar productos.'
+        error: 'No tienes permisos para subir imagenes de productos.'
       });
       if (input) input.value = '';
       return;
@@ -1509,12 +1573,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     syncProductosSilently,
     upsertProductoLocal,
     uploadProductoImageFile,
-    canEditar
+    canSubirImagenProducto
   ]);
 
   const removeDrawerImage = useCallback(async () => {
-    if (!canEditar) {
-      safeToast('SIN PERMISOS', 'No tienes permisos para editar productos.', 'warning');
+    if (!canEliminarImagenProducto) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para eliminar imagenes de productos.', 'warning');
       return;
     }
     if (drawerImageAction.loading || !selectedProducto) return;
@@ -1577,7 +1641,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     selectedProducto,
     syncProductosSilently,
     upsertProductoLocal,
-    canEditar
+    canEliminarImagenProducto
   ]);
 
   const duplicarProductoDesdeDrawer = () => {
@@ -2341,6 +2405,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const productsAuxDrawerOpen = filtersOpen || createPanelOpen;
 
   const renderCreateImageField = (className = 'col-12') => (
+    !canSubirImagenProducto ? null : (
     <div className={className}>
       <label className="form-label mb-1">Imagen (opcional)</label>
       <div className={`inv-prod-image-field ${createImage.loading ? 'is-loading' : ''}`}>
@@ -2384,6 +2449,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         )}
       </div>
     </div>
+    )
   );
 
   // AJUSTE: renderiza cada KPI con sparkline de fondo sin duplicar contenido principal.
@@ -4067,18 +4133,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         type="button"
                         className="btn inv-prod-btn-subtle"
                         onClick={openDrawerImagePicker}
-                        disabled={drawerImageAction.loading || !canEditar}
+                        disabled={drawerImageAction.loading || !canSubirImagenProducto}
                       >
                         <i className="bi bi-upload" /> {drawerImageSrc ? 'Cambiar imagen' : 'Agregar imagen'}
                       </button>
-                      <button
-                        type="button"
-                        className="btn inv-prod-btn-outline"
-                        onClick={removeDrawerImage}
-                        disabled={drawerImageAction.loading || !canEditar || (!drawerImageSrc && !selectedProducto.id_archivo_imagen_principal)}
-                      >
-                        Quitar
-                      </button>
+                      {canEliminarImagenProducto ? (
+                        <button
+                          type="button"
+                          className="btn inv-prod-btn-outline"
+                          onClick={removeDrawerImage}
+                          disabled={drawerImageAction.loading || (!drawerImageSrc && !selectedProducto.id_archivo_imagen_principal)}
+                        >
+                          Quitar
+                        </button>
+                      ) : null}
                     </div>
                     {drawerImageAction.loading ? (
                       <div className="inv-prod-image-feedback">Procesando imagen...</div>

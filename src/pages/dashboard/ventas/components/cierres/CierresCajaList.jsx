@@ -1,14 +1,20 @@
 import {
   formatCajaCurrency,
   formatCajaDateTime,
-  resolveDifferenceBadge,
+  resolveClosureStateBadge,
   resolveSessionStatusBadge
 } from '../../utils/cajasHelpers';
+import CierresCajaPagination from './CierresCajaPagination';
 
 export default function CierresCajaList({
   sesiones,
   loading,
   error,
+  totalSesiones = 0,
+  currentPage = 1,
+  pageSize = 6,
+  totalPages = 1,
+  onPageChange,
   canViewDetail,
   canCloseSession,
   canRegisterArqueo,
@@ -19,6 +25,11 @@ export default function CierresCajaList({
   onOpenCerrar
 }) {
   const desktopColSpan = canViewCajaTheoreticalAmounts ? 9 : 7;
+  const currentRows = Array.isArray(sesiones) ? sesiones.length : 0;
+  const safeTotal = Math.max(0, Number(totalSesiones) || 0);
+  const safePageSize = Number.parseInt(String(pageSize || ''), 10) || 6;
+  const startIndex = safeTotal === 0 ? 0 : ((currentPage - 1) * safePageSize) + 1;
+  const endIndex = safeTotal === 0 ? 0 : Math.min(((currentPage - 1) * safePageSize) + currentRows, safeTotal);
   const renderEmpty = (iconClass, message) => (
     <div className="ventas-create-modal__empty shadow-none border-0 bg-transparent">
       <div className="ventas-create-modal__cart-empty-icon">
@@ -30,6 +41,11 @@ export default function CierresCajaList({
 
   return (
     <div className="ventas-page__table-card flex-grow-1 d-flex flex-column min-h-0">
+      <div className="inv-prod-results-meta cierres-caja-results-meta">
+        <span>{loading ? 'Cargando sesiones...' : `${currentRows} resultados`}</span>
+        <span>{loading ? '' : `Mostrando ${startIndex}-${endIndex} de ${safeTotal}`}</span>
+      </div>
+
       <div className="ventas-page__table-wrap flex-grow-1 cierres-caja-table-desktop">
         <table className="table ventas-page__table">
           <thead>
@@ -67,7 +83,7 @@ export default function CierresCajaList({
             ) : (
               sesiones.map((sesion) => {
                 const statusBadge = resolveSessionStatusBadge(sesion);
-                const differenceBadge = resolveDifferenceBadge(sesion.diferencia_cierre);
+                const differenceBadge = resolveClosureStateBadge(sesion);
                 const isOpen = sesion.estado_codigo === 'ABIERTA';
                 const hasFormalClose = !isOpen && Boolean(sesion.fecha_cierre);
                 const canOpenDetailForSession =
@@ -114,16 +130,9 @@ export default function CierresCajaList({
                     </td>
                     {canViewCajaTheoreticalAmounts ? (
                       <td className="text-center align-middle">
-                        <div className="d-grid gap-1 justify-items-center">
-                          <span className={`ventas-page__table-pill ${differenceBadge.className}`}>
-                            {differenceBadge.label}
-                          </span>
-                          <small className="text-muted fw-semibold">
-                            {sesion.diferencia_cierre === null || sesion.diferencia_cierre === undefined
-                              ? '-'
-                              : `L. ${formatCajaCurrency(sesion.diferencia_cierre)}`}
-                          </small>
-                        </div>
+                        <span className={`ventas-page__table-pill ${differenceBadge.className}`}>
+                          {differenceBadge.label}
+                        </span>
                       </td>
                     ) : null}
                     <td className="text-end align-middle" onClick={(event) => event.stopPropagation()}>
@@ -186,6 +195,7 @@ export default function CierresCajaList({
         ) : (
           sesiones.map((sesion) => {
             const statusBadge = resolveSessionStatusBadge(sesion);
+            const differenceBadge = resolveClosureStateBadge(sesion);
             const isOpen = sesion.estado_codigo === 'ABIERTA';
             const hasFormalClose = !isOpen && Boolean(sesion.fecha_cierre);
             const canOpenDetailForSession =
@@ -226,8 +236,8 @@ export default function CierresCajaList({
                 <div className="cierres-caja-mobile-card__meta">
                   <span>{formatCajaDateTime(sesion.fecha_apertura)}</span>
                   {canViewCajaTheoreticalAmounts ? (
-                    <span className={`ventas-page__table-pill ${resolveDifferenceBadge(sesion.diferencia_cierre).className}`}>
-                      {resolveDifferenceBadge(sesion.diferencia_cierre).label}
+                    <span className={`ventas-page__table-pill ${differenceBadge.className}`}>
+                      {differenceBadge.label}
                     </span>
                   ) : (
                     <span className="ventas-page__table-pill bg-light border-secondary text-secondary">
@@ -268,6 +278,16 @@ export default function CierresCajaList({
           })
         )}
       </div>
+
+      {!loading && !error && safeTotal > 0 ? (
+        <CierresCajaPagination
+          totalItems={safeTotal}
+          pageSize={safePageSize}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+        />
+      ) : null}
     </div>
   );
 }

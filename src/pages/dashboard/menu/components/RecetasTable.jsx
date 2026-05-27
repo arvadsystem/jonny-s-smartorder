@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import RecetasEmptyState from './RecetasEmptyState';
 import {
   formatMoney,
@@ -6,9 +7,12 @@ import {
   truncateText
 } from '../utils/recetasAdminUtils';
 
+const CARDS_PER_PAGE = 10;
+
 const RecetasTable = ({
   loading,
   recetas,
+  showInactiveOnly = false,
   viewMode,
   togglingId,
   cardImageErrors,
@@ -16,12 +20,37 @@ const RecetasTable = ({
   onEditar,
   onCambiarEstado
 }) => {
+  const [cardsPageIndex, setCardsPageIndex] = useState(0);
+
+  const totalCards = Array.isArray(recetas) ? recetas.length : 0;
+  const recetasCardsPages = useMemo(() => {
+    const rows = Array.isArray(recetas) ? recetas : [];
+    const pages = [];
+    for (let i = 0; i < rows.length; i += CARDS_PER_PAGE) pages.push(rows.slice(i, i + CARDS_PER_PAGE));
+    return pages;
+  }, [recetas]);
+  const totalCardsPages = Math.max(1, recetasCardsPages.length || 0);
+  const safeCardsPageIndex = Math.min(cardsPageIndex, totalCardsPages - 1);
+  const recetasCardsPage = recetasCardsPages[safeCardsPageIndex] || [];
+
+  useEffect(() => {
+    setCardsPageIndex((prev) => Math.min(Math.max(0, prev), Math.max(0, totalCardsPages - 1)));
+  }, [totalCardsPages]);
+
+  useEffect(() => {
+    setCardsPageIndex(0);
+  }, [viewMode]);
+
   if (loading) {
     return <div className="text-center py-4">Cargando recetas...</div>;
   }
 
   if (!Array.isArray(recetas) || recetas.length === 0) {
-    return <RecetasEmptyState />;
+    return (
+      <RecetasEmptyState
+        message={showInactiveOnly ? 'No hay recetas inactivas para mostrar.' : 'No hay recetas para mostrar.'}
+      />
+    );
   }
 
   if (viewMode === 'table') {
@@ -88,8 +117,25 @@ const RecetasTable = ({
   }
 
   return (
-    <div className="menu-recetas-admin__cards">
-      {recetas.map((receta) => {
+    <>
+      <div className="inv-ins-carousel-shell">
+        <div className="inv-ins-carousel-meta">
+          <span>{`Pagina ${safeCardsPageIndex + 1} de ${totalCardsPages}`}</span>
+          <span>{`${totalCards} recetas visibles`}</span>
+        </div>
+        <div className="inv-prod-carousel-stage inv-ins-carousel-stage">
+          <button
+            type="button"
+            className={`btn inv-prod-carousel-float is-prev ${safeCardsPageIndex > 0 ? 'is-visible' : ''}`}
+            aria-label="Pagina anterior del carrusel de recetas"
+            onClick={() => setCardsPageIndex((prev) => Math.max(0, prev - 1))}
+            disabled={safeCardsPageIndex <= 0}
+          >
+            <i className="bi bi-chevron-left" />
+          </button>
+
+          <div className="inv-ins-carousel-page menu-recetas-admin__carousel-page" key={`recetas-cards-page-${safeCardsPageIndex}`}>
+            {recetasCardsPage.map((receta) => {
         const id = Number(receta?.id_receta || 0);
         const estadoActivo = resolveRecetaActiva(receta);
         const imageCandidates = resolveRecetaImageCandidates(receta);
@@ -105,7 +151,7 @@ const RecetasTable = ({
         return (
           <article
             key={id}
-            className={`menu-recetas-card ${estadoActivo ? 'is-active' : 'is-inactive'}`}
+            className={`menu-recetas-card menu-recetas-card--compact ${estadoActivo ? 'is-active' : 'is-inactive'}`}
           >
             <header className="menu-recetas-card__media">
               {imageUrl ? (
@@ -113,7 +159,6 @@ const RecetasTable = ({
                   src={imageUrl}
                   alt={`Imagen de ${String(receta?.nombre_receta || 'receta')}`}
                   referrerPolicy="no-referrer"
-                  loading="lazy"
                   onError={() => onCardImageError(id)}
                 />
               ) : (
@@ -177,8 +222,21 @@ const RecetasTable = ({
             </footer>
           </article>
         );
-      })}
-    </div>
+            })}
+          </div>
+
+          <button
+            type="button"
+            className={`btn inv-prod-carousel-float is-next ${safeCardsPageIndex < totalCardsPages - 1 ? 'is-visible' : ''}`}
+            aria-label="Pagina siguiente del carrusel de recetas"
+            onClick={() => setCardsPageIndex((prev) => Math.min(totalCardsPages - 1, prev + 1))}
+            disabled={safeCardsPageIndex >= totalCardsPages - 1}
+          >
+            <i className="bi bi-chevron-right" />
+          </button>
+        </div>
+      </div>
+    </>
   );
 };
 

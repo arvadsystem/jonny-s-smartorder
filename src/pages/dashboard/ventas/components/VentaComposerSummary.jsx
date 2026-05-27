@@ -1,8 +1,21 @@
+import { useState } from 'react';
+import { formatDiscountPercent } from '../utils/ventasHelpers';
+
 const buildComplementSummaryLabel = (line) => {
   const count = Array.isArray(line?.complementos) ? line.complementos.length : 0;
   if (count <= 0) return 'Sin complementos';
   if (count === 1) return '1 complemento';
   return `${count} complementos`;
+};
+
+const buildDiscountLabel = (discount) => {
+  if (!discount) return 'Sin descuento';
+  const type = String(discount.nombre_tipo_descuento || '').toUpperCase();
+  const value = Number(discount.valor_descuento ?? 0);
+  if (type.includes('PORCENTAJE')) {
+    return `${discount.nombre_descuento} (${formatDiscountPercent(value)})`;
+  }
+  return `${discount.nombre_descuento} (L ${Number.isFinite(value) ? value.toFixed(2) : '0.00'})`;
 };
 
 export default function VentaComposerSummary({
@@ -15,13 +28,23 @@ export default function VentaComposerSummary({
   variant = 'side',
   onClose
 }) {
+  const [expandedNotes, setExpandedNotes] = useState({});
   const pendingCount = Number(pendingPaymentsSummary?.total ?? 0) || 0;
   const pendingAmount = Number(pendingPaymentsSummary?.monto ?? 0) || 0;
   const pendingLabel = pendingPaymentsSummary?.error
     ? pendingPaymentsSummary.error
     : pendingPaymentsSummary?.loading
       ? 'Cargando pendientes...'
-      : `${pendingCount} ${pendingCount === 1 ? 'pedido pendiente' : 'pedidos pendientes'} · ${composer.formatCurrency(pendingAmount)} total pendiente`;
+      : `${pendingCount} ${pendingCount === 1 ? 'pedido pendiente' : 'pedidos pendientes'} - ${composer.formatCurrency(pendingAmount)} total pendiente`;
+  const lineDiscountDetailsByKey = new Map(
+    (Array.isArray(composer.lineDiscountDetails) ? composer.lineDiscountDetails : [])
+      .map((entry) => [String(entry?.line?.cartKey || ''), entry])
+      .filter(([key]) => key)
+  );
+  const lineDiscountValue = Number(composer.lineDiscountValue || 0);
+  const globalDiscountValue = Number(composer.globalDiscountValue || 0);
+  const totalDiscountValue = Number(composer.totalDiscountValue ?? composer.discountValue ?? 0);
+  const shouldShowDiscountBreakdown = lineDiscountValue > 0 || globalDiscountValue > 0 || totalDiscountValue > 0;
 
   const handleContinue = () => {
     if (typeof onOpenFinalize === 'function') {
@@ -66,15 +89,22 @@ export default function VentaComposerSummary({
               <div className="ventas-create-modal__cart-empty-icon">
                 <i className="bi bi-cart-x" />
               </div>
-              <strong>Carrito vacío</strong>
-              <span>Agrega items desde el catálogo.</span>
+              <strong>Carrito vacio</strong>
+              <span>Agrega items desde el catalogo.</span>
             </div>
           ) : (
             composer.cart.map((line) => {
               const lineTotal = composer.formatCurrency(line.precio_unitario * line.cantidad);
+              const discountDetail = lineDiscountDetailsByKey.get(String(line.cartKey)) || null;
+              const availableLineDiscounts = Array.isArray(discountDetail?.availableDiscounts)
+                ? discountDetail.availableDiscounts
+                : [];
+              const hasLineDiscountOptions = composer.canApplyDiscount && availableLineDiscounts.length > 0;
               const thumb = line.imagen_principal_url || null;
               const canIncrease =
                 line.kind !== 'PRODUCTO' || Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0);
+              const hasKitchenNote = String(line.observacion || '').trim().length > 0;
+              const noteExpanded = Boolean(expandedNotes[line.cartKey]);
 
               return (
                 <div key={line.cartKey} className="ventas-cart__item">
@@ -86,7 +116,10 @@ export default function VentaComposerSummary({
                   </div>
 
                   <div className="ventas-cart__item-body">
-                    <div className="ventas-cart__item-name">{line.nombre_item}</div>
+                    <div className="ventas-cart__item-title-row">
+                      <div className="ventas-cart__item-name">{line.nombre_item}</div>
+                      {hasKitchenNote ? <span className="ventas-cart__note-badge">Con observacion</span> : null}
+                    </div>
                     {line.kind === 'PRODUCTO' ? (
                       <small className="ventas-cart__stock">Disponible: {Number(line.stock_disponible ?? 0)}</small>
                     ) : (
@@ -147,20 +180,64 @@ export default function VentaComposerSummary({
                     ) : null}
 
                     {line.kind !== 'PRODUCTO' ? (
-                      <label className="ventas-cart__kitchen-note">
-                        <span>Observación cocina</span>
-                        <textarea
-                          rows="2"
-                          value={line.observacion || ''}
-                          onChange={(event) =>
-                            composer.updateLine(line.cartKey, (current) => ({
+                      <div className={`ventas-cart__kitchen-note ${noteExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+                        <button
+                          type="button"
+                          className="ventas-cart__kitchen-note-toggle"
+                          onClick={() =>
+                            setExpandedNotes((current) => ({
                               ...current,
-                              observacion: event.target.value
+                              [line.cartKey]: !current[line.cartKey]
                             }))
                           }
-                          placeholder="Detalle para cocina"
-                        />
-                      </label>
+                          aria-expanded={noteExpanded}
+                        >
+                          <span>Observacion cocina</span>
+                          <i className={`bi bi-chevron-${noteExpanded ? 'up' : 'down'}`} aria-hidden="true" />
+                        </button>
+                        {noteExpanded ? (
+                          <textarea
+                            rows="2"
+                            value={line.observacion || ''}
+                            onChange={(event) =>
+                              composer.updateLine(line.cartKey, (current) => ({
+                                ...current,
+                                observacion: event.target.value
+                              }))
+                            }
+                            placeholder="Detalle para cocina"
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {hasLineDiscountOptions ? (
+                      <div className="ventas-cart__line-discount-row">
+                        <label className="form-label" htmlFor={`discount-${line.cartKey}`}>
+                          Desc. linea
+                        </label>
+                        <select
+                          id={`discount-${line.cartKey}`}
+                          className="form-select form-select-sm ventas-cart__line-discount-select"
+                          value={line.id_descuento_catalogo_linea || ''}
+                          onChange={(event) => composer.setLineDiscount(line.cartKey, event.target.value)}
+                        >
+                          <option value="">Sin descuento</option>
+                          {availableLineDiscounts.map((discount) => (
+                            <option
+                              key={discount.id_descuento_catalogo}
+                              value={String(discount.id_descuento_catalogo)}
+                            >
+                              {buildDiscountLabel(discount)}
+                            </option>
+                          ))}
+                        </select>
+                        {Number(discountDetail?.discountAmount || 0) > 0 ? (
+                          <small>
+                            -{composer.formatCurrency(discountDetail.discountAmount)} aplicado
+                          </small>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -182,8 +259,37 @@ export default function VentaComposerSummary({
 
       <footer className="ventas-create-modal__totals">
         <div className="ventas-totals__row ventas-totals__row--subtotal-only">
-          <span>Subtotal</span>
+          <span>Subtotal bruto</span>
           <strong>{composer.formatCurrency(composer.subtotal)}</strong>
+        </div>
+
+        {shouldShowDiscountBreakdown ? (
+          <>
+            <div className="ventas-totals__row">
+              <span>Descuentos por linea</span>
+              <strong>-{composer.formatCurrency(lineDiscountValue)}</strong>
+            </div>
+            <div className="ventas-totals__row">
+              <span>Descuento global</span>
+              <strong>-{composer.formatCurrency(globalDiscountValue)}</strong>
+            </div>
+            <div className="ventas-totals__row">
+              <span>Descuento total</span>
+              <strong>-{composer.formatCurrency(totalDiscountValue)}</strong>
+            </div>
+          </>
+        ) : null}
+
+        {Number(deliveryCost || 0) > 0 ? (
+          <div className="ventas-totals__row">
+            <span>Envio</span>
+            <strong>{composer.formatCurrency(deliveryCost)}</strong>
+          </div>
+        ) : null}
+
+        <div className="ventas-totals__row is-total">
+          <span>Total</span>
+          <strong>{composer.formatCurrency(composer.total + Number(deliveryCost || 0))}</strong>
         </div>
 
         {composer.submitError ? <div className="ventas-create-modal__error">{composer.submitError}</div> : null}

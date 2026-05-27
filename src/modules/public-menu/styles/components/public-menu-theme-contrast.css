@@ -546,6 +546,18 @@
   color: #b86429 !important;
 }
 
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__contact-line {
+  color: #fff8ed !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__contact-line i {
+  color: #b86429 !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__contact-empty {
+  color: rgba(255, 248, 237, 0.72) !important;
+}
+
 /* FIX texto redes sociales (letras cortadas) */
 .pm-jonny-experience__social-copy b {
   line-height: 1.2 !important;
@@ -627,9 +639,9 @@
   .pm-shell.pm-theme-light .pm-hero-section__overlay,
   .pm-shell:not(.pm-theme-light) .pm-hero-section__overlay {
     background:
-      radial-gradient(ellipse at 30% 52%, rgba(14, 7, 4, 0.12) 0%, rgba(14, 7, 4, 0.56) 100%),
-      linear-gradient(90deg, rgba(14, 7, 4, 0.58) 0%, rgba(14, 7, 4, 0.56) 46%, rgba(14, 7, 4, 0.16) 100%),
-      linear-gradient(0deg, rgba(14, 7, 4, 0.48), rgba(14, 7, 4, 0.14)) !important;
+      radial-gradient(ellipse at 30% 52%, rgba(14, 7, 4, 0.09) 0%, rgba(14, 7, 4, 0.44) 100%),
+      linear-gradient(90deg, rgba(14, 7, 4, 0.48) 0%, rgba(14, 7, 4, 0.42) 46%, rgba(14, 7, 4, 0.1) 100%),
+      linear-gradient(0deg, rgba(14, 7, 4, 0.34), rgba(14, 7, 4, 0.1)) !important;
   }
 
   .pm-shell .pm-hero-section__brand-mark {
