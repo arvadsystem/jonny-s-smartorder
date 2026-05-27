@@ -31,6 +31,52 @@ const normalizeTextKey = (value) =>
 
 export const formatCurrency = (value) => `L ${roundMoney(value).toFixed(2)}`;
 
+export const getLineDiscountPercent = (line) => {
+  if (!line || typeof line !== 'object') return null;
+
+  const explicitPercent = Number(
+    line.descuento_porcentaje_linea ??
+    line.porcentaje_descuento_linea ??
+    line.porcentaje_descuento ??
+    line.descuento_porcentaje
+  );
+  if (Number.isFinite(explicitPercent) && explicitPercent > 0) {
+    return Math.min(100, explicitPercent);
+  }
+
+  const discount = Number(line.descuento_linea ?? line.descuento ?? 0);
+  if (!Number.isFinite(discount) || discount <= 0) return null;
+
+  const grossSubtotal = Number(
+    line.subtotal_bruto_linea ??
+    line.subtotal_linea ??
+    line.sub_total ??
+    0
+  ) || (Number(line.precio_unitario || 0) * Number(line.cantidad || 0));
+  if (!Number.isFinite(grossSubtotal) || grossSubtotal <= 0) return null;
+
+  return Math.min(100, (discount / grossSubtotal) * 100);
+};
+
+export const formatDiscountPercent = (value) => {
+  const percent = Number(value);
+  if (!Number.isFinite(percent) || percent <= 0) return '--';
+  const rounded = Number(percent.toFixed(2));
+  return `${Number.isInteger(rounded) ? String(rounded) : String(rounded)}%`;
+};
+
+export const resolveVentaReversionStatus = (venta) => {
+  const reversedAmount = roundMoney(venta?.monto_reversado_total);
+  if (reversedAmount <= 0) return { key: '', label: '' };
+
+  const total = roundMoney(venta?.total);
+  const isTotal = total > 0 && reversedAmount >= roundMoney(total - 0.01);
+  return {
+    key: isTotal ? 'reversed' : 'partially_reversed',
+    label: isTotal ? 'Reversada' : 'Parcialmente reversada'
+  };
+};
+
 const HN_TIMEZONE = 'America/Tegucigalpa';
 const SQL_DATE_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
 
@@ -106,6 +152,13 @@ export const extractApiMessage = (error, fallbackMessage) => {
   }
 
   return fallbackMessage;
+};
+
+export const resolveVentasApiErrorMessage = (error, fallbackMessage = 'No se pudo completar la operación.') => {
+  const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+  const message = extractApiMessage(error, fallbackMessage);
+  if (!code || message.includes(code)) return message;
+  return `${message} (${code})`;
 };
 
 export const normalizeCategoriaRecord = (row) => ({
@@ -203,6 +256,7 @@ const inferStatusKey = (row) => {
 
 export const normalizeVentaRecord = (row) => {
   const statusKey = inferStatusKey(row);
+  const reversionStatus = resolveVentaReversionStatus(row);
 
   return {
     ...row,
@@ -211,6 +265,13 @@ export const normalizeVentaRecord = (row) => {
     id_sucursal: Number(row?.id_sucursal ?? 0) || null,
     id_cliente: Number(row?.id_cliente ?? 0) || null,
     id_usuario: Number(row?.id_usuario ?? 0) || null,
+    id_sesion_caja: Number(row?.id_sesion_caja ?? 0) || null,
+    caja_sesion_estado_codigo: String(row?.caja_sesion_estado_codigo ?? '').trim(),
+    caja_sesion_estado_nombre: String(row?.caja_sesion_estado_nombre ?? '').trim(),
+    caja_sesion_fecha_cierre: row?.caja_sesion_fecha_cierre ?? null,
+    caja_sesion_abierta: row?.caja_sesion_abierta === undefined || row?.caja_sesion_abierta === null
+      ? undefined
+      : parseBoolean(row.caja_sesion_abierta),
     total: roundMoney(row?.total),
     sub_total: roundMoney(row?.sub_total),
     subtotal_bruto: roundMoney(row?.subtotal_bruto),
@@ -232,10 +293,32 @@ export const normalizeVentaRecord = (row) => {
     ),
     statusKey,
     statusLabel: String(row?.estado_pedido ?? FALLBACK_STATUS[statusKey]),
+    reversionStatusKey: reversionStatus.key,
+    reversionStatusLabel: reversionStatus.label,
+    displayStatusKey: reversionStatus.key || statusKey,
+    displayStatusLabel: reversionStatus.label || String(row?.estado_pedido ?? FALLBACK_STATUS[statusKey]),
     fecha_label: formatDateLabel(row?.fecha_hora_pedido),
     hora_label: formatTimeLabel(row?.fecha_hora_pedido),
     fecha_hora_label: formatDateTimeLabel(row?.fecha_hora_pedido)
   };
+};
+
+export const resolveVentaReversionBlockReason = (venta) => {
+  if (!venta || typeof venta !== 'object') return '';
+
+  const hasSessionOpenFlag = Object.prototype.hasOwnProperty.call(venta, 'caja_sesion_abierta');
+  const sessionCode = String(venta?.caja_sesion_estado_codigo || '').trim().toUpperCase();
+  const sessionClosedAt = venta?.caja_sesion_fecha_cierre || null;
+
+  if (!venta.id_sesion_caja) {
+    return 'La venta no tiene una sesión de caja válida para reversión.';
+  }
+
+  if ((hasSessionOpenFlag && venta.caja_sesion_abierta === false) || sessionClosedAt || (sessionCode && sessionCode !== 'ABIERTA')) {
+    return 'No se puede reversar porque la caja ya fue cerrada.';
+  }
+
+  return '';
 };
 
 export const normalizeVentaDetail = (row) => {
@@ -287,20 +370,30 @@ export const normalizeVentaDetail = (row) => {
       descuento: roundMoney(item?.descuento),
       descuento_linea: roundMoney(item?.descuento_linea),
       descuento_global: roundMoney(item?.descuento_global),
+      descuento_porcentaje_linea: getLineDiscountPercent(item),
       nombre_item: String(item?.nombre_item ?? item?.nombre_producto ?? 'Item'),
       nombre_producto: String(item?.nombre_producto ?? item?.nombre_item ?? 'Item'),
       cantidad_revertida: reversedQtyByDetail.get(Number(item?.id_detalle ?? 0)) || 0,
       observacion: String(item?.observacion ?? '').trim()
     }))
     : [];
+  const resolvedReversedTotal = roundMoney(
+    reversiones.reduce((acc, item) => acc + Number(item?.monto_reversado || 0), 0)
+  ) || base.monto_reversado_total;
+  const reversionStatus = resolveVentaReversionStatus({
+    ...base,
+    monto_reversado_total: resolvedReversedTotal
+  });
 
   return {
     ...base,
     reversiones,
-    monto_reversado_total: roundMoney(
-      reversiones.reduce((acc, item) => acc + Number(item?.monto_reversado || 0), 0)
-    ) || base.monto_reversado_total,
+    monto_reversado_total: resolvedReversedTotal,
     reversiones_count: reversiones.length || base.reversiones_count,
+    reversionStatusKey: reversionStatus.key,
+    reversionStatusLabel: reversionStatus.label,
+    displayStatusKey: reversionStatus.key || base.statusKey,
+    displayStatusLabel: reversionStatus.label || base.statusLabel,
     items,
     total_items: items.reduce((acc, item) => acc + Number(item?.cantidad ?? 0), 0) || base.total_items
   };
@@ -358,7 +451,7 @@ export const downloadVentaDetail = (venta) => {
     atendido_por: venta.nombre_usuario,
     metodo_pago: venta.metodo_pago,
     subtotal: venta.sub_total,
-    isv: venta.isv,
+    descuento_total: venta.descuento_total,
     total: venta.total,
     reversiones: venta.reversiones?.map((reversion) => ({
       codigo_reversion: reversion.codigo_reversion,
@@ -374,6 +467,8 @@ export const downloadVentaDetail = (venta) => {
       cantidad_revertida: item.cantidad_revertida || 0,
       precio_unitario: item.precio_unitario,
       subtotal: item.sub_total,
+      descuento: item.descuento,
+      descuento_porcentaje_linea: getLineDiscountPercent(item),
       total: item.total_linea,
       observacion: item.observacion || null
     }))

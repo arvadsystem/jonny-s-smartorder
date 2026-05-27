@@ -706,7 +706,7 @@ export default function CajaView({
   const isCajaSessionError = (error) => {
     const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
     const message = String(error?.message || '').toLowerCase();
-    return ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH'].includes(code)
+    return ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH', 'CAJA_NOT_ACTIVE'].includes(code)
       || message.includes('sesion de caja activa')
       || message.includes('sesión de caja activa')
       || message.includes('caja activa');

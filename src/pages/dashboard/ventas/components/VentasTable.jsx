@@ -31,7 +31,7 @@ export default function VentasTable({ ventas, onOpenDetail }) {
 
           <tbody>
             {ventas.map((venta, index) => {
-              const isCompleted = venta?.statusKey === 'completed';
+              const isCompleted = venta?.displayStatusKey === 'completed';
               const badgeClass = isCompleted ? 'is-ok' : 'is-low';
 
               return (
@@ -67,7 +67,9 @@ export default function VentasTable({ ventas, onOpenDetail }) {
                   </td>
                   <td className="ventas-page__table-total">{formatCurrency(venta?.total)}</td>
                   <td>
-                    <span className={`inv-ins-card__badge ${badgeClass}`}>{venta?.statusLabel}</span>
+                    <span className={`inv-ins-card__badge ${badgeClass}`}>
+                      {venta?.displayStatusLabel || venta?.statusLabel}
+                    </span>
                   </td>
                   <td className="text-end">
                     <button

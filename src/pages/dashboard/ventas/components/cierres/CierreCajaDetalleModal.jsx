@@ -202,7 +202,7 @@ export default function CierreCajaDetalleModal({
       : 'No hay ingresos ni egresos manuales registrados.';
 
   const renderResumen = () => (
-    <section className="cierres-caja-detail-panel">
+    <section className={`cierres-caja-detail-panel ${canViewCajaTheoreticalAmounts ? 'has-mobile-cards' : ''}`}>
       <div className="inv-prod-title-row mb-2">
         <i className="bi bi-clipboard-data text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
         <span className="inv-prod-title">{canViewCajaTheoreticalAmounts ? 'Resumen operativo' : 'Resumen de cierre'}</span>
@@ -374,7 +374,7 @@ export default function CierreCajaDetalleModal({
   );
 
   const renderArqueos = () => (
-    <section className="cierres-caja-detail-panel has-mobile-cards">
+    <section className="cierres-caja-detail-panel">
       <div className="inv-prod-title-row mb-2">
         <i className="bi bi-calculator text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
         <span className="inv-prod-title">Arqueos</span>
@@ -409,7 +409,7 @@ export default function CierreCajaDetalleModal({
   );
 
   const renderMovimientos = () => (
-    <section className="cierres-caja-detail-panel has-mobile-cards cierres-caja-manual-movements">
+    <section className="cierres-caja-detail-panel cierres-caja-manual-movements">
       <div className="cierres-caja-manual-movements__head">
         <div className="inv-prod-title-row">
           <i className="bi bi-journal-plus text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
@@ -501,7 +501,7 @@ export default function CierreCajaDetalleModal({
   );
 
   const renderRecuentos = () => (
-    <section className="cierres-caja-detail-panel has-mobile-cards">
+    <section className="cierres-caja-detail-panel">
       <div className="inv-prod-title-row mb-2">
         <i className="bi bi-arrow-repeat text-danger inv-prod-title-icon" style={{ background: 'rgba(220,53,69,0.1)' }} />
         <span className="inv-prod-title">Recuentos de cierre</span>

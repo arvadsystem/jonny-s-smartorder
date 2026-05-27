@@ -489,10 +489,6 @@ export default function VentaFinalizarOperacionModal({
                 </div>
               </>
             ) : null}
-            <div>
-              <span>ISV (15%)</span>
-              <strong>{composer.formatCurrency(composer.isv)}</strong>
-            </div>
             {activeTab === 'pendiente' && contact.modalidad === 'DELIVERY' && deliveryCost > 0 ? (
               <div>
                 <span>Envio</span>

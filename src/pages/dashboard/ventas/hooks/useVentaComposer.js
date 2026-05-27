@@ -598,8 +598,9 @@ export const useVentaComposer = ({
   const totalDiscount = roundMoney(lineDiscountValue + discountValue);
 
   const taxableSubtotal = roundMoney(Math.max(subtotal - totalDiscount, 0));
-  const isv = roundMoney(taxableSubtotal * 0.15);
-  const total = roundMoney(taxableSubtotal + isv);
+  // Impuestos desactivados temporalmente; la configuracion por sucursal se conectara en una fase posterior.
+  const isv = 0;
+  const total = taxableSubtotal;
 
   const cashValue = useMemo(() => {
     if (state.cashReceived === '') return total;
@@ -1018,7 +1019,7 @@ export const useVentaComposer = ({
         && hasSelectedSucursal
         && state.cart.length > 0
         && (
-          ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH'].includes(errorCode)
+          ['NO_ACTIVE_SESSION', 'SESSION_PARTICIPATION_REQUIRED', 'SESSION_AUTHORIZATION_REQUIRED', 'SESSION_NOT_OPEN', 'SESSION_SCOPE_MISMATCH', 'CAJA_NOT_ACTIVE'].includes(errorCode)
           || (Number(error?.status || 0) === 403 && sessionMessageMatch)
         )
       ) {

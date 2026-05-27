@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   downloadVentaDetail,
+  formatDiscountPercent,
   formatCurrency,
   formatDateLabel,
-  formatTimeLabel
+  formatTimeLabel,
+  getLineDiscountPercent,
+  resolveVentaReversionBlockReason
 } from '../utils/ventasHelpers';
 import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
@@ -53,7 +56,7 @@ export default function VentaDetalleModal({
 
   if (!open) return null;
 
-  const statusLabel = venta?.statusLabel || 'Pendiente';
+  const statusLabel = venta?.displayStatusLabel || venta?.statusLabel || 'Pendiente';
   const ticketDateTime = venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido;
   const detailItems = Array.isArray(venta?.items) ? venta.items : [];
   const reversiones = Array.isArray(venta?.reversiones) ? venta.reversiones : [];
@@ -80,7 +83,8 @@ export default function VentaDetalleModal({
   const grossSubtotal = grossSubtotalFromItems > 0
     ? grossSubtotalFromItems
     : Number(venta?.subtotal_bruto ?? 0) || (Number(venta?.sub_total || 0) + resolvedDiscountTotal);
-  const shouldShowItemDiscount = detailItems.some((item) => Number(item?.descuento || 0) > 0);
+  const shouldShowItemDiscount = detailItems.some((item) => getLineDiscountPercent(item) !== null);
+  const reversionBlockReason = resolveVentaReversionBlockReason(venta);
 
   const handlePrintTicket = () => {
     if (typeof window === 'undefined' || !venta || printInProgressRef.current) return;
@@ -121,7 +125,7 @@ export default function VentaDetalleModal({
           </div>
 
           <div className="ventas-modal__header-actions">
-            <span className={`ventas-detail-modal__status ${venta?.statusKey === 'completed' ? 'is-ok' : 'is-pending'}`}>
+            <span className={`ventas-detail-modal__status ${venta?.displayStatusKey === 'completed' ? 'is-ok' : 'is-pending'}`}>
               {statusLabel}
             </span>
             <button type="button" className="ventas-modal__close-btn" onClick={onClose} aria-label="Cerrar">
@@ -161,7 +165,7 @@ export default function VentaDetalleModal({
                             <th>Tipo</th>
                             <th>Cant.</th>
                             <th>P. Unit.</th>
-                            {shouldShowItemDiscount ? <th>Desc.</th> : null}
+                            {shouldShowItemDiscount ? <th>Desc. %</th> : null}
                             <th>Subtotal</th>
                           </tr>
                         </thead>
@@ -195,15 +199,9 @@ export default function VentaDetalleModal({
                               <td>{formatCurrency(item.precio_unitario)}</td>
                               {shouldShowItemDiscount ? (
                                 <td>
-                                  {Number(item.descuento || 0) > 0 ? (
+                                  {getLineDiscountPercent(item) !== null ? (
                                     <div className="ventas-detail-modal__discount-cell">
-                                      <strong>-{formatCurrency(item.descuento)}</strong>
-                                      {Number(item.descuento_linea || 0) > 0 ? (
-                                        <small>Linea: {formatCurrency(item.descuento_linea)}</small>
-                                      ) : null}
-                                      {Number(item.descuento_global || 0) > 0 ? (
-                                        <small>Global: {formatCurrency(item.descuento_global)}</small>
-                                      ) : null}
+                                      <strong>{formatDiscountPercent(getLineDiscountPercent(item))}</strong>
                                     </div>
                                   ) : '--'}
                                 </td>
@@ -231,8 +229,8 @@ export default function VentaDetalleModal({
                             {Number(item.cantidad_revertida || 0) > 0 ? (
                               <div><dt>Revertido</dt><dd>{item.cantidad_revertida} de {item.cantidad}</dd></div>
                             ) : null}
-                            {Number(item.descuento || 0) > 0 ? (
-                              <div><dt>Descuento</dt><dd>-{formatCurrency(item.descuento)}</dd></div>
+                            {getLineDiscountPercent(item) !== null ? (
+                              <div><dt>Desc. %</dt><dd>{formatDiscountPercent(getLineDiscountPercent(item))}</dd></div>
                             ) : null}
                             <div><dt>Subtotal</dt><dd>{formatCurrency(item.total_linea || item.sub_total)}</dd></div>
                           </dl>
@@ -298,10 +296,6 @@ export default function VentaDetalleModal({
                     </div>
                   </>
                 ) : null}
-                <div>
-                  <span>ISV (15%)</span>
-                  <strong>{formatCurrency(venta?.isv)}</strong>
-                </div>
                 <div className="is-total">
                   <span>Total</span>
                   <strong>{formatCurrency(venta?.total)}</strong>
@@ -325,7 +319,8 @@ export default function VentaDetalleModal({
                       type="button"
                       className="btn btn-outline-danger"
                       onClick={() => onOpenReversion?.(venta)}
-                      disabled={!venta?.id_factura}
+                      disabled={!venta?.id_factura || Boolean(reversionBlockReason)}
+                      title={reversionBlockReason || 'Registrar reversión'}
                     >
                       <i className="bi bi-arrow-counterclockwise" /> Registrar reversión
                     </button>

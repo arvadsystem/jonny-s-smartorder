@@ -9,7 +9,8 @@ const getMetodoPagoLabel = (value) => {
 };
 
 export default function VentaCard({ venta, view = 'grid', index = 0, onOpenDetail }) {
-  const isCompleted = venta?.statusKey === 'completed';
+  const isCompleted = venta?.displayStatusKey === 'completed';
+  const isReversed = ['reversed', 'partially_reversed'].includes(String(venta?.displayStatusKey || ''));
   const badgeClass = isCompleted ? 'is-ok' : 'is-low';
   const dotClass = isCompleted ? 'ok' : 'off';
   const metodoPagoLabel = getMetodoPagoLabel(venta?.metodo_pago);
@@ -45,10 +46,12 @@ export default function VentaCard({ venta, view = 'grid', index = 0, onOpenDetai
         </div>
 
         <div className="ventas-page__sale-badges">
-          {hasReversiones ? (
-            <span className="ventas-page__sale-badge is-reversed">Revertida</span>
+          {hasReversiones && venta?.reversionStatusLabel ? (
+            <span className="ventas-page__sale-badge is-reversed">Con reversión</span>
           ) : null}
-          <span className={`inv-ins-card__badge ${badgeClass}`}>{venta?.statusLabel}</span>
+          <span className={`inv-ins-card__badge ${isReversed ? 'is-low' : badgeClass}`}>
+            {venta?.displayStatusLabel || venta?.statusLabel}
+          </span>
         </div>
       </div>
 

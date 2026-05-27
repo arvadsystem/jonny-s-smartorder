@@ -4,11 +4,17 @@ import {
   resolveClosureStateBadge,
   resolveSessionStatusBadge
 } from '../../utils/cajasHelpers';
+import CierresCajaPagination from './CierresCajaPagination';
 
 export default function CierresCajaList({
   sesiones,
   loading,
   error,
+  totalSesiones = 0,
+  currentPage = 1,
+  pageSize = 6,
+  totalPages = 1,
+  onPageChange,
   canViewDetail,
   canCloseSession,
   canRegisterArqueo,
@@ -19,6 +25,11 @@ export default function CierresCajaList({
   onOpenCerrar
 }) {
   const desktopColSpan = canViewCajaTheoreticalAmounts ? 9 : 7;
+  const currentRows = Array.isArray(sesiones) ? sesiones.length : 0;
+  const safeTotal = Math.max(0, Number(totalSesiones) || 0);
+  const safePageSize = Number.parseInt(String(pageSize || ''), 10) || 6;
+  const startIndex = safeTotal === 0 ? 0 : ((currentPage - 1) * safePageSize) + 1;
+  const endIndex = safeTotal === 0 ? 0 : Math.min(((currentPage - 1) * safePageSize) + currentRows, safeTotal);
   const renderEmpty = (iconClass, message) => (
     <div className="ventas-create-modal__empty shadow-none border-0 bg-transparent">
       <div className="ventas-create-modal__cart-empty-icon">
@@ -30,6 +41,11 @@ export default function CierresCajaList({
 
   return (
     <div className="ventas-page__table-card flex-grow-1 d-flex flex-column min-h-0">
+      <div className="inv-prod-results-meta cierres-caja-results-meta">
+        <span>{loading ? 'Cargando sesiones...' : `${currentRows} resultados`}</span>
+        <span>{loading ? '' : `Mostrando ${startIndex}-${endIndex} de ${safeTotal}`}</span>
+      </div>
+
       <div className="ventas-page__table-wrap flex-grow-1 cierres-caja-table-desktop">
         <table className="table ventas-page__table">
           <thead>
@@ -262,6 +278,16 @@ export default function CierresCajaList({
           })
         )}
       </div>
+
+      {!loading && !error && safeTotal > 0 ? (
+        <CierresCajaPagination
+          totalItems={safeTotal}
+          pageSize={safePageSize}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+        />
+      ) : null}
     </div>
   );
 }
