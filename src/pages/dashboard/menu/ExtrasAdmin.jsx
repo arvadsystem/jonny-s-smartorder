@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Select from 'react-select';
 import extrasAdminService from '../../../services/extrasAdminService';
 import MenuActionToast from './components/MenuActionToast';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
+import MenuFiltersDrawer from './components/MenuFiltersDrawer';
 
 const emptyForm = {
   codigo: '',
@@ -45,6 +47,9 @@ const ExtrasAdmin = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
+  const [showInactiveOnly, setShowInactiveOnly] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortBy, setSortBy] = useState('recientes');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -81,13 +86,56 @@ const ExtrasAdmin = () => {
 
   const extrasFiltrados = useMemo(() => {
     const term = String(search || '').trim().toLowerCase();
-    if (!term) return extras;
-    return extras.filter((extra) => (
-      String(extra?.nombre || '').toLowerCase().includes(term) ||
-      String(extra?.codigo || '').toLowerCase().includes(term) ||
-      String(extra?.nombre_insumo || '').toLowerCase().includes(term)
-    ));
-  }, [extras, search]);
+    return extras.filter((extra) => {
+      const isActive = Boolean(extra?.estado);
+      if (showInactiveOnly) {
+        if (isActive) return false;
+      } else if (!isActive) {
+        return false;
+      }
+      if (!term) return true;
+      return (
+        String(extra?.nombre || '').toLowerCase().includes(term) ||
+        String(extra?.codigo || '').toLowerCase().includes(term) ||
+        String(extra?.nombre_insumo || '').toLowerCase().includes(term)
+      );
+    });
+  }, [extras, search, showInactiveOnly]);
+
+  const extrasVisibles = useMemo(() => {
+    const rows = [...extrasFiltrados];
+    if (sortBy === 'nombre_asc') return rows.sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es'));
+    if (sortBy === 'nombre_desc') return rows.sort((a, b) => String(b?.nombre || '').localeCompare(String(a?.nombre || ''), 'es'));
+    if (sortBy === 'precio_asc') return rows.sort((a, b) => Number(a?.precio_adicional || 0) - Number(b?.precio_adicional || 0));
+    if (sortBy === 'precio_desc') return rows.sort((a, b) => Number(b?.precio_adicional || 0) - Number(a?.precio_adicional || 0));
+    return rows.sort((a, b) => Number(b?.id_extra || 0) - Number(a?.id_extra || 0));
+  }, [extrasFiltrados, sortBy]);
+
+  const insumoOptions = useMemo(() => {
+    const base = Array.isArray(insumos) ? insumos : [];
+    return [
+      { value: '', label: 'Sin insumo asociado' },
+      ...base.map((insumo) => ({
+        value: String(insumo.id_insumo),
+        label: String(insumo.nombre_insumo || `Insumo #${insumo.id_insumo}`)
+      }))
+    ];
+  }, [insumos]);
+
+  const unidadOptions = useMemo(() => {
+    const rows = Array.isArray(insumos) ? insumos : [];
+    const map = new Map();
+    rows.forEach((item) => {
+      const idUnidad = String(item?.id_unidad_medida || '').trim();
+      if (!idUnidad) return;
+      if (map.has(idUnidad)) return;
+      const simbolo = String(item?.unidad_simbolo || '').trim();
+      const nombre = String(item?.unidad_nombre || '').trim();
+      const label = simbolo && nombre ? `${simbolo} - ${nombre}` : (simbolo || nombre || `Unidad ${idUnidad}`);
+      map.set(idUnidad, { value: idUnidad, label });
+    });
+    return Array.from(map.values());
+  }, [insumos]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -128,10 +176,14 @@ const ExtrasAdmin = () => {
   const updateForm = (field, value) => {
     setForm((prev) => {
       const next = { ...prev, [field]: value };
-      if (field === 'nombre' && !prev.codigo) next.codigo = buildCode(value);
+      if (field === 'nombre') next.codigo = buildCode(value);
       if (field === 'id_insumo') {
         const selected = insumos.find((item) => String(item.id_insumo) === String(value));
         next.id_unidad_medida = selected?.id_unidad_medida ? String(selected.id_unidad_medida) : '';
+        if (!value) {
+          next.cant = '';
+          next.id_unidad_medida = '';
+        }
       }
       return next;
     });
@@ -172,7 +224,7 @@ const ExtrasAdmin = () => {
     }
 
     const payload = {
-      codigo: form.codigo,
+      codigo: buildCode(form.nombre),
       nombre: form.nombre,
       precio_adicional: Number(form.precio_adicional),
       id_insumo: form.id_insumo || null,
@@ -249,6 +301,17 @@ const ExtrasAdmin = () => {
                   placeholder="Buscar extra, codigo o insumo..."
                 />
               </label>
+              <button
+                type="button"
+                className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
+                onClick={() => setFiltersOpen(true)}
+                title="Filtros"
+                aria-expanded={filtersOpen}
+                aria-controls="menu-extras-filtros-drawer"
+              >
+                <i className="bi bi-funnel" />
+                <span>Filtros</span>
+              </button>
               <button type="button" className="inv-prod-toolbar-btn" onClick={openCreate}>
                 <i className="bi bi-plus-circle" />
                 <span>Nuevo extra</span>
@@ -258,17 +321,21 @@ const ExtrasAdmin = () => {
 
           <div className="card-body inv-prod-body">
             {error ? <div className="alert alert-danger inv-prod-alert">{error}</div> : null}
-            {success ? <div className="alert alert-success inv-prod-alert">{success}</div> : null}
 
             <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
-              <span>{extrasFiltrados.length} extras</span>
+              <span>{extrasVisibles.length} extras</span>
             </div>
 
             {loading ? (
               <div className="text-center py-4">Cargando extras...</div>
+            ) : extrasVisibles.length === 0 ? (
+              <div className="text-center py-5 text-muted">
+                <i className="bi bi-plus-square-dotted fs-3 d-block mb-2" />
+                {showInactiveOnly ? 'No hay extras inactivos para mostrar.' : 'No hay extras para mostrar.'}
+              </div>
             ) : (
               <div className="menu-extras-admin__grid">
-                {extrasFiltrados.map((extra) => (
+                {extrasVisibles.map((extra) => (
                   <article
                     className={`menu-extras-card ${extra.estado ? 'is-active' : 'is-inactive'}`}
                     key={extra.id_extra}
@@ -317,6 +384,58 @@ const ExtrasAdmin = () => {
         </div>
       </div>
 
+      <MenuFiltersDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onApply={() => setFiltersOpen(false)}
+        onClear={() => {
+          setShowInactiveOnly(false);
+          setSortBy('recientes');
+          setFiltersOpen(false);
+        }}
+        title="Filtros de extras"
+        drawerId="menu-extras-filtros-drawer"
+        chips={[{ icon: 'bi-plus-square-dotted', label: 'Extras' }]}
+      >
+        <div className="inv-prod-drawer-section">
+          <div className="inv-prod-drawer-section-title">Estado</div>
+          <div className="inv-ins-chip-grid">
+            <button
+              type="button"
+              className={`inv-ins-chip ${!showInactiveOnly ? 'is-active' : ''}`}
+              onClick={() => setShowInactiveOnly(false)}
+            >
+              Activos
+            </button>
+            <button
+              type="button"
+              className={`inv-ins-chip ${showInactiveOnly ? 'is-active' : ''}`}
+              onClick={() => setShowInactiveOnly(true)}
+            >
+              Inactivos
+            </button>
+          </div>
+          <div className="inv-ins-help">Filtra por estado del extra.</div>
+        </div>
+
+        <div className="inv-prod-drawer-section">
+          <div className="inv-prod-drawer-section-title">Orden</div>
+          <label className="form-label" htmlFor="menu_extras_sort">Ordenar por</label>
+          <select
+            id="menu_extras_sort"
+            className="form-select"
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value)}
+          >
+            <option value="recientes">Mas recientes</option>
+            <option value="nombre_asc">Nombre (A-Z)</option>
+            <option value="nombre_desc">Nombre (Z-A)</option>
+            <option value="precio_asc">Precio (menor a mayor)</option>
+            <option value="precio_desc">Precio (mayor a menor)</option>
+          </select>
+        </div>
+      </MenuFiltersDrawer>
+
       {drawerOpen ? (
         <div className="inv-prod-pmodal inv-prod-pmodal--create show">
           <div className="inv-prod-pmodal__overlay" onClick={closeDrawer} />
@@ -350,41 +469,72 @@ const ExtrasAdmin = () => {
           <div className="row g-2">
             <div className="col-12">
               <label className="form-label" htmlFor="extra_nombre">Nombre</label>
-              <input id="extra_nombre" className="form-control" value={form.nombre} onChange={(event) => updateForm('nombre', event.target.value)} required />
-            </div>
-            <div className="col-12 col-md-6">
-              <label className="form-label" htmlFor="extra_codigo">Codigo</label>
-              <input id="extra_codigo" className="form-control" value={form.codigo} onChange={(event) => updateForm('codigo', event.target.value)} required />
+              <input
+                id="extra_nombre"
+                className="form-control"
+                value={form.nombre}
+                onChange={(event) => updateForm('nombre', event.target.value)}
+                placeholder="Ej: Extra queso"
+                required
+              />
             </div>
             <div className="col-12 col-md-6">
               <label className="form-label" htmlFor="extra_precio">Precio adicional</label>
-              <input id="extra_precio" type="number" min="0" step="0.01" className="form-control" value={form.precio_adicional} onChange={(event) => updateForm('precio_adicional', event.target.value)} required />
+              <input
+                id="extra_precio"
+                type="number"
+                min="0"
+                step="0.01"
+                className="form-control"
+                value={form.precio_adicional}
+                onChange={(event) => updateForm('precio_adicional', event.target.value)}
+                placeholder="Ej: 25.00"
+                required
+              />
             </div>
             <div className="col-12">
               <label className="form-label" htmlFor="extra_insumo">Insumo que consume</label>
-              <select id="extra_insumo" className="form-select" value={form.id_insumo} onChange={(event) => updateForm('id_insumo', event.target.value)}>
-                <option value="">Sin insumo asociado</option>
-                {insumos.map((insumo) => (
-                  <option key={insumo.id_insumo} value={insumo.id_insumo}>{insumo.nombre_insumo}</option>
-                ))}
-              </select>
+              <Select
+                inputId="extra_insumo"
+                classNamePrefix="menu-salsas-receta-select"
+                options={insumoOptions}
+                value={insumoOptions.find((opt) => String(opt.value) === String(form.id_insumo)) || insumoOptions[0]}
+                onChange={(option) => updateForm('id_insumo', String(option?.value || ''))}
+                placeholder="Seleccionar insumo..."
+                isClearable={false}
+                isDisabled={saving}
+                maxMenuHeight={176}
+                menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                menuPosition="fixed"
+              />
             </div>
             <div className="col-12 col-md-6">
               <label className="form-label" htmlFor="extra_cantidad">Cantidad del insumo</label>
-              <input id="extra_cantidad" type="number" min="0.0001" step="0.0001" className="form-control" value={form.cant} onChange={(event) => updateForm('cant', event.target.value)} />
+              <input
+                id="extra_cantidad"
+                type="number"
+                min="0.0001"
+                step="0.0001"
+                className="form-control"
+                value={form.cant}
+                onChange={(event) => updateForm('cant', event.target.value)}
+                placeholder="Ej: 0.2500"
+              />
             </div>
             <div className="col-12 col-md-6">
               <label className="form-label" htmlFor="extra_unidad">Unidad</label>
-              <input
-                id="extra_unidad"
-                className="form-control"
-                value={
-                  insumos.find((item) => String(item.id_insumo) === String(form.id_insumo))?.unidad_simbolo ||
-                  insumos.find((item) => String(item.id_insumo) === String(form.id_insumo))?.unidad_nombre ||
-                  ''
-                }
-                disabled
-                readOnly
+              <Select
+                inputId="extra_unidad"
+                classNamePrefix="menu-salsas-receta-select"
+                options={unidadOptions}
+                value={unidadOptions.find((opt) => String(opt.value) === String(form.id_unidad_medida)) || null}
+                onChange={(option) => updateForm('id_unidad_medida', String(option?.value || ''))}
+                placeholder="Seleccionar unidad..."
+                isClearable={false}
+                isDisabled={saving}
+                maxMenuHeight={176}
+                menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                menuPosition="fixed"
               />
             </div>
           </div>

@@ -6,7 +6,8 @@ const MENU_PUBLIC_BUCKET = 'jonnys-assets';
 
 const recetasAdminService = {
   // Lista todas las recetas administrativas.
-  listarRecetasAdmin: async () => apiFetch(BASE_ENDPOINT, 'GET', null, { noCache: true }),
+  listarRecetasAdmin: async () =>
+    apiFetch(`${BASE_ENDPOINT}?incluir_inactivos=1`, 'GET', null, { noCache: true }),
 
   // Obtiene el detalle de una receta por ID.
   obtenerRecetaAdmin: async (id) => apiFetch(`${BASE_ENDPOINT}/${id}`, 'GET', null, { noCache: true }),
@@ -18,6 +19,10 @@ const recetasAdminService = {
   // Obtiene los insumos/cantidades que componen una receta.
   obtenerDetalleReceta: async (id) =>
     apiFetch(`${BASE_ENDPOINT}/${id}/detalle`, 'GET', null, { noCache: true }),
+
+  // Contexto optimizado para edicion (receta + detalle + catalogos del modal).
+  obtenerContextoEdicionReceta: async (id) =>
+    apiFetch(`${BASE_ENDPOINT}/${id}/contexto-edicion`, 'GET', null, { noCache: true }),
 
   // Reemplaza el detalle de insumos de una receta.
   guardarDetalleReceta: async (id, detalleReceta) =>

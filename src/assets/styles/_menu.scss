@@ -2317,6 +2317,53 @@
   color: #6a3a2a;
 }
 
+/* Filtros de menu: override fuerte para evitar botones gigantes por herencia de drawers. */
+.menu-filters-drawer .menu-filters-drawer__actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-auto-rows: min-content !important;
+  align-items: start !important;
+  gap: 10px !important;
+  margin-top: auto !important;
+}
+
+.menu-filters-drawer .inv-cat-v2__drawer-body {
+  min-height: 100%;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.menu-filters-drawer .inv-cat-filter-grid {
+  flex: 1 1 auto;
+}
+
+.menu-filters-drawer .menu-filters-drawer__actions .btn,
+.menu-filters-drawer .inv-prod-drawer-actions.menu-filters-drawer__actions .btn,
+.menu-filters-drawer .inv-cat-filter-actions.menu-filters-drawer__actions .btn {
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  padding: 0 !important;
+  line-height: 34px !important;
+  font-size: 0.84rem !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  align-self: start !important;
+}
+
+@media (max-width: 767.98px) {
+  .menu-filters-drawer .menu-filters-drawer__actions .btn {
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    line-height: 32px !important;
+    font-size: 0.8rem !important;
+  }
+}
+
 @media (max-width: 991.98px) {
   .menu-module-head .inv-prod-header {
     gap: 12px;
@@ -2535,12 +2582,36 @@
 .menu-salsas-receta-select__control {
   border-radius: 12px !important;
   border-color: #dfdfdf !important;
-  min-height: 44px !important;
+  min-height: 38px !important;
+  height: 38px !important;
   box-shadow: none !important;
 }
 
 .menu-salsas-receta-select__control--is-focused {
   border-color: #d8b08a !important;
+}
+
+.menu-salsas-receta-select__value-container {
+  min-height: 38px;
+  padding: 0 12px !important;
+}
+
+.menu-salsas-receta-select__single-value,
+.menu-salsas-receta-select__placeholder {
+  font-size: 0.98rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-salsas-receta-select__indicators {
+  min-height: 38px;
+  height: 38px;
+}
+
+.menu-salsas-receta-select__indicator-separator {
+  margin: 8px 0 !important;
 }
 
 .menu-salsas-receta-admin__count {

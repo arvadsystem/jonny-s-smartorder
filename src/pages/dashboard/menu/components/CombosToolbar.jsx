@@ -1,6 +1,8 @@
 const CombosToolbar = ({
   search,
   onSearchChange,
+  filtersOpen,
+  onOpenFilters,
   drawerOpen,
   onOpenCreate
 }) => (
@@ -17,6 +19,18 @@ const CombosToolbar = ({
 
     <button
       type="button"
+      className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
+      onClick={onOpenFilters}
+      title="Filtros"
+      aria-expanded={filtersOpen}
+      aria-controls="menu-combos-filtros-drawer"
+    >
+      <i className="bi bi-funnel" />
+      <span>Filtros</span>
+    </button>
+
+    <button
+      type="button"
       className="inv-prod-toolbar-btn"
       onClick={onOpenCreate}
       disabled={drawerOpen}
@@ -24,6 +38,7 @@ const CombosToolbar = ({
       <i className="bi bi-plus-circle" />
       Nuevo combo
     </button>
+
   </div>
 );
 

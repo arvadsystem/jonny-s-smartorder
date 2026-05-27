@@ -3,7 +3,7 @@ import { apiFetch } from './api';
 const BASE_ENDPOINT = '/api/admin/extras';
 
 const extrasAdminService = {
-  listarExtras: async () => apiFetch(BASE_ENDPOINT, 'GET', null, { noCache: true }),
+  listarExtras: async () => apiFetch(`${BASE_ENDPOINT}?incluir_inactivos=1`, 'GET', null, { noCache: true }),
   obtenerExtra: async (id) => apiFetch(`${BASE_ENDPOINT}/${id}`, 'GET', null, { noCache: true }),
   crearExtra: async (payload) => apiFetch(BASE_ENDPOINT, 'POST', payload),
   actualizarExtra: async (id, payload) => apiFetch(`${BASE_ENDPOINT}/${id}`, 'PUT', payload),

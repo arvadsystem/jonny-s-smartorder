@@ -4,6 +4,7 @@ import RecetasTable from './components/RecetasTable';
 import RecetasToolbar from './components/RecetasToolbar';
 import MenuActionToast from './components/MenuActionToast';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
+import MenuFiltersDrawer from './components/MenuFiltersDrawer';
 import useRecetasAdmin from './hooks/useRecetasAdmin';
 import { resolveRecetaActiva } from './utils/recetasAdminUtils';
 
@@ -23,7 +24,10 @@ const RecetasAdmin = () => {
       detalleReceta,
       insumosDetalleCatalog,
       loadingDetalleCatalog,
+      menusCatalog,
+      departamentosCatalog,
       filtersOpen,
+      filters,
       filtersDraft,
       viewMode,
       cardImageErrors,
@@ -41,6 +45,7 @@ const RecetasAdmin = () => {
       setFiltersDraft,
       setFormPreviewError,
       onChangeField,
+      onChangeSelectField,
       addDetalleRow,
       removeDetalleRow,
       updateDetalleRow,
@@ -54,6 +59,7 @@ const RecetasAdmin = () => {
       onCambiarEstado,
       applyFilters,
       clearFilters,
+      setShowInactiveOnly,
       clearFormImage,
       onPickImageFile,
       setCardImageError
@@ -127,12 +133,13 @@ const RecetasAdmin = () => {
               onOpenFilters={openFiltersDrawer}
               drawerOpen={drawerOpen}
               onOpenCreate={openCreateDrawer}
+              showInactiveOnly={filters.estado === 'inactivos'}
+              onToggleInactiveOnly={setShowInactiveOnly}
             />
           </div>
 
           <div className="card-body inv-prod-body">
             {error ? <div className="alert alert-danger inv-prod-alert">{error}</div> : null}
-            {success ? <div className="alert alert-success inv-prod-alert">{success}</div> : null}
 
             <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
               <span>{recetasFiltradas.length} recetas</span>
@@ -142,6 +149,7 @@ const RecetasAdmin = () => {
             <RecetasTable
               loading={loading}
               recetas={recetasFiltradas}
+              showInactiveOnly={filters.estado === 'inactivos'}
               viewMode={viewMode}
               togglingId={togglingId}
               cardImageErrors={cardImageErrors}
@@ -153,92 +161,60 @@ const RecetasAdmin = () => {
         </div>
       </div>
 
-      <div
-        className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${filtersOpen ? 'show' : ''}`}
-        onClick={closeFiltersDrawer}
-        aria-hidden={!filtersOpen}
-      />
-
-      <aside
-        className={`inv-prod-drawer inv-cat-v2__drawer ${filtersOpen ? 'show' : ''}`}
-        id="menu-recetas-filtros-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-hidden={!filtersOpen}
+      <MenuFiltersDrawer
+        open={filtersOpen}
+        onClose={closeFiltersDrawer}
+        onApply={applyFilters}
+        onClear={clearFilters}
+        title="Filtros de recetas"
+        drawerId="menu-recetas-filtros-drawer"
+        chips={[{ icon: 'bi-journal-richtext', label: 'Recetas' }]}
       >
-        <div className="inv-prod-drawer-head">
-          <i className="bi bi-funnel inv-cat-v2__drawer-mark" aria-hidden="true" />
-          <div>
-            <div className="inv-prod-drawer-title">Filtros de recetas</div>
-            <div className="inv-prod-drawer-sub">Estado y orden visual del listado</div>
-          </div>
-          <button
-            type="button"
-            className="inv-prod-drawer-close"
-            onClick={closeFiltersDrawer}
-            title="Cerrar"
-            aria-label="Cerrar filtros"
-          >
-            <i className="bi bi-x-lg" />
-          </button>
-        </div>
-
-        <div className="inv-prod-drawer-body inv-cat-v2__drawer-body">
-          <div className="inv-prod-drawer-section">
-            <div className="inv-prod-drawer-section-title">Estado</div>
-            <div className="inv-ins-chip-grid">
-              <button
-                type="button"
-                className={`inv-ins-chip ${filtersDraft.estado === 'todos' ? 'is-active' : ''}`}
-                onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'todos' }))}
-              >
-                Todos
-              </button>
-              <button
-                type="button"
-                className={`inv-ins-chip ${filtersDraft.estado === 'activos' ? 'is-active' : ''}`}
-                onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'activos' }))}
-              >
-                Activos
-              </button>
-              <button
-                type="button"
-                className={`inv-ins-chip ${filtersDraft.estado === 'inactivos' ? 'is-active' : ''}`}
-                onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'inactivos' }))}
-              >
-                Inactivos
-              </button>
-            </div>
-            <div className="inv-ins-help">Filtra por estado de receta.</div>
-          </div>
-
-          <div className="inv-prod-drawer-section">
-            <div className="inv-prod-drawer-section-title">Orden</div>
-            <label className="form-label" htmlFor="menu_recetas_sort">Ordenar por</label>
-            <select
-              id="menu_recetas_sort"
-              className="form-select"
-              value={filtersDraft.sortBy}
-              onChange={(event) => setFiltersDraft((state) => ({ ...state, sortBy: event.target.value }))}
+        <div className="inv-prod-drawer-section">
+          <div className="inv-prod-drawer-section-title">Estado</div>
+          <div className="inv-ins-chip-grid">
+            <button
+              type="button"
+              className={`inv-ins-chip ${filtersDraft.estado === 'todos' ? 'is-active' : ''}`}
+              onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'todos' }))}
             >
-              <option value="recientes">Mas recientes</option>
-              <option value="nombre_asc">Nombre (A-Z)</option>
-              <option value="nombre_desc">Nombre (Z-A)</option>
-              <option value="precio_asc">Precio (menor a mayor)</option>
-              <option value="precio_desc">Precio (mayor a menor)</option>
-            </select>
-          </div>
-
-          <div className="inv-prod-drawer-actions inv-cat-v2__drawer-actions">
-            <button type="button" className="btn inv-prod-btn-subtle" onClick={clearFilters}>
-              Limpiar
+              Todos
             </button>
-            <button type="button" className="btn inv-prod-btn-primary" onClick={applyFilters}>
-              Aplicar
+            <button
+              type="button"
+              className={`inv-ins-chip ${filtersDraft.estado === 'activos' ? 'is-active' : ''}`}
+              onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'activos' }))}
+            >
+              Activos
+            </button>
+            <button
+              type="button"
+              className={`inv-ins-chip ${filtersDraft.estado === 'inactivos' ? 'is-active' : ''}`}
+              onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'inactivos' }))}
+            >
+              Inactivos
             </button>
           </div>
+          <div className="inv-ins-help">Filtra por estado de receta.</div>
         </div>
-      </aside>
+
+        <div className="inv-prod-drawer-section">
+          <div className="inv-prod-drawer-section-title">Orden</div>
+          <label className="form-label" htmlFor="menu_recetas_sort">Ordenar por</label>
+          <select
+            id="menu_recetas_sort"
+            className="form-select"
+            value={filtersDraft.sortBy}
+            onChange={(event) => setFiltersDraft((state) => ({ ...state, sortBy: event.target.value }))}
+          >
+            <option value="recientes">Mas recientes</option>
+            <option value="nombre_asc">Nombre (A-Z)</option>
+            <option value="nombre_desc">Nombre (Z-A)</option>
+            <option value="precio_asc">Precio (menor a mayor)</option>
+            <option value="precio_desc">Precio (mayor a menor)</option>
+          </select>
+        </div>
+      </MenuFiltersDrawer>
 
       <RecetasFormDrawer
         drawerOpen={drawerOpen}
@@ -250,6 +226,7 @@ const RecetasAdmin = () => {
         loadingDetalleCatalog={loadingDetalleCatalog}
         saving={saving}
         onChangeField={onChangeField}
+        onChangeSelectField={onChangeSelectField}
         onAddDetalleRow={addDetalleRow}
         onRemoveDetalleRow={removeDetalleRow}
         onUpdateDetalleRow={updateDetalleRow}
@@ -260,6 +237,8 @@ const RecetasAdmin = () => {
         selectedImageFileName={selectedImageFileName}
         formPreviewUrl={formPreviewUrl}
         formPreviewError={formPreviewError}
+        menusCatalog={menusCatalog}
+        departamentosCatalog={departamentosCatalog}
         onPreviewError={() => setFormPreviewError(true)}
       />
 

@@ -1,4 +1,5 @@
 ﻿import { useRef } from 'react';
+import Select from 'react-select';
 import RecetasImagePreview from './RecetasImagePreview';
 import { shouldRequireSpiceLevel } from '../utils/recetasAdminUtils';
 
@@ -12,6 +13,7 @@ const RecetasFormDrawer = ({
   loadingDetalleCatalog = false,
   saving,
   onChangeField,
+  onChangeSelectField,
   onAddDetalleRow,
   onRemoveDetalleRow,
   onUpdateDetalleRow,
@@ -22,11 +24,29 @@ const RecetasFormDrawer = ({
   selectedImageFileName,
   formPreviewUrl,
   formPreviewError,
-  onPreviewError
+  onPreviewError,
+  menusCatalog = [],
+  departamentosCatalog = []
 }) => {
   const requiresSpiceLevel = shouldRequireSpiceLevel(form?.nombre_receta);
   const imageInputRef = useRef(null);
   const hasInsumosCatalog = Array.isArray(insumosDetalleCatalog) && insumosDetalleCatalog.length > 0;
+  const selectedMenuOption = menusCatalog.find((option) => String(option.value) === String(form.id_menu)) || null;
+  const selectedDepartamentoOption =
+    departamentosCatalog.find((option) => String(option.value) === String(form.id_tipo_departamento)) || null;
+  const unidadesDetalleOptions = Array.from(
+    new Map(
+      (Array.isArray(insumosDetalleCatalog) ? insumosDetalleCatalog : [])
+        .filter((item) => String(item?.id_unidad_medida || '').trim())
+        .map((item) => {
+          const value = String(item.id_unidad_medida);
+          const nombre = String(item.unidad_nombre || '').trim();
+          const simbolo = String(item.unidad_simbolo || '').trim();
+          const label = simbolo && nombre ? `${simbolo} - ${nombre}` : (simbolo || nombre || `Unidad ${value}`);
+          return [value, { value, label }];
+        })
+    ).values()
+  );
 
   if (!drawerOpen) return null;
 
@@ -78,6 +98,7 @@ const RecetasFormDrawer = ({
                         name="nombre_receta"
                         value={form.nombre_receta}
                         onChange={onChangeField}
+                        placeholder="Ej: Tacos de birria"
                         required
                       />
                     </div>
@@ -90,6 +111,7 @@ const RecetasFormDrawer = ({
                         name="descripcion"
                         value={form.descripcion}
                         onChange={onChangeField}
+                        placeholder="Ej: Tortilla de maiz, birria, cebolla y cilantro"
                       />
                     </div>
 
@@ -157,21 +179,23 @@ const RecetasFormDrawer = ({
                         name="precio"
                         value={form.precio}
                         onChange={onChangeField}
+                        placeholder="Ej: 75.00"
                         required
                       />
                     </div>
 
                     <div className="col-12 col-md-6">
-                      <label className="form-label" htmlFor="receta_id_menu">ID menu</label>
-                      <input
-                        id="receta_id_menu"
-                        type="number"
-                        min="1"
-                        className="form-control"
-                        name="id_menu"
-                        value={form.id_menu}
-                        onChange={onChangeField}
-                        required
+                      <label className="form-label" htmlFor="receta_id_menu">Menu</label>
+                      <Select
+                        inputId="receta_id_menu"
+                        classNamePrefix="menu-salsas-receta-select"
+                        options={menusCatalog}
+                        value={selectedMenuOption}
+                        onChange={(option) => onChangeSelectField?.('id_menu', option?.value || '')}
+                        placeholder="Ej: #1 - Menu Normal"
+                        isClearable={false}
+                        isDisabled={saving}
+                        maxMenuHeight={192}
                       />
                     </div>
 
@@ -186,6 +210,7 @@ const RecetasFormDrawer = ({
                           name="id_nivel_picante"
                           value={form.id_nivel_picante}
                           onChange={onChangeField}
+                          placeholder="Ej: 5"
                           required
                         />
                         <div className="form-text">Campo obligatorio solo para recetas de alitas o Tenders.</div>
@@ -193,16 +218,17 @@ const RecetasFormDrawer = ({
                     )}
 
                     <div className="col-12 col-md-6">
-                      <label className="form-label" htmlFor="receta_id_departamento">ID tipo departamento</label>
-                      <input
-                        id="receta_id_departamento"
-                        type="number"
-                        min="1"
-                        className="form-control"
-                        name="id_tipo_departamento"
-                        value={form.id_tipo_departamento}
-                        onChange={onChangeField}
-                        required
+                      <label className="form-label" htmlFor="receta_id_departamento">Tipo departamento</label>
+                      <Select
+                        inputId="receta_id_departamento"
+                        classNamePrefix="menu-salsas-receta-select"
+                        options={departamentosCatalog}
+                        value={selectedDepartamentoOption}
+                        onChange={(option) => onChangeSelectField?.('id_tipo_departamento', option?.value || '')}
+                        placeholder="Ej: Tacos de birria"
+                        isClearable={false}
+                        isDisabled={saving}
+                        maxMenuHeight={192}
                       />
                     </div>
                   </div>
@@ -255,7 +281,7 @@ const RecetasFormDrawer = ({
                               disabled={saving || loadingDetalleCatalog}
                               required
                             >
-                              <option value="">Seleccionar insumo</option>
+                              <option value="">Ej: Salsa roja</option>
                               {insumosDetalleCatalog.map((insumo) => (
                                 <option key={insumo.id_insumo} value={insumo.id_insumo}>
                                   {insumo.nombre_insumo}
@@ -275,20 +301,27 @@ const RecetasFormDrawer = ({
                               value={row.cant}
                               onChange={(event) => onUpdateDetalleRow(index, 'cant', event.target.value)}
                               disabled={saving}
+                              placeholder="Ej: 0.2500"
                               required
                             />
                           </div>
 
                           <div className="menu-recetas-admin__detalle-field">
                             <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>Unidad</label>
-                            <input
-                              id={`receta_detalle_unidad_${index}`}
-                              className="form-control"
-                              value={unidadLabel}
-                              disabled
-                              readOnly
+                            <Select
+                              inputId={`receta_detalle_unidad_${index}`}
+                              classNamePrefix="menu-salsas-receta-select"
+                              options={unidadesDetalleOptions}
+                              value={unidadesDetalleOptions.find((option) => String(option.value) === String(row.id_unidad_medida)) || null}
+                              onChange={(option) => onUpdateDetalleRow(index, 'id_unidad_medida', option?.value || '')}
+                              placeholder="Seleccionar unidad"
+                              isDisabled={saving || loadingDetalleCatalog}
+                              isClearable={false}
+                              maxMenuHeight={192}
                             />
-                            <input type="hidden" value={row.id_unidad_medida} readOnly />
+                            {!row.id_unidad_medida && unidadLabel && unidadLabel !== 'Unidad' ? (
+                              <small className="form-text">Sugerida por insumo: {unidadLabel}</small>
+                            ) : null}
                           </div>
 
                           <button
@@ -325,3 +358,4 @@ const RecetasFormDrawer = ({
 };
 
 export default RecetasFormDrawer;
+

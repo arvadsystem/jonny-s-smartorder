@@ -206,6 +206,7 @@ const useCombosAdmin = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
+  const [showInactiveOnly, setShowInactiveOnly] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState('create');
   const [editingId, setEditingId] = useState(null);
@@ -214,6 +215,7 @@ const useCombosAdmin = () => {
   const [formPreviewError, setFormPreviewError] = useState(false);
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
+  const [menusCatalog, setMenusCatalog] = useState([]);
   // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
     id_menu: ''
@@ -346,19 +348,54 @@ const useCombosAdmin = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMenusCatalog = async () => {
+      try {
+        const menusResponse = await menuPublicacionAdminService.getMenusProgramables();
+        if (!isMounted) return;
+
+        const menusRows = (Array.isArray(menusResponse) ? menusResponse : [])
+          .map((row, index) => {
+            const id = Number(row?.id_menu || row?.id || 0);
+            const label = String(row?.nombre_menu || row?.nombre || `Menu ${index + 1}`).trim();
+            return id > 0 ? { value: String(id), label: `#${id} - ${label}` } : null;
+          })
+          .filter(Boolean);
+
+        setMenusCatalog(menusRows);
+      } catch {
+        if (!isMounted) return;
+        setMenusCatalog([]);
+      }
+    };
+
+    void loadMenusCatalog();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const combosFiltrados = useMemo(() => {
     const searchTerm = String(search || '').trim().toLowerCase();
     const rows = Array.isArray(combos) ? combos : [];
 
-    if (!searchTerm) return rows;
-
     return rows.filter((combo) => {
+      const isActive = resolveComboActivo(combo);
+      if (showInactiveOnly) {
+        if (isActive) return false;
+      } else if (!isActive) {
+        return false;
+      }
+      if (!searchTerm) return true;
       const nombreCombo = String(resolveComboNombre(combo) || '').toLowerCase();
       const descripcion = String(combo?.descripcion || '').toLowerCase();
       const idText = String(combo?.id_combo || '');
       return nombreCombo.includes(searchTerm) || descripcion.includes(searchTerm) || idText.includes(searchTerm);
     });
-  }, [combos, search]);
+  }, [combos, search, showInactiveOnly]);
 
   const recetasDisponibles = useMemo(() => {
     const selectedIds = new Set(
@@ -608,10 +645,12 @@ const useCombosAdmin = () => {
       drawerMode,
       editingId,
       form,
+      menusCatalog,
       cardImageErrors,
       formPreviewError,
       selectedImageFileName: String(selectedImageFile?.name || ''),
       loadingRecetasCatalogo,
+      showInactiveOnly,
       recetasCatalogo
     },
     derived: {
@@ -621,6 +660,7 @@ const useCombosAdmin = () => {
     },
     actions: {
       setSearch,
+      setShowInactiveOnly,
       setFormPreviewError,
       onChangeField,
       openCreateDrawer,
