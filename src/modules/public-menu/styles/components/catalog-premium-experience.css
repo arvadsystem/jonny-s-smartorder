@@ -629,7 +629,7 @@
 
 .pm-jonny-experience__card {
   display: grid;
-  grid-template-columns: minmax(260px, 1.14fr) repeat(5, minmax(112px, 0.78fr)) minmax(240px, 0.92fr);
+  grid-template-columns: minmax(260px, 1.14fr) repeat(6, minmax(112px, 0.78fr)) minmax(240px, 0.92fr);
   gap: 0;
   overflow: hidden;
   min-height: 214px;
@@ -843,6 +843,59 @@
   max-width: 7.65rem;
   font-size: 0.58rem;
   line-height: 1.68;
+}
+
+.pm-jonny-experience__contact-list {
+  display: grid;
+  gap: 0.28rem;
+  width: 100%;
+  max-width: 8.2rem;
+}
+
+.pm-jonny-experience__contact-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+  justify-content: center;
+  font-size: 0.62rem;
+  color: #16100c;
+  line-height: 1.25;
+}
+
+.pm-jonny-experience__contact-line i {
+  color: #b85f26;
+}
+
+.pm-jonny-experience__contact-line b {
+  font-weight: 800;
+}
+
+.pm-jonny-experience__contact-empty {
+  font-size: 0.58rem;
+  color: #6d5a4c;
+  text-align: center;
+}
+
+@media (min-width: 992px) {
+  .pm-jonny-experience__item {
+    align-content: start;
+    grid-template-rows: auto auto minmax(3.1rem, auto);
+  }
+
+  .pm-jonny-experience__item p {
+    align-self: start;
+  }
+
+  .pm-jonny-experience__item--contact {
+    grid-template-rows: auto auto minmax(3.1rem, auto) auto;
+  }
+
+  .pm-jonny-experience__item--contact .pm-jonny-experience__contact-list {
+    width: fit-content;
+    max-width: 100%;
+    justify-self: center;
+    align-self: start;
+  }
 }
 
 .pm-jonny-experience__social {

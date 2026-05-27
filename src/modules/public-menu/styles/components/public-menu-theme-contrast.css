@@ -546,6 +546,18 @@
   color: #b86429 !important;
 }
 
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__contact-line {
+  color: #fff8ed !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__contact-line i {
+  color: #b86429 !important;
+}
+
+.pm-shell:not(.pm-theme-light) .pm-jonny-experience__contact-empty {
+  color: rgba(255, 248, 237, 0.72) !important;
+}
+
 /* FIX texto redes sociales (letras cortadas) */
 .pm-jonny-experience__social-copy b {
   line-height: 1.2 !important;

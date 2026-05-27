@@ -15,6 +15,11 @@ const MENU_CAROUSEL_UPLOAD_CONTEXT = 'carrusel';
 const GLOBAL_BRANCH_KEY = '0';
 const SUPABASE_PUBLIC_OBJECT_MARKER = '/storage/v1/object/public/';
 const MENU_CAROUSEL_STORAGE_PREFIX = `${MENU_PUBLIC_BUCKET}/${MENU_CAROUSEL_UPLOAD_CONTEXT}/`;
+const EMPTY_CONTACT_PHONES = Object.freeze({
+  primary: '',
+  secondary: '',
+  whatsapp: ''
+});
 
 const isPersistentCarouselImageUrl = (rawUrl) => {
   const value = String(rawUrl || '').trim();
@@ -51,13 +56,26 @@ const toCarouselStoragePath = (rawValue) => {
 };
 
 const normalizeCarouselConfig = (value) => {
-  if (!value || typeof value !== 'object') return { byBranch: {}, customByBranch: {} };
+  if (!value || typeof value !== 'object') {
+    return { byBranch: {}, customByBranch: {}, contactPhones: { ...EMPTY_CONTACT_PHONES } };
+  }
   return {
     byBranch: value.byBranch && typeof value.byBranch === 'object' ? value.byBranch : {},
     customByBranch:
       value.customByBranch && typeof value.customByBranch === 'object'
         ? value.customByBranch
-        : {}
+        : {},
+    contactPhones: {
+      primary: String(
+        value?.contactPhones?.primary || value?.contactPhones?.telefono_principal || ''
+      ).trim(),
+      secondary: String(
+        value?.contactPhones?.secondary || value?.contactPhones?.telefono_secundario || ''
+      ).trim(),
+      whatsapp: String(
+        value?.contactPhones?.whatsapp || value?.contactPhones?.telefono_whatsapp || ''
+      ).trim()
+    }
   };
 };
 
@@ -85,7 +103,12 @@ const MenuCarruselAdmin = () => {
   const [uploadingImages, setUploadingImages] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [customImages, setCustomImages] = useState([]);
-  const [serverConfig, setServerConfig] = useState({ byBranch: {}, customByBranch: {} });
+  const [serverConfig, setServerConfig] = useState({
+    byBranch: {},
+    customByBranch: {},
+    contactPhones: { ...EMPTY_CONTACT_PHONES }
+  });
+  const [contactPhones, setContactPhones] = useState({ ...EMPTY_CONTACT_PHONES });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [customImageConfirm, setCustomImageConfirm] = useState(null);
@@ -153,6 +176,7 @@ const MenuCarruselAdmin = () => {
 
         setCatalogItems(rows);
         setServerConfig(remoteConfig);
+        setContactPhones(remoteConfig.contactPhones || { ...EMPTY_CONTACT_PHONES });
         setSelectedIds([]);
         setCustomImages(savedCustom);
       } catch (e) {
@@ -160,7 +184,8 @@ const MenuCarruselAdmin = () => {
         setCatalogItems([]);
         setSelectedIds([]);
         setCustomImages([]);
-        setServerConfig({ byBranch: {}, customByBranch: {} });
+        setServerConfig({ byBranch: {}, customByBranch: {}, contactPhones: { ...EMPTY_CONTACT_PHONES } });
+        setContactPhones({ ...EMPTY_CONTACT_PHONES });
         setError(e?.message || 'No se pudo cargar el catalogo de la sucursal.');
       } finally {
         if (isMounted) setLoadingCatalog(false);
@@ -232,12 +257,18 @@ const MenuCarruselAdmin = () => {
         customByBranch: {
           ...(serverConfig?.customByBranch || {}),
           [GLOBAL_BRANCH_KEY]: normalizeCustomSlides(customImages)
+        },
+        contactPhones: {
+          primary: String(contactPhones?.primary || '').trim(),
+          secondary: String(contactPhones?.secondary || '').trim(),
+          whatsapp: String(contactPhones?.whatsapp || '').trim()
         }
       };
 
       const saved = await menuPublicacionAdminService.saveCarruselConfig(nextConfig);
       const normalizedSaved = normalizeCarouselConfig(saved);
       setServerConfig(normalizedSaved);
+      setContactPhones(normalizedSaved.contactPhones || { ...EMPTY_CONTACT_PHONES });
       setSelectedIds([]);
       setCustomImages(readBranchCustomFromConfig(normalizedSaved, GLOBAL_BRANCH_KEY));
       setSuccess('Carrusel global guardado correctamente.');
@@ -362,6 +393,51 @@ const MenuCarruselAdmin = () => {
             {savingConfig ? 'Guardando...' : 'Guardar carrusel'}
           </button>
         </div>
+
+        <section className="menu-carrusel-admin__contact">
+          <div className="menu-carrusel-admin__upload-head">
+            <h6>Contacto para landing</h6>
+            <small>Estos numeros se muestran en el bloque CONTACTO del menu publico.</small>
+          </div>
+          <div className="menu-carrusel-admin__contact-grid">
+            <label className="menu-carrusel-admin__contact-field">
+              <span>Telefono principal</span>
+              <input
+                type="text"
+                className="form-control"
+                value={contactPhones.primary}
+                onChange={(event) =>
+                  setContactPhones((current) => ({ ...current, primary: event.target.value }))
+                }
+                placeholder="+504 0000-0000"
+              />
+            </label>
+            <label className="menu-carrusel-admin__contact-field">
+              <span>Telefono secundario</span>
+              <input
+                type="text"
+                className="form-control"
+                value={contactPhones.secondary}
+                onChange={(event) =>
+                  setContactPhones((current) => ({ ...current, secondary: event.target.value }))
+                }
+                placeholder="+504 0000-0000"
+              />
+            </label>
+            <label className="menu-carrusel-admin__contact-field">
+              <span>WhatsApp</span>
+              <input
+                type="text"
+                className="form-control"
+                value={contactPhones.whatsapp}
+                onChange={(event) =>
+                  setContactPhones((current) => ({ ...current, whatsapp: event.target.value }))
+                }
+                placeholder="+504 0000-0000"
+              />
+            </label>
+          </div>
+        </section>
 
         <section className="menu-carrusel-admin__upload">
           <div className="menu-carrusel-admin__upload-head">

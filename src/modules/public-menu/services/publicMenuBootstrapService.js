@@ -5,6 +5,12 @@ import { API_URL } from '../../../utils/constants';
 const CATALOG_CACHE_TTL_MS = 20_000;
 const catalogCache = new Map();
 const PUBLIC_ORDER_TYPES = new Set(['dine-in', 'pickup', 'delivery']);
+const CARRUSEL_CONTACT_STORAGE_KEY = 'pm_carrusel_contact_phones_v1';
+const DEFAULT_CARRUSEL_CONTACT_PHONES = Object.freeze({
+  primary: '',
+  secondary: '',
+  whatsapp: ''
+});
 const SUPABASE_PUBLIC_BUCKET = 'jonnys-assets';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const LEGACY_GOOGLE_IMAGE_RE = /(?:drive\.google\.com|drive\.usercontent\.google\.com|googleusercontent\.com)/i;
@@ -295,6 +301,33 @@ const normalizeCatalogItem = (raw) => ({
   orden: Number(raw?.orden || 0)
 });
 
+const normalizeCarruselContactPhones = (value) => {
+  if (!value || typeof value !== 'object') return { ...DEFAULT_CARRUSEL_CONTACT_PHONES };
+  return {
+    primary: String(value.primary || value.telefono_principal || value.phone_primary || '').trim(),
+    secondary: String(value.secondary || value.telefono_secundario || value.phone_secondary || '').trim(),
+    whatsapp: String(value.whatsapp || value.telefono_whatsapp || '').trim()
+  };
+};
+
+const hasAnyCarruselContactPhone = (value = {}) =>
+  Boolean(
+    String(value?.primary || '').trim() ||
+      String(value?.secondary || '').trim() ||
+      String(value?.whatsapp || '').trim()
+  );
+
+const readCarruselContactPhonesCache = () => {
+  if (typeof window === 'undefined') return { ...DEFAULT_CARRUSEL_CONTACT_PHONES };
+  try {
+    const raw = window.localStorage.getItem(CARRUSEL_CONTACT_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_CARRUSEL_CONTACT_PHONES };
+    return normalizeCarruselContactPhones(JSON.parse(raw));
+  } catch {
+    return { ...DEFAULT_CARRUSEL_CONTACT_PHONES };
+  }
+};
+
 // Servicio API real del modulo public-menu (sin mocks).
 export const publicMenuBootstrapService = {
   // Lista sucursales publicas.
@@ -311,13 +344,24 @@ export const publicMenuBootstrapService = {
     const response = await apiFetch('/api/public-menu/carrusel-config', 'GET', null, { noCache: true });
     const payload = response?.data;
     if (!payload || typeof payload !== 'object') {
-      return { byBranch: {}, customByBranch: {} };
+      const cachedPhones = readCarruselContactPhonesCache();
+      return {
+        byBranch: {},
+        customByBranch: {},
+        contactPhones: cachedPhones
+      };
     }
+
+    const remoteContactPhones = normalizeCarruselContactPhones(payload.contactPhones || payload);
+    const contactPhones = hasAnyCarruselContactPhone(remoteContactPhones)
+      ? remoteContactPhones
+      : readCarruselContactPhonesCache();
 
     return {
       byBranch: payload.byBranch && typeof payload.byBranch === 'object' ? payload.byBranch : {},
       customByBranch:
-        payload.customByBranch && typeof payload.customByBranch === 'object' ? payload.customByBranch : {}
+        payload.customByBranch && typeof payload.customByBranch === 'object' ? payload.customByBranch : {},
+      contactPhones
     };
   },
 

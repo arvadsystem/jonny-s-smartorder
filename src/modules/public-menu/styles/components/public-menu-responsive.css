@@ -106,6 +106,19 @@
     grid-column: 2;
   }
 
+  .pm-jonny-experience__contact-list {
+    grid-column: 2;
+    justify-items: center;
+    justify-self: center;
+    max-width: none;
+  }
+
+  .pm-jonny-experience__contact-line,
+  .pm-jonny-experience__contact-empty {
+    text-align: center;
+    justify-content: center;
+  }
+
   .pm-jonny-experience__social {
     border-left: 0;
     border-top: 1px solid rgba(143, 93, 54, 0.14);
