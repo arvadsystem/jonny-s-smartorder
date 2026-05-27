@@ -3,6 +3,7 @@ import Select from 'react-select';
 import extrasAdminService from '../../../services/extrasAdminService';
 import MenuActionToast from './components/MenuActionToast';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
+import MenuFiltersDrawer from './components/MenuFiltersDrawer';
 
 const emptyForm = {
   codigo: '',
@@ -47,6 +48,8 @@ const ExtrasAdmin = () => {
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [showInactiveOnly, setShowInactiveOnly] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortBy, setSortBy] = useState('recientes');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -98,6 +101,15 @@ const ExtrasAdmin = () => {
       );
     });
   }, [extras, search, showInactiveOnly]);
+
+  const extrasVisibles = useMemo(() => {
+    const rows = [...extrasFiltrados];
+    if (sortBy === 'nombre_asc') return rows.sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es'));
+    if (sortBy === 'nombre_desc') return rows.sort((a, b) => String(b?.nombre || '').localeCompare(String(a?.nombre || ''), 'es'));
+    if (sortBy === 'precio_asc') return rows.sort((a, b) => Number(a?.precio_adicional || 0) - Number(b?.precio_adicional || 0));
+    if (sortBy === 'precio_desc') return rows.sort((a, b) => Number(b?.precio_adicional || 0) - Number(a?.precio_adicional || 0));
+    return rows.sort((a, b) => Number(b?.id_extra || 0) - Number(a?.id_extra || 0));
+  }, [extrasFiltrados, sortBy]);
 
   const insumoOptions = useMemo(() => {
     const base = Array.isArray(insumos) ? insumos : [];
@@ -289,21 +301,21 @@ const ExtrasAdmin = () => {
                   placeholder="Buscar extra, codigo o insumo..."
                 />
               </label>
+              <button
+                type="button"
+                className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
+                onClick={() => setFiltersOpen(true)}
+                title="Filtros"
+                aria-expanded={filtersOpen}
+                aria-controls="menu-extras-filtros-drawer"
+              >
+                <i className="bi bi-funnel" />
+                <span>Filtros</span>
+              </button>
               <button type="button" className="inv-prod-toolbar-btn" onClick={openCreate}>
                 <i className="bi bi-plus-circle" />
                 <span>Nuevo extra</span>
               </button>
-              <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  role="switch"
-                  checked={showInactiveOnly}
-                  onChange={(event) => setShowInactiveOnly(event.target.checked)}
-                  aria-label="Ver inactivos"
-                />
-                <span className="form-check-label">Ver inactivos</span>
-              </label>
             </div>
           </div>
 
@@ -311,19 +323,19 @@ const ExtrasAdmin = () => {
             {error ? <div className="alert alert-danger inv-prod-alert">{error}</div> : null}
 
             <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
-              <span>{extrasFiltrados.length} extras</span>
+              <span>{extrasVisibles.length} extras</span>
             </div>
 
             {loading ? (
               <div className="text-center py-4">Cargando extras...</div>
-            ) : extrasFiltrados.length === 0 ? (
+            ) : extrasVisibles.length === 0 ? (
               <div className="text-center py-5 text-muted">
                 <i className="bi bi-plus-square-dotted fs-3 d-block mb-2" />
                 {showInactiveOnly ? 'No hay extras inactivos para mostrar.' : 'No hay extras para mostrar.'}
               </div>
             ) : (
               <div className="menu-extras-admin__grid">
-                {extrasFiltrados.map((extra) => (
+                {extrasVisibles.map((extra) => (
                   <article
                     className={`menu-extras-card ${extra.estado ? 'is-active' : 'is-inactive'}`}
                     key={extra.id_extra}
@@ -371,6 +383,58 @@ const ExtrasAdmin = () => {
           </div>
         </div>
       </div>
+
+      <MenuFiltersDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onApply={() => setFiltersOpen(false)}
+        onClear={() => {
+          setShowInactiveOnly(false);
+          setSortBy('recientes');
+          setFiltersOpen(false);
+        }}
+        title="Filtros de extras"
+        drawerId="menu-extras-filtros-drawer"
+        chips={[{ icon: 'bi-plus-square-dotted', label: 'Extras' }]}
+      >
+        <div className="inv-prod-drawer-section">
+          <div className="inv-prod-drawer-section-title">Estado</div>
+          <div className="inv-ins-chip-grid">
+            <button
+              type="button"
+              className={`inv-ins-chip ${!showInactiveOnly ? 'is-active' : ''}`}
+              onClick={() => setShowInactiveOnly(false)}
+            >
+              Activos
+            </button>
+            <button
+              type="button"
+              className={`inv-ins-chip ${showInactiveOnly ? 'is-active' : ''}`}
+              onClick={() => setShowInactiveOnly(true)}
+            >
+              Inactivos
+            </button>
+          </div>
+          <div className="inv-ins-help">Filtra por estado del extra.</div>
+        </div>
+
+        <div className="inv-prod-drawer-section">
+          <div className="inv-prod-drawer-section-title">Orden</div>
+          <label className="form-label" htmlFor="menu_extras_sort">Ordenar por</label>
+          <select
+            id="menu_extras_sort"
+            className="form-select"
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value)}
+          >
+            <option value="recientes">Mas recientes</option>
+            <option value="nombre_asc">Nombre (A-Z)</option>
+            <option value="nombre_desc">Nombre (Z-A)</option>
+            <option value="precio_asc">Precio (menor a mayor)</option>
+            <option value="precio_desc">Precio (mayor a menor)</option>
+          </select>
+        </div>
+      </MenuFiltersDrawer>
 
       {drawerOpen ? (
         <div className="inv-prod-pmodal inv-prod-pmodal--create show">

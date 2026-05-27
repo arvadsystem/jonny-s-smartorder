@@ -1,10 +1,10 @@
 const CombosToolbar = ({
   search,
   onSearchChange,
+  filtersOpen,
+  onOpenFilters,
   drawerOpen,
-  onOpenCreate,
-  showInactiveOnly,
-  onToggleInactiveOnly
+  onOpenCreate
 }) => (
   <div className="inv-prod-header-actions inv-ins-header-actions menu-recetas-admin__header-actions menu-toolbar-actions">
     <label className="inv-ins-search menu-toolbar-search" aria-label="Buscar combos">
@@ -19,6 +19,18 @@ const CombosToolbar = ({
 
     <button
       type="button"
+      className={`inv-prod-toolbar-btn ${filtersOpen ? 'is-on' : ''}`}
+      onClick={onOpenFilters}
+      title="Filtros"
+      aria-expanded={filtersOpen}
+      aria-controls="menu-combos-filtros-drawer"
+    >
+      <i className="bi bi-funnel" />
+      <span>Filtros</span>
+    </button>
+
+    <button
+      type="button"
       className="inv-prod-toolbar-btn"
       onClick={onOpenCreate}
       disabled={drawerOpen}
@@ -27,17 +39,6 @@ const CombosToolbar = ({
       Nuevo combo
     </button>
 
-    <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
-      <input
-        className="form-check-input"
-        type="checkbox"
-        role="switch"
-        checked={Boolean(showInactiveOnly)}
-        onChange={(event) => onToggleInactiveOnly?.(event.target.checked)}
-        aria-label="Ver inactivos"
-      />
-      <span className="form-check-label">Ver inactivos</span>
-    </label>
   </div>
 );
 
