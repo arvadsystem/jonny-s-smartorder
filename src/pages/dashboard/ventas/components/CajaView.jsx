@@ -209,6 +209,7 @@ export default function CajaView({
   onSubmit,
   onCreatePedidoPendiente,
   onRegistrarPagoPedido,
+  onCatalogSucursalChange,
   onClientesRefresh,
   onNotify
 }) {
@@ -278,6 +279,7 @@ export default function CajaView({
   const sesionesAbiertasInFlightRef = useRef(null);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
+  const catalogSucursalRequestRef = useRef('');
 
   const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
@@ -348,6 +350,23 @@ export default function CajaView({
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
   });
   composerRef.current = composer;
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!selectedSucursalId) return;
+
+    const key = `sucursal:${selectedSucursalId}`;
+    if (catalogSucursalRequestRef.current === key) return;
+    catalogSucursalRequestRef.current = key;
+
+    void onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId });
+  }, [
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    isSuperAdmin,
+    onCatalogSucursalChange
+  ]);
 
   const syncComposerSession = useCallback((session) => {
     const idSesionCaja = toPositiveId(session?.id_sesion_caja);

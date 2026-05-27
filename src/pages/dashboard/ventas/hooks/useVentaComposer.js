@@ -1095,12 +1095,31 @@ export const useVentaComposer = ({
     setClientPickerOpen: (value) => setPartialState({ clientPickerOpen: value }),
     sucursalPickerOpen: state.sucursalPickerOpen,
     setSucursalPickerOpen: (value) => setPartialState({ sucursalPickerOpen: value }),
-    setSelectedSucursal: (value) =>
-      setPartialState({
-        selectedSucursal: value,
-        temporarySessionId: '',
-        submitError: ''
-      }),
+    setSelectedSucursal: (value) => {
+      const nextSucursal = String(value || '');
+      setState((current) => {
+        const changed = String(current.selectedSucursal || '') !== nextSucursal;
+        return {
+          ...current,
+          selectedSucursal: nextSucursal,
+          temporarySessionId: '',
+          selectedDiscountId: '',
+          cashReceived: '',
+          referenciaPago: '',
+          cart: changed ? [] : current.cart,
+          submitError: ''
+        };
+      });
+      setComplementModal({
+        open: false,
+        mode: 'ADD',
+        kind: null,
+        row: null,
+        cartKey: '',
+        selected: [],
+        error: ''
+      });
+    },
     temporarySessionId: state.temporarySessionId,
     setTemporarySessionId: (value) => setPartialState({ temporarySessionId: String(value || ''), submitError: '' }),
     setSelectedClient: (value) =>

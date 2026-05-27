@@ -67,6 +67,7 @@ export default function VentasPage() {
     registrarPagoPedido,
     getVentaDetail,
     refreshVentas,
+    refreshCatalogs,
     refreshClientesCatalog
   } = useVentas();
 
@@ -261,6 +262,7 @@ export default function VentasPage() {
           onSubmit={handleCreateVenta}
           onCreatePedidoPendiente={createPedidoPendiente}
           onRegistrarPagoPedido={registrarPagoPedido}
+          onCatalogSucursalChange={refreshCatalogs}
           onClientesRefresh={refreshClientesCatalog}
           onNotify={openToast}
         />
