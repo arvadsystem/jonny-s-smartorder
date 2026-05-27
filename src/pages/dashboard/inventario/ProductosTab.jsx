@@ -516,6 +516,57 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return candidate;
   }, []);
 
+  // AM: genera detalle humano para PRODUCT_IN_USE usando dependency_summary sin rediseñar UI.
+  const buildProductInUseDetail = useCallback((dependencySummary) => {
+    const modules = Array.isArray(dependencySummary?.blocking_modules) ? dependencySummary.blocking_modules : [];
+    if (!modules.length) return '';
+
+    const lines = [];
+    for (const moduleEntry of modules) {
+      const modulo = String(moduleEntry?.modulo || '').trim();
+      const items = Array.isArray(moduleEntry?.items) ? moduleEntry.items.slice(0, 10) : [];
+      const remainingRaw = Number(moduleEntry?.remaining ?? 0);
+      const remaining = Number.isFinite(remainingRaw) && remainingRaw > 0 ? remainingRaw : 0;
+
+      if (modulo === 'menu_publicado') {
+        lines.push('Menú activo/publicado:');
+        if (items.length) {
+          items.forEach((item) => lines.push(`- ${String(item?.nombre || `Menu #${item?.id_menu ?? ''}`).trim()}`));
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} registro(s) relacionado(s).`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} registros mas.`);
+      } else if (modulo === 'ordenes_compra_en_proceso') {
+        lines.push('Órdenes de compra en proceso:');
+        if (items.length) {
+          items.forEach((item) => {
+            const code = String(item?.codigo || `OC #${item?.id_orden_compra ?? ''}`).trim();
+            const estado = String(item?.estado || '').trim();
+            lines.push(estado ? `- ${code} - ${estado}` : `- ${code}`);
+          });
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} registro(s) relacionado(s).`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} registros mas.`);
+      } else if (modulo === 'stock_disponible') {
+        lines.push('Stock disponible:');
+        if (items.length) {
+          items.forEach((item) => {
+            const sucursal = String(item?.sucursal || (item?.id_sucursal ? `Sucursal #${item.id_sucursal}` : 'Sucursal sin asignar')).trim();
+            const almacen = String(item?.almacen || (item?.id_almacen ? `Almacen #${item.id_almacen}` : 'Almacen sin asignar')).trim();
+            const stock = Number(item?.stock ?? 0);
+            lines.push(`- ${sucursal} / ${almacen}: ${stock} unidades`);
+          });
+        } else if (Number(moduleEntry?.total ?? 0) > 0) {
+          lines.push(`- ${Number(moduleEntry.total)} ubicaciones con existencia.`);
+        }
+        if (remaining > 0) lines.push(`- Y ${remaining} ubicaciones mas.`);
+      }
+    }
+
+    return lines.join('\n').trim();
+  }, []);
+
   // NUEVO: centraliza lectura de mensaje y estado para toasts consistentes.
   const handleApiStatusError = useCallback((apiError, fallbackMessage, setFieldErrors) => {
     const status = Number(apiError.status || 0);
@@ -531,7 +582,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
           ? 'No tienes autorizaci\u00F3n para realizar esta acci\u00F3n.'
         : fallbackMessage;
     const rawMessage = String(backendMessage || apiError.message || fallbackByStatus || 'Error inesperado');
-    const message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
+    let message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
+    const backendCode = String(backendData?.code || '').trim().toUpperCase();
+    if (status === 409 && backendCode === 'PRODUCT_IN_USE') {
+      const detailText = buildProductInUseDetail(backendData?.dependency_summary);
+      if (detailText) {
+        message = `${message}\n\n${detailText}`;
+      }
+    }
 
     // NEW: conserva el detalle interno de error solo en desarrollo cuando se oculta en UI.
     // WHY: facilitar diagnóstico sin exponer mensajes de BD al usuario final.
@@ -555,7 +613,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     else safeToast('ERROR', message, 'danger');
 
     return message;
-  }, [mapApiFieldErrors, safeToast, toSafeProductoUiErrorMessage]);
+  }, [buildProductInUseDetail, mapApiFieldErrors, safeToast, toSafeProductoUiErrorMessage]);
 
   // NUEVO: genera puntos SVG normalizados para sparkline de KPI.
   const buildSparklinePoints = useCallback((series, width = 120, height = 44, padding = 4) => {

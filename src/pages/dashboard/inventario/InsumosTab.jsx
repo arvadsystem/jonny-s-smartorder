@@ -246,6 +246,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [togglingEstado, setTogglingEstado] = useState(false);
   const [togglingEstadoId, setTogglingEstadoId] = useState(null);
+  const [duplicateSourceContext, setDuplicateSourceContext] = useState(null);
   const [localEstadoMap, setLocalEstadoMap] = useState({});
   const [drawerImage, setDrawerImage] = useState(() => buildDrawerImageState());
   const [imageErrorMap, setImageErrorMap] = useState({});
@@ -675,7 +676,59 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const apiError = useCallback((e, fallback, setFieldErrors) => {
     const data = e?.data;
-    const msg = String((data && typeof data === 'object' && (data.message || data.mensaje)) || e?.message || fallback || 'ERROR');
+    const backendCode = String(data?.code || '').trim().toUpperCase();
+    let msg = String((data && typeof data === 'object' && (data.message || data.mensaje)) || e?.message || fallback || 'ERROR');
+    if (backendCode === 'INSUMO_IN_USE') {
+      // AM: detalle humano para bloqueo por recetas activas y stock disponible usando dependency_summary.
+      const modules = Array.isArray(data?.dependency_summary?.blocking_modules) ? data.dependency_summary.blocking_modules : [];
+      const lines = [];
+      for (const moduleEntry of modules) {
+        const modulo = String(moduleEntry?.modulo || '').trim();
+        const items = Array.isArray(moduleEntry?.items) ? moduleEntry.items.slice(0, 10) : [];
+        const remainingRaw = Number(moduleEntry?.remaining ?? 0);
+        const remaining = Number.isFinite(remainingRaw) && remainingRaw > 0 ? remainingRaw : 0;
+        if (modulo === 'recetas_activas') {
+          lines.push('Recetas activas:');
+          if (items.length) {
+            items.forEach((item) => lines.push(`- ${String(item?.nombre || `Receta #${item?.id_receta ?? ''}`).trim()}`));
+          } else if (Number(moduleEntry?.total ?? 0) > 0) {
+            lines.push(`- ${Number(moduleEntry.total)} receta(s) relacionada(s).`);
+          }
+          if (remaining > 0) lines.push(`- Y ${remaining} recetas mas.`);
+          continue;
+        }
+        if (modulo === 'stock_disponible') {
+          lines.push('Stock disponible:');
+          if (items.length) {
+            items.forEach((item) => {
+              const sucursal = String(item?.sucursal || 'Sucursal sin asignar').trim();
+              const almacen = String(item?.almacen || 'Almacen sin asignar').trim();
+              const stock = Number(item?.stock ?? 0);
+              lines.push(`- ${sucursal} / ${almacen}: ${Number.isFinite(stock) ? stock : 0} unidades`);
+            });
+          } else if (Number(moduleEntry?.total ?? 0) > 0) {
+            lines.push(`- ${Number(moduleEntry.total)} ubicaciones con existencia.`);
+          }
+          if (remaining > 0) lines.push(`- Y ${remaining} ubicaciones mas.`);
+          continue;
+        }
+        if (modulo === 'ordenes_compra_en_proceso') {
+          lines.push('Ordenes de compra en proceso:');
+          if (items.length) {
+            items.forEach((item) => {
+              const idOrden = item?.id_orden_compra;
+              const codigo = String(item?.codigo || `OC #${idOrden ?? ''}`).trim();
+              const estado = String(item?.estado || '').trim();
+              lines.push(`- ${codigo}${estado ? ` - ${estado}` : ''}`);
+            });
+          } else if (Number(moduleEntry?.total ?? 0) > 0) {
+            lines.push(`- ${Number(moduleEntry.total)} orden(es) relacionada(s).`);
+          }
+          if (remaining > 0) lines.push(`- Y ${remaining} ordenes mas.`);
+        }
+      }
+      if (lines.length) msg = `${msg}\n\n${lines.join('\n')}`;
+    }
     if (typeof setFieldErrors === 'function' && data?.errors && typeof data.errors === 'object') {
       const mapped = {};
       for (const [k, v] of Object.entries(data.errors)) mapped[k] = String(Array.isArray(v) ? v[0] : v || '').toUpperCase();
@@ -781,6 +834,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const resetCreate = useCallback(() => {
     setForm(emptyForm());
     setCreateErrors({});
+    setDuplicateSourceContext(null);
     resetDrawerImage();
   }, [resetDrawerImage]);
 
@@ -832,6 +886,39 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setFocusCantidad(false);
   }, [canCrearInsumos, cancelEdit, resetCreate]);
 
+  const duplicarInsumoDesdeDrawer = useCallback(() => {
+    if (!canCrearInsumos) return;
+    if (!selectedInsumo) return;
+
+    const sourceAlmacenId = Number.parseInt(String(selectedInsumo?.id_almacen ?? ''), 10);
+    // AM: reutiliza create con datos base y conserva el contexto para bloquear el mismo almacen origen.
+    setDuplicateSourceContext({
+      sourceInsumoId: Number.parseInt(String(selectedInsumo?.id_insumo ?? ''), 10) || null,
+      sourceAlmacenId: Number.isInteger(sourceAlmacenId) && sourceAlmacenId > 0 ? sourceAlmacenId : null
+    });
+
+    setCreateErrors({});
+    setForm({
+      nombre_insumo: String(selectedInsumo?.nombre_insumo ?? ''),
+      precio: String(selectedInsumo?.precio ?? ''),
+      cantidad: '',
+      stock_minimo: String(selectedInsumo?.stock_minimo ?? '0'),
+      fecha_ingreso_insumo: toDateInputValue(selectedInsumo?.fecha_ingreso_insumo),
+      id_almacen: '',
+      id_categoria_insumo: String(selectedInsumo?.id_categoria_insumo ?? ''),
+      id_unidad_medida: String(selectedInsumo?.id_unidad_medida ?? ''),
+      fecha_caducidad: toDateInputValue(selectedInsumo?.fecha_caducidad),
+      descripcion: String(selectedInsumo?.descripcion ?? '')
+    });
+    resetDrawerImage();
+    cancelEdit();
+    setSelectedId(null);
+    setDrawerMode('create');
+    setDrawer('form');
+    setDrawerMsg('');
+    setFocusCantidad(false);
+  }, [canCrearInsumos, cancelEdit, resetDrawerImage, selectedInsumo]);
+
   const openEdit = useCallback((i, opts = {}) => {
     if (!canEditarInsumos) return;
     if (!i) return;
@@ -869,6 +956,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setDrawer(null);
     setDrawerMsg('');
     setFocusCantidad(false);
+    if (drawerMode === 'create') setDuplicateSourceContext(null);
     resetDrawerImage();
   }, [
     creating,
@@ -1096,11 +1184,21 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     selectedInsumo
   ]);
 
+
   const saveCreate = useCallback(async () => {
     if (!canCrearInsumos) return;
     const v = validarInsumo(form);
     setCreateErrors(v.errors);
     if (!v.ok) return;
+    if (
+      duplicateSourceContext?.sourceAlmacenId &&
+      Number(v.cleaned?.id_almacen) === Number(duplicateSourceContext.sourceAlmacenId)
+    ) {
+      const duplicateWarehouseMessage = 'Seleccione un almacén diferente al original para duplicar el insumo.';
+      setCreateErrors((prev) => ({ ...prev, id_almacen: duplicateWarehouseMessage }));
+      setDrawerMsg(duplicateWarehouseMessage);
+      return;
+    }
     if (createSubmitLockRef.current || creating) return;
     createSubmitLockRef.current = true;
     setCreating(true);
@@ -1140,7 +1238,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       setCreating(false);
       createSubmitLockRef.current = false;
     }
-  }, [apiError, buildLocalInsumoFromCreate, buildPayload, canCrearInsumos, closeDrawer, creating, drawerImage.file, form, resetCreate, safeToast, syncInsumosSilently, uploadInsumoImageFile, upsertInsumoLocal, validarInsumo]);
+  }, [apiError, buildLocalInsumoFromCreate, buildPayload, canCrearInsumos, closeDrawer, creating, drawerImage.file, duplicateSourceContext?.sourceAlmacenId, form, resetCreate, safeToast, syncInsumosSilently, uploadInsumoImageFile, upsertInsumoLocal, validarInsumo]);
 
   const saveEdit = useCallback(async () => {
     if (!canEditarInsumos) return;
@@ -2496,8 +2594,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                         );
                       })}
                     </select>
-                    {fieldErr('id_almacen')}
-                  </>
+                    {fieldErr('id_almacen')}                  </>
                 ) : (
                   <>
                     <input className="form-control" value={getAlmacenLabel(formValues.id_almacen)} readOnly disabled />
@@ -2571,9 +2668,21 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           <div className="inv-ins-drawer-footer">
             <button type="button" className="btn inv-prod-btn-subtle" onClick={closeDrawer} disabled={creating || savingEdit || togglingEstado}>Cancelar</button>
             {drawerMode === 'edit' ? (
-              canCambiarEstadoInsumos ? (
-                <button type="button" className="btn inv-prod-btn-inactivate" onClick={() => setConfirm(selectedInsumo?.id_insumo, selectedInsumo?.nombre_insumo)} disabled={savingEdit || togglingEstado || !selectedInsumo}>Inactivar</button>
-              ) : null
+              <>
+                {canCrearInsumos ? (
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-subtle"
+                    onClick={duplicarInsumoDesdeDrawer}
+                    disabled={savingEdit || togglingEstado || !selectedInsumo}
+                  >
+                    Duplicar
+                  </button>
+                ) : null}
+                {canCambiarEstadoInsumos ? (
+                  <button type="button" className="btn inv-prod-btn-inactivate" onClick={() => setConfirm(selectedInsumo?.id_insumo, selectedInsumo?.nombre_insumo)} disabled={savingEdit || togglingEstado || !selectedInsumo}>Inactivar</button>
+                ) : null}
+              </>
             ) : (
               <button type="button" className="btn inv-prod-btn-subtle" onClick={resetCreate} disabled={creating}>Limpiar</button>
             )}
