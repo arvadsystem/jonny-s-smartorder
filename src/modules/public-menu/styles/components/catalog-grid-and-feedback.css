@@ -41,6 +41,15 @@
   gap: 0.5rem;
 }
 
+.pm-confirm-modal__actions--single {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.pm-confirm-modal__actions--single .btn {
+  min-width: 190px;
+}
+
 .pm-toast-host {
   position: fixed;
   top: 4.7rem;

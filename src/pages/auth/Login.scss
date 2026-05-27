@@ -35,7 +35,7 @@ $input-border: rgba(255, 255, 255, 0.14);
       height: 100%;
       object-fit: cover;
       object-position: center;
-      opacity: 0.37;
+      opacity: 0.5;
       z-index: 1;
     }
 
@@ -45,8 +45,8 @@ $input-border: rgba(255, 255, 255, 0.14);
       inset: 0;
       background: radial-gradient(
         ellipse at 30% 50%,
-        rgba(14, 7, 4, 0.2)  0%,
-        rgba(14, 7, 4, 0.85) 100%
+        rgba(14, 7, 4, 0.12)  0%,
+        rgba(14, 7, 4, 0.7) 100%
       );
       z-index: 2;
     }
@@ -195,7 +195,7 @@ $input-border: rgba(255, 255, 255, 0.14);
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 3.5rem 3.6rem 3.5rem 2.6rem;
+    padding: 3.5rem 4.2rem 3.5rem 2.2rem;
     z-index: 20;
 
     .form-header {
@@ -231,7 +231,7 @@ $input-border: rgba(255, 255, 255, 0.14);
           font-size: 0.7rem;
           font-weight: 600;
           letter-spacing: 1.5px;
-          color: rgba(255, 255, 255, 0.5);
+          color: rgba(255, 255, 255, 0.95);
         }
 
         .input-wrap {
@@ -642,12 +642,12 @@ $input-border: rgba(255, 255, 255, 0.14);
     background: none;
     border: none;
     padding: 0;
-    font-size: 0.8rem;
-    color: rgba(255,255,255,0.25);
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.95);
     cursor: pointer;
     font-family: inherit;
     transition: color 0.2s;
-    &:hover { color: rgba($gold, 0.6); }
+    &:hover { color: #ffffff; }
   }
 
   // ── Mensaje de éxito ─────────────────────────────────────────
