@@ -5713,8 +5713,55 @@
 
 .inv-oc-stats-band {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.65rem;
+}
+
+// AM: KPI OC mas limpios y compactos; solo icono, titulo y valor.
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card {
+  min-height: 82px;
+  padding: 0.54rem 0.62rem !important;
+  align-items: center !important;
+}
+
+// AM: iconos KPI OC mas grandes y balanceados para reforzar jerarquia visual.
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-invstat-icon {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 12px;
+  font-size: 1.03rem;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content span {
+  font-size: 0.73rem;
+  line-height: 1.05;
+}
+
+.inv-oc-module .inv-oc-stats-band .inv-oc-stat-card.inv-invstat-card .inv-prod-kpi-content strong {
+  font-size: 1.12rem;
+  line-height: 1.04;
+}
+
+@media (max-width: 1199.98px) {
+  .inv-oc-stats-band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .inv-oc-stats-band {
+    grid-template-columns: 1fr;
+  }
 }
 
 .inv-oc-hero {
@@ -5904,6 +5951,74 @@
 .inv-oc-card__header--stacked {
   flex-direction: column;
   align-items: stretch;
+}
+
+// AM: replica visual de tabla/paginacion de Movimientos aplicada al flujo OC.
+.inv-oc-flow-table-responsive {
+  border-radius: 18px;
+}
+
+.inv-oc-flow-table {
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.inv-oc-flow-table .inv-oc-flow-col-oc {
+  width: 10.5rem;
+}
+
+.inv-oc-flow-table .inv-oc-flow-col-state {
+  width: 8rem;
+}
+
+.inv-oc-flow-table .inv-oc-flow-col-branch {
+  width: 9.6rem;
+}
+
+.inv-oc-flow-table .inv-oc-flow-col-lines {
+  width: 9.1rem;
+}
+
+.inv-oc-flow-table .inv-oc-flow-col-actions {
+  width: 15.4rem;
+}
+
+.inv-oc-flow-table td .badge {
+  white-space: nowrap;
+}
+
+.inv-oc-flow-table td strong {
+  font-weight: 700;
+}
+
+.inv-oc-flow-pagination {
+  margin-top: 0.45rem;
+}
+
+// AM: buscador directo del listado OC con estilo compacto consistente al shell de Inventario.
+.inv-oc-flow-list-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.inv-oc-panel-search--table {
+  width: min(100%, 280px);
+}
+
+// AM: buscador principal del flujo en header; ancho controlado para convivir con filtros/collapse.
+.inv-oc-panel-search--flow {
+  width: min(100%, 260px);
+}
+
+// AM: microindicador no intrusivo de refresh para cambios de pagina/filtros sin vaciar tabla.
+.inv-oc-refresh-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.76rem;
+  color: rgba(82, 44, 34, 0.82);
+  margin-bottom: 0.4rem;
 }
 
 .inv-oc-panel-head {
@@ -7296,6 +7411,234 @@
   font-weight: 700;
 }
 
+/* AM: estilo premium del modal de creacion de OC con bloques guiados y resumen destacado. */
+.inv-oc-create-modal {
+  border-radius: 18px;
+}
+
+.inv-oc-create-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.inv-oc-create-modal__hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.inv-oc-create-modal__hero-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6e3527;
+  background: linear-gradient(140deg, rgba(255, 237, 198, 0.95), rgba(255, 252, 245, 0.92));
+  border: 1px solid rgba(157, 150, 112, 0.32);
+  box-shadow: 0 8px 20px rgba(110, 53, 39, 0.11);
+}
+
+.inv-oc-create-modal__hero-copy p {
+  margin: 0.18rem 0 0;
+  color: rgba(74, 43, 34, 0.74);
+  font-size: 0.81rem;
+}
+
+.inv-oc-create-modal__hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.inv-oc-create-modal__body {
+  background: linear-gradient(180deg, rgba(255, 252, 246, 0.9), rgba(255, 249, 239, 0.42));
+}
+
+.inv-oc-create-context-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.inv-oc-create-context-card {
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 250, 242, 0.9));
+  padding: 0.56rem 0.62rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.52rem;
+}
+
+.inv-oc-create-context-card__icon {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6e3527;
+  background: rgba(255, 237, 198, 0.64);
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  flex-shrink: 0;
+}
+
+.inv-oc-create-context-card small {
+  display: block;
+  color: rgba(74, 43, 34, 0.7);
+  font-size: 0.72rem;
+}
+
+.inv-oc-create-context-card strong {
+  display: block;
+  color: #2d140f;
+  font-size: 0.8rem;
+  line-height: 1.24;
+}
+
+.inv-oc-create-block,
+.inv-oc-create-summary {
+  background: #fffdf8;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  padding: 0.88rem;
+  box-shadow: 0 12px 24px rgba(66, 31, 24, 0.04);
+}
+
+.inv-oc-create-block__head h6,
+.inv-oc-create-summary__head h6 {
+  color: #3e1d16;
+  display: inline-flex;
+  align-items: center;
+}
+
+.inv-oc-create-catalog-list,
+.inv-oc-create-draft-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-right: 0.2rem;
+}
+
+.inv-oc-create-catalog-item,
+.inv-oc-create-draft-item {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 250, 242, 0.9));
+  padding: 0.62rem 0.7rem;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.inv-oc-create-catalog-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.inv-oc-create-catalog-item:hover,
+.inv-oc-create-draft-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(110, 53, 39, 0.3);
+  box-shadow: 0 8px 20px rgba(74, 43, 34, 0.1);
+}
+
+.inv-oc-create-catalog-item__meta {
+  font-size: 0.74rem;
+}
+
+.inv-oc-create-empty-state {
+  border: 1px dashed rgba(157, 150, 112, 0.36);
+  border-radius: 12px;
+  background: rgba(255, 251, 244, 0.8);
+  padding: 0.8rem;
+  text-align: center;
+  color: rgba(74, 43, 34, 0.75);
+  display: grid;
+  gap: 0.35rem;
+}
+
+.inv-oc-create-empty-state i {
+  font-size: 1.05rem;
+}
+
+.inv-oc-proveedor-origen-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.52rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.inv-oc-proveedor-origen-chip.is-sucursal {
+  color: #2d6b66;
+  background: rgba(45, 107, 102, 0.1);
+  border-color: rgba(45, 107, 102, 0.24);
+}
+
+.inv-oc-proveedor-origen-chip.is-global {
+  color: #6e3527;
+  background: rgba(110, 53, 39, 0.1);
+  border-color: rgba(110, 53, 39, 0.24);
+}
+
+.inv-oc-proveedor-origen-chip.is-none {
+  color: #815422;
+  background: rgba(197, 111, 67, 0.12);
+  border-color: rgba(197, 111, 67, 0.28);
+}
+
+.inv-oc-create-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.inv-oc-create-summary__metric {
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 12px;
+  padding: 0.54rem 0.62rem;
+  background: rgba(255, 249, 239, 0.72);
+}
+
+.inv-oc-create-summary__metric span {
+  display: block;
+  color: rgba(74, 43, 34, 0.72);
+  font-size: 0.74rem;
+}
+
+.inv-oc-create-summary__metric strong {
+  display: block;
+  margin-top: 0.15rem;
+  color: #2d140f;
+}
+
+.inv-oc-create-summary__metric--total {
+  border-color: rgba(110, 53, 39, 0.35);
+  background: linear-gradient(140deg, rgba(255, 238, 209, 0.94), rgba(255, 250, 239, 0.94));
+}
+
+.inv-oc-create-summary__metric--total strong {
+  font-size: 1rem;
+}
+
+.inv-oc-create-modal__footer {
+  border-top: 1px solid rgba(157, 150, 112, 0.24);
+  background: linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(248, 242, 230, 0.96));
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+
 .inv-oc-convert-summary {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -7425,6 +7768,14 @@
   .inv-oc-panel-search {
     min-width: 100%;
   }
+
+  .inv-oc-create-summary__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inv-oc-create-context-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 767.98px) {
@@ -7494,6 +7845,23 @@
   .inv-oc-detail-meta-card p strong {
     max-width: 100%;
     text-align: left;
+  }
+
+  .inv-oc-create-modal__hero {
+    flex-direction: column;
+  }
+
+  .inv-oc-create-summary__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-oc-create-catalog-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .inv-oc-create-modal__footer {
+    position: static;
   }
 }
 // AM: ajustes UX puntuales del submodulo Inventario > Mobiliario para compactar cards y pulir modal.

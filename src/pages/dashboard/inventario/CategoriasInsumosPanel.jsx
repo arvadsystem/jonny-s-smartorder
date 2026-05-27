@@ -321,8 +321,27 @@ const CategoriasInsumosPanel = ({
   // NEW: alerta roja local no bloqueante para restricciones de eliminacion (auto-dismiss 6s).
   // WHY: reemplazar la confirmacion cuando hay insumos asignados y dar feedback claro sin bloquear la pantalla.
   // IMPACT: UI-only en Categorias; flujo de eliminacion valido permanece intacto.
-  const [deleteBlockedAlert, setDeleteBlockedAlert] = useState('');
+  const [deleteBlockedAlert, setDeleteBlockedAlert] = useState(null);
   const deleteBlockedAlertTimerRef = useRef(null);
+
+  // AM: normaliza dependency_summary para mostrar hasta 10 insumos bloqueantes en UI.
+  const buildBlockedDependencyAlert = (errorPayload) => {
+    const summary = errorPayload?.dependency_summary;
+    if (!summary || typeof summary !== 'object') return null;
+    const items = Array.isArray(summary.items)
+      ? summary.items
+        .slice(0, 10)
+        .map((item) => String(item?.nombre ?? item?.nombre_insumo ?? '').trim())
+        .filter(Boolean)
+      : [];
+    const remainingRaw = Number(summary.remaining ?? 0);
+    const remaining = Number.isFinite(remainingRaw) && remainingRaw > 0 ? remainingRaw : 0;
+    return {
+      message: String(errorPayload?.message || CATEGORY_DELETE_BLOCKED_MESSAGE),
+      items,
+      remaining
+    };
+  };
 
   // NEW: helper para limpiar timer de alerta y evitar timers sueltos en reintentos/unmount.
   // WHY: garantizar auto-dismiss correcto y prevenir estados colgantes al navegar/cambiar de pantalla.
@@ -337,11 +356,12 @@ const CategoriasInsumosPanel = ({
   // NEW: muestra la alerta roja exacta por 6 segundos y reinicia el timer si se intenta de nuevo.
   // WHY: cumplir el requerimiento UX sin reutilizar modales bloqueantes ni toasts globales.
   // IMPACT: no cambia CRUD; solo feedback visual temporal en la pantalla de Categorias.
-  const showDeleteBlockedAlert = () => {
+  const showDeleteBlockedAlert = (errorPayload = null) => {
     clearDeleteBlockedAlertTimer();
-    setDeleteBlockedAlert(CATEGORY_DELETE_BLOCKED_MESSAGE);
+    const detail = buildBlockedDependencyAlert(errorPayload);
+    setDeleteBlockedAlert(detail || { message: CATEGORY_DELETE_BLOCKED_MESSAGE, items: [], remaining: 0 });
     deleteBlockedAlertTimerRef.current = setTimeout(() => {
-      setDeleteBlockedAlert('');
+      setDeleteBlockedAlert(null);
       deleteBlockedAlertTimerRef.current = null;
     }, 6000);
   };
@@ -358,7 +378,7 @@ const CategoriasInsumosPanel = ({
       return;
     }
     clearDeleteBlockedAlertTimer();
-    setDeleteBlockedAlert('');
+    setDeleteBlockedAlert(null);
     setConfirmModal({ show: true, idToDelete: id, nombre: nombre || '' });
   };
 
@@ -697,12 +717,12 @@ const CategoriasInsumosPanel = ({
     } catch (err) {
       const backendCode = String(err?.data?.code || '');
       const backendExactMessage = String(err?.data?.message || err?.data?.mensaje || '');
-      if (Number(err?.status || 0) === 409 && backendCode === 'CATEGORY_INSUMO_HAS_ACTIVE_ITEMS') {
+      if (Number(err?.status || 0) === 409 && (backendCode === 'CATEGORY_INSUMO_HAS_ACTIVE_ITEMS' || backendCode === 'CATEGORY_HAS_ACTIVE_INSUMOS')) {
         // NEW: manejo explícito del bloqueo también en guardado por drawer (PUT estado=false).
         // WHY: la inactivación desde el checkbox debe responder igual en desktop y responsive.
         // IMPACT: UI-only; backend sigue imponiendo la regla con 409.
         safeSetError('');
-        showDeleteBlockedAlert();
+        showDeleteBlockedAlert(err?.data || null);
         if (v.cleaned?.estado === false) {
           setForm((s) => ({ ...s, estado: true }));
         }
@@ -785,10 +805,10 @@ const CategoriasInsumosPanel = ({
     } catch (err) {
       const backendCode = String(err?.data?.code || '');
       const backendExactMessage = String(err?.data?.message || err?.data?.mensaje || '');
-      if (Number(err?.status || 0) === 409 && backendCode === 'CATEGORY_INSUMO_HAS_ACTIVE_ITEMS') {
+      if (Number(err?.status || 0) === 409 && (backendCode === 'CATEGORY_INSUMO_HAS_ACTIVE_ITEMS' || backendCode === 'CATEGORY_HAS_ACTIVE_INSUMOS')) {
         closeConfirmDelete();
         safeSetError('');
-        showDeleteBlockedAlert();
+        showDeleteBlockedAlert(err?.data || null);
         if (backendExactMessage) safeToast('BLOQUEADO', backendExactMessage, 'warning');
         return;
       }
@@ -804,7 +824,7 @@ const CategoriasInsumosPanel = ({
       if (isRestriction) {
         closeConfirmDelete();
         safeSetError('');
-        showDeleteBlockedAlert();
+        showDeleteBlockedAlert(err?.data || null);
       } else {
         safeSetError(msg);
         safeToast('ERROR', msg, 'danger');
@@ -915,7 +935,15 @@ const CategoriasInsumosPanel = ({
             // WHY: reemplazar confirm modal cuando la categoria no se puede eliminar y permitir seguir usando la pantalla.
             // IMPACT: solo presentacion local en Categorias; no altera el flujo normal de eliminacion cuando si procede.
             <div className="alert alert-danger inv-cat-v2__delete-alert mb-3" role="alert" aria-live="assertive">
-              {deleteBlockedAlert}
+              <div>{deleteBlockedAlert.message || CATEGORY_DELETE_BLOCKED_MESSAGE}</div>
+              {deleteBlockedAlert.items?.length ? (
+                <ul className="mb-0 mt-2">
+                  {deleteBlockedAlert.items.map((name, index) => (
+                    <li key={`cat-ins-blocked-item-${index}`}>{name}</li>
+                  ))}
+                  {deleteBlockedAlert.remaining > 0 ? <li>{`Y ${deleteBlockedAlert.remaining} insumos mas.`}</li> : null}
+                </ul>
+              ) : null}
             </div>
           ) : null}
           {error ? (
