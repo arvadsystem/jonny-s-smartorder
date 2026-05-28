@@ -112,6 +112,8 @@ const DEFAULT_KARDEX_PAGINATION = {
   totalPages: 1
 };
 const AJUSTE_STOCK_FINAL_HELP = 'En AJUSTE, la cantidad representa la existencia final del item en el almacen.';
+const MOVIMIENTO_DECIMAL_HELP = 'La cantidad debe ser un numero mayor que 0. Puede usar hasta 4 decimales.';
+const AJUSTE_DECIMAL_HELP = 'La existencia final debe ser un numero mayor o igual a 0. Puede usar hasta 4 decimales.';
 const REFERENCIAS_CONTEXT_MESSAGE = 'Selecciona un almacen y el tipo de item para cargar opciones.';
 const MOVIMIENTOS_SCOPE_BLOCKED_MESSAGE =
   'No tienes acceso al recurso solicitado dentro de tu alcance de sucursal.';
@@ -879,7 +881,7 @@ const MovimientosTab = ({
 
     const idAlmacen = Number.parseInt(idAlmacenRaw, 10);
     const idItem = Number.parseInt(idItemRaw, 10);
-    const cantidad = Number.parseInt(cantidadRaw, 10);
+    const cantidad = Number(cantidadRaw);
 
     if (!['ENTRADA', 'SALIDA', 'AJUSTE'].includes(tipo)) errors.tipo = 'SELECCIONA UN TIPO VALIDO.';
     if (!idAlmacenRaw) errors.id_almacen = 'EL ALMACEN ES OBLIGATORIO.';
@@ -893,9 +895,14 @@ const MovimientosTab = ({
     else if (Number.isNaN(idItem) || idItem <= 0) errors.id_item = 'SELECCIONA UN ITEM VALIDO.';
 
     if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA.';
-    else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO SE ACEPTAN ENTEROS.';
-    else if (tipo === 'AJUSTE' ? cantidad < 0 : cantidad <= 0) {
-      errors.cantidad = tipo === 'AJUSTE' ? 'LA EXISTENCIA FINAL DEBE SER MAYOR O IGUAL A 0.' : 'LA CANTIDAD DEBE SER MAYOR A 0.';
+    // AM: Validacion decimal con maximo 4 decimales segun tipo de movimiento.
+    else if (!/^\d+(\.\d{1,4})?$/.test(cantidadRaw)) {
+      errors.cantidad = (tipo === 'AJUSTE' ? AJUSTE_DECIMAL_HELP : MOVIMIENTO_DECIMAL_HELP).toUpperCase();
+    } else if (!Number.isFinite(cantidad) || (tipo === 'AJUSTE' ? cantidad < 0 : cantidad <= 0)) {
+      errors.cantidad =
+        tipo === 'AJUSTE'
+          ? 'LA EXISTENCIA FINAL DEBE SER UN NUMERO MAYOR O IGUAL A 0.'
+          : 'LA CANTIDAD DEBE SER UN NUMERO MAYOR A 0.';
     }
 
     const itemSeleccionado =
@@ -1435,23 +1442,24 @@ const MovimientosTab = ({
                               id="inv-moves-create-cantidad"
                               className={`form-control ${createErrors.cantidad ? 'is-invalid' : ''}`}
                               type="number"
-                              min={form.tipo === 'AJUSTE' ? '0' : '1'}
-                              step="1"
-                              inputMode="numeric"
+                              min="0"
+                              step="0.0001"
+                              inputMode="decimal"
                               value={form.cantidad}
                               onChange={(event) =>
                                 setForm((current) => ({
                                   ...current,
-                                  cantidad: String(event.target.value).replace(/[^\d]/g, '')
+                                  cantidad: String(event.target.value)
                                 }))
                               }
                               disabled={saving}
-                              placeholder={form.tipo === 'AJUSTE' ? 'Ej: 25 (stock final)' : 'Ej: 5'}
+                              placeholder={form.tipo === 'AJUSTE' ? 'Ej: 25.5000 (stock final)' : 'Ej: 0.5000'}
                             />
                             {createErrors.cantidad ? <div className="invalid-feedback">{createErrors.cantidad}</div> : null}
-                            {!createErrors.cantidad && form.tipo === 'AJUSTE' ? (
-                              <div className="form-text">{AJUSTE_STOCK_FINAL_HELP}</div>
+                            {!createErrors.cantidad ? (
+                              <div className="form-text">{form.tipo === 'AJUSTE' ? AJUSTE_DECIMAL_HELP : MOVIMIENTO_DECIMAL_HELP}</div>
                             ) : null}
+                            {!createErrors.cantidad && form.tipo === 'AJUSTE' ? <div className="form-text">{AJUSTE_STOCK_FINAL_HELP}</div> : null}
                           </div>
 
                           <div className="col-12 col-md-8">

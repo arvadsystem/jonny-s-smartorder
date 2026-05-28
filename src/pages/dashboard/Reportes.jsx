@@ -10,6 +10,9 @@ import {
 import { reportesService } from '../../services/reportesService';
 import sucursalesService from '../../services/sucursalesService';
 import cajasService from '../../services/cajasService';
+import { inventarioService } from '../../services/inventarioService';
+import ventasService from '../../services/ventasService';
+import { personaService } from '../../services/personasService';
 
 const REPORT_KEYS = [
   'ventas-resumen',
@@ -138,12 +141,16 @@ const INITIAL_FILTERS = {
   almacen: '',
   caja: '',
   usuario: '',
+  metodo_pago: '',
   tipo_diferencia: '',
   tipo_descuento: '',
   tipo_item: '',
   solo_criticos: '',
   categoria: '',
-  estado: ''
+  estado: '',
+  tipo_movimiento: '',
+  item: '',
+  producto: ''
 };
 
 const FILTER_LABELS = Object.freeze({
@@ -153,25 +160,83 @@ const FILTER_LABELS = Object.freeze({
   almacen: 'Almacén',
   caja: 'Caja',
   usuario: 'Usuario',
+  metodo_pago: 'Metodo pago',
   tipo_diferencia: 'Tipo diferencia',
   tipo_descuento: 'Tipo descuento',
   tipo_item: 'Tipo ítem',
   solo_criticos: 'Solo críticos',
   categoria: 'Categoría',
-  estado: 'Estado'
+  estado: 'Estado',
+  tipo_movimiento: 'Tipo movimiento',
+  item: 'Item',
+  producto: 'Producto'
 });
 
-const sanitizeAdvancedFiltersForDrawer = (source = INITIAL_FILTERS) => ({
-  ...source,
-  almacen: '',
-  usuario: '',
-  tipo_diferencia: '',
-  tipo_descuento: '',
-  tipo_item: '',
-  solo_criticos: '',
-  categoria: '',
-  estado: ''
+const TIPO_DIFERENCIA_OPTIONS = Object.freeze([
+  { value: '', label: 'Todas' },
+  { value: 'faltante', label: 'Faltante' },
+  { value: 'sobrante', label: 'Sobrante' }
+]);
+
+const TIPO_MOVIMIENTO_OPTIONS = Object.freeze([
+  { value: '', label: 'Todos' },
+  { value: 'ENTRADA', label: 'Entrada' },
+  { value: 'SALIDA', label: 'Salida' },
+  { value: 'AJUSTE', label: 'Ajuste' }
+]);
+
+const TIPO_ITEM_OPTIONS = Object.freeze([
+  { value: '', label: 'Todos' },
+  { value: 'producto', label: 'Producto' },
+  { value: 'insumo', label: 'Insumo' },
+  { value: 'combo', label: 'Combo' },
+  { value: 'receta', label: 'Receta' },
+  { value: 'todos', label: 'Todos' }
+]);
+
+const SOLO_CRITICOS_OPTIONS = Object.freeze([
+  { value: '', label: 'Todos' },
+  { value: 'true', label: 'Si' },
+  { value: 'false', label: 'No' }
+]);
+
+const STOCK_ESTADO_OPTIONS = Object.freeze([
+  { value: '', label: 'Todos' },
+  { value: 'activo', label: 'Activos' },
+  { value: 'inactivo', label: 'Inactivos' }
+]);
+
+const REPORT_FILTERS_BY_TAB = Object.freeze({
+  'ventas-resumen': ['fecha_inicio', 'fecha_fin', 'sucursal', 'caja', 'usuario', 'estado'],
+  'ventas-metodos-pago': ['fecha_inicio', 'fecha_fin', 'sucursal', 'caja', 'usuario', 'estado', 'metodo_pago'],
+  'ventas-descuentos': ['fecha_inicio', 'fecha_fin', 'sucursal', 'caja', 'usuario', 'estado', 'tipo_descuento'],
+  'ventas-items': ['fecha_inicio', 'fecha_fin', 'sucursal', 'caja', 'usuario', 'estado', 'tipo_item', 'categoria', 'item'],
+  'caja-cierres': ['fecha_inicio', 'fecha_fin', 'sucursal', 'caja', 'usuario', 'estado'],
+  'caja-diferencias': ['fecha_inicio', 'fecha_fin', 'sucursal', 'caja', 'usuario', 'estado', 'tipo_diferencia'],
+  'inventario-stock-critico': ['sucursal', 'almacen', 'categoria', 'tipo_item', 'estado', 'solo_criticos'],
+  'inventario-kardex': ['fecha_inicio', 'fecha_fin', 'sucursal', 'almacen', 'tipo_movimiento', 'tipo_item', 'categoria', 'item']
 });
+
+const REPORT_SPECIFIC_FILTER_KEYS = Object.freeze(['metodo_pago', 'tipo_descuento', 'tipo_diferencia', 'tipo_item', 'categoria', 'item', 'tipo_movimiento', 'solo_criticos']);
+
+const getAllowedFilterKeysByTab = (tabKey) => REPORT_FILTERS_BY_TAB[tabKey] || ['fecha_inicio', 'fecha_fin', 'sucursal'];
+
+const sanitizeFiltersForTab = (tabKey, source = INITIAL_FILTERS) => {
+  const allowedKeys = new Set(getAllowedFilterKeysByTab(tabKey));
+  const sanitized = Object.keys(INITIAL_FILTERS).reduce((acc, key) => {
+    if (!allowedKeys.has(key)) {
+      acc[key] = '';
+      return acc;
+    }
+    const value = source?.[key];
+    acc[key] = value === undefined || value === null ? '' : String(value).trim();
+    return acc;
+  }, {});
+  if (tabKey === 'inventario-stock-critico' && !sanitized.solo_criticos) {
+    sanitized.solo_criticos = 'true'; // AM: default operativo para ver solo sin stock/critico/bajo.
+  }
+  return sanitized;
+};
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const REPORTS_PAGE_SIZE = 10;
@@ -181,6 +246,12 @@ const money = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
+
+const compactText = (value, max = 44) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '-';
+  return raw.length > max ? `${raw.slice(0, Math.max(0, max - 1))}…` : raw;
+};
 
 const pushRow = (target, row) => {
   if (!row || typeof row !== 'object') return;
@@ -273,10 +344,12 @@ const getKpiCards = (tab, kpis) => {
 
   if (tab === 'ventas-resumen') {
     return [
-      { label: 'Total ventas', value: `L ${money(kpis.total_ventas)}`, icon: 'bi bi-cash-stack', tone: 'is-ok' },
-      { label: 'Cantidad ventas', value: kpis.cantidad_ventas || 0, icon: 'bi bi-receipt', tone: 'is-neutral' },
-      { label: 'Total neto', value: `L ${money(kpis.total_neto)}`, icon: 'bi bi-bar-chart-line', tone: 'is-ok' },
-      { label: 'Promedio venta', value: `L ${money(kpis.promedio_por_venta)}`, icon: 'bi bi-graph-up', tone: 'is-neutral' },
+      { label: 'Cantidad total de ventas', value: kpis.cantidad_ventas || 0, icon: 'bi bi-receipt', tone: 'is-neutral' },
+      { label: 'Subtotal general', value: `L ${money(kpis.subtotal_general ?? kpis.subtotal)}`, icon: 'bi bi-cash-stack', tone: 'is-soft' },
+      { label: 'Descuento general', value: `L ${money(kpis.descuento_general ?? kpis.descuentos)}`, icon: 'bi bi-tags', tone: 'is-alert' },
+      { label: 'Impuesto general', value: `L ${money(kpis.impuesto_general ?? kpis.impuestos)}`, icon: 'bi bi-percent', tone: 'is-neutral' },
+      { label: 'Total neto general', value: `L ${money(kpis.total_neto_general ?? kpis.total_neto)}`, icon: 'bi bi-bar-chart-line', tone: 'is-ok' },
+      { label: 'Ticket promedio general', value: `L ${money(kpis.ticket_promedio_general ?? kpis.promedio_por_venta)}`, icon: 'bi bi-graph-up', tone: 'is-neutral' },
       { label: 'Canceladas/Anuladas', value: kpis.ventas_canceladas_o_anuladas || 0, icon: 'bi bi-slash-circle', tone: 'is-alert' }
     ];
   }
@@ -285,6 +358,7 @@ const getKpiCards = (tab, kpis) => {
     return [
       { label: 'Total general', value: `L ${money(kpis.total_general)}`, icon: 'bi bi-cash-stack', tone: 'is-ok' },
       { label: 'Total ventas', value: kpis.total_ventas || 0, icon: 'bi bi-receipt-cutoff', tone: 'is-neutral' },
+      { label: 'Ticket promedio general', value: `L ${money(kpis.ticket_promedio_general)}`, icon: 'bi bi-graph-up-arrow', tone: 'is-soft' },
       { label: 'Métodos activos', value: kpis.metodos_activos || 0, icon: 'bi bi-credit-card-2-front', tone: 'is-soft' }
     ];
   }
@@ -302,33 +376,34 @@ const getKpiCards = (tab, kpis) => {
 
   if (tab === 'caja-diferencias') {
     return [
-      { label: 'Diferencias', value: kpis.cantidad_diferencias || 0, icon: 'bi bi-exclamation-diamond', tone: 'is-alert' },
-      { label: 'Total absoluto', value: `L ${money(kpis.total_diferencia_absoluta)}`, icon: 'bi bi-calculator', tone: 'is-soft' },
+      { label: 'Cantidad de diferencias', value: kpis.cantidad_diferencias || 0, icon: 'bi bi-exclamation-diamond', tone: 'is-alert' },
       { label: 'Total faltantes', value: `L ${money(kpis.total_faltantes)}`, icon: 'bi bi-arrow-down-circle', tone: 'is-alert' },
       { label: 'Total sobrantes', value: `L ${money(kpis.total_sobrantes)}`, icon: 'bi bi-arrow-up-circle', tone: 'is-ok' },
-      { label: 'Cantidad faltantes', value: kpis.cantidad_faltantes || 0, icon: 'bi bi-dash-circle', tone: 'is-alert' },
-      { label: 'Cantidad sobrantes', value: kpis.cantidad_sobrantes || 0, icon: 'bi bi-plus-circle', tone: 'is-ok' }
+      { label: 'Diferencia neta', value: `L ${money(kpis.diferencia_neta)}`, icon: 'bi bi-calculator', tone: 'is-soft' },
+      { label: 'Mayor diferencia registrada', value: `L ${money(kpis.mayor_diferencia_registrada)}`, icon: 'bi bi-graph-up-arrow', tone: 'is-neutral' }
     ];
   }
 
   if (tab === 'inventario-stock-critico') {
     return [
-      { label: 'Items revisados', value: kpis.total_items_revisados || 0, icon: 'bi bi-list-check', tone: 'is-neutral' },
-      { label: 'Total críticos', value: kpis.total_criticos || 0, icon: 'bi bi-exclamation-triangle', tone: 'is-alert' },
-      { label: 'Agotados', value: kpis.total_agotados || 0, icon: 'bi bi-x-octagon', tone: 'is-alert' },
-      { label: 'Bajo stock', value: kpis.total_stock_bajo || 0, icon: 'bi bi-thermometer-half', tone: 'is-soft' },
-      { label: 'Productos críticos', value: kpis.productos_criticos || 0, icon: 'bi bi-box-seam', tone: 'is-ok' },
-      { label: 'Insumos críticos', value: kpis.insumos_criticos || 0, icon: 'bi bi-box2-heart', tone: 'is-neutral' }
+      { label: 'Total items criticos/bajos', value: kpis.total_items_criticos_bajos ?? kpis.total_criticos ?? 0, icon: 'bi bi-list-check', tone: 'is-neutral' },
+      { label: 'Total sin stock', value: kpis.total_sin_stock ?? kpis.total_agotados ?? 0, icon: 'bi bi-x-octagon', tone: 'is-alert' },
+      { label: 'Total bajo minimo', value: kpis.total_bajo_minimo ?? kpis.total_stock_bajo ?? 0, icon: 'bi bi-thermometer-half', tone: 'is-soft' },
+      { label: 'Productos afectados', value: kpis.productos_afectados ?? kpis.productos_criticos ?? 0, icon: 'bi bi-box-seam', tone: 'is-ok' },
+      { label: 'Insumos afectados', value: kpis.insumos_afectados ?? kpis.insumos_criticos ?? 0, icon: 'bi bi-box2-heart', tone: 'is-neutral' },
+      { label: 'Almacenes afectados', value: kpis.almacenes_afectados ?? 0, icon: 'bi bi-building', tone: 'is-alert' }
     ];
   }
 
   if (tab === 'inventario-kardex') {
     return [
       { label: 'Total movimientos', value: kpis.total_movimientos || 0, icon: 'bi bi-arrow-left-right', tone: 'is-neutral' },
-      { label: 'Entradas', value: kpis.entradas || 0, icon: 'bi bi-arrow-down-right', tone: 'is-ok' },
-      { label: 'Salidas', value: kpis.salidas || 0, icon: 'bi bi-arrow-up-right', tone: 'is-alert' },
-      { label: 'Ajustes/Otros', value: kpis.ajustes_otros || 0, icon: 'bi bi-sliders', tone: 'is-soft' },
-      { label: 'Items únicos', value: kpis.items_unicos || 0, icon: 'bi bi-hash', tone: 'is-neutral' }
+      { label: 'Total entradas', value: kpis.total_entradas ?? kpis.entradas ?? 0, icon: 'bi bi-arrow-down-right', tone: 'is-ok' },
+      { label: 'Total salidas', value: kpis.total_salidas ?? kpis.salidas ?? 0, icon: 'bi bi-arrow-up-right', tone: 'is-alert' },
+      { label: 'Total ajustes', value: kpis.total_ajustes ?? kpis.ajustes_otros ?? 0, icon: 'bi bi-sliders', tone: 'is-soft' },
+      { label: 'Cantidad neta movida', value: Number(kpis.cantidad_neta_movida ?? 0).toFixed(2), icon: 'bi bi-calculator', tone: 'is-neutral' },
+      { label: 'Items afectados', value: kpis.items_afectados ?? kpis.items_unicos ?? 0, icon: 'bi bi-hash', tone: 'is-neutral' },
+      { label: 'Almacenes afectados', value: kpis.almacenes_afectados ?? 0, icon: 'bi bi-building', tone: 'is-alert' }
     ];
   }
 
@@ -392,6 +467,16 @@ const Reportes = () => {
   const [loadingCatalogs, setLoadingCatalogs] = useState(false);
   const [sucursalesCatalog, setSucursalesCatalog] = useState([]);
   const [cajasCatalog, setCajasCatalog] = useState([]);
+  const [almacenesCatalog, setAlmacenesCatalog] = useState([]);
+  const [usuariosCatalog, setUsuariosCatalog] = useState([]);
+  const [metodosPagoCatalog, setMetodosPagoCatalog] = useState([]);
+  const [tiposDescuentoCatalog, setTiposDescuentoCatalog] = useState([]);
+  const [categoriasProductosCatalog, setCategoriasProductosCatalog] = useState([]);
+  const [categoriasInsumosCatalog, setCategoriasInsumosCatalog] = useState([]);
+  const [productosCatalog, setProductosCatalog] = useState([]);
+  const [insumosCatalog, setInsumosCatalog] = useState([]);
+  const [estadosPedidoCatalog, setEstadosPedidoCatalog] = useState([]);
+  const [estadosCierreCatalog, setEstadosCierreCatalog] = useState([]);
   const [loadingBaseCatalogs, setLoadingBaseCatalogs] = useState(false);
 
   const allowedTabs = useMemo(
@@ -410,6 +495,7 @@ const Reportes = () => {
 
   const activeReport = REPORT_META[activeTab] || null;
   const activeCategoryLabel = REPORT_CATEGORY_LABELS[activeReport?.category] || 'General';
+  const activeAllowedFilterKeys = useMemo(() => getAllowedFilterKeysByTab(activeTab), [activeTab]);
 
   useEffect(() => {
     if (!notice.show) return;
@@ -455,9 +541,30 @@ const Reportes = () => {
     const loadBaseCatalogs = async () => {
       setLoadingBaseCatalogs(true);
       try {
-        const [sucursalesResult, cajasResult] = await Promise.allSettled([
+        const [
+          sucursalesResult,
+          cajasResult,
+          almacenesResult,
+          usuariosResult,
+          metodosPagoResult,
+          tiposDescuentoResult,
+          categoriasProductosResult,
+          categoriasInsumosResult,
+          productosResult,
+          insumosResult,
+          estadosPedidoResult
+        ] = await Promise.allSettled([
           sucursalesService.getAll(),
-          cajasService.listCajaCatalogo({ incluir_inactivas: false })
+          cajasService.listCajaCatalogo({ incluir_inactivas: false }),
+          inventarioService.getAlmacenes({ include_inactivos: false }),
+          personaService.getUsuariosV2({ page: 1, limit: 500, estado: true }),
+          cajasService.getCatalogos(),
+          ventasService.getTiposDescuentoCatalog(),
+          inventarioService.getCategorias({ incluirInactivos: false }),
+          inventarioService.getCategoriasInsumos({ incluirInactivos: false }),
+          inventarioService.getProductos({ pageSize: 500, estado: 'activo' }),
+          inventarioService.getInsumos({ estado: true }),
+          ventasService.list({ page: 1, pageSize: 1 }).catch(() => null)
         ]);
 
         if (!ignore && sucursalesResult.status === 'fulfilled') {
@@ -494,6 +601,115 @@ const Reportes = () => {
               )
             );
           setCajasCatalog(rows);
+        }
+
+        if (!ignore && almacenesResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(almacenesResult.value)
+            .map((row) => ({
+              id_almacen: Number(row?.id_almacen ?? 0) || 0,
+              id_sucursal: Number(row?.id_sucursal ?? 0) || 0,
+              nombre_almacen: String(row?.nombre_almacen ?? row?.nombre ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.id_almacen > 0 && row.nombre_almacen)
+            .filter((row) => row.estado !== false);
+          setAlmacenesCatalog(rows);
+        }
+
+        if (!ignore && usuariosResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(usuariosResult.value?.items ?? usuariosResult.value)
+            .map((row) => ({
+              id_usuario: Number(row?.id_usuario ?? 0) || 0,
+              nombre_usuario: String(row?.nombre_completo ?? row?.nombre_usuario ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.id_usuario > 0 && row.nombre_usuario)
+            .filter((row) => row.estado !== false);
+          setUsuariosCatalog(rows);
+        }
+
+        if (!ignore && metodosPagoResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(metodosPagoResult.value?.metodos_pago ?? metodosPagoResult.value)
+            .map((row) => ({
+              value: String(row?.codigo ?? row?.nombre ?? '').trim(),
+              label: String(row?.nombre ?? row?.codigo ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.value && row.label)
+            .filter((row) => row.estado !== false);
+          setMetodosPagoCatalog(rows);
+
+          const cierreRows = normalizeApiRows(metodosPagoResult.value?.resoluciones_cierre ?? [])
+            .map((row) => String(row?.nombre ?? '').trim())
+            .filter(Boolean);
+          setEstadosCierreCatalog(cierreRows);
+        }
+
+        if (!ignore && tiposDescuentoResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(tiposDescuentoResult.value)
+            .map((row) => ({
+              value: String(row?.id_tipo_descuento ?? '').trim(),
+              label: String(row?.nombre_tipo_descuento ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.value && row.label)
+            .filter((row) => row.estado !== false);
+          setTiposDescuentoCatalog(rows);
+        }
+
+        if (!ignore && categoriasProductosResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(categoriasProductosResult.value)
+            .map((row) => ({
+              id: String(row?.id_categoria_producto ?? '').trim(),
+              label: String(row?.nombre_categoria ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.id && row.label)
+            .filter((row) => row.estado !== false);
+          setCategoriasProductosCatalog(rows);
+        }
+
+        if (!ignore && categoriasInsumosResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(categoriasInsumosResult.value)
+            .map((row) => ({
+              id: String(row?.id_categoria_insumo ?? '').trim(),
+              label: String(row?.nombre_categoria ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.id && row.label)
+            .filter((row) => row.estado !== false);
+          setCategoriasInsumosCatalog(rows);
+        }
+
+        if (!ignore && productosResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(productosResult.value)
+            .map((row) => ({
+              id: String(row?.id_producto ?? '').trim(),
+              nombre: String(row?.nombre_producto ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.id && row.nombre)
+            .filter((row) => row.estado !== false);
+          setProductosCatalog(rows);
+        }
+
+        if (!ignore && insumosResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(insumosResult.value)
+            .map((row) => ({
+              id: String(row?.id_insumo ?? '').trim(),
+              nombre: String(row?.nombre_insumo ?? '').trim(),
+              estado: row?.estado
+            }))
+            .filter((row) => row.id && row.nombre)
+            .filter((row) => row.estado !== false);
+          setInsumosCatalog(rows);
+        }
+
+        if (!ignore && estadosPedidoResult.status === 'fulfilled') {
+          const rows = normalizeApiRows(estadosPedidoResult.value?.data?.desglose_por_estado ?? [])
+            .map((row) => String(row?.estado ?? '').trim())
+            .filter(Boolean);
+          setEstadosPedidoCatalog((prev) => (rows.length ? rows : prev));
         }
       } finally {
         if (!ignore) setLoadingBaseCatalogs(false);
@@ -537,12 +753,13 @@ const Reportes = () => {
   const runReport = async (tabKey, customFilters = filters) => {
     const fetcher = REPORT_HANDLERS[tabKey];
     if (!fetcher) return;
+    const sanitizedFilters = sanitizeFiltersForTab(tabKey, customFilters);
 
     setLoading(true);
     setError('');
 
     try {
-      const data = await fetcher(customFilters);
+      const data = await fetcher(sanitizedFilters);
       setPayload(data || null);
       setCatalogRows((prev) => {
         const merged = [...prev, ...extractRowsFromReportPayload(data)];
@@ -559,9 +776,30 @@ const Reportes = () => {
 
   useEffect(() => {
     if (!activeTab) return;
-    runReport(activeTab, filters);
+    const sanitized = sanitizeFiltersForTab(activeTab, filters);
+    setFilters((prev) => ({ ...prev, ...sanitized }));
+    setDraftFilters((prev) => ({ ...prev, ...sanitized }));
+    runReport(activeTab, sanitized);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!showFiltersDrawer) return;
+    if (!draftFilters.sucursal || !draftFilters.almacen) return;
+    const exists = almacenesCatalog.some((row) => String(row.id_almacen) === String(draftFilters.almacen) && String(row.id_sucursal) === String(draftFilters.sucursal));
+    if (!exists) {
+      setDraftFilters((prev) => ({ ...prev, almacen: '' }));
+    }
+  }, [showFiltersDrawer, draftFilters.sucursal, draftFilters.almacen, almacenesCatalog]);
+
+  useEffect(() => {
+    if (!showFiltersDrawer) return;
+    const tipo = String(draftFilters.tipo_item || '').trim().toLowerCase();
+    if (tipo === 'producto' || tipo === 'insumo' || tipo === '') return;
+    if (draftFilters.categoria || draftFilters.item) {
+      setDraftFilters((prev) => ({ ...prev, categoria: '', item: '' }));
+    }
+  }, [showFiltersDrawer, draftFilters.tipo_item, draftFilters.categoria, draftFilters.item]);
 
   useEffect(() => {
     if (!allowedTabs.length) return;
@@ -570,7 +808,7 @@ const Reportes = () => {
   }, [allowedTabs]);
 
   const handleClearFilters = async () => {
-    const reset = { ...INITIAL_FILTERS };
+    const reset = sanitizeFiltersForTab(activeTab, INITIAL_FILTERS);
     setDraftFilters(reset);
     setFilters(reset);
     setShowFiltersDrawer(false);
@@ -579,7 +817,7 @@ const Reportes = () => {
   };
 
   const handleApplyFilters = async () => {
-    const next = sanitizeAdvancedFiltersForDrawer(draftFilters);
+    const next = sanitizeFiltersForTab(activeTab, draftFilters);
     setFilters(next);
     setShowFiltersDrawer(false);
     await runReport(activeTab, next);
@@ -587,7 +825,7 @@ const Reportes = () => {
   };
 
   const handleOpenFilters = () => {
-    setDraftFilters(sanitizeAdvancedFiltersForDrawer(filters));
+    setDraftFilters(sanitizeFiltersForTab(activeTab, filters));
     setShowFiltersDrawer(true);
     if (catalogRows.length === 0 && !loadingCatalogs) {
       refreshFilterCatalogs(filters);
@@ -598,12 +836,13 @@ const Reportes = () => {
     if (!activeTab) return;
     const reporte = EXPORT_REPORT_KEYS[activeTab];
     if (!reporte) return;
+    const sanitizedFilters = sanitizeFiltersForTab(activeTab, filters);
 
     setExporting(true);
     setError('');
 
     try {
-      const { blob, filename } = await reportesService.exportExcel({ reporte, filters });
+      const { blob, filename } = await reportesService.exportExcel({ reporte, filters: sanitizedFilters });
       const downloadUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = downloadUrl;
@@ -626,12 +865,13 @@ const Reportes = () => {
     if (!activeTab) return;
     const reporte = EXPORT_REPORT_KEYS[activeTab];
     if (!reporte) return;
+    const sanitizedFilters = sanitizeFiltersForTab(activeTab, filters);
 
     setExportingPdf(true);
     setError('');
 
     try {
-      const { blob, filename } = await reportesService.exportPdf({ reporte, filters });
+      const { blob, filename } = await reportesService.exportPdf({ reporte, filters: sanitizedFilters });
       const downloadUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = downloadUrl;
@@ -672,6 +912,7 @@ const Reportes = () => {
     if (!activeTab) return;
     const reporte = EXPORT_REPORT_KEYS[activeTab];
     if (!reporte) return;
+    const sanitizedFilters = sanitizeFiltersForTab(activeTab, filters);
 
     const recipients = emailForm.destinatarios
       .split(/[,\n;]+/)
@@ -714,7 +955,7 @@ const Reportes = () => {
         destinatarios: recipients,
         asunto: emailForm.asunto,
         mensaje: emailForm.mensaje,
-        filtros: filters
+        filtros: sanitizedFilters
       });
       setShowEmailModal(false);
       showToast('Correo enviado', 'Reporte enviado por correo correctamente.', 'success');
@@ -738,8 +979,20 @@ const Reportes = () => {
   const kardexMovimientos = Array.isArray(payload?.data?.movimientos) ? payload.data.movimientos : [];
   const descuentosResumen = Array.isArray(payload?.data?.resumen_tipo_descuento) ? payload.data.resumen_tipo_descuento : [];
   const descuentosDetalle = Array.isArray(payload?.data?.detalle) ? payload.data.detalle : [];
+  const descuentosTotals = {
+    cantidad: Number(payload?.data?.kpis?.cantidad_descuentos_aplicados ?? descuentosDetalle.length),
+    subtotal: Number(payload?.data?.kpis?.subtotal_afectado ?? descuentosDetalle.reduce((sum, row) => sum + Number(row?.subtotal_linea || 0), 0)),
+    descuento: Number(payload?.data?.kpis?.total_descuento ?? descuentosDetalle.reduce((sum, row) => sum + Number(row?.descuento || 0), 0)),
+    total: Number(payload?.data?.kpis?.total_neto_despues_descuento ?? descuentosDetalle.reduce((sum, row) => sum + Number(row?.total_linea || 0), 0))
+  };
   const ventasItemsResumen = Array.isArray(payload?.data?.resumen_items) ? payload.data.resumen_items : [];
   const ventasItemsDetalle = Array.isArray(payload?.data?.detalle) ? payload.data.detalle : [];
+  const ventasItemsTotals = {
+    cantidad: Number(payload?.data?.kpis?.cantidad_total_vendida ?? ventasItemsDetalle.reduce((sum, row) => sum + Number(row?.cantidad || 0), 0)),
+    subtotal: Number(payload?.data?.kpis?.subtotal_total ?? ventasItemsDetalle.reduce((sum, row) => sum + Number(row?.subtotal || 0), 0)),
+    descuento: Number(payload?.data?.kpis?.descuento_total ?? ventasItemsDetalle.reduce((sum, row) => sum + Number(row?.descuento || 0), 0)),
+    total: Number(payload?.data?.kpis?.total_neto ?? ventasItemsDetalle.reduce((sum, row) => sum + Number(row?.total || 0), 0))
+  };
 
   const sourceRows = [...catalogRows];
   serieDiaria.forEach((row) => pushRow(sourceRows, row));
@@ -797,7 +1050,90 @@ const Reportes = () => {
     allowLabelAsValue: false
   });
 
+  const categoriaOptions = makeCatalogOptions(sourceRows, {
+    idKeys: ['id_categoria', 'id_categoria_producto', 'id_categoria_insumo'],
+    labelKeys: ['categoria', 'nombre_categoria'],
+    allLabel: 'Todas las categorias'
+  });
+
+  const itemOptions = makeCatalogOptions(sourceRows, {
+    idKeys: ['item_id', 'id_item', 'id_producto', 'id_insumo'],
+    labelKeys: ['item_nombre', 'item', 'nombre', 'nombre_item', 'nombre_producto', 'nombre_insumo'],
+    allLabel: 'Todos los items'
+  });
+
+  const selectedSucursalForAdvanced = String(
+    showFiltersDrawer ? (draftFilters.sucursal || filters.sucursal || '') : (filters.sucursal || '')
+  ).trim();
+  const selectedTipoItem = String(showFiltersDrawer ? draftFilters.tipo_item : filters.tipo_item).trim().toLowerCase();
+
+  const usuariosOptions = [
+    { value: '', label: 'Todos los usuarios' },
+    ...usuariosCatalog.map((row) => ({ value: String(row.id_usuario), label: row.nombre_usuario }))
+  ];
+
+  const metodoPagoOptions = [
+    { value: '', label: 'Todos los metodos' },
+    ...metodosPagoCatalog.map((row) => ({ value: row.value, label: row.label }))
+  ];
+
+  const tipoDescuentoOptions = [
+    { value: '', label: 'Todos los tipos' },
+    ...tiposDescuentoCatalog.map((row) => ({ value: row.value, label: row.label }))
+  ];
+
+  const estadoVentasCandidates = new Set(
+    [
+      ...estadosPedidoCatalog,
+      ...normalizeApiRows(payload?.data?.desglose_por_estado).map((row) => String(row?.estado ?? '').trim())
+    ].filter(Boolean)
+  );
+  estadoVentasCandidates.add('VENTA DIRECTA');
+  const estadoVentasOptions = [{ value: '', label: 'Todos' }, ...[...estadoVentasCandidates].sort((a, b) => a.localeCompare(b, 'es')).map((value) => ({ value, label: value }))];
+
+  const estadoCajaOptions = [
+    { value: '', label: 'Todos' },
+    ...[...new Set(estadosCierreCatalog.filter(Boolean))].map((value) => ({ value, label: value }))
+  ];
+
+  const almacenesFiltrados = almacenesCatalog.filter((row) => !selectedSucursalForAdvanced || String(row.id_sucursal) === selectedSucursalForAdvanced);
+  const almacenControlledOptions = [
+    { value: '', label: 'Todos los almacenes' },
+    ...almacenesFiltrados.map((row) => ({ value: String(row.id_almacen), label: row.nombre_almacen }))
+  ];
+
+  const categoriaControlledOptions = (() => {
+    if (selectedTipoItem === 'producto') {
+      return [{ value: '', label: 'Todas las categorias' }, ...categoriasProductosCatalog.map((row) => ({ value: row.id, label: row.label }))];
+    }
+    if (selectedTipoItem === 'insumo') {
+      return [{ value: '', label: 'Todas las categorias' }, ...categoriasInsumosCatalog.map((row) => ({ value: row.id, label: row.label }))];
+    }
+    return categoriaOptions;
+  })();
+
+  const itemControlledOptions = (() => {
+    if (selectedTipoItem === 'producto') {
+      return [{ value: '', label: 'Todos los items' }, ...productosCatalog.map((row) => ({ value: row.id, label: row.nombre }))];
+    }
+    if (selectedTipoItem === 'insumo') {
+      return [{ value: '', label: 'Todos los items' }, ...insumosCatalog.map((row) => ({ value: row.id, label: row.nombre }))];
+    }
+    if (selectedTipoItem === 'combo' || selectedTipoItem === 'receta') {
+      const byTipoRows = sourceRows.filter(
+        (row) => String(row?.tipo_item || '').trim().toLowerCase() === selectedTipoItem
+      );
+      return makeCatalogOptions(byTipoRows, {
+        idKeys: ['id_item', 'item_id'],
+        labelKeys: ['item', 'nombre_item', 'item_nombre', 'nombre'],
+        allLabel: 'Todos los items'
+      });
+    }
+    return itemOptions;
+  })();
+
   const activeFilterChips = Object.entries(filters)
+    .filter(([key]) => activeAllowedFilterKeys.includes(key))
     .filter(([, value]) => String(value ?? '').trim() !== '')
     .map(([key, value]) => ({ key, label: FILTER_LABELS[key] || key, value: formatFilterDisplayValue(key, value) }));
   const activeFiltersCount = activeFilterChips.length;
@@ -809,6 +1145,11 @@ const Reportes = () => {
   const isCajaCierresTab = activeTab === 'caja-cierres';
   const isCajaDiferenciasTab = activeTab === 'caja-diferencias';
   const isStockCriticoTab = activeTab === 'inventario-stock-critico';
+  const activeContextTitle = activeReport?.category === 'inventario' ? 'Contexto de inventario' : (activeReport?.category === 'caja' ? 'Contexto de caja' : 'Contexto de venta');
+  const activeSpecificFilterKeys = useMemo(
+    () => activeAllowedFilterKeys.filter((key) => REPORT_SPECIFIC_FILTER_KEYS.includes(key)),
+    [activeAllowedFilterKeys]
+  );
   const isKardexTab = activeTab === 'inventario-kardex';
   const isVentasDescuentosTab = activeTab === 'ventas-descuentos';
   const isVentasItemsTab = activeTab === 'ventas-items';
@@ -1086,25 +1427,45 @@ const Reportes = () => {
                       <thead>
                         <tr>
                           <th>Fecha</th>
-                          <th className="text-end">Ventas</th>
+                          <th className="text-end">Cantidad de ventas</th>
+                          <th className="text-end">Subtotal</th>
+                          <th className="text-end">Descuento</th>
+                          <th className="text-end">Impuesto</th>
                           <th className="text-end">Total neto</th>
+                          <th className="text-end">Ticket promedio</th>
+                          <th>Estado principal</th>
                         </tr>
                       </thead>
                       <tbody>
                         {serieDiaria.length === 0 ? (
-                          <tr><td colSpan={3} className="rep-table-empty">Sin datos para los filtros seleccionados.</td></tr>
+                          <tr><td colSpan={8} className="rep-table-empty">Sin datos para los filtros seleccionados.</td></tr>
                         ) : paginatedRows.map((item) => (
                           <tr key={item.fecha}>
                             <td>{item.fecha}</td>
                             <td className="text-end">{item.cantidad_ventas}</td>
+                            <td className="text-end">L {money(item.subtotal)}</td>
+                            <td className="text-end">L {money(item.descuento)}</td>
+                            <td className="text-end">L {money(item.impuesto)}</td>
                             <td className="text-end">L {money(item.total_neto)}</td>
+                            <td className="text-end">L {money(item.ticket_promedio)}</td>
+                            <td>{item.estado_principal || '-'}</td>
                           </tr>
                         ))}
                       </tbody>
+                      
                     </table>
                   </div>
 
-                  <div className="rep-mobile-sales-list" aria-label="Resumen de ventas en tarjetas">
+                                  <div className="rep-filter-chips" style={{ padding: '0.55rem 0.65rem', borderTop: '1px solid rgba(157, 150, 112, 0.24)' }}>
+                  <span className="rep-filter-chip"><strong>Totales</strong></span>
+                  <span className="rep-filter-chip"><strong>Cantidad total de ventas:</strong> {kpis?.cantidad_ventas ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Subtotal general:</strong> L {money(kpis?.subtotal_general ?? kpis?.subtotal ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Descuento general:</strong> L {money(kpis?.descuento_general ?? kpis?.descuentos ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Impuesto general:</strong> L {money(kpis?.impuesto_general ?? kpis?.impuestos ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Total neto general:</strong> L {money(kpis?.total_neto_general ?? kpis?.total_neto ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Ticket promedio general:</strong> L {money(kpis?.ticket_promedio_general ?? kpis?.promedio_por_venta ?? 0)}</span>
+                </div>
+<div className="rep-mobile-sales-list" aria-label="Resumen de ventas en tarjetas">
                     {serieDiaria.length === 0 ? (
                       <div className="rep-mobile-sales-empty">Sin datos para los filtros seleccionados.</div>
                     ) : paginatedRows.map((item, index) => (
@@ -1162,9 +1523,9 @@ const Reportes = () => {
                     <thead>
                       <tr>
                         <th>Método de pago</th>
-                        <th className="text-end">Ventas</th>
+                        <th className="text-end">Cantidad de ventas</th>
                         <th className="text-end">Total vendido</th>
-                        <th className="text-end">%</th>
+                        <th className="text-end">Porcentaje de participación</th>
                         <th className="text-end">Ticket promedio</th>
                       </tr>
                     </thead>
@@ -1181,7 +1542,33 @@ const Reportes = () => {
                         </tr>
                       ))}
                     </tbody>
+                    
                   </table>
+                </div>
+                                <div className="rep-filter-chips" style={{ padding: '0.55rem 0.65rem', borderTop: '1px solid rgba(157, 150, 112, 0.24)' }}>
+                  <span className="rep-filter-chip"><strong>Totales</strong></span>
+                  <span className="rep-filter-chip"><strong>Total ventas:</strong> {kpis?.total_ventas ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Total vendido general:</strong> L {money(kpis?.total_general ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Participaci?n:</strong> 100.00%</span>
+                  <span className="rep-filter-chip"><strong>Ticket promedio general:</strong> L {money(kpis?.ticket_promedio_general ?? 0)}</span>
+                </div>
+<div className="rep-mobile-sales-list" aria-label="Métodos de pago en tarjetas">
+                  {resumenMetodos.length === 0 ? (
+                    <div className="rep-mobile-sales-empty">Sin datos por método.</div>
+                  ) : paginatedRows.map((item, index) => (
+                    <article key={`metodos-mobile-${item.metodo_pago_codigo || index}`} className="rep-mobile-sales-card">
+                      <div className="rep-mobile-sales-card__head">
+                        <span className="rep-mobile-sales-card__icon" aria-hidden="true"><i className="bi bi-credit-card-2-front" /></span>
+                        <strong>{item.metodo_pago || '-'}</strong>
+                      </div>
+                      <div className="rep-mobile-sales-card__body">
+                        <div><span>Ventas</span><b>{item.cantidad_ventas ?? 0}</b></div>
+                        <div><span>Total vendido</span><b>{`L ${money(item.total_vendido)}`}</b></div>
+                        <div><span>Participación</span><b>{`${money(item.porcentaje_sobre_total)}%`}</b></div>
+                        <div><span>Ticket promedio</span><b>{`L ${money(item.ticket_promedio)}`}</b></div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -1196,15 +1583,17 @@ const Reportes = () => {
                         <th>Sucursal</th>
                         <th>Caja</th>
                         <th>Responsable</th>
-                        <th className="text-end">Esperado</th>
-                        <th className="text-end">Contado</th>
+                        <th className="text-end">Monto esperado</th>
+                        <th className="text-end">Monto contado</th>
                         <th className="text-end">Diferencia</th>
                         <th>Estado</th>
+                        <th>Resolución</th>
+                        <th>Observación</th>
                       </tr>
                     </thead>
                     <tbody>
                       {cierresCaja.length === 0 ? (
-                        <tr><td colSpan={8} className="rep-table-empty">Sin cierres para los filtros aplicados.</td></tr>
+                        <tr><td colSpan={10} className="rep-table-empty">Sin cierres para los filtros aplicados.</td></tr>
                       ) : paginatedRows.map((item) => (
                         <tr key={item.id_cierre_caja}>
                           <td>{item.fecha_cierre || item.fecha_apertura || '-'}</td>
@@ -1214,11 +1603,43 @@ const Reportes = () => {
                           <td className="text-end">L {money(item.total_esperado)}</td>
                           <td className="text-end">L {money(item.total_contado)}</td>
                           <td className="text-end">L {money(item.diferencia)}</td>
-                          <td>{item.estado_cierre || '-'}</td>
+                          <td>{item.estado || '-'}</td>
+                          <td className="rep-cell-truncate" title={item.resolucion || item.estado_cierre || '-'}>{compactText(item.resolucion || item.estado_cierre || '-', 28)}</td>
+                          <td className="rep-cell-truncate rep-cell-truncate--wide" title={item.observacion || '-'}>{compactText(item.observacion || '-', 42)}</td>
                         </tr>
                       ))}
                     </tbody>
+                    
                   </table>
+                </div>
+                                <div className="rep-filter-chips" style={{ padding: '0.55rem 0.65rem', borderTop: '1px solid rgba(157, 150, 112, 0.24)' }}>
+                  <span className="rep-filter-chip"><strong>Totales</strong></span>
+                  <span className="rep-filter-chip"><strong>Cantidad de cierres:</strong> {kpis?.cantidad_cierres ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Total esperado:</strong> L {money(kpis?.total_esperado ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Total contado:</strong> L {money(kpis?.total_contado ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Diferencia neta:</strong> L {money(kpis?.diferencia_neta ?? kpis?.diferencia_total ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Con diferencia:</strong> {kpis?.cantidad_con_diferencia ?? kpis?.cierres_con_diferencia ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Sin diferencia:</strong> {kpis?.cantidad_sin_diferencia ?? kpis?.cierres_sin_diferencia ?? 0}</span>
+                </div>
+<div className="rep-mobile-sales-list" aria-label="Cierres de caja en tarjetas">
+                  {cierresCaja.length === 0 ? (
+                    <div className="rep-mobile-sales-empty">Sin cierres para los filtros aplicados.</div>
+                  ) : paginatedRows.map((item, index) => (
+                    <article key={`cierres-mobile-${item.id_cierre_caja || index}`} className="rep-mobile-sales-card">
+                      <div className="rep-mobile-sales-card__head">
+                        <span className="rep-mobile-sales-card__icon" aria-hidden="true"><i className="bi bi-safe2" /></span>
+                        <strong>{`${item.caja || 'Caja'} · ${item.fecha_cierre || '-'}`}</strong>
+                      </div>
+                      <div className="rep-mobile-sales-card__body">
+                        <div><span>Sucursal / Responsable</span><b>{`${item.sucursal || '-'} / ${item.responsable || item.usuario_cierre || '-'}`}</b></div>
+                        <div><span>Esperado / Contado</span><b>{`L ${money(item.total_esperado)} / L ${money(item.total_contado)}`}</b></div>
+                        <div><span>Diferencia</span><b>{`L ${money(item.diferencia)}`}</b></div>
+                        <div><span>Estado</span><b>{item.estado || '-'}</b></div>
+                        <div><span>Resolución</span><b title={item.resolucion || item.estado_cierre || '-'}>{compactText(item.resolucion || item.estado_cierre || '-', 36)}</b></div>
+                        <div><span>Observación</span><b title={item.observacion || '-'}>{compactText(item.observacion || '-', 36)}</b></div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -1233,17 +1654,18 @@ const Reportes = () => {
                         <th>Sucursal</th>
                         <th>Caja</th>
                         <th>Responsable</th>
-                        <th className="text-end">Esperado</th>
-                        <th className="text-end">Contado</th>
+                        <th className="text-end">Monto esperado</th>
+                        <th className="text-end">Monto contado</th>
                         <th className="text-end">Diferencia</th>
-                        <th>Tipo</th>
+                        <th>Tipo diferencia</th>
                         <th>Resolución</th>
                         <th>Observación</th>
+                        <th>Estado</th>
                       </tr>
                     </thead>
                     <tbody>
                       {diferenciasCaja.length === 0 ? (
-                        <tr><td colSpan={10} className="rep-table-empty">Sin diferencias para los filtros aplicados.</td></tr>
+                        <tr><td colSpan={11} className="rep-table-empty">Sin diferencias para los filtros aplicados.</td></tr>
                       ) : paginatedRows.map((item) => (
                         <tr key={`${item.id_cierre_caja}-${item.tipo_diferencia}`}>
                           <td>{item.fecha_cierre || '-'}</td>
@@ -1254,12 +1676,42 @@ const Reportes = () => {
                           <td className="text-end">L {money(item.total_contado)}</td>
                           <td className="text-end">L {money(item.diferencia)}</td>
                           <td>{item.tipo_diferencia || '-'}</td>
-                          <td>{item.estado_resolucion || '-'}</td>
-                          <td>{item.observacion || '-'}</td>
+                          <td className="rep-cell-truncate" title={item.resolucion || item.estado_resolucion || '-'}>{compactText(item.resolucion || item.estado_resolucion || '-', 28)}</td>
+                          <td className="rep-cell-truncate rep-cell-truncate--wide" title={item.observacion || '-'}>{compactText(item.observacion || '-', 40)}</td>
+                          <td>{item.estado || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
+                    
                   </table>
+                </div>
+                                <div className="rep-filter-chips" style={{ padding: '0.55rem 0.65rem', borderTop: '1px solid rgba(157, 150, 112, 0.24)' }}>
+                  <span className="rep-filter-chip"><strong>Totales</strong></span>
+                  <span className="rep-filter-chip"><strong>Cantidad de diferencias:</strong> {kpis?.cantidad_diferencias ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Total faltantes:</strong> L {money(kpis?.total_faltantes ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Total sobrantes:</strong> L {money(kpis?.total_sobrantes ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Diferencia neta:</strong> L {money(kpis?.diferencia_neta ?? 0)}</span>
+                  <span className="rep-filter-chip"><strong>Mayor diferencia registrada:</strong> L {money(kpis?.mayor_diferencia_registrada ?? 0)}</span>
+                </div>
+<div className="rep-mobile-sales-list" aria-label="Diferencias de caja en tarjetas">
+                  {diferenciasCaja.length === 0 ? (
+                    <div className="rep-mobile-sales-empty">Sin diferencias para los filtros aplicados.</div>
+                  ) : paginatedRows.map((item, index) => (
+                    <article key={`diferencias-mobile-${item.id_cierre_caja || index}`} className="rep-mobile-sales-card">
+                      <div className="rep-mobile-sales-card__head">
+                        <span className="rep-mobile-sales-card__icon" aria-hidden="true"><i className="bi bi-exclamation-diamond" /></span>
+                        <strong>{`${item.caja || 'Caja'} · ${item.fecha_cierre || '-'}`}</strong>
+                      </div>
+                      <div className="rep-mobile-sales-card__body">
+                        <div><span>Sucursal / Responsable</span><b>{`${item.sucursal || '-'} / ${item.responsable || '-'}`}</b></div>
+                        <div><span>Tipo / Estado</span><b>{`${item.tipo_diferencia || '-'} / ${item.estado || '-'}`}</b></div>
+                        <div><span>Diferencia</span><b>{`L ${money(item.diferencia)}`}</b></div>
+                        <div><span>Esperado / Contado</span><b>{`L ${money(item.total_esperado)} / L ${money(item.total_contado)}`}</b></div>
+                        <div><span>Resolución</span><b title={item.resolucion || item.estado_resolucion || '-'}>{compactText(item.resolucion || item.estado_resolucion || '-', 36)}</b></div>
+                        <div><span>Observación</span><b title={item.observacion || '-'}>{compactText(item.observacion || '-', 36)}</b></div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -1275,30 +1727,61 @@ const Reportes = () => {
                         <th>Categoría</th>
                         <th>Almacén</th>
                         <th>Sucursal</th>
-                        <th className="text-end">Cantidad</th>
+                        <th className="text-end">Cantidad actual</th>
                         <th className="text-end">Stock mínimo</th>
                         <th className="text-end">Diferencia</th>
-                        <th>Estado</th>
+                        <th>Estado stock</th>
+                        <th>Estado item</th>
                       </tr>
                     </thead>
                     <tbody>
                       {stockCriticoItems.length === 0 ? (
-                        <tr><td colSpan={9} className="rep-table-empty">Sin ítems para los filtros aplicados.</td></tr>
+                        <tr><td colSpan={10} className="rep-table-empty">Sin ítems para los filtros aplicados.</td></tr>
                       ) : paginatedRows.map((item, index) => (
                         <tr key={`${item.tipo_item}-${item.nombre}-${item.almacen}-${index}`}>
                           <td>{item.tipo_item || '-'}</td>
-                          <td>{item.nombre || '-'}</td>
+                          <td className="rep-cell-truncate" title={item.nombre || '-'}>{compactText(item.nombre || '-', 42)}</td>
                           <td>{item.categoria || '-'}</td>
                           <td>{item.almacen || '-'}</td>
                           <td>{item.sucursal || '-'}</td>
                           <td className="text-end">{item.cantidad_actual ?? 0}</td>
                           <td className="text-end">{item.stock_minimo ?? 0}</td>
                           <td className="text-end">{item.diferencia_minimo ?? 0}</td>
-                          <td>{item.estado || '-'}</td>
+                          <td>{item.estado_stock || item.estado || '-'}</td>
+                          <td>{item.estado_item || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+                                <div className="rep-filter-chips" style={{ padding: '0.55rem 0.65rem', borderTop: '1px solid rgba(157, 150, 112, 0.24)' }}>
+                  <span className="rep-filter-chip"><strong>Totales</strong></span>
+                  <span className="rep-filter-chip"><strong>Total ?tems cr?ticos/bajos:</strong> {kpis?.total_items_criticos_bajos ?? kpis?.total_criticos ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Total sin stock:</strong> {kpis?.total_sin_stock ?? kpis?.total_agotados ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Total bajo m?nimo:</strong> {kpis?.total_bajo_minimo ?? kpis?.total_stock_bajo ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Productos afectados:</strong> {kpis?.productos_afectados ?? kpis?.productos_criticos ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Insumos afectados:</strong> {kpis?.insumos_afectados ?? kpis?.insumos_criticos ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Almacenes afectados:</strong> {kpis?.almacenes_afectados ?? 0}</span>
+                </div>
+<div className="rep-mobile-sales-list" aria-label="Stock crítico en tarjetas">
+                  {stockCriticoItems.length === 0 ? (
+                    <div className="rep-mobile-sales-empty">Sin ítems para los filtros aplicados.</div>
+                  ) : paginatedRows.map((item, index) => (
+                    <article key={`stock-mobile-${item.tipo_item || 'item'}-${index}`} className="rep-mobile-sales-card">
+                      <div className="rep-mobile-sales-card__head">
+                        <span className="rep-mobile-sales-card__icon" aria-hidden="true"><i className="bi bi-box-seam" /></span>
+                        <strong title={item.nombre || '-'}>{compactText(item.nombre || '-', 40)}</strong>
+                      </div>
+                      <div className="rep-mobile-sales-card__body">
+                        <div><span>Tipo / Categoría</span><b>{`${item.tipo_item || '-'} / ${item.categoria || '-'}`}</b></div>
+                        <div><span>Sucursal / Almacén</span><b>{`${item.sucursal || '-'} / ${item.almacen || '-'}`}</b></div>
+                        <div><span>Actual / Mínimo</span><b>{`${item.cantidad_actual ?? 0} / ${item.stock_minimo ?? 0}`}</b></div>
+                        <div><span>Diferencia</span><b>{item.diferencia_minimo ?? 0}</b></div>
+                        <div><span>Estado stock</span><b>{item.estado_stock || item.estado || '-'}</b></div>
+                        <div><span>Estado ítem</span><b>{item.estado_item || '-'}</b></div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -1310,38 +1793,74 @@ const Reportes = () => {
                     <thead>
                       <tr>
                         <th>Fecha</th>
-                        <th>Tipo mov.</th>
+                        <th>Sucursal</th>
+                        <th>Almacén</th>
                         <th>Tipo ítem</th>
                         <th>Ítem</th>
-                        <th>Almacén</th>
-                        <th>Sucursal</th>
+                        <th>Categoría</th>
+                        <th>Tipo movimiento</th>
                         <th className="text-end">Cantidad</th>
                         <th className="text-end">Saldo antes</th>
                         <th className="text-end">Saldo después</th>
                         <th>Referencia</th>
+                        <th>Origen / módulo</th>
+                        <th>Usuario</th>
                         <th>Descripción</th>
                       </tr>
                     </thead>
                     <tbody>
                       {kardexMovimientos.length === 0 ? (
-                        <tr><td colSpan={11} className="rep-table-empty">Sin movimientos para los filtros aplicados.</td></tr>
+                        <tr><td colSpan={14} className="rep-table-empty">Sin movimientos para los filtros aplicados.</td></tr>
                       ) : paginatedRows.map((item) => (
                         <tr key={item.id_movimiento}>
                           <td>{item.fecha_mov || '-'}</td>
-                          <td>{item.tipo || '-'}</td>
-                          <td>{item.item_tipo || '-'}</td>
-                          <td>{item.item_nombre || '-'}</td>
-                          <td>{item.nombre_almacen || '-'}</td>
                           <td>{item.nombre_sucursal || '-'}</td>
+                          <td>{item.nombre_almacen || '-'}</td>
+                          <td>{item.item_tipo || '-'}</td>
+                          <td className="rep-cell-truncate" title={item.item_nombre || '-'}>{compactText(item.item_nombre || '-', 36)}</td>
+                          <td>{item.categoria || '-'}</td>
+                          <td>{item.tipo || '-'}</td>
                           <td className="text-end">{item.cantidad ?? 0}</td>
                           <td className="text-end">{item.saldo_antes ?? 0}</td>
                           <td className="text-end">{item.saldo_despues ?? 0}</td>
-                          <td>{item.ref_origen ? `${item.ref_origen}${item.id_ref ? ` #${item.id_ref}` : ''}` : '-'}</td>
-                          <td>{item.descripcion || '-'}</td>
+                          <td className="rep-cell-truncate" title={item.referencia || (item.ref_origen ? `${item.ref_origen}${item.id_ref ? ` #${item.id_ref}` : ''}` : '-')}>{compactText(item.referencia || (item.ref_origen ? `${item.ref_origen}${item.id_ref ? ` #${item.id_ref}` : ''}` : '-'), 30)}</td>
+                          <td className="rep-cell-truncate" title={item.origen_modulo || item.ref_origen || '-'}>{compactText(item.origen_modulo || item.ref_origen || '-', 24)}</td>
+                          <td>{item.usuario || '-'}</td>
+                          <td className="rep-cell-truncate rep-cell-truncate--wide" title={item.descripcion || '-'}>{compactText(item.descripcion || '-', 42)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+                                <div className="rep-filter-chips" style={{ padding: '0.55rem 0.65rem', borderTop: '1px solid rgba(157, 150, 112, 0.24)' }}>
+                  <span className="rep-filter-chip"><strong>Totales</strong></span>
+                  <span className="rep-filter-chip"><strong>Total movimientos:</strong> {kpis?.total_movimientos ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Total entradas:</strong> {kpis?.total_entradas ?? kpis?.entradas ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Total salidas:</strong> {kpis?.total_salidas ?? kpis?.salidas ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Total ajustes:</strong> {kpis?.total_ajustes ?? kpis?.ajustes_otros ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Cantidad neta movida:</strong> {Number(kpis?.cantidad_neta_movida ?? 0).toFixed(2)}</span>
+                  <span className="rep-filter-chip"><strong>?tems afectados:</strong> {kpis?.items_afectados ?? kpis?.items_unicos ?? 0}</span>
+                  <span className="rep-filter-chip"><strong>Almacenes afectados:</strong> {kpis?.almacenes_afectados ?? 0}</span>
+                </div>
+<div className="rep-mobile-sales-list" aria-label="Kardex en tarjetas">
+                  {kardexMovimientos.length === 0 ? (
+                    <div className="rep-mobile-sales-empty">Sin movimientos para los filtros aplicados.</div>
+                  ) : paginatedRows.map((item, index) => (
+                    <article key={`kardex-mobile-${item.id_movimiento || index}`} className="rep-mobile-sales-card">
+                      <div className="rep-mobile-sales-card__head">
+                        <span className="rep-mobile-sales-card__icon" aria-hidden="true"><i className="bi bi-arrow-left-right" /></span>
+                        <strong title={item.item_nombre || '-'}>{compactText(item.item_nombre || '-', 40)}</strong>
+                      </div>
+                      <div className="rep-mobile-sales-card__body">
+                        <div><span>Fecha / Almacén</span><b>{`${item.fecha_mov || '-'} / ${item.nombre_almacen || '-'}`}</b></div>
+                        <div><span>Tipo mov. / Tipo ítem</span><b>{`${item.tipo || '-'} / ${item.item_tipo || '-'}`}</b></div>
+                        <div><span>Cantidad</span><b>{item.cantidad ?? 0}</b></div>
+                        <div><span>Saldo ant. / post.</span><b>{`${item.saldo_antes ?? 0} / ${item.saldo_despues ?? 0}`}</b></div>
+                        <div><span>Referencia / Origen</span><b title={`${item.referencia || '-'} / ${item.origen_modulo || item.ref_origen || '-'}`}>{compactText(`${item.referencia || '-'} / ${item.origen_modulo || item.ref_origen || '-'}`, 36)}</b></div>
+                        <div><span>Usuario</span><b>{item.usuario || '-'}</b></div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -1360,15 +1879,16 @@ const Reportes = () => {
                         <th>Pedido</th>
                         <th>Cliente</th>
                         <th>Tipo descuento</th>
-                        <th className="text-end">Descuento</th>
+                        <th>Ítem</th>
                         <th className="text-end">Subtotal línea</th>
+                        <th className="text-end">Descuento</th>
                         <th className="text-end">Total línea</th>
                         <th>Estado</th>
                       </tr>
                     </thead>
                     <tbody>
                       {descuentosDetalle.length === 0 ? (
-                        <tr><td colSpan={12} className="rep-table-empty">Sin descuentos aplicados para los filtros.</td></tr>
+                        <tr><td colSpan={13} className="rep-table-empty">Sin descuentos aplicados para los filtros.</td></tr>
                       ) : paginatedRows.map((item, index) => (
                         <tr key={`${item.factura}-${item.pedido || 'na'}-${index}`}>
                           <td>{item.fecha || '-'}</td>
@@ -1379,14 +1899,43 @@ const Reportes = () => {
                           <td>{item.pedido || '-'}</td>
                           <td>{item.cliente || '-'}</td>
                           <td>{item.tipo_descuento || '-'}</td>
-                          <td className="text-end">L {money(item.descuento)}</td>
+                          <td className="rep-cell-truncate" title={item.item || '-'}>{compactText(item.item || '-', 32)}</td>
                           <td className="text-end">L {money(item.subtotal_linea)}</td>
+                          <td className="text-end">L {money(item.descuento)}</td>
                           <td className="text-end">L {money(item.total_linea)}</td>
                           <td>{item.estado || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
+                    
                   </table>
+                </div>
+                                <div className="rep-filter-chips" style={{ padding: '0.55rem 0.65rem', borderTop: '1px solid rgba(157, 150, 112, 0.24)' }}>
+                  <span className="rep-filter-chip"><strong>Totales</strong></span>
+                  <span className="rep-filter-chip"><strong>Cantidad de descuentos aplicados:</strong> {descuentosTotals.cantidad}</span>
+                  <span className="rep-filter-chip"><strong>Subtotal afectado:</strong> L {money(descuentosTotals.subtotal)}</span>
+                  <span className="rep-filter-chip"><strong>Descuento total:</strong> L {money(descuentosTotals.descuento)}</span>
+                  <span className="rep-filter-chip"><strong>Total neto despu?s de descuento:</strong> L {money(descuentosTotals.total)}</span>
+                </div>
+<div className="rep-mobile-sales-list" aria-label="Descuentos en tarjetas">
+                  {descuentosDetalle.length === 0 ? (
+                    <div className="rep-mobile-sales-empty">Sin descuentos aplicados para los filtros.</div>
+                  ) : paginatedRows.map((item, index) => (
+                    <article key={`descuentos-mobile-${item.factura || index}`} className="rep-mobile-sales-card">
+                      <div className="rep-mobile-sales-card__head">
+                        <span className="rep-mobile-sales-card__icon" aria-hidden="true"><i className="bi bi-tags" /></span>
+                        <strong title={item.item || '-'}>{compactText(item.item || '-', 40)}</strong>
+                      </div>
+                      <div className="rep-mobile-sales-card__body">
+                        <div><span>Fecha / Factura</span><b>{`${item.fecha || '-'} / ${item.factura || '-'}`}</b></div>
+                        <div><span>Sucursal / Caja</span><b>{`${item.sucursal || '-'} / ${item.caja || '-'}`}</b></div>
+                        <div><span>Tipo descuento</span><b>{item.tipo_descuento || '-'}</b></div>
+                        <div><span>Subtotal / Desc.</span><b>{`L ${money(item.subtotal_linea)} / L ${money(item.descuento)}`}</b></div>
+                        <div><span>Total</span><b>{`L ${money(item.total_linea)}`}</b></div>
+                        <div><span>Estado</span><b>{item.estado || '-'}</b></div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -1407,6 +1956,7 @@ const Reportes = () => {
                         <th>Ítem</th>
                         <th>Categoría</th>
                         <th className="text-end">Cantidad</th>
+                        <th className="text-end">Precio unitario</th>
                         <th className="text-end">Subtotal</th>
                         <th className="text-end">Descuento</th>
                         <th className="text-end">Total</th>
@@ -1415,7 +1965,7 @@ const Reportes = () => {
                     </thead>
                     <tbody>
                       {ventasItemsDetalle.length === 0 ? (
-                        <tr><td colSpan={14} className="rep-table-empty">Sin detalle para los filtros aplicados.</td></tr>
+                        <tr><td colSpan={15} className="rep-table-empty">Sin detalle para los filtros aplicados.</td></tr>
                       ) : paginatedRows.map((item, index) => (
                         <tr key={`${item.factura}-${item.pedido || 'na'}-${item.tipo_item || 'na'}-${index}`}>
                           <td>{item.fecha || '-'}</td>
@@ -1425,9 +1975,10 @@ const Reportes = () => {
                           <td>{item.factura || '-'}</td>
                           <td>{item.pedido || '-'}</td>
                           <td>{item.tipo_item || '-'}</td>
-                          <td>{item.item || '-'}</td>
+                          <td className="rep-cell-truncate" title={item.item || '-'}>{compactText(item.item || '-', 34)}</td>
                           <td>{item.categoria || '-'}</td>
                           <td className="text-end">{item.cantidad ?? 0}</td>
+                          <td className="text-end">L {money(item.precio_unitario ?? ((Number(item.cantidad || 0) > 0) ? (Number(item.subtotal || 0) / Number(item.cantidad || 1)) : 0))}</td>
                           <td className="text-end">L {money(item.subtotal)}</td>
                           <td className="text-end">L {money(item.descuento)}</td>
                           <td className="text-end">L {money(item.total)}</td>
@@ -1435,7 +1986,35 @@ const Reportes = () => {
                         </tr>
                       ))}
                     </tbody>
+                    
                   </table>
+                </div>
+                                <div className="rep-filter-chips" style={{ padding: '0.55rem 0.65rem', borderTop: '1px solid rgba(157, 150, 112, 0.24)' }}>
+                  <span className="rep-filter-chip"><strong>Totales</strong></span>
+                  <span className="rep-filter-chip"><strong>Cantidad total vendida:</strong> {ventasItemsTotals.cantidad}</span>
+                  <span className="rep-filter-chip"><strong>Subtotal total:</strong> L {money(ventasItemsTotals.subtotal)}</span>
+                  <span className="rep-filter-chip"><strong>Descuento total:</strong> L {money(ventasItemsTotals.descuento)}</span>
+                  <span className="rep-filter-chip"><strong>Total neto:</strong> L {money(ventasItemsTotals.total)}</span>
+                </div>
+<div className="rep-mobile-sales-list" aria-label="Ventas por ítem en tarjetas">
+                  {ventasItemsDetalle.length === 0 ? (
+                    <div className="rep-mobile-sales-empty">Sin detalle para los filtros aplicados.</div>
+                  ) : paginatedRows.map((item, index) => (
+                    <article key={`ventas-items-mobile-${item.factura || index}`} className="rep-mobile-sales-card">
+                      <div className="rep-mobile-sales-card__head">
+                        <span className="rep-mobile-sales-card__icon" aria-hidden="true"><i className="bi bi-bag-check" /></span>
+                        <strong title={item.item || '-'}>{compactText(item.item || '-', 40)}</strong>
+                      </div>
+                      <div className="rep-mobile-sales-card__body">
+                        <div><span>Fecha / Factura</span><b>{`${item.fecha || '-'} / ${item.factura || '-'}`}</b></div>
+                        <div><span>Sucursal / Caja / Usuario</span><b>{`${item.sucursal || '-'} / ${item.caja || '-'} / ${item.usuario || '-'}`}</b></div>
+                        <div><span>Tipo / Categoría</span><b>{`${item.tipo_item || '-'} / ${item.categoria || '-'}`}</b></div>
+                        <div><span>Cantidad / P. unitario</span><b>{`${item.cantidad ?? 0} / L ${money(item.precio_unitario ?? 0)}`}</b></div>
+                        <div><span>Total</span><b>{`L ${money(item.total)}`}</b></div>
+                        <div><span>Estado</span><b>{item.estado || '-'}</b></div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -1523,72 +2102,144 @@ const Reportes = () => {
               </header>
 
               <div className="inv-cat-filter-grid">
-                <section className="inv-prod-drawer-section inv-cat-filter-card">
-                  <h4>Período</h4>
-                  <div className="rep-drawer__grid rep-drawer__grid--2">
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-fecha-inicio">Fecha inicio</label>
-                      <input
-                        id="rep-filter-fecha-inicio"
-                        type="date"
-                        value={draftFilters.fecha_inicio}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, fecha_inicio: event.target.value }))}
-                      />
+                {(activeAllowedFilterKeys.includes('fecha_inicio') || activeAllowedFilterKeys.includes('fecha_fin')) ? (
+                  <section className="inv-prod-drawer-section inv-cat-filter-card">
+                    <h4>Periodo</h4>
+                    <div className="rep-drawer__grid rep-drawer__grid--2">
+                      {activeAllowedFilterKeys.includes('fecha_inicio') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-fecha-inicio">Fecha inicio</label>
+                          <input id="rep-filter-fecha-inicio" type="date" value={draftFilters.fecha_inicio} onChange={(event) => setDraftFilters((prev) => ({ ...prev, fecha_inicio: event.target.value }))} />
+                        </div>
+                      ) : null}
+                      {activeAllowedFilterKeys.includes('fecha_fin') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-fecha-fin">Fecha fin</label>
+                          <input id="rep-filter-fecha-fin" type="date" value={draftFilters.fecha_fin} onChange={(event) => setDraftFilters((prev) => ({ ...prev, fecha_fin: event.target.value }))} />
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-fecha-fin">Fecha fin</label>
-                      <input
-                        id="rep-filter-fecha-fin"
-                        type="date"
-                        value={draftFilters.fecha_fin}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, fecha_fin: event.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </section>
+                  </section>
+                ) : null}
 
                 <section className="inv-prod-drawer-section inv-cat-filter-card">
-                  <h4>Contexto</h4>
+                  <h4>{activeContextTitle}</h4>
                   <div className="rep-drawer__grid rep-drawer__grid--2">
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-sucursal">Sucursal</label>
-                      <select
-                        id="rep-filter-sucursal"
-                        value={draftFilters.sucursal}
-                        onChange={(event) =>
-                          setDraftFilters((prev) => ({ ...prev, sucursal: event.target.value, caja: '' }))
-                        }
-                        disabled={(loadingCatalogs || loadingBaseCatalogs) && sucursalOptions.length <= 1}
-                      >
-                        {(loadingCatalogs || loadingBaseCatalogs) && sucursalOptions.length <= 1 ? (
-                          <option value="">Cargando sucursales...</option>
-                        ) : (
-                          sucursalOptions.map((option) => (
-                            <option key={`sucursal-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                          ))
-                        )}
-                      </select>
-                    </div>
-
-                    <div className="rep-field">
-                      <label htmlFor="rep-filter-caja">Caja</label>
-                      <select
-                        id="rep-filter-caja"
-                        value={draftFilters.caja}
-                        onChange={(event) => setDraftFilters((prev) => ({ ...prev, caja: event.target.value }))}
-                        disabled={(loadingCatalogs || loadingBaseCatalogs) && cajaOptions.length <= 1}
-                      >
-                        {(loadingCatalogs || loadingBaseCatalogs) && cajaOptions.length <= 1 ? (
-                          <option value="">Cargando cajas...</option>
-                        ) : (
-                          cajaOptions.map((option) => (
-                            <option key={`caja-${option.value || 'all'}`} value={option.value}>{option.label}</option>
-                          ))
-                        )}
-                      </select>
-                    </div>
+                    {activeAllowedFilterKeys.includes('sucursal') ? (
+                      <div className="rep-field">
+                        <label htmlFor="rep-filter-sucursal">Sucursal</label>
+                        <select id="rep-filter-sucursal" value={draftFilters.sucursal} onChange={(event) => setDraftFilters((prev) => ({ ...prev, sucursal: event.target.value, caja: '' }))} disabled={(loadingCatalogs || loadingBaseCatalogs) && sucursalOptions.length <= 1}>
+                          {(loadingCatalogs || loadingBaseCatalogs) && sucursalOptions.length <= 1 ? (<option value="">Cargando sucursales...</option>) : (sucursalOptions.map((option) => (<option key={`sucursal-${option.value || 'all'}`} value={option.value}>{option.label}</option>)))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {activeAllowedFilterKeys.includes('caja') ? (
+                      <div className="rep-field">
+                        <label htmlFor="rep-filter-caja">Caja</label>
+                        <select id="rep-filter-caja" value={draftFilters.caja} onChange={(event) => setDraftFilters((prev) => ({ ...prev, caja: event.target.value }))} disabled={(loadingCatalogs || loadingBaseCatalogs) && cajaOptions.length <= 1}>
+                          {(loadingCatalogs || loadingBaseCatalogs) && cajaOptions.length <= 1 ? (<option value="">Cargando cajas...</option>) : (cajaOptions.map((option) => (<option key={`caja-${option.value || 'all'}`} value={option.value}>{option.label}</option>)))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {activeAllowedFilterKeys.includes('almacen') ? (
+                      <div className="rep-field">
+                        <label htmlFor="rep-filter-almacen">Almacen</label>
+                        <select id="rep-filter-almacen" value={draftFilters.almacen} onChange={(event) => setDraftFilters((prev) => ({ ...prev, almacen: event.target.value }))}>
+                          {almacenControlledOptions.map((option) => (<option key={`almacen-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {activeAllowedFilterKeys.includes('usuario') ? (
+                      <div className="rep-field">
+                        <label htmlFor="rep-filter-usuario">Usuario</label>
+                        <select id="rep-filter-usuario" value={draftFilters.usuario} onChange={(event) => setDraftFilters((prev) => ({ ...prev, usuario: event.target.value }))}>
+                          {usuariosOptions.map((option) => (<option key={`usuario-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {activeAllowedFilterKeys.includes('estado') ? (
+                      <div className="rep-field">
+                        <label htmlFor="rep-filter-estado">Estado</label>
+                        <select id="rep-filter-estado" value={draftFilters.estado} onChange={(event) => setDraftFilters((prev) => ({ ...prev, estado: event.target.value }))}>
+                          {(isStockCriticoTab ? STOCK_ESTADO_OPTIONS : (isCajaCierresTab || isCajaDiferenciasTab ? estadoCajaOptions : estadoVentasOptions)).map((option) => (
+                            <option key={`estado-${option.value || 'all'}`} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
                   </div>
                 </section>
+                {activeSpecificFilterKeys.length > 0 ? (
+                  <section className="inv-prod-drawer-section inv-cat-filter-card">
+                    <h4>Filtro específico</h4>
+                    <div className="rep-drawer__grid rep-drawer__grid--2">
+                      {activeAllowedFilterKeys.includes('metodo_pago') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-metodo-pago">Metodo pago</label>
+                          <select id="rep-filter-metodo-pago" value={draftFilters.metodo_pago} onChange={(event) => setDraftFilters((prev) => ({ ...prev, metodo_pago: event.target.value }))}>
+                            {metodoPagoOptions.map((option) => (<option key={`metodo-pago-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                          </select>
+                        </div>
+                      ) : null}
+                      {activeAllowedFilterKeys.includes('tipo_descuento') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-tipo-descuento">Tipo descuento</label>
+                          <select id="rep-filter-tipo-descuento" value={draftFilters.tipo_descuento} onChange={(event) => setDraftFilters((prev) => ({ ...prev, tipo_descuento: event.target.value }))}>
+                            {tipoDescuentoOptions.map((option) => (<option key={`tipo-descuento-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                          </select>
+                        </div>
+                      ) : null}
+                      {activeAllowedFilterKeys.includes('tipo_diferencia') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-tipo-diferencia">Tipo diferencia</label>
+                          <select id="rep-filter-tipo-diferencia" value={draftFilters.tipo_diferencia} onChange={(event) => setDraftFilters((prev) => ({ ...prev, tipo_diferencia: event.target.value }))}>
+                            {TIPO_DIFERENCIA_OPTIONS.map((option) => (<option key={`tipo-diferencia-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                          </select>
+                        </div>
+                      ) : null}
+                      {activeAllowedFilterKeys.includes('tipo_item') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-tipo-item">Tipo item</label>
+                          <select id="rep-filter-tipo-item" value={draftFilters.tipo_item} onChange={(event) => setDraftFilters((prev) => ({ ...prev, tipo_item: event.target.value }))}>
+                            {TIPO_ITEM_OPTIONS.map((option) => (<option key={`tipo-item-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                          </select>
+                        </div>
+                      ) : null}
+                      {activeAllowedFilterKeys.includes('categoria') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-categoria">Categoria</label>
+                          <select id="rep-filter-categoria" value={draftFilters.categoria} onChange={(event) => setDraftFilters((prev) => ({ ...prev, categoria: event.target.value }))}>
+                            {categoriaControlledOptions.map((option) => (<option key={`categoria-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                          </select>
+                        </div>
+                      ) : null}
+                      {activeAllowedFilterKeys.includes('item') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-item">Item</label>
+                          <select id="rep-filter-item" value={draftFilters.item} onChange={(event) => setDraftFilters((prev) => ({ ...prev, item: event.target.value }))}>
+                            {itemControlledOptions.map((option) => (<option key={`item-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                          </select>
+                        </div>
+                      ) : null}
+                      {activeAllowedFilterKeys.includes('tipo_movimiento') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-tipo-movimiento">Tipo movimiento</label>
+                          <select id="rep-filter-tipo-movimiento" value={draftFilters.tipo_movimiento} onChange={(event) => setDraftFilters((prev) => ({ ...prev, tipo_movimiento: event.target.value }))}>
+                            {TIPO_MOVIMIENTO_OPTIONS.map((option) => (<option key={`tipo-mov-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                          </select>
+                        </div>
+                      ) : null}
+                      {activeAllowedFilterKeys.includes('solo_criticos') ? (
+                        <div className="rep-field">
+                          <label htmlFor="rep-filter-solo-criticos">Solo criticos</label>
+                          <select id="rep-filter-solo-criticos" value={draftFilters.solo_criticos} onChange={(event) => setDraftFilters((prev) => ({ ...prev, solo_criticos: event.target.value }))}>
+                            {SOLO_CRITICOS_OPTIONS.map((option) => (<option key={`solo-criticos-${option.value || 'all'}`} value={option.value}>{option.label}</option>))}
+                          </select>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
               </div>
               <footer className="inv-prod-drawer-actions inv-cat-v2__drawer-actions inv-cat-filter-actions">
                 <button type="button" className="btn inv-prod-btn-subtle" onClick={() => setShowFiltersDrawer(false)} disabled={loading}>
@@ -1744,5 +2395,3 @@ const Reportes = () => {
 };
 
 export default Reportes;
-
-

@@ -124,6 +124,7 @@ const cloneFilters = (f) => {
 const toDateInputValue = (v) => (!v ? '' : String(v).includes('T') ? String(v).split('T')[0] : String(v));
 const parseIntSafe = (v, fb = 0) => { const n = Number.parseInt(String(v ?? ''), 10); return Number.isNaN(n) ? fb : n; };
 const parseFloatSafe = (v, fb = 0) => { const n = Number.parseFloat(String(v ?? '')); return Number.isNaN(n) ? fb : n; };
+const parseDecimalSafe = (v, fb = 0) => { const n = Number(String(v ?? '')); return Number.isFinite(n) ? n : fb; };
 const fmtMoney = (v) => `L. ${parseFloatSafe(v, 0).toFixed(2)}`;
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 const sanitizeSpaces = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
@@ -452,8 +453,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   }, [categoriaField, categoriaLabelField, categoriasInsumosMap, categoriasMap]);
 
   const snapshot = useCallback((insumo) => {
-    const cantidad = Math.max(0, parseIntSafe(insumo?.cantidad, 0));
-    const stockMin = Math.max(0, parseIntSafe(insumo?.stock_minimo, 0));
+    const cantidad = Math.max(0, parseDecimalSafe(insumo?.cantidad, 0));
+    const stockMin = Math.max(0, parseDecimalSafe(insumo?.stock_minimo, 0));
     const activo = resolveActivo(insumo);
     return { cantidad, stockMin, activo, ui: getStatusUi(activo, cantidad, stockMin) };
   }, [resolveActivo]);
@@ -590,8 +591,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const ingreso = String(data?.fecha_ingreso_insumo ?? '').trim();
     const cad = String(data?.fecha_caducidad ?? '').trim();
     const precio = Number.parseFloat(precioRaw);
-    const cantidad = Number.parseInt(cantidadRaw, 10);
-    const stock_minimo = Number.parseInt(stockRaw, 10);
+    const cantidad = Number(cantidadRaw);
+    const stock_minimo = Number(stockRaw);
     const id_almacen = Number.parseInt(almacenRaw, 10);
     const id_categoria_insumo = Number.parseInt(categoriaInsumoRaw, 10);
     const id_unidad_medida = Number.parseInt(unidadMedidaRaw, 10);
@@ -602,12 +603,12 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     else if (Number.isNaN(precio) || precio < 0) errors.precio = 'DEBE SER UN NUMERO >= 0';
     if (includeCantidad) {
       if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
-      else if (!/^\d+$/.test(cantidadRaw)) errors.cantidad = 'SOLO ENTEROS (SIN DECIMALES)';
-      else if (Number.isNaN(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN ENTERO >= 0';
+      else if (!/^\d+(\.\d{1,4})?$/.test(cantidadRaw)) errors.cantidad = 'SOLO NUMEROS (MAX 4 DECIMALES)';
+      else if (!Number.isFinite(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN NUMERO >= 0';
     }
     if (!stockRaw) errors.stock_minimo = 'EL STOCK MINIMO ES OBLIGATORIO';
-    else if (!/^\d+$/.test(stockRaw)) errors.stock_minimo = 'SOLO ENTEROS (SIN DECIMALES)';
-    else if (Number.isNaN(stock_minimo) || stock_minimo < 0) errors.stock_minimo = 'DEBE SER UN ENTERO >= 0';
+    else if (!/^\d+(\.\d{1,4})?$/.test(stockRaw)) errors.stock_minimo = 'SOLO NUMEROS (MAX 4 DECIMALES)';
+    else if (!Number.isFinite(stock_minimo) || stock_minimo < 0) errors.stock_minimo = 'DEBE SER UN NUMERO >= 0';
     if (!almacenRaw) errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACEN';
     else if (Number.isNaN(id_almacen) || id_almacen <= 0) errors.id_almacen = 'DEBE SER UN NUMERO > 0';
     // NEW: categoria de insumo opcional con validacion defensiva cuando se envia.
@@ -642,8 +643,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       cleaned: {
         nombre_insumo: nombre,
         precio,
-        cantidad: Number.isNaN(cantidad) || cantidad < 0 ? 0 : cantidad,
-        stock_minimo,
+        cantidad: !Number.isFinite(cantidad) || cantidad < 0 ? 0 : cantidad,
+        stock_minimo: !Number.isFinite(stock_minimo) || stock_minimo < 0 ? 0 : stock_minimo,
         id_almacen,
         id_categoria_insumo: categoriaInsumoRaw && !Number.isNaN(id_categoria_insumo) && id_categoria_insumo > 0 ? id_categoria_insumo : null,
         id_unidad_medida: unidadMedidaRaw && !Number.isNaN(id_unidad_medida) && id_unidad_medida > 0 ? id_unidad_medida : null,
@@ -1256,7 +1257,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       const changes = [];
       if (c.nombre_insumo !== sanitizeSpaces(actual?.nombre_insumo)) changes.push(['nombre_insumo', c.nombre_insumo]);
       if (c.precio !== parseFloatSafe(actual?.precio, 0)) changes.push(['precio', c.precio]);
-      if (c.stock_minimo !== parseIntSafe(actual?.stock_minimo, 0)) changes.push(['stock_minimo', c.stock_minimo]);
+      if (c.stock_minimo !== parseDecimalSafe(actual?.stock_minimo, 0)) changes.push(['stock_minimo', c.stock_minimo]);
       if (c.id_categoria_insumo !== (parseIntSafe(actual?.id_categoria_insumo, 0) || null)) changes.push(['id_categoria_insumo', c.id_categoria_insumo]);
       if (c.id_unidad_medida !== (parseIntSafe(actual?.id_unidad_medida, 0) || null)) changes.push(['id_unidad_medida', c.id_unidad_medida]);
       if (c.descripcion !== sanitizeSpaces(actual?.descripcion)) changes.push(['descripcion', c.descripcion]);
@@ -1449,8 +1450,8 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       else if (k === 'nombre_desc') sortDiff = String(b?.nombre_insumo ?? '').localeCompare(String(a?.nombre_insumo ?? ''), 'es', { sensitivity: 'base' });
       else if (k === 'precio_desc') sortDiff = parseFloatSafe(b?.precio, 0) - parseFloatSafe(a?.precio, 0);
       else if (k === 'precio_asc') sortDiff = parseFloatSafe(a?.precio, 0) - parseFloatSafe(b?.precio, 0);
-      else if (k === 'stock_desc') sortDiff = parseIntSafe(b?.cantidad, 0) - parseIntSafe(a?.cantidad, 0);
-      else if (k === 'stock_asc') sortDiff = parseIntSafe(a?.cantidad, 0) - parseIntSafe(b?.cantidad, 0);
+      else if (k === 'stock_desc') sortDiff = parseDecimalSafe(b?.cantidad, 0) - parseDecimalSafe(a?.cantidad, 0);
+      else if (k === 'stock_asc') sortDiff = parseDecimalSafe(a?.cantidad, 0) - parseDecimalSafe(b?.cantidad, 0);
       if (k === 'cad_asc') {
         const ca = toDateInputValue(a?.fecha_caducidad) || '9999-12-31';
         const cb = toDateInputValue(b?.fecha_caducidad) || '9999-12-31';
@@ -1804,8 +1805,17 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     ];
   }, [detailInsumo, detailSnap, getAlmacenLabel, getUnidadMedidaLabel]);
   const submitDrawer = async (e) => { e.preventDefault(); if (drawerMode === 'create') await saveCreate(); else await saveEdit(); };
-  const blockNonIntegerKeys = (e) => { if (['.', ',', 'e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); };
-  const intInput = (v) => String(v ?? '').replace(/[^\d]/g, '');
+  const blockInvalidDecimalKeys = (e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); };
+  // AM: normaliza input decimal no negativo con maximo 4 decimales para insumos.
+  const decimalInput = (value) => {
+    const text = String(value ?? '').replace(',', '.').replace(/[^0-9.]/g, '');
+    const firstDot = text.indexOf('.');
+    const compact = firstDot === -1 ? text : `${text.slice(0, firstDot + 1)}${text.slice(firstDot + 1).replace(/\./g, '')}`;
+    if (compact === '.') return '';
+    const [integerPart = '', decimalPart = ''] = compact.split('.');
+    if (decimalPart === '') return integerPart;
+    return `${integerPart}.${decimalPart.slice(0, 4)}`;
+  };
   const isAnyDrawerOpen = drawer === 'filters' || drawer === 'form';
   const fieldErr = (key) => (formErrors[key] ? <div className="invalid-feedback d-block">{formErrors[key]}</div> : null);
 
@@ -2496,7 +2506,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
               </div>
               <div className="inv-ins-create-hero__chips">
                 <span className="inv-ins-create-hero__chip"><i className="bi bi-cash-stack" aria-hidden="true" /> {fmtMoney(formValues?.precio || 0)}</span>
-                <span className="inv-ins-create-hero__chip"><i className="bi bi-boxes" aria-hidden="true" /> {intInput(formValues?.cantidad || 0) || '0'} en existencia</span>
+                <span className="inv-ins-create-hero__chip"><i className="bi bi-boxes" aria-hidden="true" /> {parseDecimalSafe(formValues?.cantidad || 0, 0)} en existencia</span>
               </div>
             </div>
           ) : null}
@@ -2518,7 +2528,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
             </div>
             <div className="inv-ins-create-hero__chips">
               <span className="inv-ins-create-hero__chip"><i className="bi bi-cash-stack" aria-hidden="true" /> {fmtMoney(formValues?.precio || 0)}</span>
-              <span className="inv-ins-create-hero__chip"><i className="bi bi-boxes" aria-hidden="true" /> {intInput(formValues?.cantidad || 0) || '0'} En Existencia</span>
+              <span className="inv-ins-create-hero__chip"><i className="bi bi-boxes" aria-hidden="true" /> {parseDecimalSafe(formValues?.cantidad || 0, 0)} En Existencia</span>
             </div>
           </div>
 
@@ -2550,15 +2560,15 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                   ref={cantidadInputRef}
                   className={`form-control ${drawerMode === 'edit' ? '' : (formErrors.cantidad ? 'is-invalid' : '')}`}
                   type="number"
-                  step="1"
+                  step="0.0001"
                   min="0"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   value={formValues.cantidad ?? ''}
                   readOnly={drawerMode === 'edit'}
                   disabled={drawerMode === 'edit'}
                   title={drawerMode === 'edit' ? 'La cantidad se ajusta desde movimientos de inventario.' : undefined}
-                  onKeyDown={drawerMode === 'edit' ? undefined : blockNonIntegerKeys}
-                  onChange={drawerMode === 'edit' ? undefined : (e) => setField('cantidad', intInput(e.target.value))}
+                  onKeyDown={drawerMode === 'edit' ? undefined : blockInvalidDecimalKeys}
+                  onChange={drawerMode === 'edit' ? undefined : (e) => setField('cantidad', decimalInput(e.target.value))}
                 />
                 {drawerMode === 'edit'
                   ? <div className="form-text">Gestiona la cantidad desde Movimientos de inventario.</div>
@@ -2566,7 +2576,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
               </div>
               <div>
                 <label className="form-label">Stock Minimo</label>
-                <input className={`form-control ${formErrors.stock_minimo ? 'is-invalid' : ''}`} type="number" step="1" min="0" inputMode="numeric" value={formValues.stock_minimo ?? ''} onKeyDown={blockNonIntegerKeys} onChange={(e) => setField('stock_minimo', intInput(e.target.value))} />
+                <input className={`form-control ${formErrors.stock_minimo ? 'is-invalid' : ''}`} type="number" step="0.0001" min="0" inputMode="decimal" value={formValues.stock_minimo ?? ''} onKeyDown={blockInvalidDecimalKeys} onChange={(e) => setField('stock_minimo', decimalInput(e.target.value))} />
                 {fieldErr('stock_minimo')}
               </div>
               <div className="inv-ins-drawer-field--span-2">
