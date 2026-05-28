@@ -67,6 +67,7 @@ const buildCreateImageState = () => ({
 const buildCreateProductoInitialForm = () => ({
   nombre_producto: '',
   precio: '',
+  costo_compra: '',
   stock_minimo: '0',
   descripcion_producto: '',
   fecha_ingreso_producto: '',
@@ -479,6 +480,43 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return `L. ${n.toFixed(2)}`;
   };
 
+  // AM: resumen visual de margen (solo frontend) para no tocar payload ni reglas de guardado.
+  const buildMarginSummary = useCallback((precioInput, costoInput) => {
+    const parseNullableNumber = (raw) => {
+      if (raw === null || raw === undefined) return null;
+      const text = String(raw).trim();
+      if (!text) return null;
+      const number = Number(text);
+      return Number.isFinite(number) ? number : null;
+    };
+
+    const precio = parseNullableNumber(precioInput);
+    const costo = parseNullableNumber(costoInput);
+    const costoDefinido = costo !== null;
+
+    if (!costoDefinido) {
+      return { costoDefinido: false, margenValor: null, margenPorcentaje: null, text: 'Costo no definido', tone: 'muted' };
+    }
+
+    if (precio === null || precio < 0) {
+      return { costoDefinido: true, margenValor: null, margenPorcentaje: null, text: 'Ingrese precio de venta para calcular margen', tone: 'muted' };
+    }
+
+    if (precio === 0) {
+      return { costoDefinido: true, margenValor: null, margenPorcentaje: null, text: 'Precio de venta no definido', tone: 'muted' };
+    }
+
+    const margenValor = precio - costo;
+    const margenPorcentaje = (margenValor / precio) * 100;
+    return {
+      costoDefinido: true,
+      margenValor,
+      margenPorcentaje,
+      text: `Margen estimado: ${formatMoney(margenValor)} · ${margenPorcentaje.toFixed(2)}%`,
+      tone: margenValor < 0 ? 'danger' : 'ok'
+    };
+  }, []);
+
   // NUEVO: extrae errores de campo del backend cuando vienen en e.data.errors.
   const mapApiFieldErrors = useCallback((apiData) => {
     const errors = apiData.errors;
@@ -729,6 +767,39 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!selectedProductoId) return null;
     return productos.find((p) => Number(p.id_producto) === Number(selectedProductoId)) || null;
   }, [productos, selectedProductoId]);
+
+  const createMarginSummary = useMemo(
+    () => buildMarginSummary(form?.precio, form?.costo_compra),
+    [buildMarginSummary, form?.precio, form?.costo_compra]
+  );
+
+  const editMarginSummary = useMemo(
+    () => buildMarginSummary(editForm?.precio ?? selectedProducto?.precio, editForm?.costo_compra ?? selectedProducto?.costo_compra),
+    [buildMarginSummary, editForm?.precio, editForm?.costo_compra, selectedProducto?.precio, selectedProducto?.costo_compra]
+  );
+
+  const renderCompactMarginSummary = useCallback((summary) => {
+    if (!summary) return null;
+    const toneClass = summary.tone === 'danger' ? 'text-danger' : 'text-muted';
+    const hasNumbers = Number.isFinite(summary.margenValor) && Number.isFinite(summary.margenPorcentaje);
+
+    if (!hasNumbers) {
+      return (
+        <div className={`small d-flex align-items-center flex-wrap gap-1 lh-sm ${toneClass}`}>
+          <span className="fw-semibold">Margen estimado:</span>
+          <span>{summary.text}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`small d-flex align-items-center flex-wrap gap-1 lh-sm ${toneClass}`}>
+        <span className="fw-semibold">Margen estimado:</span>
+        <span className="px-2 py-0 rounded border bg-light">{formatMoney(summary.margenValor)}</span>
+        <span className="px-2 py-0 rounded border bg-light">{summary.margenPorcentaje.toFixed(2)}%</span>
+      </div>
+    );
+  }, [formatMoney]);
 
   // NEW: normalización local para detectar productos duplicados sin depender del backend.
   // WHY: prevenir registros repetidos en create/edit usando los campos reales disponibles en el formulario.
@@ -1093,6 +1164,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const descripcion = normalizeVisualText(data.descripcion_producto ?? '', { mode: 'sentence' });
 
     const precioRaw = String(data.precio ?? '').trim();
+    const costoCompraRaw = String(data.costo_compra ?? '').trim();
     // NUEVO: se valida stock_minimo para enviar valor compatible con backend.
     const stockMinimoRaw = String(data.stock_minimo ?? '').trim();
 
@@ -1114,6 +1186,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const precio = Number.parseFloat(precioRaw);
     if (!precioRaw) errors.precio = 'EL PRECIO ES OBLIGATORIO';
     else if (Number.isNaN(precio) || precio < 0) errors.precio = 'DEBE SER UN NÚMERO >= 0';
+    // AM: costo_compra es opcional; si se captura debe ser decimal no negativo (max 4 decimales).
+    let costo_compra = null;
+    if (costoCompraRaw !== '') {
+      const costoCompra = Number.parseFloat(costoCompraRaw);
+      if (!/^\d+(\.\d{1,4})?$/.test(costoCompraRaw)) errors.costo_compra = 'MÁXIMO 4 DECIMALES';
+      else if (Number.isNaN(costoCompra) || costoCompra < 0) errors.costo_compra = 'DEBE SER UN NÚMERO >= 0';
+      else costo_compra = costoCompra;
+    }
 
     // === FK CATEGORÍA OBLIGATORIA ===
     // VALIDACION: stock_minimo debe ser entero no negativo.
@@ -1170,6 +1250,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       cleaned: {
         nombre_producto: nombre,
         precio,
+        costo_compra,
         cantidad: 0,
         stock_minimo,
         descripcion_producto: descripcion,
@@ -1190,6 +1271,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const payload = {
       nombre_producto: cleaned.nombre_producto,
       precio: cleaned.precio,
+      costo_compra: cleaned.costo_compra,
       // AJUSTE: se incluye stock_minimo como numero para alinear create con backend.
       stock_minimo: cleaned.stock_minimo,
       id_categoria_producto: cleaned.id_categoria_producto,
@@ -1395,6 +1477,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const nextEditForm = {
       nombre_producto: p.nombre_producto ?? '',
       precio: p.precio ?? '',
+      costo_compra: p.costo_compra === null || p.costo_compra === undefined ? '' : String(p.costo_compra),
       // AJUSTE: el form de edicion conserva stock_minimo para validacion homogenea.
       stock_minimo: String(p.stock_minimo ?? '0'),
       descripcion_producto: p.descripcion_producto ?? '',
@@ -1656,11 +1739,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     // VALIDACION: se normalizan campos numericos para evitar valores invalidos al precargar.
     const precioRaw = Number.parseFloat(String(productoBase.precio ?? '0'));
     const precioNormalizado = Number.isNaN(precioRaw) || precioRaw < 0 ? 0 : precioRaw;
+    const costoCompraRaw = Number.parseFloat(String(productoBase.costo_compra ?? ''));
+    const costoCompraNormalizado = Number.isNaN(costoCompraRaw) || costoCompraRaw < 0 ? '' : String(costoCompraRaw);
     const stockMinimoRaw = Number.parseInt(String(productoBase.stock_minimo ?? '0'), 10);
     const stockMinimoNormalizado = Number.isNaN(stockMinimoRaw) || stockMinimoRaw < 0 ? 0 : stockMinimoRaw;
     setForm({
       nombre_producto: productoBase.nombre_producto ? `${productoBase.nombre_producto} (copia)` : '',
       precio: String(precioNormalizado),
+      costo_compra: costoCompraNormalizado,
       // AJUSTE: al duplicar se replica stock_minimo y si no existe se usa 0.
       stock_minimo: String(stockMinimoNormalizado),
       descripcion_producto: productoBase.descripcion_producto ?? '',
@@ -1914,6 +2000,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       const nombreActual = String(actual.nombre_producto ?? '').trim();
       const precioActual = Number.parseFloat(String(actual.precio ?? ''));
+      const costoCompraActual = actual.costo_compra === null || actual.costo_compra === undefined
+        ? null
+        : Number.parseFloat(String(actual.costo_compra ?? ''));
       // AJUSTE: normaliza stock_minimo actual para comparar contra edicion con fallback 0.
       const stockMinimoActualRaw = Number.parseInt(String(actual.stock_minimo ?? '0'), 10);
       const stockMinimoActual = Number.isNaN(stockMinimoActualRaw) ? 0 : stockMinimoActualRaw;
@@ -1928,6 +2017,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
       if (v.cleaned.nombre_producto !== nombreActual) cambios.push(['nombre_producto', v.cleaned.nombre_producto]);
       if (!Number.isNaN(v.cleaned.precio) && v.cleaned.precio !== precioActual) cambios.push(['precio', v.cleaned.precio]);
+      if (v.cleaned.costo_compra !== costoCompraActual) cambios.push(['costo_compra', v.cleaned.costo_compra]);
       // AJUSTE: se incluye stock_minimo en persistencia por campo cuando cambia en edicion.
       if (stockMinimoEdit !== stockMinimoActual) cambios.push(['stock_minimo', stockMinimoEdit]);
 
@@ -2936,6 +3026,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               />
                               {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
                             </div>
+                            <div className="col-12 col-md-6 col-lg-4">
+                              <label className="form-label mb-1">Costo de compra</label>
+                              <input
+                                className={`form-control ${createErrors.costo_compra ? 'is-invalid' : ''}`}
+                                type="number"
+                                step="0.0001"
+                                min="0"
+                                inputMode="decimal"
+                                placeholder="Opcional"
+                                value={form.costo_compra}
+                                onChange={(e) => setForm((s) => ({ ...s, costo_compra: e.target.value }))}
+                              />
+                              {createErrors.costo_compra && <div className="invalid-feedback">{createErrors.costo_compra}</div>}
+                              <div className={`form-text ${createMarginSummary.tone === 'danger' ? 'text-danger' : 'text-muted'}`}>{createMarginSummary.text}</div>
+                            </div>
                           </div>
                         </section>
 
@@ -3070,6 +3175,21 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     required
                   />
                   {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
+                </div>
+                <div className="col-12 col-md-4">
+                  <label className="form-label mb-1">Costo de compra</label>
+                  <input
+                    className={`form-control ${createErrors.costo_compra ? 'is-invalid' : ''}`}
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder="Opcional"
+                    value={form.costo_compra}
+                    onChange={(e) => setForm((s) => ({ ...s, costo_compra: e.target.value }))}
+                  />
+                  {createErrors.costo_compra && <div className="invalid-feedback">{createErrors.costo_compra}</div>}
+                  <div className={`form-text ${createMarginSummary.tone === 'danger' ? 'text-danger' : 'text-muted'}`}>{createMarginSummary.text}</div>
                 </div>
 
                 <div className="col-12 col-md-4">
@@ -3227,6 +3347,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 required
               />
               {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
+            </div>
+            <div className="col-6 col-md-2">
+              <label className="form-label mb-1">Costo de compra</label>
+              <input
+                className={`form-control ${createErrors.costo_compra ? 'is-invalid' : ''}`}
+                type="number"
+                step="0.0001"
+                min="0"
+                inputMode="decimal"
+                value={form.costo_compra}
+                onChange={(e) => setForm((s) => ({ ...s, costo_compra: e.target.value }))}
+              />
+              {createErrors.costo_compra && <div className="invalid-feedback">{createErrors.costo_compra}</div>}
+              <div className={`form-text ${createMarginSummary.tone === 'danger' ? 'text-danger' : 'text-muted'}`}>{createMarginSummary.text}</div>
             </div>
 
             <div className="col-6 col-md-2">
@@ -4096,6 +4230,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
                 <div className="inv-ins-drawer-hero is-edit">
                   <div className="inv-ins-drawer-hero__price">{formatMoney(editForm?.precio ?? selectedProducto?.precio ?? 0)}</div>
+                  <div className="small d-flex align-items-center flex-wrap gap-1 lh-sm text-muted">
+                    <span className="fw-semibold">Costo de compra:</span>
+                    <span>{editMarginSummary.costoDefinido ? formatMoney(editForm?.costo_compra ?? selectedProducto?.costo_compra ?? 0) : 'No definido'}</span>
+                  </div>
+                  {renderCompactMarginSummary(editMarginSummary)}
                   <span className={`inv-prod-drawer-status-pill ${drawerEstadoActivo ? 'is-active' : 'is-inactive'}`}>
                     {drawerEstadoActivo ? 'Activo' : 'Inactivo'}
                   </span>
@@ -4191,6 +4330,25 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       }}
                     />
                     {editErrors.precio ? <div className="invalid-feedback d-block">{editErrors.precio}</div> : null}
+                  </div>
+                  <div>
+                    <label>Costo de compra (L.)</label>
+                    <input
+                      className={editErrors.costo_compra ? 'is-invalid' : ''}
+                      type="number"
+                      step="0.0001"
+                      min="0"
+                      inputMode="decimal"
+                      value={editForm.costo_compra ?? ''}
+                      onChange={(e) => {
+                        setDrawerEditMode(true);
+                        setEditForm((s) => ({ ...s, costo_compra: e.target.value }));
+                      }}
+                    />
+                    {editErrors.costo_compra ? <div className="invalid-feedback d-block">{editErrors.costo_compra}</div> : null}
+                    <div className="form-text mt-1">
+                      {renderCompactMarginSummary(editMarginSummary)}
+                    </div>
                   </div>
                   <div>
                     <label>{'Stock m\u00EDnimo'}</label>
@@ -4380,6 +4538,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                         required
                       />
                       {createErrors.precio && <div className="invalid-feedback">{createErrors.precio}</div>}
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label mb-1">Costo de compra</label>
+                      <input
+                        className={`form-control ${createErrors.costo_compra ? 'is-invalid' : ''}`}
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        inputMode="decimal"
+                        value={form.costo_compra}
+                        onChange={(e) => setForm((s) => ({ ...s, costo_compra: e.target.value }))}
+                      />
+                      {createErrors.costo_compra && <div className="invalid-feedback">{createErrors.costo_compra}</div>}
+                      <div className={`form-text ${createMarginSummary.tone === 'danger' ? 'text-danger' : 'text-muted'}`}>{createMarginSummary.text}</div>
                     </div>
 
                     <div className="col-6">
