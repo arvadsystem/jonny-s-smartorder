@@ -38,6 +38,8 @@ const HERO_AUTOPLAY_MS = 5000;
 const HERO_CONFIG_GLOBAL_BRANCH_KEY = '0';
 const CLOSED_HOURS_DISMISS_STORAGE_KEY = 'pm_closed_hours_dismissed_branches';
 const ENTRY_SETUP_DISMISS_STORAGE_KEY = 'pm_entry_setup_dismissed';
+const ENTRY_SETUP_DISMISS_AT_STORAGE_KEY = 'pm_entry_setup_dismissed_at';
+const ENTRY_SETUP_REPROMPT_TTL_MS = 90 * 60 * 1000;
 const EMPTY_HERO_CONTACT_PHONES = Object.freeze({
   primary: '',
   secondary: '',
@@ -82,7 +84,23 @@ const loadEntrySetupDismissed = () => {
   if (typeof window === 'undefined') return false;
 
   try {
-    return window.sessionStorage.getItem(ENTRY_SETUP_DISMISS_STORAGE_KEY) === '1';
+    const now = Date.now();
+    const dismissedAtRaw = window.localStorage.getItem(ENTRY_SETUP_DISMISS_AT_STORAGE_KEY);
+    const dismissedAt = Number.parseInt(String(dismissedAtRaw || '').trim(), 10);
+    if (Number.isInteger(dismissedAt) && dismissedAt > 0) {
+      if (now - dismissedAt < ENTRY_SETUP_REPROMPT_TTL_MS) return true;
+      window.localStorage.removeItem(ENTRY_SETUP_DISMISS_AT_STORAGE_KEY);
+      window.sessionStorage.removeItem(ENTRY_SETUP_DISMISS_STORAGE_KEY);
+      return false;
+    }
+
+    // Compatibilidad con la version anterior que solo usaba sessionStorage.
+    if (window.sessionStorage.getItem(ENTRY_SETUP_DISMISS_STORAGE_KEY) === '1') {
+      window.localStorage.setItem(ENTRY_SETUP_DISMISS_AT_STORAGE_KEY, String(now));
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -92,6 +110,7 @@ const saveEntrySetupDismissed = () => {
   if (typeof window === 'undefined') return;
 
   try {
+    window.localStorage.setItem(ENTRY_SETUP_DISMISS_AT_STORAGE_KEY, String(Date.now()));
     window.sessionStorage.setItem(ENTRY_SETUP_DISMISS_STORAGE_KEY, '1');
   } catch {
     // Silencioso: si sessionStorage falla, no bloqueamos el flujo.
@@ -761,6 +780,8 @@ const CatalogScreen = () => {
 
   const confirmHomeNavigation = () => {
     setHomeConfirmOpen(false);
+    setCartOpen(false);
+    clearCart();
     navigate('/menu-publico');
   };
 
