@@ -132,10 +132,37 @@ const estadoIconClass = (estado) => {
 };
 
 const formatEstadoLabel = (estado) => {
-  // AM: se conserva compatibilidad con estados legacy visuales sin forzarlos en APROBADA.
-  if (estado === 'EN_ESPERA') return 'EN ESPERA';
-  if (estado === 'ENVIADO') return 'ENVIADO';
+  if (estado === 'PENDIENTE') return 'Pendiente';
+  if (estado === 'APROBADA') return 'Aprobada';
+  if (estado === 'EN_COMPRA') return 'En proceso administrativo';
+  if (estado === 'ABASTECIDA') return 'Abastecida';
+  if (estado === 'RECHAZADA') return 'Rechazada';
+  if (estado === 'CANCELADA') return 'Cancelada';
+  if (estado === 'EN_ESPERA') return 'En espera';
+  if (estado === 'ENVIADO') return 'Enviado';
   return String(estado || '').replace('_', ' ');
+};
+
+const resolveNextStepLabel = (estado) => {
+  if (estado === 'PENDIENTE') return 'Revisar y aprobar solicitud';
+  if (estado === 'APROBADA') return 'Esperando recepción de sucursal';
+  if (estado === 'EN_COMPRA') return 'Registrar compra / preparar abastecimiento';
+  if (estado === 'ABASTECIDA') return 'Orden abastecida';
+  if (estado === 'RECHAZADA') return 'Orden rechazada';
+  if (estado === 'CANCELADA') return 'Orden cancelada';
+  return 'Pendiente de gestión administrativa';
+};
+
+const resolveEstadoAlertMessage = (estado) => {
+  if (estado === 'PENDIENTE') return 'Esta orden está pendiente de revisión administrativa.';
+  if (estado === 'APROBADA')
+    return 'Esta orden espera recepción de sucursal antes de continuar el proceso administrativo.';
+  if (estado === 'EN_COMPRA')
+    return 'Esta orden está lista para registrar compra, validar evidencias o preparar abastecimiento.';
+  if (estado === 'ABASTECIDA') return 'Esta orden ya fue abastecida y cerrada en inventario.';
+  if (estado === 'RECHAZADA') return 'Esta orden fue rechazada.';
+  if (estado === 'CANCELADA') return 'Esta orden fue cancelada.';
+  return 'Esta orden requiere seguimiento administrativo.';
 };
 
 // AM: prioriza numeracion visible compactada para flujo y deja correlativo almacenado como fallback historico.
@@ -833,6 +860,8 @@ const OrdenesCompraTab = ({ openToast }) => {
   // AM: separa actor operativo (cocina/cajero) de actor administrativo para no mezclar etapas.
   const isAdminFlowActor = canConvertir || canAbastecer || canGestionar || canVerTodas;
   const isSucursalOperativeActor = canRecepcionar && !isAdminFlowActor;
+  const isOperationalExperience =
+    !isAdminFlowActor && canVerFlujo && (canCrear || canRecepcionar || isSucursalOperativeActor);
   // AM: visibilidad de historial/evidencias abastecidas limitada a super admin.
   const isSuperAdmin = isSuperAdminRoleList(user?.roles);
   // AM: cancelacion administrativa reservada para Admin/Super Admin.
@@ -891,11 +920,14 @@ const OrdenesCompraTab = ({ openToast }) => {
   const [flowFechaHasta, setFlowFechaHasta] = useState('');
   // AM: filtro visual de evidencias pendientes (SI/NO) sin llamadas extra por fila.
   const [flowEvidenciasFiltro, setFlowEvidenciasFiltro] = useState('');
+  const [operationalScope, setOperationalScope] = useState('mine');
+  const [operationalStatusTab, setOperationalStatusTab] = useState('TODAS');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   // AM: selector profesional de tamano de pagina en listado OC.
   const [pageSize, setPageSize] = useState(ORDER_DEFAULT_PAGE_SIZE);
   const [ordenes, setOrdenes] = useState([]);
+  const [workflowSummary, setWorkflowSummary] = useState({});
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: ORDER_DEFAULT_PAGE_SIZE,
@@ -1321,14 +1353,31 @@ const OrdenesCompraTab = ({ openToast }) => {
     const hasCompra = Boolean(parsePositiveInt(row?.id_compra_actual));
     const hasFactura = Boolean(parsePositiveInt(row?.id_archivo_factura_recepcion));
     const hasTransfer = Boolean(parsePositiveInt(row?.id_archivo_transferencia_actual));
-    if (!hasCompra || (estado !== 'EN_COMPRA' && estado !== 'ABASTECIDA')) {
+    if (estado === 'PENDIENTE') {
+      return { label: 'No requeridas todavía', toneClass: 'bg-secondary', pending: false };
+    }
+    if (estado === 'APROBADA') {
+      return { label: 'Pendiente de recepción', toneClass: 'bg-warning text-dark', pending: true };
+    }
+    if (estado === 'RECHAZADA' || estado === 'CANCELADA') {
       return { label: 'No aplica', toneClass: 'bg-secondary', pending: false };
     }
-    // AM: marca pendiente cuando falta factura o comprobante visible en listado; puede subestimar casos multi-proveedor.
-    if (!hasFactura || !hasTransfer) {
-      return { label: 'Pendientes', toneClass: 'bg-warning text-dark', pending: true };
+    if (!hasCompra && estado === 'ABASTECIDA') {
+      return { label: 'No registrada', toneClass: 'bg-secondary', pending: false };
     }
-    return { label: 'OK', toneClass: 'bg-success', pending: false };
+    if (!hasCompra) {
+      return { label: 'Pendiente', toneClass: 'bg-warning text-dark', pending: true };
+    }
+    if (!hasFactura && !hasTransfer) {
+      return { label: 'Factura y depósito pendientes', toneClass: 'bg-warning text-dark', pending: true };
+    }
+    if (!hasFactura) {
+      return { label: 'Factura pendiente', toneClass: 'bg-warning text-dark', pending: true };
+    }
+    if (!hasTransfer) {
+      return { label: 'Depósito pendiente', toneClass: 'bg-warning text-dark', pending: true };
+    }
+    return { label: 'Factura y depósito cargados', toneClass: 'bg-success', pending: false };
   }, []);
 
   const resolveEstadoVisual = useCallback(
@@ -1399,27 +1448,43 @@ const OrdenesCompraTab = ({ openToast }) => {
   }, [ordenesVisibles]);
 
   const workflowStats = useMemo(() => {
-    const stats = {
-      total: ordenesFlujoFiltradas.length,
+    const fallbackStats = {
+      totalOc: ordenesFlujoFiltradas.length,
       pendientes: 0,
-      enCompra: 0,
-      abastecidas: 0,
-      evidenciasPendientes: 0,
-      montoTotalReal: 0
+      aprobadasEnProceso: 0,
+      pendientesAbastecer: 0,
+      abastecidas: 0
     };
     for (const row of ordenesFlujoFiltradas) {
       const estado = resolveEstado(row);
-      if (estado === 'PENDIENTE') stats.pendientes += 1;
-      if (estado === 'EN_COMPRA') stats.enCompra += 1;
-      if (estado === 'ABASTECIDA') stats.abastecidas += 1;
-      if (getFlowOrderEvidenceSummary(row).pending) stats.evidenciasPendientes += 1;
-      const totalReal = Number(row?.total_compra_actual || 0);
-      if (Number.isFinite(totalReal) && totalReal > 0) {
-        stats.montoTotalReal = round2(stats.montoTotalReal + totalReal);
-      }
+      if (estado === 'PENDIENTE') fallbackStats.pendientes += 1;
+      if (estado === 'APROBADA' || estado === 'EN_COMPRA') fallbackStats.aprobadasEnProceso += 1;
+      if (estado === 'APROBADA' || estado === 'EN_COMPRA') fallbackStats.pendientesAbastecer += 1;
+      if (estado === 'ABASTECIDA') fallbackStats.abastecidas += 1;
     }
-    return stats;
-  }, [getFlowOrderEvidenceSummary, ordenesFlujoFiltradas]);
+    const summary = workflowSummary && typeof workflowSummary === 'object' ? workflowSummary : {};
+    const resolveSummaryCount = (fallbackValue, keys = []) => {
+      for (const key of keys) {
+        const value = Number(summary?.[key]);
+        if (Number.isFinite(value) && value >= 0) return Math.round(value);
+      }
+      return fallbackValue;
+    };
+    return {
+      totalOc: resolveSummaryCount(fallbackStats.totalOc, ['total', 'total_oc', 'total_ordenes']),
+      pendientes: resolveSummaryCount(fallbackStats.pendientes, ['pendientes', 'total_pendientes']),
+      aprobadasEnProceso: resolveSummaryCount(fallbackStats.aprobadasEnProceso, [
+        'aprobadas_en_proceso',
+        'aprobadas_o_en_proceso',
+        'aprobadas_en_compra'
+      ]),
+      pendientesAbastecer: resolveSummaryCount(fallbackStats.pendientesAbastecer, [
+        'pendientes_abastecer',
+        'pendientes_de_abastecer'
+      ]),
+      abastecidas: resolveSummaryCount(fallbackStats.abastecidas, ['abastecidas', 'total_abastecidas'])
+    };
+  }, [ordenesFlujoFiltradas, workflowSummary]);
 
   const getFlowProviderSummary = useCallback((row) => {
     const idProveedor = parsePositiveInt(row?.id_proveedor_actual);
@@ -1450,6 +1515,48 @@ const OrdenesCompraTab = ({ openToast }) => {
       label: 'L. 0.00',
       micro: 'Sin monto real registrado'
     };
+  }, []);
+
+  const isOwnOperationalOrder = useCallback(
+    (row) => {
+      const currentUserId = parsePositiveInt(user?.id_usuario);
+      if (!currentUserId) return false;
+      const ownerId =
+        parsePositiveInt(row?.id_usuario_solicitante) ||
+        parsePositiveInt(row?.id_usuario_creacion) ||
+        parsePositiveInt(row?.id_usuario);
+      return ownerId ? Number(ownerId) === Number(currentUserId) : false;
+    },
+    [user?.id_usuario]
+  );
+
+  const operationalOrders = useMemo(() => {
+    const rows = Array.isArray(ordenesFlujoFiltradas) ? ordenesFlujoFiltradas : [];
+    const byScope = rows.filter((row) => {
+      if (operationalScope === 'branch') return true;
+      return isOwnOperationalOrder(row);
+    });
+    return byScope.filter((row) => {
+      const estado = resolveEstado(row);
+      if (operationalStatusTab === 'TODAS') return true;
+      if (operationalStatusTab === 'PENDIENTES') return estado === 'PENDIENTE';
+      if (operationalStatusTab === 'APROBADAS') return estado === 'APROBADA';
+      if (operationalStatusTab === 'POR_RECIBIR') return estado === 'APROBADA';
+      if (operationalStatusTab === 'EN_PROCESO') return estado === 'EN_COMPRA';
+      if (operationalStatusTab === 'FINALIZADAS') return estado === 'ABASTECIDA';
+      if (operationalStatusTab === 'NO_APROBADAS') return estado === 'RECHAZADA' || estado === 'CANCELADA';
+      return true;
+    });
+  }, [isOwnOperationalOrder, operationalScope, operationalStatusTab, ordenesFlujoFiltradas]);
+
+  const resolveOperationalEvidenceLabel = useCallback((row) => {
+    const estado = resolveEstado(row);
+    const recepcion = hasReceptionRegistered(row);
+    if (estado === 'PENDIENTE') return 'No requeridas todavía';
+    if (estado === 'APROBADA') return 'Pendiente de recepción';
+    if (estado === 'EN_COMPRA') return recepcion ? 'Recepción reportada / En gestión administrativa' : 'Pendiente';
+    if (estado === 'ABASTECIDA') return 'Abastecida';
+    return 'No aplica';
   }, []);
 
   // AM: limpia filtros del listado principal sin alterar contexto de creacion ni contratos.
@@ -1631,6 +1738,7 @@ const OrdenesCompraTab = ({ openToast }) => {
         evidencias_pendientes: flowEvidenciasFiltro || undefined
       });
       setOrdenes(Array.isArray(response?.data) ? response.data : []);
+      setWorkflowSummary(response?.summary && typeof response.summary === 'object' ? response.summary : {});
       const backendPage = parsePositiveInt(response?.pagination?.page) || page;
       const backendPageSize =
         parsePositiveInt(response?.pagination?.page_size) ||
@@ -1650,6 +1758,7 @@ const OrdenesCompraTab = ({ openToast }) => {
         hasPrev: Boolean(response?.pagination?.has_prev) || backendPage > 1
       });
     } catch (error) {
+      setWorkflowSummary({});
       if (!options?.silent) {
         toast('ERROR', error?.message || 'No se pudo cargar listado de ordenes.', 'danger');
       }
@@ -3305,10 +3414,11 @@ const OrdenesCompraTab = ({ openToast }) => {
     const actionClass = compact ? 'inv-oc-action-btn is-compact' : 'inv-oc-action-btn';
     const canShowApproveAction = estado === 'PENDIENTE' && canAprobar;
     const canShowRejectAction = estado === 'PENDIENTE' && canRechazar;
+    // AM: en EN_COMPRA la recepción se oculta para flujo administrativo; solo perfil operativo la mantiene.
     const canShowRegisterReceptionAction =
-      (isSucursalOperativeActor || isAdminFlowActor) &&
       canSubirFactura &&
-      (estado === 'APROBADA' || (estado === 'EN_COMPRA' && !recepcionRegistrada));
+      estado === 'APROBADA' &&
+      (isSucursalOperativeActor || isAdminFlowActor);
     const canShowConvertAction =
       estado === 'EN_COMPRA' && isAdminFlowActor && canConvertir && canSubirDeposito && recepcionRegistrada;
     // AM: habilita abastecer directo desde listado cuando la OC esta en compra y ya tiene recepcion registrada.
@@ -3318,79 +3428,161 @@ const OrdenesCompraTab = ({ openToast }) => {
       (estado === 'PENDIENTE' ||
         estado === 'APROBADA' ||
         (estado === 'EN_COMPRA' && !recepcionRegistradaParaCancelacion));
+    const detailLabel =
+      estado === 'ABASTECIDA' ? 'Ver detalle / historial' : estado === 'EN_COMPRA' ? 'Ver evidencias' : 'Ver detalle';
+    const registerLabel = 'Registrar compra / continuar';
+    const supplyLabel = 'Abastecer inventario';
+    const rejectLabel = 'Rechazar solicitud';
+    const cancelLabel = 'Cancelar orden';
+    const approveLabel = 'Aprobar solicitud';
+    const secondaryWrapClass = compact
+      ? 'd-flex flex-wrap gap-1 align-items-center'
+      : 'd-flex flex-wrap gap-1 align-items-center mt-1';
+
+    const actions = [
+      {
+        key: 'view',
+        visible: true,
+        danger: false,
+        isPrimary: false,
+        render: (
+          <button
+            key="act-view"
+            className={`${actionClass} is-neutral`}
+            onClick={() => verDetalle(row)}
+            disabled={busy || !canVerDetalle}
+          >
+            <i className="bi bi-eye" aria-hidden="true" />
+            <span>{detailLabel}</span>
+          </button>
+        )
+      },
+      {
+        key: 'edit',
+        visible: !isItemRequestOnlyCard && canEditarSolicitud && canShowApproveAction,
+        danger: false,
+        isPrimary: false,
+        render: (
+          <button
+            key="act-edit"
+            className={`${actionClass} is-neutral`}
+            onClick={() => openEditDetallesModal(row)}
+            disabled={busy}
+          >
+            <i className="bi bi-pencil-square" aria-hidden="true" />
+            <span>Editar líneas</span>
+          </button>
+        )
+      },
+      {
+        key: 'approve',
+        visible: canShowApproveAction,
+        danger: false,
+        isPrimary: false,
+        render: (
+          <button
+            key="act-approve"
+            className={`${actionClass} is-primary`}
+            onClick={() => openReviewModal(row, 'aprobar')}
+            disabled={busy || (isItemRequestOnlyCard && hasOpenItemRequests)}
+            title={
+              isItemRequestOnlyCard && hasOpenItemRequests
+                ? 'Primero atiende o rechaza las solicitudes de item nuevo en el detalle.'
+                : ''
+            }
+          >
+            <i className="bi bi-check2-circle" aria-hidden="true" />
+            <span>{approveLabel}</span>
+          </button>
+        )
+      },
+      {
+        key: 'reject',
+        visible: canShowRejectAction,
+        danger: true,
+        isPrimary: false,
+        render: (
+          <button
+            key="act-reject"
+            className={`${actionClass} is-danger`}
+            onClick={() => openReviewModal(row, 'rechazar')}
+            disabled={busy}
+          >
+            <i className="bi bi-x-circle" aria-hidden="true" />
+            <span>{rejectLabel}</span>
+          </button>
+        )
+      },
+      {
+        key: 'register',
+        visible: canShowRegisterReceptionAction,
+        danger: false,
+        isPrimary: false,
+        render: (
+          <button key="act-register" className={`${actionClass} is-neutral`} onClick={() => openRecepcionModal(row)} disabled={busy}>
+            <i className="bi bi-receipt" aria-hidden="true" />
+            <span>{registerLabel}</span>
+          </button>
+        )
+      },
+      {
+        key: 'convert',
+        visible: canShowConvertAction,
+        danger: false,
+        isPrimary: false,
+        render: (
+          <button key="act-convert" className={`${actionClass} is-success`} onClick={() => openConvert(row)} disabled={busy}>
+            <i className="bi bi-arrow-repeat" aria-hidden="true" />
+            <span>{registerLabel}</span>
+          </button>
+        )
+      },
+      {
+        key: 'supply',
+        visible: canShowSupplyAction,
+        danger: false,
+        isPrimary: false,
+        render: (
+          <button key="act-supply" className={`${actionClass} is-primary`} onClick={() => openSupplyModal(row)} disabled={busy}>
+            <i className="bi bi-box-arrow-in-down" aria-hidden="true" />
+            <span>{supplyLabel}</span>
+          </button>
+        )
+      },
+      {
+        key: 'cancel',
+        visible: canShowCancelAction,
+        danger: true,
+        isPrimary: false,
+        render: (
+          <button key="act-cancel" className={`${actionClass} is-danger`} onClick={() => doCancelarOrden(row)} disabled={busy}>
+            <i className="bi bi-slash-circle" aria-hidden="true" />
+            <span>{cancelLabel}</span>
+          </button>
+        )
+      }
+    ].filter((action) => action.visible);
+
+    const primaryKey =
+      estado === 'PENDIENTE' && canShowApproveAction
+        ? 'approve'
+        : estado === 'EN_COMPRA'
+        ? canShowConvertAction
+          ? 'convert'
+          : canShowRegisterReceptionAction
+          ? 'register'
+          : 'view'
+        : 'view';
+
+    const primaryAction = actions.find((action) => action.key === primaryKey) || actions[0] || null;
+    const secondaryActions = actions.filter((action) => action.key !== primaryAction?.key && !action.danger);
+    const dangerActions = actions.filter((action) => action.key !== primaryAction?.key && action.danger);
 
     return (
       <div className="inv-oc-actions">
-        <button
-          className={`${actionClass} is-neutral`}
-          onClick={() => verDetalle(row)}
-          disabled={busy || !canVerDetalle}
-        >
-          <i className="bi bi-eye" aria-hidden="true" />
-          <span>Ver</span>
-        </button>
-        {canShowApproveAction && (
-          <>
-            {!isItemRequestOnlyCard && canEditarSolicitud && (
-              <button
-                className={`${actionClass} is-neutral`}
-                onClick={() => openEditDetallesModal(row)}
-                disabled={busy}
-              >
-                <i className="bi bi-pencil-square" aria-hidden="true" />
-                <span>Editar lineas</span>
-              </button>
-            )}
-            <button
-              className={`${actionClass} is-primary`}
-              onClick={() => openReviewModal(row, 'aprobar')}
-              disabled={busy || (isItemRequestOnlyCard && hasOpenItemRequests)}
-              title={
-                isItemRequestOnlyCard && hasOpenItemRequests
-                  ? 'Primero atiende o rechaza las solicitudes de item nuevo en el detalle.'
-                  : ''
-              }
-            >
-              <i className="bi bi-check2-circle" aria-hidden="true" />
-              <span>Aprobar</span>
-            </button>
-            {canShowRejectAction && (
-              <button
-                className={`${actionClass} is-danger`}
-                onClick={() => openReviewModal(row, 'rechazar')}
-                disabled={busy}
-              >
-                <i className="bi bi-x-circle" aria-hidden="true" />
-                <span>Rechazar</span>
-              </button>
-            )}
-          </>
-        )}
-        {canShowRegisterReceptionAction && (
-          <button className={`${actionClass} is-neutral`} onClick={() => openRecepcionModal(row)} disabled={busy}>
-            <i className="bi bi-receipt" aria-hidden="true" />
-            <span>{estado === 'APROBADA' ? 'Registrar compra' : 'Continuar compra'}</span>
-          </button>
-        )}
-        {/* AM: al completar recepcion en sucursal, admin continua en modal de gestion/abastecimiento. */}
-        {canShowConvertAction && (
-          <button className={`${actionClass} is-success`} onClick={() => openConvert(row)} disabled={busy}>
-            <i className="bi bi-arrow-repeat" aria-hidden="true" />
-            <span>Continuar compra</span>
-          </button>
-        )}
-        {canShowSupplyAction && (
-          <button className={`${actionClass} is-primary`} onClick={() => openSupplyModal(row)} disabled={busy}>
-            <i className="bi bi-box-arrow-in-down" aria-hidden="true" />
-            <span>Abastecer</span>
-          </button>
-        )}
-        {canShowCancelAction && (
-          <button className={`${actionClass} is-danger`} onClick={() => doCancelarOrden(row)} disabled={busy}>
-            <i className="bi bi-slash-circle" aria-hidden="true" />
-            <span>Cancelar</span>
-          </button>
-        )}
+        {primaryAction?.render || null}
+        {secondaryActions.length > 0 && <div className={secondaryWrapClass}>{secondaryActions.map((action) => action.render)}</div>}
+        {dangerActions.length > 0 && <div className={secondaryWrapClass}>{dangerActions.map((action) => action.render)}</div>}
       </div>
     );
   };
@@ -3408,67 +3600,74 @@ const OrdenesCompraTab = ({ openToast }) => {
           <div className="inv-prod-title-wrap">
             <div className="inv-prod-title-row">
               <i className="bi bi-bag-check inv-prod-title-icon" aria-hidden="true" />
-              <span className="inv-prod-title">Ordenes de compra</span>
+              <span className="inv-prod-title">{isOperationalExperience ? 'Solicitudes de compra' : 'Ordenes de compra'}</span>
             </div>
-            <div className="inv-prod-subtitle">Solicita, revisa y abastece en un flujo claro para cocina, caja y administracion</div>
+            <div className="inv-prod-subtitle">
+              {isOperationalExperience
+                ? 'Solicita productos o insumos para tu sucursal y da seguimiento al estado.'
+                : 'Solicita, revisa y abastece en un flujo claro para cocina, caja y administracion'}
+            </div>
           </div>
           <div className="inv-prod-header-actions inv-oc-summary-header-actions">
             {canCrear && (
               // AM: accion primaria visible para iniciar creacion sin desplegables largos en la vista principal.
               <button type="button" className="btn btn-primary btn-sm" onClick={openCreateModal}>
                 <i className="bi bi-plus-circle me-1" aria-hidden="true" />
-                Nueva solicitud
+                {isOperationalExperience ? 'Nueva solicitud' : 'Nueva orden de compra'}
               </button>
             )}
             <span className="badge rounded-pill text-bg-light border">Total en flujo: {pagination.total}</span>
           </div>
         </div>
         <div className="card-body inv-oc-summary-body">
-          {/* AM: KPIs premium del listado operativo; calculados sobre la vista filtrada actual. */}
+          {isOperationalExperience ? (
+            <div className="d-flex flex-wrap gap-2">
+              <span className="badge rounded-pill text-bg-light border">Pendientes: {workflowStats.pendientes}</span>
+              <span className="badge rounded-pill text-bg-light border">En proceso: {workflowStats.aprobadasEnProceso}</span>
+              <span className="badge rounded-pill text-bg-light border">Finalizadas: {workflowStats.abastecidas}</span>
+            </div>
+          ) : (
+          <>
+          {/* AM: KPIs compactos con prioridad al summary backend; fallback local por estados para no romper carga. */}
           <div className="row g-2">
-            <div className="col-12 col-sm-6 col-xl-2">
+            <div className="col-12 col-sm-6 col-xl-3 col-xxl">
               <article className="border rounded-3 p-2 h-100 bg-white">
-                <small className="text-muted d-block">Total OC del periodo</small>
-                <strong className="fs-5">{workflowStats.total}</strong>
-                <small className="text-muted d-block mt-1">Pagina actual filtrada</small>
+                <small className="text-muted d-block">Total OC</small>
+                <strong className="fs-5">{workflowStats.totalOc}</strong>
+                <small className="text-muted d-block mt-1">Resumen filtrado</small>
               </article>
             </div>
-            <div className="col-12 col-sm-6 col-xl-2">
+            <div className="col-12 col-sm-6 col-xl-3 col-xxl">
               <article className="border rounded-3 p-2 h-100 bg-white">
-                <small className="text-muted d-block">Pendientes de aprobacion</small>
+                <small className="text-muted d-block">Pendientes</small>
                 <strong className="fs-5 text-warning">{workflowStats.pendientes}</strong>
-                <small className="text-muted d-block mt-1">Pagina actual</small>
+                <small className="text-muted d-block mt-1">Requieren revision</small>
               </article>
             </div>
-            <div className="col-12 col-sm-6 col-xl-2">
+            <div className="col-12 col-sm-6 col-xl-3 col-xxl">
               <article className="border rounded-3 p-2 h-100 bg-white">
-                <small className="text-muted d-block">En compra</small>
-                <strong className="fs-5 text-primary">{workflowStats.enCompra}</strong>
-                <small className="text-muted d-block mt-1">Pagina actual</small>
+                <small className="text-muted d-block">Aprobadas / En proceso</small>
+                <strong className="fs-5 text-primary">{workflowStats.aprobadasEnProceso}</strong>
+                <small className="text-muted d-block mt-1">Gestion administrativa</small>
               </article>
             </div>
-            <div className="col-12 col-sm-6 col-xl-2">
+            <div className="col-12 col-sm-6 col-xl-3 col-xxl">
+              <article className="border rounded-3 p-2 h-100 bg-white">
+                <small className="text-muted d-block">Pendientes de abastecer</small>
+                <strong className="fs-5 text-info">{workflowStats.pendientesAbastecer}</strong>
+                <small className="text-muted d-block mt-1">Aprobadas o en compra</small>
+              </article>
+            </div>
+            <div className="col-12 col-sm-6 col-xl-3 col-xxl">
               <article className="border rounded-3 p-2 h-100 bg-white">
                 <small className="text-muted d-block">Abastecidas</small>
                 <strong className="fs-5 text-success">{workflowStats.abastecidas}</strong>
-                <small className="text-muted d-block mt-1">Pagina actual</small>
-              </article>
-            </div>
-            <div className="col-12 col-sm-6 col-xl-2">
-              <article className="border rounded-3 p-2 h-100 bg-white">
-                <small className="text-muted d-block">Evidencias pendientes</small>
-                <strong className="fs-5 text-warning">{workflowStats.evidenciasPendientes}</strong>
-                <small className="text-muted d-block mt-1">Pagina actual</small>
-              </article>
-            </div>
-            <div className="col-12 col-sm-6 col-xl-2">
-              <article className="border rounded-3 p-2 h-100 bg-white">
-                <small className="text-muted d-block">Monto total estimado/real</small>
-                <strong className="fs-6">{formatMoney(workflowStats.montoTotalReal)}</strong>
-                <small className="text-muted d-block mt-1">Real pagina actual; estimado no disponible</small>
+                <small className="text-muted d-block mt-1">Cierre de orden</small>
               </article>
             </div>
           </div>
+          </>
+          )}
         </div>
       </section>
 
@@ -3778,7 +3977,7 @@ const OrdenesCompraTab = ({ openToast }) => {
               </div>
               {flowSectionOpen && (
               <div id="inv-oc-flow-body" className="card-body d-flex flex-column gap-3">
-                {flowFiltersOpen && (
+                {!isOperationalExperience && flowFiltersOpen && (
                   <div id="inv-oc-flow-filters" className="inv-oc-flow-filters-panel">
                     <div className="row g-2 align-items-end">
                       <div className="col-12 col-md-3 col-lg-2">
@@ -3829,7 +4028,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                           <option value="">Todos</option>
                           {ESTADOS.map((estado) => (
                             <option key={estado} value={estado}>
-                              {estado}
+                              {formatEstadoLabel(estado)}
                             </option>
                           ))}
                         </select>
@@ -3901,7 +4100,117 @@ const OrdenesCompraTab = ({ openToast }) => {
                   </div>
                 )}
 
-                {loadingOrdenes ? (
+                {isOperationalExperience ? (
+                  <>
+                    <div className="d-flex flex-wrap gap-2">
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ maxWidth: 240 }}
+                        value={operationalScope}
+                        onChange={(e) => setOperationalScope(e.target.value)}
+                      >
+                        <option value="mine">Mis solicitudes</option>
+                        <option value="branch">Solicitudes de mi sucursal</option>
+                      </select>
+                      <div className="d-flex flex-wrap gap-1">
+                        {[
+                          ['TODAS', 'Todas'],
+                          ['PENDIENTES', 'Pendientes'],
+                          ['APROBADAS', 'Aprobadas'],
+                          ['POR_RECIBIR', 'Por recibir'],
+                          ['EN_PROCESO', 'En proceso'],
+                          ['FINALIZADAS', 'Finalizadas'],
+                          ['NO_APROBADAS', 'No aprobadas']
+                        ].map(([key, label]) => (
+                          <button
+                            key={`op-tab-${key}`}
+                            type="button"
+                            className={`btn btn-sm ${operationalStatusTab === key ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => setOperationalStatusTab(key)}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {loadingOrdenes ? (
+                      <div className="text-muted small">Cargando...</div>
+                    ) : operationalOrders.length === 0 ? (
+                      <div className="inv-oc-empty-state">
+                        <i className="bi bi-inboxes" aria-hidden="true" />
+                        <span>Sin solicitudes para este filtro.</span>
+                      </div>
+                    ) : (
+                      <div className="d-flex flex-column gap-2">
+                        {operationalOrders.map((row) => {
+                          const estadoVisual = resolveEstadoVisual(row);
+                          const estadoReal = resolveEstado(row);
+                          const recepcionRegistrada = hasReceptionRegistered(row);
+                          const ownOrder = isOwnOperationalOrder(row);
+                          const canShowCancelOperational =
+                            estadoReal === 'PENDIENTE' && ownOrder && canCancelarOrden && !Boolean(rowBusy[row.id_orden_compra]);
+                          const canShowReceiveOperational =
+                            estadoReal === 'APROBADA' &&
+                            canSubirFactura &&
+                            (isSucursalOperativeActor || canRecepcionar) &&
+                            !Boolean(rowBusy[row.id_orden_compra]);
+                          return (
+                            <article key={`op-order-${row.id_orden_compra}`} className="border rounded-3 p-3 bg-white">
+                              <div className="d-flex justify-content-between align-items-start gap-2">
+                                <div>
+                                  <strong>Solicitud #{formatVisibleOrderNumber(row)}</strong>
+                                  <small className="text-muted d-block">
+                                    {formatDate(row.fecha_creacion || row.fecha)} · {resolveSucursalLabel(row)}
+                                  </small>
+                                </div>
+                                <span className={`badge ${badgeClass(estadoVisual)}`}>{formatEstadoLabel(estadoVisual)}</span>
+                              </div>
+                              <small className="text-muted d-block mt-2">Siguiente paso: {resolveNextStepLabel(estadoReal)}</small>
+                              <div className="d-flex flex-wrap gap-2 mt-2">
+                                <span className="badge text-bg-light border">{parsePositiveInt(row?.total_items) || 0} líneas</span>
+                                <span className="badge text-bg-light border">{resolveOperationalEvidenceLabel(row)}</span>
+                                {recepcionRegistrada && estadoReal === 'EN_COMPRA' && (
+                                  <span className="badge text-bg-light border">Recepción reportada</span>
+                                )}
+                              </div>
+                              <div className="d-flex flex-wrap gap-2 mt-3">
+                                {canShowReceiveOperational ? (
+                                  <button className="btn btn-sm btn-primary" onClick={() => openRecepcionModal(row)}>
+                                    Reportar recepción
+                                  </button>
+                                ) : (
+                                  <button
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => verDetalle(row)}
+                                    disabled={Boolean(rowBusy[row.id_orden_compra]) || !canVerDetalle}
+                                  >
+                                    {estadoReal === 'EN_COMPRA'
+                                      ? 'Ver seguimiento'
+                                      : estadoReal === 'RECHAZADA'
+                                      ? 'Ver motivo'
+                                      : 'Ver detalle'}
+                                  </button>
+                                )}
+                                <button
+                                  className="btn btn-sm btn-outline-secondary"
+                                  onClick={() => verDetalle(row)}
+                                  disabled={Boolean(rowBusy[row.id_orden_compra]) || !canVerDetalle}
+                                >
+                                  Ver detalle
+                                </button>
+                                {canShowCancelOperational && (
+                                  <button className="btn btn-sm btn-outline-danger" onClick={() => doCancelarOrden(row)}>
+                                    Cancelar solicitud
+                                  </button>
+                                )}
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                ) : loadingOrdenes ? (
                   <div className="text-muted small">Cargando...</div>
                 ) : ordenesFlujoFiltradas.length === 0 ? (
                   <div className="inv-oc-empty-state">
@@ -3922,6 +4231,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                               <th>Proveedores</th>
                               <th>Lineas / cantidades</th>
                               <th>Total estimado/real</th>
+                              <th>Siguiente paso</th>
                               <th>Evidencias</th>
                               <th>Fecha</th>
                               <th style={{ minWidth: 260 }}>Acciones</th>
@@ -3944,8 +4254,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                       {formatEstadoLabel(estadoVisual)}
                                     </span>
                                     {estadoVisual === 'APROBADA' && (
-                                      // AM: microtexto explicito para APROBADA; evita ambiguedad de "en espera".
-                                      <small className="text-muted d-block mt-1">Pendiente de registrar compra</small>
+                                      <small className="text-muted d-block mt-1">Esperando recepción de sucursal</small>
                                     )}
                                   </td>
                                   <td>{resolveSucursalLabel(row)}</td>
@@ -3954,7 +4263,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                     <small className="text-muted d-block">{providerSummary.secondary}</small>
                                   </td>
                                   <td>
-                                    <strong>{parsePositiveInt(row?.total_items) || 0} lineas</strong>
+                                    <strong>{parsePositiveInt(row?.total_items) || 0} líneas</strong>
                                     <small className="text-muted d-block">
                                       {parsePositiveInt(row?.total_cantidad) || 0} unidades
                                     </small>
@@ -3964,12 +4273,12 @@ const OrdenesCompraTab = ({ openToast }) => {
                                     <small className="text-muted d-block">{totalSummary.micro}</small>
                                   </td>
                                   <td>
+                                    <small className="text-muted d-block">{resolveNextStepLabel(resolveEstado(row))}</small>
+                                  </td>
+                                  <td>
                                     <span className={`badge ${evidenceSummary.toneClass}`}>
                                       {evidenceSummary.label}
                                     </span>
-                                    {evidenceSummary.pending && (
-                                      <small className="text-warning d-block mt-1">Evidencias pendientes</small>
-                                    )}
                                   </td>
                                   <td>
                                     <strong>{formatDate(row.fecha_creacion || row.fecha)}</strong>
@@ -4003,8 +4312,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                               </span>
                             </div>
                             {estadoVisual === 'APROBADA' && (
-                              // AM: claridad de etapa en tarjetas moviles para siguiente accion operativa.
-                              <small className="text-muted d-block mt-1">Pendiente de registrar compra</small>
+                              <small className="text-muted d-block mt-1">Esperando recepción de sucursal</small>
                             )}
                             <div className="mt-2">
                               <small className="text-muted d-block">Proveedores</small>
@@ -4013,12 +4321,16 @@ const OrdenesCompraTab = ({ openToast }) => {
                             </div>
                             <div className="mt-2 d-flex flex-wrap gap-2">
                               <span className="badge text-bg-light border">
-                                {parsePositiveInt(row?.total_items) || 0} lineas
+                                {parsePositiveInt(row?.total_items) || 0} líneas
                               </span>
                               <span className="badge text-bg-light border">
                                 {parsePositiveInt(row?.total_cantidad) || 0} unidades
                               </span>
                               <span className="badge text-bg-light border">{totalSummary.label}</span>
+                            </div>
+                            <div className="mt-2">
+                              <small className="text-muted d-block">Siguiente paso</small>
+                              <small>{resolveNextStepLabel(resolveEstado(row))}</small>
                             </div>
                             <div className="mt-2 d-flex align-items-center justify-content-between gap-2">
                               <span className={`badge ${evidenceSummary.toneClass}`}>{evidenceSummary.label}</span>
@@ -4026,9 +4338,6 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 {formatDate(row.fecha_creacion || row.fecha)} {formatTime(row.fecha_creacion)}
                               </small>
                             </div>
-                            {evidenceSummary.pending && (
-                              <small className="text-warning d-block mt-1">Evidencias pendientes</small>
-                            )}
                             <div className="mt-2">{renderActions(row, true)}</div>
                           </article>
                         );
@@ -4811,6 +5120,40 @@ const OrdenesCompraTab = ({ openToast }) => {
                         : [];
                       const estadoOrden = resolveEstadoVisual(orden);
                       const estadoOrdenReal = resolveEstado(orden);
+                      const alertToneClass =
+                        estadoOrdenReal === 'ABASTECIDA'
+                          ? 'alert-success'
+                          : estadoOrdenReal === 'RECHAZADA' || estadoOrdenReal === 'CANCELADA'
+                          ? 'alert-secondary'
+                          : 'alert-warning';
+                      const hasCompraRegistrada = Boolean(parsePositiveInt(orden?.id_compra_actual));
+                      const hasFacturaDetalle = Boolean(parsePositiveInt(orden?.id_archivo_factura_recepcion));
+                      const hasTransferDetalle = Boolean(parsePositiveInt(orden?.id_archivo_transferencia_actual));
+                      const canShowEvidenceStatus = hasCompraRegistrada || estadoOrdenReal === 'EN_COMPRA' || estadoOrdenReal === 'ABASTECIDA';
+                      const evidenciaFacturaEstado =
+                        estadoOrdenReal === 'PENDIENTE'
+                          ? 'No requeridas todavía'
+                          : estadoOrdenReal === 'APROBADA'
+                          ? 'Pendiente de recepción'
+                          : estadoOrdenReal === 'RECHAZADA' || estadoOrdenReal === 'CANCELADA'
+                          ? 'No aplica'
+                          : !canShowEvidenceStatus
+                          ? 'No registrada'
+                          : hasFacturaDetalle
+                          ? 'Cargada'
+                          : 'Pendiente';
+                      const evidenciaDepositoEstado =
+                        estadoOrdenReal === 'PENDIENTE'
+                          ? 'No requeridas todavía'
+                          : estadoOrdenReal === 'APROBADA'
+                          ? 'Pendiente de recepción'
+                          : estadoOrdenReal === 'RECHAZADA' || estadoOrdenReal === 'CANCELADA'
+                          ? 'No aplica'
+                          : !canShowEvidenceStatus
+                          ? 'No registrada'
+                          : hasTransferDetalle
+                          ? 'Cargado'
+                          : 'Pendiente';
                       const canViewEvidenciasAbastecida =
                         canVerEvidencias && canVerHistorial && estadoOrdenReal === 'ABASTECIDA';
                       return (
@@ -4818,11 +5161,11 @@ const OrdenesCompraTab = ({ openToast }) => {
                           <section className="inv-oc-detail-hero-card">
                             <div className="inv-oc-detail-hero-card__copy">
                               <span className="inv-oc-detail-kicker">Orden #{formatVisibleOrderNumber(orden)}</span>
-                              <h6>{orden.solicitante_nombre_usuario || '-'}</h6>
+                              <h6>{normalizeText(orden.solicitante_nombre_usuario, 120) || 'Solicitante no disponible'}</h6>
                               <p>
                                 <span>
                                   <i className="bi bi-person-badge me-1" aria-hidden="true" />
-                                  {orden.solicitante_roles || 'Rol no disponible'}
+                                  {normalizeText(orden.solicitante_roles, 120) || 'Rol no disponible'}
                                 </span>
                                 <span>
                                   <i className="bi bi-calendar-event me-1" aria-hidden="true" />
@@ -4834,17 +5177,25 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 </span>
                                 <span>
                                   <i className="bi bi-shop me-1" aria-hidden="true" />
-                                  {resolveSucursalLabel(orden)}
+                                  {resolveSucursalLabel(orden) || 'No especificada'}
+                                </span>
+                                <span>
+                                  <i className="bi bi-signpost-split me-1" aria-hidden="true" />
+                                  {resolveNextStepLabel(estadoOrdenReal)}
                                 </span>
                               </p>
                             </div>
                             <span className={`badge ${badgeClass(estadoOrden)} inv-oc-detail-state-badge`}>
                               <i className={`${estadoIconClass(estadoOrden)} me-1`} aria-hidden="true" />
-                              {estadoOrden}
+                              {formatEstadoLabel(estadoOrden)}
                             </span>
                           </section>
 
-                                                    {hasValue(orden?.observacion_solicitud) && (
+                          <section className={`alert ${alertToneClass} py-2 mb-0`}>
+                            {resolveEstadoAlertMessage(estadoOrdenReal)}
+                          </section>
+
+                          {hasValue(orden?.observacion_solicitud) && (
                             <section className="inv-oc-detail-note-card">
                               <span>Observacion de solicitud</span>
                               <p>{orden.observacion_solicitud}</p>
@@ -4852,172 +5203,225 @@ const OrdenesCompraTab = ({ openToast }) => {
                           )}
 
                           <section className="inv-oc-detail-section">
+                            <h6 className="mb-2 inv-oc-detail-section__title">
+                              <i className="bi bi-card-checklist" aria-hidden="true" />
+                              Items solicitados
+                            </h6>
                             {detalles.length === 0 ? (
                               <div className="inv-oc-empty-state">
                                 <i className="bi bi-box" aria-hidden="true" />
-                                <span>Esta orden no tiene lineas de productos o insumos registradas.</span>
+                                <span>Esta orden no tiene líneas de productos o insumos registradas.</span>
                               </div>
                             ) : (
-                              <div className="inv-oc-detail-line-grid">
-                                {detalles.map((row) => {
-                                  const itemTipo = String(row?.item_tipo || '').toLowerCase() === 'producto' ? 'Producto' : 'Insumo';
-                                  const itemIcon = itemTipo === 'Producto' ? 'bi-bag-check' : 'bi-box2-heart';
-                                  const itemNombre = row?.item_nombre || `Detalle #${row?.id_detalle_orden || '-'}`;
-
-                                  return (
-                                    <article
-                                      key={`detalle-orden-${row.id_detalle_orden}`}
-                                      className="inv-oc-detail-line-card"
-                                    >
-                                      <div className="inv-oc-detail-line-card__head">
-                                        <div className="inv-oc-detail-line-card__title">
-                                          <span className="inv-oc-detail-line-card__type">
-                                            <i className={`bi ${itemIcon}`} aria-hidden="true" />
-                                            {itemTipo}
-                                          </span>
-                                          <strong>{itemNombre}</strong>
-                                        </div>
-
-                                        <span className="inv-oc-detail-line-card__qty">
-                                          x{row?.cantidad_orden || 0}
-                                        </span>
-                                      </div>
-
-                                      <div className="inv-oc-detail-line-card__meta">
-                                        <span>
-                                          <i className="bi bi-shop-window" aria-hidden="true" />
-                                          {row?.almacen_destino_nombre || 'Sin almacen destino'}
-                                        </span>
-
-                                        <span>
-                                          <i className="bi bi-bar-chart-line" aria-hidden="true" />
-                                          Stock actual: {row?.stock_actual ?? 0}
-                                        </span>
-
-                                        {hasValue(row?.proveedor_sugerido_nombre) && (
-                                          <span>
-                                            <i className="bi bi-truck" aria-hidden="true" />
-                                            {row.proveedor_sugerido_nombre}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </article>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </section>
-
-                          {/* AM: bloque historico de evidencias solo para super admin cuando la OC ya esta abastecida. */}
-                          {canViewEvidenciasAbastecida && (
-                            <section className="inv-oc-detail-section">
-                              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                                <h6 className="mb-0 inv-oc-detail-section__title">
-                                  <i className="bi bi-images" aria-hidden="true" />
-                                  Evidencias de orden abastecida
-                                </h6>
-                                <span className="badge text-bg-success">Super Admin</span>
-                              </div>
-
-                              {detailEvidencePreview.url ? (
-                                <div className="border rounded-3 p-2 bg-white">
-                                  <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
-                                    <strong>{detailEvidencePreview.title || 'Vista previa de evidencia'}</strong>
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm btn-outline-secondary"
-                                      onClick={() =>
-                                        setDetailEvidencePreview({
-                                          url: '',
-                                          title: '',
-                                          kind: 'image',
-                                          loading: false,
-                                          error: ''
-                                        })
-                                      }
-                                    >
-                                      Cerrar vista
-                                    </button>
+                              <>
+                                <div className="d-none d-lg-block">
+                                  <div className="table-responsive border rounded">
+                                    <table className="table table-sm align-middle mb-0">
+                                      <thead className="table-light">
+                                        <tr>
+                                          <th>Tipo</th>
+                                          <th>Nombre</th>
+                                          <th>Cantidad</th>
+                                          <th>Almacen destino</th>
+                                          <th>Proveedor sugerido</th>
+                                          <th>Item nuevo</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {detalles.map((row) => {
+                                          const itemTipo = String(row?.item_tipo || '').toLowerCase() === 'producto' ? 'Producto' : 'Insumo';
+                                          const itemNombre = normalizeText(row?.item_nombre, 140) || `Detalle #${row?.id_detalle_orden || '-'}`;
+                                          return (
+                                            <tr key={`detalle-table-${row.id_detalle_orden}`}>
+                                              <td>{itemTipo}</td>
+                                              <td>
+                                                <strong>{itemNombre}</strong>
+                                                {hasValue(row?.observacion_detalle) && (
+                                                  <small className="text-muted d-block mt-1">
+                                                    {normalizeText(row?.observacion_detalle, 220)}
+                                                  </small>
+                                                )}
+                                              </td>
+                                              <td>{parsePositiveInt(row?.cantidad_orden) || 0}</td>
+                                              <td>{normalizeText(row?.almacen_destino_nombre, 120) || 'No especificado'}</td>
+                                              <td>{normalizeText(row?.proveedor_sugerido_nombre, 120) || 'Sin proveedor sugerido'}</td>
+                                              <td>{boolish(row?.es_solicitud_item_nuevo) ? 'Pendiente catalogo' : 'No'}</td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
                                   </div>
-                                  {detailEvidencePreview.kind !== 'image' ? (
-                                    <a
-                                      href={detailEvidencePreview.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="btn btn-outline-primary btn-sm"
-                                    >
-                                      Abrir documento
-                                    </a>
-                                  ) : (
-                                    <img
-                                      src={detailEvidencePreview.url}
-                                      alt={detailEvidencePreview.title || 'Evidencia de orden de compra'}
-                                      className="img-fluid rounded border"
-                                    />
-                                  )}
                                 </div>
-                              ) : null}
-                              {detailEvidencePreview.loading ? (
-                                <div className="text-muted small">Cargando evidencia...</div>
-                              ) : null}
-                              {detailEvidencePreview.error ? (
-                                <div className="alert alert-warning py-2 mb-0">{detailEvidencePreview.error}</div>
-                              ) : null}
-
-                              {evidenciasHistorial.length === 0 ? (
-                                <div className="inv-oc-empty-state">
-                                  <i className="bi bi-clock-history" aria-hidden="true" />
-                                  <span>Sin historial de evidencias para esta orden.</span>
-                                </div>
-                              ) : (
-                                <div className="d-flex flex-column gap-2">
-                                  {evidenciasHistorial.map((row) => {
-                                    const hasEvidenceRef = Boolean(
-                                      parsePositiveInt(row?.id_archivo) ||
-                                        resolveInventarioImageUrl(row?.evidencia_url_publica)
-                                    );
+                                <div className="d-lg-none d-flex flex-column gap-2">
+                                  {detalles.map((row) => {
+                                    const itemTipo = String(row?.item_tipo || '').toLowerCase() === 'producto' ? 'Producto' : 'Insumo';
+                                    const itemNombre = normalizeText(row?.item_nombre, 140) || `Detalle #${row?.id_detalle_orden || '-'}`;
                                     return (
-                                      <article
-                                        key={`evidencia-historial-${row?.id_historial_evidencia || `${row?.tipo_evidencia}-${row?.id_archivo}-${row?.fecha_registro}`}`}
-                                        className="border rounded-3 p-2 d-flex flex-column gap-1"
-                                      >
-                                        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                                          <strong>{formatEvidenceTypeLabel(row?.tipo_evidencia)}</strong>
-                                          <span className="badge text-bg-light border">
-                                            {formatEvidenceOriginLabel(row?.origen_etapa)}
-                                          </span>
+                                      <article key={`detalle-mobile-${row.id_detalle_orden}`} className="border rounded-3 p-2 bg-white">
+                                        <div className="d-flex justify-content-between gap-2">
+                                          <strong>{itemNombre}</strong>
+                                          <span className="badge text-bg-light border">x{parsePositiveInt(row?.cantidad_orden) || 0}</span>
                                         </div>
-                                        <small className="text-muted">
-                                          {formatDate(row?.fecha_registro)} {formatTime(row?.fecha_registro)} -{' '}
-                                          {normalizeText(row?.usuario_registro_nombre, 120) || 'Usuario no disponible'}
+                                        <small className="text-muted d-block mt-1">Tipo: {itemTipo}</small>
+                                        <small className="text-muted d-block">Almacen: {normalizeText(row?.almacen_destino_nombre, 120) || 'No especificado'}</small>
+                                        <small className="text-muted d-block">Proveedor: {normalizeText(row?.proveedor_sugerido_nombre, 120) || 'Sin proveedor sugerido'}</small>
+                                        <small className="text-muted d-block">
+                                          Item nuevo: {boolish(row?.es_solicitud_item_nuevo) ? 'Pendiente catalogo' : 'No'}
                                         </small>
-                                        {parsePositiveInt(row?.id_compra) && (
-                                          <small className="text-muted">Compra relacionada: #{row.id_compra}</small>
-                                        )}
-                                        {hasEvidenceRef ? (
-                                          <button
-                                            type="button"
-                                            className="btn btn-sm btn-outline-primary align-self-start"
-                                            title="Ver Factura"
-                                            onClick={() =>
-                                              openDetailEvidencePreview(
-                                                orden?.id_orden_compra,
-                                                row
-                                              )
-                                            }
-                                          >
-                                            Ver Factura
-                                          </button>
-                                        ) : (
-                                          <small className="text-muted">Archivo no disponible.</small>
+                                        {hasValue(row?.observacion_detalle) && (
+                                          <small className="text-muted d-block mt-1">{normalizeText(row?.observacion_detalle, 220)}</small>
                                         )}
                                       </article>
                                     );
                                   })}
                                 </div>
+                              </>
+                            )}
+                          </section>
+
+                          <section className="inv-oc-detail-section">
+                            <h6 className="mb-2 inv-oc-detail-section__title">
+                              <i className="bi bi-paperclip" aria-hidden="true" />
+                              Evidencias
+                            </h6>
+                            <div className="row g-2">
+                              <div className={`col-12 ${isOperationalExperience ? '' : 'col-md-6'}`}>
+                                <article className="border rounded-3 p-2 bg-white h-100">
+                                  <small className="text-muted d-block">Factura</small>
+                                  <strong>{evidenciaFacturaEstado}</strong>
+                                </article>
+                              </div>
+                              {!isOperationalExperience && (
+                                <div className="col-12 col-md-6">
+                                  <article className="border rounded-3 p-2 bg-white h-100">
+                                    <small className="text-muted d-block">Depósito / transferencia</small>
+                                    <strong>{evidenciaDepositoEstado}</strong>
+                                  </article>
+                                </div>
                               )}
-                            </section>
-                          )}
+                            </div>
+                          </section>
+
+                          {/* AM: bloque historico de evidencias solo para super admin cuando la OC ya esta abastecida. */}
+                          <section className="inv-oc-detail-section">
+                            <details>
+                              <summary className="fw-semibold">Historial y trazabilidad</summary>
+                              <div className="mt-2 d-flex flex-column gap-2">
+                                {canViewEvidenciasAbastecida ? (
+                                  <>
+                                    <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                                      <h6 className="mb-0 inv-oc-detail-section__title">
+                                        <i className="bi bi-images" aria-hidden="true" />
+                                        Evidencias de orden abastecida
+                                      </h6>
+                                      <span className="badge text-bg-success">Super Admin</span>
+                                    </div>
+
+                                    {detailEvidencePreview.url ? (
+                                      <div className="border rounded-3 p-2 bg-white">
+                                        <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                          <strong>{detailEvidencePreview.title || 'Vista previa de evidencia'}</strong>
+                                          <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-secondary"
+                                            onClick={() =>
+                                              setDetailEvidencePreview({
+                                                url: '',
+                                                title: '',
+                                                kind: 'image',
+                                                loading: false,
+                                                error: ''
+                                              })
+                                            }
+                                          >
+                                            Cerrar vista
+                                          </button>
+                                        </div>
+                                        {detailEvidencePreview.kind !== 'image' ? (
+                                          <a
+                                            href={detailEvidencePreview.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="btn btn-outline-primary btn-sm"
+                                          >
+                                            Abrir documento
+                                          </a>
+                                        ) : (
+                                          <img
+                                            src={detailEvidencePreview.url}
+                                            alt={detailEvidencePreview.title || 'Evidencia de orden de compra'}
+                                            className="img-fluid rounded border"
+                                          />
+                                        )}
+                                      </div>
+                                    ) : null}
+                                    {detailEvidencePreview.loading ? (
+                                      <div className="text-muted small">Cargando evidencia...</div>
+                                    ) : null}
+                                    {detailEvidencePreview.error ? (
+                                      <div className="alert alert-warning py-2 mb-0">{detailEvidencePreview.error}</div>
+                                    ) : null}
+
+                                    {evidenciasHistorial.length === 0 ? (
+                                      <div className="inv-oc-empty-state">
+                                        <i className="bi bi-clock-history" aria-hidden="true" />
+                                        <span>Sin historial disponible para esta orden.</span>
+                                      </div>
+                                    ) : (
+                                      <div className="d-flex flex-column gap-2">
+                                        {evidenciasHistorial.map((row) => {
+                                          const hasEvidenceRef = Boolean(
+                                            parsePositiveInt(row?.id_archivo) ||
+                                              resolveInventarioImageUrl(row?.evidencia_url_publica)
+                                          );
+                                          return (
+                                            <article
+                                              key={`evidencia-historial-${row?.id_historial_evidencia || `${row?.tipo_evidencia}-${row?.id_archivo}-${row?.fecha_registro}`}`}
+                                              className="border rounded-3 p-2 d-flex flex-column gap-1"
+                                            >
+                                              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                                <strong>{formatEvidenceTypeLabel(row?.tipo_evidencia)}</strong>
+                                                <span className="badge text-bg-light border">
+                                                  {formatEvidenceOriginLabel(row?.origen_etapa)}
+                                                </span>
+                                              </div>
+                                              <small className="text-muted">
+                                                {formatDate(row?.fecha_registro)} {formatTime(row?.fecha_registro)} -{' '}
+                                                {normalizeText(row?.usuario_registro_nombre, 120) || 'Usuario no disponible'}
+                                              </small>
+                                              {parsePositiveInt(row?.id_compra) && (
+                                                <small className="text-muted">Compra relacionada: #{row.id_compra}</small>
+                                              )}
+                                              {hasEvidenceRef ? (
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-sm btn-outline-primary align-self-start"
+                                                  title="Ver Factura"
+                                                  onClick={() =>
+                                                    openDetailEvidencePreview(
+                                                      orden?.id_orden_compra,
+                                                      row
+                                                    )
+                                                  }
+                                                >
+                                                  Ver Factura
+                                                </button>
+                                              ) : (
+                                                <small className="text-muted">Archivo no disponible.</small>
+                                              )}
+                                            </article>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <small className="text-muted">Sin historial disponible para esta orden.</small>
+                                )}
+                              </div>
+                            </details>
+                          </section>
 
                           {solicitudesItem.length > 0 && (
                             <section className="inv-oc-detail-section">
@@ -5115,6 +5519,13 @@ const OrdenesCompraTab = ({ openToast }) => {
                               </div>
                             </section>
                           )}
+                          <section className="inv-oc-detail-section">
+                            <h6 className="mb-2 inv-oc-detail-section__title">
+                              <i className="bi bi-lightning-charge" aria-hidden="true" />
+                              Acciones administrativas
+                            </h6>
+                            {renderActions(orden)}
+                          </section>
                         </div>
                       );
                     })()}
