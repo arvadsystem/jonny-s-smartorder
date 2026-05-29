@@ -87,7 +87,7 @@ const buildDrawerImageActionState = () => ({
 // IMPACT: validacion frontend local; no cambia endpoints ni payloads validos.
 const PRODUCTO_DB_INT32_MAX = 2147483647;
 const PRODUCTOS_FETCH_PAGE_SIZE = 100;
-const PRODUCTO_DUPLICATE_CONFLICT_MESSAGE = 'Ya existe un producto con el mismo nombre, categoría y departamento.';
+const PRODUCTO_DUPLICATE_CONFLICT_MESSAGE = 'Ya existe un producto activo con el mismo nombre y categoría en este almacén.';
 const PRODUCTO_DATE_ORDER_MESSAGE = 'La fecha de caducidad no puede ser menor que la fecha de ingreso del producto.';
 // NEW: se oculta `tipo_departamento` en el modulo de Productos.
 // WHY: el usuario indico que Departamentos ya no se necesitara en Productos.
@@ -522,7 +522,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   // NUEVO: extrae errores de campo del backend cuando vienen en e.data.errors.
   const mapApiFieldErrors = useCallback((apiData) => {
-    const errors = apiData.errors;
+    const errors = apiData?.errors;
     if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return {};
 
     return Object.entries(errors).reduce((acc, [field, rawValue]) => {
@@ -820,23 +820,23 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return raw.toLowerCase();
   }, []);
 
-  const buildProductoDuplicateKey = useCallback((data, { deptoFallback = null } = {}) => {
+  const buildProductoDuplicateKey = useCallback((data) => {
     const nombre = normalizeProductoDuplicateText(data.nombre_producto);
     const categoria = normalizeProductoDuplicateId(data.id_categoria_producto);
-    const deptoRaw = data.id_tipo_departamento ?? deptoFallback;
-    const depto = normalizeProductoDuplicateId(deptoRaw) || '-';
+    const almacen = normalizeProductoDuplicateId(data.id_almacen);
 
-    if (!nombre || !categoria) return '';
-    return `${nombre}__cat:${categoria}__dep:${depto}`;
+    if (!nombre || !categoria || !almacen) return '';
+    return `${nombre}__cat:${categoria}__alm:${almacen}`;
   }, [normalizeProductoDuplicateId, normalizeProductoDuplicateText]);
 
-  const findDuplicateProducto = useCallback((data, { excludeId = null, deptoFallback = null } = {}) => {
-    const candidateKey = buildProductoDuplicateKey(data, { deptoFallback });
+  const findDuplicateProducto = useCallback((data, { excludeId = null } = {}) => {
+    const candidateKey = buildProductoDuplicateKey(data);
     if (!candidateKey) return null;
 
     return productos.find((item) => {
       const sameRecord = excludeId !== null && Number(item.id_producto) === Number(excludeId);
       if (sameRecord) return false;
+      if (item?.estado === false) return false;
       return buildProductoDuplicateKey(item) === candidateKey;
     }) || null;
   }, [buildProductoDuplicateKey, productos]);
@@ -1983,10 +1983,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       return;
     }
 
-    const duplicateEdit = findDuplicateProducto(v.cleaned, {
-      excludeId: editId,
-      deptoFallback: SHOW_PRODUCTO_DEPARTAMENTOS ? null : (actual.id_tipo_departamento ?? null)
-    });
+    const duplicateEdit = findDuplicateProducto(v.cleaned, { excludeId: editId });
     if (duplicateEdit) {
       const duplicateMsg = PRODUCTO_DUPLICATE_CONFLICT_MESSAGE;
       setEditErrors((prev) => ({
