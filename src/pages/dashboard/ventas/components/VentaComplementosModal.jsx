@@ -60,12 +60,16 @@ export default function VentaComplementosModal({
   };
 
   const handleConfirm = () => {
-    onConfirm?.(current);
+    onConfirm?.(current, {
+      complementos_incompletos_autorizados: min > 0 && current.length < min
+    });
   };
 
   const handleConfirmAnyway = () => {
     setConfirmSkip(false);
-    onConfirm?.(current);
+    onConfirm?.(current, {
+      complementos_incompletos_autorizados: min > 0 && current.length < min
+    });
   };
 
   return (
