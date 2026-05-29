@@ -2654,12 +2654,6 @@
   margin: 0;
 }
 
-.ventas-cart__compact-link {
-  align-self: flex-start;
-  color: #9a5319;
-  font-weight: 700;
-}
-
 .ventas-pendientes-compact {
   display: flex;
   align-items: center;
@@ -4160,6 +4154,17 @@
   gap: 12px;
 }
 
+.ventas-totals__row--detail {
+  min-height: 24px;
+  color: rgba(93, 55, 34, 0.76);
+  font-size: 0.86rem;
+}
+
+.ventas-totals__row--detail strong {
+  color: #6f4228;
+  font-size: 0.92rem;
+}
+
 .ventas-totals__row strong {
   text-align: right;
   min-width: 120px;
@@ -4211,31 +4216,6 @@
 @keyframes spin-ring {
   to {
     transform: rotate(360deg);
-  }
-}
-
-.ventas-cart__line-discount-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: nowrap;
-}
-
-.ventas-cart__line-discount-row .form-label {
-  margin: 0;
-  white-space: nowrap;
-  font-size: 0.78rem;
-  color: rgba(82, 44, 34, 0.82);
-}
-
-.ventas-cart__line-discount-select {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-@media (max-width: 767.98px) {
-  .ventas-cart__line-discount-row {
-    flex-wrap: wrap;
   }
 }
 
@@ -4422,13 +4402,6 @@
     justify-content: flex-start;
   }
 
-  .ventas-cart__line-discount-row {
-    width: 100%;
-  }
-
-  .ventas-cart__line-discount-select {
-    width: 100%;
-  }
 }
 
 /* Caja rediseño visual compacto */
@@ -7415,6 +7388,21 @@
   line-height: 1.1;
 }
 
+.ventas-cart__discount-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(185, 28, 28, 0.1);
+  color: #991b1b;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
 .ventas-cart__kitchen-note {
   display: grid;
   gap: 6px;
@@ -7435,6 +7423,105 @@
   padding: 5px 8px;
   font-size: 0.74rem;
   font-weight: 900;
+}
+
+.ventas-cart__line-actions-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ventas-cart__action-btn,
+.ventas-cart__line-actions-row .ventas-cart__kitchen-note-toggle {
+  width: auto;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(184, 104, 33, 0.18);
+  border-radius: 11px;
+  background: rgba(255, 248, 239, 0.88);
+  color: #8a4915;
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: none;
+  box-shadow: 0 6px 14px rgba(47, 22, 12, 0.06);
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.ventas-cart__action-btn:hover,
+.ventas-cart__line-actions-row .ventas-cart__kitchen-note-toggle:hover {
+  border-color: rgba(184, 104, 33, 0.34);
+  background: #fff4e7;
+  color: #7a3f18;
+  transform: translateY(-1px);
+}
+
+.ventas-cart__action-btn.is-active {
+  border-color: rgba(45, 124, 92, 0.36);
+  background: rgba(232, 246, 239, 0.92);
+  color: #1f6b4a;
+}
+
+.ventas-cart__action-btn i,
+.ventas-cart__line-actions-row .ventas-cart__kitchen-note-toggle i {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.ventas-cart__line-actions-row .ventas-cart__kitchen-note-toggle .bi-chevron-up,
+.ventas-cart__line-actions-row .ventas-cart__kitchen-note-toggle .bi-chevron-down {
+  font-size: 0.72rem;
+}
+
+.ventas-extras-modal__list {
+  display: grid;
+  gap: 10px;
+}
+
+.ventas-extras-modal__card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.ventas-extras-modal__card > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ventas-extras-modal__card strong {
+  color: #2f1a10;
+  font-size: 0.94rem;
+  overflow-wrap: anywhere;
+}
+
+.ventas-extras-modal__card span {
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.ventas-extras-modal__footer {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ventas-extras-modal__footer > strong {
+  color: #2f1a10;
+  font-size: 0.94rem;
 }
 
 .ventas-cart__kitchen-note-toggle:focus-visible,

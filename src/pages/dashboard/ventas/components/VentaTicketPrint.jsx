@@ -24,18 +24,40 @@ const cleanText = (value) => {
 const sanitizeWidth = (paperWidth) => (Number(paperWidth) === 58 ? 58 : 80);
 const flag = (value, fallback) => (value === undefined || value === null ? fallback : Boolean(value));
 
+const getExtraSubtotal = (extra) => {
+  const subtotal = toNumber(extra?.subtotal);
+  if (subtotal > 0) return subtotal;
+  return toNumber(extra?.precio_unitario ?? extra?.precio) * toNumber(extra?.cantidad);
+};
+
+const getItemExtrasSubtotal = (item) => {
+  const extras = Array.isArray(item?.extras) ? item.extras : [];
+  return extras.reduce((sum, extra) => sum + getExtraSubtotal(extra), 0);
+};
+
+const formatExtraTicketLabel = (extra) => {
+  const name = cleanText(extra?.nombre || extra?.nombre_extra) || 'Extra';
+  return `${name} x${toNumber(extra?.cantidad)} ${formatCurrency(getExtraSubtotal(extra))}`;
+};
+
 const resolveFacturaDateTime = (venta) =>
   venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido || null;
 
 const resolveTotals = (venta) => {
   const descuento = toNumber(venta?.descuento_total);
-  const itemsSubtotal = Array.isArray(venta?.items)
+  const baseSubtotal = Array.isArray(venta?.items)
     ? venta.items.reduce((sum, item) => sum + toNumber(item?.sub_total), 0)
     : 0;
-  const subtotal = toNumber(venta?.subtotal_bruto || itemsSubtotal || (toNumber(venta?.sub_total) + descuento));
+  const extrasSubtotal = Array.isArray(venta?.items)
+    ? venta.items.reduce((sum, item) => sum + getItemExtrasSubtotal(item), 0)
+    : 0;
+  const itemsSubtotal = baseSubtotal + extrasSubtotal;
+  const subtotal = itemsSubtotal || toNumber(venta?.subtotal_bruto || (toNumber(venta?.sub_total) + descuento));
   const total = toNumber(venta?.total);
 
   return {
+    baseSubtotal,
+    extrasSubtotal,
     subtotal,
     descuento,
     total
@@ -225,7 +247,9 @@ export default function VentaTicketPrint({
             items.map((item, index) => {
               const subtotalLinea = toNumber(item?.sub_total);
               const descuentoLinea = toNumber(item?.descuento || item?.descuento_linea);
-              const netoLinea = roundMoney(Math.max(subtotalLinea - descuentoLinea, 0));
+              const extras = Array.isArray(item?.extras) ? item.extras : [];
+              const extrasSubtotal = getItemExtrasSubtotal(item);
+              const netoLinea = roundMoney(Math.max(subtotalLinea - descuentoLinea, 0) + extrasSubtotal);
               const descuentoPorcentaje = getLineDiscountPercent(item);
               return (
                 <div className="venta-ticket-print__item-row-wrap" key={`${item?.id_detalle || 'line'}-${index}`}>
@@ -238,6 +262,11 @@ export default function VentaTicketPrint({
                   {descuentoPorcentaje !== null && facturacion.ticket.mostrar_descuento_linea && facturacion.ticket.mostrar_descuento_porcentaje_linea ? (
                     <div className="venta-ticket-print__item-row-note">
                       <span>Desc. {formatDiscountPercent(descuentoPorcentaje)}</span>
+                    </div>
+                  ) : null}
+                  {extras.length > 0 ? (
+                    <div className="venta-ticket-print__item-row-note">
+                      <span>Extras: {extras.map(formatExtraTicketLabel).join(', ')}</span>
                     </div>
                   ) : null}
                 </div>
@@ -256,6 +285,12 @@ export default function VentaTicketPrint({
         <div className="venta-ticket-print__divider" />
 
         <dl className="venta-ticket-print__totals">
+          {totals.extrasSubtotal > 0 ? (
+            <>
+              <div><dt>Base items</dt><dd>{formatCurrency(totals.baseSubtotal)}</dd></div>
+              <div><dt>Extras</dt><dd>{formatCurrency(totals.extrasSubtotal)}</dd></div>
+            </>
+          ) : null}
           <div><dt>Subtotal</dt><dd>{formatCurrency(totals.subtotal)}</dd></div>
           {totals.descuento > 0 && facturacion.ticket.mostrar_descuento_total ? <div><dt>Descuento</dt><dd>-{formatCurrency(totals.descuento)}</dd></div> : null}
           {showTaxes && facturacion.ticket.mostrar_importe_exento ? <div><dt>Importe exento</dt><dd>{formatCurrency(venta?.exento)}</dd></div> : null}
