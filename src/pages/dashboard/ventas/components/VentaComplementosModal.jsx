@@ -60,10 +60,6 @@ export default function VentaComplementosModal({
   };
 
   const handleConfirm = () => {
-    if (min > 0 && current.length < min) {
-      setConfirmSkip(true);
-      return;
-    }
     onConfirm?.(current);
   };
 

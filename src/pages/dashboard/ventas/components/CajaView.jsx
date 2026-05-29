@@ -7,6 +7,7 @@ import VentaCajaAbrirSesionModal from './VentaCajaAbrirSesionModal';
 import VentaCajaAperturaDecisionModal from './VentaCajaAperturaDecisionModal';
 import VentaCajaAutoAuxiliarModal from './VentaCajaAutoAuxiliarModal';
 import VentaComplementosModal from './VentaComplementosModal';
+import VentaExtrasModal from './VentaExtrasModal';
 import VentaFinalizarOperacionModal from './VentaFinalizarOperacionModal';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import ventasService from '../../../../services/ventasService';
@@ -1192,6 +1193,17 @@ export default function CajaView({
         error={composer.complementModal.error}
         onCancel={composer.closeComplementModal}
         onConfirm={composer.confirmComplementModal}
+      />
+      <VentaExtrasModal
+        open={composer.extrasModal.open}
+        row={composer.extrasModal.row}
+        options={composer.extrasModal.options}
+        selected={composer.extrasModal.selected}
+        loading={composer.extrasModal.loading}
+        error={composer.extrasModal.error}
+        formatCurrency={composer.formatCurrency}
+        onCancel={composer.closeExtrasModal}
+        onConfirm={composer.confirmExtrasModal}
       />
       {finalizarOpen ? (
         <VentaFinalizarOperacionModal

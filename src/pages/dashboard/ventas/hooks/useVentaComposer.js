@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { formatCurrency, roundMoney } from '../utils/ventasHelpers';
+import ventasService from '../../../../services/ventasService';
 
 export const PAYMENT_OPTIONS = [
   { key: 'efectivo', label: 'Efectivo', icon: 'bi bi-cash' },
@@ -45,8 +46,41 @@ const buildComplementSignature = (value) => {
   return ids.join('-');
 };
 
-const buildCartKey = (kind, entityId, complementos = []) =>
-  `${kind}:${entityId}:${buildComplementSignature(complementos)}`;
+const normalizeExtras = (value) =>
+  (Array.isArray(value) ? value : [])
+    .map((entry) => ({
+      id_extra: Number(entry?.id_extra ?? 0),
+      cantidad: Number(entry?.cantidad ?? 0),
+      codigo: String(entry?.codigo || '').trim(),
+      nombre: String(entry?.nombre || 'Extra').trim(),
+      precio: roundMoney(entry?.precio ?? entry?.precio_unitario ?? 0),
+      id_insumo: Number(entry?.id_insumo ?? 0) || null,
+      stock_disponible: entry?.stock_disponible ?? null
+    }))
+    .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0 && Number.isInteger(entry.cantidad) && entry.cantidad > 0)
+    .sort((left, right) => left.id_extra - right.id_extra);
+
+const buildExtrasSignature = (value) => {
+  const extras = normalizeExtras(value);
+  if (extras.length === 0) return 'noextras';
+  return extras.map((entry) => `${entry.id_extra}x${entry.cantidad}`).join('-');
+};
+
+const getExtrasSubtotal = (value) =>
+  roundMoney(normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.precio || 0) * Number(entry.cantidad || 0), 0));
+
+const getExtrasCount = (value) =>
+  normalizeExtras(value).reduce((sum, entry) => sum + Number(entry.cantidad || 0), 0);
+
+const clampExtrasToQuantity = (extras, quantity) => {
+  const max = Math.max(0, Number(quantity || 0));
+  return normalizeExtras(extras)
+    .map((entry) => ({ ...entry, cantidad: Math.min(Number(entry.cantidad || 0), max) }))
+    .filter((entry) => entry.cantidad > 0);
+};
+
+const buildCartKey = (kind, entityId, complementos = [], extras = []) =>
+  `${kind}:${entityId}:${buildComplementSignature(complementos)}:${buildExtrasSignature(extras)}`;
 
 const findLineIndex = (cart, cartKey) =>
   cart.findIndex((line) => String(line.cartKey) === String(cartKey));
@@ -169,6 +203,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
       observacion: '',
       imagen_principal_url: row.imagen_principal_url || row.url_imagen || null,
       complementos: [],
+      extras: [],
       complementos_disponibles: [],
       complementos_requiere: false,
       minimo_complementos: 0,
@@ -179,7 +214,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
 
   if (kind === 'COMBO') {
     return {
-      cartKey: buildCartKey(kind, row.id_combo, complementosSeleccionados),
+      cartKey: buildCartKey(kind, row.id_combo, complementosSeleccionados, []),
       kind,
       entityId: row.id_combo,
       id_producto: null,
@@ -194,6 +229,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
       observacion: '',
       imagen_principal_url: row.imagen_principal_url || row.url_imagen || null,
       complementos: complementosSeleccionados,
+      extras: [],
       complementos_disponibles: complementosDisponibles,
       complementos_requiere: requiereComplementos,
       minimo_complementos: complementosMinimo,
@@ -203,7 +239,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
   }
 
   return {
-    cartKey: buildCartKey(kind, row.id_receta, complementosSeleccionados),
+    cartKey: buildCartKey(kind, row.id_receta, complementosSeleccionados, []),
     kind,
     entityId: row.id_receta,
     id_producto: null,
@@ -218,6 +254,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
     observacion: '',
     imagen_principal_url: row.imagen_principal_url || row.url_imagen || null,
     complementos: complementosSeleccionados,
+    extras: [],
     complementos_disponibles: complementosDisponibles,
     complementos_requiere: requiereComplementos,
     minimo_complementos: complementosMinimo,
@@ -354,6 +391,15 @@ export const useVentaComposer = ({
     selected: [],
     error: ''
   });
+  const [extrasModal, setExtrasModal] = useState({
+    open: false,
+    cartKey: '',
+    row: null,
+    options: [],
+    selected: [],
+    loading: false,
+    error: ''
+  });
   const deferredSearch = useDeferredValue(state.search);
 
   useEffect(() => {
@@ -377,6 +423,15 @@ export const useVentaComposer = ({
       row: null,
       cartKey: '',
       selected: [],
+      error: ''
+    });
+    setExtrasModal({
+      open: false,
+      cartKey: '',
+      row: null,
+      options: [],
+      selected: [],
+      loading: false,
       error: ''
     });
   };
@@ -543,16 +598,21 @@ export const useVentaComposer = ({
     [state.cart]
   );
 
-  const subtotal = useMemo(
+  const baseSubtotal = useMemo(
     () =>
       roundMoney(
         state.cart.reduce(
           (total, line) => total + Number(line.precio_unitario ?? 0) * Number(line.cantidad ?? 0),
           0
         )
-      ),
+    ),
     [state.cart]
   );
+  const extrasSubtotal = useMemo(
+    () => roundMoney(state.cart.reduce((total, line) => total + getExtrasSubtotal(line.extras), 0)),
+    [state.cart]
+  );
+  const subtotal = roundMoney(baseSubtotal + extrasSubtotal);
 
   const getApplicableLineDiscounts = (line) => {
     if (!canApplyDiscount) return [];
@@ -590,14 +650,14 @@ export const useVentaComposer = ({
     [canApplyDiscount, state.cart]
   );
   const usesGlobalDiscount = canApplyDiscount && Boolean(state.selectedDiscountId);
-  const subtotalAfterLineDiscount = roundMoney(Math.max(subtotal - lineDiscountValue, 0));
+  const subtotalAfterLineDiscount = roundMoney(Math.max(baseSubtotal - lineDiscountValue, 0));
   const discountValue = useMemo(
     () => (canApplyDiscount ? computeDiscountAmount(subtotalAfterLineDiscount, selectedDiscount) : 0),
     [canApplyDiscount, selectedDiscount, subtotalAfterLineDiscount]
   );
   const totalDiscount = roundMoney(lineDiscountValue + discountValue);
 
-  const taxableSubtotal = roundMoney(Math.max(subtotal - totalDiscount, 0));
+  const taxableSubtotal = roundMoney(Math.max(baseSubtotal - totalDiscount, 0) + extrasSubtotal);
   // Impuestos desactivados temporalmente; la configuracion por sucursal se conectara en una fase posterior.
   const isv = 0;
   const total = taxableSubtotal;
@@ -774,6 +834,8 @@ export const useVentaComposer = ({
         complementos_disponibles: editedLine.complementos_disponibles
       };
       const rebuilt = buildCatalogLine(editedLine.kind, baseRow, ids);
+      rebuilt.extras = normalizeExtras(editedLine.extras);
+      rebuilt.cartKey = buildCartKey(editedLine.kind, editedLine.entityId, rebuilt.complementos, rebuilt.extras);
       setState((current) => {
         const duplicateIndex = current.cart.findIndex(
           (line) =>
@@ -847,7 +909,12 @@ export const useVentaComposer = ({
             }
           }
 
-          return candidate;
+          const adjustedExtras = clampExtrasToQuantity(candidate.extras, candidate.cantidad);
+          return {
+            ...candidate,
+            extras: adjustedExtras,
+            cartKey: buildCartKey(candidate.kind, candidate.entityId, candidate.complementos, adjustedExtras)
+          };
         })
         .filter((line) => Number(line.cantidad ?? 0) > 0);
 
@@ -865,6 +932,107 @@ export const useVentaComposer = ({
       cart: current.cart.filter((item) => item.cartKey !== cartKey),
       submitError: ''
     }));
+  };
+
+  const openExtrasModalForLine = async (cartKey) => {
+    const line = state.cart.find((row) => row.cartKey === cartKey);
+    if (!line || line.kind === 'PRODUCTO') return;
+
+    setExtrasModal({
+      open: true,
+      cartKey,
+      row: line,
+      options: [],
+      selected: normalizeExtras(line.extras),
+      loading: true,
+      error: ''
+    });
+
+    try {
+      const response = await ventasService.getExtrasPermitidos({
+        tipo: line.kind,
+        id_item: line.entityId,
+        id_sucursal: selectedSucursalId
+      });
+      const options = (Array.isArray(response) ? response : [])
+        .filter((entry) => entry?.estado !== false)
+        .map((entry) => ({
+          id_extra: Number(entry.id_extra),
+          codigo: String(entry.codigo || '').trim(),
+          nombre: String(entry.nombre || 'Extra').trim(),
+          precio: roundMoney(entry.precio),
+          id_insumo: Number(entry.id_insumo || 0) || null,
+          stock_disponible: entry.stock_disponible ?? null
+        }))
+        .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0);
+      setExtrasModal((current) => ({
+        ...current,
+        options,
+        loading: false,
+        error: ''
+      }));
+    } catch (error) {
+      setExtrasModal((current) => ({
+        ...current,
+        loading: false,
+        error: error?.message || 'No se pudieron cargar los extras.'
+      }));
+    }
+  };
+
+  const closeExtrasModal = () => {
+    setExtrasModal((current) => ({ ...current, open: false, loading: false, error: '' }));
+  };
+
+  const confirmExtrasModal = (selectedExtras) => {
+    const nextExtras = clampExtrasToQuantity(selectedExtras, extrasModal.row?.cantidad);
+    setState((current) => {
+      const currentLine = current.cart.find((line) => line.cartKey === extrasModal.cartKey);
+      if (!currentLine) return current;
+      const nextCartKey = buildCartKey(currentLine.kind, currentLine.entityId, currentLine.complementos, nextExtras);
+      const duplicate = current.cart.find((line) => line.cartKey === nextCartKey && line.cartKey !== extrasModal.cartKey);
+      if (duplicate) {
+        const mergedQty = Number(duplicate.cantidad || 0) + Number(currentLine.cantidad || 0);
+        return {
+          ...current,
+          cart: current.cart
+            .filter((line) => line.cartKey !== extrasModal.cartKey)
+            .map((line) =>
+              line.cartKey === nextCartKey
+                ? {
+                  ...line,
+                  cantidad: mergedQty,
+                  extras: clampExtrasToQuantity(nextExtras, mergedQty),
+                  observacion: line.observacion || currentLine.observacion || ''
+                }
+                : line
+            ),
+          submitError: ''
+        };
+      }
+      return {
+        ...current,
+        cart: current.cart.map((line) =>
+          line.cartKey === extrasModal.cartKey
+            ? {
+              ...line,
+              extras: nextExtras,
+              cartKey: nextCartKey
+            }
+            : line
+        ),
+        submitError: ''
+      };
+    });
+    setExtrasModal({
+      open: false,
+      cartKey: '',
+      row: null,
+      options: [],
+      selected: [],
+      loading: false,
+      error: ''
+    });
   };
 
   const handleSearchKeyDown = (event) => {
@@ -904,6 +1072,13 @@ export const useVentaComposer = ({
       const complementos = normalizeComplementIds(line.complementos);
       if (complementos.length > 0) {
         payload.complementos = complementos.map((id) => ({ id_complemento: id }));
+      }
+      const extras = normalizeExtras(line.extras);
+      if (extras.length > 0) {
+        payload.extras = extras.map((entry) => ({
+          id_extra: entry.id_extra,
+          cantidad: entry.cantidad
+        }));
       }
       return payload;
     });
@@ -1063,6 +1238,8 @@ export const useVentaComposer = ({
     discountCatalogRows,
     resultsLabel,
     cartCount,
+    baseSubtotal,
+    extrasSubtotal,
     subtotal,
     discountValue: totalDiscount,
     globalDiscountValue: discountValue,
@@ -1080,6 +1257,7 @@ export const useVentaComposer = ({
     canSubmit,
     canContinue,
     complementModal,
+    extrasModal,
     setPartialState,
     resetComposer,
     setActiveCatalog: (key) =>
@@ -1117,6 +1295,15 @@ export const useVentaComposer = ({
         row: null,
         cartKey: '',
         selected: [],
+        error: ''
+      });
+      setExtrasModal({
+        open: false,
+        cartKey: '',
+        row: null,
+        options: [],
+        selected: [],
+        loading: false,
         error: ''
       });
     },
@@ -1191,6 +1378,11 @@ export const useVentaComposer = ({
     openComplementModalForLine,
     closeComplementModal,
     confirmComplementModal,
+    openExtrasModalForLine,
+    closeExtrasModal,
+    confirmExtrasModal,
+    getExtrasSubtotal,
+    getExtrasCount,
     updateLine,
     removeLine,
     handleSearchKeyDown,

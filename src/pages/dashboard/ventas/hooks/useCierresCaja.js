@@ -130,7 +130,8 @@ export function useCierresCaja() {
       setDetailLoading(true);
       try {
         const response = await cajasService.getSesionReporte(idSesionCaja, {
-          contexto: options.contexto || options.context || undefined
+          contexto: options.contexto || options.context || undefined,
+          ...(options.force ? { _ts: Date.now() } : {})
         });
         return normalizeSesionDetalle(response);
       } catch (errorResponse) {

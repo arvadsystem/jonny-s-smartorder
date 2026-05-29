@@ -14,7 +14,8 @@ const emptyForm = {
   id_unidad_medida: '',
   orden: '0',
   estado: true,
-  recetas: []
+  recetas: [],
+  combos: []
 };
 
 const normalizeRows = (response) => {
@@ -42,6 +43,7 @@ const ExtrasAdmin = () => {
   const [extras, setExtras] = useState([]);
   const [insumos, setInsumos] = useState([]);
   const [recetas, setRecetas] = useState([]);
+  const [combos, setCombos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -60,14 +62,16 @@ const ExtrasAdmin = () => {
     try {
       setLoading(true);
       setError('');
-      const [extrasResponse, insumosResponse, recetasResponse] = await Promise.all([
+      const [extrasResponse, insumosResponse, recetasResponse, combosResponse] = await Promise.all([
         extrasAdminService.listarExtras(),
         extrasAdminService.listarInsumos(),
-        extrasAdminService.listarRecetas()
+        extrasAdminService.listarRecetas(),
+        extrasAdminService.listarCombos()
       ]);
       setExtras(normalizeRows(extrasResponse));
       setInsumos(normalizeRows(insumosResponse));
       setRecetas(normalizeRows(recetasResponse));
+      setCombos(normalizeRows(combosResponse));
     } catch (e) {
       setError(e?.message || 'No se pudieron cargar los extras.');
     } finally {
@@ -137,6 +141,24 @@ const ExtrasAdmin = () => {
     return Array.from(map.values());
   }, [insumos]);
 
+  const comboOptions = useMemo(() => {
+    const rows = Array.isArray(combos) ? combos : [];
+    return rows.map((combo) => {
+      const idCombo = Number(combo?.id_combo || 0);
+      const nombre = String(combo?.nombre_combo || combo?.descripcion || `Combo #${idCombo}`);
+      return {
+        value: idCombo,
+        label: `#${idCombo} - ${nombre}`,
+        nombre
+      };
+    });
+  }, [combos]);
+
+  const selectedComboOptions = useMemo(() => {
+    const selected = new Set((Array.isArray(form.combos) ? form.combos : []).map((id) => Number(id)));
+    return comboOptions.filter((option) => selected.has(Number(option.value)));
+  }, [comboOptions, form.combos]);
+
   const openCreate = () => {
     setEditingId(null);
     setForm({ ...emptyForm });
@@ -160,7 +182,8 @@ const ExtrasAdmin = () => {
         id_unidad_medida: String(extra?.id_unidad_medida ?? ''),
         orden: String(extra?.orden ?? '0'),
         estado: Boolean(extra?.estado ?? true),
-        recetas: Array.isArray(extra?.recetas) ? extra.recetas.map((id) => Number(id)) : []
+        recetas: Array.isArray(extra?.recetas) ? extra.recetas.map((id) => Number(id)) : [],
+        combos: Array.isArray(extra?.combos) ? extra.combos.map((id) => Number(id)) : []
       });
       setDrawerOpen(true);
     } catch (e) {
@@ -199,6 +222,17 @@ const ExtrasAdmin = () => {
     });
   };
 
+  const clearRecetas = () => {
+    setForm((prev) => ({ ...prev, recetas: [] }));
+  };
+
+  const updateCombos = (selectedOptions) => {
+    const nextCombos = (Array.isArray(selectedOptions) ? selectedOptions : [])
+      .map((option) => Number(option?.value || 0))
+      .filter((id) => Number.isSafeInteger(id) && id > 0);
+    setForm((prev) => ({ ...prev, combos: [...new Set(nextCombos)] }));
+  };
+
   const validate = () => {
     if (!String(form.nombre || '').trim()) return 'El nombre del extra es obligatorio.';
     if (!String(form.codigo || '').trim()) return 'El codigo del extra es obligatorio.';
@@ -232,7 +266,8 @@ const ExtrasAdmin = () => {
       id_unidad_medida: form.id_unidad_medida || null,
       orden: Number(form.orden || 0),
       estado: Boolean(form.estado),
-      recetas: form.recetas
+      recetas: form.recetas,
+      combos: form.combos
     };
 
     try {
@@ -362,6 +397,10 @@ const ExtrasAdmin = () => {
                       <div className="menu-extras-card__meta">
                         <span>Recetas</span>
                         <strong>{Number(extra.total_recetas || 0)}</strong>
+                      </div>
+                      <div className="menu-extras-card__meta">
+                        <span>Combos</span>
+                        <strong>{Number(extra.total_combos || 0)}</strong>
                       </div>
                     </div>
                     <footer className="menu-recetas-card__actions">
@@ -541,7 +580,12 @@ const ExtrasAdmin = () => {
                     </section>
 
                     <section className="menu-extras-admin__recipes">
-            <div className="menu-recetas-admin__detalle-title">Recetas donde aparece</div>
+            <div className="menu-extras-admin__section-head">
+              <div className="menu-recetas-admin__detalle-title">Recetas donde aparece</div>
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={clearRecetas} disabled={saving || form.recetas.length === 0}>
+                Limpiar
+              </button>
+            </div>
             <div className="menu-extras-admin__recipe-list">
               {recetas.map((receta) => {
                 const idReceta = Number(receta.id_receta);
@@ -556,6 +600,34 @@ const ExtrasAdmin = () => {
                   </label>
                 );
               })}
+            </div>
+                    </section>
+
+                    <section className="menu-extras-admin__recipes">
+            <div className="menu-extras-admin__section-head">
+              <div className="menu-recetas-admin__detalle-title">Combos donde aparece</div>
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => updateCombos([])} disabled={saving || selectedComboOptions.length === 0}>
+                Limpiar
+              </button>
+            </div>
+            <Select
+              inputId="extra_combos"
+              classNamePrefix="menu-salsas-receta-select"
+              options={comboOptions}
+              value={selectedComboOptions}
+              onChange={updateCombos}
+              placeholder="Buscar combo..."
+              isMulti
+              isClearable
+              isSearchable
+              isDisabled={saving}
+              closeMenuOnSelect={false}
+              maxMenuHeight={220}
+              menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+              menuPosition="fixed"
+            />
+            <div className="menu-extras-admin__selection-count">
+              {selectedComboOptions.length} combos seleccionados
             </div>
                     </section>
                   </div>

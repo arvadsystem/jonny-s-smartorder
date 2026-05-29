@@ -13,6 +13,28 @@ import './VentaTicketPrint.css';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
 
+const toMoneyNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getExtraSubtotal = (extra) => {
+  const subtotal = toMoneyNumber(extra?.subtotal);
+  if (subtotal > 0) return subtotal;
+  return toMoneyNumber(extra?.precio_unitario ?? extra?.precio) * toMoneyNumber(extra?.cantidad);
+};
+
+const getItemExtrasSubtotal = (item) => {
+  const extras = Array.isArray(item?.extras) ? item.extras : [];
+  return extras.reduce((sum, extra) => sum + getExtraSubtotal(extra), 0);
+};
+
+const formatExtraLabel = (extra) => {
+  const name = String(extra?.nombre || extra?.nombre_extra || 'Extra').trim();
+  const quantity = toMoneyNumber(extra?.cantidad);
+  return `${name} x${quantity} - ${formatCurrency(getExtraSubtotal(extra))}`;
+};
+
 const InfoCard = ({ icon, label, value }) => (
   <div className="ventas-detail-modal__info-card">
     <span className="ventas-detail-modal__info-label">
@@ -76,10 +98,12 @@ export default function VentaDetalleModal({
     ? globalDiscountFromItems
     : Math.max(discountTotal - lineDiscountTotal, 0);
   const resolvedDiscountTotal = Math.max(discountTotal, lineDiscountTotal + globalDiscountTotal);
-  const grossSubtotalFromItems = detailItems.reduce(
+  const baseSubtotalFromItems = detailItems.reduce(
     (sum, item) => sum + (Number(item?.precio_unitario || 0) * Number(item?.cantidad || 0)),
     0
   );
+  const extrasSubtotalFromItems = detailItems.reduce((sum, item) => sum + getItemExtrasSubtotal(item), 0);
+  const grossSubtotalFromItems = baseSubtotalFromItems + extrasSubtotalFromItems;
   const grossSubtotal = grossSubtotalFromItems > 0
     ? grossSubtotalFromItems
     : Number(venta?.subtotal_bruto ?? 0) || (Number(venta?.sub_total || 0) + resolvedDiscountTotal);
@@ -192,6 +216,11 @@ export default function VentaDetalleModal({
                                   {item.observacion ? (
                                     <small className="ventas-detail-modal__item-note">{item.observacion}</small>
                                   ) : null}
+                                  {Array.isArray(item.extras) && item.extras.length > 0 ? (
+                                    <small className="ventas-detail-modal__item-note">
+                                      Extras: {item.extras.map(formatExtraLabel).join(', ')}
+                                    </small>
+                                  ) : null}
                                 </div>
                               </td>
                               <td>{item.tipo_item}</td>
@@ -231,6 +260,9 @@ export default function VentaDetalleModal({
                             ) : null}
                             {getLineDiscountPercent(item) !== null ? (
                               <div><dt>Desc. %</dt><dd>{formatDiscountPercent(getLineDiscountPercent(item))}</dd></div>
+                            ) : null}
+                            {Array.isArray(item.extras) && item.extras.length > 0 ? (
+                              <div><dt>Extras</dt><dd>{item.extras.map(formatExtraLabel).join(', ')}</dd></div>
                             ) : null}
                             <div><dt>Subtotal</dt><dd>{formatCurrency(item.total_linea || item.sub_total)}</dd></div>
                           </dl>
@@ -276,6 +308,18 @@ export default function VentaDetalleModal({
               ) : null}
 
               <div className="ventas-detail-modal__totals-card">
+                {extrasSubtotalFromItems > 0 ? (
+                  <>
+                    <div>
+                      <span>Base items</span>
+                      <strong>{formatCurrency(baseSubtotalFromItems)}</strong>
+                    </div>
+                    <div>
+                      <span>Extras</span>
+                      <strong>{formatCurrency(extrasSubtotalFromItems)}</strong>
+                    </div>
+                  </>
+                ) : null}
                 <div>
                   <span>Subtotal bruto</span>
                   <strong>{formatCurrency(grossSubtotal)}</strong>

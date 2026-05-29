@@ -189,8 +189,8 @@ export default function CierresCajaView() {
     PERMISSIONS.VENTAS_CAJAS_PARTICIPANTES_GESTIONAR,
     PERMISSIONS.VENTAS_CAJAS_DIFERENCIA_RESOLVER
   ]);
-  const isCashierOnly = isCajero && !isSuperAdmin && !isAdminRole && !hasCajaAdminPermissions;
-  const isRestrictedCajero = isCashierOnly;
+  const isRestrictedCajero = isCajero && !isSuperAdmin && !isAdminRole;
+  const isCashierOnly = isRestrictedCajero && !hasCajaAdminPermissions;
   const canViewCajaTheoreticalAmounts = !isCashierOnly;
 
   const canSelectSucursal =
@@ -510,10 +510,11 @@ export default function CierresCajaView() {
   const handleSubmitClose = async (payload) => {
     if (!selectedSesion?.id_sesion_caja) return;
     await closeSesion(selectedSesion.id_sesion_caja, payload, { silent: true });
-    await Promise.all([
+    const [, detail] = await Promise.all([
       refreshCurrentScope(),
-      ensureDetalle(selectedSesion, { contexto: 'CIERRE' })
+      ensureDetalle(selectedSesion, { contexto: 'CIERRE', force: true })
     ]);
+    if (detail?.sesion) setSelectedSesion(detail.sesion);
     setCloseOpen(false);
   };
 
@@ -796,7 +797,7 @@ export default function CierresCajaView() {
         loadingAssignedCaja={loadingMiAsignacionCaja}
         assignedCajaMissing={miAsignacionCajaMissing}
         assignedCajaError={miAsignacionCajaError}
-        assignedCajaSessionActive={Boolean(miAsignacionCaja?.sesion_activa?.id_sesion_caja)}
+        assignedCajaSessionActive={Boolean(miAsignacionCaja?.id_sesion_caja || miAsignacionCaja?.sesion_activa?.id_sesion_caja)}
         onRequestCajas={handleRequestCajas}
         onRequestUsuarios={handleRequestUsuarios}
         onClose={() => setOpenCajaOpen(false)}
