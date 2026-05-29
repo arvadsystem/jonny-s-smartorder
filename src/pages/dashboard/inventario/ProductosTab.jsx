@@ -218,6 +218,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [createErrors, setCreateErrors] = useState({});
   const [creating, setCreating] = useState(false);
   const [createImage, setCreateImage] = useState(buildCreateImageState);
+  // AM: referencia opcional para reutilizar imagen existente al duplicar sin re-subir archivo.
+  // undefined: create normal (no enviar campo); number: reutilizar archivo; null: quitar imagen explicitamente.
+  const [createImageReferenceId, setCreateImageReferenceId] = useState(undefined);
 
   // ==============================
   // EDITAR
@@ -1012,6 +1015,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     // IMPACT: solo UX/estado local del formulario de create.
     if (createImageInputRef.current) createImageInputRef.current.value = '';
     setCreateImage(buildCreateImageState());
+    // AM: si existe contexto de referencia (duplicado), limpiar significa quitar imagen en el nuevo producto.
+    setCreateImageReferenceId((prev) => (prev === undefined ? prev : null));
   }, []);
 
   const setCreateImageError = useCallback((message) => {
@@ -1051,10 +1056,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       return;
     }
 
-    if (!file) {
-      clearCreateImage();
-      return;
-    }
+    if (!file) return;
 
     const fileError = getInventarioImageFileError(file, INVENTARIO_IMAGE_CONTEXT.PRODUCTOS_PUBLICOS);
     if (fileError) {
@@ -1068,6 +1070,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     }
 
     const previewUrl = URL.createObjectURL(file);
+    // AM: al elegir archivo nuevo, deja de reutilizar referencia del original.
+    setCreateImageReferenceId(undefined);
     setCreateImage({
       file,
       previewUrl,
@@ -1389,6 +1393,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setForm(buildCreateProductoInitialForm());
     setCreateErrors({});
     clearCreateImage();
+    setCreateImageReferenceId(undefined);
   };
 
   // ==============================
@@ -1432,6 +1437,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         }
         uploadedArchivoId = archivoId;
         payload.id_archivo_imagen_principal = archivoId;
+      } else if (createImageReferenceId !== undefined) {
+        // AM: en duplicado, conserva referencia original o envia null si el usuario la quito.
+        payload.id_archivo_imagen_principal = createImageReferenceId;
       }
 
       const createResp = await inventarioService.crearProducto(payload);
@@ -1757,7 +1765,15 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && productoBase.id_tipo_departamento ? String(productoBase.id_tipo_departamento) : ''
     });
     setCreateErrors({});
-    clearCreateImage();
+    const duplicatedImageSrc = getProductoImageSrc(productoBase);
+    const duplicatedImageRefId = Number.parseInt(String(productoBase.id_archivo_imagen_principal ?? ''), 10);
+    const hasImageRef = Number.isInteger(duplicatedImageRefId) && duplicatedImageRefId > 0;
+    if (createImageInputRef.current) createImageInputRef.current.value = '';
+    setCreateImage({
+      ...buildCreateImageState(),
+      previewUrl: duplicatedImageSrc || ''
+    });
+    setCreateImageReferenceId(hasImageRef ? duplicatedImageRefId : undefined);
     // AJUSTE: al duplicar se cierra el drawer y filtros antes de redirigir al flujo de alta.
     setFiltersOpen(false);
     cerrarDrawerProducto();
