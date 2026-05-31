@@ -3216,6 +3216,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
             ? "Actualiza los datos de la persona y guarda los cambios."
             : "Completa los campos y guarda los cambios."
         }
+        saveLabel={drawerMode === "edit" ? "Guardar cambios" : "Crear"}
         saving={inlinePersonaSaving}
         onClose={() => {
           if (drawerMode === "edit") {
