@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Select from "react-select";
+import { createPortal } from "react-dom";
 import { personaService } from "../../../services/personasService";
 import sucursalesService from "../../../services/sucursalesService";
 import { usePermisos } from "../../../context/PermisosContext";
@@ -35,6 +36,7 @@ import "./components/empleados/empleados-modal.css";
 const emptyForm = {
   id_persona: "",
   id_sucursal: "",
+  id_cargo: "",
   fecha_ingreso: "",
   salario_base: "",
   cargo: "",
@@ -45,18 +47,11 @@ const emptyForm = {
 
 const emptyInlinePersonaForm = createInitialPersonaForm();
 
-const createInitialFiltersDraft = () => ({
+const createInitialFiltersDraft = (sucursal = "") => ({
   estadoFiltro: "activo",
   sortBy: "recientes",
+  sucursal: String(sucursal || ""),
 });
-
-const EMPLEADO_PUESTO_OPTIONS = [
-  { value: "Encargado", label: "Encargado" },
-  { value: "Cajero", label: "Cajero" },
-  { value: "Jefe de cocina", label: "Jefe de cocina" },
-  { value: "Asistente de cocina", label: "Asistente de cocina" },
-  { value: "Mesero", label: "Mesero" },
-];
 
 const normalizePuestoValue = (value) =>
   String(value ?? "")
@@ -153,6 +148,9 @@ const normalizeArrayPayload = (resp) => {
   if (Array.isArray(resp?.data)) return resp.data;
   if (Array.isArray(resp?.items)) return resp.items;
   if (Array.isArray(resp?.rows)) return resp.rows;
+  if (Array.isArray(resp?.cargos)) return resp.cargos;
+  if (Array.isArray(resp?.cargos_empleados)) return resp.cargos_empleados;
+  if (Array.isArray(resp?.catalogo)) return resp.catalogo;
   if (Array.isArray(resp?.resultados)) return resp.resultados;
   if (Array.isArray(resp?.resultado)) return resp.resultado;
   return [];
@@ -789,7 +787,7 @@ const isActivo = (record) => {
   return Boolean(record[field]);
 };
 
-export default function Empleados({ openToast, selectedSucursalId = "" }) {
+export default function Empleados({ openToast }) {
   const safeToast = useCallback(
     (title, message, variant = "success") => {
       if (typeof openToast === "function") openToast(title, message, variant);
@@ -805,6 +803,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
   const [personasCatalogo, setPersonasCatalogo] = useState([]);
   const [sucursales, setSucursales] = useState([]);
+  const [cargosCatalogo, setCargosCatalogo] = useState([]);
 
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -813,6 +812,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const [viewMode, setViewMode] = useState(() => readViewMode("empleadosViewMode"));
 
   const [estadoFiltro, setEstadoFiltro] = useState("activo");
+  const [selectedSucursalFilter, setSelectedSucursalFilter] = useState("");
   const [sortBy, setSortBy] = useState("recientes");
   const [filtersDraft, setFiltersDraft] = useState(createInitialFiltersDraft);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -843,6 +843,17 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const [imageDirty, setImageDirty] = useState(false);
 
   const [actionLoading, setActionLoading] = useState(false);
+  const [creatingCargo, setCreatingCargo] = useState(false);
+  const [showCargoModal, setShowCargoModal] = useState(false);
+  const [cargoToggleConfirm, setCargoToggleConfirm] = useState({
+    show: false,
+    cargoRow: null,
+    nextEstado: true,
+  });
+  const [cargoCatalogBusy, setCargoCatalogBusy] = useState(false);
+  const [editingCargoId, setEditingCargoId] = useState("");
+  const [editingCargoName, setEditingCargoName] = useState("");
+  const [newCargoName, setNewCargoName] = useState("");
   const [deletingId, setDeletingId] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     show: false,
@@ -865,6 +876,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const imageInputRef = useRef(null);
   const telefonoReferenciaInputRef = useRef(null);
   const telefonoReferenciaCaretRef = useRef(null);
+  const cargoModalOpenedAtRef = useRef(0);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
@@ -985,15 +997,77 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     () => buildEmpleadosSelectStyles(Boolean(errors.cargo)),
     [errors.cargo]
   );
+  const cargoOptions = useMemo(
+    () =>
+      (Array.isArray(cargosCatalogo) ? cargosCatalogo : [])
+        .map((item) => {
+          const id =
+            item?.id_cargo ??
+            item?.id ??
+            item?.cargo_id ??
+            item?.idCargo ??
+            item?.id_catalogo ??
+            item?.id_catalogo_cargo;
+          const label =
+            item?.nombre_cargo ??
+            item?.nombre ??
+            item?.cargo ??
+            item?.descripcion ??
+            item?.nombreCargo ??
+            item?.cargo_nombre ??
+            item?.descripcion_cargo;
+          if (!id || !String(label || "").trim()) return null;
+          return { value: String(id), label: String(label).trim() };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.label.localeCompare(b.label, "es", { sensitivity: "base" })),
+    [cargosCatalogo]
+  );
+  const cargoOptionsFallback = useMemo(() => {
+    const fromEmpleados = Array.from(
+      new Set(
+        (Array.isArray(empleados) ? empleados : [])
+          .map((row) => String(getCargo(row) || "").trim())
+          .filter(Boolean)
+      )
+    );
+    return fromEmpleados.map((label) => ({ value: `legacy:${label}`, label }));
+  }, [empleados]);
   const puestoSelectOptions = useMemo(
-    () => EMPLEADO_PUESTO_OPTIONS,
-    []
+    () => {
+      const merged = [...cargoOptions, ...cargoOptionsFallback];
+      const seen = new Set();
+      const unique = [];
+      merged.forEach((item) => {
+        const key = normalizePuestoValue(item?.label);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        unique.push(item);
+      });
+      return unique.sort((a, b) => a.label.localeCompare(b.label, "es", { sensitivity: "base" }));
+    },
+    [cargoOptions, cargoOptionsFallback]
+  );
+  const cargoCatalogRows = useMemo(
+    () =>
+      (Array.isArray(cargosCatalogo) ? cargosCatalogo : [])
+        .filter((item) => Number.parseInt(String(item?.id_cargo ?? item?.id ?? ""), 10) > 0)
+        .sort((a, b) =>
+          String(a?.nombre_cargo ?? a?.nombre ?? a?.cargo ?? "")
+            .localeCompare(String(b?.nombre_cargo ?? b?.nombre ?? b?.cargo ?? ""), "es", { sensitivity: "base" })
+        ),
+    [cargosCatalogo]
   );
   const puestoSelectValue = useMemo(() => {
+    const selectedId = String(form?.id_cargo ?? "").trim();
+    if (selectedId) {
+      const byId = puestoSelectOptions.find((option) => option.value === selectedId);
+      if (byId) return byId;
+    }
     const selected = normalizePuestoValue(form?.cargo);
     if (!selected) return null;
-    return puestoSelectOptions.find((option) => normalizePuestoValue(option.value) === selected) || null;
-  }, [form?.cargo, puestoSelectOptions]);
+    return puestoSelectOptions.find((option) => normalizePuestoValue(option.label) === selected) || null;
+  }, [form?.id_cargo, form?.cargo, puestoSelectOptions]);
 
   const selectedPersona = useMemo(() => {
     const selectedPersonaId = String(form.id_persona ?? "").trim();
@@ -1388,6 +1462,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     (empleado) => ({
       id_persona: resolvePersonaId(empleado),
       id_sucursal: resolveSucursalId(empleado),
+      id_cargo: empleado?.id_cargo ? String(empleado.id_cargo) : "",
       fecha_ingreso: toDateInputValue(empleado?.fecha_ingreso),
       salario_base:
         empleado?.salario_base === null || empleado?.salario_base === undefined
@@ -1492,10 +1567,10 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         page: Number(targetPage) || 1,
         limit,
         search: normalizeSearchText(debouncedSearch),
-        sucursal: toEmpleadoId(selectedSucursalId) || null,
+        sucursal: toEmpleadoId(selectedSucursalFilter) || null,
         estado: estadoFiltro,
       }),
-    [limit, debouncedSearch, selectedSucursalId, estadoFiltro]
+    [limit, debouncedSearch, selectedSucursalFilter, estadoFiltro]
   );
 
   const setEmpleadosCacheEntry = useCallback((cacheKey, data) => {
@@ -1540,7 +1615,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       listPrefetchAbortRef.current = controller;
 
       try {
-        const normalizedSucursalId = toEmpleadoId(selectedSucursalId);
+        const normalizedSucursalId = toEmpleadoId(selectedSucursalFilter);
         const estadoQuery = estadoFiltro === "inactivo" ? false : true;
         const resp = await personaService.getEmpleados({
           page: nextPage,
@@ -1567,7 +1642,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       debouncedSearch,
       estadoFiltro,
       limit,
-      selectedSucursalId,
+      selectedSucursalFilter,
       setEmpleadosCacheEntry,
     ]
   );
@@ -1576,15 +1651,17 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     if (catalogosCargadosRef.current) return;
 
     try {
-      const [personasResp, sucursalesResp] = await Promise.all([
+      const [personasResp, sucursalesResp, cargosResp] = await Promise.all([
         personaService.getPersonasDetalle(1, 100),
         sucursalesService.getAll(),
+        personaService.getCargosEmpleados(),
       ]);
 
       if (!mountedRef.current) return;
 
       setPersonasCatalogo(normalizeListResponse(personasResp).items);
       setSucursales(normalizeArrayPayload(sucursalesResp));
+      setCargosCatalogo(normalizeArrayPayload(cargosResp));
       catalogosCargadosRef.current = true;
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudieron cargar catalogos", "danger");
@@ -1617,7 +1694,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     listAbortRef.current = controller;
 
     try {
-      const normalizedSucursalId = toEmpleadoId(selectedSucursalId);
+      const normalizedSucursalId = toEmpleadoId(selectedSucursalFilter);
       const estadoQuery = estadoFiltro === "inactivo" ? false : true;
       const resp = await personaService.getEmpleados({
         page: targetPage,
@@ -1652,14 +1729,14 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     debouncedSearch,
     estadoFiltro,
     safeToast,
-    selectedSucursalId,
+    selectedSucursalFilter,
     setEmpleadosCacheEntry,
     prefetchEmpleadosPage,
   ]);
 
   const cargarEmpleadosGlobalStats = useCallback(async () => {
     const reqId = ++globalStatsRequestIdRef.current;
-    const normalizedSucursalId = toEmpleadoId(selectedSucursalId);
+    const normalizedSucursalId = toEmpleadoId(selectedSucursalFilter);
 
     try {
       const [activosResp, inactivosResp] = await Promise.all([
@@ -1689,7 +1766,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     } catch {
       // Keep current KPI values when the stats refresh fails.
     }
-  }, [selectedSucursalId]);
+  }, [selectedSucursalFilter]);
 
   const fetchNewestEmpleadoId = useCallback(async () => {
     try {
@@ -1962,16 +2039,186 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     [form.telefono_referencia]
   );
 
-  const sanitizeForm = () => ({
-    // AM: normalizamos cargo a un valor permitido para evitar entradas manipuladas desde cliente.
-    cargo: (() => {
-      const normalizedCargo = normalizePuestoValue(form.cargo);
-      if (!normalizedCargo) return "";
-      const allowedOption = EMPLEADO_PUESTO_OPTIONS.find(
-        (option) => normalizePuestoValue(option.value) === normalizedCargo
+  const handleCreateCargo = useCallback(async () => {
+    const nombreCargo = String(newCargoName || "").trim();
+    if (!nombreCargo) {
+      setErrors((state) => ({ ...state, cargo: "Escribe el nombre del cargo" }));
+      return;
+    }
+
+    if (creatingCargo) return;
+    setCreatingCargo(true);
+    try {
+      const response = await personaService.createCargoEmpleado({
+        nombre_cargo: nombreCargo,
+        estado: true,
+      });
+      const rows = normalizeArrayPayload(response);
+      const created = rows[0] || response;
+      const createdId = created?.id_cargo ?? created?.id ?? created?.cargo_id;
+      const createdLabel =
+        created?.nombre_cargo ?? created?.nombre ?? created?.cargo ?? created?.descripcion ?? nombreCargo;
+
+      if (!createdId) {
+        const refreshed = await personaService.getCargosEmpleados();
+        const refreshedRows = normalizeArrayPayload(refreshed);
+        setCargosCatalogo(refreshedRows);
+        const found = refreshedRows.find(
+          (item) =>
+            normalizePuestoValue(item?.nombre_cargo ?? item?.nombre ?? item?.cargo) === normalizePuestoValue(nombreCargo)
+        );
+        if (found?.id_cargo) {
+          setForm((state) => ({
+            ...state,
+            id_cargo: String(found.id_cargo),
+            cargo: String(found?.nombre_cargo ?? found?.nombre ?? nombreCargo),
+          }));
+        }
+      } else {
+        setCargosCatalogo((prev) => {
+          const source = Array.isArray(prev) ? prev : [];
+          const next = [
+            ...source.filter((item) => String(item?.id_cargo ?? item?.id ?? "") !== String(createdId)),
+            { id_cargo: createdId, nombre_cargo: String(createdLabel).trim(), estado: true },
+          ];
+          return next;
+        });
+        setForm((state) => ({
+          ...state,
+          id_cargo: String(createdId),
+          cargo: String(createdLabel).trim(),
+        }));
+      }
+
+      setNewCargoName("");
+      setErrors((state) => ({ ...state, cargo: undefined }));
+      safeToast("OK", "Cargo creado correctamente.", "success");
+    } catch (error) {
+      safeToast("ERROR", error?.message || "No se pudo crear el cargo.", "danger");
+    } finally {
+      if (mountedRef.current) setCreatingCargo(false);
+    }
+  }, [creatingCargo, mountedRef, newCargoName, safeToast]);
+
+  const handleToggleCargoEstado = useCallback(
+    async (cargoRow) => {
+      const idCargo = Number.parseInt(String(cargoRow?.id_cargo ?? cargoRow?.id ?? ""), 10);
+      if (!Number.isInteger(idCargo) || idCargo <= 0 || cargoCatalogBusy) return;
+      const nextEstado = !(cargoRow?.estado ?? true);
+      setCargoToggleConfirm({
+        show: true,
+        cargoRow,
+        nextEstado: Boolean(nextEstado),
+      });
+    },
+    [cargoCatalogBusy]
+  );
+
+  const handleCancelCargoToggle = useCallback(() => {
+    if (cargoCatalogBusy) return;
+    setCargoToggleConfirm({ show: false, cargoRow: null, nextEstado: true });
+  }, [cargoCatalogBusy]);
+
+  const handleConfirmCargoToggle = useCallback(async () => {
+    const cargoRow = cargoToggleConfirm?.cargoRow;
+    const nextEstado = Boolean(cargoToggleConfirm?.nextEstado);
+    const idCargo = Number.parseInt(String(cargoRow?.id_cargo ?? cargoRow?.id ?? ""), 10);
+    if (!Number.isInteger(idCargo) || idCargo <= 0 || cargoCatalogBusy) return;
+    setCargoCatalogBusy(true);
+    try {
+      await personaService.updateCargoEmpleado(idCargo, { estado: nextEstado });
+      setCargosCatalogo((prev) =>
+        (Array.isArray(prev) ? prev : []).map((row) =>
+          Number(row?.id_cargo ?? row?.id ?? 0) === idCargo ? { ...row, estado: nextEstado } : row
+        )
       );
-      return allowedOption ? allowedOption.value : "";
+      safeToast("OK", nextEstado ? "Cargo activado." : "Cargo inactivado.", "success");
+      setCargoToggleConfirm({ show: false, cargoRow: null, nextEstado: true });
+    } catch (error) {
+      safeToast("ERROR", error?.message || "No se pudo actualizar el estado del cargo.", "danger");
+    } finally {
+      if (mountedRef.current) setCargoCatalogBusy(false);
+    }
+  }, [cargoToggleConfirm, cargoCatalogBusy, mountedRef, safeToast]);
+
+  const handleStartCargoEdit = useCallback((cargoRow) => {
+    const idCargo = String(cargoRow?.id_cargo ?? cargoRow?.id ?? "").trim();
+    const nombreCargo = String(cargoRow?.nombre_cargo ?? cargoRow?.nombre ?? cargoRow?.label ?? "").trim();
+    if (!idCargo) return;
+    setEditingCargoId(idCargo);
+    setEditingCargoName(nombreCargo);
+  }, []);
+
+  const handleSaveCargoEdit = useCallback(async () => {
+    const idCargo = Number.parseInt(String(editingCargoId || ""), 10);
+    const nombreCargo = String(editingCargoName || "").trim();
+    if (!Number.isInteger(idCargo) || idCargo <= 0) return;
+    if (!nombreCargo) {
+      safeToast("ERROR", "El nombre del cargo es obligatorio.", "danger");
+      return;
+    }
+    if (cargoCatalogBusy) return;
+
+    setCargoCatalogBusy(true);
+    try {
+      await personaService.updateCargoEmpleado(idCargo, { nombre_cargo: nombreCargo });
+      setCargosCatalogo((prev) =>
+        (Array.isArray(prev) ? prev : []).map((row) =>
+          Number(row?.id_cargo ?? row?.id ?? 0) === idCargo ? { ...row, nombre_cargo: nombreCargo } : row
+        )
+      );
+      setForm((state) => {
+        if (Number.parseInt(String(state.id_cargo || ""), 10) !== idCargo) return state;
+        return { ...state, cargo: nombreCargo };
+      });
+      setEditingCargoId("");
+      setEditingCargoName("");
+      safeToast("OK", "Cargo actualizado.", "success");
+    } catch (error) {
+      safeToast("ERROR", error?.message || "No se pudo actualizar el cargo.", "danger");
+    } finally {
+      if (mountedRef.current) setCargoCatalogBusy(false);
+    }
+  }, [editingCargoId, editingCargoName, cargoCatalogBusy, mountedRef, safeToast]);
+
+  const handleOpenCargoModal = useCallback((event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const openModal = () => {
+      cargoModalOpenedAtRef.current = Date.now();
+      setShowCargoModal(true);
+    };
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(openModal);
+      return;
+    }
+    openModal();
+  }, []);
+
+  const handleCloseCargoModal = useCallback((event) => {
+    if (event) {
+      const elapsed = Date.now() - Number(cargoModalOpenedAtRef.current || 0);
+      if (elapsed < 180) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
+    if (creatingCargo || cargoCatalogBusy) return;
+    setShowCargoModal(false);
+    setCargoToggleConfirm({ show: false, cargoRow: null, nextEstado: true });
+    setEditingCargoId("");
+    setEditingCargoName("");
+  }, [creatingCargo, cargoCatalogBusy]);
+
+  const sanitizeForm = () => ({
+    id_cargo: (() => {
+      const parsed = Number.parseInt(String(form.id_cargo), 10);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
     })(),
+    cargo: String(form.cargo ?? "").trim(),
     id_persona: Number.parseInt(String(form.id_persona), 10),
     id_sucursal: Number.parseInt(String(form.id_sucursal), 10),
     fecha_ingreso: form.fecha_ingreso,
@@ -2005,15 +2252,10 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     if (Number.isNaN(payload.salario_base) || payload.salario_base < 0) {
       currentErrors.salario_base = "Debe ser un numero valido";
     }
-    const cargoRaw = String(form.cargo ?? "").trim();
-    if (cargoRaw) {
-      const normalizedCargo = normalizePuestoValue(cargoRaw);
-      const isAllowedCargo = EMPLEADO_PUESTO_OPTIONS.some(
-        (option) => normalizePuestoValue(option.value) === normalizedCargo
-      );
-      if (!isAllowedCargo) {
-        currentErrors.cargo = "Selecciona un puesto valido de la lista";
-      }
+    const cargoId = Number.parseInt(String(form.id_cargo ?? ""), 10);
+    const cargoText = String(form.cargo ?? "").trim();
+    if ((!Number.isInteger(cargoId) || cargoId <= 0) && !cargoText) {
+      currentErrors.cargo = "Selecciona un cargo";
     }
     const referenceName = String(form.nombre_referencia ?? "").trim();
     if (referenceName && !/^[\p{L}\s]+$/u.test(referenceName)) {
@@ -2373,6 +2615,10 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     setPersonaModalContext("initial");
     setCreateStep(2);
     setForm(buildFormFromEmpleado(empleado));
+    setNewCargoName("");
+    setShowCargoModal(false);
+    setEditingCargoId("");
+    setEditingCargoName("");
     setFormImage(createImageDraftState(resolveEmpleadoImage(empleado)));
     setImageDirty(false);
     clearImagePicker();
@@ -2538,6 +2784,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
+      setNewCargoName("");
       setUseInlinePersonaCreate(false);
       setInlinePersonaForm(emptyInlinePersonaForm);
       clearFormImageDraft();
@@ -2555,6 +2802,10 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     setEditId(null);
     setErrors({});
     setForm(emptyForm);
+    setNewCargoName("");
+    setShowCargoModal(false);
+    setEditingCargoId("");
+    setEditingCargoName("");
     setUseInlinePersonaCreate(true);
     setInlinePersonaForm(emptyInlinePersonaForm);
     setShowPersonaCreateModal(false);
@@ -2803,8 +3054,8 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   );
 
   const hasActiveFilters = useMemo(
-    () => search.trim() !== "" || estadoFiltro !== "activo" || sortBy !== "recientes",
-    [search, estadoFiltro, sortBy]
+    () => search.trim() !== "" || estadoFiltro !== "activo" || sortBy !== "recientes" || !!selectedSucursalFilter,
+    [search, estadoFiltro, sortBy, selectedSucursalFilter]
   );
 
   const colsClass = cardsPerPage >= 6 ? "cols-3" : cardsPerPage >= 4 ? "cols-2" : "cols-1";
@@ -2850,7 +3101,7 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     if (actionLoading) return;
     closeFormDrawer();
     setDetailEmpleado(null);
-    setFiltersDraft({ estadoFiltro, sortBy });
+    setFiltersDraft({ estadoFiltro, sortBy, sucursal: selectedSucursalFilter });
     setFiltersOpen(true);
   };
 
@@ -2859,13 +3110,17 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
   const applyFiltersDrawer = () => {
     setEstadoFiltro(filtersDraft.estadoFiltro === "inactivo" ? "inactivo" : "activo");
     setSortBy(filtersDraft.sortBy || "recientes");
+    setSelectedSucursalFilter(String(filtersDraft.sucursal || ""));
+    setPage((prev) => (prev === 1 ? prev : 1));
     setFiltersOpen(false);
   };
 
   const clearVisualFilters = () => {
     setEstadoFiltro("activo");
     setSortBy("recientes");
+    setSelectedSucursalFilter("");
     setFiltersDraft(createInitialFiltersDraft());
+    setPage((prev) => (prev === 1 ? prev : 1));
   };
 
   const clearAllFilters = () => {
@@ -3175,6 +3430,26 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         allowAll={false}
         activeLabel="Activos"
         inactiveLabel="Inactivos"
+        extraFilters={({ draft, onChangeDraft }) => (
+          <div className="inv-cat-filter-card inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Sucursal</div>
+            <label className="form-label" htmlFor="empd-filtros-sucursal">Seleccionar sucursal</label>
+            <select
+              id="empd-filtros-sucursal"
+              className="form-select"
+              value={String(draft.sucursal || "")}
+              onChange={(event) => onChangeDraft((state) => ({ ...state, sucursal: event.target.value }))}
+            >
+              <option value="">Todas las sucursales</option>
+              {sucursalOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <div className="inv-ins-help">Filtra por sucursal solo cuando lo necesites.</div>
+          </div>
+        )}
       />
 
       <aside
@@ -3506,24 +3781,44 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
 
               <div className="col-12">
                 <label className="form-label text-light text-opacity-75">Cargo / Puesto</label>
-                <Select
-                  inputId="empleado-puesto-select"
-                  className={`empleados-select ${errors.cargo ? "is-invalid" : ""}`}
-                  classNamePrefix="empleados-select"
-                  placeholder="Selecciona un puesto"
-                  isSearchable={false}
-                  isClearable
-                  options={puestoSelectOptions}
-                  value={puestoSelectValue}
-                  onChange={(option) => {
-                    setForm((state) => ({ ...state, cargo: option?.value ? String(option.value) : "" }));
-                    setErrors((state) => ({ ...state, cargo: undefined }));
-                  }}
-                  styles={puestoSelectStyles}
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                  menuPosition="fixed"
-                  isDisabled={actionLoading || Boolean(deletingId)}
-                />
+                <div className="d-flex gap-2 align-items-start empleados-cargo-field">
+                  <div className="flex-grow-1 empleados-cargo-field__select-wrap">
+                    <Select
+                      inputId="empleado-puesto-select"
+                      className={`empleados-select ${errors.cargo ? "is-invalid" : ""}`}
+                      classNamePrefix="empleados-select"
+                      placeholder="Selecciona un cargo"
+                      isSearchable
+                      isClearable
+                      options={puestoSelectOptions}
+                      value={puestoSelectValue}
+                      onChange={(option) => {
+                        const rawValue = String(option?.value ?? "").trim();
+                        const parsedId = Number.parseInt(rawValue, 10);
+                        const resolvedCargoId = Number.isInteger(parsedId) && parsedId > 0 ? String(parsedId) : "";
+                        setForm((state) => ({
+                          ...state,
+                          id_cargo: resolvedCargoId,
+                          cargo: option?.label ? String(option.label) : "",
+                        }));
+                        setErrors((state) => ({ ...state, cargo: undefined }));
+                      }}
+                      styles={puestoSelectStyles}
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                      menuPosition="fixed"
+                      isDisabled={actionLoading || Boolean(deletingId)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn empleados-cargo-field__create-btn"
+                    onClick={handleOpenCargoModal}
+                    disabled={actionLoading || Boolean(deletingId)}
+                  >
+                    <i className="bi bi-briefcase-fill me-2" />
+                    Crear cargo
+                  </button>
+                </div>
                 {errors.cargo ? <div className="invalid-feedback d-block">{errors.cargo}</div> : null}
               </div>
 
@@ -3761,6 +4056,174 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
         getImageSrc={resolveEmpleadoImage}
       />
 
+      {showCargoModal && typeof document !== "undefined"
+        ? createPortal(
+          <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={handleCloseCargoModal}>
+            <div className="inv-pro-confirm-panel empleados-cargo-modal empleados-cargo-modal--v2" onClick={(event) => event.stopPropagation()}>
+              <div className="empleados-cargo-modal__header">
+                <div>
+                  <div className="empleados-cargo-modal__title">CATALOGO DE CARGOS</div>
+                  <div className="empleados-cargo-modal__subtitle">Crea, edita y activa o inactiva los cargos del sistema.</div>
+                </div>
+                <button
+                  type="button"
+                  className="empleados-cargo-modal__close"
+                  onClick={handleCloseCargoModal}
+                  aria-label="Cerrar"
+                >
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+
+              <div className="empleados-cargo-modal__body">
+                <div className="empleados-cargo-modal__section-title">Crear nuevo cargo</div>
+                <div className="d-flex gap-2 align-items-center mb-4">
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={newCargoName}
+                    onChange={(event) => setNewCargoName(event.target.value)}
+                    placeholder="Ingresa el nombre del nuevo cargo"
+                    maxLength={120}
+                    disabled={creatingCargo || cargoCatalogBusy}
+                  />
+                  <button
+                    type="button"
+                    className="btn empleados-cargo-modal__add-btn"
+                    onClick={handleCreateCargo}
+                    disabled={creatingCargo || cargoCatalogBusy}
+                  >
+                    {creatingCargo ? "Guardando..." : "Agregar"}
+                  </button>
+                </div>
+
+                <div className="empleados-cargo-modal__list-head">
+                  <div className="empleados-cargo-modal__section-title mb-0">Cargos registrados</div>
+                  <span className="empleados-cargo-modal__count-badge">{cargoCatalogRows.length} cargos en total</span>
+                </div>
+
+                <div className="d-flex flex-column gap-2 empleados-cargo-modal__list">
+                  {cargoCatalogRows.map((cargoRow) => {
+                    const rowId = String(cargoRow?.id_cargo ?? cargoRow?.id ?? "").trim();
+                    const rowLabel = String(cargoRow?.nombre_cargo ?? cargoRow?.nombre ?? cargoRow?.cargo ?? "").trim();
+                    const isActive = cargoRow?.estado ?? true;
+                    const isEditing = String(editingCargoId) === rowId;
+                    return (
+                      <div key={rowId} className="empleados-cargo-modal__row">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            value={editingCargoName}
+                            onChange={(event) => setEditingCargoName(event.target.value)}
+                            maxLength={120}
+                            disabled={creatingCargo || cargoCatalogBusy}
+                          />
+                        ) : (
+                          <div className="form-control form-control-sm">{rowLabel}</div>
+                        )}
+
+                        {isEditing ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm empleados-cargo-modal__edit-btn"
+                            onClick={handleSaveCargoEdit}
+                            disabled={creatingCargo || cargoCatalogBusy}
+                          >
+                            Guardar
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-sm empleados-cargo-modal__edit-btn"
+                            onClick={() => handleStartCargoEdit(cargoRow)}
+                            disabled={creatingCargo || cargoCatalogBusy}
+                          >
+                            Editar
+                          </button>
+                        )}
+
+                        {isEditing ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm empleados-cargo-modal__edit-btn"
+                            onClick={() => {
+                              setEditingCargoId("");
+                              setEditingCargoName("");
+                            }}
+                            disabled={creatingCargo || cargoCatalogBusy}
+                          >
+                            Cancelar
+                          </button>
+                        ) : null}
+
+                        <div className="form-check form-switch empleados-cargo-modal__switch">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            role="switch"
+                            checked={Boolean(isActive)}
+                            onChange={() => handleToggleCargoEstado(cargoRow)}
+                            disabled={creatingCargo || cargoCatalogBusy}
+                          />
+                          <label className="form-check-label">{isActive ? "Activo" : "Inactivo"}</label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {cargoCatalogRows.length === 0 ? (
+                    <div className="text-muted small px-1 py-2">No hay cargos disponibles.</div>
+                  ) : null}
+                </div>
+              </div>
+              <div className="empleados-cargo-modal__footer">
+                <button type="button" className="btn btn-outline-secondary" onClick={handleCloseCargoModal}>
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+        : null}
+
+      {cargoToggleConfirm.show && typeof document !== "undefined"
+        ? createPortal(
+          <div className="inv-pro-confirm-backdrop empleados-cargo-confirm-backdrop" role="dialog" aria-modal="true">
+            <div className="inv-pro-confirm-panel empleados-cargo-confirm-panel" onClick={(event) => event.stopPropagation()}>
+              <div className="inv-pro-confirm-head">
+                <div className="inv-pro-confirm-head-icon">
+                  <i className="bi bi-exclamation-circle" />
+                </div>
+                <div>
+                  <div className="inv-pro-confirm-title">
+                    {cargoToggleConfirm.nextEstado ? "Confirmar activacion" : "Confirmar inactivacion"}
+                  </div>
+                  <div className="inv-pro-confirm-sub">Se actualizara el estado del cargo seleccionado.</div>
+                </div>
+              </div>
+              <div className="inv-pro-confirm-body">
+                <div className="inv-pro-confirm-question">
+                  {cargoToggleConfirm.nextEstado ? "Deseas activar este cargo?" : "Deseas inactivar este cargo?"}
+                </div>
+                <div className="inv-pro-confirm-name">
+                  <span>{String(cargoToggleConfirm?.cargoRow?.nombre_cargo ?? cargoToggleConfirm?.cargoRow?.nombre ?? "").trim() || "Cargo seleccionado"}</span>
+                </div>
+              </div>
+              <div className="inv-pro-confirm-footer">
+                <button type="button" className="btn inv-pro-btn-cancel" onClick={handleCancelCargoToggle}>
+                  Cancelar
+                </button>
+                <button type="button" className="btn inv-pro-btn-danger" onClick={handleConfirmCargoToggle}>
+                  {cargoToggleConfirm.nextEstado ? "Activar" : "Inactivar"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+        : null}
+
       {confirmModal.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeConfirmDelete}>
           <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
@@ -3808,3 +4271,4 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
     </div>
   );
 }
+
