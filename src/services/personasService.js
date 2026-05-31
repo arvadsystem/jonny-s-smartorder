@@ -725,7 +725,7 @@ export const personaService = {
   // ==============================
   // CLIENTES (SUBMODULO PERSONAS)
   // ==============================
-  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal, signal } = {}) => {
+  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, origen, id_sucursal, signal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -736,6 +736,7 @@ export const personaService = {
         : (typeof nombre === 'string' ? nombre.trim() : ''));
     if (normalizedSearch) params.set('nombre', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+    if (typeof origen === 'string' && origen.trim()) params.set('origen', origen.trim());
     if (id_sucursal !== undefined && id_sucursal !== null && String(id_sucursal).trim() !== '') {
       params.set('id_sucursal', String(id_sucursal).trim());
     }

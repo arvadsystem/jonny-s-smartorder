@@ -63,6 +63,7 @@ const createEmptyDuplicateResolution = () => ({
 const createInitialFiltersDraft = () => ({
   estadoFiltro: "activo",
   sortBy: "recientes",
+  tipoFiltro: "todos",
 });
 
 const buildClientesSelectStyles = (hasError = false) => ({
@@ -159,6 +160,8 @@ const MAX_CLIENTES_PAGE_CACHE = 24;
 const GLOBAL_STATS_FETCH_LIMIT = 1;
 const PERSONAS_CATALOGO_PAGE_LIMIT = 200;
 const PERSONAS_CATALOGO_MAX_PAGES = 200;
+const CLIENTES_FILTRO_SCAN_MAX_PAGES = 200;
+const CLIENTES_FILTRO_SCAN_CONCURRENCY = 4;
 const CLIENTES_FORCE_COMPAT_CREATE_FLAG = "clientes_force_compat_create_v1";
 
 const isAbortError = (error) =>
@@ -467,6 +470,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
   const [estadoFiltro, setEstadoFiltro] = useState("activo");
   const [sortBy, setSortBy] = useState("recientes");
+  const [tipoFiltro, setTipoFiltro] = useState("todos");
   const [filtersDraft, setFiltersDraft] = useState(createInitialFiltersDraft);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -506,6 +510,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const [cardsPerPage, setCardsPerPage] = useState(() =>
     typeof window === "undefined" ? 6 : resolveCardsPerPage(window.innerWidth)
   );
+  const [usingTipoCache, setUsingTipoCache] = useState(false);
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
@@ -513,6 +518,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const listAbortRef = useRef(null);
   const listPrefetchAbortRef = useRef(null);
   const clientesListCacheRef = useRef(new Map());
+  const clientesTipoFallbackCacheRef = useRef(new Map());
   const catalogosCargadosRef = useRef(false);
   const catalogosLoadingRef = useRef(false);
   const panelRef = useRef(null);
@@ -697,8 +703,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         limit,
         search: normalizeSearchText(debouncedSearch),
         estado: estadoFiltro,
+        tipo: tipoFiltro,
       }),
-    [limit, debouncedSearch, estadoFiltro]
+    [limit, debouncedSearch, estadoFiltro, tipoFiltro]
   );
 
   const normalizeClientesPage = useCallback(
@@ -726,6 +733,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
   const clearClientesListCache = useCallback(() => {
     clientesListCacheRef.current.clear();
+    clientesTipoFallbackCacheRef.current.clear();
     listPrefetchAbortRef.current?.abort();
     listPrefetchAbortRef.current = null;
   }, []);
@@ -755,6 +763,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           limit,
           nombre: debouncedSearch || undefined,
           estado: estadoQuery,
+          origen: tipoFiltro !== "todos" ? tipoFiltro : undefined,
           signal: controller.signal,
         });
 
@@ -774,6 +783,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       buildClientesCacheKey,
       debouncedSearch,
       estadoFiltro,
+      tipoFiltro,
       limit,
       normalizeClientesPage,
       setClientesCacheEntry,
@@ -803,8 +813,10 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     return personas;
   }, []);
 
-  const cargarCatalogos = useCallback(async () => {
-    if (catalogosCargadosRef.current || catalogosLoadingRef.current) return;
+  const cargarCatalogos = useCallback(async (options = {}) => {
+    const force = Boolean(options?.force);
+    if (!force && (catalogosCargadosRef.current || catalogosLoadingRef.current)) return;
+    if (force) catalogosCargadosRef.current = false;
     catalogosLoadingRef.current = true;
 
     try {
@@ -874,6 +886,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     if (!force) {
       const cached = clientesListCacheRef.current.get(cacheKey);
       if (cached) {
+        setUsingTipoCache(false);
         setClientes(Array.isArray(cached.items) ? cached.items : []);
         setTotal(Math.max(0, Number(cached.total) || 0));
         setLoading(false);
@@ -888,28 +901,120 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
     try {
       const estadoQuery = estadoFiltro === "inactivo" ? false : true;
-      const resp = await personaService.getClientes({
-        page: targetPage,
-        limit,
-        nombre: debouncedSearch || undefined,
-        estado: estadoQuery,
-        signal: controller.signal,
-      });
+      let normalizedItems = [];
+      let totalResp = 0;
+
+      if (tipoFiltro !== "todos") {
+        const tipoCacheKey = JSON.stringify({
+          tipo: tipoFiltro,
+          estado: estadoQuery,
+          search: normalizeSearchText(debouncedSearch),
+        });
+        const cachedTipoList = clientesTipoFallbackCacheRef.current.get(tipoCacheKey);
+        if (Array.isArray(cachedTipoList)) {
+          setUsingTipoCache(true);
+          totalResp = cachedTipoList.length;
+          const start = Math.max(0, (targetPage - 1) * limit);
+          normalizedItems = cachedTipoList.slice(start, start + limit);
+        } else {
+        setUsingTipoCache(false);
+        const firstResp = await personaService.getClientes({
+          page: targetPage,
+          limit,
+          nombre: debouncedSearch || undefined,
+          estado: estadoQuery,
+          origen: tipoFiltro,
+          signal: controller.signal,
+        });
+        const firstNormalized = normalizeListResponse(firstResp);
+        const firstItems = normalizeClientesPage(firstNormalized.items);
+        const backendRespectsTipo = firstItems.every(
+          (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
+        );
+
+        if (backendRespectsTipo) {
+          normalizedItems = firstItems;
+          totalResp = Number(firstNormalized.total) || 0;
+        } else {
+          const matchedByPage = new Map();
+          const firstPageMatches = firstItems.filter(
+            (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
+          );
+          matchedByPage.set(targetPage, firstPageMatches);
+          const backendTotalPages = Math.min(
+            CLIENTES_FILTRO_SCAN_MAX_PAGES,
+            Math.max(1, Math.ceil((Number(firstNormalized.total) || 0) / limit))
+          );
+          const remainingPages = [];
+          for (let pageNum = 1; pageNum <= backendTotalPages; pageNum += 1) {
+            if (pageNum !== targetPage) remainingPages.push(pageNum);
+          }
+
+          for (let index = 0; index < remainingPages.length; index += CLIENTES_FILTRO_SCAN_CONCURRENCY) {
+            const batch = remainingPages.slice(index, index + CLIENTES_FILTRO_SCAN_CONCURRENCY);
+            const responses = await Promise.all(
+              batch.map(async (pageNum) => {
+                const pageResp = await personaService.getClientes({
+                  page: pageNum,
+                  limit,
+                  nombre: debouncedSearch || undefined,
+                  estado: estadoQuery,
+                  origen: tipoFiltro,
+                  signal: controller.signal,
+                });
+                const normalized = normalizeListResponse(pageResp);
+                const pageItems = normalizeClientesPage(normalized.items).filter(
+                  (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
+                );
+                return { pageNum, pageItems };
+              })
+            );
+            responses.forEach(({ pageNum, pageItems }) => {
+              matchedByPage.set(pageNum, pageItems);
+            });
+          }
+
+          const matchedItems = [];
+          for (let pageNum = 1; pageNum <= backendTotalPages; pageNum += 1) {
+            const itemsFromPage = matchedByPage.get(pageNum) || [];
+            matchedItems.push(...itemsFromPage);
+          }
+
+          clientesTipoFallbackCacheRef.current.set(tipoCacheKey, matchedItems);
+
+          totalResp = matchedItems.length;
+          const start = Math.max(0, (targetPage - 1) * limit);
+          normalizedItems = matchedItems.slice(start, start + limit);
+        }
+        }
+      } else {
+        const resp = await personaService.getClientes({
+          page: targetPage,
+          limit,
+          nombre: debouncedSearch || undefined,
+          estado: estadoQuery,
+          signal: controller.signal,
+        });
+        const normalized = normalizeListResponse(resp);
+        totalResp = Number(normalized.total) || 0;
+        normalizedItems = normalizeClientesPage(normalized.items);
+        setUsingTipoCache(false);
+      }
 
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
-
-      const { items, total: totalResp } = normalizeListResponse(resp);
-      const normalizedItems = normalizeClientesPage(items);
       setClientes(normalizedItems);
       setTotal(totalResp);
       setClientesCacheEntry(cacheKey, { items: normalizedItems, total: totalResp });
-      prefetchClientesPage(targetPage + 1, totalResp);
+      if (tipoFiltro === "todos") {
+        prefetchClientesPage(targetPage + 1, totalResp);
+      }
     } catch (error) {
       if (isAbortError(error)) return;
       if (!mountedRef.current) return;
       safeToast("ERROR", error.message || "No se pudo cargar clientes", "danger");
       setClientes([]);
       setTotal(0);
+      setUsingTipoCache(false);
     } finally {
       if (mountedRef.current && requestId === requestIdRef.current) {
         setLoading(false);
@@ -921,6 +1026,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     limit,
     debouncedSearch,
     estadoFiltro,
+    tipoFiltro,
     safeToast,
     normalizeClientesPage,
     setClientesCacheEntry,
@@ -1365,6 +1471,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       resetDuplicateResolution();
       setShowPersonaCreateModal(false);
       setShowEmpresaCreateModal(false);
+      await cargarCatalogos({ force: true });
       clearClientesListCache();
       if (!editId && page !== 1) {
         setPage(1);
@@ -1450,6 +1557,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       resetDuplicateResolution();
       setShowPersonaCreateModal(false);
       setShowEmpresaCreateModal(false);
+      await cargarCatalogos({ force: true });
       clearClientesListCache();
       if (page !== 1) {
         setPage(1);
@@ -1472,6 +1580,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     duplicateResolution,
     safeToast,
     clearClientesListCache,
+    cargarCatalogos,
     page,
     cargarClientes,
     cargarClientesGlobalStats,
@@ -1509,7 +1618,20 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       ),
       rtn: firstNonEmptyValue(
         personaCatalogo?.rtn,
+        personaCatalogo?.RTN,
+        personaCatalogo?.persona_rtn_complemento,
+        personaCatalogo?.rtn_persona,
+        personaCatalogo?.rtn_complemento,
+        personaCatalogo?.complemento_rtn,
+        personaCatalogo?.numero_rtn,
         cliente?.persona_rtn,
+        cliente?.persona_rtn_complemento,
+        cliente?.rtn_persona,
+        cliente?.rtn_complemento,
+        cliente?.complemento_rtn,
+        cliente?.numero_rtn,
+        cliente?.rtn,
+        cliente?.RTN,
         String(cliente?.documento_tipo || "").toLowerCase() === "rtn" ? cliente?.documento_valor : ""
       ),
       genero: firstNonEmptyValue(personaCatalogo?.genero, cliente?.persona_genero, cliente?.genero),
@@ -1559,8 +1681,11 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     return normalizeEmpresaFormValues({
       rtn: firstNonEmptyValue(
         empresaCatalogo?.rtn,
+        empresaCatalogo?.RTN,
         cliente?.empresa_rtn,
+        cliente?.rtn_empresa,
         cliente?.rtn,
+        cliente?.RTN,
         String(cliente?.documento_tipo || "").toLowerCase() === "rtn" ? cliente?.documento_valor : ""
       ),
       nombre_empresa: firstNonEmptyValue(
@@ -1919,6 +2044,17 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activo : !activo;
       if (!matchEstado) return false;
 
+      const originRaw = normalizeValue(firstNonEmptyValue(cliente?.origen_cliente, cliente?.origen, cliente?.origen_label));
+      const isEmpresa = originRaw.includes("empresa");
+      const isPersona = originRaw.includes("persona") || (!isEmpresa && originRaw.includes("individual"));
+      const matchTipo =
+        tipoFiltro === "todos"
+          ? true
+          : tipoFiltro === "empresa"
+            ? isEmpresa
+            : isPersona;
+      if (!matchTipo) return false;
+
       if (!needle) return true;
 
       const hay = [
@@ -1951,7 +2087,10 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     });
 
     return filtered;
-  }, [clientes, search, estadoFiltro, sortBy, getClientePrincipalNombre]);
+  }, [clientes, search, estadoFiltro, sortBy, tipoFiltro, getClientePrincipalNombre]);
+  const clientesRender = useMemo(() => {
+    return clientesFiltrados;
+  }, [clientesFiltrados]);
   const pageWindowLabel = useMemo(
     () => buildPageRangeLabel({ page, limit, total, currentLength: clientesFiltrados.length }),
     [clientesFiltrados.length, limit, page, total]
@@ -1970,6 +2109,16 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       const matchEstado =
         estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activo : !activo;
       if (!matchEstado) continue;
+      const originRaw = normalizeValue(firstNonEmptyValue(cliente?.origen_cliente, cliente?.origen, cliente?.origen_label));
+      const isEmpresa = originRaw.includes("empresa");
+      const isPersona = originRaw.includes("persona") || (!isEmpresa && originRaw.includes("individual"));
+      const matchTipo =
+        tipoFiltro === "todos"
+          ? true
+          : tipoFiltro === "empresa"
+            ? isEmpresa
+            : isPersona;
+      if (!matchTipo) continue;
 
       const nombre = toDisplayValue(cliente?.nombre_principal, "Cliente sin nombre");
       const documento = toDisplayValue(cliente?.documento_valor, "");
@@ -2000,7 +2149,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     }
 
     return suggestions;
-  }, [clientes, estadoFiltro, search]);
+  }, [clientes, estadoFiltro, tipoFiltro, search]);
 
   const handleSearchUpdate = useCallback((value, { source } = {}) => {
     const normalized = normalizeSearchText(value);
@@ -2048,8 +2197,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   );
 
   const hasActiveFilters = useMemo(
-    () => search.trim() !== "" || estadoFiltro !== "activo" || sortBy !== "recientes",
-    [search, estadoFiltro, sortBy]
+    () => search.trim() !== "" || estadoFiltro !== "activo" || sortBy !== "recientes" || tipoFiltro !== "todos",
+    [search, estadoFiltro, sortBy, tipoFiltro]
   );
 
   const drawerMode = editId ? "edit" : "create";
@@ -2123,7 +2272,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const openFiltersDrawer = () => {
     if (actionLoading) return;
     closeFormDrawer();
-    setFiltersDraft({ estadoFiltro, sortBy });
+    setFiltersDraft({ estadoFiltro, sortBy, tipoFiltro });
     setFiltersOpen(true);
   };
 
@@ -2132,18 +2281,27 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const applyFiltersDrawer = () => {
     setEstadoFiltro(filtersDraft.estadoFiltro === "inactivo" ? "inactivo" : "activo");
     setSortBy(filtersDraft.sortBy || "recientes");
+    setTipoFiltro(
+      filtersDraft.tipoFiltro === "empresa"
+        ? "empresa"
+        : filtersDraft.tipoFiltro === "persona"
+          ? "persona"
+          : "todos"
+    );
     setFiltersOpen(false);
   };
 
   const clearVisualFilters = () => {
     setEstadoFiltro("activo");
     setSortBy("recientes");
+    setTipoFiltro("todos");
     setFiltersDraft(createInitialFiltersDraft());
   };
 
   const clearAllFilters = () => {
     handleSearchInputChange("");
     clearVisualFilters();
+    setUsingTipoCache(false);
     setFiltersOpen(false);
   };
 
@@ -2162,7 +2320,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           subtitle="Gestion visual de clientes"
           search={search}
           onSearchChange={handleSearchInputChange}
-          searchPlaceholder="Buscar por persona, empresa, tipo, DNI, telefono o correo..."
+          searchPlaceholder="Buscar por persona, empresa, DNI, telefono o correo..."
           searchAriaLabel="Buscar clientes"
           filtersOpen={filtersOpen}
           onOpenFilters={openFiltersDrawer}
@@ -2196,7 +2354,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
         <div className="inv-catpro-body inv-prod-body p-3">
           <div className="inv-prod-results-meta personas-page__results-meta">
-            <span>{loading ? "Cargando clientes..." : `${clientesFiltrados.length} resultados`}</span>
+            <span>{loading ? "Cargando clientes..." : `${clientesRender.length} resultados`}</span>
             <span>{loading ? "" : `Total: ${total}`}</span>
             <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
               <input
@@ -2215,6 +2373,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               <span className="form-check-label">Ver inactivos</span>
             </label>
             {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
+            {!loading && usingTipoCache ? (
+              <span className="inv-prod-active-filter-pill">Cache aplicada</span>
+            ) : null}
           </div>
 
           <div className={`inv-catpro-list ${isAnyDrawerOpen ? "drawer-open" : ""}`}>
@@ -2223,7 +2384,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                 <span className="spinner-border spinner-border-sm" aria-hidden="true" />
                 <span>Cargando clientes...</span>
               </div>
-            ) : clientesFiltrados.length === 0 ? (
+            ) : clientesRender.length === 0 ? (
               <div className={`inv-catpro-empty ${estadoFiltro === "inactivo" ? "inv-catpro-empty--inactive-clean" : ""}`}>
                 <div className="inv-catpro-empty-icon">
                   <i className="bi bi-person-lines-fill" />
@@ -2269,7 +2430,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {clientesFiltrados.map((cliente, idx) => {
+                    {clientesRender.map((cliente, idx) => {
                       const isActive = isActivo(cliente);
                       const idCliente = cliente?.id_cliente;
                       const deleting = deletingId === idCliente;
@@ -2351,7 +2512,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               </EntityTable>
             ) : (
               <div className={`inv-catpro-grid inv-catpro-grid-page ${colsClass}`}>
-                {clientesFiltrados.map((cliente, idx) => (
+                {clientesRender.map((cliente, idx) => (
                   <ClienteCard
                     key={cliente?.id_cliente ?? idx}
                     cliente={cliente}
@@ -2454,6 +2615,35 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         allowAll={false}
         activeLabel="Activos"
         inactiveLabel="Inactivos"
+        extraFilters={({ draft, onChangeDraft }) => (
+          <div className="inv-cat-filter-card inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Tipo de cliente</div>
+            <div className="inv-ins-chip-grid">
+              <button
+                type="button"
+                className={`inv-ins-chip ${draft.tipoFiltro === "todos" ? "is-active" : ""}`}
+                onClick={() => onChangeDraft((state) => ({ ...state, tipoFiltro: "todos" }))}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                className={`inv-ins-chip ${draft.tipoFiltro === "persona" ? "is-active" : ""}`}
+                onClick={() => onChangeDraft((state) => ({ ...state, tipoFiltro: "persona" }))}
+              >
+                Persona
+              </button>
+              <button
+                type="button"
+                className={`inv-ins-chip ${draft.tipoFiltro === "empresa" ? "is-active" : ""}`}
+                onClick={() => onChangeDraft((state) => ({ ...state, tipoFiltro: "empresa" }))}
+              >
+                Empresa
+              </button>
+            </div>
+            <div className="inv-ins-help">Combina este filtro con Activos o Inactivos segun tu necesidad.</div>
+          </div>
+        )}
       />
 
       <aside

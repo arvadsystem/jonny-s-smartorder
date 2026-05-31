@@ -152,8 +152,7 @@ const resolvePhoneDisplayValue = (value = {}) => {
   if (preferredPhone) return preferredPhone;
 
   const idPhone = firstNonEmptyText(value?.id_telefono);
-  const idPhoneDigits = digitsOnly(idPhone);
-  return idPhoneDigits.length === PHONE_DIGITS_LENGTH ? idPhone : "";
+  return idPhone;
 };
 
 const resolveAddressDisplayValue = (value = {}) => {

@@ -22,6 +22,7 @@ export default function ModuleFiltros({
   sortLabel = "Ordenar por",
   sortOptions = DEFAULT_SORT_OPTIONS,
   allowAll = true,
+  extraFilters = null,
 }) {
   const selectId = `${drawerId}-sort`;
   const chipLabel = String(title || "")
@@ -105,6 +106,8 @@ export default function ModuleFiltros({
               ))}
             </select>
           </div>
+
+          {typeof extraFilters === "function" ? extraFilters({ draft, onChangeDraft }) : null}
         </div>
 
         <div className="inv-prod-drawer-actions inv-cat-v2__drawer-actions personas-module-filters-drawer__actions">
