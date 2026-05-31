@@ -57,6 +57,7 @@ const ExtrasAdmin = () => {
   const [form, setForm] = useState({ ...emptyForm });
   const [toastMessage, setToastMessage] = useState('');
   const [estadoConfirm, setEstadoConfirm] = useState(null);
+  const [togglingId, setTogglingId] = useState(null);
 
   const cargarDatos = useCallback(async () => {
     try {
@@ -295,12 +296,14 @@ const ExtrasAdmin = () => {
     if (!idExtra) return;
     try {
       setError('');
+      setTogglingId(idExtra);
       await extrasAdminService.cambiarEstadoExtra(idExtra, !Boolean(extra.estado));
       setSuccess('Estado del extra actualizado correctamente.');
       await cargarDatos();
     } catch (e) {
       setError(e?.message || 'No se pudo cambiar el estado del extra.');
     } finally {
+      setTogglingId(null);
       setEstadoConfirm(null);
     }
   };
@@ -351,6 +354,17 @@ const ExtrasAdmin = () => {
                 <i className="bi bi-plus-circle" />
                 <span>Nuevo extra</span>
               </button>
+              <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  checked={Boolean(showInactiveOnly)}
+                  onChange={(event) => setShowInactiveOnly(event.target.checked)}
+                  aria-label="Ver inactivos"
+                />
+                <span className="form-check-label">Ver inactivos</span>
+              </label>
             </div>
           </div>
 
@@ -406,13 +420,19 @@ const ExtrasAdmin = () => {
                     <footer className="menu-recetas-card__actions">
                       <button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => openEdit(extra.id_extra)}>
                         <i className="bi bi-pencil-square" />
+                        <span className="inv-catpro-action-label">Editar</span>
                       </button>
                       <button
                         type="button"
-                        className={`inv-catpro-action ${extra.estado ? 'state-off' : 'state-on'} inv-catpro-action-compact`}
+                        className={`inv-catpro-action ${extra.estado ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
                         onClick={() => setEstadoConfirm(extra)}
+                        disabled={togglingId === Number(extra.id_extra)}
+                        title={extra.estado ? 'Inactivar' : 'Activar'}
                       >
                         <i className={`bi ${extra.estado ? 'bi-slash-circle' : 'bi-check-circle'}`} />
+                        <span className="inv-catpro-action-label">
+                          {togglingId === Number(extra.id_extra) ? 'Procesando' : extra.estado ? 'Inactivar' : 'Activar'}
+                        </span>
                       </button>
                     </footer>
                   </article>
@@ -657,7 +677,7 @@ const ExtrasAdmin = () => {
         itemIcon={estadoConfirmActivo ? 'bi-slash-circle' : 'bi-check-circle'}
         confirmLabel={estadoConfirmActivo ? 'Inactivar' : 'Activar'}
         confirmingLabel="Procesando..."
-        loading={saving}
+        loading={Boolean(togglingId)}
         onClose={closeEstadoConfirm}
         onConfirm={() => toggleEstado(estadoConfirm)}
       />

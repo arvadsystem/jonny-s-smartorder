@@ -253,6 +253,15 @@ const resolveImagePayloadValue = (payload = {}) => {
   return null;
 };
 
+const shouldTryNextEndpoint = (error) => {
+  const status = Number(error?.status);
+  const message = String(error?.message || error?.payload?.message || error?.payload?.mensaje || "").toLowerCase();
+  if ([400, 404, 405, 422].includes(status)) return true;
+  if (message.includes("id") && message.includes("entero positivo")) return true;
+  if (message.includes("id_cargo")) return true;
+  return false;
+};
+
 const resolveEmpleadosBatchRequest = (payload = {}) => {
   if (!isPlainObject(payload)) return { empleados: [], ids: [] };
 
@@ -532,6 +541,7 @@ export const personaService = {
       'estado',
       'id_sucursal',
       'id_persona',
+      'id_cargo',
       'cargo',
       'nombre_referencia',
       'telefono_referencia'
@@ -592,6 +602,166 @@ export const personaService = {
 
   deleteEmpleado: (id) =>
     apiFetch(`/empleados/${id}`, 'DELETE'),
+
+  getCargosEmpleados: async ({ estado, search, q, signal, page, limit } = {}) => {
+    const buildSuffix = ({ withPaging = true, forcedPage = null, forcedLimit = null } = {}) => {
+      const params = new URLSearchParams();
+      const normalizedSearch = typeof search === 'string' && search.trim()
+        ? search.trim()
+        : (typeof q === 'string' && q.trim() ? q.trim() : '');
+      if (normalizedSearch) params.set('q', normalizedSearch);
+      if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+      if (withPaging) {
+        const safePage = Number.parseInt(String(forcedPage ?? page ?? ''), 10);
+        const safeLimit = Number.parseInt(String(forcedLimit ?? limit ?? ''), 10);
+        params.set('page', String(Number.isInteger(safePage) && safePage > 0 ? safePage : 1));
+        params.set('limit', String(Number.isInteger(safeLimit) && safeLimit > 0 ? safeLimit : 500));
+      }
+      const query = params.toString();
+      return query ? `?${query}` : '';
+    };
+
+    const request = (endpoint) => (
+      signal
+        ? fetchGetWithSignal(endpoint, signal)
+        : apiFetch(endpoint, 'GET')
+    );
+
+    const endpoints = [
+      '/empleados/cargos',
+      '/catalogos/cargos-empleados',
+      '/cargos-empleados'
+    ];
+
+    const rowsFromPayload = (payload) => {
+      if (Array.isArray(payload)) return payload;
+      if (!payload || typeof payload !== 'object') return [];
+      if (Array.isArray(payload.data)) return payload.data;
+      if (Array.isArray(payload.items)) return payload.items;
+      if (Array.isArray(payload.rows)) return payload.rows;
+      if (Array.isArray(payload.cargos)) return payload.cargos;
+      if (Array.isArray(payload.cargos_empleados)) return payload.cargos_empleados;
+      if (Array.isArray(payload.catalogo)) return payload.catalogo;
+      return [];
+    };
+
+    let lastError = null;
+    const merged = [];
+    const seen = new Set();
+
+    const collectRowsFromEndpoint = async (endpoint) => {
+      let payload = null;
+      try {
+        payload = await request(`${endpoint}${buildSuffix({ withPaging: true })}`);
+      } catch (errorPaging) {
+        if (!shouldTryNextEndpoint(errorPaging)) throw errorPaging;
+        payload = await request(`${endpoint}${buildSuffix({ withPaging: false })}`);
+      }
+
+      const baseRows = rowsFromPayload(payload);
+      const baseTotal = Number(payload?.total ?? payload?.totalItems ?? payload?.count ?? 0) || 0;
+      const baseLimit = Number(payload?.limit ?? 0) || 0;
+      const shouldPaginate =
+        baseTotal > baseRows.length &&
+        baseRows.length > 0 &&
+        (baseLimit > 0 || baseRows.length <= 50);
+
+      if (!shouldPaginate) return baseRows;
+
+      const resolvedLimit = baseLimit > 0 ? baseLimit : baseRows.length;
+      if (!resolvedLimit) return baseRows;
+      const totalPages = Math.max(1, Math.ceil(baseTotal / resolvedLimit));
+      if (totalPages <= 1) return baseRows;
+
+      const pagedRows = [...baseRows];
+      for (let pageIndex = 2; pageIndex <= totalPages; pageIndex += 1) {
+        try {
+          const pagePayload = await request(
+            `${endpoint}${buildSuffix({ withPaging: true, forcedPage: pageIndex, forcedLimit: resolvedLimit })}`
+          );
+          const extraRows = rowsFromPayload(pagePayload);
+          if (!extraRows.length) break;
+          pagedRows.push(...extraRows);
+        } catch (pageError) {
+          if (!shouldTryNextEndpoint(pageError)) throw pageError;
+          break;
+        }
+      }
+      return pagedRows;
+    };
+
+    for (const endpoint of endpoints) {
+      try {
+        const rows = await collectRowsFromEndpoint(endpoint);
+        rows.forEach((row) => {
+          const id = row?.id_cargo ?? row?.id ?? row?.cargo_id ?? row?.idCargo ?? null;
+          const label = String(row?.nombre_cargo ?? row?.nombre ?? row?.cargo ?? '').trim();
+          const key = id ? `id:${id}` : `label:${label.toLowerCase()}`;
+          if (!label || seen.has(key)) return;
+          seen.add(key);
+          merged.push(row);
+        });
+      } catch (error) {
+        lastError = error;
+        if (!shouldTryNextEndpoint(error)) throw error;
+      }
+    }
+
+    if (merged.length) {
+      return { data: merged, cargos: merged, total: merged.length, page: 1, limit: merged.length };
+    }
+
+    throw lastError || new Error('No se pudo cargar el catalogo de cargos.');
+  },
+
+  createCargoEmpleado: async (payload = {}) => {
+    const body = pickAllowedFields(payload, ['nombre_cargo', 'descripcion', 'estado']);
+    if (!String(body?.nombre_cargo || '').trim()) {
+      throw new Error('El nombre del cargo es obligatorio.');
+    }
+
+    const endpoints = [
+      '/empleados/cargos',
+      '/catalogos/cargos-empleados',
+      '/cargos-empleados'
+    ];
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        return await apiFetch(endpoint, 'POST', body);
+      } catch (error) {
+        lastError = error;
+        if (!shouldTryNextEndpoint(error)) throw error;
+      }
+    }
+    throw lastError || new Error('No se pudo crear el cargo.');
+  },
+
+  updateCargoEmpleado: async (idCargo, payload = {}) => {
+    const id = Number.parseInt(String(idCargo ?? ''), 10);
+    if (!Number.isInteger(id) || id <= 0) throw new Error('Id de cargo invalido.');
+
+    const body = pickAllowedFields(payload, ['nombre_cargo', 'descripcion', 'estado']);
+    if (!Object.keys(body).length) return { error: false, message: 'Sin cambios para actualizar' };
+
+    const endpoints = [
+      `/empleados/cargos/${id}`,
+      `/catalogos/cargos-empleados/${id}`,
+      `/cargos-empleados/${id}`
+    ];
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        return await apiFetch(endpoint, 'PUT', body);
+      } catch (error) {
+        lastError = error;
+        if (!shouldTryNextEndpoint(error)) throw error;
+      }
+    }
+    throw lastError || new Error('No se pudo actualizar el cargo.');
+  },
 
   updateEmpleadoFotoV2: async (id, payload = {}) => {
     const empleadoId = toPositiveInteger(id);
@@ -725,7 +895,7 @@ export const personaService = {
   // ==============================
   // CLIENTES (SUBMODULO PERSONAS)
   // ==============================
-  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, id_sucursal, signal } = {}) => {
+  getClientes: async ({ page = 1, limit = 10, nombre, search, q, estado, origen, id_sucursal, signal } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -736,6 +906,7 @@ export const personaService = {
         : (typeof nombre === 'string' ? nombre.trim() : ''));
     if (normalizedSearch) params.set('nombre', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+    if (typeof origen === 'string' && origen.trim()) params.set('origen', origen.trim());
     if (id_sucursal !== undefined && id_sucursal !== null && String(id_sucursal).trim() !== '') {
       params.set('id_sucursal', String(id_sucursal).trim());
     }

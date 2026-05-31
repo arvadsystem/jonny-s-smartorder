@@ -114,6 +114,8 @@ const CombosAdmin = () => {
             onOpenFilters={() => setFiltersOpen(true)}
             drawerOpen={drawerOpen}
             onOpenCreate={openCreateDrawer}
+            showInactiveOnly={showInactiveOnly}
+            onToggleInactiveOnly={setShowInactiveOnly}
           />
         </div>
 

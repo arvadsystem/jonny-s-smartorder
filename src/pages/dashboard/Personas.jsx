@@ -95,8 +95,7 @@ export default function Personas() {
   }, [allowedTabs, fallbackTab, searchParams]);
 
   const isPlanillasTab = activeTab === "planillas";
-  const useEnhancedSucursalContext = ["empleados"].includes(activeTab);
-  const showSucursalContext = isPlanillasTab || useEnhancedSucursalContext;
+  const showSucursalContext = isPlanillasTab;
 
   useEffect(() => {
     if (permisosLoading || !activeTab) return;
@@ -136,11 +135,11 @@ export default function Personas() {
   }, []);
 
   useEffect(() => {
-    if (sucursalesLoading || selectedSucursalId) return;
+    if (!isPlanillasTab || sucursalesLoading || selectedSucursalId) return;
     const firstSucursalId = parsePositiveInt(sucursales[0]?.id_sucursal);
     if (!firstSucursalId) return;
     applySucursalContext(firstSucursalId);
-  }, [activeTab, applySucursalContext, selectedSucursalId, sucursales, sucursalesLoading]);
+  }, [isPlanillasTab, applySucursalContext, selectedSucursalId, sucursales, sucursalesLoading]);
 
   // =============================
   // TOAST GLOBAL
