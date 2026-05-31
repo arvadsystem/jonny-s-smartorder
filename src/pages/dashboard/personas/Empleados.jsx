@@ -2951,27 +2951,32 @@ export default function Empleados({ openToast, selectedSucursalId = "" }) {
                 <span>Cargando empleados...</span>
               </div>
             ) : empleadosFiltrados.length === 0 ? (
-              <div className="inv-catpro-empty">
+              <div className={`inv-catpro-empty ${estadoFiltro === "inactivo" ? "inv-catpro-empty--inactive-clean" : ""}`}>
                 <div className="inv-catpro-empty-icon">
                   <i className="bi bi-person-badge" />
                 </div>
-                <div className="inv-catpro-empty-title">No hay empleados para mostrar</div>
-                <div className="inv-catpro-empty-sub">
-                  {hasActiveFilters ? "Prueba limpiar filtros o crea un nuevo empleado." : "Crea tu primer empleado."}
+                <div className="inv-catpro-empty-title">
+                  {estadoFiltro === "inactivo" ? "No hay empleados inactivos para mostrar" : "No hay empleados para mostrar"}
                 </div>
-
-                <div className="d-flex gap-2 justify-content-center flex-wrap">
-                  {hasActiveFilters ? (
-                    <button type="button" className="btn btn-outline-secondary" onClick={clearAllFilters}>
-                      Limpiar filtros
-                    </button>
-                  ) : null}
-                  {canCreateEmpleado ? (
-                    <button type="button" className="btn btn-primary" onClick={openCreate}>
-                      Nuevo empleado
-                    </button>
-                  ) : null}
-                </div>
+                {estadoFiltro !== "inactivo" ? (
+                  <>
+                    <div className="inv-catpro-empty-sub">
+                      {hasActiveFilters ? "Prueba limpiar filtros o crea un nuevo empleado." : "Crea tu primer empleado."}
+                    </div>
+                    <div className="d-flex gap-2 justify-content-center flex-wrap">
+                      {hasActiveFilters ? (
+                        <button type="button" className="btn btn-outline-secondary" onClick={clearAllFilters}>
+                          Limpiar filtros
+                        </button>
+                      ) : null}
+                      {canCreateEmpleado ? (
+                        <button type="button" className="btn btn-primary" onClick={openCreate}>
+                          Nuevo empleado
+                        </button>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
               </div>
             ) : viewMode === "table" ? (
               <EntityTable>

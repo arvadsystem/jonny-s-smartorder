@@ -71,6 +71,19 @@
   }
 }
 
+.personas-page .inv-catpro-empty.inv-catpro-empty--inactive-clean {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  min-height: clamp(220px, 42vh, 360px);
+  padding: clamp(1rem, 2.5vw, 1.6rem);
+}
+
+.personas-page .inv-catpro-empty.inv-catpro-empty--inactive-clean .inv-catpro-empty-sub,
+.personas-page .inv-catpro-empty.inv-catpro-empty--inactive-clean .btn {
+  display: none !important;
+}
+
 .personas-page.personas-page--planillas .planillas-insight--bonos-deducciones .planillas-insight__row--bono {
   border-color: rgba(18, 132, 99, 0.38);
   background: linear-gradient(135deg, rgba(233, 248, 242, 0.96), rgba(245, 253, 249, 0.96));

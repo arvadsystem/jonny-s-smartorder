@@ -2224,27 +2224,32 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                 <span>Cargando clientes...</span>
               </div>
             ) : clientesFiltrados.length === 0 ? (
-              <div className="inv-catpro-empty">
+              <div className={`inv-catpro-empty ${estadoFiltro === "inactivo" ? "inv-catpro-empty--inactive-clean" : ""}`}>
                 <div className="inv-catpro-empty-icon">
                   <i className="bi bi-person-lines-fill" />
                 </div>
-                <div className="inv-catpro-empty-title">No hay clientes para mostrar</div>
-                <div className="inv-catpro-empty-sub">
-                  {hasActiveFilters ? "Prueba limpiar filtros o crea un nuevo cliente." : "Crea tu primer cliente."}
+                <div className="inv-catpro-empty-title">
+                  {estadoFiltro === "inactivo" ? "No hay clientes inactivos para mostrar" : "No hay clientes para mostrar"}
                 </div>
-
-                <div className="d-flex gap-2 justify-content-center flex-wrap">
-                  {hasActiveFilters ? (
-                    <button type="button" className="btn btn-outline-secondary" onClick={clearAllFilters}>
-                      Limpiar filtros
-                    </button>
-                  ) : null}
-                  {canCreateCliente ? (
-                    <button type="button" className="btn btn-primary" onClick={openCreate}>
-                      Nuevo cliente
-                    </button>
-                  ) : null}
-                </div>
+                {estadoFiltro !== "inactivo" ? (
+                  <>
+                    <div className="inv-catpro-empty-sub">
+                      {hasActiveFilters ? "Prueba limpiar filtros o crea un nuevo cliente." : "Crea tu primer cliente."}
+                    </div>
+                    <div className="d-flex gap-2 justify-content-center flex-wrap">
+                      {hasActiveFilters ? (
+                        <button type="button" className="btn btn-outline-secondary" onClick={clearAllFilters}>
+                          Limpiar filtros
+                        </button>
+                      ) : null}
+                      {canCreateCliente ? (
+                        <button type="button" className="btn btn-primary" onClick={openCreate}>
+                          Nuevo cliente
+                        </button>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
               </div>
             ) : isTableView ? (
               <EntityTable>
