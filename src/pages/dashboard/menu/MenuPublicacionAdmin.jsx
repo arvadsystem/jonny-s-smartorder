@@ -318,58 +318,71 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
         ) : null}
 
         <section className="menu-pub-admin__selector" aria-label="Selector de sucursal para publicacion">
-          <div className="d-flex flex-wrap align-items-end justify-content-between gap-2">
-            <div className="flex-grow-1">
+          <div className="menu-pub-admin__selector-grid">
+            <div className="menu-pub-admin__selector-main">
               <label className="form-label mb-1" htmlFor="menu_publicacion_sucursal">Sucursal</label>
-              <select
-                id="menu_publicacion_sucursal"
-                className="form-select"
-                value={String(selectedSucursalId || '')}
-                onChange={(event) => onSelectSucursal?.(event.target.value)}
-                disabled={loadingSucursales || loadingCatalogo || branchRows.length === 0}
-              >
-                <option value="">
-                  {branchRows.length === 0 ? 'Sin sucursales disponibles' : 'Selecciona sucursal'}
-                </option>
-                {branchRows.map((branch) => {
-                  const id = String(branch?.id_sucursal || '');
-                  const label = String(branch?.nombre_sucursal || `Sucursal #${id}`).trim();
-                  return (
-                    <option key={`menu-pub-branch-${id}`} value={id}>
-                      {label}{Boolean(branch?.estado) ? '' : ' (Inactiva)'}
+              <div className="menu-pub-admin__selector-row">
+                <div className="menu-pub-admin__selector-select-wrap">
+                  <i className="bi bi-shop menu-pub-admin__selector-select-icon" aria-hidden="true" />
+                  <select
+                    id="menu_publicacion_sucursal"
+                    className="form-select menu-pub-admin__selector-select"
+                    value={String(selectedSucursalId || '')}
+                    onChange={(event) => onSelectSucursal?.(event.target.value)}
+                    disabled={loadingSucursales || loadingCatalogo || branchRows.length === 0}
+                  >
+                    <option value="">
+                      {branchRows.length === 0 ? 'Sin sucursales disponibles' : 'Selecciona sucursal'}
                     </option>
-                  );
-                })}
-              </select>
+                    {branchRows.map((branch) => {
+                      const id = String(branch?.id_sucursal || '');
+                      const label = String(branch?.nombre_sucursal || `Sucursal #${id}`).trim();
+                      return (
+                        <option key={`menu-pub-branch-${id}`} value={id}>
+                          {label}{Boolean(branch?.estado) ? '' : ' (Inactiva)'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-subtle menu-pub-admin__reload-btn"
+                  onClick={reloadCurrent}
+                  disabled={loadingSucursales || loadingCatalogo || !selectedSucursalId}
+                >
+                  <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+                  <span>Recargar</span>
+                </button>
+              </div>
+              <div className="menu-pub-admin__selector-meta">
+                {selectedSucursalId ? (
+                  !selectedSucursal ? (
+                    <span className="text-danger">La sucursal seleccionada ya no esta disponible. Selecciona otra sucursal.</span>
+                  ) : !Boolean(selectedSucursal?.estado) ? (
+                    <span className="text-danger">La sucursal seleccionada esta inactiva.</span>
+                  ) : menuSummary ? (
+                    <>
+                      <span>Menu vigente: <strong>{menuSummary.nombre_menu || 'Menu'}</strong></span>
+                      <span>ID menu: <strong>{menuSummary.id_menu}</strong></span>
+                    </>
+                  ) : (
+                    <span className="text-danger">La sucursal no tiene menu vigente activo.</span>
+                  )
+                ) : (
+                  <span className="text-muted">Selecciona una sucursal para editar publicacion.</span>
+                )}
+              </div>
             </div>
-
-            <button
-              type="button"
-              className="btn inv-prod-btn-subtle"
-              onClick={reloadCurrent}
-              disabled={loadingSucursales || loadingCatalogo || !selectedSucursalId}
-            >
-              Recargar
-            </button>
-          </div>
-
-          <div className="menu-pub-admin__selector-meta">
-            {selectedSucursalId ? (
-              !selectedSucursal ? (
-                <span className="text-danger">La sucursal seleccionada ya no esta disponible. Selecciona otra sucursal.</span>
-              ) : !Boolean(selectedSucursal?.estado) ? (
-                <span className="text-danger">La sucursal seleccionada esta inactiva.</span>
-              ) : menuSummary ? (
-                <>
-                  <span>Menu vigente: <strong>{menuSummary.nombre_menu || 'Menu'}</strong></span>
-                  <span>ID menu: <strong>{menuSummary.id_menu}</strong></span>
-                </>
-              ) : (
-                <span className="text-danger">La sucursal no tiene menu vigente activo.</span>
-              )
-            ) : (
-              <span className="text-muted">Selecciona una sucursal para editar publicacion.</span>
-            )}
+            <aside className="menu-pub-admin__selector-info" aria-label="Informacion operativa">
+              <div className="menu-pub-admin__selector-info-head">
+                <i className="bi bi-lightbulb" aria-hidden="true" />
+                <strong>Informacion</strong>
+              </div>
+              <p className="mb-0">
+                Puedes activar un menu existente o crear uno temporal para esta sucursal sin modificar la base de datos.
+              </p>
+            </aside>
           </div>
         </section>
 
