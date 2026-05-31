@@ -226,6 +226,9 @@ export default function VentaFinalizarOperacionModal({
   const lineDiscountValue = Number(composer.lineDiscountValue || 0);
   const globalDiscountValue = Number(composer.globalDiscountValue || 0);
   const totalDiscountValue = Number(composer.totalDiscountValue ?? composer.discountValue ?? 0);
+  const extrasSubtotal = Number(composer.extrasSubtotal || 0);
+  const baseSubtotal = Number(composer.baseSubtotal ?? Math.max(Number(composer.subtotal || 0) - extrasSubtotal, 0));
+  const shouldShowExtrasBreakdown = extrasSubtotal > 0;
   const shouldShowDiscountBreakdown = lineDiscountValue > 0 || globalDiscountValue > 0 || totalDiscountValue > 0;
   const cartCount = Number(composer.cartCount ?? composer.cart?.length ?? 0) || 0;
   const clienteOptions = (Array.isArray(composer.clientes) ? composer.clientes : []).map((cliente) => ({
@@ -469,6 +472,18 @@ export default function VentaFinalizarOperacionModal({
           )}
 
           <div className="ventas-finalizar-modal__total ventas-finalizar-modal__totals-breakdown" aria-live="polite">
+            {shouldShowExtrasBreakdown ? (
+              <>
+                <div>
+                  <span>Base items</span>
+                  <strong>{composer.formatCurrency(baseSubtotal)}</strong>
+                </div>
+                <div>
+                  <span>Extras</span>
+                  <strong>{composer.formatCurrency(extrasSubtotal)}</strong>
+                </div>
+              </>
+            ) : null}
             <div>
               <span>Subtotal bruto</span>
               <strong>{composer.formatCurrency(composer.subtotal)}</strong>

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import VentaComposerCatalog from './VentaComposerCatalog';
 import VentaComposerSummary from './VentaComposerSummary';
+import VentaExtrasModal from './VentaExtrasModal';
 import { useVentaComposer } from '../hooks/useVentaComposer';
 
 export default function NuevaVentaModal({
@@ -80,6 +81,17 @@ export default function NuevaVentaModal({
           <VentaComposerCatalog composer={composer} catalogLoading={catalogLoading} />
           <VentaComposerSummary composer={composer} saving={saving} />
         </form>
+        <VentaExtrasModal
+          open={composer.extrasModal.open}
+          row={composer.extrasModal.row}
+          options={composer.extrasModal.options}
+          selected={composer.extrasModal.selected}
+          loading={composer.extrasModal.loading}
+          error={composer.extrasModal.error}
+          formatCurrency={composer.formatCurrency}
+          onCancel={composer.closeExtrasModal}
+          onConfirm={composer.confirmExtrasModal}
+        />
       </section>
     </div>
   );

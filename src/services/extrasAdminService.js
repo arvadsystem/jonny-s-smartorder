@@ -9,7 +9,8 @@ const extrasAdminService = {
   actualizarExtra: async (id, payload) => apiFetch(`${BASE_ENDPOINT}/${id}`, 'PUT', payload),
   cambiarEstadoExtra: async (id, estado) => apiFetch(`${BASE_ENDPOINT}/${id}/estado`, 'PATCH', { estado }),
   listarInsumos: async () => apiFetch(`${BASE_ENDPOINT}/catalogos/insumos`, 'GET', null, { noCache: true }),
-  listarRecetas: async () => apiFetch(`${BASE_ENDPOINT}/catalogos/recetas`, 'GET', null, { noCache: true })
+  listarRecetas: async () => apiFetch(`${BASE_ENDPOINT}/catalogos/recetas`, 'GET', null, { noCache: true }),
+  listarCombos: async () => apiFetch(`${BASE_ENDPOINT}/catalogos/combos`, 'GET', null, { noCache: true })
 };
 
 export default extrasAdminService;

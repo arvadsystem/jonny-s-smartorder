@@ -26,11 +26,12 @@ const ventasService = {
   registrarPagoPedido: (idPedido, payload) =>
     apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload),
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
-  getCombosCatalog: () => apiFetch('/ventas/catalogos/combos', 'GET'),
-  getRecetasCatalog: () => apiFetch('/ventas/catalogos/recetas', 'GET'),
-  getDescuentosCatalog: () => apiFetch('/ventas/catalogos/descuentos', 'GET'),
+  getCombosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/combos${buildQuery(params)}`, 'GET'),
+  getRecetasCatalog: (params = {}) => apiFetch(`/ventas/catalogos/recetas${buildQuery(params)}`, 'GET'),
+  getExtrasPermitidos: (params = {}) => apiFetch(`/ventas/catalogos/extras-permitidos${buildQuery(params)}`, 'GET'),
+  getDescuentosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/descuentos${buildQuery(params)}`, 'GET'),
   getTiposDescuentoCatalog: () => apiFetch('/ventas/catalogos/tipos-descuento', 'GET'),
-  getProductosCatalog: () => apiFetch('/ventas/catalogos/productos', 'GET'),
+  getProductosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/productos${buildQuery(params)}`, 'GET'),
   // FIX: usar endpoint propio de ventas para categorias; /categorias_productos exige
   // INVENTARIO_CATEGORIAS_VER que el cajero no tiene, causando 403 y caja sin productos.
   getCategoriasCatalog: () => apiFetch('/ventas/catalogos/categorias', 'GET'),

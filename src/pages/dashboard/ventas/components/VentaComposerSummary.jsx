@@ -1,21 +1,10 @@
 import { useState } from 'react';
-import { formatDiscountPercent } from '../utils/ventasHelpers';
 
 const buildComplementSummaryLabel = (line) => {
   const count = Array.isArray(line?.complementos) ? line.complementos.length : 0;
   if (count <= 0) return 'Sin complementos';
   if (count === 1) return '1 complemento';
   return `${count} complementos`;
-};
-
-const buildDiscountLabel = (discount) => {
-  if (!discount) return 'Sin descuento';
-  const type = String(discount.nombre_tipo_descuento || '').toUpperCase();
-  const value = Number(discount.valor_descuento ?? 0);
-  if (type.includes('PORCENTAJE')) {
-    return `${discount.nombre_descuento} (${formatDiscountPercent(value)})`;
-  }
-  return `${discount.nombre_descuento} (L ${Number.isFinite(value) ? value.toFixed(2) : '0.00'})`;
 };
 
 export default function VentaComposerSummary({
@@ -41,11 +30,6 @@ export default function VentaComposerSummary({
       .map((entry) => [String(entry?.line?.cartKey || ''), entry])
       .filter(([key]) => key)
   );
-  const lineDiscountValue = Number(composer.lineDiscountValue || 0);
-  const globalDiscountValue = Number(composer.globalDiscountValue || 0);
-  const totalDiscountValue = Number(composer.totalDiscountValue ?? composer.discountValue ?? 0);
-  const shouldShowDiscountBreakdown = lineDiscountValue > 0 || globalDiscountValue > 0 || totalDiscountValue > 0;
-
   const handleContinue = () => {
     if (typeof onOpenFinalize === 'function') {
       onOpenFinalize();
@@ -55,6 +39,9 @@ export default function VentaComposerSummary({
     composer.handleSubmit(fakeEvent);
   };
   const isSheet = variant === 'sheet';
+  const extrasSubtotal = Number(composer.extrasSubtotal || 0);
+  const baseSubtotal = Number(composer.baseSubtotal ?? Math.max(Number(composer.subtotal || 0) - extrasSubtotal, 0));
+  const shouldShowExtrasBreakdown = extrasSubtotal > 0;
 
   return (
     <aside className={`ventas-create-modal__summary ventas-caja-layout__cart ventas-cart-panel ventas-cart-panel--${variant}`}>
@@ -94,17 +81,18 @@ export default function VentaComposerSummary({
             </div>
           ) : (
             composer.cart.map((line) => {
-              const lineTotal = composer.formatCurrency(line.precio_unitario * line.cantidad);
+              const extrasCount = typeof composer.getExtrasCount === 'function' ? composer.getExtrasCount(line.extras) : 0;
+              const extrasSubtotal = typeof composer.getExtrasSubtotal === 'function' ? composer.getExtrasSubtotal(line.extras) : 0;
+              const lineTotal = composer.formatCurrency((line.precio_unitario * line.cantidad) + extrasSubtotal);
               const discountDetail = lineDiscountDetailsByKey.get(String(line.cartKey)) || null;
-              const availableLineDiscounts = Array.isArray(discountDetail?.availableDiscounts)
-                ? discountDetail.availableDiscounts
-                : [];
-              const hasLineDiscountOptions = composer.canApplyDiscount && availableLineDiscounts.length > 0;
               const thumb = line.imagen_principal_url || null;
               const canIncrease =
                 line.kind !== 'PRODUCTO' || Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0);
               const hasKitchenNote = String(line.observacion || '').trim().length > 0;
               const noteExpanded = Boolean(expandedNotes[line.cartKey]);
+              const discountPercent = Number(discountDetail?.lineSubtotal || 0) > 0 && Number(discountDetail?.discountAmount || 0) > 0
+                ? Math.round((Number(discountDetail.discountAmount || 0) / Number(discountDetail.lineSubtotal || 1)) * 100)
+                : 0;
 
               return (
                 <div key={line.cartKey} className="ventas-cart__item">
@@ -118,6 +106,9 @@ export default function VentaComposerSummary({
                   <div className="ventas-cart__item-body">
                     <div className="ventas-cart__item-title-row">
                       <div className="ventas-cart__item-name">{line.nombre_item}</div>
+                      {discountPercent > 0 ? (
+                        <span className="ventas-cart__discount-chip">-{discountPercent}%</span>
+                      ) : null}
                       {hasKitchenNote ? <span className="ventas-cart__note-badge">Con observacion</span> : null}
                     </div>
                     {line.kind === 'PRODUCTO' ? (
@@ -169,32 +160,43 @@ export default function VentaComposerSummary({
                       </button>
                     </div>
 
-                    {line.complementos_requiere ? (
-                      <button
-                        type="button"
-                        className="btn btn-link btn-sm p-0 ventas-cart__compact-link"
-                        onClick={() => composer.openComplementModalForLine(line.cartKey)}
-                      >
-                        Editar complementos
-                      </button>
-                    ) : null}
-
                     {line.kind !== 'PRODUCTO' ? (
                       <div className={`ventas-cart__kitchen-note ${noteExpanded ? 'is-expanded' : 'is-collapsed'}`}>
-                        <button
-                          type="button"
-                          className="ventas-cart__kitchen-note-toggle"
-                          onClick={() =>
-                            setExpandedNotes((current) => ({
-                              ...current,
-                              [line.cartKey]: !current[line.cartKey]
-                            }))
-                          }
-                          aria-expanded={noteExpanded}
-                        >
-                          <span>Observacion cocina</span>
-                          <i className={`bi bi-chevron-${noteExpanded ? 'up' : 'down'}`} aria-hidden="true" />
-                        </button>
+                        <div className="ventas-cart__line-actions-row">
+                          {line.complementos_requiere ? (
+                            <button
+                              type="button"
+                              className="ventas-cart__action-btn"
+                              onClick={() => composer.openComplementModalForLine(line.cartKey)}
+                            >
+                              <i className="bi bi-ui-checks-grid" aria-hidden="true" />
+                              <span>Complementos</span>
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className={`ventas-cart__action-btn ${extrasCount > 0 ? 'is-active' : ''}`}
+                            onClick={() => composer.openExtrasModalForLine(line.cartKey)}
+                          >
+                            <i className="bi bi-plus-square-dotted" aria-hidden="true" />
+                            <span>Extra +{extrasCount > 0 ? ` · ${extrasCount}` : ''}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="ventas-cart__kitchen-note-toggle"
+                            onClick={() =>
+                              setExpandedNotes((current) => ({
+                                ...current,
+                                [line.cartKey]: !current[line.cartKey]
+                              }))
+                            }
+                            aria-expanded={noteExpanded}
+                          >
+                            <i className="bi bi-chat-left-text" aria-hidden="true" />
+                            <span>Obs</span>
+                            <i className={`bi bi-chevron-${noteExpanded ? 'up' : 'down'}`} aria-hidden="true" />
+                          </button>
+                        </div>
                         {noteExpanded ? (
                           <textarea
                             rows="2"
@@ -211,34 +213,6 @@ export default function VentaComposerSummary({
                       </div>
                     ) : null}
 
-                    {hasLineDiscountOptions ? (
-                      <div className="ventas-cart__line-discount-row">
-                        <label className="form-label" htmlFor={`discount-${line.cartKey}`}>
-                          Desc. linea
-                        </label>
-                        <select
-                          id={`discount-${line.cartKey}`}
-                          className="form-select form-select-sm ventas-cart__line-discount-select"
-                          value={line.id_descuento_catalogo_linea || ''}
-                          onChange={(event) => composer.setLineDiscount(line.cartKey, event.target.value)}
-                        >
-                          <option value="">Sin descuento</option>
-                          {availableLineDiscounts.map((discount) => (
-                            <option
-                              key={discount.id_descuento_catalogo}
-                              value={String(discount.id_descuento_catalogo)}
-                            >
-                              {buildDiscountLabel(discount)}
-                            </option>
-                          ))}
-                        </select>
-                        {Number(discountDetail?.discountAmount || 0) > 0 ? (
-                          <small>
-                            -{composer.formatCurrency(discountDetail.discountAmount)} aplicado
-                          </small>
-                        ) : null}
-                      </div>
-                    ) : null}
                   </div>
                 </div>
               );
@@ -258,27 +232,22 @@ export default function VentaComposerSummary({
       </section>
 
       <footer className="ventas-create-modal__totals">
+        {shouldShowExtrasBreakdown ? (
+          <>
+            <div className="ventas-totals__row ventas-totals__row--detail">
+              <span>Base items</span>
+              <strong>{composer.formatCurrency(baseSubtotal)}</strong>
+            </div>
+            <div className="ventas-totals__row ventas-totals__row--detail">
+              <span>Extras</span>
+              <strong>{composer.formatCurrency(extrasSubtotal)}</strong>
+            </div>
+          </>
+        ) : null}
         <div className="ventas-totals__row ventas-totals__row--subtotal-only">
           <span>Subtotal bruto</span>
           <strong>{composer.formatCurrency(composer.subtotal)}</strong>
         </div>
-
-        {shouldShowDiscountBreakdown ? (
-          <>
-            <div className="ventas-totals__row">
-              <span>Descuentos por linea</span>
-              <strong>-{composer.formatCurrency(lineDiscountValue)}</strong>
-            </div>
-            <div className="ventas-totals__row">
-              <span>Descuento global</span>
-              <strong>-{composer.formatCurrency(globalDiscountValue)}</strong>
-            </div>
-            <div className="ventas-totals__row">
-              <span>Descuento total</span>
-              <strong>-{composer.formatCurrency(totalDiscountValue)}</strong>
-            </div>
-          </>
-        ) : null}
 
         {Number(deliveryCost || 0) > 0 ? (
           <div className="ventas-totals__row">

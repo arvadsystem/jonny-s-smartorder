@@ -7,6 +7,7 @@ import VentaCajaAbrirSesionModal from './VentaCajaAbrirSesionModal';
 import VentaCajaAperturaDecisionModal from './VentaCajaAperturaDecisionModal';
 import VentaCajaAutoAuxiliarModal from './VentaCajaAutoAuxiliarModal';
 import VentaComplementosModal from './VentaComplementosModal';
+import VentaExtrasModal from './VentaExtrasModal';
 import VentaFinalizarOperacionModal from './VentaFinalizarOperacionModal';
 import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import ventasService from '../../../../services/ventasService';
@@ -209,6 +210,7 @@ export default function CajaView({
   onSubmit,
   onCreatePedidoPendiente,
   onRegistrarPagoPedido,
+  onCatalogSucursalChange,
   onClientesRefresh,
   onNotify
 }) {
@@ -278,6 +280,7 @@ export default function CajaView({
   const sesionesAbiertasInFlightRef = useRef(null);
   const creatingPedidoPendienteRef = useRef(false);
   const registrandoPagoPedidoRef = useRef(false);
+  const catalogSucursalRequestRef = useRef('');
 
   const openAutoAuxiliarForSucursal = async ({ idSucursal, force = false }) => {
     if (!isSuperAdmin) return;
@@ -348,6 +351,23 @@ export default function CajaView({
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
   });
   composerRef.current = composer;
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const selectedSucursalId = toPositiveId(composer.selectedSucursalId || composer.selectedSucursal);
+    if (!selectedSucursalId) return;
+
+    const key = `sucursal:${selectedSucursalId}`;
+    if (catalogSucursalRequestRef.current === key) return;
+    catalogSucursalRequestRef.current = key;
+
+    void onCatalogSucursalChange?.({ id_sucursal: selectedSucursalId });
+  }, [
+    composer.selectedSucursal,
+    composer.selectedSucursalId,
+    isSuperAdmin,
+    onCatalogSucursalChange
+  ]);
 
   const syncComposerSession = useCallback((session) => {
     const idSesionCaja = toPositiveId(session?.id_sesion_caja);
@@ -1173,6 +1193,17 @@ export default function CajaView({
         error={composer.complementModal.error}
         onCancel={composer.closeComplementModal}
         onConfirm={composer.confirmComplementModal}
+      />
+      <VentaExtrasModal
+        open={composer.extrasModal.open}
+        row={composer.extrasModal.row}
+        options={composer.extrasModal.options}
+        selected={composer.extrasModal.selected}
+        loading={composer.extrasModal.loading}
+        error={composer.extrasModal.error}
+        formatCurrency={composer.formatCurrency}
+        onCancel={composer.closeExtrasModal}
+        onConfirm={composer.confirmExtrasModal}
       />
       {finalizarOpen ? (
         <VentaFinalizarOperacionModal
