@@ -35,6 +35,7 @@ const MenuPublicationTable = ({
 }) => {
   const headerCheckboxRef = useRef(null);
   const [typeFilter, setTypeFilter] = useState('TODOS');
+  const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
 
   const safeItems = Array.isArray(items) ? items : [];
@@ -48,16 +49,33 @@ const MenuPublicationTable = ({
   }, [safeItems]);
 
   const filteredItems = useMemo(() => {
-    if (typeFilter === 'TODOS') return safeItems;
-    return safeItems.filter((row) => String(row?.tipo_item || '').trim().toUpperCase() === typeFilter);
-  }, [safeItems, typeFilter]);
+    const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
+    return safeItems.filter((row) => {
+      const rowType = String(row?.tipo_item || '').trim().toUpperCase();
+      const typeMatch = typeFilter === 'TODOS' ? true : rowType === typeFilter;
+      if (!typeMatch) return false;
+      if (!normalizedSearch) return true;
+
+      const haystack = [
+        row?.nombre_item,
+        row?.item_key,
+        row?.id_item_origen,
+        row?.tipo_item
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(normalizedSearch);
+    });
+  }, [safeItems, typeFilter, searchTerm]);
 
   const total = filteredItems.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     setPage(1);
-  }, [typeFilter]);
+  }, [typeFilter, searchTerm]);
 
   useEffect(() => {
     setPage((current) => Math.min(current, totalPages));
@@ -130,22 +148,40 @@ const MenuPublicationTable = ({
           <i className="bi bi-filter-circle" aria-hidden="true" />
           <span>Filtrar publicaciones</span>
         </div>
-        <div className="menu-pub-admin__filter-select-wrap">
-          <label htmlFor="menu-pub-filter-tipo" className="form-label mb-1">
-            Tipo
-          </label>
-          <select
-            id="menu-pub-filter-tipo"
-            className="form-select form-select-sm"
-            value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value)}
-          >
-            {typeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option === 'TODOS' ? 'Todos los tipos' : option}
-              </option>
-            ))}
-          </select>
+        <div className="menu-pub-admin__toolbar-filters">
+          <div className="menu-pub-admin__filter-search-wrap">
+            <label htmlFor="menu-pub-filter-search" className="form-label mb-1">
+              Buscar item
+            </label>
+            <div className="menu-pub-admin__search-input-wrap">
+              <i className="bi bi-search" aria-hidden="true" />
+              <input
+                id="menu-pub-filter-search"
+                type="text"
+                className="form-control form-control-sm"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Nombre, ID o tipo..."
+              />
+            </div>
+          </div>
+          <div className="menu-pub-admin__filter-select-wrap">
+            <label htmlFor="menu-pub-filter-tipo" className="form-label mb-1">
+              Tipo
+            </label>
+            <select
+              id="menu-pub-filter-tipo"
+              className="form-select form-select-sm"
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+            >
+              {typeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option === 'TODOS' ? 'Todos los tipos' : option}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
