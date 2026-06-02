@@ -105,6 +105,22 @@
   overflow-wrap: anywhere;
 }
 
+.venta-ticket-print__split {
+  display: grid;
+  gap: 5px;
+}
+
+.venta-ticket-print__split-group {
+  display: grid;
+  gap: 2px;
+}
+
+.venta-ticket-print__split-title {
+  display: flex;
+  font-weight: 700;
+  justify-content: space-between;
+}
+
 .venta-ticket-print__totals .is-total {
   font-size: 14px;
   font-weight: 700;
