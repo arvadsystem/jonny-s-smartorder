@@ -281,11 +281,12 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                   const precio = Number(row.precio || 0);
                   const stockDisponible = isProducto ? Number(row.cantidad ?? 0) : null;
                   const badgeLabel = buildDiscountBadgeLabel(discount);
+                  const discountAddOptions = { discount };
                   return (
                     <div
                       key={`DESCUENTO-${kind}-${itemId}`}
                       className="vcp-card ventas-catalog-card-compact ventas-catalog-card-compact--discount"
-                      onClick={() => composer.addCatalogItem(kind, row)}
+                      onClick={() => composer.addCatalogItem(kind, row, [], discountAddOptions)}
                     >
                       <div className="vcp-card__media">
                         {badgeLabel ? (
@@ -329,7 +330,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
                             className="vcp-card__add-btn"
                             onClick={(event) => {
                               event.stopPropagation();
-                              composer.addCatalogItem(kind, row);
+                              composer.addCatalogItem(kind, row, [], discountAddOptions);
                             }}
                             aria-label={`Agregar ${itemName} con descuento`}
                           >

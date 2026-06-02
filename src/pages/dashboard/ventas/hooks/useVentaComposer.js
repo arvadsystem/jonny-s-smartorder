@@ -115,6 +115,28 @@ const toNormalizedId = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const appendDiscountTargetIds = (ids, value, legacyKey) => {
+  if (value === null || value === undefined) return;
+  if (Array.isArray(value)) {
+    value.forEach((entry) => appendDiscountTargetIds(ids, entry, legacyKey));
+    return;
+  }
+  if (typeof value === 'string' && value.includes(',')) {
+    value.split(',').forEach((entry) => appendDiscountTargetIds(ids, entry, legacyKey));
+    return;
+  }
+  if (typeof value === 'object') {
+    appendDiscountTargetIds(
+      ids,
+      value[legacyKey] ?? value.id ?? value.value ?? value.id_producto ?? value.id_receta ?? value.id_combo,
+      legacyKey
+    );
+    return;
+  }
+  const id = toNormalizedId(value);
+  if (id) ids.add(id);
+};
+
 const addComboDepartmentId = (ids, value) => {
   const id = toNormalizedId(value);
   if (id) ids.add(id);
@@ -166,7 +188,7 @@ const parseDiscountDate = (value) => {
   return Number.isFinite(asLocal.getTime()) ? asLocal : null;
 };
 
-const buildCatalogLine = (kind, row, selectedComplementos = []) => {
+const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) => {
   const complementosDisponibles = (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
     .map((entry) => ({
       id_complemento: Number(entry?.id_complemento ?? 0) || null,
@@ -185,6 +207,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
   const complementosMinimo = Number(row?.minimo_complementos ?? 0) || 0;
   const complementosMaximo = Number(row?.maximo_complementos ?? 0) || 0;
   const requiereComplementos = Boolean(row?.requiere_complementos) || complementosMinimo > 0;
+  const complementosIncompletosAutorizados = Boolean(options?.complementos_incompletos_autorizados);
 
   if (kind === 'PRODUCTO') {
     return {
@@ -208,6 +231,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
       complementos_requiere: false,
       minimo_complementos: 0,
       maximo_complementos: 0,
+      complementos_incompletos_autorizados: false,
       tipo_complemento: null
     };
   }
@@ -234,6 +258,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
       complementos_requiere: requiereComplementos,
       minimo_complementos: complementosMinimo,
       maximo_complementos: complementosMaximo,
+      complementos_incompletos_autorizados: complementosIncompletosAutorizados,
       tipo_complemento: row?.tipo_complemento || 'SALSAS'
     };
   }
@@ -259,6 +284,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = []) => {
     complementos_requiere: requiereComplementos,
     minimo_complementos: complementosMinimo,
     maximo_complementos: complementosMaximo,
+    complementos_incompletos_autorizados: complementosIncompletosAutorizados,
     tipo_complemento: row?.tipo_complemento || 'SALSAS'
   };
 };
@@ -320,13 +346,12 @@ const isDiscountAllowedForSucursal = (discount, idSucursal) => {
 
 const normalizeDiscountTargetIds = (discount, key, legacyKey) => {
   const objetivos = discount?.objetivos && typeof discount.objetivos === 'object' ? discount.objetivos : {};
-  const directRows = Array.isArray(objetivos[key]) ? objetivos[key] : [];
-  const ids = directRows
-    .map((row) => toNormalizedId(row?.[legacyKey]))
-    .filter(Boolean);
-  const legacyId = toNormalizedId(discount?.[legacyKey]);
-  if (legacyId && ids.length === 0) ids.push(legacyId);
-  return [...new Set(ids.map(Number))];
+  const ids = new Set();
+  appendDiscountTargetIds(ids, objetivos[key], legacyKey);
+  appendDiscountTargetIds(ids, discount?.[key], legacyKey);
+  appendDiscountTargetIds(ids, discount?.[`${key}_ids`], legacyKey);
+  appendDiscountTargetIds(ids, discount?.[legacyKey], legacyKey);
+  return [...ids].map(Number);
 };
 
 const isDiscountApplicableToLine = (discount, line, selectedSucursalId) => {
@@ -389,6 +414,7 @@ export const useVentaComposer = ({
     row: null,
     cartKey: '',
     selected: [],
+    options: {},
     error: ''
   });
   const [extrasModal, setExtrasModal] = useState({
@@ -423,6 +449,7 @@ export const useVentaComposer = ({
       row: null,
       cartKey: '',
       selected: [],
+      options: {},
       error: ''
     });
     setExtrasModal({
@@ -691,7 +718,7 @@ export const useVentaComposer = ({
     return Boolean(row?.requiere_complementos) || min > 0;
   };
 
-  const openComplementModalForCatalogItem = (kind, row) => {
+  const openComplementModalForCatalogItem = (kind, row, options = {}) => {
     setComplementModal({
       open: true,
       mode: 'ADD',
@@ -699,6 +726,7 @@ export const useVentaComposer = ({
       row,
       cartKey: '',
       selected: [],
+      options,
       error: ''
     });
   };
@@ -706,11 +734,20 @@ export const useVentaComposer = ({
   const addCatalogItem = (kind, row, selectedComplementos = [], options = {}) => {
     const allowEmptyComplementos = Boolean(options?.allowEmptyComplementos);
     if (requiresComplementSelection(kind, row) && selectedComplementos.length === 0 && !allowEmptyComplementos) {
-      openComplementModalForCatalogItem(kind, row);
+      openComplementModalForCatalogItem(kind, row, options);
       return;
     }
 
-    const catalogLine = buildCatalogLine(kind, row, selectedComplementos);
+    const catalogLine = buildCatalogLine(kind, row, selectedComplementos, options);
+    const requestedDiscountId = toNormalizedId(
+      options?.id_descuento_catalogo ?? options?.discountId ?? options?.discount?.id_descuento_catalogo
+    );
+    const requestedDiscount = requestedDiscountId
+      ? normalizedDescuentosCatalogo.find((discount) =>
+        Number(discount?.id_descuento_catalogo) === requestedDiscountId &&
+        isDiscountApplicableToLine(discount, catalogLine, selectedSucursalId)
+      )
+      : null;
 
     setState((current) => {
       const nextCart = [...current.cart];
@@ -748,7 +785,7 @@ export const useVentaComposer = ({
         }
 
         const autoDiscount = canApplyDiscount && !currentLine.id_descuento_catalogo_linea
-          ? resolveBestDiscountForLine({
+          ? requestedDiscount || resolveBestDiscountForLine({
             discounts: normalizedDescuentosCatalogo,
             line: catalogLine,
             selectedSucursalId
@@ -769,7 +806,7 @@ export const useVentaComposer = ({
 
       const shouldAutoApplyLineDiscount = canApplyDiscount;
       const autoDiscount = shouldAutoApplyLineDiscount
-        ? resolveBestDiscountForLine({
+        ? requestedDiscount || resolveBestDiscountForLine({
           discounts: normalizedDescuentosCatalogo,
           line: catalogLine,
           selectedSucursalId
@@ -801,6 +838,7 @@ export const useVentaComposer = ({
       row: line,
       cartKey,
       selected: normalizeComplementIds(line.complementos),
+      options: {},
       error: ''
     });
   };
@@ -813,7 +851,7 @@ export const useVentaComposer = ({
     }));
   };
 
-  const confirmComplementModal = (selectedComplementos) => {
+  const confirmComplementModal = (selectedComplementos, complementOptions = {}) => {
     const ids = normalizeComplementIds(selectedComplementos);
     const max = Number(complementModal?.row?.maximo_complementos ?? 0) || 0;
 
@@ -833,7 +871,7 @@ export const useVentaComposer = ({
         maximo_complementos: editedLine.maximo_complementos,
         complementos_disponibles: editedLine.complementos_disponibles
       };
-      const rebuilt = buildCatalogLine(editedLine.kind, baseRow, ids);
+      const rebuilt = buildCatalogLine(editedLine.kind, baseRow, ids, complementOptions);
       rebuilt.extras = normalizeExtras(editedLine.extras);
       rebuilt.cartKey = buildCartKey(editedLine.kind, editedLine.entityId, rebuilt.complementos, rebuilt.extras);
       setState((current) => {
@@ -853,7 +891,10 @@ export const useVentaComposer = ({
                   ? {
                     ...line,
                     cantidad: Number(line.cantidad ?? 0) + Number(editedLine.cantidad ?? 0),
-                    observacion: line.observacion || editedLine.observacion || ''
+                    observacion: line.observacion || editedLine.observacion || '',
+                    complementos_incompletos_autorizados: Boolean(
+                      line.complementos_incompletos_autorizados || rebuilt.complementos_incompletos_autorizados
+                    )
                   }
                   : line
               ),
@@ -868,7 +909,8 @@ export const useVentaComposer = ({
               ? {
                 ...line,
                 cartKey: rebuilt.cartKey,
-                complementos: rebuilt.complementos
+                complementos: rebuilt.complementos,
+                complementos_incompletos_autorizados: rebuilt.complementos_incompletos_autorizados
               }
               : line
           ),
@@ -876,7 +918,11 @@ export const useVentaComposer = ({
         };
       });
     } else {
-      addCatalogItem(complementModal.kind, complementModal.row, ids, { allowEmptyComplementos: true });
+      addCatalogItem(complementModal.kind, complementModal.row, ids, {
+        ...(complementModal.options || {}),
+        ...complementOptions,
+        allowEmptyComplementos: true
+      });
     }
 
     setComplementModal({
@@ -886,6 +932,7 @@ export const useVentaComposer = ({
       row: null,
       cartKey: '',
       selected: [],
+      options: {},
       error: ''
     });
     return true;
@@ -1072,6 +1119,9 @@ export const useVentaComposer = ({
       const complementos = normalizeComplementIds(line.complementos);
       if (complementos.length > 0) {
         payload.complementos = complementos.map((id) => ({ id_complemento: id }));
+      }
+      if (line.kind !== 'PRODUCTO' && line.complementos_incompletos_autorizados) {
+        payload.complementos_incompletos_autorizados = true;
       }
       const extras = normalizeExtras(line.extras);
       if (extras.length > 0) {
@@ -1295,6 +1345,7 @@ export const useVentaComposer = ({
         row: null,
         cartKey: '',
         selected: [],
+        options: {},
         error: ''
       });
       setExtrasModal({
