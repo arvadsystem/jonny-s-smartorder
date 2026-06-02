@@ -1057,6 +1057,7 @@ export const useVentaComposer = ({
   const buildItemsPayload = () =>
     state.cart.map((line) => {
       const payload = {
+        cart_key: line.cartKey,
         id_producto: line.id_producto,
         id_combo: line.id_combo,
         id_receta: line.id_receta,
@@ -1144,7 +1145,7 @@ export const useVentaComposer = ({
     return payload;
   };
 
-  const buildPaidSalePayload = () =>
+  const buildPaidSalePayload = ({ cuentaDividida } = {}) =>
     applyDiscountPayloadFields({
       id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
       id_sucursal: selectedSucursalId,
@@ -1153,10 +1154,11 @@ export const useVentaComposer = ({
       efectivo_entregado: cashValue,
       id_sesion_caja: toNormalizedId(state.temporarySessionId),
       descripcion_pedido: null,
-      items: buildItemsPayload()
+      items: buildItemsPayload(),
+      ...(Array.isArray(cuentaDividida) ? { cuenta_dividida: cuentaDividida } : {})
     });
 
-  const buildPedidoPendientePayload = ({ contacto, contexto, pagoPendiente, delivery }) => {
+  const buildPedidoPendientePayload = ({ contacto, contexto, pagoPendiente, delivery, cuentaDividida }) => {
     const descuentosLinea = buildDescuentosLineaPayload();
     const payload = applyDiscountPayloadFields({
       id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
@@ -1166,7 +1168,8 @@ export const useVentaComposer = ({
       contacto,
       contexto,
       pago_pendiente: pagoPendiente,
-      delivery
+      delivery,
+      ...(Array.isArray(cuentaDividida) ? { cuenta_dividida: cuentaDividida } : {})
     });
     if (descuentosLinea.length > 0) {
       payload.descuentos_linea = descuentosLinea;
@@ -1174,11 +1177,11 @@ export const useVentaComposer = ({
     return payload;
   };
 
-  const submitPaidSale = async () => {
+  const submitPaidSale = async (cuentaDividida) => {
     if (!validatePaidSale()) return null;
 
     try {
-      const response = await onSubmit(buildPaidSalePayload());
+      const response = await onSubmit(buildPaidSalePayload({ cuentaDividida }));
 
       resetComposer();
       return response;
