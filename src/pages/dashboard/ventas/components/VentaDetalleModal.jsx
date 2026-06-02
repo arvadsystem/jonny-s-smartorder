@@ -81,6 +81,8 @@ export default function VentaDetalleModal({
   const statusLabel = venta?.displayStatusLabel || venta?.statusLabel || 'Pendiente';
   const ticketDateTime = venta?.fecha_hora_facturacion || venta?.fecha_hora_pedido;
   const detailItems = Array.isArray(venta?.items) ? venta.items : [];
+  const cuentaDividida = venta?.cuenta_dividida && typeof venta.cuenta_dividida === 'object' ? venta.cuenta_dividida : null;
+  const cuentaDivisiones = Array.isArray(cuentaDividida?.divisiones) ? cuentaDividida.divisiones : [];
   const reversiones = Array.isArray(venta?.reversiones) ? venta.reversiones : [];
   const hasReversiones = reversiones.length > 0;
   const montoReversadoTotal = Number(venta?.monto_reversado_total || 0);
@@ -300,6 +302,34 @@ export default function VentaDetalleModal({
                               <strong>{linea.cantidad_revertida} x {formatCurrency(linea.precio_unitario_original)}</strong>
                             </div>
                           ))}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {cuentaDivisiones.length > 0 ? (
+                <div className="ventas-detail-modal__section">
+                  <div className="ventas-detail-modal__section-title">Cuenta dividida</div>
+                  <div className="ventas-cuenta-dividida-detalle">
+                    {cuentaDivisiones.map((division) => (
+                      <article className="ventas-cuenta-dividida-detalle__card" key={division.id_cuenta_division}>
+                        <div className="ventas-cuenta-dividida-detalle__head">
+                          <strong>{division.etiqueta}</strong>
+                          <span>{division.estado || 'PENDIENTE'}</span>
+                        </div>
+                        <div className="ventas-cuenta-dividida-detalle__items">
+                          {(Array.isArray(division.items) ? division.items : []).map((item) => (
+                            <div key={item.id_cuenta_division_item || item.id_detalle_factura || item.id_detalle_pedido}>
+                              <span>{item.nombre_item || 'Item'} x{item.cantidad}</span>
+                              <strong>{formatCurrency(item.total_linea)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="ventas-cuenta-dividida-detalle__total">
+                          <span>Total</span>
+                          <strong>{formatCurrency(division.total)}</strong>
                         </div>
                       </article>
                     ))}

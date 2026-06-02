@@ -55,6 +55,21 @@ const normalizeOptionSearchText = (cliente) => [
   cliente.id_correo
 ].filter(Boolean).join(' ');
 
+const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const getLineTotal = (line) => {
+  const base = Number(line?.precio_unitario || 0) * Number(line?.cantidad || 0);
+  const extras = Array.isArray(line?.extras)
+    ? line.extras.reduce((sum, extra) => sum + Number(extra?.subtotal || (Number(extra?.precio || 0) * Number(extra?.cantidad || 0)) || 0), 0)
+    : 0;
+  return roundMoney(base + extras);
+};
+
+const buildInitialSplitDivisions = () => ([
+  { id: 'persona-1', etiqueta: 'Persona 1', lineKeys: [] },
+  { id: 'persona-2', etiqueta: 'Persona 2', lineKeys: [] }
+]);
+
 export default function VentaFinalizarOperacionModal({
   open,
   composer,
@@ -72,6 +87,8 @@ export default function VentaFinalizarOperacionModal({
   const [quickCreateSearch, setQuickCreateSearch] = useState('');
   const [paidSubmitting, setPaidSubmitting] = useState(false);
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitDivisions, setSplitDivisions] = useState(buildInitialSplitDivisions);
   const paidSubmittingRef = useRef(false);
   const pendingSubmittingRef = useRef(false);
   const isSubmitting = saving || paidSubmitting || pendingSubmitting;
@@ -85,6 +102,12 @@ export default function VentaFinalizarOperacionModal({
     if (!open) return;
     onDeliveryCostChange?.(activeTab === 'pendiente' && contact.modalidad === 'DELIVERY' ? deliveryCost : 0);
   }, [activeTab, contact.modalidad, deliveryCost, onDeliveryCostChange, open]);
+
+  useEffect(() => {
+    if (!open || activeTab !== 'pagar') return;
+    setSplitEnabled(false);
+    setSplitDivisions(buildInitialSplitDivisions());
+  }, [activeTab, open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -103,6 +126,8 @@ export default function VentaFinalizarOperacionModal({
     pendingSubmittingRef.current = false;
     setPaidSubmitting(false);
     setPendingSubmitting(false);
+    setSplitEnabled(false);
+    setSplitDivisions(buildInitialSplitDivisions());
   }, [open]);
 
   if (!open) return null;
@@ -119,6 +144,7 @@ export default function VentaFinalizarOperacionModal({
 
   const validateCommon = () => {
     if (!composer.validateBaseSale()) return false;
+    if (activeTab === 'pendiente' && splitEnabled && !buildCuentaDivididaPayload()) return false;
     const phoneRequired =
       contact.canal === 'TELEFONO' ||
       contact.canal === 'WHATSAPP' ||
@@ -151,6 +177,74 @@ export default function VentaFinalizarOperacionModal({
     }
 
     return true;
+  };
+
+  const cartLines = Array.isArray(composer.cart) ? composer.cart : [];
+  const assignedLineKeys = splitDivisions.flatMap((division) => division.lineKeys);
+  const pendingAssignCount = cartLines.filter((line) => !assignedLineKeys.includes(line.cartKey)).length;
+  const buildCuentaDivididaPayload = () => {
+    if (!splitEnabled) return null;
+    if (cartLines.length === 0) {
+      setLocalError('Agrega items antes de dividir la cuenta.');
+      return null;
+    }
+    if (pendingAssignCount > 0) {
+      setLocalError('Asigna todas las lineas antes de pagar.');
+      return null;
+    }
+    const used = new Set();
+    const payload = splitDivisions.map((division, index) => {
+      const lineKeys = Array.isArray(division.lineKeys) ? division.lineKeys : [];
+      if (!lineKeys.length) {
+        setLocalError('No se permiten personas sin lineas asignadas.');
+        return null;
+      }
+      const items = lineKeys.map((cartKey) => {
+        if (used.has(cartKey)) {
+          setLocalError('Una linea no puede estar en dos personas.');
+          return null;
+        }
+        used.add(cartKey);
+        const lineIndex = cartLines.findIndex((line) => line.cartKey === cartKey);
+        if (lineIndex < 0) {
+          setLocalError('Una linea asignada ya no existe en el carrito.');
+          return null;
+        }
+        return { cart_key: cartKey, line_index: lineIndex };
+      });
+      if (items.some((item) => !item)) return null;
+      return {
+        etiqueta: normalizeOptionalText(division.etiqueta) || `Persona ${index + 1}`,
+        orden: index + 1,
+        items
+      };
+    });
+    if (payload.some((division) => !division)) return null;
+    return payload;
+  };
+
+  const addSplitDivision = () => {
+    setSplitDivisions((current) => [
+      ...current,
+      { id: `persona-${Date.now()}`, etiqueta: `Persona ${current.length + 1}`, lineKeys: [] }
+    ]);
+    setLocalError('');
+  };
+
+  const updateSplitDivisionLabel = (id, etiqueta) => {
+    setSplitDivisions((current) => current.map((division) => (
+      division.id === id ? { ...division, etiqueta } : division
+    )));
+    setLocalError('');
+  };
+
+  const assignLineToDivision = (cartKey, divisionId) => {
+    setSplitDivisions((current) => current.map((division) => {
+      const withoutLine = (division.lineKeys || []).filter((key) => key !== cartKey);
+      if (division.id !== divisionId) return { ...division, lineKeys: withoutLine };
+      return { ...division, lineKeys: [...withoutLine, cartKey] };
+    }));
+    setLocalError('');
   };
 
   const handlePaidSubmit = async () => {
@@ -204,7 +298,8 @@ export default function VentaFinalizarOperacionModal({
               referencia_entrega: normalizeOptionalText(delivery.referencia_entrega),
               observacion_delivery: normalizeOptionalText(delivery.observacion_delivery)
             }
-          : null
+          : null,
+        cuentaDividida: buildCuentaDivididaPayload() || undefined
       });
 
       await onCreatePedidoPendiente(payload);
@@ -402,6 +497,75 @@ export default function VentaFinalizarOperacionModal({
                 </label>
               </div>
             </section>
+          ) : null}
+
+          {activeTab === 'pendiente' ? (
+          <section className="ventas-finalizar-modal__section ventas-cuenta-dividida">
+            <label className="ventas-cuenta-dividida__toggle">
+              <input
+                type="checkbox"
+                checked={splitEnabled}
+                onChange={(event) => {
+                  setSplitEnabled(event.target.checked);
+                  setLocalError('');
+                }}
+              />
+              <span>Dividir cuenta</span>
+            </label>
+
+            {splitEnabled ? (
+              <>
+                <div className="ventas-cuenta-dividida__toolbar">
+                  <span>Asignado: {cartLines.length - pendingAssignCount}/{cartLines.length}</span>
+                  <strong>Pendiente: {pendingAssignCount}</strong>
+                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={addSplitDivision}>
+                    <i className="bi bi-person-plus" /> Agregar persona
+                  </button>
+                </div>
+
+                <div className="ventas-cuenta-dividida__grid">
+                  {splitDivisions.map((division, divisionIndex) => {
+                    const selectedLines = cartLines.filter((line) => (division.lineKeys || []).includes(line.cartKey));
+                    const divisionTotal = selectedLines.reduce((sum, line) => sum + getLineTotal(line), 0);
+                    return (
+                      <article className="ventas-cuenta-dividida__person" key={division.id}>
+                        <label className="ventas-create-modal__field">
+                          <span>Persona</span>
+                          <input
+                            type="text"
+                            value={division.etiqueta}
+                            placeholder={`Persona ${divisionIndex + 1}`}
+                            onChange={(event) => updateSplitDivisionLabel(division.id, event.target.value)}
+                          />
+                        </label>
+                        <div className="ventas-cuenta-dividida__lines">
+                          {cartLines.map((line, lineIndex) => {
+                            const checked = (division.lineKeys || []).includes(line.cartKey);
+                            return (
+                              <label key={`${division.id}-${line.cartKey}`} className="ventas-cuenta-dividida__line">
+                                <input
+                                  type="radio"
+                                  name={`cuenta-line-${line.cartKey}`}
+                                  checked={checked}
+                                  onChange={() => assignLineToDivision(line.cartKey, division.id)}
+                                />
+                                <span>{lineIndex + 1}. {line.nombre || line.nombre_item || line.nombre_producto || 'Item'}</span>
+                                <strong>{composer.formatCurrency(getLineTotal(line))}</strong>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div className="ventas-cuenta-dividida__person-total">
+                          <span>Total persona</span>
+                          <strong>{composer.formatCurrency(divisionTotal)}</strong>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+          </section>
           ) : null}
 
           {activeTab === 'pagar' ? (

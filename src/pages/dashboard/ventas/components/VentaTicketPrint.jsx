@@ -159,6 +159,7 @@ export default function VentaTicketPrint({
   const width = sanitizeWidth(paperWidth || facturacion.ticket.ancho_ticket_mm);
   const ticketDateTime = resolveFacturaDateTime(venta);
   const items = Array.isArray(venta?.items) ? venta.items : [];
+  const cuentaDivisiones = Array.isArray(venta?.cuenta_dividida?.divisiones) ? venta.cuenta_dividida.divisiones : [];
   const totals = resolveTotals(venta);
   const showFiscalBlock = facturacion.ticket.mostrar_datos_fiscales && (
     facturacion.ticket.mostrar_cai_ticket ||
@@ -281,6 +282,28 @@ export default function VentaTicketPrint({
             </div>
           )}
         </div>
+
+        {cuentaDivisiones.length > 0 ? (
+          <>
+            <div className="venta-ticket-print__divider" />
+            <div className="venta-ticket-print__split">
+              <strong>Cuenta dividida</strong>
+              {cuentaDivisiones.map((division) => (
+                <div className="venta-ticket-print__split-group" key={division.id_cuenta_division || division.etiqueta}>
+                  <div className="venta-ticket-print__split-title">
+                    <span>{division.etiqueta}</span>
+                    <span>{formatCurrency(division.total)}</span>
+                  </div>
+                  {(Array.isArray(division.items) ? division.items : []).map((item) => (
+                    <div className="venta-ticket-print__item-row-note" key={item.id_cuenta_division_item || item.id_detalle_factura || item.id_detalle_pedido}>
+                      <span>{item.nombre_item || 'Item'} x{toNumber(item.cantidad)} {formatCurrency(item.total_linea)}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
 
         <div className="venta-ticket-print__divider" />
 
