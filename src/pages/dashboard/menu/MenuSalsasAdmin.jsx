@@ -1,6 +1,8 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Select from 'react-select';
 import { apiFetch } from '../../../services/api';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import MenuActionToast from './components/MenuActionToast';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
 
@@ -62,6 +64,7 @@ const getSpicyIntensity = (level) => {
 };
 
 const MenuSalsasAdmin = () => {
+  const { canAny } = usePermisos();
   const [loading, setLoading] = useState(false);
   const [savingSalsa, setSavingSalsa] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -83,12 +86,17 @@ const MenuSalsasAdmin = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrderDirection, setSortOrderDirection] = useState('asc');
   const [showInactiveOnly, setShowInactiveOnly] = useState(false);
+  const [estadoFiltro, setEstadoFiltro] = useState('activos');
+  const [nivelPicanteFiltro, setNivelPicanteFiltro] = useState('todos');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const createNombreInputRef = useRef(null);
   const pageSize = 10;
+  const canCreateSalsa = canAny([PERMISSIONS.MENU_SALSAS_CREAR, PERMISSIONS.MENU_VER]);
+  const canEditSalsa = canAny([PERMISSIONS.MENU_SALSAS_EDITAR, PERMISSIONS.MENU_VER]);
+  const canToggleSalsaEstado = canAny([PERMISSIONS.MENU_SALSAS_ESTADO_CAMBIAR, PERMISSIONS.MENU_VER]);
 
   const activeSalsas = useMemo(
     () => salsas.filter((row) => isRowActive(row?.estado)),
@@ -109,9 +117,18 @@ const MenuSalsasAdmin = () => {
       ))
       : salsas;
 
-    const filteredRows = showInactiveOnly
-      ? searchedRows.filter((row) => !isRowActive(row?.estado))
-      : searchedRows.filter((row) => isRowActive(row?.estado));
+    const filteredRows = searchedRows
+      .filter((row) => {
+        const active = isRowActive(row?.estado);
+        if (showInactiveOnly) return !active;
+        if (estadoFiltro === 'activos') return active;
+        if (estadoFiltro === 'inactivos') return !active;
+        return true;
+      })
+      .filter((row) => {
+        if (nivelPicanteFiltro === 'todos') return true;
+        return String(Math.max(0, Math.min(5, Number(row?.nivel_picante || 0)))) === String(nivelPicanteFiltro);
+      });
 
     const sortedRows = [...filteredRows].sort((a, b) => {
       const aOrder = Number(a?.orden ?? 0);
@@ -122,7 +139,7 @@ const MenuSalsasAdmin = () => {
       return sortOrderDirection === 'asc' ? aOrder - bOrder : bOrder - aOrder;
     });
     return sortedRows;
-  }, [salsas, searchTerm, showInactiveOnly, sortOrderDirection]);
+  }, [estadoFiltro, nivelPicanteFiltro, salsas, searchTerm, showInactiveOnly, sortOrderDirection]);
 
   const currentSpicyLevel = Math.max(0, Math.min(5, Number(form.nivel_picante || 0)));
   const safeCurrentPage = Math.min(Math.max(1, currentPage), Math.max(1, totalPages));
@@ -142,7 +159,7 @@ const MenuSalsasAdmin = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, sortOrderDirection, showInactiveOnly]);
+  }, [searchTerm, sortOrderDirection, showInactiveOnly, estadoFiltro, nivelPicanteFiltro]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -492,6 +509,41 @@ const MenuSalsasAdmin = () => {
     return { ok: true, data: output };
   };
 
+  const validateRulesConsistency = (normalizedRules) => {
+    if (!Array.isArray(normalizedRules) || normalizedRules.length === 0) return { ok: true };
+    if (selectedSauceIds.length <= 0) {
+      return { ok: false, message: 'Selecciona al menos una salsa permitida antes de guardar reglas.' };
+    }
+
+    const sortedRules = [...normalizedRules]
+      .map((rule) => ({
+        min_unidades: Number(rule.min_unidades),
+        max_unidades: rule.max_unidades === null ? null : Number(rule.max_unidades),
+        salsas_requeridas: Number(rule.salsas_requeridas)
+      }))
+      .sort((left, right) => left.min_unidades - right.min_unidades);
+
+    for (let index = 0; index < sortedRules.length; index += 1) {
+      const currentRule = sortedRules[index];
+      if (currentRule.salsas_requeridas > selectedSauceIds.length) {
+        return {
+          ok: false,
+          message: `Regla #${index + 1}: salsas requeridas no puede exceder las ${selectedSauceIds.length} salsas seleccionadas.`
+        };
+      }
+
+      if (index === 0) continue;
+
+      const previousRule = sortedRules[index - 1];
+      const previousMax = previousRule.max_unidades === null ? Number.POSITIVE_INFINITY : previousRule.max_unidades;
+      if (currentRule.min_unidades <= previousMax) {
+        return { ok: false, message: 'No se permiten rangos traslapados entre reglas.' };
+      }
+    }
+
+    return { ok: true };
+  };
+
   const onSaveRecipeConfig = async () => {
     const idReceta = toPositiveInt(selectedRecetaId);
     if (!idReceta) {
@@ -502,6 +554,11 @@ const MenuSalsasAdmin = () => {
     const normalizedRules = normalizeRulesForSave();
     if (!normalizedRules.ok) {
       setError(normalizedRules.message);
+      return;
+    }
+    const rulesConsistency = validateRulesConsistency(normalizedRules.data);
+    if (!rulesConsistency.ok) {
+      setError(rulesConsistency.message);
       return;
     }
 
@@ -541,7 +598,7 @@ const MenuSalsasAdmin = () => {
               type="button"
               className="btn inv-prod-toolbar-btn menu-salsas-admin__reload-btn"
               onClick={onCreateSalsa}
-              disabled={savingSalsa || savingConfig}
+              disabled={savingSalsa || savingConfig || !canCreateSalsa}
             >
               <i className="bi bi-plus-lg" aria-hidden="true" />
               Nueva salsa
@@ -577,6 +634,31 @@ const MenuSalsasAdmin = () => {
                   >
                     <i className="bi bi-funnel" aria-hidden="true" />
                   </button>
+                  <select
+                    className="form-select menu-salsas-admin__toolbar-select"
+                    value={estadoFiltro}
+                    onChange={(event) => setEstadoFiltro(event.target.value)}
+                    disabled={loading}
+                    aria-label="Filtrar por estado"
+                  >
+                    <option value="todos">Todos</option>
+                    <option value="activos">Activas</option>
+                    <option value="inactivos">Inactivas</option>
+                  </select>
+                  <select
+                    className="form-select menu-salsas-admin__toolbar-select"
+                    value={nivelPicanteFiltro}
+                    onChange={(event) => setNivelPicanteFiltro(event.target.value)}
+                    disabled={loading}
+                    aria-label="Filtrar por nivel picante"
+                  >
+                    <option value="todos">Todos los niveles</option>
+                    {[0, 1, 2, 3, 4, 5].map((level) => (
+                      <option key={`filtro-picante-${level}`} value={String(level)}>
+                        Picante {level}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     className="btn menu-salsas-admin__order-btn"
@@ -657,6 +739,7 @@ const MenuSalsasAdmin = () => {
                                   className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action menu-salsas-admin__action-btn menu-salsas-admin__action-btn--edit"
                                   onClick={() => onEditSalsa(row)}
                                   title="Editar"
+                                  disabled={!canEditSalsa}
                                 >
                                   <i className="bi bi-pencil-square" aria-hidden="true" />
                                   <span className="inv-catpro-action-label">Editar</span>
@@ -667,6 +750,7 @@ const MenuSalsasAdmin = () => {
                                   className={`inv-catpro-action ${isActive ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action menu-salsas-admin__action-btn menu-salsas-admin__action-btn--state`}
                                   onClick={() => setEstadoConfirm(row)}
                                   title={isActive ? 'Inactivar' : 'Activar'}
+                                  disabled={!canToggleSalsaEstado}
                                 >
                                   <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
                                   <span className="inv-catpro-action-label">{isActive ? 'Inactivar' : 'Activar'}</span>
@@ -743,7 +827,7 @@ const MenuSalsasAdmin = () => {
           </div>
           <div className="menu-salsas-receta-admin__header-actions">
             <span className="inv-prod-active-filter-pill">{activeSalsas.length} salsas</span>
-            <button type="button" className="btn inv-prod-btn-primary" onClick={onAddRule}>
+            <button type="button" className="btn inv-prod-btn-primary" onClick={onAddRule} disabled={!canEditSalsa}>
               <i className="bi bi-plus-lg" /> Nueva regla
             </button>
           </div>
@@ -834,7 +918,7 @@ const MenuSalsasAdmin = () => {
             <section className="menu-salsas-receta-admin__right">
               <div className="menu-salsas-receta-admin__right-head">
                 <div className="menu-salsas-receta-admin__section-title"><i className="bi bi-sliders" />Reglas de salsas por unidades</div>
-                <button type="button" className="btn btn-outline-danger" onClick={onAddRule}>+ Agregar regla</button>
+                <button type="button" className="btn btn-outline-danger" onClick={onAddRule} disabled={!canEditSalsa}>+ Agregar regla</button>
               </div>
 
               <div className="table-responsive menu-salsas-receta-admin__rules-table">
@@ -856,19 +940,19 @@ const MenuSalsasAdmin = () => {
                       rules.map((rule) => (
                         <tr key={rule.id_local}>
                           <td>
-                            <input type="number" className="form-control form-control-sm" min={1} value={rule.min_unidades} onChange={(event) => onChangeRule(rule.id_local, 'min_unidades', event.target.value)} />
+                            <input type="number" className="form-control form-control-sm" min={1} value={rule.min_unidades} onChange={(event) => onChangeRule(rule.id_local, 'min_unidades', event.target.value)} disabled={!canEditSalsa} />
                             <small>unidad</small>
                           </td>
                           <td>
-                            <input type="number" className="form-control form-control-sm" min={1} placeholder="Sin maximo" value={rule.max_unidades} onChange={(event) => onChangeRule(rule.id_local, 'max_unidades', event.target.value)} />
+                            <input type="number" className="form-control form-control-sm" min={1} placeholder="Sin maximo" value={rule.max_unidades} onChange={(event) => onChangeRule(rule.id_local, 'max_unidades', event.target.value)} disabled={!canEditSalsa} />
                             <small>{rule.max_unidades === '' ? 'Sin máximo' : 'unidad'}</small>
                           </td>
                           <td>
-                            <input type="number" className="form-control form-control-sm" min={0} value={rule.salsas_requeridas} onChange={(event) => onChangeRule(rule.id_local, 'salsas_requeridas', event.target.value)} />
+                            <input type="number" className="form-control form-control-sm" min={0} value={rule.salsas_requeridas} onChange={(event) => onChangeRule(rule.id_local, 'salsas_requeridas', event.target.value)} disabled={!canEditSalsa} />
                             <small>salsa</small>
                           </td>
                           <td>
-                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => onRemoveRule(rule.id_local)} aria-label="Eliminar regla">
+                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => onRemoveRule(rule.id_local)} aria-label="Eliminar regla" disabled={!canEditSalsa}>
                               <i className="bi bi-trash" />
                             </button>
                           </td>
@@ -884,7 +968,7 @@ const MenuSalsasAdmin = () => {
                   type="button"
                   className="btn inv-prod-btn-primary"
                   onClick={() => void onSaveRecipeConfig()}
-                  disabled={savingConfig || !selectedRecetaId}
+                  disabled={savingConfig || !selectedRecetaId || !canEditSalsa}
                 >
                   <i className="bi bi-floppy" /> {savingConfig ? 'Guardando...' : 'Guardar configuración'}
                 </button>

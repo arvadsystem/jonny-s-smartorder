@@ -1314,7 +1314,7 @@
 
 .menu-salsas-admin__table-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px;
@@ -1366,6 +1366,16 @@
   display: inline-flex !important;
   align-items: center;
   gap: 8px;
+}
+
+.menu-salsas-admin__toolbar-select {
+  min-height: 44px !important;
+  min-width: 152px;
+  border: 1px solid #e8dfd2 !important;
+  border-radius: 12px !important;
+  color: #55362b !important;
+  background: #fffaf5 !important;
+  box-shadow: none !important;
 }
 
 .menu-salsas-admin__salsa-cell {
@@ -1480,7 +1490,7 @@
   }
 
   .menu-salsas-admin__table-toolbar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 8px;
   }
 
@@ -1492,6 +1502,12 @@
     grid-column: 1 / -1;
     width: 100%;
     justify-content: space-between !important;
+  }
+
+  .menu-salsas-admin__toolbar-select {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
   }
 
   .menu-salsas-admin__table-toolbar .personas-page__inactive-toggle {

@@ -5,6 +5,7 @@ const RecetasToolbar = ({
   onOpenFilters,
   drawerOpen,
   onOpenCreate,
+  canCreate = true,
   showInactiveOnly,
   onToggleInactiveOnly
 }) => (
@@ -38,6 +39,7 @@ const RecetasToolbar = ({
       title="Nuevo"
       aria-expanded={drawerOpen}
       aria-controls="menu-recetas-form-drawer"
+      disabled={!canCreate}
     >
       <i className="bi bi-plus-circle" />
       <span>Nueva receta</span>

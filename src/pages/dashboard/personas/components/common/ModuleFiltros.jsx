@@ -29,13 +29,14 @@ export default function ModuleFiltros({
     .replace(/^filtros\s+de\s+/i, "")
     .trim();
 
+  if (!open) return null;
+
   return (
     <aside
-      className={`inv-prod-drawer inv-cat-v2__drawer inv-cat-v2__drawer--filters personas-module-filters-drawer ${open ? "show" : ""}`}
+      className="inv-prod-drawer inv-cat-v2__drawer inv-cat-v2__drawer--filters personas-module-filters-drawer show"
       id={drawerId}
       role="dialog"
       aria-modal="true"
-      aria-hidden={!open}
     >
       <div className="inv-prod-drawer-body inv-cat-v2__drawer-body">
         <div className="inv-cat-create-hero inv-cat-filter-hero">

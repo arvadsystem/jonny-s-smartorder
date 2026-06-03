@@ -201,7 +201,7 @@ const RecetasFormDrawer = ({
 
                     {requiresSpiceLevel && (
                       <div className="col-12 col-md-6">
-                        <label className="form-label" htmlFor="receta_id_nivel_picante">ID nivel picante</label>
+                        <label className="form-label" htmlFor="receta_id_nivel_picante">Nivel picante</label>
                         <input
                           id="receta_id_nivel_picante"
                           type="number"
@@ -213,7 +213,7 @@ const RecetasFormDrawer = ({
                           placeholder="Ej: 5"
                           required
                         />
-                        <div className="form-text">Campo obligatorio solo para recetas de alitas o Tenders.</div>
+                        <div className="form-text">Campo interno requerido solo para recetas de alitas o tenders.</div>
                       </div>
                     )}
 

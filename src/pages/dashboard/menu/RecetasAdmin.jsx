@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import RecetasFormDrawer from './components/RecetasFormDrawer';
 import RecetasTable from './components/RecetasTable';
 import RecetasToolbar from './components/RecetasToolbar';
@@ -9,6 +11,7 @@ import useRecetasAdmin from './hooks/useRecetasAdmin';
 import { resolveRecetaActiva } from './utils/recetasAdminUtils';
 
 const RecetasAdmin = () => {
+  const { canAny } = usePermisos();
   const {
     state: {
       loading,
@@ -68,6 +71,9 @@ const RecetasAdmin = () => {
 
   const [toastMessage, setToastMessage] = useState('');
   const [estadoConfirm, setEstadoConfirm] = useState(null);
+  const canCreateReceta = canAny([PERMISSIONS.MENU_RECETAS_CREAR, PERMISSIONS.MENU_VER]);
+  const canEditReceta = canAny([PERMISSIONS.MENU_RECETAS_EDITAR, PERMISSIONS.MENU_VER]);
+  const canToggleReceta = canAny([PERMISSIONS.MENU_RECETAS_ESTADO_CAMBIAR, PERMISSIONS.MENU_VER]);
 
   // Muestra confirmacion visible despues de crear/editar/cambiar estado de recetas.
   useEffect(() => {
@@ -133,6 +139,7 @@ const RecetasAdmin = () => {
               onOpenFilters={openFiltersDrawer}
               drawerOpen={drawerOpen}
               onOpenCreate={openCreateDrawer}
+              canCreate={canCreateReceta}
               showInactiveOnly={filters.estado === 'inactivos'}
               onToggleInactiveOnly={setShowInactiveOnly}
             />
@@ -152,6 +159,8 @@ const RecetasAdmin = () => {
               showInactiveOnly={filters.estado === 'inactivos'}
               viewMode={viewMode}
               togglingId={togglingId}
+              canEdit={canEditReceta}
+              canToggleState={canToggleReceta}
               cardImageErrors={cardImageErrors}
               onCardImageError={setCardImageError}
               onEditar={onEditar}

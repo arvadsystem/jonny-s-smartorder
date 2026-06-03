@@ -253,7 +253,8 @@ export default function EmpleadoCard({
           <img
             src={imageSrc}
             alt={toDisplayValue(personaNombre, "Empleado")}
-            loading="lazy"
+            loading="eager"
+            decoding="async"
             onError={() => setHasImageError(true)}
           />
         ) : (

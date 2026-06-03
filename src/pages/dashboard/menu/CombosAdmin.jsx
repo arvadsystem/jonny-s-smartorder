@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { usePermisos } from '../../../context/PermisosContext';
+import { PERMISSIONS } from '../../../utils/permissions';
 import CombosFormDrawer from './components/CombosFormDrawer';
 import CombosTable from './components/CombosTable';
 import CombosToolbar from './components/CombosToolbar';
@@ -9,6 +11,7 @@ import useCombosAdmin from './hooks/useCombosAdmin';
 import { resolveComboActivo, resolveComboNombre } from './utils/combosAdminUtils';
 
 const CombosAdmin = () => {
+  const { canAny } = usePermisos();
   const {
     state: {
       loading,
@@ -55,6 +58,14 @@ const CombosAdmin = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [estadoConfirm, setEstadoConfirm] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const canCreateCombo = canAny([PERMISSIONS.MENU_COMBOS_CREAR, PERMISSIONS.MENU_VER]);
+  const canEditCombo = canAny([PERMISSIONS.MENU_COMBOS_EDITAR, PERMISSIONS.MENU_VER]);
+  const canToggleCombo = canAny([PERMISSIONS.MENU_COMBOS_ESTADO_CAMBIAR, PERMISSIONS.MENU_VER]);
+  const canEditComboDetail = canAny([
+    PERMISSIONS.MENU_COMBOS_DETALLE_EDITAR,
+    PERMISSIONS.MENU_COMBOS_EDITAR,
+    PERMISSIONS.MENU_VER
+  ]);
   const [filtersDraft, setFiltersDraft] = useState({
     estado: showInactiveOnly ? 'inactivos' : 'activos',
     sortBy: 'recientes'
@@ -114,6 +125,7 @@ const CombosAdmin = () => {
             onOpenFilters={() => setFiltersOpen(true)}
             drawerOpen={drawerOpen}
             onOpenCreate={openCreateDrawer}
+            canCreate={canCreateCombo}
             showInactiveOnly={showInactiveOnly}
             onToggleInactiveOnly={setShowInactiveOnly}
           />
@@ -134,6 +146,8 @@ const CombosAdmin = () => {
             onCardImageError={setCardImageError}
             onEditar={onEditar}
             onCambiarEstado={setEstadoConfirm}
+            canEdit={canEditCombo}
+            canToggleState={canToggleCombo}
           />
         </div>
       </div>
@@ -214,6 +228,9 @@ const CombosAdmin = () => {
         onAgregarRecetaDetalle={onAgregarRecetaDetalle}
         onActualizarDetalleReceta={onActualizarDetalleReceta}
         onQuitarRecetaDetalle={onQuitarRecetaDetalle}
+        canCreate={canCreateCombo}
+        canEdit={canEditCombo}
+        canEditDetail={canEditComboDetail}
       />
 
       <MenuActionToast

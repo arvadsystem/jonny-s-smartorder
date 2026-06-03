@@ -89,7 +89,8 @@ export default function UsuarioCard({
           <img
             src={resolvedPhotoSrc}
             alt={nombre}
-            loading="lazy"
+            loading="eager"
+            decoding="async"
             referrerPolicy="no-referrer"
             onError={() => setFailedImageSrc(resolvedPhotoSrc)}
           />

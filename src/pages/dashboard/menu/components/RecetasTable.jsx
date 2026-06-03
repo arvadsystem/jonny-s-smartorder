@@ -15,6 +15,8 @@ const RecetasTable = ({
   showInactiveOnly = false,
   viewMode,
   togglingId,
+  canEdit = true,
+  canToggleState = true,
   cardImageErrors,
   onCardImageError,
   onEditar,
@@ -88,6 +90,7 @@ const RecetasTable = ({
                         className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action"
                         onClick={() => onEditar(id)}
                         title="Editar"
+                        disabled={!canEdit}
                       >
                         <i className="bi bi-pencil-square" aria-hidden="true" />
                         <span className="inv-catpro-action-label">Editar</span>
@@ -97,7 +100,7 @@ const RecetasTable = ({
                         // Replica el boton de estado de Inventarios > Categorias (Inactivar/Activar).
                         className={`inv-catpro-action ${estadoActivo ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
                         onClick={() => onCambiarEstado(receta)}
-                        disabled={togglingId === id}
+                        disabled={togglingId === id || !canToggleState}
                         title={estadoActivo ? 'Inactivar' : 'Activar'}
                       >
                         <i className={`bi ${estadoActivo ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
@@ -146,7 +149,14 @@ const RecetasTable = ({
           104
         );
         const menuId = String(receta?.id_menu ?? '-');
-        const departamentoId = String(receta?.id_tipo_departamento ?? '-');
+        const departamentoLabel = String(
+          receta?.nombre_tipo_departamento ??
+          receta?.nombre_departamento ??
+          receta?.tipo_departamento ??
+          receta?.departamento ??
+          receta?.id_tipo_departamento ??
+          '-'
+        );
 
         return (
           <article
@@ -190,7 +200,7 @@ const RecetasTable = ({
                 </div>
                 <div>
                   <small>Departamento</small>
-                  <strong>{departamentoId}</strong>
+                  <strong>{departamentoLabel}</strong>
                 </div>
               </div>
             </div>
@@ -202,6 +212,7 @@ const RecetasTable = ({
                 className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action"
                 onClick={() => onEditar(id)}
                 title="Editar"
+                disabled={!canEdit}
               >
                 <i className="bi bi-pencil-square" aria-hidden="true" />
                 <span className="inv-catpro-action-label">Editar</span>
@@ -211,7 +222,7 @@ const RecetasTable = ({
                 // Replica el boton de estado de Inventarios > Categorias (Inactivar/Activar).
                 className={`inv-catpro-action ${estadoActivo ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
                 onClick={() => onCambiarEstado(receta)}
-                disabled={togglingId === id}
+                disabled={togglingId === id || !canToggleState}
                 title={estadoActivo ? 'Inactivar' : 'Activar'}
               >
                 <i className={`bi ${estadoActivo ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
