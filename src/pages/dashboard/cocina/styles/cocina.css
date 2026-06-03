@@ -1276,6 +1276,11 @@
   border-color: rgba(34, 197, 94, 0.35);
 }
 
+.kds-toast.is-warning {
+  background: var(--kds-surface-2);
+  border-color: rgba(245, 158, 11, 0.38);
+}
+
 .kds-toast.is-danger {
   background: var(--kds-surface-2);
   border-color: rgba(239, 68, 68, 0.35);
@@ -1292,6 +1297,7 @@
 }
 
 .kds-toast.is-success .kds-toast__icon { background: var(--kds-green-dim); color: var(--kds-green); }
+.kds-toast.is-warning .kds-toast__icon { background: rgba(245, 158, 11, 0.14); color: #f59e0b; }
 .kds-toast.is-danger  .kds-toast__icon { background: var(--kds-red-dim);   color: var(--kds-red); }
 
 .kds-toast__body { flex: 1; }
@@ -1304,6 +1310,7 @@
 }
 
 .kds-toast.is-success .kds-toast__title { color: var(--kds-green); }
+.kds-toast.is-warning .kds-toast__title { color: #f59e0b; }
 .kds-toast.is-danger  .kds-toast__title { color: var(--kds-red); }
 
 .kds-toast__message {

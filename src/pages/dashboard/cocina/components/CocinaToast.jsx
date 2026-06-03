@@ -4,6 +4,7 @@ const _MOTION = motion;
 
 const TOAST_ICONS = {
   success: 'bi bi-check-circle-fill',
+  warning: 'bi bi-exclamation-triangle-fill',
   danger: 'bi bi-exclamation-circle-fill'
 };
 

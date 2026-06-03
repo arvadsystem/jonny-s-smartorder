@@ -350,7 +350,12 @@ export const useCocina = ({
       try {
         const response = await cocinaApi.updateEstado(idPedido, estadoDestino);
         setPedidos((current) => applyKitchenTransition(current, idPedido, estadoDestino));
-        if (response?.warning_code === 'CONFIGURACION_INVENTARIO_INCOMPLETA') {
+        if (response?.warning_code === 'STOCK_INSUFICIENTE_PERMITIDO') {
+          openToast('INVENTARIO EN NEGATIVO', 'El pedido inició preparación, pero algunos insumos quedaron en negativo.', 'warning', {
+            origin: 'user-action',
+            code: 'ACTION_WARNING'
+          });
+        } else if (response?.warning_code === 'CONFIGURACION_INVENTARIO_INCOMPLETA') {
           openToast('PEDIDO LISTO', 'Pedido marcado como listo correctamente.', 'success', {
             origin: 'user-action',
             code: 'ADMIN_WARNING'
