@@ -138,6 +138,7 @@ export default function CocinaOrderCard({
   now,
   disabled,
   onOpenDetail,
+  onOpenInventoryAlerts,
   onOpenConfirm
 }) {
   const action = getOrderAction(pedido);
@@ -179,7 +180,10 @@ export default function CocinaOrderCard({
   const isPublicMenu = allItems.some(
     (item) => String(item.observacion || '').includes('[PUBLIC-MENU]')
   );
-  const hasStatusBadges = isExpiring || isPublicMenu;
+  const inventoryAlertsTotal = Number(pedido?.inventario_alertas_total ?? 0) || 0;
+  const inventoryAlertsPending = Number(pedido?.inventario_alertas_pendientes ?? 0) || 0;
+  const hasInventoryAlerts = inventoryAlertsTotal > 0;
+  const hasStatusBadges = isExpiring || isPublicMenu || hasInventoryAlerts;
   const renderItem = (item) => {
     const groupedMods = buildItemModGroups(item).sort((a, b) => {
       const rank = { salsa: 0, complemento: 1, nota: 2, mod: 3 };
@@ -261,6 +265,21 @@ export default function CocinaOrderCard({
             <span className="kds-chip is-public-menu">
               <i className="bi bi-globe" /> Online
             </span>
+          )}
+          {hasInventoryAlerts && (
+            <button
+              type="button"
+              className="kds-chip kds-card__inventory-alert"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenInventoryAlerts?.(pedido);
+              }}
+              aria-label={`Ver ${inventoryAlertsTotal} alertas de inventario del pedido`}
+            >
+              <i className="bi bi-exclamation-diamond-fill" aria-hidden="true" />
+              <span>Inventario con advertencias</span>
+              <strong>{inventoryAlertsPending || inventoryAlertsTotal}</strong>
+            </button>
           )}
         </div>
       ) : null}
