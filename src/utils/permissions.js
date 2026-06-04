@@ -699,6 +699,12 @@ const VENTAS_TAB_PERMISSIONS_MAP = Object.freeze({
     PERMISSIONS.VENTAS_VER,
     PERMISSIONS.VENTAS_DETALLE_VER
   ]),
+  alertas: uniquePermissions([
+    PERMISSIONS.VENTAS_VER,
+    PERMISSIONS.INVENTARIO_ALERTAS_VER,
+    PERMISSIONS.INVENTARIO_ALERTAS_STOCK_MINIMO_EDITAR,
+    PERMISSIONS.INVENTARIO_MOVIMIENTOS_EDITAR
+  ]),
   descuentos: uniquePermissions([
     PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_VER,
     PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_CREAR,
@@ -976,6 +982,7 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'ventas', label: 'Ventas', icon: 'bi bi-receipt-cutoff', required: VENTAS_TAB_PERMISSIONS_MAP.ventas },
     { key: 'caja', label: 'Caja', icon: 'bi bi-cart3', required: VENTAS_TAB_PERMISSIONS_MAP.caja },
     { key: 'pedidos', label: 'Pedidos', icon: 'bi bi-journal-richtext', required: VENTAS_TAB_PERMISSIONS_MAP.pedidos },
+    { key: 'alertas', label: 'Alertas', icon: 'bi bi-exclamation-triangle', required: VENTAS_TAB_PERMISSIONS_MAP.alertas },
     { key: 'descuentos', label: 'Descuentos', icon: 'bi bi-tags', required: VENTAS_TAB_PERMISSIONS_MAP.descuentos }
   ],
   'cierres-caja': [

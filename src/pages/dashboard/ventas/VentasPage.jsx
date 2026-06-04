@@ -6,6 +6,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { normalizeCierresCajaTab } from '../../../utils/cierresCajaRouting';
 import CajaView from './components/CajaView';
 import DescuentosView from './components/DescuentosView';
+import InventarioAlertasView from './components/InventarioAlertasView';
 import PedidosView from './components/PedidosView';
 import VentaDetalleModal from './components/VentaDetalleModal';
 import VentaOverviewView from './components/VentaOverviewView';
@@ -21,7 +22,7 @@ import {
 } from '../../../utils/permissions';
 import './styles/ventas.css';
 
-const VENTAS_TABS = new Set(['ventas', 'caja', 'pedidos', 'descuentos']);
+const VENTAS_TABS = new Set(['ventas', 'caja', 'pedidos', 'alertas', 'descuentos']);
 
 const hasCreateVentaDetailPayload = (response) =>
   response?.ticket_ready === true &&
@@ -275,6 +276,9 @@ export default function VentasPage() {
           defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           scopeInfo={scopeInfo}
         />
+      ) : null}
+      {activeTab === 'alertas' ? (
+        <InventarioAlertasView />
       ) : null}
       {activeTab === 'descuentos' ? (
         <DescuentosView

@@ -44,6 +44,10 @@ const ventasService = {
     apiFetch(`/ventas/descuentos-catalogos/${id}`, 'PUT', payload),
   toggleDescuentoCatalogoEstado: (id, estado) =>
     apiFetch(`/ventas/descuentos-catalogos/${id}/estado`, 'PATCH', { estado }),
+  listInventarioAlertas: (params = {}) =>
+    apiFetch(`/ventas/inventario-alertas${buildQuery(params)}`, 'GET'),
+  updateInventarioAlertaEstado: (idAlerta, payload) =>
+    apiFetch(`/ventas/inventario-alertas/${idAlerta}/estado`, 'PATCH', payload),
 
   // Pedidos menú público
   getPedidosMenu: (params = {}) => apiFetch(`/ventas/pedidos-menu${buildQuery(params)}`, 'GET'),
