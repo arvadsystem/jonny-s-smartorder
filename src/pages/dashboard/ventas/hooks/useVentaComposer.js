@@ -21,7 +21,11 @@ import {
   normalizeDiscountScope,
   resolveBestDiscountForLine
 } from '../../../../modules/ventas/utils/ventasDiscountUtils';
-import { formatCurrency, roundMoney } from '../utils/ventasHelpers';
+import {
+  buildPaidSalePayload as buildPaidSaleRequestPayload,
+  buildPedidoPendientePayload as buildPedidoPendienteRequestPayload
+} from '../../../../modules/ventas/utils/ventasPayloadBuilders';
+import { formatCurrency, roundMoney } from '../../../../modules/ventas/utils/ventasMoneyUtils';
 import ventasService from '../../../../services/ventasService';
 
 export { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
@@ -858,49 +862,6 @@ export const useVentaComposer = ({
     addCatalogItem('PRODUCTO', currentCatalogRows[0]);
   };
 
-  const buildItemsPayload = () =>
-    state.cart.map((line) => {
-      const payload = {
-        cart_key: line.cartKey,
-        id_producto: line.id_producto,
-        id_combo: line.id_combo,
-        id_receta: line.id_receta,
-        cantidad: Number(line.cantidad)
-      };
-      const lineDiscountId = Number(line.id_descuento_catalogo_linea || 0);
-      if (canApplyDiscount && lineDiscountId > 0) {
-        payload.id_descuento_catalogo = lineDiscountId;
-      }
-      if (line.kind !== 'PRODUCTO') {
-        payload.observacion = String(line.observacion || '').trim() || null;
-      }
-      const complementos = normalizeComplementIds(line.complementos);
-      if (complementos.length > 0) {
-        payload.complementos = complementos.map((id) => ({ id_complemento: id }));
-      }
-      if (line.kind !== 'PRODUCTO' && line.complementos_incompletos_autorizados) {
-        payload.complementos_incompletos_autorizados = true;
-      }
-      const extras = normalizeExtras(line.extras);
-      if (extras.length > 0) {
-        payload.extras = extras.map((entry) => ({
-          id_extra: entry.id_extra,
-          cantidad: entry.cantidad
-        }));
-      }
-      return payload;
-    });
-
-  const buildDescuentosLineaPayload = () => {
-    if (!canApplyDiscount) return [];
-    return state.cart
-      .map((line) => ({
-        cart_key: line.cartKey,
-        id_descuento_catalogo: Number(line.id_descuento_catalogo_linea || 0)
-      }))
-      .filter((line) => line.id_descuento_catalogo > 0);
-  };
-
   const validateBaseSale = () => {
     if (!hasSelectedSucursal) {
       setPartialState({
@@ -941,48 +902,26 @@ export const useVentaComposer = ({
     return true;
   };
 
-  const applyDiscountPayloadFields = (payload) => {
-    if (!canApplyDiscount) return payload;
-    if (state.selectedDiscountId) {
-      return {
-        ...payload,
-        id_descuento_catalogo: Number(state.selectedDiscountId)
-      };
-    }
-    return payload;
-  };
-
   const buildPaidSalePayload = ({ cuentaDividida } = {}) =>
-    applyDiscountPayloadFields({
-      id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
-      id_sucursal: selectedSucursalId,
-      metodo_pago: state.paymentMethod,
-      referencia_pago: state.paymentMethod !== 'efectivo' ? state.referenciaPago.trim() : null,
-      efectivo_entregado: cashValue,
-      id_sesion_caja: toNormalizedId(state.temporarySessionId),
-      descripcion_pedido: null,
-      items: buildItemsPayload(),
-      ...(Array.isArray(cuentaDividida) ? { cuenta_dividida: cuentaDividida } : {})
+    buildPaidSaleRequestPayload({
+      state,
+      selectedSucursalId,
+      cashValue,
+      canApplyDiscount,
+      cuentaDividida
     });
 
-  const buildPedidoPendientePayload = ({ contacto, contexto, pagoPendiente, delivery, cuentaDividida }) => {
-    const descuentosLinea = buildDescuentosLineaPayload();
-    const payload = applyDiscountPayloadFields({
-      id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
-      id_sucursal: selectedSucursalId,
-      items: buildItemsPayload(),
-      id_sesion_caja: toNormalizedId(state.temporarySessionId),
+  const buildPedidoPendientePayload = ({ contacto, contexto, pagoPendiente, delivery, cuentaDividida }) =>
+    buildPedidoPendienteRequestPayload({
+      state,
+      selectedSucursalId,
+      canApplyDiscount,
       contacto,
       contexto,
-      pago_pendiente: pagoPendiente,
+      pagoPendiente,
       delivery,
-      ...(Array.isArray(cuentaDividida) ? { cuenta_dividida: cuentaDividida } : {})
+      cuentaDividida
     });
-    if (descuentosLinea.length > 0) {
-      payload.descuentos_linea = descuentosLinea;
-    }
-    return payload;
-  };
 
   const submitPaidSale = async (cuentaDividida) => {
     if (!validatePaidSale()) return null;

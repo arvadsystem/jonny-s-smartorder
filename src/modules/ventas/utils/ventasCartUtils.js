@@ -1,4 +1,4 @@
-import { roundMoney } from '../../../pages/dashboard/ventas/utils/ventasHelpers';
+import { roundMoney } from './ventasMoneyUtils';
 
 export const normalizeComplementIds = (value) =>
   [...new Set(

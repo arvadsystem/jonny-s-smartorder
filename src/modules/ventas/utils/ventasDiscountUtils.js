@@ -1,5 +1,5 @@
-import { roundMoney } from '../../../pages/dashboard/ventas/utils/ventasHelpers';
 import { toNormalizedId } from './ventasCartUtils';
+import { roundMoney } from './ventasMoneyUtils';
 
 export const normalizeDiscountType = (value) =>
   String(value || '')
