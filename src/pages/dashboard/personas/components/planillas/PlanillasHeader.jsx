@@ -17,9 +17,9 @@ const buildPeriodoRangeLabel = ({ planilla, periodo = '', tipoPeriodo = 'mensual
   const end = toText(planilla?.periodo_fin || planilla?.fecha_fin, '');
   if (start && end) return `${start} al ${end}`;
   if (String(tipoPeriodo).toLowerCase() === 'quincenal') {
-    return String(quincena) === '2' ? `${periodo || 'Periodo'} · 16 al fin de mes` : `${periodo || 'Periodo'} · 1 al 15`;
+    return String(quincena) === '2' ? `${periodo || 'Periodo'} Â· 16 al fin de mes` : `${periodo || 'Periodo'} Â· 1 al 15`;
   }
-  return `${periodo || 'Periodo'} · Mes completo`;
+  return `${periodo || 'Periodo'} Â· Mes completo`;
 };
 
 export default function PlanillasHeader({
@@ -32,12 +32,14 @@ export default function PlanillasHeader({
   selectedPlanilla = null,
   onGenerar,
   onRecalcular,
+  onReabrir,
   onCerrar,
   onPagar,
   onAnular,
   onExport,
   canGenerar = false,
   canRecalcular = false,
+  canReabrir = false,
   canCerrar = false,
   canPagar = false,
   canAnular = false,
@@ -67,10 +69,10 @@ export default function PlanillasHeader({
     (selectedPlanilla?.id_planilla ? `PLA-${selectedPlanilla.id_planilla}` : 'Sin planilla');
   const periodoLabel =
     String(tipoPeriodo).toLowerCase() === 'quincenal'
-      ? `${periodo || 'Sin periodo'} · ${String(quincena) === '2' ? 'Q2 (16-fin)' : 'Q1 (1-15)'}`
-      : `${periodo || 'Sin periodo'} · Mensual`;
+      ? `${periodo || 'Sin periodo'} Â· ${String(quincena) === '2' ? 'Q2 (16-fin)' : 'Q1 (1-15)'}`
+      : `${periodo || 'Sin periodo'} Â· Mensual`;
   const hasActionButtons = Boolean(
-    canExport || canGenerar || canRecalcular || canCerrar || canPagar || canAnular
+    canExport || canGenerar || canRecalcular || canReabrir || canCerrar || canPagar || canAnular
   );
   const isQuincenal = String(tipoPeriodo).toLowerCase() === 'quincenal';
   const periodoRangeLabel = buildPeriodoRangeLabel({ planilla: selectedPlanilla, periodo, tipoPeriodo, quincena });
@@ -86,7 +88,7 @@ export default function PlanillasHeader({
               selectedPlanilla?.sucursal ||
               selectedPlanilla?.sucursal_nombre ||
               'Selecciona sucursal'}{' '}
-            · {periodoLabel}
+            Â· {periodoLabel}
           </p>
         </div>
         <span className={`planillas-badge planillas-badge--${estadoRaw || 'na'}`}>{estadoLabel}</span>
@@ -175,6 +177,19 @@ export default function PlanillasHeader({
               Recalcular
             </button>
           ) : null}
+
+          {canReabrir ? (
+            <button
+              type="button"
+              className="btn planillas-header__btn planillas-header__btn--secondary"
+              onClick={onReabrir}
+              disabled={loadingAction || !selectedPlanilla?.id_planilla}
+            >
+              <i className="bi bi-arrow-counterclockwise me-1" />
+              Reabrir
+            </button>
+          ) : null}
+
 
           {canCerrar ? (
             <button
