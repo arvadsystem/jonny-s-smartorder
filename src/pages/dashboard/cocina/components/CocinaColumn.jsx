@@ -21,6 +21,7 @@ export default function CocinaColumn({
   now,
   mutatingIds,
   onOpenDetail,
+  onOpenInventoryAlerts,
   onOpenConfirm
 }) {
   const column = getColumnMeta(columnKey);
@@ -51,6 +52,7 @@ export default function CocinaColumn({
               canDeliverPedido={canDeliverPedido}
               disabled={mutatingIds.includes(pedido.id_pedido)}
               onOpenDetail={onOpenDetail}
+              onOpenInventoryAlerts={onOpenInventoryAlerts}
               onOpenConfirm={onOpenConfirm}
             />
           ))}

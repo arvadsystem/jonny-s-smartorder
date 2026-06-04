@@ -15,6 +15,7 @@ const buildQuery = (params = {}) => {
 
 const cocinaService = {
   listPedidos: (params = {}) => apiFetch(`/cocina/pedidos${buildQuery(params)}`, 'GET'),
+  getInventarioAlertas: (idPedido) => apiFetch(`/ventas/pedidos/${idPedido}/inventario-alertas`, 'GET'),
   updatePedidoEstado: (idPedido, payload) =>
     apiFetch(`/cocina/pedidos/${idPedido}/estado`, 'PUT', payload)
 };

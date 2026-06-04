@@ -212,6 +212,8 @@ export const normalizeKitchenOrder = (row) => {
     id_sucursal: Number(row?.id_sucursal ?? 0) || null,
     id_estado_pedido: Number(row?.id_estado_pedido ?? 0) || null,
     total: roundMoney(row?.total),
+    inventario_alertas_total: Number(row?.inventario_alertas_total ?? 0) || 0,
+    inventario_alertas_pendientes: Number(row?.inventario_alertas_pendientes ?? 0) || 0,
     total_items: Number(row?.total_items ?? 0) || 0,
     numero_ticket: String(row?.numero_ticket ?? ''),
     nombre_sucursal: String(row?.nombre_sucursal ?? 'Sucursal no definida'),

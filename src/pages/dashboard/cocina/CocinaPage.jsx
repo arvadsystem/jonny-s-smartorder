@@ -5,9 +5,11 @@ import { normalizeRoleName, PERMISSIONS } from '../../../utils/permissions';
 import CocinaBoard from './components/CocinaBoard';
 import CocinaConfirmModal from './components/CocinaConfirmModal';
 import CocinaDetailModal from './components/CocinaDetailModal';
+import CocinaInventoryAlertsModal from './components/CocinaInventoryAlertsModal';
 import CocinaSucursalTabs from './components/CocinaSucursalTabs';
 import CocinaToast from './components/CocinaToast';
 import CocinaToolbar from './components/CocinaToolbar';
+import { cocinaApi } from './services/cocinaApi';
 import { useCocina } from './hooks/useCocina';
 import {
   groupOrdersByColumn,
@@ -34,6 +36,13 @@ export default function CocinaPage() {
   const [search, setSearch] = useState('');
   const [selectedSucursalId, setSelectedSucursalId] = useState(null);
   const [selectedPedido, setSelectedPedido] = useState(null);
+  const [inventoryAlertsState, setInventoryAlertsState] = useState({
+    open: false,
+    pedido: null,
+    loading: false,
+    error: '',
+    alertas: []
+  });
   const [confirmState, setConfirmState] = useState({ pedido: null, action: null });
   const [now, setNow] = useState(() => Date.now());
   const pageRef = useRef(null);
@@ -185,6 +194,46 @@ export default function CocinaPage() {
     } catch { /* el hook ya gestiona el feedback */ }
   }, [advancePedido, canAdvancePedido, confirmState, selectedPedido]);
 
+  const handleOpenInventoryAlerts = useCallback(async (pedido) => {
+    if (!pedido?.id_pedido) return;
+    setInventoryAlertsState({
+      open: true,
+      pedido,
+      loading: true,
+      error: '',
+      alertas: []
+    });
+
+    try {
+      const response = await cocinaApi.getInventarioAlertas(pedido.id_pedido);
+      setInventoryAlertsState({
+        open: true,
+        pedido,
+        loading: false,
+        error: '',
+        alertas: Array.isArray(response?.alertas) ? response.alertas : []
+      });
+    } catch {
+      setInventoryAlertsState({
+        open: true,
+        pedido,
+        loading: false,
+        error: 'No se pudieron cargar las alertas.',
+        alertas: []
+      });
+    }
+  }, []);
+
+  const handleCloseInventoryAlerts = useCallback(() => {
+    setInventoryAlertsState({
+      open: false,
+      pedido: null,
+      loading: false,
+      error: '',
+      alertas: []
+    });
+  }, []);
+
   return (
     <div className={`cocina-page${isPantallaCocina ? ' cocina-page--tv-mode' : ''}`} ref={pageRef}>
       <div className="kds-root">
@@ -255,6 +304,7 @@ export default function CocinaPage() {
               if (!canViewDetail) return;
               setSelectedPedido(pedido);
             }}
+            onOpenInventoryAlerts={handleOpenInventoryAlerts}
             onOpenConfirm={(pedido, action) => {
               setConfirmState({ pedido, action });
             }}
@@ -276,6 +326,15 @@ export default function CocinaPage() {
         saving={saving}
         onCancel={() => setConfirmState({ pedido: null, action: null })}
         onConfirm={handleConfirmAction}
+      />
+
+      <CocinaInventoryAlertsModal
+        open={inventoryAlertsState.open}
+        pedido={inventoryAlertsState.pedido}
+        alertas={inventoryAlertsState.alertas}
+        loading={inventoryAlertsState.loading}
+        error={inventoryAlertsState.error}
+        onClose={handleCloseInventoryAlerts}
       />
 
       <CocinaToast toast={toast} onClose={closeToast} />

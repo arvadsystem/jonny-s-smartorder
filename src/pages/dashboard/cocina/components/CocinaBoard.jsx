@@ -11,6 +11,7 @@ export default function CocinaBoard({
   now,
   mutatingIds,
   onOpenDetail,
+  onOpenInventoryAlerts,
   onOpenConfirm
 }) {
   return (
@@ -28,6 +29,7 @@ export default function CocinaBoard({
           isScreenMode={isScreenMode}
           canDeliverPedido={canDeliverPedido}
           onOpenDetail={onOpenDetail}
+          onOpenInventoryAlerts={onOpenInventoryAlerts}
           onOpenConfirm={onOpenConfirm}
         />
       ))}
