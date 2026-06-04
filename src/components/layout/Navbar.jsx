@@ -19,6 +19,40 @@ const SUPABASE_PUBLIC_BASE = String(import.meta.env.VITE_SUPABASE_URL || '').tri
 const NOTIFICATION_SOUND_URL = SUPABASE_PUBLIC_BASE
   ? `${SUPABASE_PUBLIC_BASE}/storage/v1/object/public/${NOTIFICATION_SOUND_BUCKET_PATH}`
   : `https://ooofeoziqaoqcufifqci.supabase.co/storage/v1/object/public/${NOTIFICATION_SOUND_BUCKET_PATH}`;
+const INVENTARIO_STRONG_ADMIN_PERMISSIONS = [
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER,
+  PERMISSIONS.INVENTARIO_OC_APROBAR,
+  PERMISSIONS.INVENTARIO_OC_RECHAZAR,
+  PERMISSIONS.INVENTARIO_OC_CONVERTIR_CONTINUAR,
+  PERMISSIONS.INVENTARIO_OC_ABASTECER,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_CREAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_EDITAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_CREAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_EDITAR,
+  PERMISSIONS.INVENTARIO_INSUMOS_CREAR,
+  PERMISSIONS.INVENTARIO_INSUMOS_EDITAR,
+  PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR,
+  PERMISSIONS.INVENTARIO_PRODUCTOS_EDITAR,
+  PERMISSIONS.INVENTARIO_ALMACENES_CREAR,
+  PERMISSIONS.INVENTARIO_ALMACENES_EDITAR,
+  PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR,
+  PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR,
+  PERMISSIONS.INVENTARIO_MOBILIARIO_CREAR,
+  PERMISSIONS.INVENTARIO_MOBILIARIO_EDITAR
+];
+const INVENTARIO_OPERATIONAL_PERMISSIONS = [
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR,
+  PERMISSIONS.INVENTARIO_OC_VER_FLUJO,
+  PERMISSIONS.INVENTARIO_OC_VER_DETALLE,
+  PERMISSIONS.INVENTARIO_OC_CREAR_SOLICITUD,
+  PERMISSIONS.INVENTARIO_OC_EDITAR_SOLICITUD,
+  PERMISSIONS.INVENTARIO_OC_RECEPCIONAR
+];
 
 const getTabFromSearch = (search, tabs, fallbackKey, options = {}) => {
   const sp = new URLSearchParams(search || '');
@@ -419,15 +453,25 @@ const Navbar = () => {
     return null;
   }, [location.pathname, location.search]);
 
+  const hasStrongInventoryAdmin = canAny(INVENTARIO_STRONG_ADMIN_PERMISSIONS);
+  const isOperationalInventoryActor =
+    !isSuperAdmin
+    && canAny(INVENTARIO_OPERATIONAL_PERMISSIONS)
+    && !hasStrongInventoryAdmin;
+
   const moduleTabs = useMemo(() => {
     if (!moduleKey) return [];
     const tabs = getAllowedTabs(moduleKey, permisos, { isSuperAdmin });
+    if (moduleKey === 'inventario' && isOperationalInventoryActor) {
+      // AM: en inventario operativo solo se expone Ordenes de compra en la navegacion visual superior.
+      return tabs.filter((tab) => String(tab?.key || '').toLowerCase() === 'ordenes_compra');
+    }
     if (moduleKey === 'personas') {
       const hiddenPersonasTabs = new Set([PLANILLAS_PARENT_TAB_KEY, 'personas', 'empresas']);
       return tabs.filter((tab) => !hiddenPersonasTabs.has(String(tab?.key || '').toLowerCase()));
     }
     return tabs;
-  }, [isSuperAdmin, moduleKey, permisos]);
+  }, [isOperationalInventoryActor, isSuperAdmin, moduleKey, permisos]);
 
   const activeModuleTab = useMemo(() => {
     if (!moduleKey || moduleTabs.length === 0) return null;

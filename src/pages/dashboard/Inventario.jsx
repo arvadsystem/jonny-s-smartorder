@@ -16,14 +16,59 @@ import MobiliarioTab from './inventario/MobiliarioTab.jsx';
 // AJUSTE: centraliza llaves de tabs para mantener consistencia con navegación por querystring.
 // AM: agrega tab de workflow de ordenes de compra en inventario.
 const INVENTARIO_TAB_KEYS = ['categorias', 'insumos', 'productos', 'almacenes', 'ordenes_compra', 'mobiliario'];
+const INVENTARIO_STRONG_ADMIN_PERMISSIONS = [
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER,
+  PERMISSIONS.INVENTARIO_OC_APROBAR,
+  PERMISSIONS.INVENTARIO_OC_RECHAZAR,
+  PERMISSIONS.INVENTARIO_OC_CONVERTIR_CONTINUAR,
+  PERMISSIONS.INVENTARIO_OC_ABASTECER,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_CREAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_EDITAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_CREAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_EDITAR,
+  PERMISSIONS.INVENTARIO_INSUMOS_CREAR,
+  PERMISSIONS.INVENTARIO_INSUMOS_EDITAR,
+  PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR,
+  PERMISSIONS.INVENTARIO_PRODUCTOS_EDITAR,
+  PERMISSIONS.INVENTARIO_ALMACENES_CREAR,
+  PERMISSIONS.INVENTARIO_ALMACENES_EDITAR,
+  PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR,
+  PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR,
+  PERMISSIONS.INVENTARIO_MOBILIARIO_CREAR,
+  PERMISSIONS.INVENTARIO_MOBILIARIO_EDITAR
+];
+const INVENTARIO_OPERATIONAL_PERMISSIONS = [
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR,
+  PERMISSIONS.INVENTARIO_OC_VER_FLUJO,
+  PERMISSIONS.INVENTARIO_OC_VER_DETALLE,
+  PERMISSIONS.INVENTARIO_OC_CREAR_SOLICITUD,
+  PERMISSIONS.INVENTARIO_OC_EDITAR_SOLICITUD,
+  PERMISSIONS.INVENTARIO_OC_RECEPCIONAR
+];
 
 const Inventario = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { canAny, isSuperAdmin, loading: permisosLoading, permisos } = usePermisos();
 
+  const hasStrongInventoryAdmin = canAny(INVENTARIO_STRONG_ADMIN_PERMISSIONS);
+  // AM: separa permisos tecnicos de catalogo vs visibilidad visual de submodulos de Inventario para roles operativos.
+  const isOperationalInventoryActor =
+    !isSuperAdmin
+    && canAny(INVENTARIO_OPERATIONAL_PERMISSIONS)
+    && !hasStrongInventoryAdmin;
+
   const allowedTabs = useMemo(
-    () => getAllowedTabs('inventario', permisos, { isSuperAdmin }).map((tab) => tab.key),
-    [isSuperAdmin, permisos]
+    () => {
+      const tabs = getAllowedTabs('inventario', permisos, { isSuperAdmin }).map((tab) => tab.key);
+      if (!isOperationalInventoryActor) return tabs;
+      return tabs.includes('ordenes_compra') ? ['ordenes_compra'] : tabs;
+    },
+    [isOperationalInventoryActor, isSuperAdmin, permisos]
   );
   const fallbackTab = allowedTabs[0] || null;
   const rawTab = (searchParams.get('tab') || fallbackTab || '').toLowerCase();
