@@ -80,7 +80,7 @@ const resolvePeriodoOperativoLabel = ({ periodo, tipoPeriodo, quincena }) => {
   const periodoLabel = String(periodo || '').trim() || 'Sin periodo';
   if (normalizeTipoPeriodo(tipoPeriodo) !== TIPO_PERIODO.quincenal) return `${periodoLabel} (Mensual)`;
   const quincenaLabel = normalizeQuincena(quincena) === '2' ? 'Q2 (16-fin)' : 'Q1 (1-15)';
-  return `${periodoLabel} · ${quincenaLabel}`;
+  return `${periodoLabel} Â· ${quincenaLabel}`;
 };
 
 const buildPlanillasSucursalSelectStyles = () => ({
@@ -433,7 +433,7 @@ const normalizeStatusNote = (value = '') => String(value ?? '').trim().toLowerCa
 const stripAdelantoStatusMarkers = (value = '') =>
   String(value ?? '')
     .replace(/\[(eliminado_ad|corregido_ad)\]\s*/gi, '')
-    .replace(/edici[oó]n?\s+deshabilitada:\s*este movimiento no tiene id_adelanto reutilizable\.?/gi, '')
+    .replace(/edici[oÃ³]n?\s+deshabilitada:\s*este movimiento no tiene id_adelanto reutilizable\.?/gi, '')
     .trim();
 
 const resolveMovimientoPlanillaId = (row = {}) =>
@@ -1538,6 +1538,7 @@ export default function Planillas({
   ]);
   const canAnularMovimiento = canAny([PERMISSIONS.PLANILLAS_MOVIMIENTO_ANULAR]);
   const canCerrar = canAny([PERMISSIONS.PLANILLAS_CERRAR]);
+  const canReabrir = canAny([PERMISSIONS.PLANILLAS_REABRIR]);
   const canPagar = canAny([PERMISSIONS.PLANILLAS_PAGAR]);
   const canAnular = canAny([PERMISSIONS.PLANILLAS_ANULAR]);
   const canVerAuditoria = canAny([PERMISSIONS.PLANILLAS_AUDITORIA_VER]);
@@ -1725,6 +1726,16 @@ export default function Planillas({
       null,
     [planillas, selectedPlanillaId]
   );
+  const selectedPlanillaEstado = String(
+    selectedPlanilla?.estado_descripcion ||
+      selectedPlanilla?.estado_planilla ||
+      selectedPlanilla?.estado ||
+      selectedPlanilla?.descripcion_estado ||
+      ''
+  )
+    .trim()
+    .toUpperCase();
+  const isSelectedPlanillaAnulada = selectedPlanillaEstado === 'ANULADA';
 
   const sucursalOptions = useMemo(
     () =>
@@ -3001,7 +3012,7 @@ export default function Planillas({
     try {
       if (options?.format !== 'excel') {
         // Reservamos la ventana dentro del gesto de usuario para evitar bloqueo del navegador
-        // cuando la carga de datos tarda y se ejecuta asincrónicamente.
+        // cuando la carga de datos tarda y se ejecuta asincrÃ³nicamente.
         printPopup = createPrintWindow();
         showPendingPrintWindow(printPopup);
       }
@@ -3273,7 +3284,7 @@ export default function Planillas({
         return;
       }
 
-      const tipoLabel = row?.tipo === MOVIMIENTO_TIPO.bono ? 'Bono' : 'Deducción';
+      const tipoLabel = row?.tipo === MOVIMIENTO_TIPO.bono ? 'Bono' : 'DeducciÃ³n';
       openConfirmModal({
         actionType: 'anular_movimiento_bono_deduccion',
         title: 'CONFIRMAR ANULACION',
@@ -4509,15 +4520,17 @@ export default function Planillas({
             selectedPlanilla={selectedPlanilla}
             onGenerar={handleGenerar}
             onRecalcular={handleRecalcular}
+            onReabrir={() => handleChangeEstado('borrador')}
             onCerrar={() => handleChangeEstado('cerrada')}
             onPagar={() => handleChangeEstado('pagada')}
             onAnular={handleAnular}
             onExport={() => setExportModalOpen(true)}
             canGenerar={showPlanillaActions && canGenerarForPeriodo}
-            canRecalcular={showPlanillaActions && canRecalcular}
-            canCerrar={showPlanillaActions && canCerrar}
-            canPagar={showPlanillaActions && canPagar}
-            canAnular={showPlanillaActions && canAnular}
+            canRecalcular={showPlanillaActions && canRecalcular && !isSelectedPlanillaAnulada}
+            canReabrir={showPlanillaActions && canReabrir && isSelectedPlanillaAnulada}
+            canCerrar={showPlanillaActions && canCerrar && !isSelectedPlanillaAnulada}
+            canPagar={showPlanillaActions && canPagar && !isSelectedPlanillaAnulada}
+            canAnular={showPlanillaActions && canAnular && !isSelectedPlanillaAnulada}
             canExport={showPlanillaActions && canExportPlanilla}
             exportLoading={loadingExport}
             loadingAction={loadingAction || loadingSucursales}
@@ -4660,7 +4673,7 @@ export default function Planillas({
             <span>
               {loadingPlanillas
                 ? 'Cargando planillas...'
-                : `Planillas: ${planillas.length} (total: ${planillasTotal}) · ${periodoOperativoLabel}`}
+                : `Planillas: ${planillas.length} (total: ${planillasTotal}) Â· ${periodoOperativoLabel}`}
             </span>
             <span>
               {loadingDetalle

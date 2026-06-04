@@ -22,7 +22,10 @@ const CombosFormDrawer = ({
   onPreviewError,
   onAgregarRecetaDetalle,
   onActualizarDetalleReceta,
-  onQuitarRecetaDetalle
+  onQuitarRecetaDetalle,
+  canCreate = true,
+  canEdit = true,
+  canEditDetail = true
 }) => {
   const [recetaSearch, setRecetaSearch] = useState('');
   const [showRecipePicker, setShowRecipePicker] = useState(false);
@@ -67,6 +70,7 @@ const CombosFormDrawer = ({
 
   const totalDetalle = Array.isArray(form.detalle) ? form.detalle.length : 0;
   const selectedMenuOption = menusCatalog.find((option) => String(option.value) === String(form.id_menu)) || null;
+  const canSubmit = drawerMode === 'create' ? canCreate : canEdit;
 
   if (!drawerOpen) return null;
 
@@ -119,6 +123,7 @@ const CombosFormDrawer = ({
               value={form.nombre_combo}
               onChange={onChangeField}
               placeholder="Ej: Combo 6 alitas + 2 tacos"
+              disabled={saving || !canSubmit}
               required
             />
             <div className="form-text">Este nombre sera el titulo visible del combo.</div>
@@ -133,6 +138,7 @@ const CombosFormDrawer = ({
               value={form.descripcion}
               onChange={onChangeField}
               placeholder="Ej: Incluye papas y bebida"
+              disabled={saving || !canSubmit}
             />
           </div>
 
@@ -147,6 +153,7 @@ const CombosFormDrawer = ({
               name="precio"
               value={form.precio}
               onChange={onChangeField}
+              disabled={saving || !canSubmit}
               required
             />
           </div>
@@ -161,6 +168,7 @@ const CombosFormDrawer = ({
               name="cant_personas"
               value={form.cant_personas}
               onChange={onChangeField}
+              disabled={saving || !canSubmit}
               required
             />
           </div>
@@ -175,7 +183,7 @@ const CombosFormDrawer = ({
               onChange={(option) => onChangeField({ target: { name: 'id_menu', value: option?.value || '' } })}
               placeholder="Ej: #1 - Menu Normal"
               isClearable={false}
-              isDisabled={saving}
+              isDisabled={saving || !canSubmit}
               maxMenuHeight={192}
             />
           </div>
@@ -213,6 +221,7 @@ const CombosFormDrawer = ({
                     type="button"
                     className="btn menu-recetas-admin__image-btn menu-recetas-admin__image-btn--add"
                     onClick={() => imageInputRef.current?.click()}
+                    disabled={saving || !canSubmit}
                   >
                     <i className="bi bi-upload" aria-hidden="true" /> Agregar imagen
                   </button>
@@ -220,6 +229,7 @@ const CombosFormDrawer = ({
                     type="button"
                     className="btn menu-recetas-admin__image-btn menu-recetas-admin__image-btn--ghost menu-recetas-admin__image-btn--remove"
                     onClick={onClearImage}
+                    disabled={saving || !canSubmit}
                   >
                     Quitar
                   </button>
@@ -274,6 +284,7 @@ const CombosFormDrawer = ({
                     style={{ width: '84px', textAlign: 'center' }}
                     value={item.cantidad}
                     onChange={(event) => onActualizarDetalleReceta(item.id_receta, 'cantidad', event.target.value)}
+                    disabled={saving || !canEditDetail}
                   />
 
                   <input
@@ -283,12 +294,14 @@ const CombosFormDrawer = ({
                     style={{ width: '84px', textAlign: 'center' }}
                     value={item.orden}
                     onChange={(event) => onActualizarDetalleReceta(item.id_receta, 'orden', event.target.value)}
+                    disabled={saving || !canEditDetail}
                   />
 
                   <button
                     type="button"
                     className="btn btn-sm inv-prod-btn-danger-lite"
                     onClick={() => onQuitarRecetaDetalle(item.id_receta)}
+                    disabled={saving || !canEditDetail}
                     aria-label={`Quitar receta ${resolveDetalleNombre(item)} del combo`}
                   >
                     Quitar
@@ -309,6 +322,7 @@ const CombosFormDrawer = ({
             type="button"
             className="btn btn-sm inv-prod-btn-subtle"
             onClick={() => setShowRecipePicker((prev) => !prev)}
+            disabled={!canEditDetail}
           >
             {showRecipePicker ? 'Ocultar' : 'Mostrar'}
           </button>
@@ -330,6 +344,7 @@ const CombosFormDrawer = ({
                   placeholder="Buscar receta por nombre o ID..."
                   value={recetaSearch}
                   onChange={(event) => setRecetaSearch(event.target.value)}
+                  disabled={!canEditDetail}
                 />
 
                 <div className="menu-combos-receta-picker__list">
@@ -340,6 +355,7 @@ const CombosFormDrawer = ({
                         type="button"
                         className="menu-combos-receta-picker__item"
                         onClick={() => onAgregarRecetaDetalle(receta.id_receta)}
+                        disabled={saving || !canEditDetail}
                       >
                         <span className="menu-combos-receta-picker__item-id">#{receta.id_receta}</span>
                         <span className="menu-combos-receta-picker__item-name">
@@ -366,7 +382,7 @@ const CombosFormDrawer = ({
               <button type="button" className="btn inv-prod-btn-subtle" onClick={onClose} disabled={saving}>
                 Cancelar
               </button>
-              <button type="submit" className="btn inv-prod-btn-primary" disabled={saving}>
+              <button type="submit" className="btn inv-prod-btn-primary" disabled={saving || !canSubmit}>
                 {saving ? 'Guardando...' : drawerMode === 'create' ? 'Crear combo' : 'Guardar combo'}
               </button>
             </div>

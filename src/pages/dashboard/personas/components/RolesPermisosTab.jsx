@@ -189,6 +189,39 @@ const INVENTARIO_SUBGROUPS_BY_KEY = new Map(
   INVENTARIO_SUBGROUPS.map((group) => [group.key, group])
 );
 
+const MENU_SUBGROUPS = [
+  { key: "menu_general", label: "Menu general", order: 1 },
+  { key: "recetas", label: "Recetas", order: 2 },
+  { key: "salsas", label: "Salsas", order: 3 },
+  { key: "publicacion", label: "Publicacion por sucursal", order: 4 },
+  { key: "temporada", label: "Menu de temporada", order: 5 },
+  { key: "extras", label: "Extras", order: 6 },
+  { key: "combos", label: "Combos", order: 7 },
+  { key: "pos", label: "POS / Menu publico", order: 8 },
+  { key: "departamentos", label: "Departamentos", order: 9 },
+  { key: "pedido_cliente", label: "Pedido cliente", order: 10 },
+  { key: "otros", label: "Menu / Otros", order: 99 }
+];
+
+const MENU_SUBGROUPS_BY_KEY = new Map(
+  MENU_SUBGROUPS.map((group) => [group.key, group])
+);
+
+const PERSONAS_SUBGROUPS = [
+  { key: "personas_general", label: "Personas", order: 1 },
+  { key: "empresas", label: "Empresas", order: 2 },
+  { key: "clientes", label: "Clientes", order: 3 },
+  { key: "empleados", label: "Empleados", order: 4 },
+  { key: "usuarios", label: "Usuarios", order: 5 },
+  { key: "roles_permisos", label: "Roles y permisos", order: 6 },
+  { key: "planillas", label: "Planillas", order: 7 },
+  { key: "otros", label: "Personas / Otros", order: 99 }
+];
+
+const PERSONAS_SUBGROUPS_BY_KEY = new Map(
+  PERSONAS_SUBGROUPS.map((group) => [group.key, group])
+);
+
 const isInventarioPermiso = (nombrePermiso) =>
   String(nombrePermiso ?? "").trim().toUpperCase().startsWith("INVENTARIO_");
 
@@ -240,6 +273,96 @@ const resolveInventarioSubgroup = (nombrePermiso) => {
   return fallback;
 };
 
+const isMenuPermiso = (nombrePermiso) =>
+  String(nombrePermiso ?? "").trim().toUpperCase().startsWith("MENU_");
+
+const resolveMenuSubgroup = (nombrePermiso) => {
+  const technicalName = String(nombrePermiso ?? "").trim().toUpperCase();
+  const fallback = MENU_SUBGROUPS_BY_KEY.get("otros");
+  if (!technicalName.startsWith("MENU_")) return fallback;
+
+  if (technicalName === "MENU_VER") {
+    return MENU_SUBGROUPS_BY_KEY.get("menu_general");
+  }
+  if (technicalName.startsWith("MENU_RECETAS_")) {
+    return MENU_SUBGROUPS_BY_KEY.get("recetas");
+  }
+  if (technicalName.startsWith("MENU_SALSAS_")) {
+    return MENU_SUBGROUPS_BY_KEY.get("salsas");
+  }
+  if (technicalName.startsWith("MENU_PUBLICACION_")) {
+    return MENU_SUBGROUPS_BY_KEY.get("publicacion");
+  }
+  if (technicalName.startsWith("MENU_TEMPORADA_")) {
+    return MENU_SUBGROUPS_BY_KEY.get("temporada");
+  }
+  if (technicalName.startsWith("MENU_EXTRAS_")) {
+    return MENU_SUBGROUPS_BY_KEY.get("extras");
+  }
+  if (technicalName.startsWith("MENU_COMBOS_")) {
+    return MENU_SUBGROUPS_BY_KEY.get("combos");
+  }
+  if (technicalName.startsWith("MENU_POS_")) {
+    return MENU_SUBGROUPS_BY_KEY.get("pos");
+  }
+  if (technicalName.startsWith("MENU_DEPARTAMENTOS_")) {
+    return MENU_SUBGROUPS_BY_KEY.get("departamentos");
+  }
+  if (
+    technicalName.startsWith("MENU_PEDIDO_") ||
+    technicalName.startsWith("MENU_PRODUCTO_")
+  ) {
+    return MENU_SUBGROUPS_BY_KEY.get("pedido_cliente");
+  }
+
+  return fallback;
+};
+
+const PERSONAS_PERMISSION_PREFIXES = [
+  "PERSONAS_",
+  "EMPRESAS_",
+  "CLIENTES_",
+  "EMPLEADOS_",
+  "USUARIOS_",
+  "ROLES_PERMISOS_",
+  "PLANILLAS_"
+];
+
+const isPersonasSuitePermiso = (nombrePermiso) => {
+  const technicalName = String(nombrePermiso ?? "").trim().toUpperCase();
+  return PERSONAS_PERMISSION_PREFIXES.some((prefix) => technicalName.startsWith(prefix));
+};
+
+const resolvePersonasSubgroup = (nombrePermiso) => {
+  const technicalName = String(nombrePermiso ?? "").trim().toUpperCase();
+  const fallback = PERSONAS_SUBGROUPS_BY_KEY.get("otros");
+  if (!isPersonasSuitePermiso(technicalName)) return fallback;
+
+  if (technicalName.startsWith("PERSONAS_")) {
+    return PERSONAS_SUBGROUPS_BY_KEY.get("personas_general");
+  }
+  if (technicalName.startsWith("EMPRESAS_")) {
+    return PERSONAS_SUBGROUPS_BY_KEY.get("empresas");
+  }
+  if (technicalName.startsWith("CLIENTES_")) {
+    return PERSONAS_SUBGROUPS_BY_KEY.get("clientes");
+  }
+  if (technicalName.startsWith("EMPLEADOS_")) {
+    return PERSONAS_SUBGROUPS_BY_KEY.get("empleados");
+  }
+  if (technicalName.startsWith("USUARIOS_")) {
+    return PERSONAS_SUBGROUPS_BY_KEY.get("usuarios");
+  }
+  if (technicalName.startsWith("ROLES_PERMISOS_")) {
+    return PERSONAS_SUBGROUPS_BY_KEY.get("roles_permisos");
+  }
+  if (technicalName.startsWith("PLANILLAS_")) {
+    return PERSONAS_SUBGROUPS_BY_KEY.get("planillas");
+  }
+
+  return fallback;
+};
+
 const groupInventarioPermisos = (rows) => {
   const grouped = new Map(INVENTARIO_SUBGROUPS.map((group) => [group.key, []]));
 
@@ -259,32 +382,97 @@ const groupInventarioPermisos = (rows) => {
   })).filter((group) => group.permisos.length > 0);
 };
 
+const groupMenuPermisos = (rows) => {
+  const grouped = new Map(MENU_SUBGROUPS.map((group) => [group.key, []]));
+
+  (Array.isArray(rows) ? rows : []).forEach((permiso) => {
+    if (!isMenuPermiso(permiso?.nombre_permiso)) return;
+    const group = resolveMenuSubgroup(permiso?.nombre_permiso);
+    grouped.get(group.key)?.push(permiso);
+  });
+
+  return MENU_SUBGROUPS.map((group) => ({
+    ...group,
+    permisos: (grouped.get(group.key) || []).sort((left, right) =>
+      String(left?.nombre_permiso || "").localeCompare(String(right?.nombre_permiso || ""), "es", {
+        sensitivity: "base"
+      })
+    )
+  })).filter((group) => group.permisos.length > 0);
+};
+
+const groupPersonasPermisos = (rows) => {
+  const grouped = new Map(PERSONAS_SUBGROUPS.map((group) => [group.key, []]));
+
+  (Array.isArray(rows) ? rows : []).forEach((permiso) => {
+    if (!isPersonasSuitePermiso(permiso?.nombre_permiso)) return;
+    const group = resolvePersonasSubgroup(permiso?.nombre_permiso);
+    grouped.get(group.key)?.push(permiso);
+  });
+
+  return PERSONAS_SUBGROUPS.map((group) => ({
+    ...group,
+    permisos: (grouped.get(group.key) || []).sort((left, right) =>
+      String(left?.nombre_permiso || "").localeCompare(String(right?.nombre_permiso || ""), "es", {
+        sensitivity: "base"
+      })
+    )
+  })).filter((group) => group.permisos.length > 0);
+};
+
+const GROUPABLE_PERMISSION_FAMILIES = [
+  {
+    key: "inventario",
+    type: "inventario",
+    matcher: isInventarioPermiso,
+    groupRows: groupInventarioPermisos
+  },
+  {
+    key: "personas_suite",
+    type: "personas_suite",
+    matcher: isPersonasSuitePermiso,
+    groupRows: groupPersonasPermisos
+  },
+  {
+    key: "menu",
+    type: "menu",
+    matcher: isMenuPermiso,
+    groupRows: groupMenuPermisos
+  }
+];
+
 const buildPermisoRenderBlocks = (rows) => {
   const source = Array.isArray(rows) ? rows : [];
-  const blocks = [];
-  let index = 0;
+  const familyBuckets = new Map();
+  const plainEntries = [];
 
-  while (index < source.length) {
-    const row = source[index];
-    if (!isInventarioPermiso(row?.nombre_permiso)) {
-      blocks.push({ type: "permiso", permiso: row });
-      index += 1;
-      continue;
+  source.forEach((row, index) => {
+    const family = GROUPABLE_PERMISSION_FAMILIES.find((entry) => entry.matcher(row?.nombre_permiso));
+    if (!family) {
+      plainEntries.push({ type: "permiso", permiso: row, sortIndex: index });
+      return;
     }
 
-    const inventoryRows = [];
-    while (index < source.length && isInventarioPermiso(source[index]?.nombre_permiso)) {
-      inventoryRows.push(source[index]);
-      index += 1;
-    }
+    const current = familyBuckets.get(family.key) || {
+      type: family.type,
+      rows: [],
+      sortIndex: index,
+      groupRows: family.groupRows
+    };
+    current.rows.push(row);
+    current.sortIndex = Math.min(current.sortIndex, index);
+    familyBuckets.set(family.key, current);
+  });
 
-    blocks.push({
-      type: "inventario",
-      groups: groupInventarioPermisos(inventoryRows)
-    });
-  }
+  const groupedEntries = Array.from(familyBuckets.values()).map((entry) => ({
+    type: entry.type,
+    groups: entry.groupRows(entry.rows),
+    sortIndex: entry.sortIndex
+  }));
 
-  return blocks;
+  return [...plainEntries, ...groupedEntries]
+    .sort((left, right) => left.sortIndex - right.sortIndex)
+    .map(({ sortIndex, ...block }) => block);
 };
 
 const resolvePreviewGroup = (nombrePermiso) => {
@@ -1042,6 +1230,10 @@ const RolesPermisosTab = () => {
     if (activePreviewGroup?.key !== "inventario") return [];
     return groupInventarioPermisos(activePreviewGroup?.permisos || []);
   }, [activePreviewGroup]);
+  const activePreviewMenuGroups = useMemo(() => {
+    if (activePreviewGroup?.key !== "menu") return [];
+    return groupMenuPermisos(activePreviewGroup?.permisos || []);
+  }, [activePreviewGroup]);
   const deleteImpact = deleteDialog.impact;
   const deleteBlocked = Number(deleteImpact?.total_usuarios || 0) > 0;
 
@@ -1417,7 +1609,7 @@ const RolesPermisosTab = () => {
                         }
 
                         return (
-                          <section key={`inventario-block-${blockIndex}`} className="roles-permisos-inv-grouped">
+                          <section key={`${block.type}-block-${blockIndex}`} className="roles-permisos-inv-grouped">
                             {block.groups.map((group) => (
                               <div key={group.key} className="roles-permisos-inv-group">
                                 <div className="roles-permisos-inv-group__head">
@@ -1621,6 +1813,30 @@ const RolesPermisosTab = () => {
                             </div>
                           </section>
                         ))
+                        : activePreviewGroup?.key === "menu"
+                          ? activePreviewMenuGroups.map((group) => (
+                            <section key={group.key} className="roles-preview-inv-subgroup">
+                              <div className="roles-preview-inv-subgroup__head">
+                                <strong>{group.label}</strong>
+                                <span>{group.permisos.length}</span>
+                              </div>
+                              <div className="roles-preview-inv-subgroup__list">
+                                {group.permisos.map((permiso) => (
+                                  <article key={permiso.id_permiso} className="roles-preview-permiso">
+                                    <div className="roles-preview-permiso__label">
+                                      {humanizePermissionName(permiso.nombre_permiso)}
+                                    </div>
+                                    <div className="roles-preview-permiso__tech">
+                                      {permiso.nombre_permiso}
+                                    </div>
+                                    <div className="roles-preview-permiso__description">
+                                      {permiso.descripcion || "Sin descripcion registrada."}
+                                    </div>
+                                  </article>
+                                ))}
+                              </div>
+                            </section>
+                          ))
                         : (activePreviewGroup?.permisos || []).map((permiso) => (
                           <article key={permiso.id_permiso} className="roles-preview-permiso">
                             <div className="roles-preview-permiso__label">

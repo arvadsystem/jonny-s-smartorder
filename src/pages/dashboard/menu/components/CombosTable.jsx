@@ -15,7 +15,9 @@ const CombosTable = ({
   cardImageErrors,
   onCardImageError,
   onEditar,
-  onCambiarEstado
+  onCambiarEstado,
+  canEdit = true,
+  canToggleState = true
 }) => {
   const [cardsPageIndex, setCardsPageIndex] = useState(0);
 
@@ -127,6 +129,7 @@ const CombosTable = ({
                 // Replica el boton Editar de Inventarios > Categorias para mantener consistencia visual.
                 className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action"
                 onClick={() => onEditar(id)}
+                disabled={!canEdit}
                 title="Editar"
               >
                 <i className="bi bi-pencil-square" aria-hidden="true" />
@@ -137,7 +140,7 @@ const CombosTable = ({
                 // Replica el boton de estado de Inventarios > Categorias (Inactivar/Activar).
                 className={`inv-catpro-action ${estadoActivo ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
                 onClick={() => onCambiarEstado(combo)}
-                disabled={togglingId === id}
+                disabled={!canToggleState || togglingId === id}
                 title={estadoActivo ? 'Inactivar' : 'Activar'}
               >
                 <i className={`bi ${estadoActivo ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />

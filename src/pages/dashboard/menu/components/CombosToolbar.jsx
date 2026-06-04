@@ -5,6 +5,7 @@ const CombosToolbar = ({
   onOpenFilters,
   drawerOpen,
   onOpenCreate,
+  canCreate = true,
   showInactiveOnly,
   onToggleInactiveOnly
 }) => (
@@ -35,7 +36,7 @@ const CombosToolbar = ({
       type="button"
       className="inv-prod-toolbar-btn"
       onClick={onOpenCreate}
-      disabled={drawerOpen}
+      disabled={drawerOpen || !canCreate}
     >
       <i className="bi bi-plus-circle" />
       Nuevo combo

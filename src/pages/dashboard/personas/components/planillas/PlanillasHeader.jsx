@@ -1,10 +1,25 @@
-﻿const ESTADO_LABELS = {
+const ESTADO_LABELS = {
   borrador: 'Borrador',
   calculada: 'Calculada',
   abierta: 'Abierta',
   cerrada: 'Cerrada',
   pagada: 'Pagada',
   anulada: 'Anulada'
+};
+
+const toText = (value, fallback = '') => {
+  const normalized = String(value ?? '').trim();
+  return normalized || fallback;
+};
+
+const buildPeriodoRangeLabel = ({ planilla, periodo = '', tipoPeriodo = 'mensual', quincena = '1' }) => {
+  const start = toText(planilla?.periodo_inicio || planilla?.fecha_inicio, '');
+  const end = toText(planilla?.periodo_fin || planilla?.fecha_fin, '');
+  if (start && end) return `${start} al ${end}`;
+  if (String(tipoPeriodo).toLowerCase() === 'quincenal') {
+    return String(quincena) === '2' ? `${periodo || 'Periodo'} · 16 al fin de mes` : `${periodo || 'Periodo'} · 1 al 15`;
+  }
+  return `${periodo || 'Periodo'} · Mes completo`;
 };
 
 export default function PlanillasHeader({
@@ -17,12 +32,14 @@ export default function PlanillasHeader({
   selectedPlanilla = null,
   onGenerar,
   onRecalcular,
+  onReabrir,
   onCerrar,
   onPagar,
   onAnular,
   onExport,
   canGenerar = false,
   canRecalcular = false,
+  canReabrir = false,
   canCerrar = false,
   canPagar = false,
   canAnular = false,
@@ -55,8 +72,10 @@ export default function PlanillasHeader({
       ? `${periodo || 'Sin periodo'} · ${String(quincena) === '2' ? 'Q2 (16-fin)' : 'Q1 (1-15)'}`
       : `${periodo || 'Sin periodo'} · Mensual`;
   const hasActionButtons = Boolean(
-    canExport || canGenerar || canRecalcular || canCerrar || canPagar || canAnular
+    canExport || canGenerar || canRecalcular || canReabrir || canCerrar || canPagar || canAnular
   );
+  const isQuincenal = String(tipoPeriodo).toLowerCase() === 'quincenal';
+  const periodoRangeLabel = buildPeriodoRangeLabel({ planilla: selectedPlanilla, periodo, tipoPeriodo, quincena });
 
   return (
     <div className="planillas-header">
@@ -120,6 +139,19 @@ export default function PlanillasHeader({
         ) : null}
       </div>
 
+      <div className="planillas-header__actions planillas-header__actions--meta" style={{ paddingTop: 0, gap: '0.65rem', flexWrap: 'wrap' }}>
+        <span className="planillas-badge planillas-badge--default">Rango: {periodoRangeLabel}</span>
+        <span className="planillas-badge planillas-badge--default">
+          Tipo: {isQuincenal ? `Quincena ${String(quincena) === '2' ? '2' : '1'}` : 'Mensual'}
+        </span>
+      </div>
+
+      {isQuincenal ? (
+        <div className="alert alert-warning py-2 px-3 mb-0 mt-3" role="alert">
+          Esta planilla corresponde solo a una quincena. Verifica el rango y el neto antes de pagar o cerrar.
+        </div>
+      ) : null}
+
       {hasActionButtons ? (
         <div className="planillas-header__actions">
           {canGenerar ? (
@@ -145,6 +177,19 @@ export default function PlanillasHeader({
               Recalcular
             </button>
           ) : null}
+
+          {canReabrir ? (
+            <button
+              type="button"
+              className="btn planillas-header__btn planillas-header__btn--secondary"
+              onClick={onReabrir}
+              disabled={loadingAction || !selectedPlanilla?.id_planilla}
+            >
+              <i className="bi bi-arrow-counterclockwise me-1" />
+              Reabrir
+            </button>
+          ) : null}
+
 
           {canCerrar ? (
             <button

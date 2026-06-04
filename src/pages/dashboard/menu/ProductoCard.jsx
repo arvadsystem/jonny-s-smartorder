@@ -77,7 +77,8 @@ const ProductoCard = ({ producto, onAgregar, onOpenDetail, canAdd = true, canVie
             src={imageSrc}
             alt={nombre}
             className="menu-pos-product-image"
-            loading="lazy"
+            loading="eager"
+            decoding="async"
             referrerPolicy="no-referrer"
             onError={(event) => {
               event.currentTarget.style.display = 'none';

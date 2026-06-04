@@ -845,6 +845,7 @@ export default function Empleados({ openToast }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [creatingCargo, setCreatingCargo] = useState(false);
   const [showCargoModal, setShowCargoModal] = useState(false);
+  const [cargoCatalogSearch, setCargoCatalogSearch] = useState("");
   const [cargoToggleConfirm, setCargoToggleConfirm] = useState({
     show: false,
     cargoRow: null,
@@ -1052,11 +1053,22 @@ export default function Empleados({ openToast }) {
     () =>
       (Array.isArray(cargosCatalogo) ? cargosCatalogo : [])
         .filter((item) => Number.parseInt(String(item?.id_cargo ?? item?.id ?? ""), 10) > 0)
+        .filter((item) => {
+          const searchTerm = normalizeSearchToken(cargoCatalogSearch);
+          if (!searchTerm) return true;
+          return [
+            item?.nombre_cargo,
+            item?.nombre,
+            item?.cargo,
+            item?.descripcion,
+            item?.descripcion_cargo,
+          ].some((value) => normalizeSearchToken(value).includes(searchTerm));
+        })
         .sort((a, b) =>
           String(a?.nombre_cargo ?? a?.nombre ?? a?.cargo ?? "")
             .localeCompare(String(b?.nombre_cargo ?? b?.nombre ?? b?.cargo ?? ""), "es", { sensitivity: "base" })
         ),
-    [cargosCatalogo]
+    [cargoCatalogSearch, cargosCatalogo]
   );
   const puestoSelectValue = useMemo(() => {
     const selectedId = String(form?.id_cargo ?? "").trim();
@@ -2188,6 +2200,7 @@ export default function Empleados({ openToast }) {
     }
     const openModal = () => {
       cargoModalOpenedAtRef.current = Date.now();
+      setCargoCatalogSearch("");
       setShowCargoModal(true);
     };
     if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
@@ -4100,6 +4113,17 @@ export default function Empleados({ openToast }) {
                 <div className="empleados-cargo-modal__list-head">
                   <div className="empleados-cargo-modal__section-title mb-0">Cargos registrados</div>
                   <span className="empleados-cargo-modal__count-badge">{cargoCatalogRows.length} cargos en total</span>
+                </div>
+
+                <div className="mb-3">
+                  <input
+                    type="search"
+                    className="form-control"
+                    value={cargoCatalogSearch}
+                    onChange={(event) => setCargoCatalogSearch(event.target.value)}
+                    placeholder="Buscar cargo por nombre o descripcion"
+                    disabled={creatingCargo || cargoCatalogBusy}
+                  />
                 </div>
 
                 <div className="d-flex flex-column gap-2 empleados-cargo-modal__list">

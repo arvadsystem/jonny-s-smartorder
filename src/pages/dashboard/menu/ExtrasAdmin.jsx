@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Select from 'react-select';
+import { usePermisos } from '../../../context/PermisosContext';
 import extrasAdminService from '../../../services/extrasAdminService';
+import { PERMISSIONS } from '../../../utils/permissions';
 import MenuActionToast from './components/MenuActionToast';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
 import MenuFiltersDrawer from './components/MenuFiltersDrawer';
@@ -40,6 +42,7 @@ const buildCode = (value) =>
     .replace(/^_+|_+$/g, '');
 
 const ExtrasAdmin = () => {
+  const { canAny } = usePermisos();
   const [extras, setExtras] = useState([]);
   const [insumos, setInsumos] = useState([]);
   const [recetas, setRecetas] = useState([]);
@@ -58,6 +61,9 @@ const ExtrasAdmin = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [estadoConfirm, setEstadoConfirm] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const canCreateExtra = canAny([PERMISSIONS.MENU_EXTRAS_CREAR, PERMISSIONS.MENU_VER]);
+  const canEditExtra = canAny([PERMISSIONS.MENU_EXTRAS_EDITAR, PERMISSIONS.MENU_VER]);
+  const canToggleExtra = canAny([PERMISSIONS.MENU_EXTRAS_ESTADO_CAMBIAR, PERMISSIONS.MENU_VER]);
 
   const cargarDatos = useCallback(async () => {
     try {
@@ -350,7 +356,7 @@ const ExtrasAdmin = () => {
                 <i className="bi bi-funnel" />
                 <span>Filtros</span>
               </button>
-              <button type="button" className="inv-prod-toolbar-btn" onClick={openCreate}>
+              <button type="button" className="inv-prod-toolbar-btn" onClick={openCreate} disabled={!canCreateExtra}>
                 <i className="bi bi-plus-circle" />
                 <span>Nuevo extra</span>
               </button>
@@ -418,7 +424,12 @@ const ExtrasAdmin = () => {
                       </div>
                     </div>
                     <footer className="menu-recetas-card__actions">
-                      <button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => openEdit(extra.id_extra)}>
+                      <button
+                        type="button"
+                        className="inv-catpro-action edit inv-catpro-action-compact"
+                        onClick={() => openEdit(extra.id_extra)}
+                        disabled={!canEditExtra}
+                      >
                         <i className="bi bi-pencil-square" />
                         <span className="inv-catpro-action-label">Editar</span>
                       </button>
@@ -426,7 +437,7 @@ const ExtrasAdmin = () => {
                         type="button"
                         className={`inv-catpro-action ${extra.estado ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action`}
                         onClick={() => setEstadoConfirm(extra)}
-                        disabled={togglingId === Number(extra.id_extra)}
+                        disabled={!canToggleExtra || togglingId === Number(extra.id_extra)}
                         title={extra.estado ? 'Inactivar' : 'Activar'}
                       >
                         <i className={`bi ${extra.estado ? 'bi-slash-circle' : 'bi-check-circle'}`} />
@@ -534,6 +545,7 @@ const ExtrasAdmin = () => {
                 value={form.nombre}
                 onChange={(event) => updateForm('nombre', event.target.value)}
                 placeholder="Ej: Extra queso"
+                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
                 required
               />
             </div>
@@ -548,6 +560,7 @@ const ExtrasAdmin = () => {
                 value={form.precio_adicional}
                 onChange={(event) => updateForm('precio_adicional', event.target.value)}
                 placeholder="Ej: 25.00"
+                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
                 required
               />
             </div>
@@ -561,7 +574,7 @@ const ExtrasAdmin = () => {
                 onChange={(option) => updateForm('id_insumo', String(option?.value || ''))}
                 placeholder="Seleccionar insumo..."
                 isClearable={false}
-                isDisabled={saving}
+                isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
                 maxMenuHeight={176}
                 menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
                 menuPosition="fixed"
@@ -578,6 +591,7 @@ const ExtrasAdmin = () => {
                 value={form.cant}
                 onChange={(event) => updateForm('cant', event.target.value)}
                 placeholder="Ej: 0.2500"
+                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
               />
             </div>
             <div className="col-12 col-md-6">
@@ -590,7 +604,7 @@ const ExtrasAdmin = () => {
                 onChange={(option) => updateForm('id_unidad_medida', String(option?.value || ''))}
                 placeholder="Seleccionar unidad..."
                 isClearable={false}
-                isDisabled={saving}
+                isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
                 maxMenuHeight={176}
                 menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
                 menuPosition="fixed"
@@ -602,7 +616,7 @@ const ExtrasAdmin = () => {
                     <section className="menu-extras-admin__recipes">
             <div className="menu-extras-admin__section-head">
               <div className="menu-recetas-admin__detalle-title">Recetas donde aparece</div>
-              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={clearRecetas} disabled={saving || form.recetas.length === 0}>
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={clearRecetas} disabled={saving || form.recetas.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}>
                 Limpiar
               </button>
             </div>
@@ -615,6 +629,7 @@ const ExtrasAdmin = () => {
                       type="checkbox"
                       checked={form.recetas.includes(idReceta)}
                       onChange={() => toggleReceta(idReceta)}
+                      disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
                     />
                     <span>{receta.nombre_receta}</span>
                   </label>
@@ -626,7 +641,7 @@ const ExtrasAdmin = () => {
                     <section className="menu-extras-admin__recipes">
             <div className="menu-extras-admin__section-head">
               <div className="menu-recetas-admin__detalle-title">Combos donde aparece</div>
-              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => updateCombos([])} disabled={saving || selectedComboOptions.length === 0}>
+              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => updateCombos([])} disabled={saving || selectedComboOptions.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}>
                 Limpiar
               </button>
             </div>
@@ -640,7 +655,7 @@ const ExtrasAdmin = () => {
               isMulti
               isClearable
               isSearchable
-              isDisabled={saving}
+              isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
               closeMenuOnSelect={false}
               maxMenuHeight={220}
               menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
@@ -657,7 +672,11 @@ const ExtrasAdmin = () => {
                   <button type="button" className="btn inv-prod-btn-subtle" onClick={closeDrawer} disabled={saving}>
                     Cancelar
                   </button>
-                  <button type="submit" className="btn inv-prod-btn-primary" disabled={saving}>
+                  <button
+                    type="submit"
+                    className="btn inv-prod-btn-primary"
+                    disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                  >
                     {saving ? 'Guardando...' : 'Guardar extra'}
                   </button>
                 </div>

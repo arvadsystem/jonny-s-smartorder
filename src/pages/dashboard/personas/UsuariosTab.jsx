@@ -243,18 +243,7 @@ export default function UsuariosTab({ openToast }) {
   });
   const [photoErrorModal, setPhotoErrorModal] = useState({ show: false, message: '' });
   const [createCredentialsResult, setCreateCredentialsResult] = useState(null);
-  const [tempPasswordModal, setTempPasswordModal] = useState({
-    show: false,
-    title: '',
-    password: '',
-    username: '',
-    revealed: false,
-  });
   const closePhotoErrorModal = useCallback(() => setPhotoErrorModal({ show: false, message: '' }), []);
-  const closeTempPasswordModal = useCallback(
-    () => setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false }),
-    []
-  );
   const openPhotoErrorModal = useCallback((message) => {
     setPhotoErrorModal({
       show: true,
@@ -583,7 +572,6 @@ export default function UsuariosTab({ openToast }) {
     setImageDirty(false);
     setPhotoErrorModal({ show: false, message: '' });
     setCreateCredentialsResult(null);
-    setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false });
     clearImagePicker();
   }, [clearImagePicker]);
 
@@ -712,58 +700,6 @@ export default function UsuariosTab({ openToast }) {
     return { ok: true, shouldSend: true, value: nextValue || null };
   }, [canEditFotoUsuario, formImageUrl, formImage.loading, formImage.error, formImage.previewUrl, imageDirty]);
 
-  const copiarTempPassword = useCallback(async () => {
-    const text = normalizeText(tempPasswordModal.password);
-    if (!text) return;
-
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const el = document.createElement('textarea');
-        el.value = text;
-        el.setAttribute('readonly', '');
-        el.style.position = 'absolute';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-      }
-      safeToast('OK', 'Contraseña temporal copiada');
-    } catch {
-      safeToast('ERROR', 'No se pudo copiar la contraseña temporal', 'danger');
-    }
-  }, [tempPasswordModal.password, safeToast]);
-
-  const copiarUsernameTemporal = useCallback(async () => {
-    const text = normalizeText(tempPasswordModal.username);
-    if (!text) return;
-
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const el = document.createElement('textarea');
-        el.value = text;
-        el.setAttribute('readonly', '');
-        el.style.position = 'absolute';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-      }
-      safeToast('OK', 'Usuario copiado');
-    } catch {
-      safeToast('ERROR', 'No se pudo copiar el usuario', 'danger');
-    }
-  }, [tempPasswordModal.username, safeToast]);
-
-  const toggleTempPasswordReveal = useCallback(() => {
-    setTempPasswordModal((prev) => ({ ...prev, revealed: !prev.revealed }));
-  }, []);
-
   const guardar = async (event) => {
     event.preventDefault();
     if (actionLoading) return;
@@ -802,16 +738,6 @@ export default function UsuariosTab({ openToast }) {
         setCreateCredentialsResult({
           nombre_usuario: response?.usuario?.nombre_usuario || generatedUsernamePreview,
         });
-        const tempPassword = normalizeText(response?.temp_password);
-        if (tempPassword) {
-          setTempPasswordModal({
-            show: true,
-            title: 'Credenciales temporales',
-            password: tempPassword,
-            username: normalizeText(response?.usuario?.nombre_usuario || generatedUsernamePreview),
-            revealed: false,
-          });
-        }
         setImageDirty(false);
 
         const emailNotification = response?.email_notification;
@@ -821,10 +747,10 @@ export default function UsuariosTab({ openToast }) {
           ? (destinationEmail
             ? `Usuario generado. Contrasena temporal enviada a ${destinationEmail}.`
             : 'Usuario generado. Contrasena temporal enviada al correo registrado.')
-          : 'Usuario generado correctamente.';
+          : 'Usuario generado, pero no se pudo enviar la contrasena temporal por correo.';
         safeToast('OK', createMessage);
         if (!emailSent) {
-          safeToast('INFO', 'No se pudo enviar la contrasena temporal por correo. Usa la contrasena mostrada en pantalla.', 'info');
+          safeToast('INFO', 'Verifica el correo del usuario o regenera la contrasena temporal nuevamente.', 'info');
         }
 
         await cargarUsuarios();
@@ -906,33 +832,17 @@ export default function UsuariosTab({ openToast }) {
 
     try {
       const response = await personaService.resetPasswordUsuarioV2(editId);
-      const tempPassword = normalizeText(response?.temp_password);
-      if (!tempPassword) {
-        safeToast('ERROR', 'No se recibio la contraseña temporal', 'danger');
-      } else {
-        const fallbackUsername =
-          normalizeText(
-            usuarios.find((item) => String(item.id_usuario) === String(editId))?.nombre_usuario
-          );
-        setTempPasswordModal({
-          show: true,
-          title: 'Contraseña temporal regenerada',
-          password: tempPassword,
-          username: normalizeText(response?.nombre_usuario) || fallbackUsername,
-          revealed: false,
-        });
-        const emailNotification = response?.email_notification;
-        const emailSent = Boolean(emailNotification?.sent);
-        const destinationEmail = normalizeText(emailNotification?.to);
-        const resetMessage = emailSent
-          ? (destinationEmail
-            ? `Contrasena temporal regenerada y enviada a ${destinationEmail}.`
-            : 'Contrasena temporal regenerada y enviada al correo registrado.')
-          : 'Contrasena temporal regenerada.';
-        safeToast('OK', resetMessage);
-        if (!emailSent) {
-          safeToast('INFO', 'No se pudo enviar la contrasena temporal por correo. Usa la contrasena mostrada en pantalla.', 'info');
-        }
+      const emailNotification = response?.email_notification;
+      const emailSent = Boolean(emailNotification?.sent);
+      const destinationEmail = normalizeText(emailNotification?.to);
+      const resetMessage = emailSent
+        ? (destinationEmail
+          ? `Contrasena temporal regenerada y enviada a ${destinationEmail}.`
+          : 'Contrasena temporal regenerada y enviada al correo registrado.')
+        : 'Contrasena temporal regenerada, pero no se pudo enviar por correo.';
+      safeToast('OK', resetMessage);
+      if (!emailSent) {
+        safeToast('INFO', 'Verifica el correo del usuario o intenta regenerar la contrasena temporal nuevamente.', 'info');
       }
     } catch (error) {
       safeToast('ERROR', error?.message || 'No se pudo resetear la contraseña temporal', 'danger');
@@ -1360,7 +1270,6 @@ export default function UsuariosTab({ openToast }) {
           }));
           if (drawerMode === 'create' && (field === 'tipo_objetivo' || field === 'id_empleado' || field === 'id_cliente' || field === 'id_rol' || field === 'id_roles')) {
             setCreateCredentialsResult(null);
-            setTempPasswordModal({ show: false, title: '', password: '', username: '', revealed: false });
           }
         }}
         onSubmit={guardar}
@@ -1433,70 +1342,6 @@ export default function UsuariosTab({ openToast }) {
               <button type="button" className="btn inv-pro-btn-danger" onClick={eliminarConfirmado}>
                 <i className={`bi ${confirmModal.estadoActual ? 'bi-slash-circle' : 'bi-check-circle'}`} />
                 <span>{confirmModal.estadoActual ? 'Inactivar' : 'Activar'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tempPasswordModal.show && (
-        <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeTempPasswordModal}>
-          <div className="inv-pro-confirm-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="inv-pro-confirm-head">
-              <div className="inv-pro-confirm-head-icon">
-                <i className="bi bi-key-fill" />
-              </div>
-              <div>
-                <div className="inv-pro-confirm-title">{tempPasswordModal.title || 'Contraseña temporal'}</div>
-                <div className="inv-pro-confirm-sub">Solo se mostrara una vez. Guardela antes de cerrar.</div>
-              </div>
-              <button type="button" className="inv-pro-confirm-close" onClick={closeTempPasswordModal} aria-label="Cerrar">
-                <i className="bi bi-x-lg" />
-              </button>
-            </div>
-            <div className="inv-pro-confirm-body">
-              <div className="mb-3">
-                <label className="form-label mb-1">
-                  <strong>Usuario</strong>
-                </label>
-                <div className="input-group">
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={tempPasswordModal.username || 'No disponible'}
-                    readOnly
-                  />
-                  <button type="button" className="btn btn-outline-secondary" onClick={copiarUsernameTemporal}>
-                    <i className="bi bi-person-badge me-1" />
-                    Copiar usuario
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="form-label mb-1">
-                  <strong>Contraseña temporal</strong>
-                </label>
-                <div className="input-group">
-                  <input
-                    type={tempPasswordModal.revealed ? 'text' : 'password'}
-                    className="form-control"
-                    value={tempPasswordModal.password || ''}
-                    readOnly
-                  />
-                  <button type="button" className="btn btn-outline-secondary" onClick={toggleTempPasswordReveal}>
-                    <i className={`bi ${tempPasswordModal.revealed ? 'bi-eye-slash' : 'bi-eye'}`} />
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="inv-pro-confirm-footer">
-              <button type="button" className="btn inv-pro-btn-cancel" onClick={closeTempPasswordModal}>
-                Entendido
-              </button>
-              <button type="button" className="btn inv-pro-btn-danger" onClick={copiarTempPassword}>
-                <i className="bi bi-clipboard" />
-                <span>Copiar</span>
               </button>
             </div>
           </div>

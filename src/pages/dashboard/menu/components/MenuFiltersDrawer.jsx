@@ -9,20 +9,22 @@ const MenuFiltersDrawer = ({
   clearLabel = 'Limpiar',
   drawerId = 'menu-filters-drawer',
   children
-}) => (
-  <>
+}) => {
+  if (!open) return null;
+
+  return (
+    <>
     <div
-      className={`inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop ${open ? 'show' : ''}`.trim()}
+      className="inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop show"
       onClick={onClose}
-      aria-hidden={!open}
+      aria-hidden="true"
     />
 
     <aside
-      className={`inv-prod-drawer inv-cat-v2__drawer inv-cat-v2__drawer--filters menu-filters-drawer ${open ? 'show' : ''}`.trim()}
+      className="inv-prod-drawer inv-cat-v2__drawer inv-cat-v2__drawer--filters menu-filters-drawer show"
       id={drawerId}
       role="dialog"
       aria-modal="true"
-      aria-hidden={!open}
     >
       <div className="inv-prod-drawer-body inv-cat-v2__drawer-body">
         <div className="inv-cat-create-hero inv-cat-filter-hero">
@@ -62,6 +64,7 @@ const MenuFiltersDrawer = ({
       </div>
     </aside>
   </>
-);
+  );
+};
 
 export default MenuFiltersDrawer;

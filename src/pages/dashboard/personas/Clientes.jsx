@@ -878,6 +878,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     const requestedPage = parsePositiveInteger(options?.page);
     const targetPage = requestedPage || page;
     const force = Boolean(options?.force);
+    const silent = Boolean(options?.silent);
 
     listAbortRef.current?.abort();
     listAbortRef.current = null;
@@ -889,13 +890,13 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         setUsingTipoCache(false);
         setClientes(Array.isArray(cached.items) ? cached.items : []);
         setTotal(Math.max(0, Number(cached.total) || 0));
-        setLoading(false);
+        if (!silent) setLoading(false);
         prefetchClientesPage(targetPage + 1, cached.total);
         return;
       }
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     const controller = new AbortController();
     listAbortRef.current = controller;
 
@@ -1016,7 +1017,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       setTotal(0);
       setUsingTipoCache(false);
     } finally {
-      if (mountedRef.current && requestId === requestIdRef.current) {
+      if (!silent && mountedRef.current && requestId === requestIdRef.current) {
         setLoading(false);
       }
     }
@@ -1680,44 +1681,44 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
     return normalizeEmpresaFormValues({
       rtn: firstNonEmptyValue(
-        empresaCatalogo?.rtn,
-        empresaCatalogo?.RTN,
         cliente?.empresa_rtn,
         cliente?.rtn_empresa,
         cliente?.rtn,
         cliente?.RTN,
-        String(cliente?.documento_tipo || "").toLowerCase() === "rtn" ? cliente?.documento_valor : ""
+        String(cliente?.documento_tipo || "").toLowerCase() === "rtn" ? cliente?.documento_valor : "",
+        empresaCatalogo?.rtn,
+        empresaCatalogo?.RTN
       ),
       nombre_empresa: firstNonEmptyValue(
-        empresaCatalogo?.nombre_empresa,
         cliente?.nombre_empresa,
         cliente?.empresa_nombre,
-        cliente?.nombre_principal
+        cliente?.nombre_principal,
+        empresaCatalogo?.nombre_empresa
       ),
       id_telefono: firstNonEmptyValue(
+        cliente?.empresa_telefono,
+        cliente?.telefono,
         empresaCatalogo?.texto_telefono,
         empresaCatalogo?.telefono,
         empresaCatalogo?.telefono_numero,
         empresaCatalogo?.numero_telefono,
-        cliente?.empresa_telefono,
-        cliente?.telefono,
         empresaCatalogo?.id_telefono
       ),
       id_direccion: sanitizeOptionalSeedValue(firstNonEmptyValue(
+        cliente?.empresa_direccion,
+        cliente?.direccion,
         empresaCatalogo?.texto_direccion,
         empresaCatalogo?.direccion,
         empresaCatalogo?.direccion_detalle,
-        cliente?.empresa_direccion,
-        cliente?.direccion,
         empresaCatalogo?.id_direccion
       )),
       id_correo: sanitizeOptionalSeedValue(firstNonEmptyValue(
+        cliente?.empresa_correo,
+        cliente?.correo,
         empresaCatalogo?.texto_correo,
         empresaCatalogo?.direccion_correo,
         empresaCatalogo?.correo,
         empresaCatalogo?.email,
-        cliente?.empresa_correo,
-        cliente?.correo,
         empresaCatalogo?.id_correo
       )),
       estado: empresaCatalogo?.estado === undefined ? isActivo(cliente) : Boolean(empresaCatalogo?.estado),
@@ -1843,6 +1844,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         setInlineEmpresaForm(normalizeEmpresaFormValues(empresaFormState));
         setShowEmpresaEditModal(false);
         safeToast("OK", "Datos de empresa actualizados");
+        catalogosCargadosRef.current = false;
+        await cargarCatalogos();
         clearClientesListCache();
         await cargarClientes({ force: true });
       } catch (error) {
@@ -1851,7 +1854,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         if (mountedRef.current) setInlineEmpresaSaving(false);
       }
     },
-    [editId, clientes, form.id_empresa, safeToast, clearClientesListCache, cargarClientes]
+    [editId, clientes, form.id_empresa, safeToast, clearClientesListCache, cargarClientes, cargarCatalogos]
   );
 
   const openPersonaEditModal = useCallback(() => {
@@ -2003,6 +2006,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
     const shouldActivate = confirmModal.estadoActual === false;
+    const wasActive = confirmModal.estadoActual === true;
 
     setDeletingId(id);
     try {
@@ -2014,17 +2018,63 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         setForm(emptyForm);
       }
 
-      const quedaVaciaPagina = clientes.length === 1 && page > 1;
+      const matchesEstadoFilter = (estadoValue) =>
+        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? estadoValue : !estadoValue;
+      const wasVisible = matchesEstadoFilter(wasActive);
+      const willBeVisible = matchesEstadoFilter(shouldActivate);
+      const quedaVaciaPagina = wasVisible && !willBeVisible && clientes.length === 1 && page > 1;
+
+      setClientes((prev) => {
+        const rows = Array.isArray(prev) ? prev : [];
+        const nextRows = rows.map((item) =>
+          String(item?.id_cliente ?? "") === String(id) ? { ...item, estado: shouldActivate } : item
+        );
+
+        if (wasVisible && !willBeVisible) {
+          return nextRows.filter((item) => String(item?.id_cliente ?? "") !== String(id));
+        }
+
+        return nextRows;
+      });
+      setTotal((prev) => {
+        const safePrev = Math.max(0, Number(prev) || 0);
+        if (wasVisible && !willBeVisible) return Math.max(0, safePrev - 1);
+        if (!wasVisible && willBeVisible) return safePrev + 1;
+        return safePrev;
+      });
+      setGlobalStats((prev) => {
+        const safePrev = {
+          total: Math.max(0, Number(prev?.total) || 0),
+          activas: Math.max(0, Number(prev?.activas) || 0),
+          inactivas: Math.max(0, Number(prev?.inactivas) || 0),
+        };
+
+        if (wasActive === shouldActivate) return safePrev;
+        if (shouldActivate) {
+          return {
+            ...safePrev,
+            activas: safePrev.activas + 1,
+            inactivas: Math.max(0, safePrev.inactivas - 1),
+          };
+        }
+
+        return {
+          ...safePrev,
+          activas: Math.max(0, safePrev.activas - 1),
+          inactivas: safePrev.inactivas + 1,
+        };
+      });
+
+      clearClientesListCache();
       if (quedaVaciaPagina) {
         setPage((prev) => Math.max(1, prev - 1));
       } else {
-        clearClientesListCache();
-        await cargarClientes({ force: true });
+        void cargarClientes({ force: true, silent: true });
       }
 
       safeToast("OK", shouldActivate ? "Cliente activado" : "Cliente inactivado");
       closeConfirmDelete();
-      await cargarClientesGlobalStats();
+      void cargarClientesGlobalStats();
     } catch (error) {
       safeToast("ERROR", error.message || (shouldActivate ? "No se pudo activar" : "No se pudo inactivar"), "danger");
       clearClientesListCache();
