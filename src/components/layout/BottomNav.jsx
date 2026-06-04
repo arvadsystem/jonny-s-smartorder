@@ -3,9 +3,45 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { usePermisos } from '../../context/PermisosContext';
 import {
   getAllowedTabs,
-  getVisibleModuleItems
+  getVisibleModuleItems,
+  hasAnyPermission,
+  PERMISSIONS
 } from '../../utils/permissions';
 
+const INVENTARIO_STRONG_ADMIN_PERMISSIONS = [
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER_TODAS,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_GESTIONAR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CONVERTIR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_ABASTECER,
+  PERMISSIONS.INVENTARIO_OC_APROBAR,
+  PERMISSIONS.INVENTARIO_OC_RECHAZAR,
+  PERMISSIONS.INVENTARIO_OC_CONVERTIR_CONTINUAR,
+  PERMISSIONS.INVENTARIO_OC_ABASTECER,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_CREAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_EDITAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_CREAR,
+  PERMISSIONS.INVENTARIO_CATEGORIAS_INSUMOS_EDITAR,
+  PERMISSIONS.INVENTARIO_INSUMOS_CREAR,
+  PERMISSIONS.INVENTARIO_INSUMOS_EDITAR,
+  PERMISSIONS.INVENTARIO_PRODUCTOS_CREAR,
+  PERMISSIONS.INVENTARIO_PRODUCTOS_EDITAR,
+  PERMISSIONS.INVENTARIO_ALMACENES_CREAR,
+  PERMISSIONS.INVENTARIO_ALMACENES_EDITAR,
+  PERMISSIONS.INVENTARIO_PROVEEDORES_CREAR,
+  PERMISSIONS.INVENTARIO_PROVEEDORES_EDITAR,
+  PERMISSIONS.INVENTARIO_MOBILIARIO_CREAR,
+  PERMISSIONS.INVENTARIO_MOBILIARIO_EDITAR
+];
+const INVENTARIO_OPERATIONAL_PERMISSIONS = [
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR,
+  PERMISSIONS.INVENTARIO_ORDENES_COMPRA_RECEPCIONAR,
+  PERMISSIONS.INVENTARIO_OC_VER_FLUJO,
+  PERMISSIONS.INVENTARIO_OC_VER_DETALLE,
+  PERMISSIONS.INVENTARIO_OC_CREAR_SOLICITUD,
+  PERMISSIONS.INVENTARIO_OC_EDITAR_SOLICITUD,
+  PERMISSIONS.INVENTARIO_OC_RECEPCIONAR
+];
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -14,6 +50,12 @@ const BottomNav = () => {
 
   const isInInventario = location.pathname.startsWith('/dashboard/inventario');
   const currentTab = String(new URLSearchParams(location.search || '').get('tab') || '').toLowerCase();
+
+  const hasStrongInventoryAdmin = hasAnyPermission(permisos, INVENTARIO_STRONG_ADMIN_PERMISSIONS, { isSuperAdmin });
+  const isOperationalInventoryActor =
+    !isSuperAdmin
+    && hasAnyPermission(permisos, INVENTARIO_OPERATIONAL_PERMISSIONS, { isSuperAdmin })
+    && !hasStrongInventoryAdmin;
 
   const visibleMenuItems = useMemo(
     () =>
@@ -24,8 +66,12 @@ const BottomNav = () => {
   );
 
   const visibleInventarioOptions = useMemo(
-    () => getAllowedTabs('inventario', permisos, { isSuperAdmin }),
-    [isSuperAdmin, permisos]
+    () => {
+      const tabs = getAllowedTabs('inventario', permisos, { isSuperAdmin });
+      if (!isOperationalInventoryActor) return tabs;
+      return tabs.filter((tab) => String(tab?.key || '').toLowerCase() === 'ordenes_compra');
+    },
+    [isOperationalInventoryActor, isSuperAdmin, permisos]
   );
 
   const goInventario = (tab) => {

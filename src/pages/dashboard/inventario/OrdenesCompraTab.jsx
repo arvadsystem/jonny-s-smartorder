@@ -143,14 +143,25 @@ const formatEstadoLabel = (estado) => {
   return String(estado || '').replace('_', ' ');
 };
 
-const resolveNextStepLabel = (estado) => {
-  if (estado === 'PENDIENTE') return 'Revisar y aprobar solicitud';
-  if (estado === 'APROBADA') return 'Esperando recepción de sucursal';
-  if (estado === 'EN_COMPRA') return 'Registrar compra / preparar abastecimiento';
-  if (estado === 'ABASTECIDA') return 'Orden abastecida';
-  if (estado === 'RECHAZADA') return 'Orden rechazada';
-  if (estado === 'CANCELADA') return 'Orden cancelada';
-  return 'Pendiente de gestión administrativa';
+const resolveNextStepLabel = (estado, options = {}) => {
+  const isOperational = Boolean(options?.isOperational);
+  if (estado === 'PENDIENTE') {
+    return isOperational ? 'Administración revisará la solicitud.' : 'Revisar y aprobar solicitud';
+  }
+  if (estado === 'APROBADA') {
+    return isOperational
+      ? 'Reporta recepción cuando la mercadería llegue a sucursal.'
+      : 'Esperando recepción de sucursal';
+  }
+  if (estado === 'EN_COMPRA') {
+    return isOperational
+      ? 'Administración está gestionando la compra y abastecimiento.'
+      : 'Registrar compra / preparar abastecimiento';
+  }
+  if (estado === 'ABASTECIDA') return isOperational ? 'Solicitud finalizada.' : 'Orden abastecida';
+  if (estado === 'RECHAZADA') return isOperational ? 'Solicitud no aprobada.' : 'Orden rechazada';
+  if (estado === 'CANCELADA') return isOperational ? 'Solicitud cancelada.' : 'Orden cancelada';
+  return isOperational ? 'Solicitud en gestión administrativa.' : 'Pendiente de gestión administrativa';
 };
 
 const resolveEstadoAlertMessage = (estado) => {
@@ -675,6 +686,8 @@ const emptySupplyModal = () => ({
 const emptyRecepcionModal = () => ({
   open: false,
   orden: null,
+  detalles: [],
+  loading_detalles: false,
   observacion: '',
   usuario_sistema: '',
   sucursal_sistema: '',
@@ -717,6 +730,13 @@ const emptyItemRequestDecisionModal = () => ({
   solicitud: null,
   accion: 'aprobar',
   comentario: ''
+});
+
+const emptyCancelConfirmModal = () => ({
+  open: false,
+  row: null,
+  loading: false,
+  error: ''
 });
 
 const emptyQuickCreateItemModal = () => ({
@@ -862,13 +882,17 @@ const OrdenesCompraTab = ({ openToast }) => {
   const isSucursalOperativeActor = canRecepcionar && !isAdminFlowActor;
   const isOperationalExperience =
     !isAdminFlowActor && canVerFlujo && (canCrear || canRecepcionar || isSucursalOperativeActor);
+  const shouldShowFinancialInfo = !isOperationalExperience;
   // AM: visibilidad de historial/evidencias abastecidas limitada a super admin.
   const isSuperAdmin = isSuperAdminRoleList(user?.roles);
   // AM: cancelacion administrativa reservada para Admin/Super Admin.
-  const canCancelarOrden = canCancelar || isSuperAdmin;
+  const canCancelarOrden = isOperationalExperience && canCancelar;
   // AM: edicion manual de proveedor por linea solo para perfiles administrativos.
   const canEditarProveedorDraft =
-    isSuperAdmin || canGestionar || canVerTodas;
+    isSuperAdmin ||
+    canGestionar ||
+    canVerTodas ||
+    (isOperationalExperience && canCrear && canVerProveedoresCatalogo);
   // AM: secuencia de solicitud para ignorar respuestas antiguas de sugerencias por lote.
   const providerSuggestionReqSeqRef = useRef(0);
   const toast = useCallback(
@@ -953,6 +977,7 @@ const OrdenesCompraTab = ({ openToast }) => {
   const [reviewModal, setReviewModal] = useState(emptyReviewModal);
   const [supplyModal, setSupplyModal] = useState(emptySupplyModal);
   const [recepcionModal, setRecepcionModal] = useState(emptyRecepcionModal);
+  const [cancelConfirmModal, setCancelConfirmModal] = useState(emptyCancelConfirmModal);
   const [itemRequestModal, setItemRequestModal] = useState(emptyItemRequestModal);
   const [editDetallesModal, setEditDetallesModal] = useState(emptyEditDetallesModal);
   const [itemRequestDecisionModal, setItemRequestDecisionModal] = useState(emptyItemRequestDecisionModal);
@@ -1277,15 +1302,24 @@ const OrdenesCompraTab = ({ openToast }) => {
 
   const hasCreateSucursalSelected = Boolean(selectedCreateSucursalId);
   const hasCreateWarehouseResolved = Boolean(resolvedCreateWarehouseId);
+  const isOperationalSingleSucursal = isOperationalExperience && sucursalesCatalog.length === 1;
+
+  useEffect(() => {
+    if (!isOperationalExperience) return;
+    if (!isOperationalSingleSucursal) return;
+    const onlySucursalId = parsePositiveInt(sucursalesCatalog?.[0]?.id_sucursal);
+    if (!onlySucursalId) return;
+    setCatalogSucursalFilter(String(onlySucursalId));
+  }, [isOperationalExperience, isOperationalSingleSucursal, sucursalesCatalog]);
 
   const draftValidation = useMemo(() => {
     const errors = {};
     if (!hasCreateSucursalSelected) {
-      errors.__context = 'Selecciona una sucursal para crear la orden de compra.';
+      errors.__context = 'No tienes una sucursal asignada para crear solicitudes.';
       return errors;
     }
     if (!hasCreateWarehouseResolved) {
-      errors.__context = 'No hay almacen operativo configurado para esta sucursal.';
+      errors.__context = 'No se encontró almacén asignado para esta sucursal. Contacta a administración.';
       return errors;
     }
     for (const row of draft) {
@@ -1529,11 +1563,25 @@ const OrdenesCompraTab = ({ openToast }) => {
     },
     [user?.id_usuario]
   );
+  const currentOperationalSucursalId = useMemo(
+    () =>
+      parsePositiveInt(workflowCreateContext?.id_sucursal_usuario) ||
+      parsePositiveInt(user?.id_sucursal) ||
+      null,
+    [user?.id_sucursal, workflowCreateContext?.id_sucursal_usuario]
+  );
 
   const operationalOrders = useMemo(() => {
     const rows = Array.isArray(ordenesFlujoFiltradas) ? ordenesFlujoFiltradas : [];
     const byScope = rows.filter((row) => {
-      if (operationalScope === 'branch') return true;
+      if (operationalScope === 'branch') {
+        const rowSucursalId =
+          parsePositiveInt(row?.id_sucursal) ||
+          parsePositiveInt(row?.sucursal_id) ||
+          parsePositiveInt(row?.id_sucursal_creacion);
+        if (!currentOperationalSucursalId || !rowSucursalId) return false;
+        return Number(rowSucursalId) === Number(currentOperationalSucursalId);
+      }
       return isOwnOperationalOrder(row);
     });
     return byScope.filter((row) => {
@@ -1547,7 +1595,7 @@ const OrdenesCompraTab = ({ openToast }) => {
       if (operationalStatusTab === 'NO_APROBADAS') return estado === 'RECHAZADA' || estado === 'CANCELADA';
       return true;
     });
-  }, [isOwnOperationalOrder, operationalScope, operationalStatusTab, ordenesFlujoFiltradas]);
+  }, [currentOperationalSucursalId, isOwnOperationalOrder, operationalScope, operationalStatusTab, ordenesFlujoFiltradas]);
 
   const resolveOperationalEvidenceLabel = useCallback((row) => {
     const estado = resolveEstado(row);
@@ -1620,7 +1668,15 @@ const OrdenesCompraTab = ({ openToast }) => {
     setCreateModalOpen(true);
     setCreateSectionOpen(true);
     setDraftSectionOpen(true);
-  }, []);
+    // AM: en experiencia operativa prioriza busqueda manual para no ocultar catalogo cuando no hay faltantes.
+    setSoloAlertas(isOperationalExperience ? false : true);
+  }, [isOperationalExperience]);
+
+  useEffect(() => {
+    if (!createModalOpen) return;
+    if (!isOperationalExperience) return;
+    if (soloAlertas) setSoloAlertas(false);
+  }, [createModalOpen, isOperationalExperience, soloAlertas]);
 
   // AM: cierre controlado de modal de creacion sin alterar datos en borrador.
   const closeCreateModal = useCallback(() => {
@@ -2032,6 +2088,10 @@ const OrdenesCompraTab = ({ openToast }) => {
       setItemRequestModal((prev) => ({ ...prev, error: 'Cantidad sugerida debe ser un entero mayor a 0.' }));
       return;
     }
+    if (!descripcion) {
+      setItemRequestModal((prev) => ({ ...prev, error: 'Describe el motivo de la solicitud del item no registrado.' }));
+      return;
+    }
 
     setDraftItemRequests((prev) => [
       ...(Array.isArray(prev) ? prev : []),
@@ -2049,15 +2109,15 @@ const OrdenesCompraTab = ({ openToast }) => {
   const createSolicitud = async () => {
     if (!canCrear) return;
     if (!hasCreateSucursalSelected) {
-      toast('VALIDACION', 'Selecciona una sucursal para crear la orden de compra.', 'warning');
+      toast('VALIDACION', 'No tienes una sucursal asignada para crear solicitudes.', 'warning');
       return;
     }
     if (!hasCreateWarehouseResolved) {
-      toast('VALIDACION', 'No hay almacén operativo configurado para esta sucursal.', 'warning');
+      toast('VALIDACION', 'No se encontró almacén asignado para esta sucursal. Contacta a administración.', 'warning');
       return;
     }
     if (!hasDraftContent) {
-      toast('VALIDACION', 'Agrega items existentes o solicitudes de items nuevos para crear la solicitud.', 'warning');
+      toast('VALIDACION', 'Agrega al menos un producto o insumo para enviar la solicitud.', 'warning');
       return;
     }
     if (hasDraftErrors) {
@@ -3286,11 +3346,14 @@ const OrdenesCompraTab = ({ openToast }) => {
     }
   };
 
-  const openRecepcionModal = (orden) => {
+  const openRecepcionModal = async (orden) => {
+    const idOrden = parsePositiveInt(orden?.id_orden_compra);
     const now = new Date();
     setRecepcionModal({
       open: true,
       orden,
+      detalles: [],
+      loading_detalles: true,
       observacion: '',
       // AM: datos automaticos no editables para trazabilidad de la recepcion en sucursal.
       usuario_sistema: normalizeText(user?.nombre_usuario, 120) || `Usuario #${user?.id_usuario || '-'}`,
@@ -3304,6 +3367,25 @@ const OrdenesCompraTab = ({ openToast }) => {
       factura_preview_url: '',
       factura_error: ''
     });
+    if (!idOrden) {
+      setRecepcionModal((prev) => ({ ...prev, loading_detalles: false }));
+      return;
+    }
+    try {
+      const response = await inventarioService.getOrdenCompraWorkflowById(idOrden);
+      const detalles = Array.isArray(response?.data?.detalles) ? response.data.detalles : [];
+      setRecepcionModal((prev) => ({
+        ...prev,
+        detalles,
+        loading_detalles: false
+      }));
+    } catch {
+      setRecepcionModal((prev) => ({
+        ...prev,
+        detalles: [],
+        loading_detalles: false
+      }));
+    }
   };
 
   const doReportarRecepcion = async () => {
@@ -3315,12 +3397,21 @@ const OrdenesCompraTab = ({ openToast }) => {
     }
     const estadoOrdenActual = resolveEstado(recepcionModal?.orden);
     const recepcionRegistradaActual = hasReceptionRegistered(recepcionModal?.orden);
-    const canReportarRecepcion =
-      estadoOrdenActual === 'APROBADA' || (estadoOrdenActual === 'EN_COMPRA' && !recepcionRegistradaActual);
+    const canReportarRecepcion = isOperationalExperience
+      ? estadoOrdenActual === 'APROBADA'
+      : estadoOrdenActual === 'APROBADA' || (estadoOrdenActual === 'EN_COMPRA' && !recepcionRegistradaActual);
     if (!canReportarRecepcion) {
       setRecepcionModal((prev) => ({
         ...prev,
         error: 'La recepcion ya no se puede registrar para esta orden. Recarga el detalle.'
+      }));
+      return;
+    }
+    if (isOperationalExperience && !recepcionModal.factura_file) {
+      setRecepcionModal((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Adjunta una evidencia de recepción para continuar.'
       }));
       return;
     }
@@ -3345,7 +3436,9 @@ const OrdenesCompraTab = ({ openToast }) => {
       await inventarioService.reportarRecepcionOrdenCompraWorkflow(idOrden, payload);
       toast(
         'RECEPCION REPORTADA',
-        `Recepcion registrada para orden #${formatVisibleOrderNumber(recepcionModal?.orden)}.`,
+        isOperationalExperience
+          ? 'Recepción reportada. Administración continuará con la compra y abastecimiento.'
+          : `Recepcion registrada para orden #${formatVisibleOrderNumber(recepcionModal?.orden)}.`,
         'success'
       );
       closeRecepcionModal();
@@ -3364,7 +3457,7 @@ const OrdenesCompraTab = ({ openToast }) => {
     }
   };
 
-  const doCancelarOrden = async (row) => {
+  const requestCancelarOrden = (row) => {
     const idOrden = parsePositiveInt(row?.id_orden_compra);
     if (!idOrden || rowBusy[idOrden]) return;
     const estadoActual = resolveEstado(row);
@@ -3378,22 +3471,33 @@ const OrdenesCompraTab = ({ openToast }) => {
       toast('VALIDACION', 'La orden ya no se puede cancelar en su estado actual.', 'warning');
       return;
     }
+    setCancelConfirmModal({
+      open: true,
+      row,
+      loading: false,
+      error: ''
+    });
+  };
 
-    const confirmado = window.confirm(
-      `Cancelar la orden #${formatVisibleOrderNumber(row)}? Esta accion no se puede deshacer.`
-    );
-    if (!confirmado) return;
-
+  const doCancelarOrden = async (row) => {
+    const idOrden = parsePositiveInt(row?.id_orden_compra);
+    if (!idOrden || rowBusy[idOrden]) return;
+    setCancelConfirmModal((prev) => ({ ...prev, loading: true, error: '' }));
     setBusy(idOrden, true);
     try {
       await inventarioService.cancelarOrdenCompraWorkflow(idOrden);
-      toast('CANCELADA', `Orden #${formatVisibleOrderNumber(row)} cancelada correctamente.`, 'warning');
+      toast('CANCELADA', 'Orden de compra cancelada correctamente.', 'warning');
+      setCancelConfirmModal(emptyCancelConfirmModal());
       await loadOrdenes();
       if (detalleActual?.data?.orden?.id_orden_compra === idOrden) {
         await verDetalle({ id_orden_compra: idOrden });
       }
     } catch (error) {
-      toast('ERROR', error?.message || 'No se pudo cancelar la orden.', 'danger');
+      setCancelConfirmModal((prev) => ({
+        ...prev,
+        loading: false,
+        error: error?.message || 'No se pudo cancelar la orden.'
+      }));
     } finally {
       setBusy(idOrden, false);
     }
@@ -3555,7 +3659,7 @@ const OrdenesCompraTab = ({ openToast }) => {
         danger: true,
         isPrimary: false,
         render: (
-          <button key="act-cancel" className={`${actionClass} is-danger`} onClick={() => doCancelarOrden(row)} disabled={busy}>
+          <button key="act-cancel" className={`${actionClass} is-danger`} onClick={() => requestCancelarOrden(row)} disabled={busy}>
             <i className="bi bi-slash-circle" aria-hidden="true" />
             <span>{cancelLabel}</span>
           </button>
@@ -4147,6 +4251,11 @@ const OrdenesCompraTab = ({ openToast }) => {
                           const estadoReal = resolveEstado(row);
                           const recepcionRegistrada = hasReceptionRegistered(row);
                           const ownOrder = isOwnOperationalOrder(row);
+                          const canShowEditOperational =
+                            estadoReal === 'PENDIENTE' &&
+                            ownOrder &&
+                            canEditarSolicitud &&
+                            !Boolean(rowBusy[row.id_orden_compra]);
                           const canShowCancelOperational =
                             estadoReal === 'PENDIENTE' && ownOrder && canCancelarOrden && !Boolean(rowBusy[row.id_orden_compra]);
                           const canShowReceiveOperational =
@@ -4165,7 +4274,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 </div>
                                 <span className={`badge ${badgeClass(estadoVisual)}`}>{formatEstadoLabel(estadoVisual)}</span>
                               </div>
-                              <small className="text-muted d-block mt-2">Siguiente paso: {resolveNextStepLabel(estadoReal)}</small>
+                              <small className="text-muted d-block mt-2">Siguiente paso: {resolveNextStepLabel(estadoReal, { isOperational: true })}</small>
                               <div className="d-flex flex-wrap gap-2 mt-2">
                                 <span className="badge text-bg-light border">{parsePositiveInt(row?.total_items) || 0} líneas</span>
                                 <span className="badge text-bg-light border">{resolveOperationalEvidenceLabel(row)}</span>
@@ -4191,15 +4300,17 @@ const OrdenesCompraTab = ({ openToast }) => {
                                       : 'Ver detalle'}
                                   </button>
                                 )}
-                                <button
-                                  className="btn btn-sm btn-outline-secondary"
-                                  onClick={() => verDetalle(row)}
-                                  disabled={Boolean(rowBusy[row.id_orden_compra]) || !canVerDetalle}
-                                >
-                                  Ver detalle
-                                </button>
+                                {canShowEditOperational && (
+                                  <button
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => openEditDetallesModal(row)}
+                                    disabled={Boolean(rowBusy[row.id_orden_compra])}
+                                  >
+                                    Editar solicitud
+                                  </button>
+                                )}
                                 {canShowCancelOperational && (
-                                  <button className="btn btn-sm btn-outline-danger" onClick={() => doCancelarOrden(row)}>
+                                  <button className="btn btn-sm btn-outline-danger" onClick={() => requestCancelarOrden(row)}>
                                     Cancelar solicitud
                                   </button>
                                 )}
@@ -4225,29 +4336,38 @@ const OrdenesCompraTab = ({ openToast }) => {
                         <table className="table table-sm align-middle mb-0">
                           <thead className="table-light">
                             <tr>
-                              <th>Numero OC</th>
-                              <th>Estado</th>
+                              <th>OC</th>
+                              <th>Fecha</th>
                               <th>Sucursal</th>
-                              <th>Proveedores</th>
-                              <th>Lineas / cantidades</th>
-                              <th>Total estimado/real</th>
+                              <th>Solicitante</th>
+                              <th>Estado</th>
                               <th>Siguiente paso</th>
                               <th>Evidencias</th>
-                              <th>Fecha</th>
-                              <th style={{ minWidth: 260 }}>Acciones</th>
+                              <th style={{ minWidth: 240 }}>Acciones</th>
                             </tr>
                           </thead>
                           <tbody>
                             {ordenesFlujoFiltradas.map((row) => {
                               const estadoVisual = resolveEstadoVisual(row);
-                              const providerSummary = getFlowProviderSummary(row);
-                              const totalSummary = getFlowTotalLabel(row);
                               const evidenceSummary = getFlowOrderEvidenceSummary(row);
                               return (
                                 <tr key={`flow-table-${row.id_orden_compra}`}>
                                   <td>
                                     <strong>#{formatVisibleOrderNumber(row)}</strong>
                                     <small className="text-muted d-block">ID {row.id_orden_compra}</small>
+                                  </td>
+                                  <td>
+                                    <strong>{formatDate(row.fecha_creacion || row.fecha)}</strong>
+                                    <small className="text-muted d-block">{formatTime(row.fecha_creacion)}</small>
+                                  </td>
+                                  <td>{resolveSucursalLabel(row)}</td>
+                                  <td>
+                                    {normalizeText(
+                                      row?.solicitante_nombre_usuario ||
+                                        row?.nombre_usuario_solicitante ||
+                                        row?.usuario_creacion_nombre,
+                                      120
+                                    ) || 'No disponible'}
                                   </td>
                                   <td>
                                     <span className={`badge ${badgeClass(estadoVisual)}`}>
@@ -4257,21 +4377,6 @@ const OrdenesCompraTab = ({ openToast }) => {
                                       <small className="text-muted d-block mt-1">Esperando recepción de sucursal</small>
                                     )}
                                   </td>
-                                  <td>{resolveSucursalLabel(row)}</td>
-                                  <td>
-                                    <strong>{providerSummary.primary}</strong>
-                                    <small className="text-muted d-block">{providerSummary.secondary}</small>
-                                  </td>
-                                  <td>
-                                    <strong>{parsePositiveInt(row?.total_items) || 0} líneas</strong>
-                                    <small className="text-muted d-block">
-                                      {parsePositiveInt(row?.total_cantidad) || 0} unidades
-                                    </small>
-                                  </td>
-                                  <td>
-                                    <strong>{totalSummary.label}</strong>
-                                    <small className="text-muted d-block">{totalSummary.micro}</small>
-                                  </td>
                                   <td>
                                     <small className="text-muted d-block">{resolveNextStepLabel(resolveEstado(row))}</small>
                                   </td>
@@ -4279,10 +4384,6 @@ const OrdenesCompraTab = ({ openToast }) => {
                                     <span className={`badge ${evidenceSummary.toneClass}`}>
                                       {evidenceSummary.label}
                                     </span>
-                                  </td>
-                                  <td>
-                                    <strong>{formatDate(row.fecha_creacion || row.fecha)}</strong>
-                                    <small className="text-muted d-block">{formatTime(row.fecha_creacion)}</small>
                                   </td>
                                   <td>{renderActions(row, true)}</td>
                                 </tr>
@@ -4489,13 +4590,15 @@ const OrdenesCompraTab = ({ openToast }) => {
                     </div>
                   </article>
 
-                  <article className="inv-oc-draft-summary-pill">
-                    <i className="bi bi-cash-stack" aria-hidden="true" />
-                    <div>
-                      <span>Total estimado</span>
-                      <strong>{formatMoney(draftEstimatedTotals.total)}</strong>
-                    </div>
-                  </article>
+                  {shouldShowFinancialInfo && (
+                    <article className="inv-oc-draft-summary-pill">
+                      <i className="bi bi-cash-stack" aria-hidden="true" />
+                      <div>
+                        <span>Total estimado</span>
+                        <strong>{formatMoney(draftEstimatedTotals.total)}</strong>
+                      </div>
+                    </article>
+                  )}
                 </div>
                 {draft.length === 0 ? (
                   <div className="inv-oc-empty-state">
@@ -4583,32 +4686,36 @@ const OrdenesCompraTab = ({ openToast }) => {
                                   : 'Proveedor sin definir')}
                             </div>
                           )}
-                          <small className="text-muted d-block mt-1">
-                            {formatProveedorSugeridoOrigen(row?.proveedor_sugerido_origen)}
-                          </small>
-                          <div className="row g-2 mt-1">
-                            <div className="col-6">
-                              <small className="text-muted d-block">Precio estimado</small>
-                              <strong>
-                                {parseNonNegativeNumber(row?.precio_estimado) !== null
-                                  ? formatMoney(parseNonNegativeNumber(row?.precio_estimado))
-                                  : 'Sin precio estimado'}
-                              </strong>
-                            </div>
-                            <div className="col-6">
-                              <small className="text-muted d-block">Subtotal estimado</small>
-                              <strong>
-                                {parseNonNegativeNumber(row?.precio_estimado) !== null
-                                  ? formatMoney(
-                                      round2(
-                                        (parsePositiveInt(row?.cantidad) || 0) *
-                                          (parseNonNegativeNumber(row?.precio_estimado) || 0)
-                                      )
-                                    )
-                                  : 'Sin precio estimado'}
-                              </strong>
-                            </div>
-                          </div>
+                          {shouldShowFinancialInfo && (
+                            <>
+                              <small className="text-muted d-block mt-1">
+                                {formatProveedorSugeridoOrigen(row?.proveedor_sugerido_origen)}
+                              </small>
+                              <div className="row g-2 mt-1">
+                                <div className="col-6">
+                                  <small className="text-muted d-block">Precio estimado</small>
+                                  <strong>
+                                    {parseNonNegativeNumber(row?.precio_estimado) !== null
+                                      ? formatMoney(parseNonNegativeNumber(row?.precio_estimado))
+                                      : 'Sin precio estimado'}
+                                  </strong>
+                                </div>
+                                <div className="col-6">
+                                  <small className="text-muted d-block">Subtotal estimado</small>
+                                  <strong>
+                                    {parseNonNegativeNumber(row?.precio_estimado) !== null
+                                      ? formatMoney(
+                                          round2(
+                                            (parsePositiveInt(row?.cantidad) || 0) *
+                                              (parseNonNegativeNumber(row?.precio_estimado) || 0)
+                                          )
+                                        )
+                                      : 'Sin precio estimado'}
+                                  </strong>
+                                </div>
+                              </div>
+                            </>
+                          )}
                           {hasValue(row?.unidad_nombre) && (
                             <small className="text-muted d-block mt-1">
                               Unidad: {row.unidad_nombre}
@@ -4677,19 +4784,28 @@ const OrdenesCompraTab = ({ openToast }) => {
 
                   <section className="inv-oc-draft-submit-panel">
                     <div className="inv-oc-draft-submit-panel__copy">
-                      <span>Resumen estimado</span>
-                      <strong>
-                        Subtotal: {formatMoney(draftEstimatedTotals.subtotal)} - ISV: {formatMoney(draftEstimatedTotals.isv)}
-                      </strong>
-                      <strong>
-                        Total: {formatMoney(draftEstimatedTotals.total)} - Líneas: {draft.length} - Unidades: {draftTotals.unidades}
-                      </strong>
-                      <small>
-                        Los montos finales se ajustan al registrar la compra/factura.
-                        {draftEstimatedTotals.lineasSinPrecio > 0
-                          ? ` (${draftEstimatedTotals.lineasSinPrecio} línea(s) sin precio estimado).`
-                          : ''}
-                      </small>
+                      {isOperationalExperience ? (
+                        <>
+                          <span>Resumen de solicitud</span>
+                          <strong>Líneas: {draft.length} - Unidades: {draftTotals.unidades}</strong>
+                        </>
+                      ) : (
+                        <>
+                          <span>Resumen estimado</span>
+                          <strong>
+                            Subtotal: {formatMoney(draftEstimatedTotals.subtotal)} - ISV: {formatMoney(draftEstimatedTotals.isv)}
+                          </strong>
+                          <strong>
+                            Total: {formatMoney(draftEstimatedTotals.total)} - Líneas: {draft.length} - Unidades: {draftTotals.unidades}
+                          </strong>
+                          <small>
+                            Los montos finales se ajustan al registrar la compra/factura.
+                            {draftEstimatedTotals.lineasSinPrecio > 0
+                              ? ` (${draftEstimatedTotals.lineasSinPrecio} línea(s) sin precio estimado).`
+                              : ''}
+                          </small>
+                        </>
+                      )}
                       {draftValidation.__context && (
                         <small className="text-danger">{draftValidation.__context}</small>
                       )}
@@ -4733,11 +4849,17 @@ const OrdenesCompraTab = ({ openToast }) => {
                   </span>
                   <div className="inv-oc-create-modal__hero-copy">
                     <h5 className="modal-title mb-0">Nueva solicitud de compra</h5>
-                    <p className="mb-0">Agrega faltantes, valida proveedor sugerido y genera una OC para la sucursal.</p>
-                    <div className="inv-oc-create-modal__hero-badges">
-                      <span className="badge rounded-pill text-bg-light border">Almacén automático</span>
-                      <span className="badge rounded-pill text-bg-light border">Proveedor sugerido</span>
-                    </div>
+                    <p className="mb-0">
+                      {isOperationalExperience
+                        ? 'Solicita productos o insumos para tu sucursal. Administración revisará la solicitud.'
+                        : 'Agrega faltantes, valida proveedor sugerido y genera una OC para la sucursal.'}
+                    </p>
+                    {shouldShowFinancialInfo && (
+                      <div className="inv-oc-create-modal__hero-badges">
+                        <span className="badge rounded-pill text-bg-light border">Almacén automático</span>
+                        <span className="badge rounded-pill text-bg-light border">Proveedor sugerido</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button type="button" className="btn-close" aria-label="Close" onClick={closeCreateModal} disabled={creating} />
@@ -4776,20 +4898,29 @@ const OrdenesCompraTab = ({ openToast }) => {
                         </strong>
                       </div>
                     </article>
-                    <article className="inv-oc-create-context-card">
-                      <span className="inv-oc-create-context-card__icon" aria-hidden="true">
-                        <i className="bi bi-person-badge" />
-                      </span>
-                      <div>
-                        <small>Contexto de usuario</small>
-                        <strong>{isOperationalCreateRestricted ? 'Sucursal asignada (operativo)' : 'Control administrativo'}</strong>
-                      </div>
-                    </article>
+                    {shouldShowFinancialInfo && (
+                      <article className="inv-oc-create-context-card">
+                        <span className="inv-oc-create-context-card__icon" aria-hidden="true">
+                          <i className="bi bi-person-badge" />
+                        </span>
+                        <div>
+                          <small>Contexto de usuario</small>
+                          <strong>{isOperationalCreateRestricted ? 'Sucursal asignada (operativo)' : 'Control administrativo'}</strong>
+                        </div>
+                      </article>
+                    )}
                   </div>
                   <div className="row g-2">
                     <div className="col-12 col-md-5">
                       <label className="form-label mb-1">Sucursal</label>
-                      {isOperationalCreateRestricted ? (
+                      {isOperationalExperience && isOperationalSingleSucursal ? (
+                        <input
+                          type="text"
+                          className="form-control form-control-sm"
+                          value={sucursalesCatalog?.[0]?.nombre_sucursal || 'Sucursal asignada'}
+                          readOnly
+                        />
+                      ) : isOperationalCreateRestricted ? (
                         <input
                           type="text"
                           className="form-control form-control-sm"
@@ -4805,7 +4936,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                           value={catalogSucursalFilter}
                           onChange={(e) => setCatalogSucursalFilter(e.target.value)}
                         >
-                          <option value="">Selecciona sucursal</option>
+                          <option value="">{isOperationalExperience ? 'Selecciona sucursal' : 'Selecciona sucursal'}</option>
                           {sucursalesCatalog.map((row) => (
                             <option key={`oc-create-modal-suc-${row.id_sucursal}`} value={row.id_sucursal}>
                               {row.nombre_sucursal}
@@ -4831,7 +4962,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                         readOnly
                       />
                       {hasCreateSucursalSelected && !hasCreateWarehouseResolved && (
-                        <div className="invalid-feedback d-block">No hay almacén operativo configurado para esta sucursal.</div>
+                        <div className="invalid-feedback d-block">No se encontró almacén asignado para esta sucursal. Contacta a administración.</div>
                       )}
                     </div>
                   </div>
@@ -4856,10 +4987,10 @@ const OrdenesCompraTab = ({ openToast }) => {
                     </label>
                   </div>
                   {!hasCreateSucursalSelected && (
-                    <div className="alert alert-info py-2 mb-2">Selecciona una sucursal para cargar faltantes y búsqueda manual.</div>
+                    <div className="alert alert-info py-2 mb-2">No tienes una sucursal asignada para crear solicitudes.</div>
                   )}
                   {hasCreateSucursalSelected && !hasCreateWarehouseResolved && (
-                    <div className="alert alert-danger py-2 mb-2">No hay almacén operativo configurado para esta sucursal.</div>
+                    <div className="alert alert-danger py-2 mb-2">No se encontró almacén asignado para esta sucursal. Contacta a administración.</div>
                   )}
                   <div className="row g-2 mb-2">
                     <div className="col-12 col-md-8">
@@ -4899,7 +5030,11 @@ const OrdenesCompraTab = ({ openToast }) => {
                     {filteredCatalog.length === 0 && (
                       <div className="inv-oc-create-empty-state">
                         <i className="bi bi-inboxes" aria-hidden="true" />
-                        <span>{soloAlertas ? 'Sin faltantes detectados para este filtro.' : 'Sin items para el filtro actual.'}</span>
+                        <span>
+                          {soloAlertas
+                            ? 'No hay faltantes detectados. Activa "Ver todos" para buscar productos e insumos del almacén.'
+                            : 'No hay productos o insumos activos disponibles para este almacén. Verifica el catálogo o los permisos del rol.'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -4969,7 +5104,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                               {draftValidation[row.key] && <div className="invalid-feedback d-block">{draftValidation[row.key]}</div>}
                             </div>
                             <div className="col-12 col-md-4">
-                              <label className="form-label mb-1">Proveedor sugerido</label>
+                              <label className="form-label mb-1">Proveedor sugerido (opcional)</label>
                               {canEditarProveedorDraft ? (
                                 <select
                                   className="form-select form-select-sm"
@@ -4992,13 +5127,15 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 </div>
                               )}
                               <small className="text-muted d-block mt-1">
-                                <span
-                                  className={`inv-oc-proveedor-origen-chip ${proveedorSugeridoOrigenClass(
-                                    row?.proveedor_sugerido_origen
-                                  )}`}
-                                >
-                                  {formatProveedorSugeridoOrigen(row?.proveedor_sugerido_origen)}
-                                </span>
+                                {shouldShowFinancialInfo && (
+                                  <span
+                                    className={`inv-oc-proveedor-origen-chip ${proveedorSugeridoOrigenClass(
+                                      row?.proveedor_sugerido_origen
+                                    )}`}
+                                  >
+                                    {formatProveedorSugeridoOrigen(row?.proveedor_sugerido_origen)}
+                                  </span>
+                                )}
                               </small>
                             </div>
                             <div className="col-12 col-md-5">
@@ -5006,18 +5143,22 @@ const OrdenesCompraTab = ({ openToast }) => {
                               <div className="form-control form-control-sm bg-light">
                                 {resolvedCreateWarehouse ? formatAlmacenDisplay(resolvedCreateWarehouse) : 'No resuelto'}
                               </div>
-                              <small className="text-muted d-block mt-1">
-                                Precio estimado:{' '}
-                                {parseNonNegativeNumber(row?.precio_estimado) !== null
-                                  ? formatMoney(parseNonNegativeNumber(row?.precio_estimado))
-                                  : 'Sin precio estimado'}
-                              </small>
-                              <small className="text-muted d-block mt-1">
-                                Subtotal:{' '}
-                                {parseNonNegativeNumber(row?.precio_estimado) !== null
-                                  ? formatMoney((parseNonNegativeNumber(row?.precio_estimado) || 0) * (parsePositiveInt(row?.cantidad) || 0))
-                                  : 'Sin subtotal estimado'}
-                              </small>
+                              {shouldShowFinancialInfo && (
+                                <>
+                                  <small className="text-muted d-block mt-1">
+                                    Precio estimado:{' '}
+                                    {parseNonNegativeNumber(row?.precio_estimado) !== null
+                                      ? formatMoney(parseNonNegativeNumber(row?.precio_estimado))
+                                      : 'Sin precio estimado'}
+                                  </small>
+                                  <small className="text-muted d-block mt-1">
+                                    Subtotal:{' '}
+                                    {parseNonNegativeNumber(row?.precio_estimado) !== null
+                                      ? formatMoney((parseNonNegativeNumber(row?.precio_estimado) || 0) * (parsePositiveInt(row?.cantidad) || 0))
+                                      : 'Sin subtotal estimado'}
+                                  </small>
+                                </>
+                              )}
                             </div>
                           </div>
                         </article>
@@ -5027,6 +5168,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                 </section>
 
                 {/* AM: bloque 4 premium para resumen de montos estimados y contexto final de creacion. */}
+                {shouldShowFinancialInfo && (
                 <section className="inv-oc-create-summary">
                   <div className="inv-oc-create-summary__head">
                     <h6 className="mb-0">
@@ -5059,6 +5201,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                   <small className="text-muted d-block mt-2">Los montos finales se ajustan al registrar la compra/factura.</small>
                   {draftValidation.__context && <small className="text-danger d-block mt-1">{draftValidation.__context}</small>}
                 </section>
+                )}
               </div>
               {/* AM: footer premium y compacto con accion principal clara para crear la OC. */}
               <div className="modal-footer inv-oc-create-modal__footer">
@@ -5075,7 +5218,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                   ) : (
                     <>
                       <i className="bi bi-send-check me-1" aria-hidden="true" />
-                      Crear orden de compra
+                      {isOperationalExperience ? 'Enviar solicitud' : 'Crear orden de compra'}
                     </>
                   )}
                 </button>
@@ -5120,6 +5263,15 @@ const OrdenesCompraTab = ({ openToast }) => {
                         : [];
                       const estadoOrden = resolveEstadoVisual(orden);
                       const estadoOrdenReal = resolveEstado(orden);
+                      const motivoRechazo =
+                        normalizeText(
+                          orden?.comentario_revision ||
+                            orden?.observacion_revision ||
+                            orden?.motivo_rechazo ||
+                            orden?.observacion_rechazo ||
+                            '',
+                          1000
+                        ) || '';
                       const alertToneClass =
                         estadoOrdenReal === 'ABASTECIDA'
                           ? 'alert-success'
@@ -5181,7 +5333,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 </span>
                                 <span>
                                   <i className="bi bi-signpost-split me-1" aria-hidden="true" />
-                                  {resolveNextStepLabel(estadoOrdenReal)}
+                                  {resolveNextStepLabel(estadoOrdenReal, { isOperational: isOperationalExperience })}
                                 </span>
                               </p>
                             </div>
@@ -5199,6 +5351,12 @@ const OrdenesCompraTab = ({ openToast }) => {
                             <section className="inv-oc-detail-note-card">
                               <span>Observacion de solicitud</span>
                               <p>{orden.observacion_solicitud}</p>
+                            </section>
+                          )}
+                          {estadoOrdenReal === 'RECHAZADA' && (
+                            <section className="inv-oc-detail-note-card">
+                              <span>Motivo de rechazo</span>
+                              <p>{motivoRechazo || 'No se registró motivo de rechazo.'}</p>
                             </section>
                           )}
 
@@ -5223,7 +5381,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                           <th>Nombre</th>
                                           <th>Cantidad</th>
                                           <th>Almacen destino</th>
-                                          <th>Proveedor sugerido</th>
+                                          {shouldShowFinancialInfo && <th>Proveedor sugerido</th>}
                                           <th>Item nuevo</th>
                                         </tr>
                                       </thead>
@@ -5244,7 +5402,9 @@ const OrdenesCompraTab = ({ openToast }) => {
                                               </td>
                                               <td>{parsePositiveInt(row?.cantidad_orden) || 0}</td>
                                               <td>{normalizeText(row?.almacen_destino_nombre, 120) || 'No especificado'}</td>
-                                              <td>{normalizeText(row?.proveedor_sugerido_nombre, 120) || 'Sin proveedor sugerido'}</td>
+                                              {shouldShowFinancialInfo && (
+                                                <td>{normalizeText(row?.proveedor_sugerido_nombre, 120) || 'Sin proveedor sugerido'}</td>
+                                              )}
                                               <td>{boolish(row?.es_solicitud_item_nuevo) ? 'Pendiente catalogo' : 'No'}</td>
                                             </tr>
                                           );
@@ -5265,7 +5425,11 @@ const OrdenesCompraTab = ({ openToast }) => {
                                         </div>
                                         <small className="text-muted d-block mt-1">Tipo: {itemTipo}</small>
                                         <small className="text-muted d-block">Almacen: {normalizeText(row?.almacen_destino_nombre, 120) || 'No especificado'}</small>
-                                        <small className="text-muted d-block">Proveedor: {normalizeText(row?.proveedor_sugerido_nombre, 120) || 'Sin proveedor sugerido'}</small>
+                                        {shouldShowFinancialInfo && (
+                                          <small className="text-muted d-block">
+                                            Proveedor: {normalizeText(row?.proveedor_sugerido_nombre, 120) || 'Sin proveedor sugerido'}
+                                          </small>
+                                        )}
                                         <small className="text-muted d-block">
                                           Item nuevo: {boolish(row?.es_solicitud_item_nuevo) ? 'Pendiente catalogo' : 'No'}
                                         </small>
@@ -5292,7 +5456,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                   <strong>{evidenciaFacturaEstado}</strong>
                                 </article>
                               </div>
-                              {!isOperationalExperience && (
+                              {shouldShowFinancialInfo && (
                                 <div className="col-12 col-md-6">
                                   <article className="border rounded-3 p-2 bg-white h-100">
                                     <small className="text-muted d-block">Depósito / transferencia</small>
@@ -5301,10 +5465,84 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 </div>
                               )}
                             </div>
+                            {hasFacturaDetalle && (
+                              <div className="mt-2">
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary"
+                                  onClick={() =>
+                                    openDetailEvidencePreview(orden?.id_orden_compra, {
+                                      tipo_evidencia: 'FACTURA_RECEPCION',
+                                      evidencia_url_publica: orden?.factura_recepcion_url_publica
+                                    })
+                                  }
+                                >
+                                  Ver evidencia de recepción
+                                </button>
+                              </div>
+                            )}
+                            {detailEvidencePreview.url ? (
+                              <div className="border rounded-3 p-2 bg-white mt-2">
+                                <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                                  <strong>{detailEvidencePreview.title || 'Vista previa de evidencia'}</strong>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() =>
+                                      setDetailEvidencePreview({
+                                        url: '',
+                                        title: '',
+                                        kind: 'image',
+                                        loading: false,
+                                        error: ''
+                                      })
+                                    }
+                                  >
+                                    Cerrar vista previa
+                                  </button>
+                                </div>
+                                {detailEvidencePreview.kind === 'pdf' ? (
+                                  <a
+                                    href={detailEvidencePreview.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-outline-primary btn-sm"
+                                  >
+                                    Abrir documento
+                                  </a>
+                                ) : (
+                                  <img
+                                    src={detailEvidencePreview.url}
+                                    alt={detailEvidencePreview.title || 'Evidencia de orden de compra'}
+                                    className="img-fluid rounded border"
+                                  />
+                                )}
+                              </div>
+                            ) : null}
+                            {detailEvidencePreview.loading ? (
+                              <div className="text-muted small mt-2">Cargando evidencia...</div>
+                            ) : null}
+                            {detailEvidencePreview.error ? (
+                              <div className="alert alert-warning py-2 mb-0 mt-2">{detailEvidencePreview.error}</div>
+                            ) : null}
+                            {isOperationalExperience && estadoOrdenReal === 'EN_COMPRA' && (
+                              <article className="border rounded-3 p-2 bg-white mt-2">
+                                <small className="text-muted d-block">Seguimiento de recepción</small>
+                                <strong>Recepción reportada. Administración continuará el proceso.</strong>
+                                {hasFacturaDetalle && (
+                                  <small className="text-muted d-block mt-1">Evidencia de recepción: cargada.</small>
+                                )}
+                                {hasValue(orden?.observacion_recepcion) && (
+                                  <small className="text-muted d-block mt-1">
+                                    Observación de recepción: {normalizeText(orden?.observacion_recepcion, 280)}
+                                  </small>
+                                )}
+                              </article>
+                            )}
                           </section>
 
                           {/* AM: bloque historico de evidencias solo para super admin cuando la OC ya esta abastecida. */}
-                          <section className="inv-oc-detail-section">
+                          {shouldShowFinancialInfo && <section className="inv-oc-detail-section">
                             <details>
                               <summary className="fw-semibold">Historial y trazabilidad</summary>
                               <div className="mt-2 d-flex flex-column gap-2">
@@ -5421,7 +5659,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 )}
                               </div>
                             </details>
-                          </section>
+                          </section>}
 
                           {solicitudesItem.length > 0 && (
                             <section className="inv-oc-detail-section">
@@ -5472,7 +5710,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                           Revision: {normalizeText(row?.comentario_revision, 500)}
                                         </small>
                                       )}
-                                      {canReviewRequest && (
+                                      {shouldShowFinancialInfo && canReviewRequest && (
                                         <div className="d-flex flex-wrap gap-2">
                                           {estadoSolicitud === ITEM_REQUEST_STATE_PENDIENTE && (
                                             <button
@@ -5494,7 +5732,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                           </button>
                                         </div>
                                       )}
-                                      {canOpenQuickCreate && (
+                                      {shouldShowFinancialInfo && canOpenQuickCreate && (
                                         <div className="d-flex flex-wrap gap-2">
                                           <button
                                             type="button"
@@ -5506,7 +5744,8 @@ const OrdenesCompraTab = ({ openToast }) => {
                                           </button>
                                         </div>
                                       )}
-                                      {!canOpenQuickCreate &&
+                                      {!isOperationalExperience &&
+                                        !canOpenQuickCreate &&
                                         estadoSolicitud === ITEM_REQUEST_STATE_EN_REVISION &&
                                         canAtenderSolicitudItem && (
                                         <small className="text-muted">
@@ -5519,13 +5758,15 @@ const OrdenesCompraTab = ({ openToast }) => {
                               </div>
                             </section>
                           )}
-                          <section className="inv-oc-detail-section">
-                            <h6 className="mb-2 inv-oc-detail-section__title">
-                              <i className="bi bi-lightning-charge" aria-hidden="true" />
-                              Acciones administrativas
-                            </h6>
-                            {renderActions(orden)}
-                          </section>
+                          {shouldShowFinancialInfo && (
+                            <section className="inv-oc-detail-section">
+                              <h6 className="mb-2 inv-oc-detail-section__title">
+                                <i className="bi bi-lightning-charge" aria-hidden="true" />
+                                Acciones administrativas
+                              </h6>
+                              {renderActions(orden)}
+                            </section>
+                          )}
                         </div>
                       );
                     })()}
@@ -5654,7 +5895,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                     </select>
                   </div>
                   <div className="col-12 col-md-8">
-                    <label className="form-label mb-1">Nombre sugerido</label>
+                    <label className="form-label mb-1">Nombre del item</label>
                     <input
                       className="form-control"
                       value={itemRequestModal.nombre_sugerido}
@@ -5665,7 +5906,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                     />
                   </div>
                   <div className="col-12 col-md-4">
-                    <label className="form-label mb-1">Cantidad sugerida</label>
+                    <label className="form-label mb-1">Cantidad solicitada</label>
                     <input
                       className="form-control"
                       value={itemRequestModal.cantidad_sugerida}
@@ -5679,14 +5920,14 @@ const OrdenesCompraTab = ({ openToast }) => {
                     />
                   </div>
                   <div className="col-12 col-md-8">
-                    <label className="form-label mb-1">Descripcion</label>
+                    <label className="form-label mb-1">Motivo / observación</label>
                     <input
                       className="form-control"
                       value={itemRequestModal.descripcion}
                       onChange={(e) =>
                         setItemRequestModal((prev) => ({ ...prev, descripcion: e.target.value, error: '' }))
                       }
-                      placeholder="Uso o detalle breve del item solicitado"
+                      placeholder="Describe el motivo de la solicitud"
                     />
                   </div>
                 </div>
@@ -6287,7 +6528,9 @@ const OrdenesCompraTab = ({ openToast }) => {
               <div className="modal-header">
                 <h5 className="modal-title d-flex align-items-center gap-2">
                   <i className="bi bi-receipt" aria-hidden="true" />
-                  Registrar recepcion de orden #{formatVisibleOrderNumber(recepcionModal?.orden)}
+                  {isOperationalExperience
+                    ? 'Reportar recepción'
+                    : `Registrar recepcion de orden #${formatVisibleOrderNumber(recepcionModal?.orden)}`}
                 </h5>
                 <button
                   type="button"
@@ -6298,6 +6541,38 @@ const OrdenesCompraTab = ({ openToast }) => {
                 />
               </div>
               <div className="modal-body">
+                {isOperationalExperience && (
+                  <p className="text-muted small mb-3">
+                    Confirma que la mercadería llegó a sucursal y adjunta la evidencia correspondiente.
+                  </p>
+                )}
+                <div className="mb-3">
+                  <label className="form-label mb-1">Items solicitados</label>
+                  {recepcionModal.loading_detalles ? (
+                    <div className="text-muted small">Cargando items...</div>
+                  ) : Array.isArray(recepcionModal.detalles) && recepcionModal.detalles.length > 0 ? (
+                    <div className="table-responsive border rounded">
+                      <table className="table table-sm align-middle mb-0">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Item</th>
+                            <th style={{ width: 140 }}>Cantidad</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recepcionModal.detalles.map((row) => (
+                            <tr key={`recepcion-detalle-${row?.id_detalle_orden || `${row?.id_item}-${row?.item_tipo}`}`}>
+                              <td>{normalizeText(row?.item_nombre, 160) || 'Item sin nombre'}</td>
+                              <td>{parseNonNegativeNumber(row?.cantidad_orden) ?? 0}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-muted small">No hay ítems disponibles para mostrar.</div>
+                  )}
+                </div>
                 <div className="row g-2 mb-2">
                   <div className="col-12 col-md-6">
                     <label className="form-label mb-1">Usuario (auto)</label>
@@ -6317,11 +6592,13 @@ const OrdenesCompraTab = ({ openToast }) => {
                   </div>
                 </div>
 
-                <label className="form-label mb-1">Factura de recepcion (opcional)</label>
+                <label className="form-label mb-1">
+                  Evidencia de recepción {isOperationalExperience ? '(obligatoria)' : '(opcional)'}
+                </label>
                 <input
                   className={`form-control ${recepcionModal.factura_error ? 'is-invalid' : ''}`}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  accept="image/*,.pdf,application/pdf"
                   onChange={(e) => {
                     const file = e.target.files?.[0] || null;
                     const previousPreview = String(recepcionModal.factura_preview_url || '');
@@ -6406,7 +6683,52 @@ const OrdenesCompraTab = ({ openToast }) => {
                   Cancelar
                 </button>
                 <button className="btn btn-primary" onClick={doReportarRecepcion} disabled={recepcionModal.loading}>
-                  {recepcionModal.loading ? 'Enviando...' : 'Guardar recepcion'}
+                  {recepcionModal.loading ? 'Enviando...' : 'Confirmar recepción'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {cancelConfirmModal.open && (
+        <div className="modal fade show d-block inv-oc-modal-layer" role="dialog" aria-modal="true">
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content inv-oc-modal">
+              <div className="modal-header">
+                <h5 className="modal-title d-flex align-items-center gap-2">
+                  <i className="bi bi-exclamation-triangle" aria-hidden="true" />
+                  Confirmar cancelación
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="Close"
+                  onClick={() => setCancelConfirmModal(emptyCancelConfirmModal())}
+                  disabled={cancelConfirmModal.loading}
+                />
+              </div>
+              <div className="modal-body">
+                <p className="mb-0">
+                  ¿Deseas cancelar esta orden de compra? Esta acción no se puede deshacer.
+                </p>
+                {cancelConfirmModal.error && (
+                  <div className="alert alert-danger mt-2 mb-0">{cancelConfirmModal.error}</div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="btn btn-outline-secondary"
+                  onClick={() => setCancelConfirmModal(emptyCancelConfirmModal())}
+                  disabled={cancelConfirmModal.loading}
+                >
+                  Volver
+                </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => doCancelarOrden(cancelConfirmModal.row)}
+                  disabled={cancelConfirmModal.loading}
+                >
+                  {cancelConfirmModal.loading ? 'Cancelando...' : 'Cancelar orden'}
                 </button>
               </div>
             </div>
@@ -6906,6 +7228,10 @@ const OrdenesCompraTab = ({ openToast }) => {
 };
 
 export default OrdenesCompraTab;
+
+
+
+
 
 
 
