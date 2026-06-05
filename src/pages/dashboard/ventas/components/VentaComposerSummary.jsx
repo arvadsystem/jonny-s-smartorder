@@ -1,6 +1,15 @@
 import { useState } from 'react';
 
-const buildComplementSummaryLabel = (line) => {
+const buildComplementSummaryLabel = (line, composer) => {
+  const requirement = typeof composer?.getLineComplementRequirement === 'function'
+    ? composer.getLineComplementRequirement(line)
+    : null;
+  if (requirement?.required > 0) {
+    if (requirement.selectedCount < requirement.required) {
+      return `Complementos sugeridos ${requirement.selectedCount}/${requirement.required}`;
+    }
+    return `${requirement.selectedCount}/${requirement.required} complementos`;
+  }
   const count = Array.isArray(line?.complementos) ? line.complementos.length : 0;
   if (count <= 0) return 'Sin complementos';
   if (count === 1) return '1 complemento';
@@ -90,12 +99,24 @@ export default function VentaComposerSummary({
                 line.kind !== 'PRODUCTO' || Number(line.cantidad ?? 0) < Number(line.stock_disponible ?? 0);
               const hasKitchenNote = String(line.observacion || '').trim().length > 0;
               const noteExpanded = Boolean(expandedNotes[line.cartKey]);
+              const complementIssue = typeof composer.getLineComplementSelectionIssue === 'function'
+                ? composer.getLineComplementSelectionIssue(line)
+                : null;
+              const isComplementIncomplete =
+                Boolean(complementIssue) ||
+                String(composer.incompleteComplementCartKey || '') === String(line.cartKey);
               const discountPercent = Number(discountDetail?.lineSubtotal || 0) > 0 && Number(discountDetail?.discountAmount || 0) > 0
                 ? Math.round((Number(discountDetail.discountAmount || 0) / Number(discountDetail.lineSubtotal || 1)) * 100)
                 : 0;
 
               return (
-                <div key={line.cartKey} className="ventas-cart__item">
+                <div
+                  key={line.cartKey}
+                  className={[
+                    'ventas-cart__item',
+                    isComplementIncomplete ? 'is-complement-incomplete' : ''
+                  ].filter(Boolean).join(' ')}
+                >
                   <div className="ventas-cart__item-thumb">
                     {thumb
                       ? <img src={thumb} alt={line.nombre_item} />
@@ -115,7 +136,7 @@ export default function VentaComposerSummary({
                       <small className="ventas-cart__stock">Disponible: {Number(line.stock_disponible ?? 0)}</small>
                     ) : (
                       <small className="ventas-cart__stock">
-                        {line.complementos_requiere ? buildComplementSummaryLabel(line) : 'Cocina'}
+                        {line.complementos_requiere ? buildComplementSummaryLabel(line, composer) : 'Cocina'}
                       </small>
                     )}
 
@@ -166,7 +187,7 @@ export default function VentaComposerSummary({
                           {line.complementos_requiere ? (
                             <button
                               type="button"
-                              className="ventas-cart__action-btn"
+                              className={`ventas-cart__action-btn ${isComplementIncomplete ? 'is-attention' : ''}`}
                               onClick={() => composer.openComplementModalForLine(line.cartKey)}
                             >
                               <i className="bi bi-ui-checks-grid" aria-hidden="true" />

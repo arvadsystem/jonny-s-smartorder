@@ -47,8 +47,71 @@ const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = 
   cashReceived: '',
   referenciaPago: '',
   cart: [],
-  submitError: ''
+  submitError: '',
+  incompleteComplementCartKey: ''
 });
+
+const inferSauceUnitsBaseFromText = (...sources) => {
+  const text = sources
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (!text) return 1;
+  if (!/(alitas?|tenders?)/i.test(text)) return 1;
+  const match =
+    text.match(/\b(\d{1,3})\s*(?:alitas?|tenders?)\b/i) ||
+    text.match(/\b(\d{1,3})\s*(?:uds?|unidades?|pzas?|piezas?)\b/i) ||
+    text.match(/\((\d{1,3})\s*(?:uds?|unidades?|pzas?|piezas?)\)/i);
+  const units = Number(match?.[1] || 0);
+  return Number.isFinite(units) && units > 0 ? Math.max(1, Math.floor(units)) : 1;
+};
+
+const getQuantityAwareComplementLimit = (line, limit) => {
+  const baseLimit = Math.max(0, Number(limit || 0));
+  const quantity = Math.max(1, Number(line?.cantidad || 1));
+  if (baseLimit <= 0 || quantity <= 1) return baseLimit;
+
+  const wingUnitsBase = inferSauceUnitsBaseFromText(line?.nombre_item, line?.descripcion_item);
+  const fallbackBaseLimit = wingUnitsBase > 1 ? Math.ceil(wingUnitsBase / 6) : 0;
+  if (fallbackBaseLimit > 0 && fallbackBaseLimit === baseLimit) {
+    return Math.ceil((wingUnitsBase * quantity) / 6);
+  }
+
+  return baseLimit * quantity;
+};
+
+const getLineComplementRequirement = (line) => {
+  const selectedCount = normalizeComplementIds(line?.complementos).length;
+  const required = getQuantityAwareComplementLimit(line, line?.minimo_complementos);
+  const rawMax = getQuantityAwareComplementLimit(line, line?.maximo_complementos);
+  const max = rawMax > 0 ? Math.max(required, rawMax) : 0;
+  return {
+    required,
+    max,
+    selectedCount,
+    authorizedIncomplete: Boolean(line?.complementos_incompletos_autorizados)
+  };
+};
+
+const getLineComplementSelectionIssue = (line) => {
+  if (!line || line.kind === 'PRODUCTO') return null;
+  const name = String(line.nombre_item || line.nombre || line.descripcion_item || 'Item').trim();
+  const requirement = getLineComplementRequirement(line);
+  if (requirement.max > 0 && requirement.selectedCount > requirement.max) {
+    const quantity = Math.max(1, Number(line.cantidad || 1));
+    return {
+      type: 'too_many',
+      line,
+      cartKey: line.cartKey,
+      name,
+      ...requirement,
+      message: `La cantidad de complementos de ${name} (cantidad ${quantity}) supera el maximo permitido. Seleccionados ${requirement.selectedCount}/${requirement.max}.`
+    };
+  }
+  return null;
+};
 
 const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) => {
   const complementosDisponibles = (Array.isArray(row?.complementos_disponibles) ? row.complementos_disponibles : [])
@@ -561,6 +624,7 @@ export const useVentaComposer = ({
         return {
           ...current,
           cart: nextCart,
+          incompleteComplementCartKey: '',
           submitError: ''
         };
       }
@@ -582,6 +646,7 @@ export const useVentaComposer = ({
       return {
         ...current,
         cart: nextCart,
+        incompleteComplementCartKey: '',
         submitError: ''
       };
     });
@@ -592,11 +657,18 @@ export const useVentaComposer = ({
     if (!line) return;
     if (!line.complementos_requiere) return;
 
+    const requirement = getLineComplementRequirement(line);
     setComplementModal({
       open: true,
       mode: 'EDIT',
       kind: line.kind,
-      row: line,
+      row: {
+        ...line,
+        minimo_complementos_original: line.minimo_complementos,
+        maximo_complementos_original: line.maximo_complementos,
+        minimo_complementos: requirement.required,
+        maximo_complementos: requirement.max
+      },
       cartKey,
       selected: normalizeComplementIds(line.complementos),
       options: {},
@@ -628,8 +700,8 @@ export const useVentaComposer = ({
       const editedLine = complementModal.row;
       const baseRow = {
         ...editedLine,
-        minimo_complementos: editedLine.minimo_complementos,
-        maximo_complementos: editedLine.maximo_complementos,
+        minimo_complementos: editedLine.minimo_complementos_original ?? editedLine.minimo_complementos,
+        maximo_complementos: editedLine.maximo_complementos_original ?? editedLine.maximo_complementos,
         complementos_disponibles: editedLine.complementos_disponibles
       };
       const rebuilt = buildCatalogLine(editedLine.kind, baseRow, ids, complementOptions);
@@ -659,6 +731,7 @@ export const useVentaComposer = ({
                   }
                   : line
               ),
+            incompleteComplementCartKey: '',
             submitError: ''
           };
         }
@@ -675,6 +748,7 @@ export const useVentaComposer = ({
               }
               : line
           ),
+          incompleteComplementCartKey: '',
           submitError: ''
         };
       });
@@ -729,6 +803,7 @@ export const useVentaComposer = ({
       return {
         ...current,
         cart: nextCart,
+        incompleteComplementCartKey: '',
         submitError: ''
       };
     });
@@ -738,6 +813,7 @@ export const useVentaComposer = ({
     setState((current) => ({
       ...current,
       cart: current.cart.filter((item) => item.cartKey !== cartKey),
+      incompleteComplementCartKey: '',
       submitError: ''
     }));
   };
@@ -815,6 +891,7 @@ export const useVentaComposer = ({
                 }
                 : line
             ),
+          incompleteComplementCartKey: '',
           submitError: ''
         };
       }
@@ -829,6 +906,7 @@ export const useVentaComposer = ({
             }
             : line
         ),
+        incompleteComplementCartKey: '',
         submitError: ''
       };
     });
@@ -880,6 +958,28 @@ export const useVentaComposer = ({
     }
 
     return true;
+  };
+
+  const validateComplementosForPending = ({ openSelector = true } = {}) => {
+    if (!validateBaseSale()) return false;
+
+    const issue = state.cart.map(getLineComplementSelectionIssue).find(Boolean);
+    if (!issue) {
+      setPartialState({
+        incompleteComplementCartKey: '',
+        submitError: ''
+      });
+      return true;
+    }
+
+    setPartialState({
+      incompleteComplementCartKey: issue.cartKey,
+      submitError: issue.message
+    });
+    if (openSelector) {
+      openComplementModalForLine(issue.cartKey);
+    }
+    return false;
   };
 
   const validatePaidSale = () => {
@@ -983,6 +1083,7 @@ export const useVentaComposer = ({
     referenciaPago: state.referenciaPago,
     cart: state.cart,
     submitError: state.submitError,
+    incompleteComplementCartKey: state.incompleteComplementCartKey,
     currentCatalogRows,
     discountCatalogRows,
     resultsLabel,
@@ -1139,6 +1240,9 @@ export const useVentaComposer = ({
     handleSubmit,
     submitPaidSale,
     validateBaseSale,
+    validateComplementosForPending,
+    getLineComplementRequirement,
+    getLineComplementSelectionIssue,
     buildPedidoPendientePayload,
     buildPaidSalePayload,
     selectedSucursalId,

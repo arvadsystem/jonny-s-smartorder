@@ -3774,6 +3774,12 @@
   background: rgba(255, 255, 255, 0.92);
 }
 
+.ventas-cart__item.is-complement-incomplete {
+  border-color: rgba(196, 76, 49, 0.62);
+  background: rgba(255, 244, 240, 0.96);
+  box-shadow: 0 0 0 2px rgba(196, 76, 49, 0.12);
+}
+
 .ventas-cart__item-thumb {
   width: 40px;
   height: 40px;
@@ -7577,6 +7583,12 @@
   border-color: rgba(45, 124, 92, 0.36);
   background: rgba(232, 246, 239, 0.92);
   color: #1f6b4a;
+}
+
+.ventas-cart__action-btn.is-attention {
+  border-color: rgba(196, 76, 49, 0.5);
+  background: rgba(255, 238, 232, 0.96);
+  color: #9f321f;
 }
 
 .ventas-cart__action-btn i,
