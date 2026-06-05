@@ -141,7 +141,11 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
     ? appendNoCacheParam(endpoint)
     : endpoint;
 
+  const extraHeaders = config?.headers && typeof config.headers === 'object'
+    ? config.headers
+    : {};
   const headers = {
+    ...extraHeaders,
     'Content-Type': 'application/json'
   };
 

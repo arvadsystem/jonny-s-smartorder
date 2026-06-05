@@ -13,18 +13,33 @@ const buildQuery = (params = {}) => {
   return query ? `?${query}` : '';
 };
 
+const createIdempotencyKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+};
+
+const withIdempotencyKey = (config = {}) => ({
+  ...config,
+  headers: {
+    ...(config.headers || {}),
+    'Idempotency-Key': createIdempotencyKey()
+  }
+});
+
 const ventasService = {
   list: (params = {}) => apiFetch(`/ventas${buildQuery(params)}`, 'GET'),
   buscarVenta: (params = {}) => apiFetch(`/ventas/buscar${buildQuery(params)}`, 'GET'),
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
-  create: (payload) => apiFetch('/ventas', 'POST', payload, { timeoutMs: 7000 }),
-  createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload),
+  create: (payload) => apiFetch('/ventas', 'POST', payload, withIdempotencyKey({ timeoutMs: 7000 })),
+  createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload, withIdempotencyKey()),
   listPedidosPendientesPago: (params = {}) =>
     apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),
   registrarPagoPedido: (idPedido, payload) =>
-    apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload),
+    apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload, withIdempotencyKey()),
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
   getCombosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/combos${buildQuery(params)}`, 'GET'),
   getRecetasCatalog: (params = {}) => apiFetch(`/ventas/catalogos/recetas${buildQuery(params)}`, 'GET'),
