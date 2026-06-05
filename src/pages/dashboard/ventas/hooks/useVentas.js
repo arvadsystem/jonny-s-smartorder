@@ -506,12 +506,12 @@ export const useVentas = () => {
 
       try {
         const response = await ventasService.createPedidoPendiente(payload);
-        await loadVentas();
         openToast(
           'PEDIDO PENDIENTE',
           'Pedido pendiente creado y enviado a cocina.',
           'success'
         );
+        void loadVentas({ suppressErrors: true }).catch(() => undefined);
         return response;
       } catch (error) {
         const message = extractApiMessage(error, 'No se pudo crear el pedido pendiente.');
@@ -532,8 +532,8 @@ export const useVentas = () => {
 
       try {
         const response = await ventasService.registrarPagoPedido(idPedido, payload);
-        await loadVentas();
         openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
+        void loadVentas({ suppressErrors: true }).catch(() => undefined);
         return response;
       } catch (error) {
         const isConflict = Number(error?.status || 0) === 409;
