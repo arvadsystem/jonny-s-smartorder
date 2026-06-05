@@ -2,6 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ventasService from '../../../../services/ventasService';
 import sucursalesService from '../../../../services/sucursalesService';
 import {
+  VENTAS_FILTER_ESTADOS_PERMITIDOS,
+  createConsumidorFinalCliente,
+  createDefaultVentasFilters,
+  createDefaultVentasPagination,
+  createDefaultVentasScopeInfo,
+  createDefaultVentasSummary,
+  createDefaultVentasToast
+} from '../../../../modules/ventas/constants/ventasDefaults';
+import {
   buildCategoriasMap,
   extractApiMessage,
   normalizeCategoriaRecord,
@@ -12,13 +21,6 @@ import {
   normalizeVentaDetail,
   normalizeVentaRecord
 } from '../utils/ventasHelpers';
-
-const initialToast = {
-  show: false,
-  title: '',
-  message: '',
-  variant: 'success'
-};
 
 const isTruthyState = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
@@ -42,38 +44,10 @@ const parsePositiveId = (value) => {
 
 export const useVentas = () => {
   const [ventas, setVentas] = useState([]);
-  const [summary, setSummary] = useState({
-    totalVentas: 0,
-    totalFacturado: 0,
-    ticketPromedio: 0,
-    completadas: 0,
-    pendientes: 0
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    pageSize: 6,
-    total: 0,
-    totalPages: 1,
-    hasNextPage: false,
-    hasPreviousPage: false
-  });
-  const [scopeInfo, setScopeInfo] = useState({
-    canSelectSucursal: false,
-    selectedSucursalId: null,
-    userSucursalId: null,
-    limitedByRole: false,
-    limitedToLast72Hours: false,
-    allowedSucursalIds: []
-  });
-  const [ventasFilters, setVentasFilters] = useState({
-    search: '',
-    idSucursal: null,
-    estado: '',
-    fechaDesde: '',
-    fechaHasta: '',
-    page: 1,
-    pageSize: 6
-  });
+  const [summary, setSummary] = useState(() => createDefaultVentasSummary());
+  const [pagination, setPagination] = useState(() => createDefaultVentasPagination());
+  const [scopeInfo, setScopeInfo] = useState(() => createDefaultVentasScopeInfo());
+  const [ventasFilters, setVentasFilters] = useState(() => createDefaultVentasFilters());
   const [sucursales, setSucursales] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -89,7 +63,7 @@ export const useVentas = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
   const [catalogErrors, setCatalogErrors] = useState({});
-  const [toast, setToast] = useState(initialToast);
+  const [toast, setToast] = useState(() => createDefaultVentasToast());
   const catalogRequestRef = useRef(0);
 
   const openToast = useCallback((title, message, variant = 'success') => {
@@ -282,13 +256,7 @@ export const useVentas = () => {
         );
 
       const normalizedClientes = [
-        {
-          id_cliente: null,
-          value: 'cf',
-          label: 'Consumidor final',
-          nombre_cliente: 'Consumidor final',
-          es_consumidor_final: true
-        },
+        createConsumidorFinalCliente(),
         ...(Array.isArray(clientesResponse) ? clientesResponse : [])
           .map(normalizeClienteOption)
           .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
@@ -406,13 +374,7 @@ export const useVentas = () => {
   const refreshClientesCatalog = useCallback(async () => {
     const clientesResponse = await ventasService.getClientesCatalog();
     const normalizedClientes = [
-      {
-        id_cliente: null,
-        value: 'cf',
-        label: 'Consumidor final',
-        nombre_cliente: 'Consumidor final',
-        es_consumidor_final: true
-      },
+      createConsumidorFinalCliente(),
       ...(Array.isArray(clientesResponse) ? clientesResponse : [])
         .map(normalizeClienteOption)
         .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
@@ -467,9 +429,8 @@ export const useVentas = () => {
         next.idSucursal = Number.isInteger(parsed) && parsed > 0 ? parsed : null;
       }
       if (Object.prototype.hasOwnProperty.call(patch, 'estado')) {
-        const allowedEstados = new Set(['', 'VENTA_DIRECTA', 'EN_COCINA', 'LISTO', 'COMPLETADA', 'PENDIENTE']);
         const value = String(patch.estado || '').trim().toUpperCase().slice(0, 40);
-        next.estado = allowedEstados.has(value) ? value : '';
+        next.estado = VENTAS_FILTER_ESTADOS_PERMITIDOS.has(value) ? value : '';
       }
       if (Object.prototype.hasOwnProperty.call(patch, 'fechaDesde')) {
         const value = String(patch.fechaDesde || '').trim();

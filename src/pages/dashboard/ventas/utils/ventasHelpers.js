@@ -1,3 +1,8 @@
+import {
+  formatCurrency,
+  roundMoney
+} from '../../../../modules/ventas/utils/ventasMoneyUtils';
+
 const FALLBACK_STATUS = {
   completed: 'Completada',
   pending: 'Pendiente'
@@ -19,7 +24,10 @@ const COMPLETED_STATUS_KEYS = new Set([
 export const parseBoolean = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
 
-export const roundMoney = (value) => Number(Number(value || 0).toFixed(2));
+export {
+  formatCurrency,
+  roundMoney
+};
 
 const normalizeTextKey = (value) =>
   String(value || '')
@@ -28,8 +36,6 @@ const normalizeTextKey = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_');
-
-export const formatCurrency = (value) => `L ${roundMoney(value).toFixed(2)}`;
 
 export const getLineDiscountPercent = (line) => {
   if (!line || typeof line !== 'object') return null;
