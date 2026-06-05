@@ -42,6 +42,11 @@ const normalizeOptionalText = (value) => {
   return text || null;
 };
 
+const isGenericComplementError = (error) => {
+  const message = String(error?.message || error?.data?.message || '').toLowerCase();
+  return message.includes('complementos requeridos') && message.includes('este item');
+};
+
 const normalizeOptionSearchText = (cliente) => [
   cliente.label,
   cliente.nombre_cliente,
@@ -144,6 +149,13 @@ export default function VentaFinalizarOperacionModal({
 
   const validateCommon = () => {
     if (!composer.validateBaseSale()) return false;
+    if (
+      activeTab === 'pendiente' &&
+      typeof composer.validateComplementosForPending === 'function' &&
+      !composer.validateComplementosForPending({ openSelector: true })
+    ) {
+      return false;
+    }
     if (activeTab === 'pendiente' && splitEnabled && !buildCuentaDivididaPayload()) return false;
     const phoneRequired =
       contact.canal === 'TELEFONO' ||
@@ -309,7 +321,12 @@ export default function VentaFinalizarOperacionModal({
       onDeliveryCostChange?.(0);
       onClose();
     } catch (error) {
-      setLocalError(error?.message || 'No se pudo crear el pedido pendiente.');
+      if (isGenericComplementError(error) && typeof composer.validateComplementosForPending === 'function') {
+        const blockedByComposer = !composer.validateComplementosForPending({ openSelector: true });
+        setLocalError(blockedByComposer ? '' : (error?.message || 'No se pudo crear el pedido pendiente.'));
+      } else {
+        setLocalError(error?.message || 'No se pudo crear el pedido pendiente.');
+      }
     } finally {
       pendingSubmittingRef.current = false;
       setPendingSubmitting(false);
