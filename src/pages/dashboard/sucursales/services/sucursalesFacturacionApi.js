@@ -18,6 +18,22 @@ export const sucursalesFacturacionApi = {
     return unwrapSuccessPayload(response);
   },
 
+  async subirLogoFacturacion(payload) {
+    return apiFetch('/archivos', 'POST', {
+      ...payload,
+      bucket: 'admin-docs',
+      contexto: 'facturacion-logo'
+    });
+  },
+
+  async obtenerUrlArchivo(idArchivo) {
+    return apiFetch(`/archivos/${idArchivo}/ver`, 'GET');
+  },
+
+  async eliminarArchivo(idArchivo) {
+    return apiFetch(`/archivos/${idArchivo}`, 'DELETE');
+  },
+
   async obtenerPreviewFacturacionSucursal(idSucursal) {
     const response = await apiFetch(`/sucursales/${idSucursal}/facturacion-preview`, 'GET');
     return unwrapSuccessPayload(response);

@@ -1,28 +1,41 @@
 .suc-page .suc-card {
   min-height: 100%;
+  max-width: 520px;
 }
 
 .suc-page .suc-card .suc-card__thumb-wrap,
 .suc-page .suc-card .inv-prod-thumb-wrap {
-  min-height: 150px;
-  max-height: 150px;
+  min-height: 118px;
+  max-height: 118px;
 }
 
 .suc-page .suc-card .suc-card__thumb-placeholder i {
-  font-size: 1.25rem;
+  font-size: 1.05rem;
 }
 
 .suc-page .suc-card__body {
-  gap: 0.6rem;
+  gap: 0.42rem;
+  padding: 0.62rem 0.72rem 0.64rem;
+}
+
+.suc-page .suc-card .inv-prod-card-name {
+  font-size: 0.88rem;
+}
+
+.suc-page .suc-card .inv-prod-card-category {
+  font-size: 0.74rem;
+  min-height: 1.1em;
 }
 
 .suc-page .suc-card__meta {
-  grid-template-columns: 1fr;
-  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.42rem;
+  padding-top: 0.48rem;
 }
 
 .suc-page .suc-card__meta .inv-prod-card-value {
-  font-size: 0.8rem;
+  font-size: 0.74rem;
 }
 
 .suc-page .suc-card__truncate {
@@ -39,7 +52,7 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: rgba(82, 44, 34, 0.86);
 }
 
@@ -53,6 +66,10 @@
 
 .suc-page .suc-card .inv-prod-card-action {
   color: #522c22 !important;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 10px;
 }
 
 .suc-page .suc-card .inv-prod-card-action i {
@@ -72,6 +89,55 @@
   color: rgba(108, 95, 86, 0.84);
 }
 
+.suc-page .suc-card .suc-card__bg-icon {
+  width: 96px;
+  height: 96px;
+  border-radius: 26px;
+  opacity: 0.82;
+}
+
+.suc-page .suc-card .suc-card__bg-icon i {
+  font-size: 2.4rem;
+}
+
+.suc-page .inv-catpro-grid-page {
+  gap: 10px;
+}
+
+.suc-page .suc-facturacion-card-col {
+  display: flex;
+}
+
+.suc-page .suc-fact-card {
+  width: 100%;
+  cursor: default;
+}
+
+.suc-page .suc-fact-card .suc-fact-card__thumb-wrap {
+  background:
+    linear-gradient(135deg, rgba(255, 246, 232, 0.92), rgba(232, 240, 238, 0.9) 52%, rgba(248, 231, 218, 0.88));
+}
+
+.suc-page .suc-fact-card__thumb-placeholder {
+  color: rgba(82, 44, 34, 0.58);
+}
+
+.suc-page .suc-fact-card__body {
+  min-height: 176px;
+}
+
+.suc-page .suc-fact-card__row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suc-page .suc-fact-card .inv-prod-card-action:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
 .suc-page .suc-horarios-page .card {
   border-radius: 14px;
 }
@@ -89,9 +155,9 @@
 }
 
 .suc-page .suc-form-hero__icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
   display: grid;
   place-items: center;
   color: #fff7f3;
@@ -100,13 +166,98 @@
 }
 
 .suc-page .suc-form-hero__icon i {
-  font-size: 1.72rem;
+  font-size: 1.22rem;
   line-height: 1;
+}
+
+.suc-form-modal.inv-prod-pmodal__panel {
+  width: min(900px, calc(100vw - 56px));
+  height: min(86vh, 780px);
+  max-height: min(86vh, 780px);
+  border-radius: 18px;
+  border: 1px solid rgba(237, 235, 179, 0.72);
+  box-shadow: 0 24px 56px rgba(23, 8, 10, 0.22);
+  transform-origin: center;
+}
+
+.suc-fecha-especial-modal.inv-prod-pmodal__panel {
+  width: min(620px, calc(100vw - 40px));
+  height: auto;
+  max-height: min(86vh, 680px);
+}
+
+.suc-form-modal .inv-prod-pmodal__body {
+  padding: 0.75rem;
+  gap: 0.7rem;
+}
+
+.suc-form-modal .inv-ins-create-hero {
+  min-height: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.78rem 0.9rem;
+  border-radius: 14px;
+}
+
+.suc-form-modal .inv-ins-create-hero__copy {
+  min-width: 0;
+}
+
+.suc-form-modal .inv-ins-create-hero__copy h3 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2.2vw, 1.42rem);
+  line-height: 1.12;
+}
+
+.suc-form-modal .inv-ins-create-hero__copy p,
+.suc-form-modal .inv-ins-create-hero__eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.28;
+}
+
+.suc-form-modal .inv-prod-pmodal__sections {
+  gap: 0.7rem;
+}
+
+.suc-form-modal .inv-prod-pmodal__section {
+  gap: 0.55rem;
+  padding: 0.72rem 0.82rem;
+  border-radius: 13px;
+}
+
+.suc-form-modal .row {
+  --bs-gutter-x: 0.8rem;
+  --bs-gutter-y: 0.62rem;
+}
+
+.suc-form-modal .form-label,
+.suc-form-modal .form-check-label {
+  margin-bottom: 0.28rem;
+  font-size: 0.84rem;
+}
+
+.suc-form-modal .form-control,
+.suc-form-modal .form-select,
+.suc-form-modal .suc-app-select .app-select__trigger {
+  min-height: 38px;
+  height: 38px;
+  border-radius: 10px;
+  font-size: 0.92rem;
+}
+
+.suc-form-modal .inv-prod-pmodal__footer {
+  padding: 0.62rem 0.75rem;
+}
+
+.suc-form-modal .inv-prod-pmodal__footer .btn {
+  min-height: 38px;
 }
 
 .suc-page .suc-form-image-preview,
 .suc-form-image-preview {
-  min-height: 180px;
+  min-height: 132px;
   border: 1px solid rgba(157, 150, 112, 0.26);
   border-radius: 12px;
   padding: 0.5rem;
@@ -115,7 +266,7 @@
 
 .suc-page .suc-form-image-placeholder,
 .suc-form-image-placeholder {
-  min-height: 180px;
+  min-height: 132px;
   border: 1px dashed rgba(157, 150, 112, 0.4);
   border-radius: 12px;
   background: rgba(243, 241, 216, 0.46);
@@ -137,8 +288,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  min-height: 42px;
-  padding: 0.55rem 0.9rem;
+  min-height: 38px;
+  padding: 0.48rem 0.78rem;
   border-radius: 10px;
   border: 1px solid rgba(157, 150, 112, 0.35);
   background: #fff;
@@ -157,12 +308,12 @@
 
 .suc-page .suc-image-block {
   display: grid;
-  gap: 0.85rem;
+  gap: 0.65rem;
 }
 
 .suc-image-block {
   display: grid;
-  gap: 0.85rem;
+  gap: 0.65rem;
 }
 
 .suc-page .suc-image-block__upload {
@@ -179,12 +330,12 @@
 
 .suc-page .suc-image-block__preview .suc-form-image-preview,
 .suc-page .suc-image-block__preview .suc-form-image-placeholder {
-  min-height: 180px;
+  min-height: 132px;
 }
 
 .suc-image-block__preview .suc-form-image-preview,
 .suc-image-block__preview .suc-form-image-placeholder {
-  min-height: 180px;
+  min-height: 132px;
 }
 
 .suc-fac-preview {
@@ -197,11 +348,735 @@
   color: rgba(64, 37, 29, 0.95);
 }
 
+.suc-fac-preview__logo {
+  width: 72px;
+  height: 72px;
+  display: block;
+  object-fit: contain;
+  margin: 0 auto 0.45rem;
+}
+
+.suc-app-select.app-select {
+  position: relative;
+  display: grid;
+  gap: 0;
+  width: 100%;
+}
+
+.suc-app-select .app-select__label {
+  display: block;
+  margin-bottom: 0.28rem;
+  color: rgba(82, 44, 34, 0.9);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.suc-app-select .app-select__trigger {
+  width: 100%;
+  min-height: 40px;
+  height: 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0.46rem 0.78rem;
+  border: 1px solid rgba(157, 150, 112, 0.34);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #2f2119;
+  font: inherit;
+  font-size: 0.92rem;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.suc-app-select .app-select__trigger:hover:not(:disabled),
+.suc-app-select .app-select__trigger:focus-visible {
+  border-color: rgba(154, 83, 25, 0.46);
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(194, 106, 34, 0.12);
+}
+
+.suc-app-select .app-select__value,
+.suc-app-select .app-select__placeholder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suc-app-select .app-select__placeholder {
+  color: rgba(78, 71, 66, 0.6);
+}
+
+.suc-app-select .app-select__chevron {
+  color: #4b250d;
+  transition: transform 140ms ease;
+}
+
+.suc-app-select.is-open .app-select__chevron {
+  transform: rotate(180deg);
+}
+
+.suc-app-select .app-select__menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  border: 1px solid rgba(157, 150, 112, 0.28);
+  border-radius: 12px;
+  background: #fffefb;
+  box-shadow: 0 16px 32px rgba(18, 7, 3, 0.16);
+}
+
+.suc-app-select .app-select__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.2);
+}
+
+.suc-app-select .app-select__search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.suc-app-select .app-select__list {
+  max-height: min(220px, 36vh);
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.suc-app-select .app-select__option,
+.suc-app-select .app-select__create-action {
+  width: 100%;
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0.46rem 0.58rem;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #2f2119;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.suc-app-select .app-select__option:not(:disabled):hover,
+.suc-app-select .app-select__option.is-active,
+.suc-app-select .app-select__option.is-selected {
+  background: rgba(248, 238, 225, 0.82);
+}
+
+.suc-app-select .app-select__option:disabled {
+  color: rgba(82, 44, 34, 0.54);
+  cursor: default;
+}
+
+.suc-app-select .app-select__option-text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.suc-app-select .app-select__option-text span,
+.suc-app-select .app-select__option-text small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suc-app-select .app-select__check {
+  color: #9a5319;
+}
+
+.suc-app-select .app-select__error,
+.suc-app-select .app-select__helper {
+  margin-top: 0.28rem;
+  font-size: 0.75rem;
+}
+
+.suc-app-select .app-select__error {
+  color: #b22d30;
+}
+
+.suc-filters-drawer.inv-prod-drawer {
+  width: min(360px, 92vw);
+}
+
+.suc-filters-drawer .inv-prod-drawer-head {
+  padding: 0.72rem 0.82rem;
+}
+
+.suc-filters-drawer .inv-prod-drawer-close {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+}
+
+.suc-filters-drawer .inv-prod-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.78rem 0.82rem;
+}
+
+.suc-filters-drawer .inv-prod-drawer-section {
+  padding: 0.78rem 0;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.75);
+}
+
+.suc-filters-drawer .inv-prod-drawer-section-title {
+  margin-bottom: 0.48rem;
+  font-size: 0.92rem;
+}
+
+.suc-filters-drawer .inv-ins-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.suc-filters-drawer .inv-ins-chip {
+  min-height: 32px;
+  padding: 0.36rem 0.72rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+
+.suc-filters-drawer .inv-ins-help {
+  margin-top: 0.38rem;
+  font-size: 0.74rem;
+}
+
+.suc-filters-drawer .inv-prod-drawer-actions {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding-top: 0.75rem;
+}
+
+.suc-filters-drawer .inv-prod-drawer-actions .btn {
+  min-height: 40px;
+  height: 40px;
+  padding: 0.45rem 0.75rem;
+  border-radius: 11px;
+  font-size: 0.9rem;
+}
+
+.suc-facturacion-drawer.inv-prod-drawer {
+  width: min(360px, 92vw);
+}
+
+.suc-facturacion-drawer .inv-ins-create-hero__eyebrow {
+  display: none;
+}
+
+.suc-facturacion-drawer__form {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.suc-facturacion-drawer .suc-facturacion-drawer__body {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: block;
+  overflow-y: auto;
+  padding: 0.78rem 0.82rem;
+}
+
+.suc-facturacion-drawer .inv-prod-pmodal__sections {
+  display: grid;
+  gap: 0.78rem;
+}
+
+.suc-facturacion-drawer .inv-prod-pmodal__section {
+  padding: 0 0 0.78rem;
+  border: 0;
+  border-bottom: 1px solid rgba(237, 235, 179, 0.75);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.suc-facturacion-drawer .inv-prod-pmodal__section-title {
+  margin-bottom: 0.5rem;
+  color: #17080a;
+  font-size: 0.92rem;
+  font-weight: 850;
+}
+
+.suc-facturacion-drawer .row {
+  --bs-gutter-x: 0;
+  --bs-gutter-y: 0.62rem;
+}
+
+.suc-facturacion-drawer .row > [class*="col-"] {
+  flex: 0 0 100%;
+  max-width: 100%;
+  width: 100%;
+}
+
+.suc-facturacion-drawer .form-label,
+.suc-facturacion-drawer .form-check-label {
+  margin-bottom: 0.28rem;
+  color: rgba(82, 44, 34, 0.9);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.suc-facturacion-drawer .form-control,
+.suc-facturacion-drawer .form-select,
+.suc-facturacion-drawer .suc-app-select .app-select__trigger {
+  min-height: 38px;
+  height: 38px;
+  border-radius: 10px;
+  font-size: 0.92rem;
+}
+
+.suc-facturacion-drawer .form-check {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 0.48rem;
+  margin: 0;
+}
+
+.suc-facturacion-drawer .form-check-input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.suc-facturacion-drawer .alert {
+  border-radius: 10px;
+  font-size: 0.8rem;
+}
+
+.suc-facturacion-drawer__actions {
+  flex: 0 0 auto;
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding: 0.72rem 0.82rem max(0.78rem, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(237, 235, 179, 0.75);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), #fbfaf3);
+}
+
+.suc-facturacion-drawer__actions .btn {
+  min-height: 42px;
+  height: auto;
+  padding: 0.45rem 0.75rem;
+  border-radius: 11px;
+  font-size: 0.9rem;
+  line-height: 1.16;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.suc-fact-logo-field {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.suc-fact-logo-field__preview {
+  width: 100%;
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(157, 150, 112, 0.26);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.suc-fact-logo-field__preview img {
+  width: 100%;
+  max-height: 132px;
+  object-fit: contain;
+  padding: 0.55rem;
+}
+
+.suc-fact-logo-field__placeholder {
+  min-height: 112px;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.35rem;
+  border: 1px dashed rgba(157, 150, 112, 0.4);
+  border-radius: 12px;
+  background: rgba(243, 241, 216, 0.46);
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.8rem;
+}
+
+.suc-fact-logo-field__placeholder i {
+  font-size: 1.2rem;
+}
+
+.suc-fact-logo-field__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.suc-fact-logo-field__remove {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.72rem;
+  border-radius: 10px;
+}
+
+.suc-facturacion-preview-drawer .suc-facturacion-preview-drawer__actions {
+  grid-template-columns: 1fr;
+}
+
+.suc-facturacion-preview-drawer .suc-fac-preview {
+  width: 100%;
+  max-width: none;
+  padding: 0.9rem;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(82, 44, 34, 0.08);
+}
+
+.suc-page .suc-horarios-page {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.suc-page .suc-horarios-page > .card {
+  border-radius: 16px;
+  border: 1px solid rgba(237, 235, 179, 0.76) !important;
+  background: linear-gradient(180deg, #ffffff, #fcfbf4);
+  box-shadow: 0 8px 24px rgba(82, 44, 34, 0.07) !important;
+}
+
+.suc-page .suc-horarios-page > .card > .card-body {
+  padding: 0.9rem 1rem;
+}
+
+.suc-page .suc-horarios-page > .card:first-child > .card-body {
+  padding: 0.72rem 0.9rem;
+}
+
+.suc-page .suc-horarios-page > .card:first-child .suc-app-select .app-select__trigger {
+  background: rgba(255, 253, 248, 0.94);
+  border-color: rgba(157, 150, 112, 0.32);
+}
+
+.suc-horarios-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.suc-horarios-section-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.suc-horarios-section-head h5 {
+  color: #17080a;
+  font-size: 1.02rem;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.suc-horarios-section-head span {
+  color: rgba(82, 44, 34, 0.66);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.suc-horarios-section-head .btn {
+  min-height: 38px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.suc-horarios-week-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 0.72rem;
+}
+
+.suc-horario-day-card {
+  display: grid;
+  gap: 0.58rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(157, 150, 112, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 18px rgba(82, 44, 34, 0.07);
+}
+
+.suc-horario-day-card.is-closed {
+  background: rgba(250, 248, 244, 0.92);
+}
+
+.suc-horario-day-card.is-inactive {
+  opacity: 0.78;
+}
+
+.suc-horario-day-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.suc-horario-day-card__head strong {
+  color: #17080a;
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.suc-horario-day-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 22px;
+  padding: 0.24rem 0.52rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.suc-horario-day-card__status i {
+  font-size: 0.42rem;
+}
+
+.suc-horario-day-card__status.is-open {
+  background: #ecfdf3;
+  color: #15803d;
+}
+
+.suc-horario-day-card__status.is-closed {
+  background: #fff1f2;
+  color: #b42318;
+}
+
+.suc-horario-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: rgba(47, 26, 16, 0.92);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.suc-horario-check input {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0;
+  accent-color: #9a5319;
+}
+
+.suc-horario-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.suc-horario-time-grid label {
+  min-width: 0;
+  display: grid;
+  gap: 0.24rem;
+  margin: 0;
+}
+
+.suc-horario-time-grid label > span {
+  color: rgba(82, 44, 34, 0.78);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.suc-horario-time-grid .form-control {
+  min-height: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+}
+
+.suc-horario-time-grid .form-control:disabled {
+  background: #e7e9ed;
+  color: rgba(47, 26, 16, 0.55);
+}
+
+.suc-horarios-loading {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: rgba(82, 44, 34, 0.68);
+  font-weight: 750;
+}
+
+.suc-horarios-special-card .card-body {
+  min-height: 168px;
+}
+
+.suc-fechas-empty {
+  min-height: 150px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.5rem;
+  padding: 1.2rem;
+  text-align: center;
+}
+
+.suc-fechas-empty i {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(184, 104, 33, 0.1);
+  color: #9a5319;
+  font-size: 1.35rem;
+}
+
+.suc-fechas-empty strong {
+  color: #17080a;
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.suc-fechas-empty span {
+  max-width: 560px;
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.82rem;
+  line-height: 1.42;
+}
+
+.suc-fechas-empty .btn {
+  min-height: 38px;
+  margin-top: 0.2rem;
+  border-radius: 10px;
+}
+
+@media (max-width: 991.98px) {
+  .suc-horarios-week-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+
+  .suc-form-modal.inv-prod-pmodal__panel {
+    width: min(720px, calc(100vw - 28px));
+    height: min(88vh, 760px);
+    max-height: min(88vh, 760px);
+  }
+
+  .suc-form-modal .inv-ins-create-hero {
+    padding-right: 3.2rem;
+  }
+}
+
 @media (max-width: 767.98px) {
+  .suc-page .suc-horarios-page > .card > .card-body {
+    padding: 0.75rem;
+  }
+
+  .suc-horarios-section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .suc-horarios-section-head .btn {
+    width: 100%;
+  }
+
+  .suc-horarios-week-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .suc-horario-time-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .suc-fechas-empty {
+    min-height: 180px;
+    padding: 1rem 0.4rem;
+  }
+
   .suc-page .suc-card .suc-card__thumb-wrap,
   .suc-page .suc-card .inv-prod-thumb-wrap {
-    min-height: 132px;
-    max-height: 132px;
+    min-height: 112px;
+    max-height: 112px;
+  }
+
+  .suc-page .suc-card__meta {
+    grid-template-columns: 1fr;
+  }
+
+  .suc-form-modal.inv-prod-pmodal__panel,
+  .suc-fecha-especial-modal.inv-prod-pmodal__panel {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .suc-form-modal .inv-prod-pmodal__body {
+    padding: 0.62rem;
+  }
+
+  .suc-form-modal .inv-ins-create-hero {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+    padding: 0.72rem 3rem 0.72rem 0.78rem;
+  }
+
+  .suc-form-modal .suc-form-hero__icon {
+    display: none;
+  }
+
+  .suc-form-modal .inv-prod-pmodal__section {
+    padding: 0.68rem 0.72rem;
+  }
+
+  .suc-filters-drawer.inv-prod-drawer {
+    width: min(360px, 100vw);
+  }
+
+  .suc-facturacion-drawer.inv-prod-drawer {
+    width: min(360px, 100vw);
+  }
+
+  .suc-filters-drawer .inv-prod-drawer-body {
+    padding: 0.68rem 0.74rem;
+  }
+
+  .suc-filters-drawer .inv-prod-drawer-actions {
+    position: sticky;
+    bottom: 0;
+    padding: 0.65rem 0 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0), #fbfaf3 28%);
   }
 
   .suc-page .suc-card .inv-prod-card-action {

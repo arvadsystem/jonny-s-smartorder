@@ -1,19 +1,24 @@
 import { createPortal } from 'react-dom';
+import AppSelect from '../../../../components/common/AppSelect';
 
 const VALID_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_PREFIX_RE = /^[A-Za-z0-9_-]+$/;
 const TICKET_WIDTH_OPTIONS = [58, 80];
+const TICKET_WIDTH_SELECT_OPTIONS = TICKET_WIDTH_OPTIONS.map((width) => ({
+  value: String(width),
+  label: `${width}mm`
+}));
 
 const normalizeText = (value) => String(value ?? '').trim();
 const CONTENT_FLAGS = [
   ['mostrar_datos_fiscales', 'Mostrar datos fiscales'],
   ['mostrar_rtn', 'Mostrar RTN emisor'],
-  ['mostrar_direccion', 'Mostrar direccion'],
+  ['mostrar_direccion', 'Mostrar dirección'],
   ['mostrar_telefono', 'Mostrar contacto'],
   ['mostrar_correo', 'Mostrar correo'],
   ['mostrar_cai_ticket', 'Mostrar CAI'],
-  ['mostrar_numero_fiscal_ticket', 'Mostrar numero fiscal'],
-  ['mostrar_codigo_interno_ticket', 'Mostrar codigo interno']
+  ['mostrar_numero_fiscal_ticket', 'Mostrar número fiscal'],
+  ['mostrar_codigo_interno_ticket', 'Mostrar código interno']
 ];
 const TAX_FLAGS = [
   ['aplicar_impuestos', 'Aplicar impuestos en venta'],
@@ -26,16 +31,16 @@ const TAX_FLAGS = [
   ['mostrar_total_isv', 'Mostrar total ISV']
 ];
 const DISCOUNT_FLAGS = [
-  ['mostrar_descuento_linea', 'Mostrar descuento por linea'],
+  ['mostrar_descuento_linea', 'Mostrar descuento por línea'],
   ['mostrar_descuento_porcentaje_linea', 'Mostrar porcentaje de descuento'],
   ['mostrar_descuento_total', 'Mostrar descuento total']
 ];
 const REVERSION_FLAGS = [
-  ['imprimir_comprobante_reversion', 'Imprimir comprobante de reversion'],
+  ['imprimir_comprobante_reversion', 'Imprimir comprobante de reversión'],
   ['mostrar_venta_original_reversion', 'Mostrar venta original'],
-  ['mostrar_codigo_reversion', 'Mostrar codigo de reversion'],
+  ['mostrar_codigo_reversion', 'Mostrar código de reversión'],
   ['mostrar_usuario_reversion', 'Mostrar usuario que reversa'],
-  ['mostrar_caja_sesion_reversion', 'Mostrar caja/sesion'],
+  ['mostrar_caja_sesion_reversion', 'Mostrar caja/sesión'],
   ['mostrar_motivo_reversion', 'Mostrar motivo'],
   ['mostrar_detalle_reversion', 'Mostrar detalle de productos'],
   ['mostrar_total_reversion', 'Mostrar total reversado']
@@ -83,6 +88,8 @@ const toPayload = (form) => ({
   direccion_emisor: normalizeText(form?.direccion_emisor) || null,
   telefono_emisor: normalizeText(form?.telefono_emisor) || null,
   correo_emisor: normalizeText(form?.correo_emisor) || null,
+  logo_url: normalizeText(form?.logo_url) || null,
+  id_archivo_logo: Number(form?.id_archivo_logo ?? 0) > 0 ? Number(form.id_archivo_logo) : null,
   texto_encabezado_ticket: normalizeText(form?.texto_encabezado_ticket) || null,
   texto_pie_ticket: normalizeText(form?.texto_pie_ticket) || null,
   ancho_ticket_mm: Number(form?.ancho_ticket_mm),
@@ -109,6 +116,11 @@ export default function SucursalFacturacionConfigDrawer({
   form,
   onChange,
   saving = false,
+  logoPreviewUrl = '',
+  logoUploading = false,
+  logoError = '',
+  onLogoFileChange,
+  onLogoRemove,
   onClose,
   onSubmit
 }) {
@@ -132,26 +144,31 @@ export default function SucursalFacturacionConfigDrawer({
   };
 
   return createPortal(
-    <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!open}>
-      <div className="inv-prod-pmodal__overlay" onClick={saving ? undefined : onClose} />
-      <div className="inv-prod-pmodal__viewport">
-        <div className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create fidelizacion-config-modal" role="dialog" aria-modal="true">
-          <form className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create" onSubmit={handleSubmit}>
-            <div className="inv-prod-pmodal__body">
-              <div className="inv-ins-create-hero">
-                <div className="inv-ins-create-hero__icon suc-form-hero__icon" aria-hidden="true">
-                  <i className="bi bi-receipt" />
-                </div>
-                <div className="inv-ins-create-hero__copy">
-                  <div className="inv-ins-create-hero__eyebrow">Facturación</div>
-                  <h3 className="mb-1">Configurar sucursal</h3>
-                  <p className="mb-0">{sucursalNombre || 'Sucursal'}</p>
-                </div>
-                <button type="button" className="inv-prod-drawer-close inv-ins-create-hero__close" onClick={onClose} disabled={saving}>
+    <>
+      <div
+        className="inv-prod-drawer-backdrop inv-cat-v2__drawer-backdrop show"
+        onClick={saving || logoUploading ? undefined : onClose}
+        aria-hidden="true"
+      />
+      <aside
+        className="inv-prod-drawer inv-cat-v2__drawer suc-filters-drawer suc-facturacion-drawer show"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={!open}
+      >
+        <div className="inv-prod-drawer-head">
+          <i className="bi bi-receipt inv-cat-v2__drawer-mark" aria-hidden="true" />
+          <div>
+            <div className="inv-prod-drawer-title">Configurar sucursal</div>
+            <div className="inv-prod-drawer-sub">{sucursalNombre || 'Sucursal'}</div>
+          </div>
+          <button type="button" className="inv-prod-drawer-close" onClick={onClose} disabled={saving || logoUploading} title="Cerrar">
                   <i className="bi bi-x-lg" />
                 </button>
               </div>
 
+        <form className="suc-facturacion-drawer__form" onSubmit={handleSubmit}>
+          <div className="inv-prod-drawer-body inv-cat-v2__drawer-body suc-facturacion-drawer__body">
               <div className="inv-prod-pmodal__sections">
                 <section className="inv-prod-pmodal__section">
                   <div className="inv-prod-pmodal__section-title">Datos del emisor</div>
@@ -185,11 +202,15 @@ export default function SucursalFacturacionConfigDrawer({
                   <div className="inv-prod-pmodal__section-title">Configuración fiscal</div>
                   <div className="row g-3 mt-1">
                     <div className="col-12 col-md-4">
-                      <label className="form-label">Ticket</label>
-                      <select className={`form-select ${errors.ancho_ticket_mm ? 'is-invalid' : ''}`} name="ancho_ticket_mm" value={String(form.ancho_ticket_mm ?? 80)} onChange={setValueField}>
-                        {TICKET_WIDTH_OPTIONS.map((width) => <option key={width} value={String(width)}>{width}mm</option>)}
-                      </select>
-                      {errors.ancho_ticket_mm ? <div className="invalid-feedback">{errors.ancho_ticket_mm}</div> : null}
+                      <AppSelect
+                        label="Ticket"
+                        value={String(form.ancho_ticket_mm ?? 80)}
+                        options={TICKET_WIDTH_SELECT_OPTIONS}
+                        onChange={(value) => setValueField({ target: { name: 'ancho_ticket_mm', value } })}
+                        placeholder="Selecciona ancho"
+                        error={errors.ancho_ticket_mm || ''}
+                        className="suc-app-select"
+                      />
                     </div>
                     <div className="col-12 col-md-4">
                       <label className="form-label">Prefijo venta</label>
@@ -245,6 +266,52 @@ export default function SucursalFacturacionConfigDrawer({
                         </div>
                       </div>
                     ))}
+                  </div>
+                </section>
+
+                <section className="inv-prod-pmodal__section">
+                  <div className="inv-prod-pmodal__section-title">Imagen de factura</div>
+                  <div className="suc-fact-logo-field">
+                    <div className="suc-fact-logo-field__preview">
+                      {logoPreviewUrl ? (
+                        <img src={logoPreviewUrl} alt="Logo de facturación" />
+                      ) : (
+                        <div className="suc-fact-logo-field__placeholder">
+                          <i className="bi bi-image" aria-hidden="true" />
+                          <span>Sin imagen</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="suc-fact-logo-field__actions">
+                      <input
+                        id="fac_logo_file"
+                        className="suc-image-file-input"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={onLogoFileChange}
+                        disabled={saving || logoUploading}
+                      />
+                      <label
+                        className={`suc-image-file-btn ${saving || logoUploading ? 'is-disabled' : ''}`}
+                        htmlFor="fac_logo_file"
+                      >
+                        <i className={`bi ${logoUploading ? 'bi-arrow-repeat' : 'bi-upload'}`} aria-hidden="true" />
+                        <span>{logoUploading ? 'Subiendo...' : logoPreviewUrl ? 'Cambiar imagen' : 'Seleccionar imagen'}</span>
+                      </label>
+                      {form.id_archivo_logo || logoPreviewUrl ? (
+                        <button
+                          type="button"
+                          className="btn inv-prod-btn-subtle suc-fact-logo-field__remove"
+                          onClick={onLogoRemove}
+                          disabled={saving || logoUploading}
+                        >
+                          <i className="bi bi-trash3" aria-hidden="true" />
+                          <span>Quitar</span>
+                        </button>
+                      ) : null}
+                    </div>
+                    {logoError ? <div className="suc-app-select__error">{logoError}</div> : null}
+                    <div className="suc-app-select__helper">JPG, PNG o WEBP. Máximo 10 MB.</div>
                   </div>
                 </section>
 
@@ -308,16 +375,15 @@ export default function SucursalFacturacionConfigDrawer({
                 </section>
               </div>
             </div>
-            <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
-              <button type="button" className="btn inv-prod-btn-outline" onClick={onClose} disabled={saving}>Cancelar</button>
-              <button type="submit" className="btn inv-prod-btn-primary" disabled={saving || Object.keys(errors).length > 0}>
+          <div className="inv-prod-drawer-actions inv-cat-v2__drawer-actions suc-facturacion-drawer__actions">
+              <button type="button" className="btn inv-prod-btn-outline" onClick={onClose} disabled={saving || logoUploading}>Cancelar</button>
+              <button type="submit" className="btn inv-prod-btn-primary" disabled={saving || logoUploading || Object.keys(errors).length > 0}>
                 {saving ? 'Guardando...' : 'Guardar configuración'}
               </button>
             </div>
           </form>
-        </div>
-      </div>
-    </div>,
+      </aside>
+    </>,
     document.body
   );
 }
