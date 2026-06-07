@@ -8,10 +8,12 @@ import {
   getLineDiscountPercent,
   resolveVentaReversionBlockReason
 } from '../utils/ventasHelpers';
+import ventasService from '../../../../services/ventasService';
 import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
+const PRINT_ASSET_TIMEOUT_MS = 1500;
 
 const toMoneyNumber = (value) => {
   const parsed = Number(value);
@@ -43,6 +45,39 @@ const InfoCard = ({ icon, label, value }) => (
     <strong>{value}</strong>
   </div>
 );
+const waitForTicketImages = async () => {
+  if (typeof document === 'undefined') return;
+  const printRoot = document.querySelector('[data-ticket-print="true"]');
+  if (!printRoot) return;
+  const images = Array.from(printRoot.querySelectorAll('img')).filter((img) => img instanceof HTMLImageElement && img.src);
+  if (!images.length) return;
+
+  const waitForImage = async (img) => {
+    if (img.complete && img.naturalWidth > 0) return;
+    if (typeof img.decode === 'function') {
+      await img.decode().catch(() => {});
+      return;
+    }
+    await new Promise((resolve) => {
+      const done = () => {
+        img.removeEventListener('load', done);
+        img.removeEventListener('error', done);
+        resolve();
+      };
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+    });
+  };
+
+  await Promise.race([
+    Promise.all(images.map(waitForImage)),
+    new Promise((resolve) => window.setTimeout(resolve, PRINT_ASSET_TIMEOUT_MS))
+  ]);
+};
+
+const waitForPrintRender = () => new Promise((resolve) => {
+  window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+});
 
 export default function VentaDetalleModal({
   open,
@@ -55,6 +90,7 @@ export default function VentaDetalleModal({
   canPrint = true
 }) {
   const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
+  const [ticketPrintVenta, setTicketPrintVenta] = useState(null);
   const printInProgressRef = useRef(false);
 
   useEffect(() => {
@@ -63,6 +99,7 @@ export default function VentaDetalleModal({
     const widthFromLegacy = Number(venta?.ancho_ticket_mm);
     const resolvedWidth = widthFromFacturacion === 58 || widthFromLegacy === 58 ? 58 : 80;
     setTicketWidthMm(resolvedWidth);
+    setTicketPrintVenta(null);
   }, [open, venta]);
 
   useEffect(() => {
@@ -112,22 +149,41 @@ export default function VentaDetalleModal({
   const shouldShowItemDiscount = detailItems.some((item) => getLineDiscountPercent(item) !== null);
   const reversionBlockReason = resolveVentaReversionBlockReason(venta);
 
-  const handlePrintTicket = () => {
+  const handlePrintTicket = async () => {
     if (typeof window === 'undefined' || !venta || printInProgressRef.current) return;
     printInProgressRef.current = true;
 
-    document.body.classList.add('venta-ticket-printing');
     const cleanup = () => {
       document.body.classList.remove('venta-ticket-printing');
       window.removeEventListener('afterprint', cleanup);
       printInProgressRef.current = false;
     };
 
-    window.addEventListener('afterprint', cleanup);
-    window.requestAnimationFrame(() => {
-      window.print();
-      window.setTimeout(cleanup, 1500);
-    });
+    try {
+      const ticketPayload = venta?.id_factura
+        ? await ventasService.getTicketById(venta.id_factura)
+        : null;
+      setTicketPrintVenta(ticketPayload || venta);
+      await waitForPrintRender();
+      document.body.classList.add('venta-ticket-printing');
+      window.addEventListener('afterprint', cleanup);
+      await waitForTicketImages();
+      window.requestAnimationFrame(() => {
+        window.print();
+        window.setTimeout(cleanup, 1500);
+      });
+    } catch (error) {
+      console.warn('No se pudo cargar el ticket optimizado para impresion:', error);
+      setTicketPrintVenta(venta);
+      await waitForPrintRender();
+      document.body.classList.add('venta-ticket-printing');
+      window.addEventListener('afterprint', cleanup);
+      await waitForTicketImages();
+      window.requestAnimationFrame(() => {
+        window.print();
+        window.setTimeout(cleanup, 1500);
+      });
+    }
   };
 
   return (
@@ -433,10 +489,10 @@ export default function VentaDetalleModal({
         </div>
         {canPrint ? (
           <VentaTicketPrint
-            venta={venta}
+            venta={ticketPrintVenta || venta}
             paperWidth={ticketWidthMm}
             showLogo
-            businessName={venta?.nombre_emisor || "JONNY'S WINGS"}
+            businessName={(ticketPrintVenta || venta)?.nombre_emisor || "JONNY'S WINGS"}
           />
         ) : null}
       </section>

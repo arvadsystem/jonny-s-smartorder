@@ -32,6 +32,7 @@ const ventasService = {
   list: (params = {}) => apiFetch(`/ventas${buildQuery(params)}`, 'GET'),
   buscarVenta: (params = {}) => apiFetch(`/ventas/buscar${buildQuery(params)}`, 'GET'),
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
+  getTicketById: (id) => apiFetch(`/ventas/${id}/ticket`, 'GET'),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
   create: (payload) => apiFetch('/ventas', 'POST', payload, withIdempotencyKey({ timeoutMs: 7000 })),
