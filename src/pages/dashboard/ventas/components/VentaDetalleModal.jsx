@@ -8,6 +8,7 @@ import {
   getLineDiscountPercent,
   resolveVentaReversionBlockReason
 } from '../utils/ventasHelpers';
+import ventasService from '../../../../services/ventasService';
 import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
 
@@ -43,6 +44,16 @@ const InfoCard = ({ icon, label, value }) => (
     <strong>{value}</strong>
   </div>
 );
+
+const DetailField = ({ label, value }) => {
+  const resolved = value === null || value === undefined || value === '' ? '--' : value;
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{resolved}</dd>
+    </div>
+  );
+};
 
 export default function VentaDetalleModal({
   open,
@@ -111,23 +122,38 @@ export default function VentaDetalleModal({
     : Number(venta?.subtotal_bruto ?? 0) || (Number(venta?.sub_total || 0) + resolvedDiscountTotal);
   const shouldShowItemDiscount = detailItems.some((item) => getLineDiscountPercent(item) !== null);
   const reversionBlockReason = resolveVentaReversionBlockReason(venta);
+  const delivery = venta?.delivery && typeof venta.delivery === 'object' ? venta.delivery : null;
+  const contacto = venta?.contacto && typeof venta.contacto === 'object' ? venta.contacto : null;
+  const contexto = venta?.contexto && typeof venta.contexto === 'object' ? venta.contexto : null;
+  const isDeliveryDetail = Boolean(delivery) || String(contexto?.modalidad || '').toUpperCase() === 'DELIVERY';
 
-  const handlePrintTicket = () => {
+  const handlePrintTicket = async () => {
     if (typeof window === 'undefined' || !venta || printInProgressRef.current) return;
+    if (!venta.id_factura) {
+      console.error('[Ventas] No se puede generar el PDF del ticket sin id_factura.');
+      return;
+    }
     printInProgressRef.current = true;
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.opener = null;
+    }
 
-    document.body.classList.add('venta-ticket-printing');
-    const cleanup = () => {
-      document.body.classList.remove('venta-ticket-printing');
-      window.removeEventListener('afterprint', cleanup);
+    try {
+      const blob = await ventasService.getTicketPdf(venta.id_factura);
+      const url = URL.createObjectURL(blob);
+      if (printWindow) {
+        printWindow.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      if (printWindow) printWindow.close();
+      console.error('[Ventas] No se pudo generar el PDF del ticket', error);
+    } finally {
       printInProgressRef.current = false;
-    };
-
-    window.addEventListener('afterprint', cleanup);
-    window.requestAnimationFrame(() => {
-      window.print();
-      window.setTimeout(cleanup, 1500);
-    });
+    }
   };
 
   return (
@@ -306,6 +332,23 @@ export default function VentaDetalleModal({
                       </article>
                     ))}
                   </div>
+                </div>
+              ) : null}
+
+              {isDeliveryDetail ? (
+                <div className="ventas-detail-modal__section">
+                  <div className="ventas-detail-modal__section-title">Datos de entrega</div>
+                  <dl className="ventas-detail-modal__delivery-grid">
+                    <DetailField label="Modalidad" value={contexto?.modalidad || 'DELIVERY'} />
+                    <DetailField label="Canal" value={contexto?.canal} />
+                    <DetailField label="Nombre receptor" value={delivery?.nombre_receptor} />
+                    <DetailField label="Telefono receptor" value={delivery?.telefono_receptor} />
+                    <DetailField label="Direccion entrega" value={delivery?.direccion_entrega} />
+                    <DetailField label="Referencia entrega" value={delivery?.referencia_entrega} />
+                    <DetailField label="Costo envio" value={formatCurrency(delivery?.costo_envio || 0)} />
+                    <DetailField label="Observacion delivery" value={delivery?.observacion_delivery} />
+                    <DetailField label="Telefono contacto" value={contacto?.telefono_contacto} />
+                  </dl>
                 </div>
               ) : null}
 

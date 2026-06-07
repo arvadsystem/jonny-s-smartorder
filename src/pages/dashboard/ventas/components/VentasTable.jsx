@@ -33,11 +33,12 @@ export default function VentasTable({ ventas, onOpenDetail }) {
             {ventas.map((venta, index) => {
               const isCompleted = venta?.displayStatusKey === 'completed';
               const badgeClass = isCompleted ? 'is-ok' : 'is-low';
+              const hasCuentaDividida = Boolean(venta?.cuenta_dividida_activa || Number(venta?.cuenta_dividida_divisiones || 0) > 0);
 
               return (
                 <tr
                   key={venta?.id_factura ?? `${venta?.numero_venta}-${index}`}
-                  className="ventas-page__table-row"
+                  className={`ventas-page__table-row ${hasCuentaDividida ? 'is-split-account' : ''}`}
                   tabIndex={0}
                   onClick={() => onOpenDetail(venta)}
                   onKeyDown={(event) => {
@@ -51,6 +52,9 @@ export default function VentasTable({ ventas, onOpenDetail }) {
                     <div className="ventas-page__table-sale">
                       <strong>{venta?.numero_venta}</strong>
                       <span>{venta?.nombre_usuario}</span>
+                      {hasCuentaDividida ? (
+                        <span className="ventas-page__table-subpill is-split">Cuenta dividida</span>
+                      ) : null}
                     </div>
                   </td>
                   <td>{venta?.cliente_nombre}</td>

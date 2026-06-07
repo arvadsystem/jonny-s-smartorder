@@ -15,10 +15,11 @@ export default function VentaCard({ venta, view = 'grid', index = 0, onOpenDetai
   const dotClass = isCompleted ? 'ok' : 'off';
   const metodoPagoLabel = getMetodoPagoLabel(venta?.metodo_pago);
   const hasReversiones = Number(venta?.reversiones_count || 0) > 0 || Number(venta?.monto_reversado_total || 0) > 0;
+  const hasCuentaDividida = Boolean(venta?.cuenta_dividida_activa || Number(venta?.cuenta_dividida_divisiones || 0) > 0);
 
   return (
     <article
-      className={`inv-catpro-item inv-cat-card inv-anim-in ventas-page__sale-card ${view === 'list' ? 'is-list' : ''}`}
+      className={`inv-catpro-item inv-cat-card inv-anim-in ventas-page__sale-card ${view === 'list' ? 'is-list' : ''} ${hasCuentaDividida ? 'is-split-account' : ''}`}
       role="button"
       tabIndex={0}
       onClick={() => onOpenDetail(venta)}
@@ -46,6 +47,9 @@ export default function VentaCard({ venta, view = 'grid', index = 0, onOpenDetai
         </div>
 
         <div className="ventas-page__sale-badges">
+          {hasCuentaDividida ? (
+            <span className="ventas-page__sale-badge is-split">Cuenta dividida</span>
+          ) : null}
           {hasReversiones && venta?.reversionStatusLabel ? (
             <span className="ventas-page__sale-badge is-reversed">Con reversión</span>
           ) : null}

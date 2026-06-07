@@ -251,8 +251,48 @@ export const normalizeClienteOption = (row) => ({
   value: String(row?.id_cliente ?? ''),
   label: String(row?.nombre_cliente ?? 'Consumidor final'),
   nombre_cliente: String(row?.nombre_cliente ?? 'Consumidor final'),
+  telefono: String(row?.telefono ?? '').trim(),
+  id_telefono: Number(row?.id_telefono ?? 0) || null,
+  dni: String(row?.dni ?? '').trim(),
+  rtn: String(row?.rtn ?? '').trim(),
   es_consumidor_final: Boolean(row?.es_consumidor_final)
 });
+
+const normalizeVentaDelivery = (delivery) => {
+  if (!delivery || typeof delivery !== 'object') return null;
+  const normalized = {
+    estado_delivery: String(delivery?.estado_delivery ?? '').trim(),
+    costo_envio: roundMoney(delivery?.costo_envio),
+    nombre_receptor: String(delivery?.nombre_receptor ?? '').trim(),
+    telefono_receptor: String(delivery?.telefono_receptor ?? '').trim(),
+    direccion_entrega: String(delivery?.direccion_entrega ?? '').trim(),
+    referencia_entrega: String(delivery?.referencia_entrega ?? '').trim(),
+    observacion_delivery: String(delivery?.observacion_delivery ?? '').trim()
+  };
+  return Object.values(normalized).some((value) => Boolean(value)) ? normalized : null;
+};
+
+const normalizeVentaContacto = (contacto) => {
+  if (!contacto || typeof contacto !== 'object') return null;
+  const normalized = {
+    telefono_contacto: String(contacto?.telefono_contacto ?? '').trim(),
+    nombre_contacto: String(contacto?.nombre_contacto ?? '').trim(),
+    dni: String(contacto?.dni ?? '').trim(),
+    rtn: String(contacto?.rtn ?? '').trim(),
+    correo: String(contacto?.correo ?? '').trim()
+  };
+  return Object.values(normalized).some((value) => Boolean(value)) ? normalized : null;
+};
+
+const normalizeVentaContexto = (contexto) => {
+  if (!contexto || typeof contexto !== 'object') return null;
+  const normalized = {
+    canal: String(contexto?.canal ?? '').trim(),
+    modalidad: String(contexto?.modalidad ?? '').trim(),
+    observacion_contexto: String(contexto?.observacion_contexto ?? '').trim()
+  };
+  return Object.values(normalized).some((value) => Boolean(value)) ? normalized : null;
+};
 
 const inferStatusKey = (row) => {
   if (!row?.id_pedido) return 'completed';
@@ -263,6 +303,17 @@ const inferStatusKey = (row) => {
 export const normalizeVentaRecord = (row) => {
   const statusKey = inferStatusKey(row);
   const reversionStatus = resolveVentaReversionStatus(row);
+  const cuentaDivididaDivisiones = Number(
+    row?.cuenta_dividida_divisiones ??
+    row?.cuenta_divisiones_count ??
+    row?.cuenta_dividida?.divisiones_count ??
+    0
+  ) || 0;
+  const cuentaDivididaActiva = Boolean(
+    cuentaDivididaDivisiones > 0 ||
+    row?.cuenta_dividida?.activa ||
+    (Array.isArray(row?.cuenta_dividida?.divisiones) && row.cuenta_dividida.divisiones.length > 0)
+  );
 
   return {
     ...row,
@@ -289,6 +340,8 @@ export const normalizeVentaRecord = (row) => {
     descuento_global: roundMoney(row?.descuento_global),
     monto_reversado_total: roundMoney(row?.monto_reversado_total),
     reversiones_count: Number(row?.reversiones_count ?? 0) || 0,
+    cuenta_dividida_divisiones: cuentaDivididaDivisiones,
+    cuenta_dividida_activa: cuentaDivididaActiva,
     total_items: Number(row?.total_items ?? 0) || 0,
     cliente_nombre: String(row?.cliente_nombre ?? 'Consumidor final'),
     nombre_sucursal: String(row?.nombre_sucursal ?? 'Sucursal no definida'),
@@ -393,6 +446,9 @@ export const normalizeVentaDetail = (row) => {
 
   return {
     ...base,
+    delivery: normalizeVentaDelivery(row?.delivery),
+    contacto: normalizeVentaContacto(row?.contacto),
+    contexto: normalizeVentaContexto(row?.contexto),
     reversiones,
     monto_reversado_total: resolvedReversedTotal,
     reversiones_count: reversiones.length || base.reversiones_count,

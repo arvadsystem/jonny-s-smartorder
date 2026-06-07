@@ -3,6 +3,7 @@ import AppSelect from '../../../../components/common/AppSelect';
 import ventasService from '../../../../services/ventasService';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
 import { formatCurrency } from '../utils/ventasHelpers';
+import CuentaDivididaDraftBuilder from './CuentaDivididaDraftBuilder';
 
 const INITIAL_FORM = {
   metodo_pago: 'efectivo',
@@ -29,6 +30,18 @@ const buildInitialSplitDivisions = () => ([
   { id: 'persona-2', etiqueta: 'Persona 2', itemIds: [] }
 ]);
 
+const normalizeCuentaDivisionItems = (value) => {
+  const rows = Array.isArray(value) ? value : [];
+  return rows
+    .map((item, index) => ({
+      id_cuenta_division_item: toPositiveId(item?.id_cuenta_division_item),
+      id_detalle_pedido: toPositiveId(item?.id_detalle_pedido ?? item?.id_detalle),
+      nombre_item: String(item?.nombre_item || item?.nombre || `Item ${index + 1}`).trim(),
+      total_linea: Number(item?.total_linea ?? item?.total_pedido ?? item?.sub_total ?? 0) || 0
+    }))
+    .filter((item) => item.id_detalle_pedido);
+};
+
 const normalizeCuentaDividida = (value) => {
   const rawDivisiones = Array.isArray(value)
     ? value
@@ -43,7 +56,8 @@ const normalizeCuentaDividida = (value) => {
       estado: normalizeDivisionEstado(division?.estado),
       total: Number(division?.total ?? 0) || 0,
       monto_pagado: Number(division?.monto_pagado ?? 0) || 0,
-      monto_pendiente: Number(division?.monto_pendiente ?? division?.total ?? 0) || 0
+      monto_pendiente: Number(division?.monto_pendiente ?? division?.total ?? 0) || 0,
+      items: normalizeCuentaDivisionItems(division?.items)
     }))
     .filter((division) => division.id_cuenta_division);
 
@@ -106,6 +120,12 @@ const formatDateTime = (value) => {
   }).format(date);
 };
 
+const isPagoPedidoStillPending = (response) => {
+  const pending = Number(response?.monto_pendiente ?? 0) || 0;
+  const estadoPago = String(response?.estado_pago || response?.estado_pago_control || '').trim().toUpperCase();
+  return pending > 0.009 || estadoPago === 'PENDIENTE_PAGO' || estadoPago === 'PENDIENTE_DE_PAGO';
+};
+
 export default function VentaRegistrarPagoPedidoModal({
   open,
   saving,
@@ -117,6 +137,7 @@ export default function VentaRegistrarPagoPedidoModal({
 }) {
   const [form, setForm] = useState(INITIAL_FORM);
   const [localError, setLocalError] = useState('');
+  const [localNotice, setLocalNotice] = useState('');
   const [search, setSearch] = useState('');
   const [loadingPedidos, setLoadingPedidos] = useState(false);
   const [pedidosError, setPedidosError] = useState('');
@@ -156,6 +177,7 @@ export default function VentaRegistrarPagoPedidoModal({
       setLoadingPedidoItems(false);
       setForm(INITIAL_FORM);
       setLocalError('');
+      setLocalNotice('');
       setPedidosError('');
       setLocalSaving(false);
       submitRef.current = false;
@@ -179,6 +201,7 @@ export default function VentaRegistrarPagoPedidoModal({
       }));
     }
     setLocalError('');
+    setLocalNotice('');
     setPedidosError('');
   }, [initialPedido, initialPedidoId, open]);
 
@@ -186,6 +209,7 @@ export default function VentaRegistrarPagoPedidoModal({
     if (!open) return undefined;
 
     let active = true;
+    const requestDelay = initialPedidoId && search ? 0 : 250;
     const timer = window.setTimeout(async () => {
       setLoadingPedidos(true);
       setPedidosError('');
@@ -194,7 +218,8 @@ export default function VentaRegistrarPagoPedidoModal({
           search,
           id_sucursal: effectiveSucursalId || undefined,
           page: 1,
-          page_size: 10
+          page_size: 10,
+          include_items: initialPedidoId ? 1 : undefined
         });
         if (!active) return;
         const rows = (Array.isArray(response?.items) ? response.items : [])
@@ -231,7 +256,7 @@ export default function VentaRegistrarPagoPedidoModal({
       } finally {
         if (active) setLoadingPedidos(false);
       }
-    }, 250);
+    }, requestDelay);
 
     return () => {
       active = false;
@@ -256,22 +281,36 @@ export default function VentaRegistrarPagoPedidoModal({
     : [];
   const hasCuentaDividida = Boolean(selectedPedido?.cuenta_dividida?.activa || cuentaDivisiones.length > 0);
   const pedidoItems = Array.isArray(selectedPedido?.items) ? selectedPedido.items : [];
+  const cuentaDivisionAssignedItemIds = cuentaDivisiones.flatMap((division) => (
+    Array.isArray(division.items)
+      ? division.items.map((item) => item.id_detalle_pedido).filter(Boolean)
+      : []
+  ));
+  const cuentaDivisionAssignedItemIdSet = new Set(cuentaDivisionAssignedItemIds);
+  const splitDraftItems = hasCuentaDividida
+    ? pedidoItems.filter((item) => !cuentaDivisionAssignedItemIdSet.has(item.id_detalle_pedido))
+    : pedidoItems;
   const assignedDraftItemIds = splitDraftDivisions.flatMap((division) => division.itemIds || []);
-  const pendingDraftItemCount = pedidoItems.filter((item) => !assignedDraftItemIds.includes(item.id_detalle_pedido)).length;
+  const pendingDraftItemCount = splitDraftItems.filter((item) => !assignedDraftItemIds.includes(item.id_detalle_pedido)).length;
   const selectedDraftDivision = splitDraftDivisions.find((division) => division.id === selectedDraftDivisionId) || null;
+  const splitDraftLabelOffset = hasCuentaDividida ? cuentaDivisiones.length : 0;
+  const getSplitDraftDivisionLabel = (divisionId) => {
+    const index = splitDraftDivisions.findIndex((division) => division.id === divisionId);
+    return index >= 0 ? `Persona ${splitDraftLabelOffset + index + 1}` : 'persona';
+  };
   const selectedDraftDivisionTotal = selectedDraftDivision
     ? selectedDraftDivision.itemIds.reduce((sum, idDetallePedido) => {
-        const item = pedidoItems.find((row) => row.id_detalle_pedido === idDetallePedido);
+        const item = splitDraftItems.find((row) => row.id_detalle_pedido === idDetallePedido);
         return roundMoney(sum + Number(item?.total_linea || 0));
       }, 0)
     : 0;
-  const hasSplitDraft = Boolean(selectedPedido && !hasCuentaDividida && splitDraftEnabled);
+  const hasSplitDraft = Boolean(selectedPedido && splitDraftEnabled && (!hasCuentaDividida || splitDraftItems.length > 0));
   const selectedDivision = cuentaDivisiones.find((division) => String(division.id_cuenta_division) === String(selectedDivisionId)) || null;
   const selectedDivisionPendiente = selectedDivision && selectedDivision.estado === 'PENDIENTE' ? selectedDivision : null;
-  const montoPendiente = hasCuentaDividida
-    ? Number(selectedDivisionPendiente?.monto_pendiente ?? selectedDivisionPendiente?.total ?? 0) || 0
-    : hasSplitDraft
+  const montoPendiente = hasSplitDraft
       ? Number(selectedDraftDivisionTotal || 0) || 0
+    : hasCuentaDividida
+      ? Number(selectedDivisionPendiente?.monto_pendiente ?? selectedDivisionPendiente?.total ?? 0) || 0
     : Number(selectedPedido?.monto_pendiente ?? 0) || 0;
   const montoRecibidoValue = Number(form.monto_recibido);
   const cambioEstimado = isCash && Number.isFinite(montoRecibidoValue)
@@ -279,27 +318,27 @@ export default function VentaRegistrarPagoPedidoModal({
     : 0;
   const submitLabel = isSubmitting
     ? 'Guardando...'
-    : hasCuentaDividida && selectedDivisionPendiente
-      ? `Cobrar ${selectedDivisionPendiente.etiqueta}`
-      : hasSplitDraft && selectedDraftDivision
-        ? `Cobrar ${selectedDraftDivision.etiqueta || 'persona'}`
+    : hasSplitDraft && selectedDraftDivision
+        ? `Cobrar ${getSplitDraftDivisionLabel(selectedDraftDivision.id)}`
+      : hasCuentaDividida && selectedDivisionPendiente
+        ? `Cobrar ${selectedDivisionPendiente.etiqueta}`
       : 'Confirmar pago';
 
   useEffect(() => {
     if (!open || !isCash || !selectedPedido) return;
+    if (hasSplitDraft) {
+      setForm((current) => ({
+        ...current,
+        monto_recibido: selectedDraftDivision ? String(selectedDraftDivisionTotal || '') : ''
+      }));
+      return;
+    }
     if (hasCuentaDividida) {
       setForm((current) => ({
         ...current,
         monto_recibido: selectedDivisionPendiente
           ? String(selectedDivisionPendiente.monto_pendiente || selectedDivisionPendiente.total || '')
           : ''
-      }));
-      return;
-    }
-    if (hasSplitDraft) {
-      setForm((current) => ({
-        ...current,
-        monto_recibido: selectedDraftDivision ? String(selectedDraftDivisionTotal || '') : ''
       }));
       return;
     }
@@ -314,10 +353,11 @@ export default function VentaRegistrarPagoPedidoModal({
   const setField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
     setLocalError('');
+    setLocalNotice('');
   };
 
-  const loadPedidoItems = async (pedido) => {
-    if (!pedido?.id_pedido || pedido.items?.length) return pedido;
+  const loadPedidoItems = async (pedido, { force = false } = {}) => {
+    if (!pedido?.id_pedido || (!force && pedido.items?.length)) return pedido;
     setLoadingPedidoItems(true);
     try {
       const response = await ventasService.listPedidosPendientesPago({
@@ -347,12 +387,13 @@ export default function VentaRegistrarPagoPedidoModal({
     setSplitDraftDivisions(buildInitialSplitDivisions());
     setSelectedDraftDivisionId('persona-1');
     setLocalError('');
+    setLocalNotice('');
     setForm((current) => ({
       ...current,
       monto_recibido: isDividido ? '' : String(pedido.monto_pendiente || '')
     }));
-    if (!isDividido) {
-      const detailed = await loadPedidoItems(pedido);
+    if (!pedido.items?.length || isDividido) {
+      const detailed = await loadPedidoItems(pedido, { force: isDividido });
       setSelectedPedido((current) => (
         current?.id_pedido === pedido.id_pedido ? { ...current, ...detailed } : current
       ));
@@ -363,9 +404,12 @@ export default function VentaRegistrarPagoPedidoModal({
     setSplitDraftEnabled(enabled);
     setSplitDraftDivisions(buildInitialSplitDivisions());
     setSelectedDraftDivisionId('persona-1');
+    if (enabled) setSelectedDivisionId('');
     setLocalError('');
-    if (enabled && selectedPedido && !selectedPedido.items?.length) {
-      const detailed = await loadPedidoItems(selectedPedido);
+    setLocalNotice('');
+    const needsSplitContext = !selectedPedido?.items?.length || (hasCuentaDividida && cuentaDivisionAssignedItemIds.length === 0);
+    if (enabled && selectedPedido && needsSplitContext) {
+      const detailed = await loadPedidoItems(selectedPedido, { force: hasCuentaDividida });
       setSelectedPedido((current) => (
         current?.id_pedido === selectedPedido.id_pedido ? { ...current, ...detailed } : current
       ));
@@ -376,13 +420,14 @@ export default function VentaRegistrarPagoPedidoModal({
     setSplitDraftDivisions((current) => {
       const next = {
         id: `persona-${Date.now()}`,
-        etiqueta: `Persona ${current.length + 1}`,
+        etiqueta: `Persona ${cuentaDivisiones.length + current.length + 1}`,
         itemIds: []
       };
       setSelectedDraftDivisionId(next.id);
       return [...current, next];
     });
     setLocalError('');
+    setLocalNotice('');
   };
 
   const updateSplitDraftDivisionLabel = (id, etiqueta) => {
@@ -390,6 +435,23 @@ export default function VentaRegistrarPagoPedidoModal({
       division.id === id ? { ...division, etiqueta } : division
     )));
     setLocalError('');
+    setLocalNotice('');
+  };
+
+  const selectSplitDraftDivision = (divisionId) => {
+    const division = splitDraftDivisions.find((row) => row.id === divisionId);
+    const divisionTotal = division
+      ? (division.itemIds || []).reduce((sum, idDetallePedido) => {
+          const item = splitDraftItems.find((row) => row.id_detalle_pedido === idDetallePedido);
+          return roundMoney(sum + Number(item?.total_linea || 0));
+        }, 0)
+      : 0;
+    setSelectedDraftDivisionId(divisionId);
+    if (isCash) {
+      setForm((current) => ({ ...current, monto_recibido: String(divisionTotal || '') }));
+    }
+    setLocalError('');
+    setLocalNotice('');
   };
 
   const assignItemToSplitDraftDivision = (idDetallePedido, divisionId) => {
@@ -399,32 +461,92 @@ export default function VentaRegistrarPagoPedidoModal({
       return { ...division, itemIds: [...withoutItem, idDetallePedido] };
     }));
     setLocalError('');
+    setLocalNotice('');
+  };
+
+  const unassignItemFromSplitDraftDivision = (idDetallePedido) => {
+    setSplitDraftDivisions((current) => current.map((division) => ({
+      ...division,
+      itemIds: (division.itemIds || []).filter((id) => id !== idDetallePedido)
+    })));
+    setLocalError('');
+    setLocalNotice('');
+  };
+
+  const resetPaymentModal = () => {
+    setForm(INITIAL_FORM);
+    setSelectedPedido(null);
+    setSelectedDivisionId('');
+    setSplitDraftEnabled(false);
+    setSplitDraftDivisions(buildInitialSplitDivisions());
+    setSelectedDraftDivisionId('persona-1');
+    setLocalNotice('');
+  };
+
+  const refreshSelectedPedidoAfterPayment = async (pedidoId) => {
+    const response = await ventasService.listPedidosPendientesPago({
+      search: selectedPedido?.codigo_pedido || String(pedidoId || ''),
+      id_sucursal: effectiveSucursalId || undefined,
+      page: 1,
+      page_size: 10,
+      include_items: 1
+    });
+    const rows = (Array.isArray(response?.items) ? response.items : [])
+      .map(normalizePendingOrder)
+      .filter((row) => row.id_pedido);
+    const detailed = rows.find((row) => Number(row.id_pedido) === Number(pedidoId));
+    setPedidos((current) => {
+      const mergedRows = rows.length ? rows : current;
+      if (!detailed) return mergedRows;
+      const withoutDetailed = mergedRows.filter((row) => Number(row.id_pedido) !== Number(detailed.id_pedido));
+      return [detailed, ...withoutDetailed];
+    });
+    if (!detailed) return null;
+
+    const nextPendingDivision = (detailed.cuenta_dividida?.divisiones || [])
+      .find((division) => division.estado === 'PENDIENTE');
+    setSelectedPedido(detailed);
+    setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
+    setSplitDraftEnabled(false);
+    setSplitDraftDivisions(buildInitialSplitDivisions());
+    setSelectedDraftDivisionId('persona-1');
+    setForm((current) => ({
+      ...current,
+      monto_recibido: isCash && nextPendingDivision
+        ? String(nextPendingDivision.monto_pendiente || nextPendingDivision.total || '')
+        : '',
+      referencia_pago: '',
+      observacion_pago: ''
+    }));
+    return detailed;
   };
 
   const buildSplitDraftPayload = () => {
     if (!hasSplitDraft) return null;
-    if (!pedidoItems.length) {
+    if (!splitDraftItems.length) {
       setLocalError('No se pudieron cargar las lineas reales del pedido.');
       return null;
     }
-    if (pendingDraftItemCount > 0) {
-      setLocalError('Asigna todas las lineas antes de cobrar.');
+    const used = new Set();
+    const selectedDraftHasItems = splitDraftDivisions.some((division) => (
+      division.id === selectedDraftDivisionId && Array.isArray(division.itemIds) && division.itemIds.length > 0
+    ));
+    if (!selectedDraftHasItems) {
+      setLocalError('Selecciona la persona que vas a cobrar y asignale al menos una linea.');
       return null;
     }
-    const used = new Set();
-    const cuentaDividida = splitDraftDivisions.map((division, index) => {
+    const divisionsWithItems = splitDraftDivisions.filter((division) => (
+      Array.isArray(division.itemIds) && division.itemIds.length > 0
+    ));
+    const cuentaDividida = divisionsWithItems.map((division, index) => {
       const itemIds = Array.isArray(division.itemIds) ? division.itemIds : [];
-      if (!itemIds.length) {
-        setLocalError('No se permiten personas sin lineas asignadas.');
-        return null;
-      }
       const items = itemIds.map((idDetallePedido) => {
         if (used.has(idDetallePedido)) {
           setLocalError('Una linea no puede estar en dos personas.');
           return null;
         }
         used.add(idDetallePedido);
-        const exists = pedidoItems.some((item) => item.id_detalle_pedido === idDetallePedido);
+        const exists = splitDraftItems.some((item) => item.id_detalle_pedido === idDetallePedido);
         if (!exists) {
           setLocalError('Una linea asignada ya no existe en el pedido.');
           return null;
@@ -433,17 +555,13 @@ export default function VentaRegistrarPagoPedidoModal({
       });
       if (items.some((item) => !item)) return null;
       return {
-        etiqueta: normalizeOptionalText(division.etiqueta) || `Persona ${index + 1}`,
+        etiqueta: `Persona ${splitDraftLabelOffset + index + 1}`,
         orden: index + 1,
         items
       };
     });
     if (cuentaDividida.some((division) => !division)) return null;
-    const selectedIndex = splitDraftDivisions.findIndex((division) => division.id === selectedDraftDivisionId);
-    if (selectedIndex < 0 || !splitDraftDivisions[selectedIndex]?.itemIds?.length) {
-      setLocalError('Selecciona la persona que vas a cobrar primero.');
-      return null;
-    }
+    const selectedIndex = divisionsWithItems.findIndex((division) => division.id === selectedDraftDivisionId);
     return {
       cuenta_dividida: cuentaDividida,
       cobrar_division_orden: selectedIndex + 1
@@ -455,6 +573,7 @@ export default function VentaRegistrarPagoPedidoModal({
     submitRef.current = true;
     setLocalSaving(true);
     setLocalError('');
+    setLocalNotice('');
 
     if (!selectedPedido?.id_pedido) {
       setLocalError('Selecciona un pedido pendiente para cobrar.');
@@ -462,20 +581,20 @@ export default function VentaRegistrarPagoPedidoModal({
       setLocalSaving(false);
       return;
     }
-    if (hasCuentaDividida && !selectedDivisionPendiente) {
-      setLocalError('Selecciona una persona pendiente para cobrar.');
-      submitRef.current = false;
-      setLocalSaving(false);
-      return;
-    }
-    if (selectedDivision && selectedDivision.estado !== 'PENDIENTE') {
-      setLocalError('Selecciona una persona pendiente para cobrar.');
-      submitRef.current = false;
-      setLocalSaving(false);
-      return;
-    }
     const splitDraftPayload = hasSplitDraft ? buildSplitDraftPayload() : null;
     if (hasSplitDraft && !splitDraftPayload) {
+      submitRef.current = false;
+      setLocalSaving(false);
+      return;
+    }
+    if (hasCuentaDividida && !hasSplitDraft && !selectedDivisionPendiente) {
+      setLocalError('Selecciona una persona pendiente para cobrar.');
+      submitRef.current = false;
+      setLocalSaving(false);
+      return;
+    }
+    if (!hasSplitDraft && selectedDivision && selectedDivision.estado !== 'PENDIENTE') {
+      setLocalError('Selecciona una persona pendiente para cobrar.');
       submitRef.current = false;
       setLocalSaving(false);
       return;
@@ -497,28 +616,52 @@ export default function VentaRegistrarPagoPedidoModal({
     }
 
     try {
-      await onRegistrarPago(selectedPedido.id_pedido, {
+      const pendingDivisionsBeforeSubmit = cuentaDivisiones.filter((division) => division.estado === 'PENDIENTE').length;
+      const shouldExpectMoreSplitPayments =
+        (hasCuentaDividida && pendingDivisionsBeforeSubmit > 1) ||
+        (hasSplitDraft && ((splitDraftPayload?.cuenta_dividida?.length || 0) > 1 || pendingDraftItemCount > 0));
+      const response = await onRegistrarPago(selectedPedido.id_pedido, {
         metodo_pago: form.metodo_pago.toUpperCase(),
         monto_recibido: isCash ? montoRecibido : undefined,
         referencia_pago: isCash ? null : normalizeOptionalText(form.referencia_pago),
         observacion_pago: normalizeOptionalText(form.observacion_pago),
         id_sesion_caja: toPositiveId(selectedSessionId),
-        id_cuenta_division: selectedDivisionPendiente ? Number(selectedDivisionPendiente.id_cuenta_division) : undefined,
+        id_cuenta_division: !hasSplitDraft && selectedDivisionPendiente ? Number(selectedDivisionPendiente.id_cuenta_division) : undefined,
         ...(splitDraftPayload || {})
       });
-      setForm(INITIAL_FORM);
-      setSelectedPedido(null);
-      setSelectedDivisionId('');
-      setSplitDraftEnabled(false);
-      setSplitDraftDivisions(buildInitialSplitDivisions());
-      setSelectedDraftDivisionId('persona-1');
+
+      if (isPagoPedidoStillPending(response) || shouldExpectMoreSplitPayments) {
+        try {
+          const refreshed = await refreshSelectedPedidoAfterPayment(selectedPedido.id_pedido);
+          if (refreshed) {
+            setLocalNotice('Pago registrado. Quedan personas pendientes en este pedido.');
+            return;
+          }
+          setSelectedPedido(null);
+          setSelectedDivisionId('');
+          setSplitDraftEnabled(false);
+          setSplitDraftDivisions(buildInitialSplitDivisions());
+          setSelectedDraftDivisionId('persona-1');
+          setLocalNotice('Pago registrado. Busca el pedido para continuar con el saldo restante.');
+          return;
+        } catch (refreshError) {
+          setSelectedPedido(null);
+          setSelectedDivisionId('');
+          setSplitDraftEnabled(false);
+          setSplitDraftDivisions(buildInitialSplitDivisions());
+          setSelectedDraftDivisionId('persona-1');
+          setLocalNotice('Pago registrado. No se pudo refrescar el saldo restante automaticamente.');
+          if (Number(refreshError?.status || 0) >= 500) {
+            console.error('[Ventas] Error refrescando pedido pendiente despues del pago', refreshError);
+          }
+          return;
+        }
+      }
+
+      resetPaymentModal();
       onClose();
     } catch (error) {
-      setLocalError(
-        Number(error?.status || 0) === 409
-          ? 'Este pedido ya fue pagado o no está pendiente de pago.'
-          : (error?.message || 'No se pudo registrar el pago del pedido.')
-      );
+      setLocalError(error?.message || 'No se pudo registrar el pago del pedido.');
     } finally {
       submitRef.current = false;
       setLocalSaving(false);
@@ -534,7 +677,7 @@ export default function VentaRegistrarPagoPedidoModal({
       }}
     >
       <section
-        className="ventas-modal-card ventas-registrar-pago-modal"
+        className={`ventas-modal-card ventas-registrar-pago-modal ${hasSplitDraft ? 'is-splitting-account' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="ventas-registrar-pago-title"
@@ -550,7 +693,7 @@ export default function VentaRegistrarPagoPedidoModal({
           </button>
         </header>
 
-        <div className="ventas-modal-body ventas-finalizar-modal__body ventas-registrar-pago-modal__body">
+        <div className={`ventas-modal-body ventas-finalizar-modal__body ventas-registrar-pago-modal__body ${hasSplitDraft ? 'is-splitting-account' : ''}`}>
           <section className="ventas-registrar-pago-modal__search-panel">
             <label className="ventas-create-modal__field">
               <span>Buscar pedido pendiente</span>
@@ -572,32 +715,41 @@ export default function VentaRegistrarPagoPedidoModal({
               ) : pedidos.length === 0 ? (
                 <div className="ventas-registrar-pago-modal__empty">No hay pedidos pendientes de pago.</div>
               ) : (
-                pedidos.map((pedido) => (
-                  <article
-                    key={pedido.id_pedido}
-                    className={`ventas-registrar-pago-modal__pedido ${selectedPedido?.id_pedido === pedido.id_pedido ? 'is-selected' : ''}`}
-                  >
-                    <div className="ventas-registrar-pago-modal__pedido-main">
-                      <div>
-                        <strong>{pedido.codigo_pedido}</strong>
-                        <span>{pedido.nombre_contacto}</span>
+                pedidos.map((pedido) => {
+                  const isPedidoDividido = Boolean(
+                    pedido?.cuenta_dividida?.activa ||
+                    (Array.isArray(pedido?.cuenta_dividida?.divisiones) && pedido.cuenta_dividida.divisiones.length > 0)
+                  );
+                  return (
+                    <article
+                      key={pedido.id_pedido}
+                      className={`ventas-registrar-pago-modal__pedido ${selectedPedido?.id_pedido === pedido.id_pedido ? 'is-selected' : ''} ${isPedidoDividido ? 'is-split-account' : ''}`}
+                    >
+                      <div className="ventas-registrar-pago-modal__pedido-main">
+                        <div>
+                          <strong>{pedido.codigo_pedido}</strong>
+                          <span>{pedido.nombre_contacto}</span>
+                        </div>
+                        <div className="ventas-registrar-pago-modal__pedido-badges">
+                          {isPedidoDividido ? <span className="ventas-registrar-pago-modal__badge is-split">Cuenta dividida</span> : null}
+                          <span className="ventas-registrar-pago-modal__badge">Pendiente de pago</span>
+                        </div>
                       </div>
-                      <span className="ventas-registrar-pago-modal__badge">Pendiente de pago</span>
-                    </div>
-                    <div className="ventas-registrar-pago-modal__pedido-meta">
-                      <span><i className="bi bi-telephone" /> {pedido.telefono_contacto || pedido.telefono_normalizado || 'Sin teléfono'}</span>
-                      <span>{pedido.modalidad}</span>
-                      <span>{pedido.canal}</span>
-                      <span>{formatDateTime(pedido.fecha_hora_pedido)}</span>
-                    </div>
-                    <div className="ventas-registrar-pago-modal__pedido-actions">
-                      <strong>{formatCurrency(pedido.monto_pendiente)}</strong>
-                      <button type="button" onClick={() => selectPedido(pedido)}>
-                        {selectedPedido?.id_pedido === pedido.id_pedido ? 'Seleccionado' : 'Cobrar'}
-                      </button>
-                    </div>
-                  </article>
-                ))
+                      <div className="ventas-registrar-pago-modal__pedido-meta">
+                        <span><i className="bi bi-telephone" /> {pedido.telefono_contacto || pedido.telefono_normalizado || 'Sin teléfono'}</span>
+                        <span>{pedido.modalidad}</span>
+                        <span>{pedido.canal}</span>
+                        <span>{formatDateTime(pedido.fecha_hora_pedido)}</span>
+                      </div>
+                      <div className="ventas-registrar-pago-modal__pedido-actions">
+                        <strong>{formatCurrency(pedido.monto_pendiente)}</strong>
+                        <button type="button" onClick={() => selectPedido(pedido)}>
+                          {selectedPedido?.id_pedido === pedido.id_pedido ? 'Seleccionado' : 'Cobrar'}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </div>
           </section>
@@ -644,6 +796,9 @@ export default function VentaRegistrarPagoPedidoModal({
                             onClick={() => {
                               if (!isPending) return;
                               setSelectedDivisionId(String(division.id_cuenta_division));
+                              setSplitDraftEnabled(false);
+                              setSplitDraftDivisions(buildInitialSplitDivisions());
+                              setSelectedDraftDivisionId('persona-1');
                               if (isCash) {
                                 setForm((current) => ({
                                   ...current,
@@ -667,87 +822,41 @@ export default function VentaRegistrarPagoPedidoModal({
                         );
                       })}
                     </div>
+                    <CuentaDivididaDraftBuilder
+                      enabled={splitDraftEnabled}
+                      onEnabledChange={toggleSplitDraft}
+                      divisions={splitDraftDivisions}
+                      items={splitDraftItems}
+                      selectedDivisionId={selectedDraftDivisionId}
+                      onSelectedDivisionChange={selectSplitDraftDivision}
+                      onAddDivision={addSplitDraftDivision}
+                      onUpdateDivisionLabel={updateSplitDraftDivisionLabel}
+                      onAssignItem={assignItemToSplitDraftDivision}
+                      onUnassignItem={unassignItemFromSplitDraftDivision}
+                      loadingItems={loadingPedidoItems}
+                      disabled={isSubmitting}
+                      formatCurrency={formatCurrency}
+                      toggleLabel="Agregar otra persona"
+                      labelOffset={splitDraftLabelOffset}
+                    />
                   </>
                 ) : (
-                  <div className="ventas-registrar-pago-modal__split-draft ventas-cuenta-dividida">
-                    <label className="ventas-cuenta-dividida__toggle">
-                      <input
-                        type="checkbox"
-                        checked={splitDraftEnabled}
-                        onChange={(event) => toggleSplitDraft(event.target.checked)}
-                        disabled={loadingPedidoItems || isSubmitting}
-                      />
-                      <span>Dividir cuenta</span>
-                    </label>
-
-                    {splitDraftEnabled ? (
-                      <>
-                        <div className="ventas-cuenta-dividida__toolbar">
-                          <span>Asignado: {pedidoItems.length - pendingDraftItemCount}/{pedidoItems.length}</span>
-                          <strong>{loadingPedidoItems ? 'Cargando lineas...' : `Pendiente: ${pendingDraftItemCount}`}</strong>
-                          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={addSplitDraftDivision} disabled={isSubmitting}>
-                            <i className="bi bi-person-plus" /> Agregar persona
-                          </button>
-                        </div>
-
-                        <div className="ventas-cuenta-dividida__grid">
-                          {splitDraftDivisions.map((division, divisionIndex) => {
-                            const selectedItems = pedidoItems.filter((item) => (division.itemIds || []).includes(item.id_detalle_pedido));
-                            const divisionTotal = selectedItems.reduce((sum, item) => roundMoney(sum + Number(item.total_linea || 0)), 0);
-                            const selectedForCharge = selectedDraftDivisionId === division.id;
-                            return (
-                              <article className="ventas-cuenta-dividida__person" key={division.id}>
-                                <div className="ventas-registrar-pago-modal__split-person-head">
-                                  <label className="ventas-create-modal__field">
-                                    <span>Persona</span>
-                                    <input
-                                      type="text"
-                                      value={division.etiqueta}
-                                      placeholder={`Persona ${divisionIndex + 1}`}
-                                      onChange={(event) => updateSplitDraftDivisionLabel(division.id, event.target.value)}
-                                    />
-                                  </label>
-                                  <button
-                                    type="button"
-                                    className={`btn btn-sm ${selectedForCharge ? 'btn-primary' : 'btn-outline-secondary'}`}
-                                    onClick={() => {
-                                      setSelectedDraftDivisionId(division.id);
-                                      if (isCash) setForm((current) => ({ ...current, monto_recibido: String(divisionTotal || '') }));
-                                      setLocalError('');
-                                    }}
-                                    disabled={isSubmitting}
-                                  >
-                                    Cobrar primero
-                                  </button>
-                                </div>
-                                <div className="ventas-cuenta-dividida__lines">
-                                  {pedidoItems.map((item, itemIndex) => {
-                                    const checked = (division.itemIds || []).includes(item.id_detalle_pedido);
-                                    return (
-                                      <label key={`${division.id}-${item.id_detalle_pedido}`} className="ventas-cuenta-dividida__line">
-                                        <input
-                                          type="radio"
-                                          name={`pedido-line-${item.id_detalle_pedido}`}
-                                          checked={checked}
-                                          onChange={() => assignItemToSplitDraftDivision(item.id_detalle_pedido, division.id)}
-                                        />
-                                        <span>{itemIndex + 1}. {item.nombre_item}</span>
-                                        <strong>{formatCurrency(item.total_linea)}</strong>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                                <div className="ventas-cuenta-dividida__person-total">
-                                  <span>Total persona</span>
-                                  <strong>{formatCurrency(divisionTotal)}</strong>
-                                </div>
-                              </article>
-                            );
-                          })}
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
+                  <CuentaDivididaDraftBuilder
+                    enabled={splitDraftEnabled}
+                    onEnabledChange={toggleSplitDraft}
+                    divisions={splitDraftDivisions}
+                    items={splitDraftItems}
+                    selectedDivisionId={selectedDraftDivisionId}
+                    onSelectedDivisionChange={selectSplitDraftDivision}
+                    onAddDivision={addSplitDraftDivision}
+                    onUpdateDivisionLabel={updateSplitDraftDivisionLabel}
+                    onAssignItem={assignItemToSplitDraftDivision}
+                    onUnassignItem={unassignItemFromSplitDraftDivision}
+                    loadingItems={loadingPedidoItems}
+                    disabled={isSubmitting}
+                    formatCurrency={formatCurrency}
+                    labelOffset={splitDraftLabelOffset}
+                  />
                 )}
               </div>
             ) : (
@@ -807,6 +916,7 @@ export default function VentaRegistrarPagoPedidoModal({
               ) : null}
             </div>
 
+            {localNotice ? <div className="ventas-create-modal__notice">{localNotice}</div> : null}
             {localError ? <div className="ventas-create-modal__error">{localError}</div> : null}
           </section>
         </div>

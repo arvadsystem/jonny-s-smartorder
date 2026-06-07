@@ -1,3 +1,13 @@
+import AppSelect from '../../../../components/common/AppSelect';
+
+const SORT_OPTIONS = [
+  { value: 'recientes', label: 'Mas recientes' },
+  { value: 'nombre_asc', label: 'Nombre (A-Z)' },
+  { value: 'nombre_desc', label: 'Nombre (Z-A)' },
+  { value: 'direccion_asc', label: 'Direccion (A-Z)' },
+  { value: 'direccion_desc', label: 'Direccion (Z-A)' }
+];
+
 export default function SucursalesFiltersDrawer({
   open,
   draft,
@@ -8,7 +18,7 @@ export default function SucursalesFiltersDrawer({
 }) {
   return (
     <aside
-      className={`inv-prod-drawer inv-cat-v2__drawer ${open ? 'show' : ''}`}
+      className={`inv-prod-drawer inv-cat-v2__drawer suc-filters-drawer ${open ? 'show' : ''}`}
       id="suc-filters-drawer"
       role="dialog"
       aria-modal="true"
@@ -56,19 +66,14 @@ export default function SucursalesFiltersDrawer({
 
         <div className="inv-prod-drawer-section">
           <div className="inv-prod-drawer-section-title">Orden</div>
-          <label className="form-label" htmlFor="suc_filter_sort">Ordenar por</label>
-          <select
-            id="suc_filter_sort"
-            className="form-select"
+          <AppSelect
+            label="Ordenar por"
             value={draft.sortBy}
-            onChange={(e) => onChangeDraft((s) => ({ ...s, sortBy: e.target.value }))}
-          >
-            <option value="recientes">Mas recientes</option>
-            <option value="nombre_asc">Nombre (A-Z)</option>
-            <option value="nombre_desc">Nombre (Z-A)</option>
-            <option value="direccion_asc">Direccion (A-Z)</option>
-            <option value="direccion_desc">Direccion (Z-A)</option>
-          </select>
+            options={SORT_OPTIONS}
+            onChange={(value) => onChangeDraft((s) => ({ ...s, sortBy: value }))}
+            placeholder="Selecciona un orden"
+            className="suc-app-select"
+          />
         </div>
 
         <div className="inv-prod-drawer-actions inv-cat-v2__drawer-actions">

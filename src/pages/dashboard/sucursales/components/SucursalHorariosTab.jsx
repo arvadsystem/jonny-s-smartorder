@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import AppSelect from '../../../../components/common/AppSelect';
 import sucursalesService from '../../../../services/sucursalesService';
 import {
   DIAS_SEMANA,
@@ -23,6 +24,7 @@ const buildDefaultHorarios = () =>
 
 const looksTechnical = (message) => /sql|stack|constraint|relation|column|pg_/i.test(String(message || ''));
 const safeMessage = (message, fallback) => (looksTechnical(message) ? fallback : String(message || fallback));
+const LAST_SUCURSAL_STORAGE_KEY = 'jonny_s_sucursales_horarios_last_sucursal';
 
 export default function SucursalHorariosTab({ sucursales = [], canManage = false }) {
   const [selectedSucursalId, setSelectedSucursalId] = useState('');
@@ -45,6 +47,34 @@ export default function SucursalHorariosTab({ sucursales = [], canManage = false
     })).filter((s) => s.id > 0),
     [sucursales]
   );
+  const sucursalSelectOptions = useMemo(
+    () => sucursalOptions.map((option) => ({
+      value: String(option.id),
+      label: option.label
+    })),
+    [sucursalOptions]
+  );
+  const selectedSucursal = useMemo(
+    () => sucursalOptions.find((option) => Number(option.id) === selectedId) || null,
+    [selectedId, sucursalOptions]
+  );
+
+  useEffect(() => {
+    if (!sucursalOptions.length || selectedSucursalId) return;
+    const storedId = typeof window === 'undefined'
+      ? ''
+      : window.localStorage.getItem(LAST_SUCURSAL_STORAGE_KEY) || '';
+    const storedExists = storedId && sucursalOptions.some((option) => String(option.id) === String(storedId));
+    setSelectedSucursalId(storedExists ? String(storedId) : String(sucursalOptions[0].id));
+  }, [selectedSucursalId, sucursalOptions]);
+
+  const selectSucursal = (value) => {
+    const nextValue = String(value || '');
+    setSelectedSucursalId(nextValue);
+    if (typeof window !== 'undefined' && nextValue) {
+      window.localStorage.setItem(LAST_SUCURSAL_STORAGE_KEY, nextValue);
+    }
+  };
 
   useEffect(() => {
     if (!selectedId) {
@@ -195,13 +225,16 @@ export default function SucursalHorariosTab({ sucursales = [], canManage = false
     <div className="suc-horarios-page">
       <div className="card border-0 shadow-sm mb-3">
         <div className="card-body">
-          <label className="form-label fw-semibold">Sucursal</label>
-          <select className="form-select" value={selectedSucursalId} onChange={(e) => setSelectedSucursalId(e.target.value)}>
-            <option value="">Selecciona una sucursal</option>
-            {sucursalOptions.map((option) => (
-              <option key={option.id} value={option.id}>{option.label}</option>
-            ))}
-          </select>
+          <AppSelect
+            label="Sucursal"
+            value={selectedSucursalId}
+            options={sucursalSelectOptions}
+            onChange={selectSucursal}
+            placeholder="Selecciona una sucursal"
+            searchable
+            searchPlaceholder="Buscar sucursal..."
+            className="suc-app-select"
+          />
           {!selectedId ? <p className="text-muted small mt-2 mb-0">Selecciona una sucursal para configurar sus horarios.</p> : null}
         </div>
       </div>
@@ -215,17 +248,20 @@ export default function SucursalHorariosTab({ sucursales = [], canManage = false
             horarios={horarios}
             loading={loadingData}
             saving={savingHorarios}
+            sucursalNombre={selectedSucursal?.label || ''}
             onChange={onHorarioChange}
             onSave={onSaveHorarios}
           />
 
-          <div className="card border-0 shadow-sm">
+          <div className="card border-0 shadow-sm suc-horarios-special-card">
             <div className="card-body">
-              <div className="d-flex justify-content-between align-items-center mb-3">
+              <div className="suc-horarios-section-head">
                 <h5 className="mb-0">Fechas especiales</h5>
-                <button type="button" className="btn inv-prod-btn-outline" onClick={onOpenCreateFecha} disabled={savingFecha || loadingData}>
-                  Nueva fecha especial
-                </button>
+                {fechasEspeciales.length > 0 ? (
+                  <button type="button" className="btn inv-prod-btn-outline" onClick={onOpenCreateFecha} disabled={savingFecha || loadingData}>
+                    Nueva fecha especial
+                  </button>
+                ) : null}
               </div>
 
               <SucursalFechasEspecialesTable
@@ -233,19 +269,31 @@ export default function SucursalHorariosTab({ sucursales = [], canManage = false
                 loading={loadingData}
                 onEdit={onOpenEditFecha}
                 onDeactivate={onDesactivarFecha}
+                onCreate={onOpenCreateFecha}
+                saving={savingFecha}
               />
             </div>
           </div>
-
-          <SucursalFechaEspecialModal
-            open={modalOpen}
-            onClose={() => setModalOpen(false)}
-            onSubmit={onSubmitFecha}
-            saving={savingFecha}
-            tipos={FECHA_ESPECIAL_TIPOS}
-            initialData={editingFecha}
-          />
         </>
+      ) : (
+        <div className="suc-horarios-empty card border-0 shadow-sm">
+          <div className="card-body">
+            <i className="bi bi-shop-window" />
+            <strong>No hay sucursales disponibles.</strong>
+            <span>Cuando exista al menos una sucursal, sus horarios se cargaran aqui automaticamente.</span>
+          </div>
+        </div>
+      )}
+
+      {selectedId ? (
+        <SucursalFechaEspecialModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          onSubmit={onSubmitFecha}
+          saving={savingFecha}
+          tipos={FECHA_ESPECIAL_TIPOS}
+          initialData={editingFecha}
+        />
       ) : null}
     </div>
   );
