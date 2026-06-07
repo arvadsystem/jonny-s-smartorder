@@ -484,9 +484,9 @@ export default function PedidosView({
         setPagoPedidoSaving(true);
         setErrorMessage('');
         const response = await ventasService.registrarPagoPedido(idPedido, payload);
-        await loadPedidos({ source: 'action' });
         lastActionRefreshAtRef.current = Date.now();
         openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
+        void loadPedidos({ source: 'action' }).catch(() => undefined);
         return response;
       } catch (error) {
         const message = extractUiMessage(error, 'No se pudo registrar el pago del pedido.');
@@ -799,13 +799,20 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
   const pendingPago = isPedidoPendientePago(pedido);
   const kdsVencido = isPedidoKdsVencido(pedido);
   const total = Number(pedido?.total || 0);
+  const hasCuentaDividida = Boolean(
+    Number(pedido?.cuenta_dividida_divisiones || 0) > 0 ||
+    pedido?.cuenta_dividida_activa ||
+    pedido?.cuenta_dividida?.activa ||
+    (Array.isArray(pedido?.cuenta_dividida?.divisiones) && pedido.cuenta_dividida.divisiones.length > 0)
+  );
 
   return (
-    <article className={`ventas-pedidos-card ventas-pedidos-card--${laneCode.toLowerCase()}`}>
+    <article className={`ventas-pedidos-card ventas-pedidos-card--${laneCode.toLowerCase()} ${hasCuentaDividida ? 'is-split-account' : ''}`}>
       <header className="ventas-pedidos-card__header ventas-pedidos-card__head">
         <div>
           <div className="ventas-pedidos-card__badges">
             <span className="ventas-pedidos-card__code">{visibleCode}</span>
+            {hasCuentaDividida ? <span className="ventas-pedidos-card__badge is-split">Cuenta dividida</span> : null}
             {pendingPago ? <span className="ventas-pedidos-card__badge is-payment">Pago pendiente</span> : null}
             {kdsVencido ? <span className="ventas-pedidos-card__badge is-overdue">Retrasado</span> : null}
           </div>

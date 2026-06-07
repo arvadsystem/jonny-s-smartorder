@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
+import AppSelect from '../../../../components/common/AppSelect';
 
 const initialState = {
   fecha: '',
@@ -62,7 +63,7 @@ export default function SucursalFechaEspecialModal({ open, onClose, onSubmit, sa
     <div className="inv-prod-pmodal inv-prod-pmodal--create show" aria-hidden={!open}>
       <div className="inv-prod-pmodal__overlay" onClick={saving ? undefined : onClose} />
       <div className="inv-prod-pmodal__viewport">
-        <div className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create" role="dialog" aria-modal="true">
+        <div className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create suc-form-modal suc-fecha-especial-modal" role="dialog" aria-modal="true">
           <form className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create" onSubmit={submit}>
             <div className="inv-prod-pmodal__body">
               <div className="inv-ins-create-hero">
@@ -83,10 +84,14 @@ export default function SucursalFechaEspecialModal({ open, onClose, onSubmit, sa
                   <input className="form-control" type="date" name="fecha" value={form.fecha} onChange={handleChange} required />
                 </div>
                 <div className="col-12 col-md-6">
-                  <label className="form-label">Tipo</label>
-                  <select className="form-select" name="tipo" value={form.tipo} onChange={handleChange} required>
-                    {tipos.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
-                  </select>
+                  <AppSelect
+                    label="Tipo"
+                    value={form.tipo}
+                    options={tipos.map((tipo) => ({ value: tipo, label: tipo }))}
+                    onChange={(value) => handleChange({ target: { name: 'tipo', value } })}
+                    placeholder="Selecciona un tipo"
+                    className="suc-app-select"
+                  />
                 </div>
                 <div className="col-12">
                   <label className="form-label">Descripcion</label>

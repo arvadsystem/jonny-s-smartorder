@@ -58,6 +58,27 @@ const toDbDateTimeValue = (value) => {
   return `${source.replace('T', ' ')}:00`;
 };
 
+const parseDiscountDate = (value) => {
+  const source = String(value || '').trim();
+  if (!source) return null;
+  const date = new Date(source.replace(' ', 'T'));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getDiscountVigenciaStatus = (row) => {
+  const now = new Date();
+  const startsAt = parseDiscountDate(row?.fecha_inicio);
+  const endsAt = parseDiscountDate(row?.fecha_fin);
+
+  if (endsAt && endsAt < now) {
+    return { key: 'expired', label: 'Caducado' };
+  }
+  if (startsAt && startsAt > now) {
+    return { key: 'scheduled', label: 'Programado' };
+  }
+  return { key: 'active', label: 'Vigente' };
+};
+
 const coerceIdList = (values) =>
   [...new Set((Array.isArray(values) ? values : [])
     .map((value) => Number(value))
@@ -774,63 +795,72 @@ export default function DescuentosView({
                         <td colSpan={9} className="text-center py-4">No hay descuentos en el catalogo.</td>
                       </tr>
                     ) : (
-                      filteredRows.map((row) => (
-                        <tr key={row.id_descuento_catalogo} className="ventas-page__table-row">
-                          <td>
-                            <div className="ventas-page__table-sale">
-                              <strong>{row.nombre_descuento}</strong>
-                              <span>{row.descripcion || 'Sin descripcion'}</span>
-                            </div>
-                          </td>
-                          <td>{row.nombre_tipo_descuento}</td>
-                          <td>{Number(row.valor_descuento).toFixed(2)}</td>
-                          <td>{row.alcance}</td>
-                          <td>
-                            <div className="ventas-descuentos-objective">
-                              <strong>{row.objetivo || '--'}</strong>
-                              {row.objetivos_count?.total > 1 ? (
-                                <span>{row.objetivos_count.total} objetivos</span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td>{row.nombre_sucursal || (row.id_sucursal ? `Sucursal #${row.id_sucursal}` : 'Global')}</td>
-                          <td>
-                            {(row.fecha_inicio || row.fecha_fin)
-                              ? `${row.fecha_inicio ? String(row.fecha_inicio).slice(0, 16).replace('T', ' ') : '--'} / ${row.fecha_fin ? String(row.fecha_fin).slice(0, 16).replace('T', ' ') : '--'}`
-                              : 'Sin vigencia'}
-                          </td>
-                          <td>
-                            <span className={`ventas-page__table-pill ${row.estado ? '' : 'is-soft-muted'}`}>
-                              {row.estado ? 'Activo' : 'Inactivo'}
-                            </span>
-                          </td>
-                          <td>
-                            <div className="d-flex align-items-center justify-content-end gap-2">
-                              {canEdit ? (
-                                <button
-                                  type="button"
-                                  className="ventas-page__table-detail-btn"
-                                  onClick={() => openEdit(row)}
-                                  title="Editar"
-                                >
-                                  <i className="bi bi-pencil" />
-                                </button>
-                              ) : null}
+                      filteredRows.map((row) => {
+                        const vigenciaStatus = getDiscountVigenciaStatus(row);
+                        const vigenciaLabel = (row.fecha_inicio || row.fecha_fin)
+                          ? `${row.fecha_inicio ? String(row.fecha_inicio).slice(0, 16).replace('T', ' ') : '--'} / ${row.fecha_fin ? String(row.fecha_fin).slice(0, 16).replace('T', ' ') : '--'}`
+                          : 'Sin vigencia';
+                        return (
+                          <tr key={row.id_descuento_catalogo} className="ventas-page__table-row">
+                            <td>
+                              <div className="ventas-page__table-sale">
+                                <strong>{row.nombre_descuento}</strong>
+                                <span>{row.descripcion || 'Sin descripcion'}</span>
+                              </div>
+                            </td>
+                            <td>{row.nombre_tipo_descuento}</td>
+                            <td>{Number(row.valor_descuento).toFixed(2)}</td>
+                            <td>{row.alcance}</td>
+                            <td>
+                              <div className="ventas-descuentos-objective">
+                                <strong>{row.objetivo || '--'}</strong>
+                                {row.objetivos_count?.total > 1 ? (
+                                  <span>{row.objetivos_count.total} objetivos</span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td>{row.nombre_sucursal || (row.id_sucursal ? `Sucursal #${row.id_sucursal}` : 'Global')}</td>
+                            <td>
+                              <div className="ventas-descuentos-vigencia">
+                                <span>{vigenciaLabel}</span>
+                                <strong className={`ventas-descuentos-vigencia__badge is-${vigenciaStatus.key}`}>
+                                  {vigenciaStatus.label}
+                                </strong>
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`ventas-page__table-pill ${row.estado ? '' : 'is-soft-muted'}`}>
+                                {row.estado ? 'Activo' : 'Inactivo'}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="d-flex align-items-center justify-content-end gap-2">
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    className="ventas-page__table-detail-btn"
+                                    onClick={() => openEdit(row)}
+                                    title="Editar"
+                                  >
+                                    <i className="bi bi-pencil" />
+                                  </button>
+                                ) : null}
 
-                              {canToggle ? (
-                                <button
-                                  type="button"
-                                  className="ventas-page__table-detail-btn"
-                                  onClick={() => onToggleEstado(row, !row.estado)}
-                                  title={row.estado ? 'Inactivar' : 'Activar'}
-                                >
-                                  <i className={`bi ${row.estado ? 'bi-toggle-on' : 'bi-toggle-off'}`} />
-                                </button>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                                {canToggle ? (
+                                  <button
+                                    type="button"
+                                    className="ventas-page__table-detail-btn"
+                                    onClick={() => onToggleEstado(row, !row.estado)}
+                                    title={row.estado ? 'Inactivar' : 'Activar'}
+                                  >
+                                    <i className={`bi ${row.estado ? 'bi-toggle-on' : 'bi-toggle-off'}`} />
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

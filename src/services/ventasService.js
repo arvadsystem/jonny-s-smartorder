@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { API_URL } from '../utils/constants';
 
 const buildQuery = (params = {}) => {
   const searchParams = new URLSearchParams();
@@ -28,11 +29,43 @@ const withIdempotencyKey = (config = {}) => ({
   }
 });
 
+const readBlobError = async (response) => {
+  const text = await response.text().catch(() => '');
+  if (!text) return `No se pudo descargar el PDF (HTTP ${response.status}).`;
+  try {
+    const payload = JSON.parse(text);
+    return payload?.message || payload?.mensaje || `No se pudo descargar el PDF (HTTP ${response.status}).`;
+  } catch {
+    return text;
+  }
+};
+
+const fetchPdfBlob = async (endpoint) => {
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/pdf'
+    }
+  });
+
+  if (response.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth:logout'));
+  }
+
+  if (!response.ok) {
+    throw new Error(await readBlobError(response));
+  }
+
+  return response.blob();
+};
+
 const ventasService = {
   list: (params = {}) => apiFetch(`/ventas${buildQuery(params)}`, 'GET'),
   buscarVenta: (params = {}) => apiFetch(`/ventas/buscar${buildQuery(params)}`, 'GET'),
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
   getTicketById: (id) => apiFetch(`/ventas/${id}/ticket`, 'GET'),
+  getTicketPdf: (id) => fetchPdfBlob(`/ventas/${id}/ticket.pdf`),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
   create: (payload) => apiFetch('/ventas', 'POST', payload, withIdempotencyKey({ timeoutMs: 7000 })),

@@ -13,7 +13,6 @@ import VentaTicketPrint from './VentaTicketPrint';
 import './VentaTicketPrint.css';
 
 const DEFAULT_TICKET_WIDTH_MM = 80;
-const PRINT_ASSET_TIMEOUT_MS = 1500;
 
 const toMoneyNumber = (value) => {
   const parsed = Number(value);
@@ -45,39 +44,16 @@ const InfoCard = ({ icon, label, value }) => (
     <strong>{value}</strong>
   </div>
 );
-const waitForTicketImages = async () => {
-  if (typeof document === 'undefined') return;
-  const printRoot = document.querySelector('[data-ticket-print="true"]');
-  if (!printRoot) return;
-  const images = Array.from(printRoot.querySelectorAll('img')).filter((img) => img instanceof HTMLImageElement && img.src);
-  if (!images.length) return;
 
-  const waitForImage = async (img) => {
-    if (img.complete && img.naturalWidth > 0) return;
-    if (typeof img.decode === 'function') {
-      await img.decode().catch(() => {});
-      return;
-    }
-    await new Promise((resolve) => {
-      const done = () => {
-        img.removeEventListener('load', done);
-        img.removeEventListener('error', done);
-        resolve();
-      };
-      img.addEventListener('load', done, { once: true });
-      img.addEventListener('error', done, { once: true });
-    });
-  };
-
-  await Promise.race([
-    Promise.all(images.map(waitForImage)),
-    new Promise((resolve) => window.setTimeout(resolve, PRINT_ASSET_TIMEOUT_MS))
-  ]);
+const DetailField = ({ label, value }) => {
+  const resolved = value === null || value === undefined || value === '' ? '--' : value;
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{resolved}</dd>
+    </div>
+  );
 };
-
-const waitForPrintRender = () => new Promise((resolve) => {
-  window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
-});
 
 export default function VentaDetalleModal({
   open,
@@ -90,7 +66,6 @@ export default function VentaDetalleModal({
   canPrint = true
 }) {
   const [ticketWidthMm, setTicketWidthMm] = useState(DEFAULT_TICKET_WIDTH_MM);
-  const [ticketPrintVenta, setTicketPrintVenta] = useState(null);
   const printInProgressRef = useRef(false);
 
   useEffect(() => {
@@ -99,7 +74,6 @@ export default function VentaDetalleModal({
     const widthFromLegacy = Number(venta?.ancho_ticket_mm);
     const resolvedWidth = widthFromFacturacion === 58 || widthFromLegacy === 58 ? 58 : 80;
     setTicketWidthMm(resolvedWidth);
-    setTicketPrintVenta(null);
   }, [open, venta]);
 
   useEffect(() => {
@@ -148,41 +122,37 @@ export default function VentaDetalleModal({
     : Number(venta?.subtotal_bruto ?? 0) || (Number(venta?.sub_total || 0) + resolvedDiscountTotal);
   const shouldShowItemDiscount = detailItems.some((item) => getLineDiscountPercent(item) !== null);
   const reversionBlockReason = resolveVentaReversionBlockReason(venta);
+  const delivery = venta?.delivery && typeof venta.delivery === 'object' ? venta.delivery : null;
+  const contacto = venta?.contacto && typeof venta.contacto === 'object' ? venta.contacto : null;
+  const contexto = venta?.contexto && typeof venta.contexto === 'object' ? venta.contexto : null;
+  const isDeliveryDetail = Boolean(delivery) || String(contexto?.modalidad || '').toUpperCase() === 'DELIVERY';
 
   const handlePrintTicket = async () => {
     if (typeof window === 'undefined' || !venta || printInProgressRef.current) return;
+    if (!venta.id_factura) {
+      console.error('[Ventas] No se puede generar el PDF del ticket sin id_factura.');
+      return;
+    }
     printInProgressRef.current = true;
-
-    const cleanup = () => {
-      document.body.classList.remove('venta-ticket-printing');
-      window.removeEventListener('afterprint', cleanup);
-      printInProgressRef.current = false;
-    };
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.opener = null;
+    }
 
     try {
-      const ticketPayload = venta?.id_factura
-        ? await ventasService.getTicketById(venta.id_factura)
-        : null;
-      setTicketPrintVenta(ticketPayload || venta);
-      await waitForPrintRender();
-      document.body.classList.add('venta-ticket-printing');
-      window.addEventListener('afterprint', cleanup);
-      await waitForTicketImages();
-      window.requestAnimationFrame(() => {
-        window.print();
-        window.setTimeout(cleanup, 1500);
-      });
+      const blob = await ventasService.getTicketPdf(venta.id_factura);
+      const url = URL.createObjectURL(blob);
+      if (printWindow) {
+        printWindow.location.href = url;
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (error) {
-      console.warn('No se pudo cargar el ticket optimizado para impresion:', error);
-      setTicketPrintVenta(venta);
-      await waitForPrintRender();
-      document.body.classList.add('venta-ticket-printing');
-      window.addEventListener('afterprint', cleanup);
-      await waitForTicketImages();
-      window.requestAnimationFrame(() => {
-        window.print();
-        window.setTimeout(cleanup, 1500);
-      });
+      if (printWindow) printWindow.close();
+      console.error('[Ventas] No se pudo generar el PDF del ticket', error);
+    } finally {
+      printInProgressRef.current = false;
     }
   };
 
@@ -365,6 +335,23 @@ export default function VentaDetalleModal({
                 </div>
               ) : null}
 
+              {isDeliveryDetail ? (
+                <div className="ventas-detail-modal__section">
+                  <div className="ventas-detail-modal__section-title">Datos de entrega</div>
+                  <dl className="ventas-detail-modal__delivery-grid">
+                    <DetailField label="Modalidad" value={contexto?.modalidad || 'DELIVERY'} />
+                    <DetailField label="Canal" value={contexto?.canal} />
+                    <DetailField label="Nombre receptor" value={delivery?.nombre_receptor} />
+                    <DetailField label="Telefono receptor" value={delivery?.telefono_receptor} />
+                    <DetailField label="Direccion entrega" value={delivery?.direccion_entrega} />
+                    <DetailField label="Referencia entrega" value={delivery?.referencia_entrega} />
+                    <DetailField label="Costo envio" value={formatCurrency(delivery?.costo_envio || 0)} />
+                    <DetailField label="Observacion delivery" value={delivery?.observacion_delivery} />
+                    <DetailField label="Telefono contacto" value={contacto?.telefono_contacto} />
+                  </dl>
+                </div>
+              ) : null}
+
               {cuentaDivisiones.length > 0 ? (
                 <div className="ventas-detail-modal__section">
                   <div className="ventas-detail-modal__section-title">Cuenta dividida</div>
@@ -489,10 +476,10 @@ export default function VentaDetalleModal({
         </div>
         {canPrint ? (
           <VentaTicketPrint
-            venta={ticketPrintVenta || venta}
+            venta={venta}
             paperWidth={ticketWidthMm}
             showLogo
-            businessName={(ticketPrintVenta || venta)?.nombre_emisor || "JONNY'S WINGS"}
+            businessName={venta?.nombre_emisor || "JONNY'S WINGS"}
           />
         ) : null}
       </section>

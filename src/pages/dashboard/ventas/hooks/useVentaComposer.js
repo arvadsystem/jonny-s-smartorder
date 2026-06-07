@@ -264,8 +264,15 @@ export const useVentaComposer = ({
     }));
   };
 
-  const resetComposer = () => {
-    setState(buildInitialState({ isSuperAdmin, defaultSucursalId }));
+  const resetComposer = ({ preserveSucursal = false, preserveSession = false } = {}) => {
+    setState((current) => {
+      const nextState = buildInitialState({ isSuperAdmin, defaultSucursalId });
+      return {
+        ...nextState,
+        selectedSucursal: preserveSucursal ? current.selectedSucursal : nextState.selectedSucursal,
+        temporarySessionId: preserveSession ? current.temporarySessionId : nextState.temporarySessionId
+      };
+    });
     setComplementModal({
       open: false,
       mode: 'ADD',
@@ -514,10 +521,10 @@ export const useVentaComposer = ({
   const total = taxableSubtotal;
 
   const cashValue = useMemo(() => {
-    if (state.cashReceived === '') return total;
+    if (state.cashReceived === '') return 0;
     const numeric = Number(state.cashReceived);
     return Number.isFinite(numeric) && numeric >= 0 ? roundMoney(numeric) : 0;
-  }, [state.cashReceived, total]);
+  }, [state.cashReceived]);
 
   const change = roundMoney(Math.max(cashValue - total, 0));
   const canContinue = hasSelectedSucursal && state.cart.length > 0;
@@ -1029,7 +1036,7 @@ export const useVentaComposer = ({
     try {
       const response = await onSubmit(buildPaidSalePayload({ cuentaDividida }));
 
-      resetComposer();
+      resetComposer({ preserveSucursal: true, preserveSession: true });
       return response;
     } catch (error) {
       const errorCode = String(error?.data?.code || '').trim().toUpperCase();
