@@ -98,7 +98,11 @@ const buildFacturacionView = (venta, fallbackName) => {
       direccion_emisor: cleanText(emisor?.direccion_emisor) || cleanText(venta?.sucursal_direccion),
       telefono_emisor: cleanText(emisor?.telefono_emisor) || cleanText(venta?.sucursal_telefono),
       correo_emisor: cleanText(emisor?.correo_emisor) || cleanText(venta?.sucursal_correo),
-      logo_url: cleanText(emisor?.logo_url) || cleanText(venta?.logo_url)
+      logo_url:
+        cleanText(emisor?.logo_data_url) ||
+        cleanText(venta?.logo_data_url) ||
+        cleanText(emisor?.logo_url) ||
+        cleanText(venta?.logo_url)
     },
     ticket: {
       ancho_ticket_mm: Number(ticket?.ancho_ticket_mm) === 58 || Number(venta?.ancho_ticket_mm) === 58 ? 58 : 80,

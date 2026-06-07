@@ -28,6 +28,27 @@ const TICKET_FLAG_DEFAULTS = {
   mostrar_detalle_reversion: true,
   mostrar_total_reversion: true
 };
+const FACTURACION_LOGO_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const FACTURACION_LOGO_MAX_BYTES = 10 * 1024 * 1024;
+
+const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(new Error('No se pudo leer la imagen seleccionada.'));
+  reader.readAsDataURL(file);
+});
+
+const getLogoFileError = (file) => {
+  if (!file) return 'Selecciona una imagen válida.';
+  const mimeType = String(file.type || '').trim().toLowerCase();
+  if (!FACTURACION_LOGO_ALLOWED_TYPES.has(mimeType)) {
+    return 'Selecciona una imagen válida (JPG, PNG o WEBP).';
+  }
+  if (Number(file.size || 0) > FACTURACION_LOGO_MAX_BYTES) {
+    return 'La imagen supera el límite de 10 MB.';
+  }
+  return '';
+};
 
 const normalizeConfig = (config = {}) => ({
   id_config: config?.id_config ?? null,
@@ -37,6 +58,8 @@ const normalizeConfig = (config = {}) => ({
   direccion_emisor: String(config?.direccion_emisor || ''),
   telefono_emisor: String(config?.telefono_emisor || ''),
   correo_emisor: String(config?.correo_emisor || ''),
+  logo_url: String(config?.logo_url || ''),
+  id_archivo_logo: Number(config?.id_archivo_logo ?? 0) || null,
   texto_encabezado_ticket: String(config?.texto_encabezado_ticket || ''),
   texto_pie_ticket: String(config?.texto_pie_ticket || ''),
   ancho_ticket_mm: Number(config?.ancho_ticket_mm ?? 80),
@@ -75,12 +98,12 @@ const formatDateTime = (value) => {
 
 const resolveFacturacionErrorMessage = (error) => {
   const status = Number(error?.status ?? 0);
-  if (status === 403) return 'No tienes permisos para ver la configuracion de facturacion.';
-  if (status === 404) return 'La ruta de configuracion no esta disponible.';
+  if (status === 403) return 'No tienes permisos para ver la configuración de facturación.';
+  if (status === 404) return 'La ruta de configuración no está disponible.';
   if (status === 0 || /failed to fetch|fetch error|networkerror/i.test(String(error?.message || ''))) {
     return 'No se pudo conectar con el servidor.';
   }
-  return 'No fue posible cargar la configuracion de facturacion.';
+  return 'No fue posible cargar la configuración de facturación.';
 };
 
 const presentModoFiscal = (modoFiscalRaw) => {
@@ -88,6 +111,13 @@ const presentModoFiscal = (modoFiscalRaw) => {
   if (modo === 'INTERNO') return 'Interno';
   return 'No integrado';
 };
+
+const resolveSucursalImage = (sucursal) => String(
+  sucursal?.imagen_url_publica ||
+  sucursal?.url_publica ||
+  sucursal?.url_imagen ||
+  ''
+).trim();
 
 export default function SucursalFacturacionTab({
   sucursales = [],
@@ -104,6 +134,10 @@ export default function SucursalFacturacionTab({
   const [configSaving, setConfigSaving] = useState(false);
   const [selectedSucursal, setSelectedSucursal] = useState(null);
   const [configForm, setConfigForm] = useState(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState('');
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState('');
+  const [pendingLogoArchivoId, setPendingLogoArchivoId] = useState(null);
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -118,6 +152,28 @@ export default function SucursalFacturacionTab({
   const notify = useCallback((title, message, variant = 'info') => {
     if (typeof onToast === 'function') onToast(title, message, variant);
   }, [onToast]);
+
+  const cleanupLogoArchivo = useCallback(async (idArchivo) => {
+    const id = Number(idArchivo || 0);
+    if (!id) return;
+    try {
+      await sucursalesFacturacionApi.eliminarArchivo(id);
+    } catch {
+      // La limpieza puede quedar bloqueada si el archivo ya fue vinculado.
+    }
+  }, []);
+
+  const loadLogoPreview = useCallback(async (idArchivo) => {
+    const id = Number(idArchivo || 0);
+    setLogoPreviewUrl('');
+    if (!id) return;
+    try {
+      const response = await sucursalesFacturacionApi.obtenerUrlArchivo(id);
+      setLogoPreviewUrl(String(response?.url || ''));
+    } catch {
+      setLogoPreviewUrl('');
+    }
+  }, []);
 
   const fetchConfigBySucursal = useCallback(async (idSucursal) => {
     const id = Number(idSucursal ?? 0);
@@ -172,7 +228,70 @@ export default function SucursalFacturacionTab({
     const current = configBySucursal[id] || normalizeConfig({ id_sucursal: id });
     setSelectedSucursal(sucursal);
     setConfigForm(current);
+    setLogoError('');
+    setPendingLogoArchivoId(null);
+    void loadLogoPreview(current?.id_archivo_logo);
     setConfigDrawerOpen(true);
+  };
+
+  const onCloseConfig = () => {
+    if (configSaving || logoUploading) return;
+    const pendingId = pendingLogoArchivoId;
+    setPendingLogoArchivoId(null);
+    setLogoPreviewUrl('');
+    setLogoError('');
+    setConfigDrawerOpen(false);
+    if (pendingId) void cleanupLogoArchivo(pendingId);
+  };
+
+  const onLogoFileChange = async (event) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    const fileError = getLogoFileError(file);
+    if (fileError) {
+      setLogoError(fileError);
+      return;
+    }
+
+    setLogoUploading(true);
+    setLogoError('');
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const response = await sucursalesFacturacionApi.subirLogoFacturacion({
+        data_url: dataUrl,
+        mime_type: file.type,
+        nombre_original: file.name
+      });
+      const archivoId = Number(response?.id_archivo ?? 0) || null;
+      if (!archivoId) throw new Error('No se pudo registrar la imagen.');
+
+      const previousPendingId = pendingLogoArchivoId;
+      setPendingLogoArchivoId(archivoId);
+      setConfigForm((prev) => ({
+        ...(prev || {}),
+        id_archivo_logo: archivoId,
+        logo_url: String(response?.storage_path || '')
+      }));
+      setLogoPreviewUrl(dataUrl);
+      if (previousPendingId) void cleanupLogoArchivo(previousPendingId);
+    } catch (err) {
+      setLogoError(err?.message || 'No se pudo subir la imagen.');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const onLogoRemove = () => {
+    const pendingId = pendingLogoArchivoId;
+    setPendingLogoArchivoId(null);
+    setLogoPreviewUrl('');
+    setLogoError('');
+    setConfigForm((prev) => ({
+      ...(prev || {}),
+      id_archivo_logo: null,
+      logo_url: ''
+    }));
+    if (pendingId) void cleanupLogoArchivo(pendingId);
   };
 
   const onSaveConfig = async (payload) => {
@@ -182,8 +301,9 @@ export default function SucursalFacturacionTab({
     try {
       const updated = await sucursalesFacturacionApi.guardarFacturacionSucursal(id, payload);
       setConfigBySucursal((prev) => ({ ...prev, [id]: normalizeConfig(updated || {}) }));
+      setPendingLogoArchivoId(null);
       setConfigDrawerOpen(false);
-      notify('FACTURACION', 'Configuracion de facturacion actualizada correctamente.', 'success');
+      notify('FACTURACIÓN', 'Configuración de facturación actualizada correctamente.', 'success');
     } catch (err) {
       const msg = resolveFacturacionErrorMessage(err);
       notify('ERROR', msg, 'danger');
@@ -216,9 +336,9 @@ export default function SucursalFacturacionTab({
     <div className="inv-catpro-card inv-prod-card inv-cat-v2 mb-3">
       <div className="inv-catpro-head inv-cat-v2__head">
         <div>
-          <h5 className="mb-1">Configuracion de facturacion por sucursal</h5>
+          <h5 className="mb-1">Configuración de facturación por sucursal</h5>
           <p className="text-muted mb-0">
-            Desde esta seccion se configura como se visualizan los tickets y facturas en cada sucursal.
+            Desde esta sección se configura cómo se visualizan los tickets y facturas en cada sucursal.
           </p>
         </div>
       </div>
@@ -227,7 +347,7 @@ export default function SucursalFacturacionTab({
         {loading ? (
           <div className="inv-catpro-loading" role="status" aria-live="polite">
             <span className="spinner-border spinner-border-sm me-2" />
-            Cargando configuracion de facturacion...
+            Cargando configuración de facturación...
           </div>
         ) : null}
 
@@ -246,37 +366,93 @@ export default function SucursalFacturacionTab({
               const config = configBySucursal[id] || null;
               const loadingItem = Boolean(loadingBySucursal[id]);
               const isConfigured = Boolean(config?.id_config) && Boolean(config?.activo);
+              const dotClass = loadingItem ? 'is-low' : isConfigured ? 'is-ok' : 'is-empty';
+              const imageUrl = resolveSucursalImage(sucursal);
+              const cardTitle = String(sucursal?.nombre_sucursal || 'Sucursal');
 
               return (
-                <div className="col-12 col-md-6 col-xl-4" key={id}>
-                  <article className="card h-100 border-0 shadow-sm">
-                    <div className="card-body d-flex flex-column gap-2">
-                      <div className="d-flex justify-content-between align-items-start gap-2">
-                        <h6 className="mb-0">{String(sucursal?.nombre_sucursal || 'Sucursal')}</h6>
-                        <span className={`badge text-bg-${isConfigured ? 'success' : 'warning'}`}>
-                          {isConfigured ? 'Configurada' : 'Pendiente'}
-                        </span>
+                <div className="col-12 col-md-6 col-xl-4 suc-facturacion-card-col" key={id}>
+                  <article
+                    className={`inv-prod-catalog-card suc-card suc-fact-card inv-anim-in ${dotClass}`}
+                    style={{ animationDelay: `${Math.min(id * 24, 220)}ms` }}
+                  >
+                    <div className="inv-prod-thumb-wrap suc-card__thumb-wrap suc-fact-card__thumb-wrap">
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt={cardTitle}
+                          className="inv-prod-thumb suc-card__thumb-img"
+                          loading="eager"
+                          decoding="async"
+                        />
+                      ) : (
+                        <div className="inv-prod-thumb placeholder suc-card__thumb-placeholder suc-fact-card__thumb-placeholder">
+                          <i className="bi bi-receipt-cutoff" />
+                          <span>Facturacion</span>
+                        </div>
+                      )}
+                      <span className={`inv-prod-card-state ${dotClass}`}>
+                        {loadingItem ? 'CARGANDO' : isConfigured ? 'CONFIGURADA' : 'PENDIENTE'}
+                      </span>
+                    </div>
+
+                    <div className="inv-prod-card-body suc-card__body suc-fact-card__body">
+                      <div className="inv-prod-card-bg-icon suc-card__bg-icon" aria-hidden="true">
+                        <i className="bi bi-receipt" />
                       </div>
 
-                      {loadingItem ? (
-                        <div className="text-muted small">Cargando datos...</div>
-                      ) : (
-                        <>
-                          <div className="small text-muted">Ticket: {config?.ancho_ticket_mm ? `${config.ancho_ticket_mm}mm` : 'Sin definir'}</div>
-                          <div className="small text-muted">Prefijo venta: {config?.prefijo_venta || 'Sin definir'}</div>
-                          <div className="small text-muted">Modo fiscal: {presentModoFiscal(config?.modo_fiscal)}</div>
-                          <div className="small text-muted">Actualizacion: {formatDateTime(config?.actualizado_en)}</div>
-                        </>
-                      )}
+                      <div className="inv-prod-card-name">{cardTitle}</div>
+                      <div className="inv-prod-card-category">
+                        {config?.nombre_emisor || 'Sin emisor configurado'}
+                      </div>
 
-                      <div className="d-flex flex-wrap gap-2 mt-auto">
-                        <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => onOpenConfig(sucursal)} disabled={!canConfigurar || loadingItem}>
-                          <i className="bi bi-sliders2 me-1" />
-                          Configurar
+                      <div className="inv-prod-card-metrics suc-card__meta">
+                        <div>
+                          <div className="inv-prod-card-label">Ticket</div>
+                          <div className="inv-prod-card-value">{config?.ancho_ticket_mm ? `${config.ancho_ticket_mm}mm` : 'Sin definir'}</div>
+                        </div>
+                        <div>
+                          <div className="inv-prod-card-label">Prefijo</div>
+                          <div className="inv-prod-card-value suc-card__truncate">{config?.prefijo_venta || 'Sin definir'}</div>
+                        </div>
+                      </div>
+
+                      <div className="inv-prod-stock-line suc-card__footer-line">
+                        <div className="inv-prod-stock-meta">
+                          <div className="inv-prod-stock-ring" style={{ '--stock-ratio': isConfigured ? 0.85 : 0.35 }} />
+                          <div className="inv-prod-stock-copy">
+                            <span>{loadingItem ? 'Cargando datos...' : `Modo fiscal: ${presentModoFiscal(config?.modo_fiscal)}`}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="suc-card__row suc-fact-card__row">
+                        <i className="bi bi-clock-history" />
+                        <span>Actualizacion: {formatDateTime(config?.actualizado_en)}</span>
+                      </div>
+
+                      <div className="inv-catpro-meta-actions inv-catpro-action-bar inv-cat-card__actions suc-card__actions">
+                        <button
+                          type="button"
+                          className="btn inv-prod-card-action inv-prod-card-action-compact"
+                          onClick={() => onOpenConfig(sucursal)}
+                          title="Configurar"
+                          disabled={!canConfigurar || loadingItem}
+                          aria-label={`Configurar facturación de ${cardTitle}`}
+                        >
+                          <i className="bi bi-sliders2" />
+                          <span className="inv-prod-card-action-label">Configurar</span>
                         </button>
-                        <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => onOpenPreview(sucursal)} disabled={!canVerPreview || loadingItem}>
-                          <i className="bi bi-eye me-1" />
-                          Vista previa
+                        <button
+                          type="button"
+                          className="btn inv-prod-card-action inv-prod-card-action-compact"
+                          onClick={() => onOpenPreview(sucursal)}
+                          title="Vista previa"
+                          disabled={!canVerPreview || loadingItem}
+                          aria-label={`Ver vista previa de facturación de ${cardTitle}`}
+                        >
+                          <i className="bi bi-eye" />
+                          <span className="inv-prod-card-action-label">Vista previa</span>
                         </button>
                       </div>
                     </div>
@@ -293,7 +469,12 @@ export default function SucursalFacturacionTab({
         sucursalNombre={selectedSucursal?.nombre_sucursal || ''}
         form={configForm || normalizeConfig()}
         saving={configSaving}
-        onClose={() => !configSaving && setConfigDrawerOpen(false)}
+        logoPreviewUrl={logoPreviewUrl}
+        logoUploading={logoUploading}
+        logoError={logoError}
+        onLogoFileChange={onLogoFileChange}
+        onLogoRemove={onLogoRemove}
+        onClose={onCloseConfig}
         onChange={onChangeConfigForm}
         onSubmit={onSaveConfig}
       />
