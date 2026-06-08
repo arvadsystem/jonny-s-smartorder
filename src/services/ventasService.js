@@ -14,6 +14,14 @@ const buildQuery = (params = {}) => {
   return query ? `?${query}` : '';
 };
 
+const buildVentasListQuery = (params = {}) => buildQuery({
+  ...params,
+  includeSummary: params.includeSummary === false ? 'false' : params.includeSummary,
+  includePaginationTotals: params.includePaginationTotals === false
+    ? 'false'
+    : params.includePaginationTotals
+});
+
 const createIdempotencyKey = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -61,7 +69,7 @@ const fetchPdfBlob = async (endpoint) => {
 };
 
 const ventasService = {
-  list: (params = {}) => apiFetch(`/ventas${buildQuery(params)}`, 'GET'),
+  list: (params = {}) => apiFetch(`/ventas${buildVentasListQuery(params)}`, 'GET'),
   buscarVenta: (params = {}) => apiFetch(`/ventas/buscar${buildQuery(params)}`, 'GET'),
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
   getTicketById: (id) => apiFetch(`/ventas/${id}/ticket`, 'GET'),
