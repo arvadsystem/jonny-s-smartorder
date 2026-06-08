@@ -1007,6 +1007,16 @@
   box-shadow: 0 0 0 0.16rem rgba(198, 37, 42, 0.12) !important;
 }
 
+.menu-salsas-admin__config-btn {
+  min-height: 42px;
+  border-radius: 14px !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .menu-salsas-admin__layout-row {
   --bs-gutter-x: 20px;
 }
@@ -1483,7 +1493,8 @@
   }
 
   .menu-salsas-admin__header-actions .inv-prod-active-filter-pill,
-  .menu-salsas-admin__reload-btn {
+  .menu-salsas-admin__reload-btn,
+  .menu-salsas-admin__config-btn {
     width: 100%;
     min-height: 40px;
     justify-content: center !important;
@@ -2518,6 +2529,14 @@
   background: #fff;
 }
 
+.inv-prod-pmodal__panel--recipe-config {
+  width: min(1180px, calc(100vw - 32px));
+  max-width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+}
+
 .menu-salsas-receta-admin__header {
   background: #f8f7ee;
   border-bottom: 1px solid #efe8dd;
@@ -2525,6 +2544,8 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  padding: 16px 18px;
+  flex: 0 0 auto;
 }
 
 .menu-salsas-receta-admin__title-wrap {
@@ -2549,6 +2570,21 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
+}
+
+.menu-salsas-receta-admin__dirty-badge {
+  border: 1px solid #f0d5a8;
+  background: #fff8ec;
+  color: #8a5a22;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.menu-salsas-receta-admin__body {
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .menu-salsas-receta-admin__tip {
@@ -2661,7 +2697,7 @@
 }
 
 .menu-salsas-receta-admin__sauces-list {
-  max-height: 390px;
+  max-height: min(390px, 42vh);
   overflow-y: auto;
   border: 1px solid #ece4da;
   border-radius: 12px;
@@ -2765,7 +2801,8 @@
 .menu-salsas-receta-admin__rules-table {
   border: 1px solid #ebe4da;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: auto;
+  max-height: min(420px, 45vh);
 }
 
 .menu-salsas-receta-admin__rules-table th {
@@ -2784,6 +2821,10 @@
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+.menu-salsas-receta-admin__footer {
+  flex: 0 0 auto;
 }
 
 .menu-salsas-receta-admin__empty {
@@ -2811,9 +2852,16 @@
   }
 
   .menu-salsas-receta-admin__header-actions .btn,
-  .menu-salsas-receta-admin__header-actions .inv-prod-active-filter-pill {
+  .menu-salsas-receta-admin__header-actions .inv-prod-active-filter-pill,
+  .menu-salsas-receta-admin__dirty-badge {
     width: 100%;
     justify-content: center;
+  }
+
+  .inv-prod-pmodal__panel--recipe-config {
+    width: min(calc(100vw - 16px), 680px);
+    max-width: min(calc(100vw - 16px), 680px);
+    max-height: calc(100vh - 16px);
   }
 
   .menu-salsas-receta-admin__right-head {
@@ -2827,6 +2875,11 @@
 
   .menu-salsas-receta-admin__save .btn {
     width: 100%;
+  }
+
+  .menu-salsas-receta-admin__footer {
+    display: grid !important;
+    grid-template-columns: 1fr;
   }
 }
 

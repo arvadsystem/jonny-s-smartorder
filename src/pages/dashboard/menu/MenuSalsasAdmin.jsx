@@ -1,5 +1,4 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Select from 'react-select';
 import { apiFetch } from '../../../services/api';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
@@ -63,15 +62,32 @@ const getSpicyIntensity = (level) => {
   return { label: 'Muy fuerte', className: 'is-muy-fuerte' };
 };
 
+const normalizeRecipeConfigState = (sauceIds, ruleRows) => ({
+  sauceIds: [...new Set((Array.isArray(sauceIds) ? sauceIds : [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0))]
+    .sort((left, right) => left - right),
+  rules: (Array.isArray(ruleRows) ? ruleRows : [])
+    .map((rule) => ({
+      min_unidades: String(rule?.min_unidades ?? ''),
+      max_unidades: rule?.max_unidades === null || rule?.max_unidades === undefined ? '' : String(rule.max_unidades),
+      salsas_requeridas: String(rule?.salsas_requeridas ?? '')
+    }))
+});
+
+const recipeConfigStatesMatch = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
 const MenuSalsasAdmin = () => {
   const { canAny } = usePermisos();
   const [loading, setLoading] = useState(false);
+  const [loadingRecipeConfig, setLoadingRecipeConfig] = useState(false);
   const [savingSalsa, setSavingSalsa] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [estadoConfirm, setEstadoConfirm] = useState(null);
+  const [recipeDiscardConfirm, setRecipeDiscardConfirm] = useState(null);
 
   const [salsas, setSalsas] = useState([]);
   const [recetas, setRecetas] = useState([]);
@@ -82,7 +98,8 @@ const MenuSalsasAdmin = () => {
   const [selectedRecetaId, setSelectedRecetaId] = useState('');
   const [selectedSauceIds, setSelectedSauceIds] = useState([]);
   const [recipeSauceSearch, setRecipeSauceSearch] = useState('');
-  const [rules, setRules] = useState([createLocalRule()]);
+  const [rules, setRules] = useState([]);
+  const [recipeConfigSnapshot, setRecipeConfigSnapshot] = useState(() => normalizeRecipeConfigState([], []));
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrderDirection, setSortOrderDirection] = useState('asc');
   const [showInactiveOnly, setShowInactiveOnly] = useState(false);
@@ -92,6 +109,7 @@ const MenuSalsasAdmin = () => {
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [recipeConfigModalOpen, setRecipeConfigModalOpen] = useState(false);
   const createNombreInputRef = useRef(null);
   const pageSize = 10;
   const canCreateSalsa = canAny([PERMISSIONS.MENU_SALSAS_CREAR, PERMISSIONS.MENU_VER]);
@@ -156,6 +174,14 @@ const MenuSalsasAdmin = () => {
     return Array.from({ length: end - start + 1 }, (_, idx) => start + idx);
   }, [safeCurrentPage, totalPages]);
   const paginatedSalsas = useMemo(() => visibleSalsas, [visibleSalsas]);
+  const currentRecipeConfigState = useMemo(
+    () => normalizeRecipeConfigState(selectedSauceIds, rules),
+    [rules, selectedSauceIds]
+  );
+  const hasUnsavedRecipeConfig = useMemo(
+    () => !recipeConfigStatesMatch(currentRecipeConfigState, recipeConfigSnapshot),
+    [currentRecipeConfigState, recipeConfigSnapshot]
+  );
 
   useEffect(() => {
     setCurrentPage(1);
@@ -244,33 +270,36 @@ const MenuSalsasAdmin = () => {
     const id = toPositiveInt(idReceta);
     if (!id) {
       setSelectedSauceIds([]);
-      setRules([createLocalRule()]);
+      setRules([]);
+      setRecipeConfigSnapshot(normalizeRecipeConfigState([], []));
       return;
     }
 
     try {
       setError('');
+      setLoadingRecipeConfig(true);
       const response = await apiFetch(`/api/admin/salsas/recetas/${id}/config`, 'GET', null, { noCache: true });
       const assigned = Array.isArray(response?.salsas_asignadas)
         ? response.salsas_asignadas.map((row) => Number(row)).filter((row) => Number.isInteger(row) && row > 0)
         : [];
       const incomingRules = Array.isArray(response?.reglas) ? response.reglas : [];
+      const normalizedRules = incomingRules.map((rule) => ({
+        id_local: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        min_unidades: String(rule?.min_unidades ?? 1),
+        max_unidades: rule?.max_unidades === null || rule?.max_unidades === undefined ? '' : String(rule.max_unidades),
+        salsas_requeridas: String(rule?.salsas_requeridas ?? 0)
+      }));
 
       setSelectedSauceIds(assigned);
-      setRules(
-        incomingRules.length > 0
-          ? incomingRules.map((rule) => ({
-            id_local: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-            min_unidades: String(rule?.min_unidades ?? 1),
-            max_unidades: rule?.max_unidades === null || rule?.max_unidades === undefined ? '' : String(rule.max_unidades),
-            salsas_requeridas: String(rule?.salsas_requeridas ?? 0)
-          }))
-          : [createLocalRule()]
-      );
+      setRules(normalizedRules);
+      setRecipeConfigSnapshot(normalizeRecipeConfigState(assigned, normalizedRules));
     } catch (e) {
       setError(e?.message || 'No se pudo cargar la configuracion de salsas por receta.');
       setSelectedSauceIds([]);
-      setRules([createLocalRule()]);
+      setRules([]);
+      setRecipeConfigSnapshot(normalizeRecipeConfigState([], []));
+    } finally {
+      setLoadingRecipeConfig(false);
     }
   }, []);
 
@@ -345,6 +374,76 @@ const MenuSalsasAdmin = () => {
     resetForm();
   };
 
+  function restoreRecipeConfigFromSnapshot() {
+    setSelectedSauceIds(recipeConfigSnapshot.sauceIds);
+    setRules(recipeConfigSnapshot.rules.map((rule) => ({
+      ...rule,
+      id_local: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+    })));
+  }
+
+  function openRecipeConfigModal() {
+    setError('');
+    setSuccess('');
+    setRecipeSauceSearch('');
+    setRecipeConfigModalOpen(true);
+  }
+
+  function requestCloseRecipeConfigModal(action = 'close') {
+    if (savingConfig) return;
+    if (hasUnsavedRecipeConfig) {
+      setRecipeDiscardConfirm({ type: action });
+      return;
+    }
+    setRecipeConfigModalOpen(false);
+  }
+
+  function requestRecipeChange(nextRecetaId) {
+    if (String(nextRecetaId || '') === String(selectedRecetaId || '')) return;
+    if (hasUnsavedRecipeConfig) {
+      setRecipeDiscardConfirm({ type: 'change-recipe', nextRecetaId: String(nextRecetaId || '') });
+      return;
+    }
+    setSelectedRecetaId(String(nextRecetaId || ''));
+  }
+
+  function closeRecipeDiscardConfirm() {
+    if (savingConfig) return;
+    setRecipeDiscardConfirm(null);
+  }
+
+  function confirmDiscardRecipeChanges() {
+    if (!recipeDiscardConfirm) return;
+    const pending = recipeDiscardConfirm;
+    setRecipeDiscardConfirm(null);
+
+    if (pending.type === 'change-recipe') {
+      setSelectedRecetaId(pending.nextRecetaId || '');
+      return;
+    }
+
+    restoreRecipeConfigFromSnapshot();
+    setRecipeConfigModalOpen(false);
+  }
+
+  const recipeDiscardConfirmLabel = recipeDiscardConfirm?.type === 'change-recipe'
+    ? 'Cambiar receta'
+    : 'Cerrar configuracion';
+
+  useEffect(() => {
+    if (!recipeConfigModalOpen) return;
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        requestCloseRecipeConfigModal('close');
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [recipeConfigModalOpen, savingConfig, hasUnsavedRecipeConfig]);
+
   const onChangeForm = (event) => {
     const { name, value } = event.target;
     setForm((current) => ({
@@ -410,11 +509,6 @@ const MenuSalsasAdmin = () => {
     }
   };
 
-  const onSubmitSalsa = async (event) => {
-    event.preventDefault();
-    await persistSalsa('edit');
-  };
-
   const onSubmitCreateSalsa = async (event) => {
     event.preventDefault();
     await persistSalsa(editingSalsaId ? 'edit' : 'create');
@@ -472,7 +566,7 @@ const MenuSalsasAdmin = () => {
   const onRemoveRule = (idLocal) => {
     setRules((current) => {
       const next = current.filter((rule) => rule.id_local !== idLocal);
-      return next.length > 0 ? next : [createLocalRule()];
+      return next;
     });
   };
 
@@ -512,7 +606,7 @@ const MenuSalsasAdmin = () => {
   const validateRulesConsistency = (normalizedRules) => {
     if (!Array.isArray(normalizedRules) || normalizedRules.length === 0) return { ok: true };
     if (selectedSauceIds.length <= 0) {
-      return { ok: false, message: 'Selecciona al menos una salsa permitida antes de guardar reglas.' };
+      return { ok: false, message: 'Selecciona al menos una salsa permitida antes de guardar reglas para esta receta.' };
     }
 
     const sortedRules = [...normalizedRules]
@@ -594,6 +688,15 @@ const MenuSalsasAdmin = () => {
           </div>
           <div className="inv-prod-header-actions menu-salsas-admin__header-actions">
             <span className="inv-prod-active-filter-pill">Total de Salsas creadas: {totalItems}</span>
+            <button
+              type="button"
+              className="btn inv-prod-btn-subtle menu-salsas-admin__config-btn"
+              onClick={openRecipeConfigModal}
+              disabled={loading || savingSalsa || savingConfig || !canEditSalsa}
+            >
+              <i className="bi bi-sliders" aria-hidden="true" />
+              Configurar salsas por receta
+            </button>
             <button
               type="button"
               className="btn inv-prod-toolbar-btn menu-salsas-admin__reload-btn"
@@ -816,27 +919,48 @@ const MenuSalsasAdmin = () => {
         </div>
       </div>
 
-      <div className="card shadow-sm mb-3 inv-prod-card menu-salsas-receta-admin">
-        <div className="card-header inv-prod-header menu-salsas-receta-admin__header">
-          <div className="menu-salsas-receta-admin__title-wrap">
-            <span className="menu-salsas-receta-admin__icon-box"><i className="bi bi-sliders" /></span>
-            <div>
-              <div className="inv-prod-title">Salsas Por Receta</div>
-              <div className="inv-prod-subtitle">Define salsas permitidas y reglas según la cantidad de unidades del pedido.</div>
-            </div>
-          </div>
-          <div className="menu-salsas-receta-admin__header-actions">
-            <span className="inv-prod-active-filter-pill">{activeSalsas.length} salsas</span>
-            <button type="button" className="btn inv-prod-btn-primary" onClick={onAddRule} disabled={!canEditSalsa}>
-              <i className="bi bi-plus-lg" /> Nueva regla
-            </button>
-          </div>
-        </div>
-        <div className="card-body">
+      {recipeConfigModalOpen ? (
+        <div className="inv-prod-pmodal inv-prod-pmodal--recipe-config show">
+          <div className="inv-prod-pmodal__overlay" onClick={() => requestCloseRecipeConfigModal('close')} />
+          <div className="inv-prod-pmodal__viewport">
+            <section
+              className="inv-prod-pmodal__panel inv-prod-pmodal__panel--recipe-config menu-salsas-receta-admin"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="menu-salsas-receta-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="menu-salsas-receta-admin__header">
+                <div className="menu-salsas-receta-admin__title-wrap">
+                  <span className="menu-salsas-receta-admin__icon-box"><i className="bi bi-sliders" /></span>
+                  <div>
+                    <div id="menu-salsas-receta-title" className="inv-prod-title">Configurar salsas por receta</div>
+                    <div className="inv-prod-subtitle">Define salsas permitidas y reglas según la cantidad de unidades del pedido.</div>
+                  </div>
+                </div>
+                <div className="menu-salsas-receta-admin__header-actions">
+                  <span className="inv-prod-active-filter-pill">{activeSalsas.length} salsas</span>
+                  {hasUnsavedRecipeConfig ? <span className="menu-salsas-receta-admin__dirty-badge">Cambios sin guardar</span> : null}
+                  <button
+                    type="button"
+                    className="inv-prod-drawer-close"
+                    onClick={() => requestCloseRecipeConfigModal('close')}
+                    aria-label="Cerrar configuracion de salsas por receta"
+                    disabled={savingConfig}
+                  >
+                    <i className="bi bi-x-lg" />
+                  </button>
+                </div>
+              </div>
+              <div className="inv-prod-pmodal__body menu-salsas-receta-admin__body">
           <div className="menu-salsas-receta-admin__tip">
             <i className="bi bi-lightbulb" />
             Ejemplo: si el cliente compra de 6 a 12 unidades, puede elegir 2 salsas.
           </div>
+
+          {loadingRecipeConfig ? <div className="alert alert-info mb-3">Cargando configuracion de receta...</div> : null}
+          {error ? <div className="alert alert-danger mb-3">{error}</div> : null}
+          {success ? <div className="alert alert-success mb-3">{success}</div> : null}
 
           <div className="menu-salsas-receta-admin__content">
             <section className="menu-salsas-receta-admin__left">
@@ -846,8 +970,8 @@ const MenuSalsasAdmin = () => {
                 id="menu_salsas_receta_select"
                 className="form-select"
                 value={selectedRecetaId}
-                onChange={(event) => setSelectedRecetaId(event.target.value)}
-                disabled={loading || recetas.length === 0}
+                onChange={(event) => requestRecipeChange(event.target.value)}
+                disabled={loading || loadingRecipeConfig || recetas.length === 0}
               >
                 <option value="">Selecciona receta</option>
                 {recetas.map((receta) => (
@@ -896,6 +1020,7 @@ const MenuSalsasAdmin = () => {
                           id={`assign_salsa_${idSalsa}`}
                           checked={checked}
                           onChange={() => onToggleAssignedSauce(idSalsa)}
+                          disabled={loadingRecipeConfig || !canEditSalsa}
                         />
                         <span className="menu-salsas-receta-admin__sauce-avatar"><i className="bi bi-droplet-fill" /></span>
                         <span className="menu-salsas-receta-admin__sauce-copy">
@@ -918,7 +1043,7 @@ const MenuSalsasAdmin = () => {
             <section className="menu-salsas-receta-admin__right">
               <div className="menu-salsas-receta-admin__right-head">
                 <div className="menu-salsas-receta-admin__section-title"><i className="bi bi-sliders" />Reglas de salsas por unidades</div>
-                <button type="button" className="btn btn-outline-danger" onClick={onAddRule} disabled={!canEditSalsa}>+ Agregar regla</button>
+                <button type="button" className="btn btn-outline-danger" onClick={onAddRule} disabled={loadingRecipeConfig || !canEditSalsa}>+ Agregar regla</button>
               </div>
 
               <div className="table-responsive menu-salsas-receta-admin__rules-table">
@@ -940,19 +1065,19 @@ const MenuSalsasAdmin = () => {
                       rules.map((rule) => (
                         <tr key={rule.id_local}>
                           <td>
-                            <input type="number" className="form-control form-control-sm" min={1} value={rule.min_unidades} onChange={(event) => onChangeRule(rule.id_local, 'min_unidades', event.target.value)} disabled={!canEditSalsa} />
+                            <input type="number" className="form-control form-control-sm" min={1} value={rule.min_unidades} onChange={(event) => onChangeRule(rule.id_local, 'min_unidades', event.target.value)} disabled={loadingRecipeConfig || !canEditSalsa} />
                             <small>unidad</small>
                           </td>
                           <td>
-                            <input type="number" className="form-control form-control-sm" min={1} placeholder="Sin maximo" value={rule.max_unidades} onChange={(event) => onChangeRule(rule.id_local, 'max_unidades', event.target.value)} disabled={!canEditSalsa} />
+                            <input type="number" className="form-control form-control-sm" min={1} placeholder="Sin maximo" value={rule.max_unidades} onChange={(event) => onChangeRule(rule.id_local, 'max_unidades', event.target.value)} disabled={loadingRecipeConfig || !canEditSalsa} />
                             <small>{rule.max_unidades === '' ? 'Sin máximo' : 'unidad'}</small>
                           </td>
                           <td>
-                            <input type="number" className="form-control form-control-sm" min={0} value={rule.salsas_requeridas} onChange={(event) => onChangeRule(rule.id_local, 'salsas_requeridas', event.target.value)} disabled={!canEditSalsa} />
+                            <input type="number" className="form-control form-control-sm" min={0} value={rule.salsas_requeridas} onChange={(event) => onChangeRule(rule.id_local, 'salsas_requeridas', event.target.value)} disabled={loadingRecipeConfig || !canEditSalsa} />
                             <small>salsa</small>
                           </td>
                           <td>
-                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => onRemoveRule(rule.id_local)} aria-label="Eliminar regla" disabled={!canEditSalsa}>
+                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => onRemoveRule(rule.id_local)} aria-label="Eliminar regla" disabled={loadingRecipeConfig || !canEditSalsa}>
                               <i className="bi bi-trash" />
                             </button>
                           </td>
@@ -963,12 +1088,23 @@ const MenuSalsasAdmin = () => {
                 </table>
               </div>
 
-              <div className="menu-salsas-receta-admin__save">
+            </section>
+          </div>
+              </div>
+              <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--recipe-config menu-salsas-receta-admin__footer">
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-subtle"
+                  onClick={() => requestCloseRecipeConfigModal('cancel')}
+                  disabled={savingConfig}
+                >
+                  Cancelar
+                </button>
                 <button
                   type="button"
                   className="btn inv-prod-btn-primary"
                   onClick={() => void onSaveRecipeConfig()}
-                  disabled={savingConfig || !selectedRecetaId || !canEditSalsa}
+                  disabled={savingConfig || loadingRecipeConfig || !selectedRecetaId || !canEditSalsa}
                 >
                   <i className="bi bi-floppy" /> {savingConfig ? 'Guardando...' : 'Guardar configuración'}
                 </button>
@@ -976,7 +1112,7 @@ const MenuSalsasAdmin = () => {
             </section>
           </div>
         </div>
-      </div>
+      ) : null}
 
       <MenuActionToast
         title="OK"
@@ -1134,6 +1270,21 @@ const MenuSalsasAdmin = () => {
           </div>
         </div>
       ) : null}
+
+      <MenuConfirmDialog
+        open={Boolean(recipeDiscardConfirm)}
+        title="Descartar cambios"
+        subtitle="La configuracion actual tiene cambios sin guardar"
+        question="Deseas descartar los cambios de salsas por receta?"
+        description="El guardado reemplaza toda la configuracion de la receta seleccionada. Esta accion conserva la ultima configuracion guardada."
+        itemLabel={recipeDiscardConfirmLabel}
+        itemIcon="bi-exclamation-triangle-fill"
+        confirmLabel="Descartar cambios"
+        confirmingLabel="Descartando..."
+        loading={savingConfig}
+        onClose={closeRecipeDiscardConfirm}
+        onConfirm={confirmDiscardRecipeChanges}
+      />
 
       <MenuConfirmDialog
         open={Boolean(estadoConfirm)}
