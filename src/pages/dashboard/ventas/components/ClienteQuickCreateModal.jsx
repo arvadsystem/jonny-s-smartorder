@@ -185,17 +185,38 @@ export default function ClienteQuickCreateModal({
           {tipo === 'persona' ? (
             <div className="ventas-cliente-quick-modal__grid">
               <label className="ventas-create-modal__field">
-                <span>Nombre</span>
-                <input value={personaForm.nombre} onChange={(event) => updatePersona('nombre', normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true }))} />
+                <span>
+                  Nombre
+                  <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
+                </span>
+                <input
+                  value={personaForm.nombre}
+                  onChange={(event) => updatePersona('nombre', normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true }))}
+                  required
+                  aria-required="true"
+                />
                 {errors.nombre ? <small className="ventas-cliente-quick-modal__error">{errors.nombre}</small> : null}
               </label>
               <label className="ventas-create-modal__field">
-                <span>Apellido</span>
-                <input value={personaForm.apellido} onChange={(event) => updatePersona('apellido', normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true }))} />
+                <span>
+                  Apellido
+                  <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
+                </span>
+                <input
+                  value={personaForm.apellido}
+                  onChange={(event) => updatePersona('apellido', normalizeHumanNameInput(event.target.value, { preserveTrailingSpace: true }))}
+                  required
+                  aria-required="true"
+                />
                 {errors.apellido ? <small className="ventas-cliente-quick-modal__error">{errors.apellido}</small> : null}
               </label>
               <AppSelect
-                label="Genero"
+                label={(
+                  <>
+                    Genero
+                    <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
+                  </>
+                )}
                 value={personaForm.genero}
                 options={[
                   { value: 'M', label: 'Masculino' },
@@ -228,13 +249,29 @@ export default function ClienteQuickCreateModal({
           ) : (
             <div className="ventas-cliente-quick-modal__grid">
               <label className="ventas-create-modal__field">
-                <span>Razon social</span>
-                <input value={empresaForm.nombre_empresa} onChange={(event) => updateEmpresa('nombre_empresa', event.target.value)} />
+                <span>
+                  Razon social
+                  <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
+                </span>
+                <input
+                  value={empresaForm.nombre_empresa}
+                  onChange={(event) => updateEmpresa('nombre_empresa', event.target.value)}
+                  required
+                  aria-required="true"
+                />
                 {errors.nombre_empresa ? <small className="ventas-cliente-quick-modal__error">{errors.nombre_empresa}</small> : null}
               </label>
               <label className="ventas-create-modal__field">
-                <span>RTN</span>
-                <input value={empresaForm.rtn} onChange={(event) => updateEmpresa('rtn', formatRtn(event.target.value))} />
+                <span>
+                  RTN
+                  <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
+                </span>
+                <input
+                  value={empresaForm.rtn}
+                  onChange={(event) => updateEmpresa('rtn', formatRtn(event.target.value))}
+                  required
+                  aria-required="true"
+                />
                 {errors.rtn ? <small className="ventas-cliente-quick-modal__error">{errors.rtn}</small> : null}
               </label>
               <label className="ventas-create-modal__field">

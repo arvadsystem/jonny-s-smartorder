@@ -4,6 +4,7 @@ import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
 import ClienteQuickCreateModal from './ClienteQuickCreateModal';
 
 const CONTACT_INITIAL = {
+  nombre_contacto: '',
   telefono_contacto: '',
   canal: 'LOCAL',
   modalidad: 'CONSUMO_LOCAL',
@@ -184,6 +185,12 @@ export default function VentaFinalizarOperacionModal({
     ) {
       return false;
     }
+
+    if (requiresPendingContactName && !normalizeOptionalText(contact.nombre_contacto)) {
+      setLocalError('Nombre contacto es obligatorio para pedido pendiente sin cliente registrado.');
+      return false;
+    }
+
     const phoneRequired =
       activeTab === 'pendiente' ||
       contact.canal === 'TELEFONO' ||
@@ -246,9 +253,12 @@ export default function VentaFinalizarOperacionModal({
 
       const modalidad = contact.modalidad;
       const canal = contact.canal;
+      const resolvedContactName =
+        normalizeOptionalText(contact.nombre_contacto) ||
+        (hasRegisteredClient ? selectedClienteLabel : null);
       const payload = composer.buildPedidoPendientePayload({
         contacto: {
-          nombre_contacto: null,
+          nombre_contacto: resolvedContactName,
           telefono_contacto: normalizeOptionalText(contact.telefono_contacto),
           dni: null,
           rtn: null,
@@ -311,6 +321,23 @@ export default function VentaFinalizarOperacionModal({
     helperText: cliente.es_consumidor_final ? 'Venta sin cliente registrado' : '',
     searchText: normalizeOptionSearchText(cliente)
   }));
+  const selectedCliente = (Array.isArray(composer.clientes) ? composer.clientes : []).find((cliente) => {
+    const clienteValue = String(cliente?.value ?? cliente?.id_cliente ?? '');
+    return clienteValue === String(composer.selectedClient || '');
+  });
+  const selectedClienteId = Number.parseInt(String(selectedCliente?.id_cliente ?? selectedCliente?.value ?? ''), 10);
+  const hasRegisteredClient = Boolean(
+    selectedCliente &&
+    !selectedCliente.es_consumidor_final &&
+    Number.isInteger(selectedClienteId) &&
+    selectedClienteId > 0
+  );
+  const selectedClienteLabel = normalizeOptionalText(
+    selectedCliente?.label ||
+    selectedCliente?.nombre_cliente ||
+    [selectedCliente?.nombre, selectedCliente?.apellido].filter(Boolean).join(' ')
+  );
+  const requiresPendingContactName = activeTab === 'pendiente' && !hasRegisteredClient;
   const canalOptions = [
     { value: 'LOCAL', label: 'LOCAL' },
     { value: 'TELEFONO', label: 'TELEFONO' },
@@ -440,6 +467,30 @@ export default function VentaFinalizarOperacionModal({
                 }}
                 className="app-select--compact app-select--warm ventas-finalizar-modal__field-wide"
               />
+
+              {activeTab === 'pendiente' ? (
+                <label className="ventas-create-modal__field">
+                  <span>
+                    Nombre contacto
+                    {requiresPendingContactName ? (
+                      <abbr className="ventas-finalizar-modal__required" title="Obligatorio">*</abbr>
+                    ) : null}
+                  </span>
+                  <input
+                    type="text"
+                    value={contact.nombre_contacto}
+                    placeholder="Ej. Angel Perez"
+                    onChange={(event) => setContactField('nombre_contacto', event.target.value)}
+                    required={requiresPendingContactName}
+                    aria-required={requiresPendingContactName}
+                  />
+                  {requiresPendingContactName ? (
+                    <small className="ventas-finalizar-modal__field-hint">
+                      Requerido si no seleccionas un cliente registrado.
+                    </small>
+                  ) : null}
+                </label>
+              ) : null}
 
               <label className="ventas-create-modal__field">
                 <span>
