@@ -74,30 +74,29 @@ const PremiumHeaderActions = ({
       <div className="pm-premium-header__user-menu-wrap">
         <button
           type="button"
-          className={`pm-premium-header__icon-btn ${greetingName ? 'pm-premium-header__user-btn' : ''}`}
+          className="pm-premium-header__icon-btn"
           onClick={handleUserClick}
           aria-label={greetingName ? `Usuario ${greetingName}` : 'Iniciar sesion'}
           title={greetingName ? `Hola, ${greetingName}` : 'Iniciar sesion'}
           aria-expanded={greetingName ? userMenuOpen : undefined}
         >
-          {greetingName ? (
-            <span className="pm-premium-header__user-name">
-              Hola, {greetingName}
-            </span>
-          ) : null}
           <i className="bi bi-person-fill" aria-hidden="true" />
         </button>
 
         {greetingName && userMenuOpen ? (
           <div className="pm-premium-header__user-menu" role="menu" aria-label="Menu de usuario">
+            <div className="pm-premium-header__location-menu-title">
+              <i className="bi bi-person-fill" aria-hidden="true" />
+              <span>Sesion</span>
+            </div>
             <button
               type="button"
-              className="pm-premium-header__user-menu-item"
+              className="pm-premium-header__location-menu-item pm-premium-header__user-menu-item"
               onClick={handleLogout}
               role="menuitem"
             >
               <i className="bi bi-box-arrow-right" aria-hidden="true" />
-              <span>Cerrar Sesión</span>
+              <span>Cerrar sesion</span>
             </button>
           </div>
         ) : null}
