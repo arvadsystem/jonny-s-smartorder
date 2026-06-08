@@ -14,6 +14,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 const DEV_DIRECT_API_URL = import.meta.env.VITE_DEV_DIRECT_API_URL || 'http://localhost:3001';
 const AUTH_ENDPOINTS_WITH_DEV_FALLBACK = new Set(['/login', '/api/public/login']);
+const CLIENT_CSRF_STORAGE_KEY = 'smartorder_client_csrf_token';
+const CSRF_TOKEN_RE = /^[a-f0-9]{64}$/i;
 
 const appendNoCacheParam = (endpoint) => {
   const safeEndpoint = String(endpoint || '');
@@ -94,6 +96,61 @@ const getCookie = (name) => {
   }
 };
 
+const normalizeCsrfToken = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return CSRF_TOKEN_RE.test(raw) ? raw.toLowerCase() : '';
+};
+
+const readStoredCsrfToken = () => {
+  if (typeof window === 'undefined') return '';
+
+  try {
+    return normalizeCsrfToken(window.sessionStorage.getItem(CLIENT_CSRF_STORAGE_KEY));
+  } catch {
+    return '';
+  }
+};
+
+const writeStoredCsrfToken = (token) => {
+  const normalized = normalizeCsrfToken(token);
+  if (!normalized || typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(CLIENT_CSRF_STORAGE_KEY, normalized);
+  } catch {
+    // Ignore storage failures and keep request flow running.
+  }
+};
+
+const clearStoredCsrfToken = () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.removeItem(CLIENT_CSRF_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures and keep logout flow running.
+  }
+};
+
+const extractCsrfTokenFromPayload = (payload) => {
+  if (!payload || typeof payload !== 'object') return '';
+
+  const candidates = [
+    payload.csrfToken,
+    payload.csrf_token,
+    payload?.data?.csrfToken,
+    payload?.data?.csrf_token
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeCsrfToken(candidate);
+    if (normalized) return normalized;
+  }
+
+  return '';
+};
+
 const createRequestSignal = (config = {}) => {
   const timeoutRaw = Number.parseInt(String(config?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS), 10);
   const timeoutMs = Number.isInteger(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : DEFAULT_REQUEST_TIMEOUT_MS;
@@ -147,7 +204,10 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
 
   // CSRF only for methods that change state.
   if (!SAFE_METHODS.has(upperMethod)) {
-    const csrf = getCookie('csrf_token');
+    // QA/produccion puede usar frontend y backend en subdominios distintos.
+    // En ese caso el cookie CSRF puede viajar al backend pero no ser legible desde `document.cookie`.
+    // Priorizamos el token emitido por login/me y guardado en sessionStorage.
+    const csrf = readStoredCsrfToken() || normalizeCsrfToken(getCookie('csrf_token'));
     if (csrf) headers['X-CSRF-Token'] = csrf;
   }
 
@@ -204,6 +264,7 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
       'No autorizado';
 
     if (typeof window !== 'undefined') {
+      clearStoredCsrfToken();
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }
     throw new ApiError(msg, { status: 401, code: 'UNAUTHORIZED', data: errorData });
@@ -246,7 +307,14 @@ export const apiFetch = async (endpoint, method = 'GET', body = null, config = {
   }
 
   if (response.status === 204) return null;
+  const payload = await readBody(response);
+  const responseCsrfToken = extractCsrfTokenFromPayload(payload);
+  if (responseCsrfToken) {
+    writeStoredCsrfToken(responseCsrfToken);
+  } else if (String(endpoint || '').split('?')[0] === '/logout') {
+    clearStoredCsrfToken();
+  }
 
-  return await readBody(response);
+  return payload;
 };
 
