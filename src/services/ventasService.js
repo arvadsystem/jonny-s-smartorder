@@ -21,6 +21,7 @@ const buildVentasListQuery = (params = {}) => buildQuery({
     ? 'false'
     : params.includePaginationTotals
 });
+const VENTAS_CREATE_TIMEOUT_MS = 30000;
 
 const createIdempotencyKey = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -76,7 +77,7 @@ const ventasService = {
   getTicketPdf: (id) => fetchPdfBlob(`/ventas/${id}/ticket.pdf`),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
-  create: (payload) => apiFetch('/ventas', 'POST', payload, withIdempotencyKey({ timeoutMs: 7000 })),
+  create: (payload) => apiFetch('/ventas', 'POST', payload, withIdempotencyKey({ timeoutMs: VENTAS_CREATE_TIMEOUT_MS })),
   createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload, withIdempotencyKey()),
   listPedidosPendientesPago: (params = {}) =>
     apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),

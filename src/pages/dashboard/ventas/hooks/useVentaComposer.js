@@ -27,6 +27,7 @@ import {
 } from '../../../../modules/ventas/utils/ventasPayloadBuilders';
 import { formatCurrency, roundMoney } from '../../../../modules/ventas/utils/ventasMoneyUtils';
 import ventasService from '../../../../services/ventasService';
+import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 
 export { CATALOG_TABS, PAYMENT_OPTIONS } from '../../../../modules/ventas/constants/ventasOptions';
 export { getComboDepartmentIds } from '../../../../modules/ventas/utils/ventasCartUtils';
@@ -50,6 +51,11 @@ const buildInitialState = ({ isSuperAdmin = false, defaultSucursalId = null } = 
   submitError: '',
   incompleteComplementCartKey: ''
 });
+
+const resolveCatalogImageUrl = (row) => {
+  const rawUrl = row?.imagen_principal_url || row?.url_imagen || null;
+  return rawUrl ? resolveInventarioImageUrl(rawUrl) : null;
+};
 
 const inferSauceUnitsBaseFromText = (...sources) => {
   const text = sources
@@ -149,7 +155,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
       cantidad: 1,
       stock_disponible: Number(row.cantidad ?? 0) || 0,
       observacion: '',
-      imagen_principal_url: row.imagen_principal_url || row.url_imagen || null,
+      imagen_principal_url: resolveCatalogImageUrl(row),
       complementos: [],
       extras: [],
       complementos_disponibles: [],
@@ -176,7 +182,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
       cantidad: 1,
       stock_disponible: null,
       observacion: '',
-      imagen_principal_url: row.imagen_principal_url || row.url_imagen || null,
+      imagen_principal_url: resolveCatalogImageUrl(row),
       complementos: complementosSeleccionados,
       extras: [],
       complementos_disponibles: complementosDisponibles,
@@ -202,7 +208,7 @@ const buildCatalogLine = (kind, row, selectedComplementos = [], options = {}) =>
     cantidad: 1,
     stock_disponible: null,
     observacion: '',
-    imagen_principal_url: row.imagen_principal_url || row.url_imagen || null,
+    imagen_principal_url: resolveCatalogImageUrl(row),
     complementos: complementosSeleccionados,
     extras: [],
     complementos_disponibles: complementosDisponibles,
