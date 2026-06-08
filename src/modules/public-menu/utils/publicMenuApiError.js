@@ -30,12 +30,14 @@ export const extractPublicMenuRequestId = (error) => {
 
 export const isPublicMenuAuthError = (error) => {
   const status = Number(error?.status || 0);
-  if (status === 401 || status === 403) return true;
-
   const code = toUpperCode(error?.code || error?.data?.code);
+  if (code === 'CSRF') return false;
+  if (status === 401) return true;
+  if (status === 403 && PUBLIC_MENU_AUTH_CODES.has(code)) return true;
   if (PUBLIC_MENU_AUTH_CODES.has(code)) return true;
 
   const message = normalizeText(error?.message).toLowerCase();
+  if (status === 403 && message.includes('csrf')) return false;
   return message.includes('no autorizado') || message.includes('sesion');
 };
 
