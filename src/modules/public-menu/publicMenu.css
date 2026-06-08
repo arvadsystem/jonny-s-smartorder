@@ -463,7 +463,8 @@ body.modal-open {
     color: #f8c988 !important;
   }
 
-  .pm-shell .pm-premium-header__location-menu-wrap {
+  .pm-shell .pm-premium-header__location-menu-wrap,
+  .pm-shell .pm-premium-header__user-menu-wrap {
     position: relative !important;
   }
 
@@ -471,7 +472,8 @@ body.modal-open {
     position: relative !important;
   }
 
-  .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu {
+  .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu,
+  .pm-shell .pm-premium-header__user-menu-wrap .pm-premium-header__user-menu {
     position: absolute !important;
     top: calc(100% + 0.46rem) !important;
     right: 0 !important;
@@ -491,7 +493,8 @@ body.modal-open {
     z-index: 1000000 !important;
   }
 
-  .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu::before {
+  .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu::before,
+  .pm-shell .pm-premium-header__user-menu-wrap .pm-premium-header__user-menu::before {
     content: '' !important;
     position: absolute !important;
     top: -7px !important;
@@ -517,7 +520,8 @@ body.modal-open {
     transform: rotate(45deg) !important;
   }
 
-  .pm-shell.pm-theme-light .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu::before {
+  .pm-shell.pm-theme-light .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu::before,
+  .pm-shell.pm-theme-light .pm-premium-header__user-menu-wrap .pm-premium-header__user-menu::before {
     border-top-color: rgba(112, 83, 63, 0.24) !important;
     border-left-color: rgba(112, 83, 63, 0.24) !important;
     background: #fffaf3 !important;
@@ -529,7 +533,8 @@ body.modal-open {
     background: #fffaf3 !important;
   }
 
-  .pm-shell .pm-premium-header__location-menu-wrap:has(.pm-premium-header__location-menu) > .pm-premium-header__icon-btn {
+  .pm-shell .pm-premium-header__location-menu-wrap:has(.pm-premium-header__location-menu) > .pm-premium-header__icon-btn,
+  .pm-shell .pm-premium-header__user-menu-wrap:has(.pm-premium-header__user-menu) > .pm-premium-header__icon-btn {
     border-color: rgba(255, 174, 76, 0.62) !important;
     background: rgba(255, 167, 60, 0.14) !important;
     box-shadow: 0 0 0 2px rgba(255, 174, 76, 0.22) !important;
@@ -771,7 +776,8 @@ body.modal-open {
 }
 
 @media (max-width: 767.98px) {
-  .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu {
+  .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu,
+  .pm-shell .pm-premium-header__user-menu-wrap .pm-premium-header__user-menu {
     left: 50% !important;
     right: auto !important;
     transform: translateX(-58%) !important;
@@ -782,7 +788,8 @@ body.modal-open {
     gap: 0.08rem !important;
   }
 
-  .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu::before {
+  .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu::before,
+  .pm-shell .pm-premium-header__user-menu-wrap .pm-premium-header__user-menu::before {
     right: auto !important;
     left: 58% !important;
     transform: translateX(-50%) rotate(45deg) !important;
@@ -841,19 +848,22 @@ body.modal-open {
 
 @media (min-width: 901px) {
   .pm-shell .pm-premium-header__location-menu-wrap,
-  .pm-shell .pm-premium-header__order-type-menu-wrap {
+  .pm-shell .pm-premium-header__order-type-menu-wrap,
+  .pm-shell .pm-premium-header__user-menu-wrap {
     position: relative !important;
   }
 
   .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu,
-  .pm-shell .pm-premium-header__order-type-menu-wrap .pm-premium-header__order-type-menu {
+  .pm-shell .pm-premium-header__order-type-menu-wrap .pm-premium-header__order-type-menu,
+  .pm-shell .pm-premium-header__user-menu-wrap .pm-premium-header__user-menu {
     left: 50% !important;
     right: auto !important;
     transform: translateX(-50%) !important;
   }
 
   .pm-shell .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu::before,
-  .pm-shell .pm-premium-header__order-type-menu-wrap .pm-premium-header__order-type-menu::before {
+  .pm-shell .pm-premium-header__order-type-menu-wrap .pm-premium-header__order-type-menu::before,
+  .pm-shell .pm-premium-header__user-menu-wrap .pm-premium-header__user-menu::before {
     content: '' !important;
     position: absolute !important;
     top: -7px !important;
@@ -868,14 +878,16 @@ body.modal-open {
   }
 
   .pm-shell.pm-theme-light .pm-premium-header__location-menu-wrap .pm-premium-header__location-menu::before,
-  .pm-shell.pm-theme-light .pm-premium-header__order-type-menu-wrap .pm-premium-header__order-type-menu::before {
+  .pm-shell.pm-theme-light .pm-premium-header__order-type-menu-wrap .pm-premium-header__order-type-menu::before,
+  .pm-shell.pm-theme-light .pm-premium-header__user-menu-wrap .pm-premium-header__user-menu::before {
     border-top-color: rgba(112, 83, 63, 0.24) !important;
     border-left-color: rgba(112, 83, 63, 0.24) !important;
     background: #fffaf3 !important;
   }
 
   .pm-shell .pm-premium-header__location-menu-wrap:has(.pm-premium-header__location-menu) > .pm-premium-header__icon-btn,
-  .pm-shell .pm-premium-header__order-type-menu-wrap:has(.pm-premium-header__order-type-menu) > .pm-premium-header__icon-btn {
+  .pm-shell .pm-premium-header__order-type-menu-wrap:has(.pm-premium-header__order-type-menu) > .pm-premium-header__icon-btn,
+  .pm-shell .pm-premium-header__user-menu-wrap:has(.pm-premium-header__user-menu) > .pm-premium-header__icon-btn {
     border-color: rgba(255, 174, 76, 0.62) !important;
     background: rgba(255, 167, 60, 0.14) !important;
     box-shadow: 0 0 0 2px rgba(255, 174, 76, 0.22) !important;
