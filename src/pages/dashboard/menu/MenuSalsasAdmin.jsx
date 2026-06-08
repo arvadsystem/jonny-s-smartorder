@@ -12,6 +12,28 @@ const createLocalRule = () => ({
   salsas_requeridas: '1'
 });
 
+const createSuggestedRule = (existingRules = []) => {
+  const previousRule = Array.isArray(existingRules) && existingRules.length > 0
+    ? existingRules[existingRules.length - 1]
+    : null;
+  const previousMin = toPositiveInt(previousRule?.min_unidades);
+  const previousMax = toPositiveInt(previousRule?.max_unidades);
+
+  if (!previousMax) return createLocalRule();
+
+  const nextMin = previousMax + 1;
+  const previousSize = previousMin && previousMax >= previousMin
+    ? previousMax - previousMin
+    : null;
+
+  return {
+    id_local: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    min_unidades: String(nextMin),
+    max_unidades: previousSize === null ? '' : String(nextMin + previousSize),
+    salsas_requeridas: String(previousRule?.salsas_requeridas ?? '1')
+  };
+};
+
 const toPositiveInt = (value) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -560,7 +582,7 @@ const MenuSalsasAdmin = () => {
   };
 
   const onAddRule = () => {
-    setRules((current) => [...current, createLocalRule()]);
+    setRules((current) => [...current, createSuggestedRule(current)]);
   };
 
   const onRemoveRule = (idLocal) => {
@@ -631,7 +653,10 @@ const MenuSalsasAdmin = () => {
       const previousRule = sortedRules[index - 1];
       const previousMax = previousRule.max_unidades === null ? Number.POSITIVE_INFINITY : previousRule.max_unidades;
       if (currentRule.min_unidades <= previousMax) {
-        return { ok: false, message: 'No se permiten rangos traslapados entre reglas.' };
+        return {
+          ok: false,
+          message: 'No se permiten rangos traslapados. Usa rangos inclusivos sin repetir unidades, por ejemplo: 1-6, 7-12, 13-18.'
+        };
       }
     }
 
@@ -955,7 +980,7 @@ const MenuSalsasAdmin = () => {
               <div className="inv-prod-pmodal__body menu-salsas-receta-admin__body">
           <div className="menu-salsas-receta-admin__tip">
             <i className="bi bi-lightbulb" />
-            Ejemplo: si el cliente compra de 6 a 12 unidades, puede elegir 2 salsas.
+            Ejemplo: de 1 a 6 unidades requiere 1 salsa; de 7 a 12 unidades requiere 2 salsas.
           </div>
 
           {loadingRecipeConfig ? <div className="alert alert-info mb-3">Cargando configuracion de receta...</div> : null}
