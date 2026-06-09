@@ -763,6 +763,59 @@
 }
 
 @media (max-width: 768px) {
+  .dashboard-shell .top-navbar.top-navbar--menu {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+    overflow: visible;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--menu .top-navbar__left,
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-tabs-zone {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-bar {
+    width: 100%;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-fixed {
+    width: max-content;
+    min-width: 100%;
+    gap: 6px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn {
+    min-width: 42px;
+    min-height: 38px;
+    flex: 0 0 auto;
+    color: #3a2719 !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn i {
+    display: block;
+    color: #3a2719 !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active span:not(.active-dot) {
+    color: #fff8f2 !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-right {
+    margin-left: 0;
+    flex: 0 0 auto;
+  }
+
   body.sec-more-menu-open .dashboard-shell .top-navbar.top-navbar--seguridad ~ * {
     filter: blur(3px);
     opacity: 0.62;

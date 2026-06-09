@@ -1014,7 +1014,19 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  border: 1px solid rgba(154, 83, 25, 0.34) !important;
+  background: #fffaf5 !important;
+  color: #633821 !important;
+  font-weight: 800 !important;
   white-space: nowrap;
+}
+
+.menu-salsas-admin__config-btn:hover:not(:disabled),
+.menu-salsas-admin__config-btn:focus-visible {
+  border-color: rgba(154, 83, 25, 0.56) !important;
+  background: #f8efe2 !important;
+  color: #4a2216 !important;
+  box-shadow: 0 0 0 3px rgba(184, 104, 33, 0.14) !important;
 }
 
 .menu-salsas-admin__layout-row {
@@ -1443,6 +1455,169 @@
   font-size: 14px;
 }
 
+.menu-salsas-admin__mobile-carousel-shell {
+  display: none;
+}
+
+.menu-salsas-admin__mobile-carousel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 10px 0;
+  color: #6c4a34;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.menu-salsas-admin__mobile-carousel-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu-salsas-admin__mobile-nav {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(154, 83, 25, 0.26);
+  border-radius: 12px;
+  background: #fffaf5;
+  color: #633821;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-salsas-admin__mobile-nav:hover:not(:disabled),
+.menu-salsas-admin__mobile-nav:focus-visible {
+  border-color: rgba(154, 83, 25, 0.5);
+  background: #f8efe2;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(184, 104, 33, 0.12);
+}
+
+.menu-salsas-admin__mobile-nav:disabled {
+  opacity: 0.5;
+}
+
+.menu-salsas-admin__mobile-carousel {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  padding: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.menu-salsas-admin__mobile-carousel::-webkit-scrollbar {
+  height: 8px;
+}
+
+.menu-salsas-admin__mobile-carousel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(154, 83, 25, 0.28);
+}
+
+.menu-salsas-admin__mobile-slide {
+  min-width: 100%;
+  scroll-snap-align: start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.menu-salsas-admin__mobile-card {
+  min-width: 0;
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff, #fffaf5);
+  box-shadow: 0 8px 18px rgba(54, 35, 26, 0.07);
+  padding: 10px;
+  display: grid;
+  gap: 9px;
+}
+
+.menu-salsas-admin__mobile-card-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-salsas-admin__mobile-card-head div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.menu-salsas-admin__mobile-card-head small {
+  color: #9a7d68;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.menu-salsas-admin__mobile-card-head strong {
+  min-width: 0;
+  color: #2f2119;
+  font-size: 13px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-salsas-admin__mobile-card-body {
+  display: grid;
+  gap: 8px;
+}
+
+.menu-salsas-admin__mobile-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #75523b;
+  font-size: 12px;
+}
+
+.menu-salsas-admin__mobile-meta strong {
+  color: #2f2119;
+}
+
+.menu-salsas-admin__mobile-card .menu-recetas-admin__estado-badge {
+  min-height: 30px;
+  justify-content: center;
+  font-size: 12px;
+  padding-inline: 8px;
+}
+
+.menu-salsas-admin__mobile-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+.menu-salsas-admin__mobile-action {
+  width: 100% !important;
+  min-height: 34px !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  border-radius: 10px !important;
+  font-size: 12px !important;
+}
+
+.menu-salsas-admin__mobile-empty {
+  margin: 10px;
+  border: 1px dashed rgba(157, 150, 112, 0.34);
+  border-radius: 12px;
+  padding: 18px;
+  text-align: center;
+  color: #8b6b58;
+  background: #fffaf5;
+}
+
 
 @media (max-width: 1199.98px) {
   .menu-salsas-admin__header-actions .inv-prod-active-filter-pill {
@@ -1488,7 +1663,7 @@
   .menu-salsas-admin__header-actions {
     width: 100%;
     display: grid !important;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
@@ -1498,6 +1673,13 @@
     width: 100%;
     min-height: 40px;
     justify-content: center !important;
+  }
+
+  .menu-salsas-admin__config-btn {
+    grid-column: 1 / -1;
+    white-space: normal;
+    line-height: 1.15;
+    padding: 9px 10px !important;
   }
 
   .menu-salsas-admin__table-toolbar {
@@ -1532,17 +1714,15 @@
   }
 
   .menu-salsas-admin__table-wrap {
-    overflow-x: auto;
+    overflow: hidden;
   }
 
   .menu-salsas-admin__table {
-    min-width: 740px;
+    display: none;
   }
 
-  .menu-salsas-admin__table th,
-  .menu-salsas-admin__table td {
-    padding: 10px 8px !important;
-    white-space: nowrap;
+  .menu-salsas-admin__mobile-carousel-shell {
+    display: block;
   }
 
   .menu-salsas-admin__spicy-dots {
@@ -2529,6 +2709,14 @@
   background: #fff;
 }
 
+.inv-prod-pmodal--recipe-config .inv-prod-pmodal__viewport {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
 .inv-prod-pmodal__panel--recipe-config {
   width: min(1180px, calc(100vw - 32px));
   max-width: min(1180px, calc(100vw - 32px));
@@ -2585,6 +2773,7 @@
 .menu-salsas-receta-admin__body {
   overflow-y: auto;
   min-height: 0;
+  padding: 16px !important;
 }
 
 .menu-salsas-receta-admin__tip {
@@ -2951,6 +3140,23 @@
   margin-bottom: 10px;
 }
 
+.menu-salsas-receta-admin__right-head .btn {
+  min-height: 40px;
+  border-color: rgba(154, 83, 25, 0.42) !important;
+  color: #7a3f1f !important;
+  background: #fffaf5 !important;
+  font-weight: 800 !important;
+  white-space: nowrap;
+}
+
+.menu-salsas-receta-admin__right-head .btn:hover:not(:disabled),
+.menu-salsas-receta-admin__right-head .btn:focus-visible {
+  border-color: rgba(154, 83, 25, 0.62) !important;
+  background: #f8efe2 !important;
+  color: #4a2216 !important;
+  box-shadow: 0 0 0 3px rgba(184, 104, 33, 0.12) !important;
+}
+
 .menu-salsas-receta-admin__rules-table {
   border: 1px solid #ebe4da;
   border-radius: 12px;
@@ -2978,6 +3184,30 @@
 
 .menu-salsas-receta-admin__footer {
   flex: 0 0 auto;
+}
+
+.menu-salsas-receta-admin__footer .btn {
+  min-height: 38px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.menu-salsas-receta-admin__footer .inv-prod-btn-subtle {
+  border-color: rgba(154, 83, 25, 0.24) !important;
+  color: #5f3b2a !important;
+}
+
+.menu-salsas-receta-admin__footer .inv-prod-btn-primary {
+  background: linear-gradient(145deg, #8f4a1b, #a85b23) !important;
+  border-color: rgba(143, 74, 27, 0.72) !important;
+}
+
+.menu-salsas-receta-admin__footer .inv-prod-btn-primary:hover:not(:disabled),
+.menu-salsas-receta-admin__footer .inv-prod-btn-primary:focus-visible {
+  background: linear-gradient(145deg, #7c3f18, #96501e) !important;
+  box-shadow: 0 0 0 3px rgba(184, 104, 33, 0.18) !important;
 }
 
 .menu-salsas-receta-admin__empty {

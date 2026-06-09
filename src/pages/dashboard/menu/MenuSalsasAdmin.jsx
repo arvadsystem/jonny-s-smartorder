@@ -134,6 +134,7 @@ const MenuSalsasAdmin = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [recipeConfigModalOpen, setRecipeConfigModalOpen] = useState(false);
   const createNombreInputRef = useRef(null);
+  const mobileSalsaCarouselRef = useRef(null);
   const pageSize = 10;
   const canCreateSalsa = canAny([PERMISSIONS.MENU_SALSAS_CREAR, PERMISSIONS.MENU_VER]);
   const canEditSalsa = canAny([PERMISSIONS.MENU_SALSAS_EDITAR, PERMISSIONS.MENU_VER]);
@@ -205,6 +206,13 @@ const MenuSalsasAdmin = () => {
     return Array.from({ length: end - start + 1 }, (_, idx) => start + idx);
   }, [safeCurrentPage, totalPages]);
   const paginatedSalsas = useMemo(() => visibleSalsas, [visibleSalsas]);
+  const mobileSalsaSlides = useMemo(() => {
+    const slides = [];
+    for (let index = 0; index < paginatedSalsas.length; index += 2) {
+      slides.push(paginatedSalsas.slice(index, index + 2));
+    }
+    return slides;
+  }, [paginatedSalsas]);
   const currentRecipeConfigState = useMemo(
     () => normalizeRecipeConfigState(selectedSauceIds, rules),
     [rules, selectedSauceIds]
@@ -707,6 +715,13 @@ const MenuSalsasAdmin = () => {
     }
   };
 
+  const scrollMobileSalsas = (direction) => {
+    const node = mobileSalsaCarouselRef.current;
+    if (!node) return;
+    const delta = Math.max(260, node.clientWidth || 0) * direction;
+    node.scrollBy({ left: delta, behavior: 'smooth' });
+  };
+
   return (
     <div className="menu-salsas-admin">
       <div className="card shadow-sm mb-3 inv-prod-card menu-salsas-admin__card">
@@ -900,6 +915,98 @@ const MenuSalsasAdmin = () => {
                     )}
                   </tbody>
                 </table>
+                <div className="menu-salsas-admin__mobile-carousel-shell" aria-label="Listado movil de salsas">
+                  <div className="menu-salsas-admin__mobile-carousel-head">
+                    <span>{loading ? 'Cargando salsas...' : `${paginatedSalsas.length} salsas en esta pagina`}</span>
+                    <div className="menu-salsas-admin__mobile-carousel-controls">
+                      <button
+                        type="button"
+                        className="menu-salsas-admin__mobile-nav"
+                        onClick={() => scrollMobileSalsas(-1)}
+                        disabled={loading || mobileSalsaSlides.length <= 1}
+                        aria-label="Ver salsas anteriores"
+                      >
+                        <i className="bi bi-chevron-left" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="menu-salsas-admin__mobile-nav"
+                        onClick={() => scrollMobileSalsas(1)}
+                        disabled={loading || mobileSalsaSlides.length <= 1}
+                        aria-label="Ver mas salsas"
+                      >
+                        <i className="bi bi-chevron-right" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {paginatedSalsas.length === 0 ? (
+                    <div className="menu-salsas-admin__mobile-empty">
+                      {loading ? 'Cargando salsas...' : 'No hay salsas registradas.'}
+                    </div>
+                  ) : (
+                    <div className="menu-salsas-admin__mobile-carousel" ref={mobileSalsaCarouselRef}>
+                      {mobileSalsaSlides.map((slide, slideIndex) => (
+                        <div className="menu-salsas-admin__mobile-slide" key={`salsa-slide-${slideIndex}`}>
+                          {slide.map((row) => {
+                            const isActive = isRowActive(row?.estado);
+                            const spicyLevel = Math.max(0, Math.min(5, Number(row?.nivel_picante || 0)));
+                            return (
+                              <article className="menu-salsas-admin__mobile-card" key={`mobile-salsa-${row.id_salsa}`}>
+                                <div className="menu-salsas-admin__mobile-card-head">
+                                  <span className="menu-salsas-admin__salsa-avatar">
+                                    <i className="bi bi-droplet-fill" aria-hidden="true" />
+                                  </span>
+                                  <div>
+                                    <small>Orden {Number(row?.orden || 0)}</small>
+                                    <strong>{row.nombre}</strong>
+                                  </div>
+                                </div>
+                                <div className="menu-salsas-admin__mobile-card-body">
+                                  <div className="menu-salsas-admin__mobile-meta">
+                                    <span>Picante</span>
+                                    <strong>{Number(row?.nivel_picante || 0)}</strong>
+                                  </div>
+                                  <span className="menu-salsas-admin__spicy-dots" aria-hidden="true">
+                                    {[0, 1, 2, 3, 4].map((index) => (
+                                      <span
+                                        key={`mobile-spicy-${row.id_salsa}-${index}`}
+                                        className={`menu-salsas-admin__spicy-dot ${index < spicyLevel ? 'is-on' : ''}`}
+                                      />
+                                    ))}
+                                  </span>
+                                  <span className={`menu-recetas-admin__estado-badge ${isActive ? 'is-active' : 'is-inactive'}`}>
+                                    {isActive ? 'Activa' : 'Inactiva'}
+                                  </span>
+                                </div>
+                                <div className="menu-salsas-admin__mobile-actions">
+                                  <button
+                                    type="button"
+                                    className="inv-catpro-action edit inv-catpro-action-compact menu-recetas-admin__edit-action menu-salsas-admin__mobile-action"
+                                    onClick={() => onEditSalsa(row)}
+                                    disabled={!canEditSalsa}
+                                  >
+                                    <i className="bi bi-pencil-square" aria-hidden="true" />
+                                    <span>Editar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`inv-catpro-action ${isActive ? 'state-off' : 'state-on'} inv-catpro-action-compact menu-recetas-admin__state-action menu-salsas-admin__mobile-action`}
+                                    onClick={() => setEstadoConfirm(row)}
+                                    disabled={!canToggleSalsaEstado}
+                                  >
+                                    <i className={`bi ${isActive ? 'bi-slash-circle' : 'bi-check-circle'}`} aria-hidden="true" />
+                                    <span>{isActive ? 'Inactivar' : 'Activar'}</span>
+                                  </button>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="menu-salsas-admin__table-footer">
                   <div className="inv-warehouse-moves__pagination inv-ins-pagination">
                     <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
