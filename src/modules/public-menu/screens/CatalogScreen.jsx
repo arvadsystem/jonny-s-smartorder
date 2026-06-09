@@ -389,6 +389,7 @@ const CatalogScreen = () => {
   const recentlyAddedTimerRef = useRef(null);
   const categorySwitchTimerRef = useRef(null);
   const confirmLockRef = useRef(false);
+  const confirmOriginRef = useRef('');
   const authRedirectRef = useRef(false);
   const idempotencyRef = useRef({ fingerprint: '', key: '' });
   const previousTotalItemsRef = useRef(0);
@@ -826,7 +827,7 @@ const CatalogScreen = () => {
     actions.selectMenu(menuSummary);
   }, [actions, menuSummary]);
 
-  const handleConfirmOrder = async () => {
+  const handleConfirmOrder = async ({ keepCartSheetVisible = false } = {}) => {
     if (confirmingOrder || confirmLockRef.current) return;
     if (!selectedBranchOpen) {
       setClosedHoursConfirmOpen(true);
@@ -890,6 +891,7 @@ const CatalogScreen = () => {
     payload.idempotency_key = idempotencyRef.current.key;
 
     try {
+      confirmOriginRef.current = keepCartSheetVisible ? 'cart-sheet' : 'summary';
       setConfirmingOrder(true);
       confirmLockRef.current = true;
       const created = await publicMenuBootstrapService.createOrder(payload);
@@ -918,6 +920,7 @@ const CatalogScreen = () => {
         message: toPublicMenuUiErrorMessage(e, 'No se pudo enviar el pedido. Intenta nuevamente.')
       });
     } finally {
+      confirmOriginRef.current = '';
       setConfirmingOrder(false);
       confirmLockRef.current = false;
     }
@@ -1127,7 +1130,7 @@ const CatalogScreen = () => {
       />
 
       <CartSheet
-        open={cartOpen}
+        open={cartOpen || (confirmingOrder && confirmOriginRef.current === 'cart-sheet')}
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
         items={cartItems}
         total={total}
@@ -1137,7 +1140,7 @@ const CatalogScreen = () => {
         onIncrease={increaseItemByLine}
         onDecrease={decreaseItemByLine}
         onRemove={removeItemByLine}
-        onConfirm={handleConfirmOrder}
+        onConfirm={() => handleConfirmOrder({ keepCartSheetVisible: true })}
         confirming={confirmingOrder}
       />
 
