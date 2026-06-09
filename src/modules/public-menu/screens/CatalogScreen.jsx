@@ -392,6 +392,7 @@ const CatalogScreen = () => {
   const authRedirectRef = useRef(false);
   const idempotencyRef = useRef({ fingerprint: '', key: '' });
   const previousTotalItemsRef = useRef(0);
+  const previousUserIdRef = useRef(Number(user?.id_usuario || 0) || null);
   const catalogAnchorRef = useRef(null);
   const prefersReducedMotion = usePrefersReducedMotion();
   const playOrderSuccessSound = useOrderSuccessSound();
@@ -446,6 +447,22 @@ const CatalogScreen = () => {
       actions.selectBranch(liveSelectedBranch);
     }
   }, [actions, liveSelectedBranch, state.selectedBranch]);
+
+  useEffect(() => {
+    const previousUserId = previousUserIdRef.current;
+    const currentUserId = Number(user?.id_usuario || 0) || null;
+
+    if (previousUserId && !currentUserId) {
+      setCartOpen(false);
+      clearCart();
+      setDetailOpen(false);
+      setDetailItem(null);
+      setOrderSuccess({ open: false, order: null });
+      idempotencyRef.current = { fingerprint: '', key: '' };
+    }
+
+    previousUserIdRef.current = currentUserId;
+  }, [clearCart, user]);
 
   useEffect(() => {
     if (pauseAutoContextBootstrap) return;
@@ -731,12 +748,9 @@ const CatalogScreen = () => {
   };
 
   const closeOrderSuccessModal = () => {
+    setCartOpen(false);
+    clearCart();
     setOrderSuccess({ open: false, order: null });
-  };
-
-  const startNewOrderAfterSuccess = () => {
-    closeOrderSuccessModal();
-    handleScrollToCatalog();
   };
 
   const handleHomeClick = () => {
@@ -802,6 +816,7 @@ const CatalogScreen = () => {
   const handleLogout = async () => {
     await logout();
     setCartOpen(false);
+    clearCart();
     closeConfigSheet();
     navigate('/menu-publico');
   };
@@ -879,8 +894,6 @@ const CatalogScreen = () => {
       confirmLockRef.current = true;
       const created = await publicMenuBootstrapService.createOrder(payload);
 
-      setCartOpen(false);
-      clearCart();
       idempotencyRef.current = { fingerprint: '', key: '' };
       playOrderSuccessSound();
       setOrderSuccess({ open: true, order: created });
@@ -1286,7 +1299,6 @@ const CatalogScreen = () => {
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
         orderTypeLabel={orderTypeLabel}
         onClose={closeOrderSuccessModal}
-        onNewOrder={startNewOrderAfterSuccess}
       />
     </section>
   );

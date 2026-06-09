@@ -15,8 +15,7 @@ const OrderSuccessModal = ({
   order,
   branchName = '',
   orderTypeLabel = '',
-  onClose,
-  onNewOrder
+  onClose
 }) => {
   if (!open) return null;
 
@@ -74,9 +73,6 @@ const OrderSuccessModal = ({
         <div className="pm-order-success__actions">
           <button type="button" className="pm-order-success__primary" onClick={onClose}>
             Seguir viendo menu
-          </button>
-          <button type="button" className="pm-order-success__secondary" onClick={onNewOrder}>
-            Nuevo pedido
           </button>
         </div>
       </section>
