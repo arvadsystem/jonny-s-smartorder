@@ -26,6 +26,7 @@ const RecetasAdmin = () => {
       form,
       detalleReceta,
       insumosDetalleCatalog,
+      unidadesMedidaCatalog,
       loadingDetalleCatalog,
       menusCatalog,
       departamentosCatalog,
@@ -39,8 +40,12 @@ const RecetasAdmin = () => {
     },
     derived: {
       recetasFiltradas,
+      activeFiltersCount,
       hasActiveFilters,
-      formPreviewUrl
+      formPreviewUrl,
+      insumoCategoriasOptions,
+      menuLabelsById,
+      departamentoLabelsById
     },
     actions: {
       setSearch,
@@ -56,7 +61,6 @@ const RecetasAdmin = () => {
       closeCreateDrawer,
       openFiltersDrawer,
       closeFiltersDrawer,
-      closeAnyDrawer,
       onSubmit,
       onEditar,
       onCambiarEstado,
@@ -150,7 +154,7 @@ const RecetasAdmin = () => {
 
             <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
               <span>{recetasFiltradas.length} recetas</span>
-              {hasActiveFilters ? <span className="inv-prod-active-filter-pill">Filtros activos</span> : null}
+              {hasActiveFilters ? <span className="inv-prod-active-filter-pill">{`Filtros activos: ${activeFiltersCount}`}</span> : null}
             </div>
 
             <RecetasTable
@@ -158,6 +162,8 @@ const RecetasAdmin = () => {
               recetas={recetasFiltradas}
               showInactiveOnly={filters.estado === 'inactivos'}
               viewMode={viewMode}
+              menuLabelsById={menuLabelsById}
+              departamentoLabelsById={departamentoLabelsById}
               togglingId={togglingId}
               canEdit={canEditReceta}
               canToggleState={canToggleReceta}
@@ -179,49 +185,149 @@ const RecetasAdmin = () => {
         drawerId="menu-recetas-filtros-drawer"
         chips={[{ icon: 'bi-journal-richtext', label: 'Recetas' }]}
       >
-        <div className="inv-prod-drawer-section">
-          <div className="inv-prod-drawer-section-title">Estado</div>
-          <div className="inv-ins-chip-grid">
-            <button
-              type="button"
-              className={`inv-ins-chip ${filtersDraft.estado === 'todos' ? 'is-active' : ''}`}
-              onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'todos' }))}
-            >
-              Todos
-            </button>
-            <button
-              type="button"
-              className={`inv-ins-chip ${filtersDraft.estado === 'activos' ? 'is-active' : ''}`}
-              onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'activos' }))}
-            >
-              Activos
-            </button>
-            <button
-              type="button"
-              className={`inv-ins-chip ${filtersDraft.estado === 'inactivos' ? 'is-active' : ''}`}
-              onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'inactivos' }))}
-            >
-              Inactivos
-            </button>
+        <div className="menu-recetas-filters__grid">
+          <div className="inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Estado</div>
+            <div className="inv-ins-chip-grid">
+              <button
+                type="button"
+                className={`inv-ins-chip ${filtersDraft.estado === 'todos' ? 'is-active' : ''}`}
+                onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'todos' }))}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                className={`inv-ins-chip ${filtersDraft.estado === 'activos' ? 'is-active' : ''}`}
+                onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'activos' }))}
+              >
+                Activos
+              </button>
+              <button
+                type="button"
+                className={`inv-ins-chip ${filtersDraft.estado === 'inactivos' ? 'is-active' : ''}`}
+                onClick={() => setFiltersDraft((state) => ({ ...state, estado: 'inactivos' }))}
+              >
+                Inactivos
+              </button>
+            </div>
+            <div className="inv-ins-help">Filtra por estado de receta.</div>
           </div>
-          <div className="inv-ins-help">Filtra por estado de receta.</div>
-        </div>
 
-        <div className="inv-prod-drawer-section">
-          <div className="inv-prod-drawer-section-title">Orden</div>
-          <label className="form-label" htmlFor="menu_recetas_sort">Ordenar por</label>
-          <select
-            id="menu_recetas_sort"
-            className="form-select"
-            value={filtersDraft.sortBy}
-            onChange={(event) => setFiltersDraft((state) => ({ ...state, sortBy: event.target.value }))}
-          >
-            <option value="recientes">Mas recientes</option>
-            <option value="nombre_asc">Nombre (A-Z)</option>
-            <option value="nombre_desc">Nombre (Z-A)</option>
-            <option value="precio_asc">Precio (menor a mayor)</option>
-            <option value="precio_desc">Precio (mayor a menor)</option>
-          </select>
+          <div className="inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Menu</div>
+            <label className="form-label" htmlFor="menu_recetas_filter_menu">Menu</label>
+            <select
+              id="menu_recetas_filter_menu"
+              className="form-select"
+              value={filtersDraft.id_menu}
+              onChange={(event) => setFiltersDraft((state) => ({ ...state, id_menu: event.target.value }))}
+            >
+              <option value="">Todos los menus</option>
+              {menusCatalog.map((option) => (
+                <option key={`filter-menu-${option.value}`} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Departamento</div>
+            <label className="form-label" htmlFor="menu_recetas_filter_departamento">Departamento</label>
+            <select
+              id="menu_recetas_filter_departamento"
+              className="form-select"
+              value={filtersDraft.id_tipo_departamento}
+              onChange={(event) => setFiltersDraft((state) => ({ ...state, id_tipo_departamento: event.target.value }))}
+            >
+              <option value="">Todos los departamentos</option>
+              {departamentosCatalog.map((option) => (
+                <option key={`filter-departamento-${option.value}`} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Precio</div>
+            <div className="menu-recetas-filters__range">
+              <div>
+                <label className="form-label" htmlFor="menu_recetas_filter_precio_min">Minimo</label>
+                <input
+                  id="menu_recetas_filter_precio_min"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="form-control"
+                  value={filtersDraft.precio_min}
+                  onChange={(event) => setFiltersDraft((state) => ({ ...state, precio_min: event.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="form-label" htmlFor="menu_recetas_filter_precio_max">Maximo</label>
+                <input
+                  id="menu_recetas_filter_precio_max"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="form-control"
+                  value={filtersDraft.precio_max}
+                  onChange={(event) => setFiltersDraft((state) => ({ ...state, precio_max: event.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Imagen</div>
+            <label className="form-label" htmlFor="menu_recetas_filter_imagen">Disponibilidad de imagen</label>
+            <select
+              id="menu_recetas_filter_imagen"
+              className="form-select"
+              value={filtersDraft.imagen}
+              onChange={(event) => setFiltersDraft((state) => ({ ...state, imagen: event.target.value }))}
+            >
+              <option value="todas">Todas</option>
+              <option value="con_imagen">Con imagen</option>
+              <option value="sin_imagen">Sin imagen</option>
+            </select>
+          </div>
+
+          <div className="inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Detalle</div>
+            <label className="form-label" htmlFor="menu_recetas_filter_detalle">Completitud del detalle</label>
+            <select
+              id="menu_recetas_filter_detalle"
+              className="form-select"
+              value={filtersDraft.detalle}
+              onChange={(event) => setFiltersDraft((state) => ({ ...state, detalle: event.target.value }))}
+            >
+              <option value="todas">Todas</option>
+              <option value="con_detalle">Con detalle</option>
+              <option value="sin_detalle">Sin detalle</option>
+            </select>
+          </div>
+
+          <div className="inv-prod-drawer-section">
+            <div className="inv-prod-drawer-section-title">Orden</div>
+            <label className="form-label" htmlFor="menu_recetas_sort">Ordenar por</label>
+            <select
+              id="menu_recetas_sort"
+              className="form-select"
+              value={filtersDraft.sortBy}
+              onChange={(event) => setFiltersDraft((state) => ({ ...state, sortBy: event.target.value }))}
+            >
+              <option value="recientes">Mas recientes</option>
+              <option value="nombre_asc">Nombre (A-Z)</option>
+              <option value="nombre_desc">Nombre (Z-A)</option>
+              <option value="precio_asc">Precio (menor a mayor)</option>
+              <option value="precio_desc">Precio (mayor a menor)</option>
+            </select>
+          </div>
         </div>
       </MenuFiltersDrawer>
 
@@ -232,6 +338,8 @@ const RecetasAdmin = () => {
         form={form}
         detalleReceta={detalleReceta}
         insumosDetalleCatalog={insumosDetalleCatalog}
+        unidadesMedidaCatalog={unidadesMedidaCatalog}
+        insumoCategoriasOptions={insumoCategoriasOptions}
         loadingDetalleCatalog={loadingDetalleCatalog}
         saving={saving}
         onChangeField={onChangeField}

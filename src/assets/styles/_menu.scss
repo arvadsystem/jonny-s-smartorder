@@ -2154,26 +2154,63 @@
 
 .menu-recetas-admin__detalle-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(100px, 0.65fr) minmax(100px, 0.65fr) 42px;
-  gap: 0.65rem;
-  align-items: end;
-  padding: 0.75rem;
-  border: 1px solid rgba(121, 75, 42, 0.14);
-  border-radius: 14px;
+  grid-template-columns: minmax(0, 1fr) 62px;
+  gap: 0.9rem;
+  align-items: stretch;
+  padding: 0.9rem;
+  border: 1px solid rgba(121, 75, 42, 0.16);
+  border-radius: 16px;
   background: #fffaf2;
+  box-shadow: 0 10px 20px rgba(47, 22, 12, 0.04);
+}
+
+.menu-recetas-admin__detalle-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.menu-recetas-admin__detalle-field {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
 }
 
 .menu-recetas-admin__detalle-field--insumo {
   min-width: 0;
 }
 
+.menu-recetas-admin__detalle-field--cantidad {
+  max-width: none;
+}
+
+.menu-recetas-admin__detalle-field--unidad {
+  min-width: 0;
+}
+
+.menu-recetas-admin__detalle-action {
+  display: grid;
+  align-content: end;
+  justify-items: stretch;
+  gap: 0.35rem;
+}
+
+.menu-recetas-admin__detalle-action-label {
+  margin-bottom: 0;
+  text-align: center;
+}
+
 .menu-recetas-admin__detalle-remove {
-  width: 42px;
-  height: 42px;
+  width: 100%;
+  min-width: 52px;
+  height: 52px;
   border-radius: 12px;
   border: 1px solid rgba(185, 28, 28, 0.18);
   color: #a32929;
   background: rgba(185, 28, 28, 0.06);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .menu-recetas-admin__detalle-remove:hover,
@@ -2202,6 +2239,18 @@
 
   .menu-recetas-admin__detalle-row {
     grid-template-columns: 1fr;
+  }
+
+  .menu-recetas-admin__detalle-field--cantidad {
+    max-width: none;
+  }
+
+  .menu-recetas-admin__detalle-action {
+    justify-items: stretch;
+  }
+
+  .menu-recetas-admin__detalle-action-label {
+    text-align: left;
   }
 
   .menu-recetas-admin__detalle-remove {
@@ -2578,6 +2627,23 @@
   flex: 1 1 auto;
 }
 
+.menu-recetas-filters__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.menu-recetas-filters__grid .inv-prod-drawer-section {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.menu-recetas-filters__range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .menu-filters-drawer .menu-filters-drawer__actions .btn,
 .menu-filters-drawer .inv-prod-drawer-actions.menu-filters-drawer__actions .btn,
 .menu-filters-drawer .inv-cat-filter-actions.menu-filters-drawer__actions .btn {
@@ -2596,6 +2662,11 @@
 }
 
 @media (max-width: 767.98px) {
+  .menu-recetas-filters__grid,
+  .menu-recetas-filters__range {
+    grid-template-columns: 1fr;
+  }
+
   .menu-filters-drawer .menu-filters-drawer__actions .btn {
     height: 32px !important;
     min-height: 32px !important;
