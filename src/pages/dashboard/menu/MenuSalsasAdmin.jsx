@@ -2,6 +2,7 @@
 import { apiFetch } from '../../../services/api';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
+import AppSelect from '../../../components/common/AppSelect';
 import MenuActionToast from './components/MenuActionToast';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
 
@@ -141,6 +142,14 @@ const MenuSalsasAdmin = () => {
   const activeSalsas = useMemo(
     () => salsas.filter((row) => isRowActive(row?.estado)),
     [salsas]
+  );
+  const recetaOptions = useMemo(
+    () => recetas.map((receta) => ({
+      value: String(receta.id_receta),
+      label: `#${receta.id_receta} - ${receta.nombre_receta}`,
+      searchText: `${receta.id_receta} ${receta.nombre_receta}`
+    })),
+    [recetas]
   );
   const filteredAssignableSalsas = useMemo(() => {
     const search = String(recipeSauceSearch || '').trim().toLowerCase();
@@ -990,21 +999,17 @@ const MenuSalsasAdmin = () => {
           <div className="menu-salsas-receta-admin__content">
             <section className="menu-salsas-receta-admin__left">
               <div className="menu-salsas-receta-admin__section-title"><i className="bi bi-pin-angle" />Seleccionar receta</div>
-              <label className="visually-hidden" htmlFor="menu_salsas_receta_select">Seleccionar receta</label>
-              <select
-                id="menu_salsas_receta_select"
-                className="form-select"
+              <AppSelect
+                className="menu-salsas-receta-admin__recipe-select app-select--compact app-select--warm"
                 value={selectedRecetaId}
-                onChange={(event) => requestRecipeChange(event.target.value)}
+                options={recetaOptions}
+                onChange={requestRecipeChange}
+                placeholder="Selecciona receta"
+                searchable
+                searchPlaceholder="Buscar receta..."
+                emptyText="No hay recetas para mostrar."
                 disabled={loading || loadingRecipeConfig || recetas.length === 0}
-              >
-                <option value="">Selecciona receta</option>
-                {recetas.map((receta) => (
-                  <option key={`salsa-receta-${receta.id_receta}`} value={String(receta.id_receta)}>
-                    #{receta.id_receta} - {receta.nombre_receta}
-                  </option>
-                ))}
-              </select>
+              />
 
               <div className="menu-salsas-receta-admin__divider" />
               <div className="menu-salsas-receta-admin__section-title">Salsas permitidas</div>
