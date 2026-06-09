@@ -14,6 +14,8 @@ const RecetasTable = ({
   recetas,
   showInactiveOnly = false,
   viewMode,
+  menuLabelsById = {},
+  departamentoLabelsById = {},
   togglingId,
   canEdit = true,
   canToggleState = true,
@@ -148,13 +150,15 @@ const RecetasTable = ({
           String(receta?.descripcion || '').trim() || 'Sin descripcion registrada.',
           104
         );
-        const menuId = String(receta?.id_menu ?? '-');
+        const menuId = String(receta?.id_menu ?? '');
+        const menuLabel = String(menuLabelsById?.[menuId] ?? menuId ?? '-');
+        const departamentoId = String(receta?.id_tipo_departamento ?? '');
         const departamentoLabel = String(
+          departamentoLabelsById?.[departamentoId] ??
           receta?.nombre_tipo_departamento ??
           receta?.nombre_departamento ??
           receta?.tipo_departamento ??
           receta?.departamento ??
-          receta?.id_tipo_departamento ??
           '-'
         );
 
@@ -196,7 +200,7 @@ const RecetasTable = ({
               <div className="menu-recetas-card__meta">
                 <div>
                   <small>Menu</small>
-                  <strong>{menuId}</strong>
+                  <strong>{menuLabel}</strong>
                 </div>
                 <div>
                   <small>Departamento</small>
