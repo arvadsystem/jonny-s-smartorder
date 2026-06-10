@@ -2188,6 +2188,28 @@
   min-width: 0;
 }
 
+.menu-recetas-admin__detalle-field--equivalencia {
+  min-width: 0;
+}
+
+.menu-recetas-admin__detalle-equivalencia {
+  min-height: 42px;
+  border: 1px solid rgba(121, 75, 42, 0.14);
+  border-radius: 12px;
+  padding: 0.62rem 0.75rem;
+  color: #6f5848;
+  background: rgba(255, 255, 255, 0.62);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.menu-recetas-admin__detalle-equivalencia.is-warning {
+  border-color: rgba(185, 28, 28, 0.22);
+  color: #a32929;
+  background: rgba(185, 28, 28, 0.06);
+}
+
 .menu-recetas-admin__detalle-action {
   display: grid;
   align-content: end;

@@ -25,6 +25,44 @@ const buildInsumoOptionLabel = (insumo) => {
   return almacenCorto ? `${nombre} / ${almacenCorto}` : nombre;
 };
 
+const getUnitLabel = (source, nameKey, symbolKey) => {
+  const nombre = String(source?.[nameKey] || '').trim();
+  const simbolo = String(source?.[symbolKey] || '').trim();
+  if (nombre && simbolo) return `${nombre} (${simbolo})`;
+  return nombre || simbolo || 'Sin unidad';
+};
+
+const formatDecimal = (value, decimals = 4) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '';
+  return parsed.toLocaleString('es-HN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals
+  });
+};
+
+const getPresentacionFactor = (presentacion) => {
+  const cantidadBase = Number(presentacion?.cantidad_base || 0);
+  const cantidadPresentacion = Number(presentacion?.cantidad_presentacion || 0);
+  if (!Number.isFinite(cantidadBase) || !Number.isFinite(cantidadPresentacion) || cantidadPresentacion <= 0) return null;
+  return cantidadBase / cantidadPresentacion;
+};
+
+const buildPresentacionLabel = (presentacion) => {
+  const nombre = String(presentacion?.nombre_presentacion || 'Presentacion').trim();
+  const unidadPresentacion = getUnitLabel(presentacion, 'unidad_presentacion_nombre', 'unidad_presentacion_simbolo');
+  const unidadBase = getUnitLabel(presentacion, 'unidad_base_nombre', 'unidad_base_simbolo');
+  const cantidadPresentacion = formatDecimal(presentacion?.cantidad_presentacion, 4) || '1';
+  const cantidadBase = formatDecimal(presentacion?.cantidad_base, 4) || '0';
+  return `${nombre} - ${cantidadPresentacion} ${unidadPresentacion} = ${cantidadBase} ${unidadBase}`;
+};
+
+const blockInvalidQuantityKey = (event) => {
+  if (['e', 'E', '+', '-'].includes(event.key)) {
+    event.preventDefault();
+  }
+};
+
 const RecetasFormDrawer = ({
   drawerOpen,
   drawerMode,
@@ -32,7 +70,6 @@ const RecetasFormDrawer = ({
   form,
   detalleReceta = [],
   insumosDetalleCatalog = [],
-  unidadesMedidaCatalog = [],
   insumoCategoriasOptions = [],
   loadingDetalleCatalog = false,
   saving,
@@ -63,7 +100,6 @@ const RecetasFormDrawer = ({
     label: buildInsumoOptionLabel(insumo),
     id_categoria_insumo: String(insumo?.id_categoria_insumo || '')
   }));
-  const unidadesDetalleOptions = Array.isArray(unidadesMedidaCatalog) ? unidadesMedidaCatalog : [];
 
   if (!drawerOpen) return null;
 
@@ -293,6 +329,62 @@ const RecetasFormDrawer = ({
                         )
                         : insumoOptions;
                       const unidadBloqueada = Boolean(selectedInsumo?.id_unidad_medida);
+                      const presentacionesReceta = Array.isArray(selectedInsumo?.presentaciones_receta)
+                        ? selectedInsumo.presentaciones_receta
+                        : [];
+                      const selectedPresentacion = presentacionesReceta.find(
+                        (presentacion) => String(presentacion.id_presentacion) === String(row.id_presentacion_insumo)
+                      ) || null;
+                      const hasHistoricalPresentacion =
+                        String(row?.modo_unidad) === 'presentacion' &&
+                        String(row?.id_presentacion_insumo || '').trim() &&
+                        !selectedPresentacion;
+                      const unidadBaseLabel = selectedInsumo
+                        ? getUnitLabel(selectedInsumo, 'unidad_nombre', 'unidad_simbolo')
+                        : 'Unidad base';
+                      const presentacionOptions = selectedInsumo
+                        ? [
+                          {
+                            value: 'base',
+                            label: `Unidad base - ${unidadBaseLabel}`,
+                            tipo: 'base'
+                          },
+                          ...presentacionesReceta.map((presentacion) => ({
+                            value: `presentacion:${presentacion.id_presentacion}`,
+                            label: buildPresentacionLabel(presentacion),
+                            tipo: 'presentacion',
+                            id_presentacion: String(presentacion.id_presentacion)
+                          })),
+                          ...(hasHistoricalPresentacion ? [{
+                            value: `presentacion:${row.id_presentacion_insumo}`,
+                            label: `${row.nombre_presentacion || 'Presentacion'} - No disponible`,
+                            tipo: 'presentacion',
+                            id_presentacion: String(row.id_presentacion_insumo),
+                            isDisabled: true
+                          }] : [])
+                        ]
+                        : [];
+                      const selectedUnidadOption = String(row?.modo_unidad) === 'presentacion'
+                        ? presentacionOptions.find((option) => option.value === `presentacion:${row.id_presentacion_insumo}`) || null
+                        : presentacionOptions.find((option) => option.value === 'base') || null;
+                      const cantidadValue = String(row?.modo_unidad) === 'presentacion'
+                        ? row.cantidad_presentacion
+                        : row.cant;
+                      const cantidadField = String(row?.modo_unidad) === 'presentacion' ? 'cantidad_presentacion' : 'cant';
+                      const factorPresentacion = selectedPresentacion ? getPresentacionFactor(selectedPresentacion) : null;
+                      const cantidadPresentacion = Number(row?.cantidad_presentacion || 0);
+                      const equivalenciaBase = factorPresentacion !== null && cantidadPresentacion > 0
+                        ? cantidadPresentacion * factorPresentacion
+                        : null;
+                      const equivalenciaTexto = String(row?.modo_unidad) === 'presentacion'
+                        ? hasHistoricalPresentacion
+                          ? 'Presentacion no disponible. Cambia a unidad base o elige una presentacion activa.'
+                          : equivalenciaBase !== null
+                            ? `${formatDecimal(cantidadPresentacion, 4)} ${selectedPresentacion?.nombre_presentacion || 'presentaciones'} equivalen a ${formatDecimal(equivalenciaBase, 2)} ${unidadBaseLabel} de inventario`
+                            : 'Ingresa una cantidad para ver la equivalencia en unidad base.'
+                        : row?.cant
+                          ? `${formatDecimal(row.cant, 2)} ${unidadBaseLabel} de inventario`
+                          : 'La cantidad se consumira directamente en la unidad base.';
 
                       return (
                         <div className="menu-recetas-admin__detalle-row" key={`detalle-receta-${index}`}>
@@ -344,34 +436,50 @@ const RecetasFormDrawer = ({
                                 min="0.0001"
                                 step="0.0001"
                                 className="form-control"
-                                value={row.cant}
-                                onChange={(event) => onUpdateDetalleRow(index, 'cant', event.target.value)}
+                                value={cantidadValue}
+                                onKeyDown={blockInvalidQuantityKey}
+                                onChange={(event) => onUpdateDetalleRow(index, cantidadField, event.target.value)}
                                 disabled={saving}
-                                placeholder="Ej: 0.2500"
+                                placeholder={String(row?.modo_unidad) === 'presentacion' ? 'Ej: 2.5000' : 'Ej: 0.25'}
                                 required
                               />
                             </div>
 
                             <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--unidad">
-                              <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>Unidad</label>
+                              <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>Presentacion o unidad</label>
                               <Select
                                 inputId={`receta_detalle_unidad_${index}`}
                                 classNamePrefix="menu-salsas-receta-select"
-                                options={unidadesDetalleOptions}
-                                value={unidadesDetalleOptions.find((option) => String(option.value) === String(row.id_unidad_medida)) || null}
-                                onChange={(option) => onUpdateDetalleRow(index, 'id_unidad_medida', option?.value || '')}
-                                placeholder="Seleccionar unidad"
-                                isDisabled={saving || loadingDetalleCatalog || unidadBloqueada}
+                                options={presentacionOptions}
+                                value={selectedUnidadOption}
+                                onChange={(option) => {
+                                  if (!option || option.value === 'base') {
+                                    onUpdateDetalleRow(index, 'modo_unidad', 'base');
+                                    return;
+                                  }
+                                  onUpdateDetalleRow(index, 'id_presentacion_insumo', option.id_presentacion || '');
+                                }}
+                                placeholder="Seleccionar unidad base o presentacion"
+                                isDisabled={saving || loadingDetalleCatalog || !selectedInsumo}
                                 isClearable={false}
                                 maxMenuHeight={192}
                               />
-                              {unidadBloqueada ? (
-                                <small className="form-text">Unidad definida en el insumo</small>
+                              {hasHistoricalPresentacion ? (
+                                <small className="form-text text-danger">No disponible</small>
+                              ) : unidadBloqueada ? (
+                                <small className="form-text">Unidad base definida en el insumo</small>
                               ) : selectedInsumo ? (
                                 <small className="form-text">
                                   Este insumo no tiene unidad definida. Al guardar, se completara en el insumo.
                                 </small>
                               ) : null}
+                            </div>
+
+                            <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--equivalencia">
+                              <label className="form-label">Equivalencia en unidad base</label>
+                              <div className={`menu-recetas-admin__detalle-equivalencia ${hasHistoricalPresentacion ? 'is-warning' : ''}`}>
+                                {equivalenciaTexto}
+                              </div>
                             </div>
                           </div>
 
