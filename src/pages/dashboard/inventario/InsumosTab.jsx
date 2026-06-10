@@ -4,6 +4,7 @@ import SinPermiso from '../../../components/common/SinPermiso';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
 import { normalizeVisualText } from '../../../utils/normalizeVisualText';
+import InsumoPresentacionesModal from '../../../features/inventario/insumo-presentaciones/InsumoPresentacionesModal';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
@@ -220,6 +221,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   // WHY: permitir "Ver" sin reutilizar el drawer de edicion ni alterar el flujo existente del formulario.
   // IMPACT: solo agrega una capa de lectura; CRUD y drawer actual siguen intactos.
   const [detailInsumoId, setDetailInsumoId] = useState(null);
+  const [presentacionesInsumoId, setPresentacionesInsumoId] = useState(null);
   // NEW: seccion activa del modal de detalle segmentado.
   // WHY: ordenar la informacion por bloques sin saturar el modal con todo visible a la vez.
   // IMPACT: solo afecta presentacion/lectura del detalle; no modifica datos ni handlers.
@@ -823,6 +825,11 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const selectedInsumo = useMemo(() => insumos.find((i) => Number(i?.id_insumo) === Number(selectedId)) || null, [insumos, selectedId]);
   const detailInsumo = useMemo(() => insumos.find((i) => Number(i?.id_insumo) === Number(detailInsumoId)) || null, [detailInsumoId, insumos]);
+  const presentacionesInsumo = useMemo(
+    () => insumos.find((i) => Number(i?.id_insumo) === Number(presentacionesInsumoId)) || null,
+    [insumos, presentacionesInsumoId]
+  );
+  const canOpenPresentaciones = canVerInsumos || canVerDetalleInsumos || canEditarInsumos;
 
   const resetDrawerImage = useCallback((previewUrl = '') => {
     // NEW: helper unico para limpiar preview + input file del drawer/create de Insumos.
@@ -995,6 +1002,17 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setDetailInsumoId(null);
   }, []);
 
+  const openPresentacionesModal = useCallback((insumo) => {
+    if (!canOpenPresentaciones || !insumo) return;
+    setDetailSection(DETAIL_SECTION_DEFAULT);
+    setDetailInsumoId(null);
+    setPresentacionesInsumoId(insumo.id_insumo);
+  }, [canOpenPresentaciones]);
+
+  const closePresentacionesModal = useCallback(() => {
+    setPresentacionesInsumoId(null);
+  }, []);
+
   useEffect(() => {
     if (drawer !== 'form' || typeof window === 'undefined') return;
     const node = focusCantidad ? cantidadInputRef.current : nombreInputRef.current;
@@ -1017,11 +1035,11 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   }, [drawer]);
 
   useEffect(() => {
-    if ((drawer == null && detailInsumoId == null) || typeof document === 'undefined') return;
+    if ((drawer == null && detailInsumoId == null && presentacionesInsumoId == null) || typeof document === 'undefined') return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
-  }, [detailInsumoId, drawer]);
+  }, [detailInsumoId, drawer, presentacionesInsumoId]);
 
   useEffect(() => {
     if (drawer == null || typeof window === 'undefined') return undefined;
@@ -2720,6 +2738,16 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                   </div>
                 </div>
                 <div className="inv-ins-detail-modal__header-actions">
+                  {canOpenPresentaciones ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm inv-prod-btn-outline"
+                      onClick={() => openPresentacionesModal(detailInsumo)}
+                    >
+                      <i className="bi bi-arrow-left-right" aria-hidden="true" />
+                      <span>Presentaciones y conversiones</span>
+                    </button>
+                  ) : null}
                   <button type="button" className="btn btn-sm inv-ins-detail-modal__close" onClick={closeDetailModal}><i className="bi bi-x-lg" /></button>
                 </div>
               </div>
@@ -2763,6 +2791,15 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           </div>
         </div>
       ) : null}
+      <InsumoPresentacionesModal
+        show={Boolean(presentacionesInsumo)}
+        insumo={presentacionesInsumo}
+        unidadesMedida={unidadesMedida}
+        canEdit={canEditarInsumos}
+        canChangeEstado={canEditarInsumos || canCambiarEstadoInsumos}
+        onClose={closePresentacionesModal}
+        onNotify={safeToast}
+      />
       {discardConfirm.show && (
         <div className="inv-pro-confirm-backdrop" role="dialog" aria-modal="true" onClick={closeDiscardConfirm}>
           <div className="inv-pro-confirm-panel" onClick={(e) => e.stopPropagation()}>
