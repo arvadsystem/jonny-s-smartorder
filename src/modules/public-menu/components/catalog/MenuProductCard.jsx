@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import EmptyProductImagePlaceholder from './EmptyProductImagePlaceholder';
 import SoldOutBadge from './SoldOutBadge';
 import { requiresItemConfiguration } from '../../utils/publicMenuItemConfig';
@@ -18,6 +18,27 @@ const normalizeText = (value) =>
     .toLowerCase()
     .trim();
 
+const shouldHideCategoryDescription = (categoryName) => {
+  const normalizedCategory = normalizeText(categoryName).replace(/\s*\/\s*/g, '/');
+  return normalizedCategory.includes('cerveza') || normalizedCategory.includes('refrescos/agua');
+};
+
+const shouldRenderDescription = ({ name, description, categoryName }) => {
+  const normalizedName = normalizeText(name);
+  const normalizedDescription = normalizeText(description);
+  const genericDescription = normalizedDescription
+    .replace(/^producto\s+/i, '')
+    .replace(/^bebida\s+/i, '')
+    .trim();
+
+  if (shouldHideCategoryDescription(categoryName)) return false;
+  if (!normalizedDescription || normalizedDescription === normalizedName) return false;
+  if (normalizedDescription === `producto ${normalizedName}`) return false;
+  if (normalizedDescription === `bebida ${normalizedName}`) return false;
+  if (genericDescription && normalizedName.includes(genericDescription)) return false;
+  return true;
+};
+
 const MenuProductCard = ({
   product,
   cartQuantity = 0,
@@ -35,15 +56,14 @@ const MenuProductCard = ({
   const canAddToCart = !isSoldOut && Number(product?.id_detalle_menu || 0) > 0;
   const productName = String(product?.nombre || 'Producto').trim();
   const productDescription = String(product?.descripcion || '').trim();
-  const shouldShowDescription =
-    productDescription && normalizeText(productDescription) !== normalizeText(productName);
+  const shouldShowDescription = shouldRenderDescription({
+    name: productName,
+    description: productDescription,
+    categoryName: product?.categoria?.nombre
+  });
   const priceLabel = product?.precio?.final === null || product?.precio?.final === undefined
     ? 'Precio pendiente'
     : currencyFormatter.format(product.precio.final);
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [imageUrl]);
 
   const actionLabel = useMemo(() => {
     if (isSoldOut) return 'Agotado';
@@ -77,6 +97,11 @@ const MenuProductCard = ({
         </div>
         {shouldShowDescription ? (
           <p className="pm-menu-product-card__description">{productDescription}</p>
+        ) : null}
+        {isSoldOut ? (
+          <p className="pm-menu-product-card__availability">
+            NO DISPONIBLE POR AHORA.
+          </p>
         ) : null}
       </div>
 
