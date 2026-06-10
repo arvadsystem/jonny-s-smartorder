@@ -70,6 +70,7 @@ const RecetasFormDrawer = ({
   form,
   detalleReceta = [],
   insumosDetalleCatalog = [],
+  unidadesMedidaCatalog = [],
   insumoCategoriasOptions = [],
   loadingDetalleCatalog = false,
   saving,
@@ -100,6 +101,7 @@ const RecetasFormDrawer = ({
     label: buildInsumoOptionLabel(insumo),
     id_categoria_insumo: String(insumo?.id_categoria_insumo || '')
   }));
+  const unidadesDetalleOptions = Array.isArray(unidadesMedidaCatalog) ? unidadesMedidaCatalog : [];
 
   if (!drawerOpen) return null;
 
@@ -329,6 +331,7 @@ const RecetasFormDrawer = ({
                         )
                         : insumoOptions;
                       const unidadBloqueada = Boolean(selectedInsumo?.id_unidad_medida);
+                      const requiresInitialUnit = Boolean(selectedInsumo) && !unidadBloqueada;
                       const presentacionesReceta = Array.isArray(selectedInsumo?.presentaciones_receta)
                         ? selectedInsumo.presentaciones_receta
                         : [];
@@ -339,10 +342,15 @@ const RecetasFormDrawer = ({
                         String(row?.modo_unidad) === 'presentacion' &&
                         String(row?.id_presentacion_insumo || '').trim() &&
                         !selectedPresentacion;
-                      const unidadBaseLabel = selectedInsumo
-                        ? getUnitLabel(selectedInsumo, 'unidad_nombre', 'unidad_simbolo')
-                        : 'Unidad base';
-                      const presentacionOptions = selectedInsumo
+                      const selectedInitialUnitOption = unidadesDetalleOptions.find(
+                        (option) => String(option.value) === String(row.id_unidad_medida)
+                      ) || null;
+                      const unidadBaseLabel = requiresInitialUnit && selectedInitialUnitOption
+                        ? selectedInitialUnitOption.label
+                        : selectedInsumo
+                          ? getUnitLabel(selectedInsumo, 'unidad_nombre', 'unidad_simbolo')
+                          : 'Unidad base';
+                      const presentacionOptions = selectedInsumo && !requiresInitialUnit
                         ? [
                           {
                             value: 'base',
@@ -447,23 +455,37 @@ const RecetasFormDrawer = ({
 
                             <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--unidad">
                               <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>Presentacion o unidad</label>
-                              <Select
-                                inputId={`receta_detalle_unidad_${index}`}
-                                classNamePrefix="menu-salsas-receta-select"
-                                options={presentacionOptions}
-                                value={selectedUnidadOption}
-                                onChange={(option) => {
-                                  if (!option || option.value === 'base') {
-                                    onUpdateDetalleRow(index, 'modo_unidad', 'base');
-                                    return;
-                                  }
-                                  onUpdateDetalleRow(index, 'id_presentacion_insumo', option.id_presentacion || '');
-                                }}
-                                placeholder="Seleccionar unidad base o presentacion"
-                                isDisabled={saving || loadingDetalleCatalog || !selectedInsumo}
-                                isClearable={false}
-                                maxMenuHeight={192}
-                              />
+                              {requiresInitialUnit ? (
+                                <Select
+                                  inputId={`receta_detalle_unidad_${index}`}
+                                  classNamePrefix="menu-salsas-receta-select"
+                                  options={unidadesDetalleOptions}
+                                  value={selectedInitialUnitOption}
+                                  onChange={(option) => onUpdateDetalleRow(index, 'id_unidad_medida', option?.value || '')}
+                                  placeholder="Seleccionar unidad base"
+                                  isDisabled={saving || loadingDetalleCatalog}
+                                  isClearable={false}
+                                  maxMenuHeight={192}
+                                />
+                              ) : (
+                                <Select
+                                  inputId={`receta_detalle_unidad_${index}`}
+                                  classNamePrefix="menu-salsas-receta-select"
+                                  options={presentacionOptions}
+                                  value={selectedUnidadOption}
+                                  onChange={(option) => {
+                                    if (!option || option.value === 'base') {
+                                      onUpdateDetalleRow(index, 'modo_unidad', 'base');
+                                      return;
+                                    }
+                                    onUpdateDetalleRow(index, 'id_presentacion_insumo', option.id_presentacion || '');
+                                  }}
+                                  placeholder="Seleccionar unidad base o presentacion"
+                                  isDisabled={saving || loadingDetalleCatalog || !selectedInsumo}
+                                  isClearable={false}
+                                  maxMenuHeight={192}
+                                />
+                              )}
                               {hasHistoricalPresentacion ? (
                                 <small className="form-text text-danger">No disponible</small>
                               ) : unidadBloqueada ? (
