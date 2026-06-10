@@ -36,7 +36,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       onToggleVisible,
       onToggleAllVisible,
       onChangePrecioPublico,
-      onChangeOrden,
+      onUseOriginalPriceForAll,
       savePublication,
       reloadCurrent
     }
@@ -162,7 +162,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       return;
     }
 
-    if (!selectedSucursal || !Boolean(selectedSucursal?.estado)) {
+    if (!selectedSucursal || !selectedSucursal?.estado) {
       setScheduleError('La sucursal seleccionada no esta disponible para cambios.');
       return;
     }
@@ -251,7 +251,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             <span className="inv-prod-title">Publicacion por sucursal</span>
           </div>
           <div className="inv-prod-subtitle">
-            Controla visibilidad, precio publico y orden del menu cliente por sucursal.
+            Controla visibilidad y precio publico del menu cliente por sucursal.
           </div>
         </div>
 
@@ -260,7 +260,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             type="button"
             className="btn inv-prod-btn-primary"
             onClick={savePublication}
-            disabled={saving || loadingCatalogo || !selectedSucursalId || !selectedSucursal || !Boolean(selectedSucursal?.estado)}
+            disabled={saving || loadingCatalogo || !selectedSucursalId || !selectedSucursal || !selectedSucursal?.estado}
           >
             {saving ? 'Guardando...' : 'Guardar publicacion'}
           </button>
@@ -339,7 +339,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
                       const label = String(branch?.nombre_sucursal || `Sucursal #${id}`).trim();
                       return (
                         <option key={`menu-pub-branch-${id}`} value={id}>
-                          {label}{Boolean(branch?.estado) ? '' : ' (Inactiva)'}
+                          {label}{branch?.estado ? '' : ' (Inactiva)'}
                         </option>
                       );
                     })}
@@ -359,7 +359,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
                 {selectedSucursalId ? (
                   !selectedSucursal ? (
                     <span className="text-danger">La sucursal seleccionada ya no esta disponible. Selecciona otra sucursal.</span>
-                  ) : !Boolean(selectedSucursal?.estado) ? (
+                  ) : !selectedSucursal?.estado ? (
                     <span className="text-danger">La sucursal seleccionada esta inactiva.</span>
                   ) : menuSummary ? (
                     <>
@@ -420,7 +420,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
               onToggleVisible={onToggleVisible}
               onToggleAllVisible={onToggleAllVisible}
               onChangePrecioPublico={onChangePrecioPublico}
-              onChangeOrden={onChangeOrden}
+              onUseOriginalPriceForAll={onUseOriginalPriceForAll}
             />
           </div>
 

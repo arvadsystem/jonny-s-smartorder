@@ -5,7 +5,8 @@ import { requiresItemConfiguration } from '../../utils/publicMenuItemConfig';
 const currencyFormatter = new Intl.NumberFormat('es-HN', {
   style: 'currency',
   currency: 'HNL',
-  maximumFractionDigits: 0
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 const toFiniteNumber = (value) => {

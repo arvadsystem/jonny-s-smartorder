@@ -7,7 +7,8 @@ import { formatPublicMenuCategoryLabel } from '../../utils/publicMenuCategoryLab
 const currencyFormatter = new Intl.NumberFormat('es-HN', {
   style: 'currency',
   currency: 'HNL',
-  maximumFractionDigits: 0
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 const normalizeText = (value) =>

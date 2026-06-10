@@ -4,7 +4,7 @@ import {
   buildVisiblePageNumbers
 } from '../../personas/components/common/paginationWindow';
 
-// Tabla editable de visibilidad, precio publico y orden por item.
+// AM: Tabla editable de visibilidad y override de precio por item.
 const formatMoney = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 'L. --';
@@ -31,14 +31,14 @@ const MenuPublicationTable = ({
   onToggleVisible,
   onToggleAllVisible,
   onChangePrecioPublico,
-  onChangeOrden
+  onUseOriginalPriceForAll
 }) => {
   const headerCheckboxRef = useRef(null);
   const [typeFilter, setTypeFilter] = useState('TODOS');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
 
-  const safeItems = Array.isArray(items) ? items : [];
+  const safeItems = useMemo(() => (Array.isArray(items) ? items : []), [items]);
   const typeOptions = useMemo(() => {
     const uniqueTypes = new Set(
       safeItems
@@ -73,18 +73,12 @@ const MenuPublicationTable = ({
   const total = filteredItems.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  useEffect(() => {
-    setPage(1);
-  }, [typeFilter, searchTerm]);
-
-  useEffect(() => {
-    setPage((current) => Math.min(current, totalPages));
-  }, [totalPages]);
+  const currentPage = Math.min(page, totalPages);
 
   const paginatedItems = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
+    const start = (currentPage - 1) * PAGE_SIZE;
     return filteredItems.slice(start, start + PAGE_SIZE);
-  }, [filteredItems, page]);
+  }, [currentPage, filteredItems]);
 
   const activableItems = useMemo(
     () => paginatedItems.filter((row) => Boolean(row?.estado_item)),
@@ -94,10 +88,14 @@ const MenuPublicationTable = ({
   const visibleActivable = activableItems.filter((row) => Boolean(row?.visible)).length;
   const allChecked = totalActivable > 0 && visibleActivable === totalActivable;
   const someChecked = visibleActivable > 0 && visibleActivable < totalActivable;
-  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
+  const itemsWithPriceOverride = safeItems.filter(
+    (row) => String(row?.precio_publico_input || '').trim() !== ''
+  );
+  const allUsingOriginalPrice = itemsWithPriceOverride.length === 0;
+  const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(currentPage, totalPages), [currentPage, totalPages]);
   const pageWindowLabel = useMemo(
-    () => buildPageRangeLabel({ page, limit: PAGE_SIZE, total, currentLength: paginatedItems.length }),
-    [page, total, paginatedItems.length]
+    () => buildPageRangeLabel({ page: currentPage, limit: PAGE_SIZE, total, currentLength: paginatedItems.length }),
+    [currentPage, total, paginatedItems.length]
   );
 
   useEffect(() => {
@@ -160,7 +158,10 @@ const MenuPublicationTable = ({
                 type="text"
                 className="form-control form-control-sm"
                 value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
+                onChange={(event) => {
+                  setSearchTerm(event.target.value);
+                  setPage(1);
+                }}
                 placeholder="Nombre, ID o tipo..."
               />
             </div>
@@ -173,7 +174,10 @@ const MenuPublicationTable = ({
               id="menu-pub-filter-tipo"
               className="form-select form-select-sm"
               value={typeFilter}
-              onChange={(event) => setTypeFilter(event.target.value)}
+              onChange={(event) => {
+                setTypeFilter(event.target.value);
+                setPage(1);
+              }}
             >
               {typeOptions.map((option) => (
                 <option key={option} value={option}>
@@ -189,32 +193,67 @@ const MenuPublicationTable = ({
         <table className="table table-sm align-middle mb-0 menu-pub-admin__table">
           <thead>
             <tr>
-              <th>Tipo</th>
-              <th>Item</th>
-              <th>Estado</th>
-              <th className="text-center">
-                <div className="d-inline-flex align-items-center gap-2">
-                  <span>Visible</span>
-                  <input
-                    ref={headerCheckboxRef}
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={allChecked}
-                    disabled={totalActivable === 0}
-                    title="Seleccionar todos"
-                    aria-label="Seleccionar todos los items visibles"
-                    onChange={(event) => onToggleAllVisible?.(event.target.checked)}
-                  />
+              <th>
+                <div className="menu-pub-admin__column-head">
+                  <span>Tipo</span>
+                  <small>Clasificacion</small>
                 </div>
               </th>
-              <th>Precio publico</th>
-              <th>Orden</th>
+              <th>
+                <div className="menu-pub-admin__column-head">
+                  <span>Item</span>
+                  <small>Nombre y seguimiento</small>
+                </div>
+              </th>
+              <th className="text-center">
+                <div className="menu-pub-admin__column-head menu-pub-admin__column-head--center">
+                  <span>Estado</span>
+                  <small>Condicion operativa</small>
+                </div>
+              </th>
+              <th className="text-center">
+                <div className="menu-pub-admin__column-head menu-pub-admin__column-head--center">
+                  <div className="d-inline-flex align-items-center gap-2">
+                    <span>Visible</span>
+                    <input
+                      ref={headerCheckboxRef}
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={allChecked}
+                      disabled={totalActivable === 0}
+                      title="Seleccionar todos"
+                      aria-label="Seleccionar todos los items visibles"
+                      onChange={(event) => onToggleAllVisible?.(event.target.checked)}
+                    />
+                  </div>
+                  <small>Controla lo que el cliente ve en la landing</small>
+                </div>
+              </th>
+              <th>
+                <div className="menu-pub-admin__column-head">
+                  <div className="d-inline-flex align-items-center gap-2">
+                    <span>Precio público personalizado</span>
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={allUsingOriginalPrice}
+                    disabled={allUsingOriginalPrice}
+                    title="Usar el precio original en todos los items"
+                    aria-label="Usar precio original en todos los items"
+                    onChange={(event) => {
+                      if (event.target.checked) onUseOriginalPriceForAll?.();
+                    }}
+                    />
+                  </div>
+                  <small>Deja vacio para heredar el precio base</small>
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
             {paginatedItems.length === 0 ? (
               <tr>
-                <td colSpan={6}>
+                <td colSpan={5}>
                   <div className="menu-pub-admin__empty-state">No se encontraron resultados para el tipo seleccionado.</div>
                 </td>
               </tr>
@@ -222,55 +261,82 @@ const MenuPublicationTable = ({
               paginatedItems.map((row) => {
                 const isActive = Boolean(row?.estado_item);
                 const basePrice = Number(row?.precio_base);
+                const hasPriceOverride = String(row?.precio_publico_input || '').trim() !== '';
                 return (
                   <tr key={row.item_key}>
                     <td>
                       <TypeBadge tipoItem={row.tipo_item} />
                     </td>
                     <td>
-                      <div className="fw-semibold">{row.nombre_item}</div>
-                      <div className="small text-muted">
-                        #{row.id_item_origen} - Base: {formatMoney(basePrice)}
+                      <div className="menu-pub-admin__item-cell">
+                        <div className="menu-pub-admin__item-title">{row.nombre_item}</div>
+                        <div className="menu-pub-admin__item-meta">
+                          <span>ID #{row.id_item_origen}</span>
+                          <span>{row.publicado ? 'En detalle_menu' : 'Pendiente de publicar'}</span>
+                        </div>
                       </div>
                     </td>
                     <td>
-                      <span className={`menu-recetas-admin__estado-badge ${isActive ? 'is-active' : 'is-inactive'}`}>
-                        {isActive ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                    <td className="text-center">
-                      <input
-                        type="checkbox"
-                        className="form-check-input"
-                        checked={Boolean(row.visible)}
-                        disabled={!isActive}
-                        title={isActive ? 'Cambiar visibilidad' : 'Item inactivo: no se puede publicar'}
-                        aria-label={`Visibilidad ${row.nombre_item || row.item_key}`}
-                        onChange={(event) => onToggleVisible?.(row.item_key, event.target.checked)}
-                      />
+                      <div className="menu-pub-admin__status-cell">
+                        <span className={`menu-recetas-admin__estado-badge ${isActive ? 'is-active' : 'is-inactive'}`}>
+                          {isActive ? 'Activo' : 'Inactivo'}
+                        </span>
+                        <span className="menu-pub-admin__cell-note">
+                          {isActive ? 'Listo para publicación.' : 'No se puede publicar mientras este inactivo.'}
+                        </span>
+                      </div>
                     </td>
                     <td>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="form-control form-control-sm menu-pub-admin__table-input"
-                        value={row.precio_publico_input}
-                        onChange={(event) => onChangePrecioPublico?.(row.item_key, event.target.value)}
-                        placeholder={Number.isFinite(basePrice) ? String(basePrice) : 'Sin precio'}
-                        disabled={!isActive}
-                      />
+                      <div className="menu-pub-admin__visibility-cell">
+                        <div className="menu-pub-admin__visibility-toggle">
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            checked={Boolean(row.visible)}
+                            disabled={!isActive}
+                            title={isActive ? 'Cambiar visibilidad' : 'Item inactivo: no se puede publicar'}
+                            aria-label={`Visibilidad ${row.nombre_item || row.item_key}`}
+                            onChange={(event) => onToggleVisible?.(row.item_key, event.target.checked)}
+                          />
+                          <span
+                            className={`menu-pub-admin__visibility-pill ${
+                              row.visible ? 'is-visible' : 'is-hidden'
+                            }`.trim()}
+                          >
+                            {row.visible ? 'Visible en landing' : 'Oculto al cliente'}
+                          </span>
+                        </div>
+                        <span className="menu-pub-admin__cell-note">
+                          {row.visible ? 'Se mostrará en el menú público.' : 'Actívalo para incluirlo en la landing.'}
+                        </span>
+                      </div>
                     </td>
                     <td>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        className="form-control form-control-sm menu-pub-admin__table-input"
-                        value={row.orden_input}
-                        onChange={(event) => onChangeOrden?.(row.item_key, event.target.value)}
-                        disabled={!row.visible || !isActive}
-                      />
+                      <div className="menu-pub-admin__price-cell">
+                        <div className="menu-pub-admin__price-summary">
+                          <span className="menu-pub-admin__price-label">Precio heredado</span>
+                          <strong>{formatMoney(basePrice)}</strong>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="form-control form-control-sm menu-pub-admin__table-input"
+                          value={row.precio_publico_input}
+                          onChange={(event) => onChangePrecioPublico?.(row.item_key, event.target.value)}
+                          placeholder="Opcional: usa el precio heredado"
+                          disabled={!isActive}
+                          aria-label={`Precio público personalizado de ${row.nombre_item || row.item_key}`}
+                        />
+                        {hasPriceOverride ? (
+                          <span className="menu-pub-admin__price-state is-override">
+                            Personalizado: <strong>{formatMoney(row.precio_publico_input)}</strong>
+                          </span>
+                        ) : (
+                          <span className="menu-pub-admin__price-state is-inherited">Usando precio original</span>
+                        )}
+                        <span className="menu-pub-admin__cell-note">Deja el campo vacío para volver al precio base.</span>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -287,8 +353,8 @@ const MenuPublicationTable = ({
           <button
             type="button"
             className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
-            disabled={page <= 1}
+            onClick={() => setPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage <= 1}
             aria-label="Pagina anterior"
           >
             <i className="bi bi-chevron-left" aria-hidden="true" />
@@ -300,23 +366,23 @@ const MenuPublicationTable = ({
               <button
                 key={pageNumber}
                 type="button"
-                className={`inv-warehouse-moves__page-number ${pageNumber === page ? 'is-active' : ''}`.trim()}
+                className={`inv-warehouse-moves__page-number ${pageNumber === currentPage ? 'is-active' : ''}`.trim()}
                 onClick={() => setPage(pageNumber)}
                 aria-label={`Ir a la pagina ${pageNumber}`}
-                aria-current={pageNumber === page ? 'page' : undefined}
+                aria-current={pageNumber === currentPage ? 'page' : undefined}
               >
                 {pageNumber}
               </button>
             ))}
           </div>
 
-          <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">{`Pagina ${page} de ${totalPages}`}</div>
+          <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">{`Pagina ${currentPage} de ${totalPages}`}</div>
 
           <button
             type="button"
             className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
-            onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-            disabled={page >= totalPages}
+            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage >= totalPages}
             aria-label="Pagina siguiente"
           >
             <span>Siguiente</span>
