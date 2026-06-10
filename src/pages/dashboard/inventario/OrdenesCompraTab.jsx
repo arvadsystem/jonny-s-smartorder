@@ -51,6 +51,14 @@ const parseNonNegativeNumber = (rawValue) => {
   return value;
 };
 
+const parsePositiveDecimal4 = (rawValue) => {
+  if (!hasValue(rawValue)) return null;
+  const text = String(rawValue).trim();
+  if (!/^(?:\d+|\d+\.\d{1,4})$/.test(text)) return null;
+  const value = Number(text);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
 const parseOptionalPositiveInt = (rawValue) => {
   if (!hasValue(rawValue)) return null;
   return parsePositiveInt(rawValue);
@@ -79,6 +87,12 @@ const normalizeAlmacenesSelection = (rawValue, max = 2) => {
 
 const sanitizeInt = (rawValue) => String(rawValue ?? '').replace(/[^\d]/g, '');
 const sanitizeDecimal = (rawValue) => String(rawValue ?? '').replace(/[^\d.]/g, '');
+const sanitizeDecimal4 = (rawValue) => {
+  const text = String(rawValue ?? '').replace(/[^\d.]/g, '');
+  const [integerPart = '', ...decimalParts] = text.split('.');
+  if (decimalParts.length === 0) return integerPart;
+  return `${integerPart}.${decimalParts.join('').slice(0, 4)}`;
+};
 const normalizeText = (rawValue, max = 1000) =>
   String(rawValue ?? '')
     .replace(/\s+/g, ' ')
@@ -410,6 +424,120 @@ const formatMoney = (rawValue) => {
   return `L. ${value.toFixed(2)}`;
 };
 
+const formatQuantity = (rawValue) => {
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) return '0';
+  return value.toFixed(4).replace(/\.?0+$/, '');
+};
+
+const formatUnitLabel = (nombre, simbolo, fallback = 'unidad base') => {
+  const unitName = normalizeText(nombre, 80);
+  const unitSymbol = normalizeText(simbolo, 20);
+  if (unitName && unitSymbol) return `${unitName} (${unitSymbol})`;
+  return unitName || unitSymbol || fallback;
+};
+
+const normalizePresentacionCompra = (row) => {
+  const idPresentacion = parsePositiveInt(row?.id_presentacion);
+  const idInsumo = parsePositiveInt(row?.id_insumo);
+  if (!idPresentacion || !idInsumo) return null;
+  return {
+    id_presentacion: idPresentacion,
+    id_insumo: idInsumo,
+    nombre_presentacion: normalizeText(row?.nombre_presentacion, 120) || `Presentacion #${idPresentacion}`,
+    cantidad_presentacion: parsePositiveDecimal4(row?.cantidad_presentacion),
+    id_unidad_presentacion: parsePositiveInt(row?.id_unidad_presentacion),
+    unidad_presentacion_nombre: normalizeText(row?.unidad_presentacion_nombre, 80),
+    unidad_presentacion_simbolo: normalizeText(row?.unidad_presentacion_simbolo, 20),
+    cantidad_base: parsePositiveDecimal4(row?.cantidad_base),
+    id_unidad_base: parsePositiveInt(row?.id_unidad_base),
+    unidad_base_nombre: normalizeText(row?.unidad_base_nombre, 80),
+    unidad_base_simbolo: normalizeText(row?.unidad_base_simbolo, 20),
+    es_predeterminada_compra: boolish(row?.es_predeterminada_compra)
+  };
+};
+
+const buildPresentationOptionLabel = (presentacion) => {
+  const presentationUnit = formatUnitLabel(
+    presentacion?.unidad_presentacion_nombre,
+    presentacion?.unidad_presentacion_simbolo,
+    'presentacion'
+  );
+  const baseUnit = formatUnitLabel(
+    presentacion?.unidad_base_nombre,
+    presentacion?.unidad_base_simbolo,
+    'unidad base'
+  );
+  return `${presentacion?.nombre_presentacion || 'Presentacion'} - ${formatQuantity(
+    presentacion?.cantidad_presentacion
+  )} ${presentationUnit} = ${formatQuantity(presentacion?.cantidad_base)} ${baseUnit}`;
+};
+
+const resolvePresentationEquivalence = (row, presentacion) => {
+  if (!row || !presentacion) return null;
+  const cantidadPresentacion = parsePositiveDecimal4(row?.cantidad_presentacion);
+  const cantidadBase = parsePositiveDecimal4(presentacion?.cantidad_base);
+  const cantidadPresentacionConfig = parsePositiveDecimal4(presentacion?.cantidad_presentacion);
+  if (!cantidadPresentacion || !cantidadBase || !cantidadPresentacionConfig) return null;
+  const factor = cantidadBase / cantidadPresentacionConfig;
+  const equivalencia = cantidadPresentacion * factor;
+  if (!Number.isFinite(equivalencia) || equivalencia <= 0) return null;
+  return {
+    factor,
+    equivalencia,
+    unidad_base: formatUnitLabel(
+      presentacion?.unidad_base_nombre,
+      presentacion?.unidad_base_simbolo,
+      'unidad base'
+    )
+  };
+};
+
+const resolveDraftEstimatedBaseQuantity = (row, presentacionesCompraByInsumo) => {
+  if (row?.item_tipo === 'producto') return parsePositiveInt(row?.cantidad) || 0;
+  if (row?.modo_unidad === 'presentacion') {
+    const presentacion = (presentacionesCompraByInsumo.get(parsePositiveInt(row?.id_item)) || []).find(
+      (item) => Number(item.id_presentacion) === Number(parsePositiveInt(row?.id_presentacion_insumo))
+    );
+    return resolvePresentationEquivalence(row, presentacion)?.equivalencia || 0;
+  }
+  return parsePositiveDecimal4(row?.cantidad) || 0;
+};
+
+const renderOrderDetailQuantity = (row) => {
+  const isPresentation = parsePositiveInt(row?.id_presentacion_insumo);
+  if (isPresentation) {
+    const presentationUnit = formatUnitLabel(
+      row?.unidad_presentacion_nombre,
+      row?.unidad_presentacion_simbolo,
+      'presentaciones'
+    );
+    const baseUnit = formatUnitLabel(row?.unidad_base_nombre, row?.unidad_base_simbolo, 'unidad base');
+    return (
+      <div>
+        <strong>
+          {formatQuantity(row?.cantidad_presentacion)} {presentationUnit}
+        </strong>
+        <small className="text-muted d-block">
+          Equivale a {formatQuantity(row?.cantidad_orden)} {baseUnit}
+        </small>
+        {hasValue(row?.factor_conversion_usado) && (
+          <small className="text-muted d-block">Factor usado: {formatQuantity(row.factor_conversion_usado)}</small>
+        )}
+        {(row?.presentacion_estado_actual === false || row?.presentacion_uso_compra_actual === false) && (
+          <span className="badge text-bg-warning mt-1">No disponible actualmente</span>
+        )}
+      </div>
+    );
+  }
+  const baseUnit = formatUnitLabel(row?.unidad_base_nombre, row?.unidad_base_simbolo, 'unidad base');
+  return (
+    <span>
+      {formatQuantity(row?.cantidad_orden)} {String(row?.item_tipo || '').toLowerCase() === 'insumo' ? baseUnit : ''}
+    </span>
+  );
+};
+
 const resolveItemAlmacenes = (row) => {
   const fromArray = normalizeAlmacenesSelection(row?.id_almacenes, 50);
   if (fromArray.length > 0) return fromArray;
@@ -433,6 +561,7 @@ const toCatalog = (productos, insumos) => {
         precio_estimado: parseNonNegativeNumber(row?.precio) ?? 0,
         // AM: unidad opcional solo informativa en draft de creacion.
         unidad_nombre: normalizeText(row?.unidad_medida_nombre || row?.unidad_nombre, 80),
+        unidad_simbolo: normalizeText(row?.unidad_medida_simbolo || row?.unidad_simbolo, 20),
         nombre: row.nombre_producto || `Producto #${row.id_producto}`,
         categoria: getCategoriaLabel(row, 'Sin categoria'),
         descripcion: row.descripcion_producto || '',
@@ -458,6 +587,7 @@ const toCatalog = (productos, insumos) => {
           row?.unidad_medida_nombre || row?.nombre_unidad_medida || row?.unidad_nombre,
           80
         ),
+        unidad_simbolo: normalizeText(row?.unidad_medida_simbolo || row?.simbolo_unidad_medida || row?.unidad_simbolo, 20),
         nombre: row.nombre_insumo || `Insumo #${row.id_insumo}`,
         categoria: getCategoriaLabel(row, 'Sin categoria'),
         descripcion: row.descripcion || '',
@@ -518,7 +648,7 @@ const buildProviderGroupsForOrden = (ordenDetalle, selectedProveedorRaw) => {
     const providerNameRaw =
       detail?.proveedor_sugerido_nombre || detail?.nombre_proveedor_sugerido || detail?.nombre_proveedor || '';
     const nombreProveedor = normalizeText(providerNameRaw, 120) || (idProveedor ? `Proveedor #${idProveedor}` : 'Proveedor sin definir');
-    const cantidad = parsePositiveInt(detail?.cantidad_orden) || 0;
+    const cantidad = parseNonNegativeNumber(detail?.cantidad_orden) || 0;
     const hasCompraDetalle = Boolean(parsePositiveInt(detail?.id_compra) || parsePositiveInt(detail?.id_detalle_compra));
     const currentGroup =
       groupsMap.get(groupKey) ||
@@ -913,7 +1043,8 @@ const OrdenesCompraTab = ({ openToast }) => {
   // AM: contexto backend para forzar sucursal automatica en creacion operativa.
   const [workflowCreateContext, setWorkflowCreateContext] = useState({
     id_sucursal_usuario: null,
-    restringido_a_sucursal_usuario: false
+    restringido_a_sucursal_usuario: false,
+    presentaciones_compra: []
   });
   const [draftAlmacenesBase, setDraftAlmacenesBase] = useState([]);
   const [catalogSucursalFilter, setCatalogSucursalFilter] = useState('');
@@ -1006,6 +1137,35 @@ const OrdenesCompraTab = ({ openToast }) => {
   }, [isOperationalCreateRestricted, workflowCreateContext?.id_sucursal_usuario]);
 
   const catalog = useMemo(() => toCatalog(productos, insumos), [insumos, productos]);
+  const presentacionesCompra = useMemo(
+    () =>
+      (Array.isArray(workflowCreateContext?.presentaciones_compra)
+        ? workflowCreateContext.presentaciones_compra
+        : [])
+        .map(normalizePresentacionCompra)
+        .filter(Boolean),
+    [workflowCreateContext?.presentaciones_compra]
+  );
+  const presentacionesCompraByInsumo = useMemo(() => {
+    const map = new Map();
+    for (const presentacion of presentacionesCompra) {
+      const current = map.get(presentacion.id_insumo) || [];
+      current.push(presentacion);
+      map.set(presentacion.id_insumo, current);
+    }
+    for (const [idInsumo, rows] of map.entries()) {
+      map.set(
+        idInsumo,
+        rows.slice().sort((a, b) => {
+          if (a.es_predeterminada_compra !== b.es_predeterminada_compra) {
+            return a.es_predeterminada_compra ? -1 : 1;
+          }
+          return a.nombre_presentacion.localeCompare(b.nombre_presentacion, 'es');
+        })
+      );
+    }
+    return map;
+  }, [presentacionesCompra]);
   const almacenesCatalog = useMemo(() => toAlmacenesCatalog(almacenes), [almacenes]);
   const sucursalesCatalog = useMemo(() => {
     const map = new Map();
@@ -1194,21 +1354,7 @@ const OrdenesCompraTab = ({ openToast }) => {
 
   // AM: lista de catalogo elegible para editar lineas; excluye repetidos y filtra por sucursal de la orden.
   const editDetalleCatalogOptions = useMemo(() => {
-    const existingRows = Array.isArray(editDetallesModal?.rows) ? editDetallesModal.rows : [];
-    const newRows = Array.isArray(editDetallesModal?.add_rows) ? editDetallesModal.add_rows : [];
     const idSucursalOrden = parseOptionalPositiveInt(editDetallesModal?.orden?.id_sucursal);
-    const takenKeys = new Set(
-      [...existingRows, ...newRows]
-        .map((row) => {
-          const itemTipo = String(row?.item_tipo || '')
-            .trim()
-            .toLowerCase();
-          const idItem = parsePositiveInt(row?.id_item);
-          if (!['producto', 'insumo'].includes(itemTipo) || !idItem) return null;
-          return `${itemTipo}:${idItem}`;
-        })
-        .filter(Boolean)
-    );
 
     return catalog
       .map((row) => {
@@ -1234,11 +1380,11 @@ const OrdenesCompraTab = ({ openToast }) => {
         const idItem = parsePositiveInt(row?.id_item);
         if (!['producto', 'insumo'].includes(itemTipo) || !idItem) return false;
         if (!Array.isArray(row?.id_almacenes_sucursal) || row.id_almacenes_sucursal.length <= 0) return false;
-        return !takenKeys.has(`${itemTipo}:${idItem}`);
+        return true;
       })
       .sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es'))
       .slice(0, 300);
-  }, [almacenesMap, catalog, editDetallesModal?.add_rows, editDetallesModal?.orden?.id_sucursal, editDetallesModal?.rows]);
+  }, [almacenesMap, catalog, editDetallesModal?.orden?.id_sucursal]);
 
   // AM: filtro UX (tipo + buscador) para seleccion rapida de producto/insumo en modal admin.
   const editDetalleCatalogFiltered = useMemo(() => {
@@ -1323,13 +1469,30 @@ const OrdenesCompraTab = ({ openToast }) => {
       return errors;
     }
     for (const row of draft) {
-      const cantidad = parsePositiveInt(row?.cantidad);
+      const itemTipo = String(row?.item_tipo || '').trim().toLowerCase();
+      const modoUnidad = String(row?.modo_unidad || 'base').trim().toLowerCase();
+      const cantidadProducto = parsePositiveInt(row?.cantidad);
+      const cantidadInsumoBase = parsePositiveDecimal4(row?.cantidad);
+      const cantidadPresentacion = parsePositiveDecimal4(row?.cantidad_presentacion);
+      const idPresentacion = parsePositiveInt(row?.id_presentacion_insumo);
+      const presentacionesInsumo = presentacionesCompraByInsumo.get(parsePositiveInt(row?.id_item)) || [];
+      const presentacionActiva = idPresentacion
+        ? presentacionesInsumo.find((presentacion) => Number(presentacion.id_presentacion) === Number(idPresentacion))
+        : null;
       const almacenesDisponiblesItem = normalizeAlmacenesSelection(
         row?.id_almacenes_disponibles ?? row?.id_almacenes,
         50
       );
-      if (!cantidad) {
-        errors[row.key] = 'Cantidad invalida. Debe ser entero mayor a 0.';
+      if (itemTipo === 'producto' && !cantidadProducto) {
+        errors[row.key] = 'La cantidad del producto debe ser un entero mayor a 0.';
+      } else if (itemTipo === 'insumo' && modoUnidad === 'base' && !cantidadInsumoBase) {
+        errors[row.key] = 'La cantidad del insumo debe ser mayor a 0 y tener maximo 4 decimales.';
+      } else if (itemTipo === 'insumo' && modoUnidad === 'presentacion' && !idPresentacion) {
+        errors[row.key] = 'Selecciona una presentacion valida para el insumo.';
+      } else if (itemTipo === 'insumo' && modoUnidad === 'presentacion' && !presentacionActiva) {
+        errors[row.key] = 'La presentacion seleccionada ya no esta disponible en el catalogo actual.';
+      } else if (itemTipo === 'insumo' && modoUnidad === 'presentacion' && !cantidadPresentacion) {
+        errors[row.key] = 'La cantidad de presentaciones debe ser mayor a 0 y tener maximo 4 decimales.';
       } else if (
         almacenesDisponiblesItem.length > 0 &&
         !almacenesDisponiblesItem.includes(resolvedCreateWarehouseId)
@@ -1338,13 +1501,17 @@ const OrdenesCompraTab = ({ openToast }) => {
       }
     }
     return errors;
-  }, [draft, hasCreateSucursalSelected, hasCreateWarehouseResolved, resolvedCreateWarehouseId]);
+  }, [
+    draft,
+    hasCreateSucursalSelected,
+    hasCreateWarehouseResolved,
+    presentacionesCompraByInsumo,
+    resolvedCreateWarehouseId
+  ]);
 
   const draftTotals = useMemo(() => {
-    const totals = { productos: 0, insumos: 0, unidades: 0 };
+    const totals = { productos: 0, insumos: 0 };
     for (const row of draft) {
-      const cantidad = parsePositiveInt(row?.cantidad) || 0;
-      totals.unidades += cantidad;
       if (row.item_tipo === 'producto') totals.productos += 1;
       if (row.item_tipo === 'insumo') totals.insumos += 1;
     }
@@ -1354,9 +1521,9 @@ const OrdenesCompraTab = ({ openToast }) => {
     let subtotal = 0;
     let totalLineasSinPrecio = 0;
     for (const row of draft) {
-      const cantidad = parsePositiveInt(row?.cantidad) || 0;
+      const cantidad = resolveDraftEstimatedBaseQuantity(row, presentacionesCompraByInsumo);
       const precioEstimado = parseNonNegativeNumber(row?.precio_estimado);
-      if (precioEstimado === null || precioEstimado <= 0) {
+      if (precioEstimado === null || precioEstimado <= 0 || cantidad <= 0) {
         totalLineasSinPrecio += 1;
         continue;
       }
@@ -1371,7 +1538,7 @@ const OrdenesCompraTab = ({ openToast }) => {
       total,
       lineasSinPrecio: totalLineasSinPrecio
     };
-  }, [draft]);
+  }, [draft, presentacionesCompraByInsumo]);
 
   const hasDraftErrors = Object.keys(draftValidation).length > 0;
   const hasDraftContent = draft.length > 0 || draftItemRequests.length > 0;
@@ -1740,7 +1907,10 @@ const OrdenesCompraTab = ({ openToast }) => {
       setAlmacenes(almacenesFinales);
       setWorkflowCreateContext({
         id_sucursal_usuario: parseOptionalPositiveInt(contextData?.id_sucursal_usuario),
-        restringido_a_sucursal_usuario: Boolean(contextData?.restringido_a_sucursal_usuario)
+        restringido_a_sucursal_usuario: Boolean(contextData?.restringido_a_sucursal_usuario),
+        presentaciones_compra: Array.isArray(contextData?.presentaciones_compra)
+          ? contextData.presentaciones_compra
+          : []
       });
       setCategoriasProductos(Array.isArray(catsProd) ? catsProd : []);
       setCategoriasInsumos(Array.isArray(catsIns) ? catsIns : []);
@@ -1892,12 +2062,20 @@ const OrdenesCompraTab = ({ openToast }) => {
           );
           return rows;
         }
+        const presentacionesInsumo = item.item_tipo === 'insumo'
+          ? presentacionesCompraByInsumo.get(parsePositiveInt(item?.id_item)) || []
+          : [];
+        const presentacionPredeterminada =
+          presentacionesInsumo.find((row) => row.es_predeterminada_compra) || null;
 
         return [
           ...rows,
           {
             ...item,
+            modo_unidad: item.item_tipo === 'insumo' && presentacionPredeterminada ? 'presentacion' : 'base',
             cantidad: '1',
+            id_presentacion_insumo: presentacionPredeterminada?.id_presentacion || null,
+            cantidad_presentacion: presentacionPredeterminada ? '1' : '',
             id_almacenes_disponibles: itemAlmacenes,
             // AM: una sola OC = un solo almacen destino automatico por sucursal.
             id_almacenes: [resolvedCreateWarehouseId],
@@ -1911,7 +2089,9 @@ const OrdenesCompraTab = ({ openToast }) => {
       }
       return rows.map((row) =>
         row.key === item.key
-          ? { ...row, cantidad: String((parsePositiveInt(row.cantidad) || 0) + 1) }
+          ? row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion'
+            ? { ...row, cantidad_presentacion: String((parsePositiveDecimal4(row.cantidad_presentacion) || 0) + 1) }
+            : { ...row, cantidad: String((row.item_tipo === 'producto' ? parsePositiveInt(row.cantidad) : parsePositiveDecimal4(row.cantidad) || 0) + 1) }
           : row
       );
     });
@@ -1919,13 +2099,13 @@ const OrdenesCompraTab = ({ openToast }) => {
 
   // AM: mantiene control dual de cantidad (stepper +/- y entrada manual) en cards de detalle de solicitud.
   const setDraftCantidad = (key, value) => {
-    const safeValue = sanitizeInt(value);
     setDraft((prev) =>
       prev.map((item) =>
         item.key === key
           ? {
               ...item,
-              cantidad: safeValue
+              [item.item_tipo === 'insumo' && item.modo_unidad === 'presentacion' ? 'cantidad_presentacion' : 'cantidad']:
+                item.item_tipo === 'producto' ? sanitizeInt(value) : sanitizeDecimal4(value)
             }
           : item
       )
@@ -1937,11 +2117,45 @@ const OrdenesCompraTab = ({ openToast }) => {
     setDraft((prev) =>
       prev.map((item) => {
         if (item.key !== key) return item;
-        const current = parsePositiveInt(item.cantidad) || 1;
+        const field = item.item_tipo === 'insumo' && item.modo_unidad === 'presentacion'
+          ? 'cantidad_presentacion'
+          : 'cantidad';
+        const current = item.item_tipo === 'producto'
+          ? parsePositiveInt(item[field]) || 1
+          : parsePositiveDecimal4(item[field]) || 1;
         const next = Math.max(1, current + delta);
         return {
           ...item,
-          cantidad: String(next)
+          [field]: String(next)
+        };
+      })
+    );
+  };
+
+  const setDraftModoUnidad = (key, rawValue) => {
+    const value = String(rawValue || 'base');
+    setDraft((prev) =>
+      prev.map((item) => {
+        if (item.key !== key || item.item_tipo !== 'insumo') return item;
+        if (value === 'base') {
+          return {
+            ...item,
+            modo_unidad: 'base',
+            id_presentacion_insumo: null,
+            cantidad_presentacion: '',
+            cantidad: parsePositiveDecimal4(item.cantidad) ? item.cantidad : '1'
+          };
+        }
+
+        const idPresentacion = parsePositiveInt(value.replace('presentacion:', ''));
+        const presentacionesInsumo = presentacionesCompraByInsumo.get(parsePositiveInt(item?.id_item)) || [];
+        const presentacion = presentacionesInsumo.find((row) => Number(row.id_presentacion) === Number(idPresentacion));
+        if (!presentacion) return item;
+        return {
+          ...item,
+          modo_unidad: 'presentacion',
+          id_presentacion_insumo: presentacion.id_presentacion,
+          cantidad_presentacion: parsePositiveDecimal4(item.cantidad_presentacion) ? item.cantidad_presentacion : '1'
         };
       })
     );
@@ -2128,20 +2342,55 @@ const OrdenesCompraTab = ({ openToast }) => {
     const detalles = [];
     for (const row of draft) {
       const idItem = parsePositiveInt(row.id_item);
-      const cantidad = parsePositiveInt(row.cantidad);
-      if (!idItem || !cantidad || !['producto', 'insumo'].includes(row.item_tipo)) {
+      const itemTipo = String(row.item_tipo || '').trim().toLowerCase();
+      if (!idItem || !['producto', 'insumo'].includes(itemTipo)) {
         toast('VALIDACION', `Detalle invalido en ${row.nombre}.`, 'warning');
         return;
       }
-      detalles.push({
-        item_tipo: row.item_tipo,
+      const basePayload = {
+        item_tipo: itemTipo,
         id_item: idItem,
-        cantidad,
+        id_almacen_destino: resolvedCreateWarehouseId,
+        id_proveedor_sugerido: parsePositiveInt(row?.id_proveedor_sugerido) || null
+      };
+      if (itemTipo === 'producto') {
+        const cantidad = parsePositiveInt(row.cantidad);
+        if (!cantidad) {
+          toast('VALIDACION', 'La cantidad del producto debe ser un entero mayor a 0.', 'warning');
+          return;
+        }
+        detalles.push({
+          ...basePayload,
+          cantidad,
         // AM: almacén destino automático por sucursal, uniforme para todas las líneas de la OC.
         id_almacen_destino: resolvedCreateWarehouseId,
         // AM: envia proveedor sugerido por linea (o null) sin cambiar contrato principal de creacion.
         id_proveedor_sugerido: parsePositiveInt(row?.id_proveedor_sugerido) || null
       });
+        continue;
+      }
+
+      if (String(row?.modo_unidad || 'base') === 'presentacion') {
+        const idPresentacionInsumo = parsePositiveInt(row?.id_presentacion_insumo);
+        const cantidadPresentacion = parsePositiveDecimal4(row?.cantidad_presentacion);
+        if (!idPresentacionInsumo || !cantidadPresentacion) {
+          toast('VALIDACION', `Presentacion invalida en ${row.nombre}.`, 'warning');
+          return;
+        }
+        detalles.push({
+          ...basePayload,
+          modo_unidad: 'presentacion',
+          id_presentacion_insumo: idPresentacionInsumo,
+          cantidad_presentacion: cantidadPresentacion
+        });
+      } else {
+        const cantidad = parsePositiveDecimal4(row.cantidad);
+        if (!cantidad) {
+          toast('VALIDACION', 'La cantidad del insumo debe ser mayor a 0 y tener maximo 4 decimales.', 'warning');
+          return;
+        }
+        detalles.push({ ...basePayload, modo_unidad: 'base', cantidad });
+      }
     }
 
     setCreating(true);
@@ -2349,7 +2598,19 @@ const OrdenesCompraTab = ({ openToast }) => {
           }`,
           item_tipo: row.item_tipo || '-',
           id_item: parsePositiveInt(row?.id_producto || row?.id_insumo),
-          cantidad: String(row.cantidad_orden || 0),
+          modo_unidad: row?.modo_unidad || (parsePositiveInt(row?.id_presentacion_insumo) ? 'presentacion' : 'base'),
+          cantidad: String(row.cantidad_orden || ''),
+          cantidad_orden: row.cantidad_orden,
+          id_presentacion_insumo: parsePositiveInt(row?.id_presentacion_insumo),
+          cantidad_presentacion: hasValue(row?.cantidad_presentacion) ? String(row.cantidad_presentacion) : '',
+          nombre_presentacion: normalizeText(row?.nombre_presentacion, 120),
+          unidad_base_nombre: normalizeText(row?.unidad_base_nombre, 80),
+          unidad_base_simbolo: normalizeText(row?.unidad_base_simbolo, 20),
+          unidad_presentacion_nombre: normalizeText(row?.unidad_presentacion_nombre, 80),
+          unidad_presentacion_simbolo: normalizeText(row?.unidad_presentacion_simbolo, 20),
+          factor_conversion_usado: row?.factor_conversion_usado,
+          presentacion_estado_actual: row?.presentacion_estado_actual !== false,
+          presentacion_uso_compra_actual: row?.presentacion_uso_compra_actual !== false,
           eliminar: false
         })),
         add_rows: [],
@@ -2377,7 +2638,44 @@ const OrdenesCompraTab = ({ openToast }) => {
         eliminar.push(idDetalle);
         continue;
       }
-      const cantidad = parsePositiveInt(row.cantidad);
+      const itemTipo = String(row?.item_tipo || '').trim().toLowerCase();
+      const modoUnidad = String(row?.modo_unidad || 'base').trim().toLowerCase();
+      if (itemTipo === 'producto') {
+        const cantidad = parsePositiveInt(row.cantidad);
+        if (!cantidad) {
+          setEditDetallesModal((prev) => ({
+            ...prev,
+            error: `Cantidad invalida en ${row.item_nombre}.`
+          }));
+          return;
+        }
+        actualizar.push({ id_detalle_orden: idDetalle, cantidad });
+        continue;
+      }
+
+      if (modoUnidad === 'presentacion') {
+        const idPresentacionInsumo = parsePositiveInt(row?.id_presentacion_insumo);
+        const cantidadPresentacion = parsePositiveDecimal4(row?.cantidad_presentacion);
+        const presentacionDisponible = (presentacionesCompraByInsumo.get(parsePositiveInt(row?.id_item)) || []).some(
+          (presentacion) => Number(presentacion.id_presentacion) === Number(idPresentacionInsumo)
+        );
+        if (!idPresentacionInsumo || !cantidadPresentacion || !presentacionDisponible) {
+          setEditDetallesModal((prev) => ({
+            ...prev,
+            error: `Selecciona una presentacion activa o cambia a unidad base en ${row.item_nombre}.`
+          }));
+          return;
+        }
+        actualizar.push({
+          id_detalle_orden: idDetalle,
+          modo_unidad: 'presentacion',
+          id_presentacion_insumo: idPresentacionInsumo,
+          cantidad_presentacion: cantidadPresentacion
+        });
+        continue;
+      }
+
+      const cantidad = parsePositiveDecimal4(row.cantidad);
       if (!cantidad) {
         setEditDetallesModal((prev) => ({
           ...prev,
@@ -2385,7 +2683,7 @@ const OrdenesCompraTab = ({ openToast }) => {
         }));
         return;
       }
-      actualizar.push({ id_detalle_orden: idDetalle, cantidad });
+      actualizar.push({ id_detalle_orden: idDetalle, modo_unidad: 'base', cantidad });
     }
 
     for (const row of Array.isArray(editDetallesModal.add_rows) ? editDetallesModal.add_rows : []) {
@@ -2393,9 +2691,8 @@ const OrdenesCompraTab = ({ openToast }) => {
         .trim()
         .toLowerCase();
       const idItem = parsePositiveInt(row?.id_item);
-      const cantidad = parsePositiveInt(row?.cantidad);
       const idAlmacenDestino = parsePositiveInt(row?.id_almacen_destino);
-      if (!['producto', 'insumo'].includes(itemTipo) || !idItem || !cantidad || !idAlmacenDestino) {
+      if (!['producto', 'insumo'].includes(itemTipo) || !idItem || !idAlmacenDestino) {
         setEditDetallesModal((prev) => ({
           ...prev,
           error: `Hay una linea nueva invalida en ${row?.item_nombre || 'item agregado'}.`
@@ -2403,12 +2700,40 @@ const OrdenesCompraTab = ({ openToast }) => {
         return;
       }
 
-      agregar.push({
+      const basePayload = {
         item_tipo: itemTipo,
         id_item: idItem,
-        cantidad,
         id_almacen_destino: idAlmacenDestino
-      });
+      };
+
+      if (itemTipo === 'producto') {
+        const cantidad = parsePositiveInt(row?.cantidad);
+        if (!cantidad) {
+          setEditDetallesModal((prev) => ({ ...prev, error: `Cantidad invalida en ${row?.item_nombre || 'producto'}.` }));
+          return;
+        }
+        agregar.push({ ...basePayload, cantidad });
+      } else if (String(row?.modo_unidad || 'base') === 'presentacion') {
+        const idPresentacionInsumo = parsePositiveInt(row?.id_presentacion_insumo);
+        const cantidadPresentacion = parsePositiveDecimal4(row?.cantidad_presentacion);
+        if (!idPresentacionInsumo || !cantidadPresentacion) {
+          setEditDetallesModal((prev) => ({ ...prev, error: `Presentacion invalida en ${row?.item_nombre || 'insumo'}.` }));
+          return;
+        }
+        agregar.push({
+          ...basePayload,
+          modo_unidad: 'presentacion',
+          id_presentacion_insumo: idPresentacionInsumo,
+          cantidad_presentacion: cantidadPresentacion
+        });
+      } else {
+        const cantidad = parsePositiveDecimal4(row?.cantidad);
+        if (!cantidad) {
+          setEditDetallesModal((prev) => ({ ...prev, error: `Cantidad invalida en ${row?.item_nombre || 'insumo'}.` }));
+          return;
+        }
+        agregar.push({ ...basePayload, modo_unidad: 'base', cantidad });
+      }
     }
 
     if (actualizar.length === 0 && eliminar.length === 0 && agregar.length === 0) {
@@ -2468,8 +2793,19 @@ const OrdenesCompraTab = ({ openToast }) => {
 
     setEditDetallesModal((prev) => {
       const addRows = Array.isArray(prev.add_rows) ? prev.add_rows : [];
+      const presentacionesInsumo = itemTipo === 'insumo'
+        ? presentacionesCompraByInsumo.get(idItem) || []
+        : [];
+      const presentacionPredeterminada =
+        presentacionesInsumo.find((row) => row.es_predeterminada_compra) || null;
+      const nextModoUnidad = itemTipo === 'insumo' && presentacionPredeterminada ? 'presentacion' : 'base';
+      const nextPresentacionId = presentacionPredeterminada?.id_presentacion || null;
       const duplicate = addRows.find(
-        (row) => Number(row.id_item) === Number(idItem) && String(row.item_tipo) === String(itemTipo)
+        (row) =>
+          Number(row.id_item) === Number(idItem) &&
+          String(row.item_tipo) === String(itemTipo) &&
+          String(row.modo_unidad || 'base') === nextModoUnidad &&
+          Number(parsePositiveInt(row.id_presentacion_insumo) || 0) === Number(nextPresentacionId || 0)
       );
       if (duplicate) {
         return {
@@ -2477,7 +2813,9 @@ const OrdenesCompraTab = ({ openToast }) => {
           error: '',
           add_rows: addRows.map((row) =>
             row.key === duplicate.key
-              ? { ...row, cantidad: String((parsePositiveInt(row.cantidad) || 0) + 1) }
+              ? nextModoUnidad === 'presentacion'
+                ? { ...row, cantidad_presentacion: String((parsePositiveDecimal4(row.cantidad_presentacion) || 0) + 1) }
+                : { ...row, cantidad: String((parsePositiveDecimal4(row.cantidad) || 0) + 1) }
               : row
           )
         };
@@ -2493,13 +2831,74 @@ const OrdenesCompraTab = ({ openToast }) => {
             item_tipo: itemTipo,
             id_item: idItem,
             item_nombre: item?.nombre || `${itemTipo} #${idItem}`,
+            modo_unidad: nextModoUnidad,
             cantidad: '1',
+            id_presentacion_insumo: nextPresentacionId,
+            cantidad_presentacion: nextModoUnidad === 'presentacion' ? '1' : '',
+            unidad_nombre: item?.unidad_nombre,
+            unidad_simbolo: item?.unidad_simbolo,
             id_almacen_destino: idAlmacenDestino,
             id_almacenes_disponibles: idAlmacenesDisponibles
           }
         ]
       };
     });
+  };
+
+  const setEditDetalleCantidad = (rowKey, rawValue, target = 'rows') => {
+    setEditDetallesModal((prev) => ({
+      ...prev,
+      error: '',
+      [target]: (Array.isArray(prev?.[target]) ? prev[target] : []).map((item) => {
+        const matches = target === 'rows'
+          ? item.id_detalle_orden === rowKey
+          : item.key === rowKey;
+        if (!matches) return item;
+        const field = item.item_tipo === 'insumo' && item.modo_unidad === 'presentacion'
+          ? 'cantidad_presentacion'
+          : 'cantidad';
+        return {
+          ...item,
+          [field]: item.item_tipo === 'producto' ? sanitizeInt(rawValue) : sanitizeDecimal4(rawValue)
+        };
+      })
+    }));
+  };
+
+  const setEditDetalleModoUnidad = (rowKey, rawValue, target = 'rows') => {
+    const value = String(rawValue || 'base');
+    setEditDetallesModal((prev) => ({
+      ...prev,
+      error: '',
+      [target]: (Array.isArray(prev?.[target]) ? prev[target] : []).map((item) => {
+        const matches = target === 'rows'
+          ? item.id_detalle_orden === rowKey
+          : item.key === rowKey;
+        if (!matches || item.item_tipo !== 'insumo') return item;
+        if (value === 'base') {
+          return {
+            ...item,
+            modo_unidad: 'base',
+            id_presentacion_insumo: null,
+            cantidad_presentacion: '',
+            cantidad: parsePositiveDecimal4(item.cantidad) ? item.cantidad : formatQuantity(item.cantidad_orden || 1)
+          };
+        }
+
+        const idPresentacion = parsePositiveInt(value.replace('presentacion:', ''));
+        const presentacion = (presentacionesCompraByInsumo.get(parsePositiveInt(item?.id_item)) || []).find(
+          (row) => Number(row.id_presentacion) === Number(idPresentacion)
+        );
+        if (!presentacion) return item;
+        return {
+          ...item,
+          modo_unidad: 'presentacion',
+          id_presentacion_insumo: presentacion.id_presentacion,
+          nombre_presentacion: presentacion.nombre_presentacion,
+          cantidad_presentacion: parsePositiveDecimal4(item.cantidad_presentacion) ? item.cantidad_presentacion : '1'
+        };
+      })
+    }));
   };
 
   // AM: modal dedicado para aprobar/rechazar solicitudes de item no registrado.
@@ -4425,7 +4824,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 {parsePositiveInt(row?.total_items) || 0} líneas
                               </span>
                               <span className="badge text-bg-light border">
-                                {parsePositiveInt(row?.total_cantidad) || 0} unidades
+                                {formatQuantity(row?.total_cantidad)} cantidad referencial
                               </span>
                               <span className="badge text-bg-light border">{totalSummary.label}</span>
                             </div>
@@ -4546,7 +4945,6 @@ const OrdenesCompraTab = ({ openToast }) => {
                       <span className="badge rounded-pill text-bg-light">Lineas: {draft.length}</span>
                       <span className="badge rounded-pill text-bg-light">Productos: {draftTotals.productos}</span>
                       <span className="badge rounded-pill text-bg-light">Insumos: {draftTotals.insumos}</span>
-                      <span className="badge rounded-pill text-bg-light">Unidades: {draftTotals.unidades}</span>
                     </div>
 
                     {canSolicitarItemNuevo && (
@@ -4585,8 +4983,8 @@ const OrdenesCompraTab = ({ openToast }) => {
                   <article className="inv-oc-draft-summary-pill">
                     <i className="bi bi-box-seam" aria-hidden="true" />
                     <div>
-                      <span>Unidades solicitadas</span>
-                      <strong>{draftTotals.unidades}</strong>
+                      <span>Insumos</span>
+                      <strong>{draftTotals.insumos}</strong>
                     </div>
                   </article>
 
@@ -4608,6 +5006,17 @@ const OrdenesCompraTab = ({ openToast }) => {
                 ) : (
                   <div className="inv-oc-draft-grid">
                     {draft.map((row) => {
+                      const presentacionesInsumo = row.item_tipo === 'insumo'
+                        ? presentacionesCompraByInsumo.get(parsePositiveInt(row?.id_item)) || []
+                        : [];
+                      const presentacionSeleccionada = presentacionesInsumo.find(
+                        (item) => Number(item.id_presentacion) === Number(parsePositiveInt(row?.id_presentacion_insumo))
+                      );
+                      const equivalencia = resolvePresentationEquivalence(row, presentacionSeleccionada);
+                      const cantidadValue =
+                        row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion'
+                          ? row.cantidad_presentacion
+                          : row.cantidad;
                       return (
                         <article key={row.key} className="inv-oc-draft-item-card">
                         <div className="inv-oc-draft-item-card__head">
@@ -4629,6 +5038,32 @@ const OrdenesCompraTab = ({ openToast }) => {
                           </button>
                         </div>
                         <div className="inv-oc-draft-item-card__body">
+                          {row.item_tipo === 'insumo' && (
+                            <>
+                              <label className="form-label mb-1">Presentacion o unidad</label>
+                              <select
+                                className="form-select form-select-sm mb-2"
+                                value={
+                                  row.modo_unidad === 'presentacion' && row.id_presentacion_insumo
+                                    ? `presentacion:${row.id_presentacion_insumo}`
+                                    : 'base'
+                                }
+                                onChange={(e) => setDraftModoUnidad(row.key, e.target.value)}
+                              >
+                                <option value="base">
+                                  Unidad base - {formatUnitLabel(row?.unidad_nombre, row?.unidad_simbolo)}
+                                </option>
+                                {presentacionesInsumo.map((presentacion) => (
+                                  <option
+                                    key={`draft-presentacion-${row.key}-${presentacion.id_presentacion}`}
+                                    value={`presentacion:${presentacion.id_presentacion}`}
+                                  >
+                                    {buildPresentationOptionLabel(presentacion)}
+                                  </option>
+                                ))}
+                              </select>
+                            </>
+                          )}
                           <label className="form-label mb-1">Cantidad</label>
                           {/* AM: stepper mixto para subir/bajar rapido y permitir escritura manual del numero. */}
                           <div className={`inv-oc-qty-control ${draftValidation[row.key] ? 'is-invalid' : ''}`}>
@@ -4642,7 +5077,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                             </button>
                             <input
                               className="form-control form-control-sm inv-oc-qty-input"
-                              value={row.cantidad}
+                              value={cantidadValue}
                               onChange={(e) => setDraftCantidad(row.key, e.target.value)}
                             />
                             <button
@@ -4656,6 +5091,13 @@ const OrdenesCompraTab = ({ openToast }) => {
                           </div>
                           {draftValidation[row.key] && (
                             <div className="invalid-feedback d-block">{draftValidation[row.key]}</div>
+                          )}
+                          {row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion' && (
+                            <small className="text-muted d-block mt-1">
+                              {equivalencia
+                                ? `${formatQuantity(row.cantidad_presentacion)} ${presentacionSeleccionada?.nombre_presentacion} equivalen aproximadamente a ${formatQuantity(equivalencia.equivalencia)} ${equivalencia.unidad_base}. El backend calculara el valor definitivo.`
+                                : 'Equivalencia no disponible; el backend validara la conversion definitiva.'}
+                            </small>
                           )}
 
                           <label className="form-label mb-1 mt-2">Almacén destino</label>
@@ -4706,7 +5148,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                     {parseNonNegativeNumber(row?.precio_estimado) !== null
                                       ? formatMoney(
                                           round2(
-                                            (parsePositiveInt(row?.cantidad) || 0) *
+                                            resolveDraftEstimatedBaseQuantity(row, presentacionesCompraByInsumo) *
                                               (parseNonNegativeNumber(row?.precio_estimado) || 0)
                                           )
                                         )
@@ -4787,7 +5229,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                       {isOperationalExperience ? (
                         <>
                           <span>Resumen de solicitud</span>
-                          <strong>Líneas: {draft.length} - Unidades: {draftTotals.unidades}</strong>
+                          <strong>Líneas: {draft.length} - Productos: {draftTotals.productos} - Insumos: {draftTotals.insumos}</strong>
                         </>
                       ) : (
                         <>
@@ -4796,7 +5238,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                             Subtotal: {formatMoney(draftEstimatedTotals.subtotal)} - ISV: {formatMoney(draftEstimatedTotals.isv)}
                           </strong>
                           <strong>
-                            Total: {formatMoney(draftEstimatedTotals.total)} - Líneas: {draft.length} - Unidades: {draftTotals.unidades}
+                            Total: {formatMoney(draftEstimatedTotals.total)} - Líneas: {draft.length}
                           </strong>
                           <small>
                             Los montos finales se ajustan al registrar la compra/factura.
@@ -5061,7 +5503,19 @@ const OrdenesCompraTab = ({ openToast }) => {
                     <div className="text-muted small">Aún no hay ítems agregados.</div>
                   ) : (
                     <div className="inv-oc-create-draft-list">
-                      {draft.map((row) => (
+                      {draft.map((row) => {
+                        const presentacionesInsumo = row.item_tipo === 'insumo'
+                          ? presentacionesCompraByInsumo.get(parsePositiveInt(row?.id_item)) || []
+                          : [];
+                        const presentacionSeleccionada = presentacionesInsumo.find(
+                          (item) => Number(item.id_presentacion) === Number(parsePositiveInt(row?.id_presentacion_insumo))
+                        );
+                        const equivalencia = resolvePresentationEquivalence(row, presentacionSeleccionada);
+                        const cantidadValue =
+                          row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion'
+                            ? row.cantidad_presentacion
+                            : row.cantidad;
+                        return (
                         <article key={`create-modal-draft-${row.key}`} className="inv-oc-create-draft-item">
                           <div className="d-flex flex-wrap align-items-start justify-content-between gap-2 inv-oc-create-draft-item__head">
                             <div>
@@ -5076,6 +5530,32 @@ const OrdenesCompraTab = ({ openToast }) => {
                             </button>
                           </div>
                           <div className="row g-2 mt-1">
+                            {row.item_tipo === 'insumo' && (
+                              <div className="col-12">
+                                <label className="form-label mb-1">Presentacion o unidad</label>
+                                <select
+                                  className="form-select form-select-sm"
+                                  value={
+                                    row.modo_unidad === 'presentacion' && row.id_presentacion_insumo
+                                      ? `presentacion:${row.id_presentacion_insumo}`
+                                      : 'base'
+                                  }
+                                  onChange={(e) => setDraftModoUnidad(row.key, e.target.value)}
+                                >
+                                  <option value="base">
+                                    Unidad base - {formatUnitLabel(row?.unidad_nombre, row?.unidad_simbolo)}
+                                  </option>
+                                  {presentacionesInsumo.map((presentacion) => (
+                                    <option
+                                      key={`create-modal-presentacion-${row.key}-${presentacion.id_presentacion}`}
+                                      value={`presentacion:${presentacion.id_presentacion}`}
+                                    >
+                                      {buildPresentationOptionLabel(presentacion)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
                             <div className="col-12 col-md-3">
                               <label className="form-label mb-1">Cantidad</label>
                               <div className={`inv-oc-qty-control ${draftValidation[row.key] ? 'is-invalid' : ''}`}>
@@ -5089,7 +5569,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 </button>
                                 <input
                                   className="form-control form-control-sm inv-oc-qty-input"
-                                  value={row.cantidad}
+                                  value={cantidadValue}
                                   onChange={(e) => setDraftCantidad(row.key, e.target.value)}
                                 />
                                 <button
@@ -5102,6 +5582,13 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 </button>
                               </div>
                               {draftValidation[row.key] && <div className="invalid-feedback d-block">{draftValidation[row.key]}</div>}
+                              {row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion' && (
+                                <small className="text-muted d-block mt-1">
+                                  {equivalencia
+                                    ? `Equivale aprox. a ${formatQuantity(equivalencia.equivalencia)} ${equivalencia.unidad_base}. Backend definitivo.`
+                                    : 'Equivalencia no disponible.'}
+                                </small>
+                              )}
                             </div>
                             <div className="col-12 col-md-4">
                               <label className="form-label mb-1">Proveedor sugerido (opcional)</label>
@@ -5154,7 +5641,10 @@ const OrdenesCompraTab = ({ openToast }) => {
                                   <small className="text-muted d-block mt-1">
                                     Subtotal:{' '}
                                     {parseNonNegativeNumber(row?.precio_estimado) !== null
-                                      ? formatMoney((parseNonNegativeNumber(row?.precio_estimado) || 0) * (parsePositiveInt(row?.cantidad) || 0))
+                                      ? formatMoney(
+                                          (parseNonNegativeNumber(row?.precio_estimado) || 0) *
+                                            resolveDraftEstimatedBaseQuantity(row, presentacionesCompraByInsumo)
+                                        )
                                       : 'Sin subtotal estimado'}
                                   </small>
                                 </>
@@ -5162,7 +5652,8 @@ const OrdenesCompraTab = ({ openToast }) => {
                             </div>
                           </div>
                         </article>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -5194,8 +5685,8 @@ const OrdenesCompraTab = ({ openToast }) => {
                       <strong>{draft.length}</strong>
                     </div>
                     <div className="inv-oc-create-summary__metric">
-                      <span>Unidades</span>
-                      <strong>{draftTotals.unidades}</strong>
+                      <span>Insumos</span>
+                      <strong>{draftTotals.insumos}</strong>
                     </div>
                   </div>
                   <small className="text-muted d-block mt-2">Los montos finales se ajustan al registrar la compra/factura.</small>
@@ -5400,7 +5891,7 @@ const OrdenesCompraTab = ({ openToast }) => {
                                                   </small>
                                                 )}
                                               </td>
-                                              <td>{parsePositiveInt(row?.cantidad_orden) || 0}</td>
+                                              <td>{renderOrderDetailQuantity(row)}</td>
                                               <td>{normalizeText(row?.almacen_destino_nombre, 120) || 'No especificado'}</td>
                                               {shouldShowFinancialInfo && (
                                                 <td>{normalizeText(row?.proveedor_sugerido_nombre, 120) || 'Sin proveedor sugerido'}</td>
@@ -5421,8 +5912,9 @@ const OrdenesCompraTab = ({ openToast }) => {
                                       <article key={`detalle-mobile-${row.id_detalle_orden}`} className="border rounded-3 p-2 bg-white">
                                         <div className="d-flex justify-content-between gap-2">
                                           <strong>{itemNombre}</strong>
-                                          <span className="badge text-bg-light border">x{parsePositiveInt(row?.cantidad_orden) || 0}</span>
+                                          <span className="badge text-bg-light border">{formatQuantity(row?.cantidad_orden)}</span>
                                         </div>
+                                        <div className="small mt-1">{renderOrderDetailQuantity(row)}</div>
                                         <small className="text-muted d-block mt-1">Tipo: {itemTipo}</small>
                                         <small className="text-muted d-block">Almacen: {normalizeText(row?.almacen_destino_nombre, 120) || 'No especificado'}</small>
                                         {shouldShowFinancialInfo && (
@@ -6255,26 +6747,69 @@ const OrdenesCompraTab = ({ openToast }) => {
                       </tr>
                     </thead>
                     <tbody>
-                      {editDetallesModal.rows.map((row) => (
+                      {editDetallesModal.rows.map((row) => {
+                        const presentacionesInsumo = row.item_tipo === 'insumo'
+                          ? presentacionesCompraByInsumo.get(parsePositiveInt(row?.id_item)) || []
+                          : [];
+                        const presentacionSeleccionada = presentacionesInsumo.find(
+                          (item) => Number(item.id_presentacion) === Number(parsePositiveInt(row?.id_presentacion_insumo))
+                        );
+                        const isHistoricalUnavailable =
+                          row.item_tipo === 'insumo' &&
+                          row.modo_unidad === 'presentacion' &&
+                          row.id_presentacion_insumo &&
+                          !presentacionSeleccionada;
+                        const cantidadValue =
+                          row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion'
+                            ? row.cantidad_presentacion
+                            : row.cantidad;
+                        return (
                         <tr key={row.id_detalle_orden}>
-                          <td>{row.item_nombre}</td>
+                          <td>
+                            {row.item_nombre}
+                            {isHistoricalUnavailable && (
+                              <span className="badge text-bg-warning ms-2">No disponible actualmente</span>
+                            )}
+                            {row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion' && (
+                              <small className="text-muted d-block">
+                                {row.nombre_presentacion || presentacionSeleccionada?.nombre_presentacion || 'Presentacion historica'}
+                              </small>
+                            )}
+                          </td>
                           <td className="text-capitalize">{row.item_tipo}</td>
                           <td>
+                            {row.item_tipo === 'insumo' && (
+                              <select
+                                className="form-select form-select-sm mb-1"
+                                value={
+                                  row.modo_unidad === 'presentacion' && row.id_presentacion_insumo
+                                    ? `presentacion:${row.id_presentacion_insumo}`
+                                    : 'base'
+                                }
+                                disabled={row.eliminar}
+                                onChange={(e) => setEditDetalleModoUnidad(row.id_detalle_orden, e.target.value, 'rows')}
+                              >
+                                <option value="base">Unidad base</option>
+                                {isHistoricalUnavailable && (
+                                  <option value={`presentacion:${row.id_presentacion_insumo}`}>
+                                    {row.nombre_presentacion || 'Presentacion historica'} - No disponible
+                                  </option>
+                                )}
+                                {presentacionesInsumo.map((presentacion) => (
+                                  <option
+                                    key={`edit-row-presentacion-${row.id_detalle_orden}-${presentacion.id_presentacion}`}
+                                    value={`presentacion:${presentacion.id_presentacion}`}
+                                  >
+                                    {buildPresentationOptionLabel(presentacion)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                             <input
                               className="form-control form-control-sm"
-                              value={row.cantidad}
+                              value={cantidadValue}
                               disabled={row.eliminar}
-                              onChange={(e) =>
-                                setEditDetallesModal((prev) => ({
-                                  ...prev,
-                                  error: '',
-                                  rows: prev.rows.map((item) =>
-                                    item.id_detalle_orden === row.id_detalle_orden
-                                      ? { ...item, cantidad: sanitizeInt(e.target.value) }
-                                      : item
-                                  )
-                                }))
-                              }
+                              onChange={(e) => setEditDetalleCantidad(row.id_detalle_orden, e.target.value, 'rows')}
                             />
                           </td>
                           <td>
@@ -6299,7 +6834,8 @@ const OrdenesCompraTab = ({ openToast }) => {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -6431,26 +6967,58 @@ const OrdenesCompraTab = ({ openToast }) => {
                           </tr>
                         </thead>
                         <tbody>
-                          {editDetallesModal.add_rows.map((row) => (
+                          {editDetallesModal.add_rows.map((row) => {
+                            const presentacionesInsumo = row.item_tipo === 'insumo'
+                              ? presentacionesCompraByInsumo.get(parsePositiveInt(row?.id_item)) || []
+                              : [];
+                            const presentacionSeleccionada = presentacionesInsumo.find(
+                              (item) => Number(item.id_presentacion) === Number(parsePositiveInt(row?.id_presentacion_insumo))
+                            );
+                            const equivalencia = resolvePresentationEquivalence(row, presentacionSeleccionada);
+                            const cantidadValue =
+                              row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion'
+                                ? row.cantidad_presentacion
+                                : row.cantidad;
+                            return (
                             <tr key={row.key}>
                               <td>
                                 {row.item_nombre} <small className="text-muted text-capitalize">({row.item_tipo})</small>
+                                {row.item_tipo === 'insumo' && (
+                                  <select
+                                    className="form-select form-select-sm mt-1"
+                                    value={
+                                      row.modo_unidad === 'presentacion' && row.id_presentacion_insumo
+                                        ? `presentacion:${row.id_presentacion_insumo}`
+                                        : 'base'
+                                    }
+                                    onChange={(e) => setEditDetalleModoUnidad(row.key, e.target.value, 'add_rows')}
+                                  >
+                                    <option value="base">
+                                      Unidad base - {formatUnitLabel(row?.unidad_nombre, row?.unidad_simbolo)}
+                                    </option>
+                                    {presentacionesInsumo.map((presentacion) => (
+                                      <option
+                                        key={`edit-add-presentacion-${row.key}-${presentacion.id_presentacion}`}
+                                        value={`presentacion:${presentacion.id_presentacion}`}
+                                      >
+                                        {buildPresentationOptionLabel(presentacion)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                                {row.item_tipo === 'insumo' && row.modo_unidad === 'presentacion' && (
+                                  <small className="text-muted d-block mt-1">
+                                    {equivalencia
+                                      ? `Equivale aprox. a ${formatQuantity(equivalencia.equivalencia)} ${equivalencia.unidad_base}.`
+                                      : 'Equivalencia no disponible.'}
+                                  </small>
+                                )}
                               </td>
                               <td>
                                 <input
                                   className="form-control form-control-sm"
-                                  value={row.cantidad}
-                                  onChange={(e) =>
-                                    setEditDetallesModal((prev) => ({
-                                      ...prev,
-                                      error: '',
-                                      add_rows: prev.add_rows.map((item) =>
-                                        item.key === row.key
-                                          ? { ...item, cantidad: sanitizeInt(e.target.value) }
-                                          : item
-                                      )
-                                    }))
-                                  }
+                                  value={cantidadValue}
+                                  onChange={(e) => setEditDetalleCantidad(row.key, e.target.value, 'add_rows')}
                                 />
                               </td>
                               <td>
@@ -6496,7 +7064,8 @@ const OrdenesCompraTab = ({ openToast }) => {
                                 </button>
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
