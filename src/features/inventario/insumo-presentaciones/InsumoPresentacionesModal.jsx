@@ -33,6 +33,8 @@ export default function InsumoPresentacionesModal({
   show = false,
   insumo = null,
   unidadesMedida = [],
+  canView = false,
+  canCreate = false,
   canEdit = false,
   canChangeEstado = false,
   onClose,
@@ -47,7 +49,8 @@ export default function InsumoPresentacionesModal({
     () => resolveInsumoUnidad(insumo, unidadesMedida),
     [insumo, unidadesMedida]
   );
-  const canCreate = canEdit && insumoActivo && Boolean(unidadBase?.id_unidad_medida);
+  const canAccessPresentaciones = canView || canCreate || canEdit || canChangeEstado;
+  const canCreatePresentacion = canCreate && insumoActivo && Boolean(unidadBase?.id_unidad_medida);
 
   const {
     presentaciones,
@@ -60,7 +63,7 @@ export default function InsumoPresentacionesModal({
     changeEstado
   } = useInsumoPresentaciones({
     idInsumo: insumo?.id_insumo,
-    open: show,
+    open: show && canAccessPresentaciones,
     onNotify
   });
 
@@ -72,7 +75,7 @@ export default function InsumoPresentacionesModal({
   };
 
   const openCreateForm = () => {
-    if (!canCreate) return;
+    if (!canCreatePresentacion) return;
     setEditingPresentacion(null);
     setFormMode('create');
   };
@@ -205,7 +208,7 @@ export default function InsumoPresentacionesModal({
                       <span>Listado</span>
                       <strong>{presentaciones.length} presentacion{presentaciones.length === 1 ? '' : 'es'}</strong>
                     </div>
-                    {canCreate ? (
+                    {canCreatePresentacion ? (
                       <button type="button" className="btn inv-prod-btn-primary" onClick={openCreateForm}>
                         <i className="bi bi-plus-lg" aria-hidden="true" />
                         <span>Agregar presentacion</span>
@@ -231,7 +234,7 @@ export default function InsumoPresentacionesModal({
                     <div className="ins-pres-empty">
                       <i className="bi bi-inboxes" aria-hidden="true" />
                       <strong>Este insumo todavia no tiene presentaciones configuradas.</strong>
-                      {canCreate ? (
+                      {canCreatePresentacion ? (
                         <button type="button" className="btn inv-prod-btn-primary" onClick={openCreateForm}>
                           Agregar presentacion
                         </button>
@@ -260,7 +263,7 @@ export default function InsumoPresentacionesModal({
 
             <div className="modal-footer ins-pres-modal__footer">
               <button type="button" className="btn inv-prod-btn-subtle" onClick={onClose}>Cerrar</button>
-              {!formMode && canCreate ? (
+              {!formMode && canCreatePresentacion ? (
                 <button type="button" className="btn inv-prod-btn-primary" onClick={openCreateForm}>
                   <i className="bi bi-plus-lg" aria-hidden="true" />
                   <span>Agregar presentacion</span>

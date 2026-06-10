@@ -829,7 +829,15 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     () => insumos.find((i) => Number(i?.id_insumo) === Number(presentacionesInsumoId)) || null,
     [insumos, presentacionesInsumoId]
   );
-  const canOpenPresentaciones = canVerInsumos || canVerDetalleInsumos || canEditarInsumos;
+  const canViewPresentaciones = canVerInsumos || canVerDetalleInsumos;
+  const canCreatePresentaciones = canCrearInsumos || canEditarInsumos;
+  const canEditPresentaciones = canEditarInsumos;
+  const canChangeEstadoPresentaciones = canCambiarEstadoInsumos || canEditarInsumos;
+  const canOpenPresentaciones =
+    canViewPresentaciones ||
+    canCreatePresentaciones ||
+    canEditPresentaciones ||
+    canChangeEstadoPresentaciones;
 
   const resetDrawerImage = useCallback((previewUrl = '') => {
     // NEW: helper unico para limpiar preview + input file del drawer/create de Insumos.
@@ -2795,8 +2803,10 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
         show={Boolean(presentacionesInsumo)}
         insumo={presentacionesInsumo}
         unidadesMedida={unidadesMedida}
-        canEdit={canEditarInsumos}
-        canChangeEstado={canEditarInsumos || canCambiarEstadoInsumos}
+        canView={canViewPresentaciones}
+        canCreate={canCreatePresentaciones}
+        canEdit={canEditPresentaciones}
+        canChangeEstado={canChangeEstadoPresentaciones}
         onClose={closePresentacionesModal}
         onNotify={safeToast}
       />
