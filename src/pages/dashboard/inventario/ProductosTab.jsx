@@ -6,6 +6,7 @@ import { usePermisos } from '../../../context/PermisosContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { PERMISSIONS } from '../../../utils/permissions';
 import { normalizeVisualText } from '../../../utils/normalizeVisualText';
+import MaestroAsignacionesModal from './components/MaestroAsignacionesModal.jsx';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
@@ -119,6 +120,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     PERMISSIONS.INVENTARIO_PRODUCTOS_ELIMINAR,
     PERMISSIONS.INVENTARIO_PRODUCTOS_ESTADO_CAMBIAR
   ]);
+  const canGestionarSucursales = canVer;
   // ==============================
   // TOAST (SI NO VIENE DEL PADRE)
   // ==============================
@@ -255,6 +257,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [removingProductoIds, setRemovingProductoIds] = useState({});
   const [imageErrorMap, setImageErrorMap] = useState({});
   const [drawerMessage, setDrawerMessage] = useState('');
+  const [assignmentsModalProducto, setAssignmentsModalProducto] = useState(null);
   const [togglingEstado, setTogglingEstado] = useState(false);
   const [drawerImageAction, setDrawerImageAction] = useState(buildDrawerImageActionState);
   // NUEVO: refs para desplazar viewport a paneles cuando el usuario abre Nuevo/Filtros.
@@ -770,6 +773,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     if (!selectedProductoId) return null;
     return productos.find((p) => Number(p.id_producto) === Number(selectedProductoId)) || null;
   }, [productos, selectedProductoId]);
+
+  const openAssignmentsModal = useCallback((producto) => {
+    if (!canGestionarSucursales) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para consultar sucursales de productos.', 'warning');
+      return;
+    }
+    setAssignmentsModalProducto(producto || null);
+  }, [canGestionarSucursales, safeToast]);
+
+  const closeAssignmentsModal = useCallback(() => {
+    setAssignmentsModalProducto(null);
+  }, []);
 
   const createMarginSummary = useMemo(
     () => buildMarginSummary(form?.precio, form?.costo_compra),
@@ -3994,6 +4009,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                   <i className="bi bi-pencil-square" /> Editar
                                 </button>
                               ) : null}
+                              {canGestionarSucursales ? (
+                                <button className="btn btn-sm btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={(e) => { e.stopPropagation(); openAssignmentsModal(p); }}>
+                                  <i className="bi bi-diagram-3" /> Gestionar sucursales
+                                </button>
+                              ) : null}
                               {canInactivar ? (
                                 <button
                                   className="btn btn-sm btn-outline-danger inv-prod-btn-danger-lite"
@@ -4168,6 +4188,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               {canEditar ? (
                                 <button className="btn btn-sm btn-outline-primary inv-prod-btn-outline" type="button" onClick={() => iniciarEdicion(p)}>
                                   <i className="bi bi-pencil-square" /> Editar
+                                </button>
+                              ) : null}
+                              {canGestionarSucursales ? (
+                                <button className="btn btn-sm btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={(e) => { e.stopPropagation(); openAssignmentsModal(p); }}>
+                                  <i className="bi bi-diagram-3" /> Gestionar sucursales
                                 </button>
                               ) : null}
                               {canInactivar ? (
@@ -4479,6 +4504,16 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       Duplicar
                     </button>
                   ) : null}
+                  {canGestionarSucursales ? (
+                    <button
+                      type="button"
+                      className="btn inv-prod-btn-outline"
+                      onClick={() => openAssignmentsModal(selectedProducto)}
+                      disabled={togglingEstado || !selectedProducto}
+                    >
+                      Gestionar sucursales
+                    </button>
+                  ) : null}
                   {canEditar ? (
                     <button
                       type="button"
@@ -4501,6 +4536,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
             </>
           ) : null}
         </aside>
+
+        <MaestroAsignacionesModal
+          show={Boolean(assignmentsModalProducto)}
+          entityLabel="producto"
+          selectedItem={assignmentsModalProducto}
+          onClose={closeAssignmentsModal}
+          onNotify={safeToast}
+          loadAssignments={inventarioService.obtenerAsignacionesProducto}
+          loadAvailableWarehouses={inventarioService.obtenerAlmacenesDisponiblesProducto}
+          assignToWarehouse={inventarioService.asignarProductoASucursal}
+          deactivateAssignment={inventarioService.inactivarAsignacionProducto}
+          canAssign={canEditar}
+          canDeactivate={canInactivar}
+        />
 
         {/* ==============================
             SHEET CREAR PRODUCTO (MÓVIL CENTRADO)

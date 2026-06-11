@@ -2900,6 +2900,39 @@
   max-width: min(980px, 94vw);
 }
 
+.inv-master-assign-modal-dialog {
+  max-width: min(1040px, 95vw);
+}
+
+.inv-master-assign-modal__body {
+  display: grid;
+  gap: 16px;
+}
+
+.inv-master-assign-modal__intro {
+  display: grid;
+  gap: 6px;
+}
+
+.inv-master-assign-modal__section {
+  border: 1px solid rgba(157, 150, 112, 0.18);
+  border-radius: 16px;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.inv-master-assign-modal__table {
+  margin-bottom: 0;
+}
+
+.inv-master-assign-modal__table th {
+  white-space: nowrap;
+}
+
+.inv-master-assign-modal__alert {
+  margin-bottom: 0;
+}
+
 .inv-ins-detail-modal {
   background: linear-gradient(180deg, #ffffff, #fbfaf3);
 }

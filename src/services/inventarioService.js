@@ -443,6 +443,14 @@ export const inventarioService = {
       id_insumo: id,
       estado
     }),
+  obtenerAsignacionesInsumo: (idInsumo) => apiFetch(`/insumos/${idInsumo}/asignaciones`, 'GET'),
+  obtenerAlmacenesDisponiblesInsumo: (idInsumo) => apiFetch(`/insumos/${idInsumo}/almacenes-disponibles`, 'GET'),
+  asignarInsumoASucursal: (idInsumo, idAlmacen) =>
+    apiFetch(`/insumos/${idInsumo}/asignaciones`, 'POST', {
+      id_almacen: idAlmacen
+    }),
+  inactivarAsignacionInsumo: (idInsumo, idAlmacen) =>
+    apiFetch(`/insumos/${idInsumo}/asignaciones/${idAlmacen}/inactivar`, 'PATCH'),
   eliminarInsumo: (id) =>
     apiFetch('/insumos', 'DELETE', {
       columna_id: 'id_insumo',
@@ -465,6 +473,14 @@ export const inventarioService = {
       id_producto: id,
       ...data
     }),
+  obtenerAsignacionesProducto: (idProducto) => apiFetch(`/productos/${idProducto}/asignaciones`, 'GET'),
+  obtenerAlmacenesDisponiblesProducto: (idProducto) => apiFetch(`/productos/${idProducto}/almacenes-disponibles`, 'GET'),
+  asignarProductoASucursal: (idProducto, idAlmacen) =>
+    apiFetch(`/productos/${idProducto}/asignaciones`, 'POST', {
+      id_almacen: idAlmacen
+    }),
+  inactivarAsignacionProducto: (idProducto, idAlmacen) =>
+    apiFetch(`/productos/${idProducto}/asignaciones/${idAlmacen}/inactivar`, 'PATCH'),
   eliminarProducto: (id) =>
     apiFetch('/productos', 'DELETE', {
       columna_id: 'id_producto',

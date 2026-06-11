@@ -5,6 +5,7 @@ import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
 import { normalizeVisualText } from '../../../utils/normalizeVisualText';
 import InsumoPresentacionesModal from '../../../features/inventario/insumo-presentaciones/InsumoPresentacionesModal';
+import MaestroAsignacionesModal from './components/MaestroAsignacionesModal.jsx';
 import {
   buildInventarioImageUploadPayload,
   getInventarioImageFileError,
@@ -198,6 +199,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const canCambiarEstadoInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_ESTADO_CAMBIAR);
   const canBuscarInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_BUSCAR);
   const canUsarFiltrosInsumos = can(PERMISSIONS.INVENTARIO_INSUMOS_FILTROS_USAR);
+  const canGestionarSucursalesInsumos = canVerInsumos || canVerDetalleInsumos;
 
   const safeToast = useCallback((title, message, variant = 'success') => {
     if (typeof openToast === 'function') openToast(title, message, variant);
@@ -237,6 +239,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const [drawerMode, setDrawerMode] = useState('create'); // create | edit
   const [selectedId, setSelectedId] = useState(null);
   const [drawerMsg, setDrawerMsg] = useState('');
+  const [assignmentsModalInsumo, setAssignmentsModalInsumo] = useState(null);
   const [focusCantidad, setFocusCantidad] = useState(false);
 
   const [form, setForm] = useState(emptyForm);
@@ -829,6 +832,14 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     () => insumos.find((i) => Number(i?.id_insumo) === Number(presentacionesInsumoId)) || null,
     [insumos, presentacionesInsumoId]
   );
+  const openAssignmentsModal = useCallback((insumo) => {
+    if (!canGestionarSucursalesInsumos) {
+      safeToast('SIN PERMISOS', 'No tienes permisos para consultar sucursales de insumos.', 'warning');
+      return;
+    }
+    setAssignmentsModalInsumo(insumo || null);
+  }, [canGestionarSucursalesInsumos, safeToast]);
+  const closeAssignmentsModal = useCallback(() => setAssignmentsModalInsumo(null), []);
   const canViewPresentaciones = canVerInsumos || canVerDetalleInsumos;
   const canCreatePresentaciones = canCrearInsumos || canEditarInsumos;
   const canEditPresentaciones = canEditarInsumos;
@@ -1954,6 +1965,19 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 <span>Ver detalle</span>
               </button>
             ) : null}
+            {canGestionarSucursalesInsumos ? (
+              <button
+                type="button"
+                className="btn inv-prod-btn-outline inv-ins-card-v3__action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openAssignmentsModal(i);
+                }}
+              >
+                <i className="bi bi-diagram-3" />
+                <span>Gestionar sucursales</span>
+              </button>
+            ) : null}
             {canEditarInsumos ? (
               <button
                 type="button"
@@ -2108,6 +2132,11 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 <i className="bi bi-eye" /> <span>Ver</span>
               </button>
             ) : null}
+            {canGestionarSucursalesInsumos ? (
+              <button type="button" className="btn inv-prod-btn-outline inv-ins-table-action" onClick={() => openAssignmentsModal(i)} title="Gestionar sucursales" aria-label={`Gestionar sucursales de ${i?.nombre_insumo || 'insumo'}`}>
+                <i className="bi bi-diagram-3" /> <span>Sucursales</span>
+              </button>
+            ) : null}
             {canEditarInsumos ? (
               <button type="button" className="btn inv-prod-btn-outline inv-ins-table-action" onClick={() => openEdit(i)} title="Editar" aria-label={`Editar ${i?.nombre_insumo || 'insumo'}`}>
                 <i className="bi bi-pencil-square" /> <span>Editar</span>
@@ -2227,6 +2256,19 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                 >
                   <i className="bi bi-eye" />
                   <span>Ver detalle</span>
+                </button>
+              ) : null}
+              {canGestionarSucursalesInsumos ? (
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-outline inv-ins-card-v4__action"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openAssignmentsModal(insumo);
+                  }}
+                >
+                  <i className="bi bi-diagram-3" />
+                  <span>Gestionar sucursales</span>
                 </button>
               ) : null}
               {estadoField && canRunEstadoAction ? (
@@ -2715,6 +2757,16 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                     Duplicar
                   </button>
                 ) : null}
+                {canGestionarSucursalesInsumos ? (
+                  <button
+                    type="button"
+                    className="btn inv-prod-btn-outline"
+                    onClick={() => openAssignmentsModal(selectedInsumo)}
+                    disabled={savingEdit || togglingEstado || !selectedInsumo}
+                  >
+                    Gestionar sucursales
+                  </button>
+                ) : null}
                 {canCambiarEstadoInsumos ? (
                   <button type="button" className="btn inv-prod-btn-inactivate" onClick={() => setConfirm(selectedInsumo?.id_insumo, selectedInsumo?.nombre_insumo)} disabled={savingEdit || togglingEstado || !selectedInsumo}>Inactivar</button>
                 ) : null}
@@ -2728,6 +2780,19 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
           </div>
         </form>
       </aside>
+      <MaestroAsignacionesModal
+        show={Boolean(assignmentsModalInsumo)}
+        entityLabel="insumo"
+        selectedItem={assignmentsModalInsumo}
+        onClose={closeAssignmentsModal}
+        onNotify={safeToast}
+        loadAssignments={inventarioService.obtenerAsignacionesInsumo}
+        loadAvailableWarehouses={inventarioService.obtenerAlmacenesDisponiblesInsumo}
+        assignToWarehouse={inventarioService.asignarInsumoASucursal}
+        deactivateAssignment={inventarioService.inactivarAsignacionInsumo}
+        canAssign={canEditarInsumos}
+        canDeactivate={canCambiarEstadoInsumos}
+      />
       {/* NEW: modal de detalle solo lectura para la accion "Ver" del listado. */}
       {/* WHY: mostrar informacion completa sin sobrecargar columnas ni reutilizar el drawer de edicion. */}
       {/* IMPACT: agrega una vista responsive de consulta; no modifica endpoints ni payloads. */}
