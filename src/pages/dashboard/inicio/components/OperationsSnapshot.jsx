@@ -1,32 +1,52 @@
 import React from 'react';
+import OperationStatusCard from './OperationStatusCard';
 
-const OperationsSnapshot = ({ metrics }) => (
-  <section className="inicio-panel">
-    <header className="inicio-panel__head">
-      <h2>Estado de operacion</h2>
-      <p>Vista rapida para priorizar caja, cocina e inventario.</p>
-    </header>
+const OperationsSnapshot = ({ metrics }) => {
+  const items = [
+    {
+      id: 'pendientes',
+      title: 'Pendientes por pagar',
+      value: metrics.pendientesPago,
+      icon: 'bi-wallet2',
+      tone: 'warning'
+    },
+    {
+      id: 'cocina',
+      title: 'En cocina',
+      value: metrics.enCocina,
+      icon: 'bi-fire',
+      tone: 'cooking'
+    },
+    {
+      id: 'listos',
+      title: 'Listos para entrega',
+      value: metrics.listosEntrega,
+      icon: 'bi-check2-circle',
+      tone: 'success'
+    },
+    {
+      id: 'agotados',
+      title: 'Sin stock',
+      value: metrics.agotados,
+      icon: 'bi-exclamation-diamond',
+      tone: 'danger'
+    }
+  ];
 
-    <div className="inicio-snapshot-grid">
-      <article className="inicio-snapshot-card">
-        <p>Pendientes por pagar</p>
-        <strong>{metrics.pendientesPago}</strong>
-      </article>
-      <article className="inicio-snapshot-card">
-        <p>En cocina</p>
-        <strong>{metrics.enCocina}</strong>
-      </article>
-      <article className="inicio-snapshot-card">
-        <p>Listos para entrega</p>
-        <strong>{metrics.listosEntrega}</strong>
-      </article>
-      <article className="inicio-snapshot-card">
-        <p>Sin stock</p>
-        <strong>{metrics.agotados}</strong>
-      </article>
-    </div>
-  </section>
-);
+  return (
+    <section className="inicio-panel">
+      <header className="inicio-panel__head">
+        <h2>Estado de operación</h2>
+        <p>Vista compacta para priorizar caja, cocina e inventario durante el turno.</p>
+      </header>
+
+      <div className="inicio-snapshot-grid">
+        {items.map((item) => (
+          <OperationStatusCard key={item.id} {...item} />
+        ))}
+      </div>
+    </section>
+  );
+};
 
 export default OperationsSnapshot;
-

@@ -1,11 +1,31 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-const QuickActions = ({ can, permissions }) => {
+const buildScopedLink = (path, params = {}) => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '' || value === 'all') return;
+    search.set(key, String(value));
+  });
+  const query = search.toString();
+  return query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
+};
+
+const QuickActions = ({
+  can,
+  permissions,
+  sucursalFilter = 'all',
+  turnFilter = 'all',
+  selectedDate = ''
+}) => {
   const actions = [
     {
       id: 'ventas',
-      to: '/dashboard/ventas?tab=pedidos',
+      to: buildScopedLink('/dashboard/ventas?tab=pedidos', {
+        id_sucursal: sucursalFilter,
+        turno: turnFilter,
+        fecha: selectedDate
+      }),
       icon: 'bi-receipt',
       label: 'Gestionar pedidos',
       description: 'Mover pedidos de pendientes a cocina y entrega.',
@@ -13,15 +33,20 @@ const QuickActions = ({ can, permissions }) => {
     },
     {
       id: 'cocina',
-      to: '/dashboard/cocina',
+      to: buildScopedLink('/dashboard/cocina', {
+        id_sucursal: sucursalFilter,
+        turno: turnFilter
+      }),
       icon: 'bi-fire',
       label: 'Tablero cocina',
-      description: 'Visualizar y priorizar ordenes de preparacion.',
+      description: 'Visualizar y priorizar órdenes de preparación.',
       enabled: can(permissions.COCINA_VER)
     },
     {
       id: 'inventario',
-      to: '/dashboard/inventario?tab=alertas',
+      to: buildScopedLink('/dashboard/inventario?tab=alertas', {
+        id_sucursal: sucursalFilter
+      }),
       icon: 'bi-box-seam',
       label: 'Revisar inventario',
       description: 'Atender stock bajo y agotados antes de hora pico.',
@@ -29,10 +54,12 @@ const QuickActions = ({ can, permissions }) => {
     },
     {
       id: 'menu',
-      to: '/dashboard/menu?tab=publicacion',
+      to: buildScopedLink('/dashboard/menu?tab=publicacion', {
+        id_sucursal: sucursalFilter
+      }),
       icon: 'bi-journal-richtext',
-      label: 'Publicar menu',
-      description: 'Actualizar visibilidad y orden para menu cliente.',
+      label: 'Publicar menú',
+      description: 'Actualizar visibilidad y orden para menú cliente.',
       enabled: can(permissions.MENU_VER)
     }
   ];
@@ -40,8 +67,8 @@ const QuickActions = ({ can, permissions }) => {
   return (
     <section className="inicio-panel">
       <header className="inicio-panel__head">
-        <h2>Acciones rapidas</h2>
-        <p>Atajos operativos para decisiones de turno.</p>
+        <h2>Acciones rápidas</h2>
+        <p>Atajos operativos con el contexto actual del dashboard.</p>
       </header>
 
       <div className="inicio-actions-grid">
@@ -49,11 +76,16 @@ const QuickActions = ({ can, permissions }) => {
           .filter((action) => action.enabled)
           .map((action) => (
             <Link key={action.id} to={action.to} className="inicio-action-card">
-              <i className={`bi ${action.icon}`} aria-hidden="true" />
-              <div>
+              <div className="inicio-action-card__icon" aria-hidden="true">
+                <i className={`bi ${action.icon}`} />
+              </div>
+              <div className="inicio-action-card__content">
                 <h3>{action.label}</h3>
                 <p>{action.description}</p>
               </div>
+              <span className="inicio-action-card__arrow" aria-hidden="true">
+                <i className="bi bi-arrow-right" />
+              </span>
             </Link>
           ))}
       </div>
@@ -62,4 +94,3 @@ const QuickActions = ({ can, permissions }) => {
 };
 
 export default QuickActions;
-
