@@ -1,4 +1,4 @@
-import { apiFetch } from './api';
+﻿import { apiFetch } from './api';
 import { API_URL } from '../utils/constants';
 
 const buildQuery = (params = {}) => {
@@ -102,7 +102,10 @@ const ventasService = {
     apiFetch(`/ventas/descuentos-catalogos/${id}`, 'PUT', payload),
   toggleDescuentoCatalogoEstado: (id, estado) =>
     apiFetch(`/ventas/descuentos-catalogos/${id}/estado`, 'PATCH', { estado }),
-  // Pedidos menú público
+  getDashboardResumen: (params = {}) => apiFetch(`/ventas/dashboard-resumen${buildQuery(params)}`, 'GET'),
+  getDashboardFlujoPedidos: (params = {}) =>
+    apiFetch(`/ventas/dashboard-flujo-pedidos${buildQuery(params)}`, 'GET'),
+  // Pedidos menÃƒÂº pÃƒÂºblico
   getPedidosMenu: (params = {}) => apiFetch(`/ventas/pedidos-menu${buildQuery(params)}`, 'GET'),
   confirmarPagoPedido: (id) =>
     apiFetch(`/ventas/pedidos-menu/${id}/confirmar-pago`, 'POST', {}),
@@ -116,3 +119,4 @@ const ventasService = {
 };
 
 export default ventasService;
+

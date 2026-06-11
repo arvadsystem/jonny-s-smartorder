@@ -412,6 +412,33 @@ const getCargo = (empleado) =>
     "cargo_descripcion",
   ]);
 
+const EMPLEADOS_OCULTOS_POR_SISTEMA = new Set(["root", "root admin", "p pantalla", "ppantalla"]);
+
+const shouldHideSystemEmployee = (empleado) => {
+  if (!empleado || typeof empleado !== "object") return false;
+
+  const candidateValues = [
+    empleado?.persona_nombre_completo,
+    `${empleado?.persona_nombre || ""} ${empleado?.persona_apellido || ""}`.trim(),
+    empleado?.nombre,
+    empleado?.nombre_completo,
+    empleado?.usuario,
+    empleado?.username,
+    empleado?.user_name,
+    empleado?.nombre_usuario,
+    empleado?.usuario_nombre,
+    empleado?.usuario?.usuario,
+    empleado?.usuario?.username,
+    empleado?.usuario?.nombre_usuario,
+    empleado?.usuario?.name,
+  ];
+
+  return candidateValues.some((value) => {
+    const normalized = normalizeSearchToken(value);
+    return normalized && EMPLEADOS_OCULTOS_POR_SISTEMA.has(normalized);
+  });
+};
+
 const getNombreReferencia = (empleado) =>
   getFirstNonEmptyField(empleado, ["nombre_referencia", "referencia_nombre", "nombre_contacto_referencia"]);
 
@@ -1640,7 +1667,9 @@ export default function Empleados({ openToast }) {
 
         if (!mountedRef.current || controller.signal.aborted) return;
         const { items, total: totalResp } = normalizeListResponse(resp);
-        setEmpleadosCacheEntry(cacheKey, { items, total: totalResp });
+        const visibleItems = items.filter((item) => !shouldHideSystemEmployee(item));
+        const adjustedTotal = Math.max(0, totalResp - Math.max(0, items.length - visibleItems.length));
+        setEmpleadosCacheEntry(cacheKey, { items: visibleItems, total: adjustedTotal });
       } catch (error) {
         if (isAbortError(error)) return;
       } finally {
@@ -1719,10 +1748,12 @@ export default function Empleados({ openToast }) {
       if (!mountedRef.current || requestId !== requestIdRef.current) return;
 
       const { items, total: totalResp } = normalizeListResponse(resp);
-      setEmpleados(items);
-      setTotal(totalResp);
-      setEmpleadosCacheEntry(cacheKey, { items, total: totalResp });
-      prefetchEmpleadosPage(targetPage + 1, totalResp);
+      const visibleItems = items.filter((item) => !shouldHideSystemEmployee(item));
+      const adjustedTotal = Math.max(0, totalResp - Math.max(0, items.length - visibleItems.length));
+      setEmpleados(visibleItems);
+      setTotal(adjustedTotal);
+      setEmpleadosCacheEntry(cacheKey, { items: visibleItems, total: adjustedTotal });
+      prefetchEmpleadosPage(targetPage + 1, adjustedTotal);
     } catch (error) {
       if (isAbortError(error)) return;
       if (!mountedRef.current) return;

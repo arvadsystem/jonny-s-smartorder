@@ -96,7 +96,11 @@ export const formatPhone = (digits8) => {
   return `${p1}-${p2}`;
 };
 
-const normalizeTextValue = (value) => String(value ?? "").trim();
+const normalizeTextValue = (value, options = {}) => {
+  const text = String(value ?? "");
+  if (!options?.preserveTrailingSpace) return text.trim();
+  return text.replace(/^\s+/, "");
+};
 const normalizeComparableText = (value) =>
   normalizeTextValue(value)
     .toLowerCase()
@@ -135,6 +139,16 @@ const firstNonEmptyText = (...values) => {
   return "";
 };
 
+const firstNonEmptyTextPreservingTrailingSpace = (...values) => {
+  for (const value of values) {
+    const text = normalizeTextValue(value, { preserveTrailingSpace: true });
+    if (!text) continue;
+    if (isUiPlaceholderText(text)) continue;
+    return text;
+  }
+  return "";
+};
+
 const isLikelyForeignId = (value) => {
   const text = normalizeTextValue(value);
   return /^\d{1,6}$/.test(text);
@@ -156,7 +170,7 @@ const resolvePhoneDisplayValue = (value = {}) => {
 };
 
 const resolveAddressDisplayValue = (value = {}) => {
-  const preferredAddress = firstNonEmptyText(
+  const preferredAddress = firstNonEmptyTextPreservingTrailingSpace(
     value?.texto_direccion,
     value?.direccion,
     value?.direccion_detalle,
@@ -165,7 +179,7 @@ const resolveAddressDisplayValue = (value = {}) => {
   );
   if (preferredAddress) return preferredAddress;
 
-  const idAddress = firstNonEmptyText(value?.id_direccion);
+  const idAddress = firstNonEmptyTextPreservingTrailingSpace(value?.id_direccion);
   return isLikelyForeignId(idAddress) ? "" : idAddress;
 };
 
