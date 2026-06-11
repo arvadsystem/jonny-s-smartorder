@@ -3,16 +3,14 @@ import recetasAdminService from '../../../../services/recetasAdminService';
 import { inventarioService } from '../../../../services/inventarioService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
+  countActiveRecetaFilters,
   defaultFilters,
   emptyForm,
-  getDriveFileIdFromUrl,
-  isPublicHttpUrl,
   normalizeRecetaForForm,
   normalizeRows,
   parseBoolean,
   resolveRecetaActiva,
   sortRecetas,
-  toDrivePreviewUrl,
   toNumberOrNull,
   DEFAULT_NIVEL_PICANTE_ID,
   shouldRequireSpiceLevel
@@ -63,30 +61,45 @@ const validarFormulario = (form) => {
   if (precio === null || precio < 0) {
     return 'precio debe ser mayor o igual a 0.';
   }
-  const imageUrl = String(form.url_imagen_publica || '').trim();
-  if (imageUrl && !isPublicHttpUrl(imageUrl)) {
-    return 'url_imagen_publica debe iniciar con http:// o https://.';
-  }
-  if (imageUrl) {
-    const isDriveUrl = /drive\.google\.com|drive\.usercontent\.google\.com|lh3\.googleusercontent\.com/i
-      .test(imageUrl);
-    if (isDriveUrl && !getDriveFileIdFromUrl(imageUrl)) {
-      return 'El enlace de Google Drive no es valido o esta incompleto.';
-    }
-  }
   return '';
 };
 
 const normalizeDetalleRows = (rows) =>
   (Array.isArray(rows) ? rows : [])
-    .map((row) => ({
-      id_insumo: toNumberOrNull(row?.id_insumo),
-      id_unidad_medida: toNumberOrNull(row?.id_unidad_medida),
-      cant: toNumberOrNull(row?.cant)
-    }))
-    .filter((row) => row.id_insumo !== null || row.id_unidad_medida !== null || row.cant !== null);
+    .map((row) => {
+      const idInsumo = toNumberOrNull(row?.id_insumo);
+      const idPresentacion = toNumberOrNull(row?.id_presentacion_insumo);
+      const modoUnidad = String(row?.modo_unidad || '').trim() === 'presentacion' || idPresentacion !== null
+        ? 'presentacion'
+        : 'base';
 
-const validarDetalleReceta = (rows) => {
+      if (modoUnidad === 'presentacion') {
+        return {
+          id_insumo: idInsumo,
+          modo_unidad: 'presentacion',
+          id_presentacion_insumo: idPresentacion,
+          cantidad_presentacion: toNumberOrNull(row?.cantidad_presentacion)
+        };
+      }
+
+      return {
+        id_insumo: idInsumo,
+        modo_unidad: 'base',
+        id_unidad_medida: toNumberOrNull(row?.id_unidad_medida),
+        cant: toNumberOrNull(row?.cant),
+        id_presentacion_insumo: null,
+        cantidad_presentacion: null
+      };
+    })
+    .filter((row) => (
+      row.id_insumo !== null ||
+      row.id_unidad_medida !== null ||
+      row.cant !== null ||
+      row.id_presentacion_insumo !== null ||
+      row.cantidad_presentacion !== null
+    ));
+
+const validarDetalleReceta = (rows, insumosCatalog = []) => {
   const detalle = normalizeDetalleRows(rows);
   if (detalle.length === 0) {
     return { ok: false, message: 'Agrega al menos un insumo al detalle de receta.' };
@@ -98,14 +111,38 @@ const validarDetalleReceta = (rows) => {
     if (row.id_insumo === null) {
       return { ok: false, message: `Selecciona un insumo en la linea ${index + 1}.` };
     }
+    if (seen.has(row.id_insumo)) {
+      return { ok: false, message: 'No repitas el mismo insumo en el detalle de receta.' };
+    }
+
+    if (row.modo_unidad === 'presentacion') {
+      if (row.id_presentacion_insumo === null) {
+        return { ok: false, message: `Selecciona una presentacion en la linea ${index + 1}.` };
+      }
+      if (row.cantidad_presentacion === null || row.cantidad_presentacion <= 0) {
+        return { ok: false, message: `La cantidad de presentaciones de la linea ${index + 1} debe ser mayor a 0.` };
+      }
+      const selectedInsumo = (Array.isArray(insumosCatalog) ? insumosCatalog : []).find(
+        (insumo) => Number(insumo?.id_insumo) === Number(row.id_insumo)
+      );
+      const availablePresentation = getPresentacionesReceta(selectedInsumo).some(
+        (presentacion) => Number(presentacion.id_presentacion) === Number(row.id_presentacion_insumo)
+      );
+      if (!availablePresentation) {
+        return {
+          ok: false,
+          message: `La presentacion de la linea ${index + 1} no esta disponible. Elige una presentacion activa o la unidad base.`
+        };
+      }
+      seen.add(row.id_insumo);
+      continue;
+    }
+
     if (row.id_unidad_medida === null) {
       return { ok: false, message: `Selecciona unidad de medida en la linea ${index + 1}.` };
     }
     if (row.cant === null || row.cant <= 0) {
       return { ok: false, message: `La cantidad de la linea ${index + 1} debe ser mayor a 0.` };
-    }
-    if (seen.has(row.id_insumo)) {
-      return { ok: false, message: 'No repitas el mismo insumo en el detalle de receta.' };
     }
     seen.add(row.id_insumo);
   }
@@ -154,38 +191,125 @@ const extractRecetaId = (response) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const roundDecimal = (value, decimals) => {
+  const factor = 10 ** decimals;
+  return Math.round((Number(value) + Number.EPSILON) * factor) / factor;
+};
+
+const normalizePresentacionCatalog = (presentacion) => ({
+  id_presentacion: Number(presentacion?.id_presentacion || 0),
+  nombre_presentacion: String(presentacion?.nombre_presentacion || '').trim(),
+  cantidad_presentacion: Number(presentacion?.cantidad_presentacion || 0),
+  id_unidad_presentacion: String(presentacion?.id_unidad_presentacion ?? ''),
+  unidad_presentacion_nombre: String(presentacion?.unidad_presentacion_nombre || '').trim(),
+  unidad_presentacion_simbolo: String(presentacion?.unidad_presentacion_simbolo || '').trim(),
+  cantidad_base: Number(presentacion?.cantidad_base || 0),
+  id_unidad_base: String(presentacion?.id_unidad_base ?? ''),
+  unidad_base_nombre: String(presentacion?.unidad_base_nombre || '').trim(),
+  unidad_base_simbolo: String(presentacion?.unidad_base_simbolo || '').trim(),
+  es_predeterminada_receta: Boolean(presentacion?.es_predeterminada_receta)
+});
+
+const createEmptyDetalleRow = () => ({
+  id_categoria_insumo: '',
+  id_insumo: '',
+  modo_unidad: 'base',
+  id_unidad_medida: '',
+  cant: '',
+  id_presentacion_insumo: '',
+  cantidad_presentacion: '',
+  id_unidad_presentacion: '',
+  factor_conversion_usado: ''
+});
+
+const getPresentacionesReceta = (insumo) =>
+  (Array.isArray(insumo?.presentaciones_receta) ? insumo.presentaciones_receta : [])
+    .filter((presentacion) => Number(presentacion?.id_presentacion || 0) > 0);
+
+const resolveDefaultDetalleForInsumo = (selected, previous = {}) => {
+  const base = {
+    ...previous,
+    id_categoria_insumo: selected?.id_categoria_insumo || previous?.id_categoria_insumo || '',
+    id_insumo: selected?.id_insumo ? String(selected.id_insumo) : '',
+    modo_unidad: 'base',
+    id_unidad_medida: selected?.id_unidad_medida || '',
+    cant: '',
+    id_presentacion_insumo: '',
+    cantidad_presentacion: '',
+    id_unidad_presentacion: '',
+    factor_conversion_usado: ''
+  };
+  const defaultPresentacion = getPresentacionesReceta(selected).find(
+    (presentacion) => Boolean(presentacion.es_predeterminada_receta)
+  );
+  if (!defaultPresentacion) return base;
+
+  return {
+    ...base,
+    modo_unidad: 'presentacion',
+    id_presentacion_insumo: String(defaultPresentacion.id_presentacion),
+    id_unidad_presentacion: String(defaultPresentacion.id_unidad_presentacion || ''),
+    factor_conversion_usado: roundDecimal(
+      Number(defaultPresentacion.cantidad_base || 0) / Number(defaultPresentacion.cantidad_presentacion || 1),
+      6
+    )
+  };
+};
+
 const normalizeInsumoCatalog = (response) => normalizeRows(response).map((row) => ({
   id_insumo: Number(row?.id_insumo || 0),
   nombre_insumo: String(row?.nombre_insumo || ''),
+  id_categoria_insumo:
+    row?.id_categoria_insumo === null || row?.id_categoria_insumo === undefined
+      ? ''
+      : String(row.id_categoria_insumo),
+  nombre_categoria: String(row?.nombre_categoria || '').trim(),
+  id_almacen:
+    row?.id_almacen === null || row?.id_almacen === undefined
+      ? ''
+      : String(row.id_almacen),
+  nombre_almacen: String(row?.nombre_almacen || '').trim(),
   id_unidad_medida:
     row?.id_unidad_medida === null || row?.id_unidad_medida === undefined
       ? ''
       : String(row.id_unidad_medida),
   unidad_nombre: String(row?.unidad_nombre || ''),
-  unidad_simbolo: String(row?.unidad_simbolo || '').trim()
+  unidad_simbolo: String(row?.unidad_simbolo || row?.unidad_abreviatura || '').trim(),
+  presentaciones_receta: (Array.isArray(row?.presentaciones_receta) ? row.presentaciones_receta : [])
+    .map(normalizePresentacionCatalog)
+    .filter((presentacion) => presentacion.id_presentacion > 0)
 })).filter((row) => row.id_insumo > 0);
 
-const normalizeDetalleFromApi = (response) => normalizeRows(response).map((row) => ({
-  id_insumo: String(row?.id_insumo ?? ''),
-  id_unidad_medida: String(row?.id_unidad_medida ?? ''),
-  cant: String(row?.cant ?? '')
-}));
+const normalizeUnidadesMedidaCatalog = (response) =>
+  normalizeRows(response)
+    .map((row) => {
+      const id = Number(row?.id_unidad_medida || row?.id || 0);
+      const nombre = String(row?.nombre || row?.unidad_nombre || '').trim();
+      const simbolo = String(row?.simbolo || row?.unidad_simbolo || '').trim();
+      const label = simbolo && nombre ? `${simbolo} - ${nombre}` : (simbolo || nombre || `Unidad ${id}`);
+      return id > 0 ? { value: String(id), label } : null;
+    })
+    .filter(Boolean);
 
-const registrarArchivoDesdeUrl = async ({ form, imageUrl }) => {
-  const payloadArchivo = {
-    nombre_original: `${toSafeRecetaBaseName(form.nombre_receta)}-url`,
-    url_publica: toDrivePreviewUrl(imageUrl),
-    tipo_archivo: 'image/url',
-    tamano_bytes: null
+const normalizeDetalleFromApi = (response) => normalizeRows(response).map((row) => {
+  const idPresentacion = String(row?.id_presentacion_insumo ?? '').trim();
+  return {
+    id_categoria_insumo: '',
+    id_insumo: String(row?.id_insumo ?? ''),
+    modo_unidad: idPresentacion ? 'presentacion' : 'base',
+    id_unidad_medida: String(row?.id_unidad_medida ?? ''),
+    cant: String(row?.cant ?? ''),
+    id_presentacion_insumo: idPresentacion,
+    cantidad_presentacion: String(row?.cantidad_presentacion ?? ''),
+    id_unidad_presentacion: String(row?.id_unidad_presentacion ?? ''),
+    factor_conversion_usado: String(row?.factor_conversion_usado ?? ''),
+    nombre_presentacion: String(row?.nombre_presentacion || '').trim(),
+    unidad_presentacion_nombre: String(row?.unidad_presentacion_nombre || '').trim(),
+    unidad_presentacion_simbolo: String(row?.unidad_presentacion_simbolo || '').trim(),
+    presentacion_estado: row?.presentacion_estado,
+    presentacion_uso_receta: row?.presentacion_uso_receta
   };
-
-  const archivoResponse = await recetasAdminService.registrarArchivoReceta(payloadArchivo);
-  const idArchivo = extractArchivoId(archivoResponse);
-  if (idArchivo === null) {
-    throw new Error('No se pudo obtener id_archivo al registrar la imagen de la receta.');
-  }
-  return idArchivo;
-};
+});
 
 const registrarArchivoDesdeFile = async ({ form, file }) => {
   const dataUrl = await fileToDataUrl(file);
@@ -207,30 +331,33 @@ const buildPayload = async ({ form, editingId, selectedImageFile = null }) => {
   const imageUrl = String(form.url_imagen_publica || '').trim();
   const originalImageUrl = String(form.url_imagen_original || '').trim();
   const currentArchivoId = toNumberOrNull(form.id_archivo);
-  const didUserChangeUrl = imageUrl !== originalImageUrl;
 
   const payload = buildPayloadBase(form);
+  let uploadedArchivoId = null;
 
   // Prioriza archivo local cuando el usuario selecciona nueva imagen desde el modal.
   if (selectedImageFile) {
-    payload.id_archivo = await registrarArchivoDesdeFile({ form, file: selectedImageFile });
-    return payload;
+    uploadedArchivoId = await registrarArchivoDesdeFile({ form, file: selectedImageFile });
+    payload.id_archivo = uploadedArchivoId;
+    return { payload, uploadedArchivoId };
   }
 
-  // Regla: si la URL no cambia y ya hay archivo asociado, se conserva id_archivo.
-  // Si cambia, primero se registra en /archivos y se envia solo id_archivo a recetas.
+  // Conserva imagen existente solo si sigue asociada al mismo archivo.
+  if (imageUrl && currentArchivoId !== null && imageUrl === originalImageUrl) {
+    payload.id_archivo = currentArchivoId;
+    return { payload, uploadedArchivoId };
+  }
+
   if (imageUrl) {
-    if (currentArchivoId !== null && !didUserChangeUrl) {
-      payload.id_archivo = currentArchivoId;
-    } else {
-      payload.id_archivo = await registrarArchivoDesdeUrl({ form, imageUrl });
-    }
-  } else if (editingId && currentArchivoId !== null && originalImageUrl) {
+    throw new Error('Recetas ya no permite guardar URL externa como imagen final. Sube un archivo JPG, PNG o WEBP.');
+  }
+
+  if (editingId && currentArchivoId !== null && originalImageUrl) {
     // Si en edicion se borra la URL, se limpia la referencia.
     payload.id_archivo = null;
   }
 
-  return payload;
+  return { payload, uploadedArchivoId };
 };
 
 const useRecetasAdmin = () => {
@@ -257,6 +384,7 @@ const useRecetasAdmin = () => {
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
   const [detalleReceta, setDetalleReceta] = useState([]);
   const [insumosDetalleCatalog, setInsumosDetalleCatalog] = useState([]);
+  const [unidadesMedidaCatalog, setUnidadesMedidaCatalog] = useState([]);
   const [menusCatalog, setMenusCatalog] = useState([]);
   const [departamentosCatalog, setDepartamentosCatalog] = useState([]);
   const [loadingDetalleCatalog, setLoadingDetalleCatalog] = useState(false);
@@ -335,9 +463,10 @@ const useRecetasAdmin = () => {
 
     const loadCatalogosBase = async () => {
       try {
-        const [menusResponse, departamentosResponse] = await Promise.all([
+        const [menusResponse, departamentosResponse, unidadesResponse] = await Promise.all([
           menuPublicacionAdminService.getMenusProgramables(),
-          inventarioService.getTipoDepartamentos()
+          inventarioService.getTipoDepartamentos(),
+          inventarioService.getUnidadesMedida()
         ]);
 
         if (!isMounted) return;
@@ -373,10 +502,12 @@ const useRecetasAdmin = () => {
 
         setMenusCatalog(menusRows);
         setDepartamentosCatalog(departamentosRows);
+        setUnidadesMedidaCatalog(normalizeUnidadesMedidaCatalog(unidadesResponse));
       } catch {
         if (!isMounted) return;
         setMenusCatalog([]);
         setDepartamentosCatalog([]);
+        setUnidadesMedidaCatalog([]);
       }
     };
 
@@ -393,19 +524,71 @@ const useRecetasAdmin = () => {
       const nombre = String(receta?.nombre_receta || '').toLowerCase();
       const descripcion = String(receta?.descripcion || '').toLowerCase();
       const idText = String(receta?.id_receta || '');
+      const recetaMenuId = String(receta?.id_menu ?? '').trim();
+      const recetaDepartamentoId = String(receta?.id_tipo_departamento ?? '').trim();
+      const precio = Number(receta?.precio);
+      const precioMin = toNumberOrNull(filters.precio_min);
+      const precioMax = toNumberOrNull(filters.precio_max);
+      const hasImage =
+        toNumberOrNull(receta?.id_archivo) !== null ||
+        String(receta?.url_imagen_publica || '').trim().length > 0;
+      const totalDetalle = Number(receta?.total_detalle || 0);
 
+      if (String(filters.id_menu || '').trim() && recetaMenuId !== String(filters.id_menu).trim()) return false;
+      if (
+        String(filters.id_tipo_departamento || '').trim() &&
+        recetaDepartamentoId !== String(filters.id_tipo_departamento).trim()
+      ) return false;
       if (filters.estado === 'activos' && !resolveRecetaActiva(receta)) return false;
       if (filters.estado === 'inactivos' && resolveRecetaActiva(receta)) return false;
+      if (precioMin !== null && (!Number.isFinite(precio) || precio < precioMin)) return false;
+      if (precioMax !== null && (!Number.isFinite(precio) || precio > precioMax)) return false;
+      if (filters.imagen === 'con_imagen' && !hasImage) return false;
+      if (filters.imagen === 'sin_imagen' && hasImage) return false;
+      if (filters.detalle === 'con_detalle' && totalDetalle <= 0) return false;
+      if (filters.detalle === 'sin_detalle' && totalDetalle > 0) return false;
 
       if (!searchTerm) return true;
       return nombre.includes(searchTerm) || descripcion.includes(searchTerm) || idText.includes(searchTerm);
     });
 
     return sortRecetas(filtered, filters.sortBy);
-  }, [filters.estado, filters.sortBy, recetas, search]);
+  }, [
+    filters.detalle,
+    filters.estado,
+    filters.id_menu,
+    filters.id_tipo_departamento,
+    filters.imagen,
+    filters.precio_max,
+    filters.precio_min,
+    filters.sortBy,
+    recetas,
+    search
+  ]);
 
-  const hasActiveFilters =
-    filters.estado !== defaultFilters.estado || filters.sortBy !== defaultFilters.sortBy;
+  const activeFiltersCount = useMemo(() => countActiveRecetaFilters(filters), [filters]);
+  const hasActiveFilters = activeFiltersCount > 0;
+  const insumoCategoriasOptions = useMemo(() => Array.from(
+    new Map(
+      (Array.isArray(insumosDetalleCatalog) ? insumosDetalleCatalog : [])
+        .filter((item) => String(item?.id_categoria_insumo || '').trim())
+        .map((item) => {
+          const value = String(item.id_categoria_insumo);
+          const label = String(item.nombre_categoria || `Categoria ${value}`).trim();
+          return [value, { value, label }];
+        })
+    ).values()
+  ), [insumosDetalleCatalog]);
+  const menuLabelsById = useMemo(() => menusCatalog.reduce((acc, option) => {
+    const key = String(option?.value || '').trim();
+    if (key) acc[key] = String(option?.label || '').trim();
+    return acc;
+  }, {}), [menusCatalog]);
+  const departamentoLabelsById = useMemo(() => departamentosCatalog.reduce((acc, option) => {
+    const key = String(option?.value || '').trim();
+    if (key) acc[key] = String(option?.label || '').trim();
+    return acc;
+  }, {}), [departamentosCatalog]);
 
   const onChangeField = useCallback((event) => {
     const { name, value } = event.target;
@@ -434,8 +617,39 @@ const useRecetasAdmin = () => {
     void cargarCatalogoDetalle(false);
   }, [cargarCatalogoDetalle]);
 
+  useEffect(() => {
+    setDetalleReceta((prev) => {
+      let changed = false;
+
+      const next = prev.map((row) => {
+        const selected = insumosDetalleCatalog.find(
+          (item) => String(item.id_insumo) === String(row.id_insumo)
+        );
+        if (!selected?.id_unidad_medida) {
+          return row;
+        }
+
+        const resolvedUnidadId = String(selected.id_unidad_medida);
+        if (String(row.id_unidad_medida) === resolvedUnidadId) {
+          return row;
+        }
+
+        changed = true;
+        return {
+          ...row,
+          id_unidad_medida: resolvedUnidadId
+        };
+      });
+
+      return changed ? next : prev;
+    });
+  }, [insumosDetalleCatalog]);
+
   const addDetalleRow = useCallback(() => {
-    setDetalleReceta((prev) => [...prev, { id_insumo: '', id_unidad_medida: '', cant: '' }]);
+    setDetalleReceta((prev) => [
+      ...prev,
+      createEmptyDetalleRow()
+    ]);
   }, []);
 
   const removeDetalleRow = useCallback((index) => {
@@ -447,9 +661,67 @@ const useRecetasAdmin = () => {
       if (rowIndex !== index) return row;
 
       const next = { ...row, [field]: value };
+      if (field === 'id_categoria_insumo') {
+        const selected = insumosDetalleCatalog.find(
+          (item) => String(item.id_insumo) === String(row.id_insumo)
+        );
+        if (selected && String(selected.id_categoria_insumo) !== String(value)) {
+          return { ...createEmptyDetalleRow(), id_categoria_insumo: value };
+        }
+      }
       if (field === 'id_insumo') {
         const selected = insumosDetalleCatalog.find((item) => String(item.id_insumo) === String(value));
-        next.id_unidad_medida = selected?.id_unidad_medida || '';
+        return resolveDefaultDetalleForInsumo(selected, next);
+      }
+      if (field === 'modo_unidad') {
+        const selected = insumosDetalleCatalog.find((item) => String(item.id_insumo) === String(row.id_insumo));
+        if (value === 'presentacion') {
+          const firstPresentacion = getPresentacionesReceta(selected)[0] || null;
+          return {
+            ...next,
+            modo_unidad: 'presentacion',
+            id_unidad_medida: selected?.id_unidad_medida || '',
+            cant: '',
+            id_presentacion_insumo: firstPresentacion ? String(firstPresentacion.id_presentacion) : '',
+            cantidad_presentacion: '',
+            id_unidad_presentacion: firstPresentacion ? String(firstPresentacion.id_unidad_presentacion || '') : '',
+            factor_conversion_usado: firstPresentacion
+              ? String(roundDecimal(
+                Number(firstPresentacion.cantidad_base || 0) / Number(firstPresentacion.cantidad_presentacion || 1),
+                6
+              ))
+              : ''
+          };
+        }
+        return {
+          ...next,
+          modo_unidad: 'base',
+          id_unidad_medida: selected?.id_unidad_medida || next.id_unidad_medida || '',
+          cant: '',
+          id_presentacion_insumo: '',
+          cantidad_presentacion: '',
+          id_unidad_presentacion: '',
+          factor_conversion_usado: ''
+        };
+      }
+      if (field === 'id_presentacion_insumo') {
+        const selected = insumosDetalleCatalog.find((item) => String(item.id_insumo) === String(row.id_insumo));
+        const presentacion = getPresentacionesReceta(selected).find(
+          (item) => String(item.id_presentacion) === String(value)
+        );
+        return {
+          ...next,
+          modo_unidad: 'presentacion',
+          id_presentacion_insumo: value,
+          cantidad_presentacion: '',
+          id_unidad_presentacion: presentacion ? String(presentacion.id_unidad_presentacion || '') : '',
+          factor_conversion_usado: presentacion
+            ? String(roundDecimal(
+              Number(presentacion.cantidad_base || 0) / Number(presentacion.cantidad_presentacion || 1),
+              6
+            ))
+            : ''
+        };
       }
       return next;
     }));
@@ -469,7 +741,7 @@ const useRecetasAdmin = () => {
     setFormPreviewError(false);
     setSelectedImageFile(null);
     setSelectedImagePreviewUrl('');
-    setDetalleReceta([{ id_insumo: '', id_unidad_medida: '', cant: '' }]);
+    setDetalleReceta([createEmptyDetalleRow()]);
     void cargarCatalogoDetalle(false);
   }, [cargarCatalogoDetalle, defaultIds.id_menu]);
 
@@ -487,11 +759,6 @@ const useRecetasAdmin = () => {
     setFiltersOpen(false);
   }, []);
 
-  const closeAnyDrawer = useCallback(() => {
-    setDrawerOpen(false);
-    setFiltersOpen(false);
-  }, []);
-
   // Guarda receta en create/update usando el mismo drawer.
   const onSubmit = useCallback(async (event) => {
     event.preventDefault();
@@ -503,15 +770,20 @@ const useRecetasAdmin = () => {
       setError(validationMessage);
       return;
     }
-    const detalleValidation = validarDetalleReceta(detalleReceta);
+    const detalleValidation = validarDetalleReceta(detalleReceta, insumosDetalleCatalog);
     if (!detalleValidation.ok) {
       setError(detalleValidation.message);
       return;
     }
 
+    let payload = null;
+    let uploadedArchivoId = null;
+
     try {
       setSaving(true);
-      const payload = await buildPayload({ form, editingId, selectedImageFile });
+      const buildResult = await buildPayload({ form, editingId, selectedImageFile });
+      payload = buildResult.payload;
+      uploadedArchivoId = buildResult.uploadedArchivoId;
 
       if (editingId) {
         await recetasAdminService.actualizarRecetaAdmin(editingId, {
@@ -544,11 +816,19 @@ const useRecetasAdmin = () => {
       setDetalleReceta([]);
       await cargarRecetas();
     } catch (e) {
+      const cleanupArchivoId = toNumberOrNull(payload?.id_archivo);
+      if (cleanupArchivoId !== null && cleanupArchivoId === uploadedArchivoId) {
+        try {
+          await recetasAdminService.eliminarArchivoReceta(cleanupArchivoId);
+        } catch {
+          console.warn('[recetas] cleanup temporal de imagen fallido.');
+        }
+      }
       setError(e?.message || 'No se pudo guardar la receta.');
     } finally {
       setSaving(false);
     }
-  }, [cargarRecetas, defaultIds.id_menu, detalleReceta, editingId, form, selectedImageFile]);
+  }, [cargarRecetas, defaultIds.id_menu, detalleReceta, editingId, form, insumosDetalleCatalog, selectedImageFile]);
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {
@@ -588,7 +868,11 @@ const useRecetasAdmin = () => {
       setEditingId(Number(receta?.id_receta || idReceta));
       setForm(normalizeRecetaForForm(receta || {}));
       const detalleRows = normalizeDetalleFromApi(detalleResponse);
-      setDetalleReceta(detalleRows.length > 0 ? detalleRows : [{ id_insumo: '', id_unidad_medida: '', cant: '' }]);
+      setDetalleReceta(
+        detalleRows.length > 0
+          ? detalleRows
+          : [createEmptyDetalleRow()]
+      );
       setDrawerOpen(true);
     } catch (e) {
       setError(e?.message || 'No se pudo cargar la receta para edicion.');
@@ -666,7 +950,7 @@ const useRecetasAdmin = () => {
   }, [selectedImagePreviewUrl]);
 
   // Preview: usa archivo local seleccionado; si no hay, usa URL remota existente.
-  const formPreviewUrl = selectedImagePreviewUrl || toDrivePreviewUrl(form.url_imagen_publica);
+  const formPreviewUrl = selectedImagePreviewUrl || String(form.url_imagen_publica || '').trim();
 
   const setCardImageError = useCallback((idReceta) => {
     setCardImageErrors((prev) => ({
@@ -689,6 +973,7 @@ const useRecetasAdmin = () => {
       form,
       detalleReceta,
       insumosDetalleCatalog,
+      unidadesMedidaCatalog,
       loadingDetalleCatalog,
       menusCatalog,
       departamentosCatalog,
@@ -703,8 +988,12 @@ const useRecetasAdmin = () => {
     },
     derived: {
       recetasFiltradas,
+      activeFiltersCount,
       hasActiveFilters,
-      formPreviewUrl
+      formPreviewUrl,
+      insumoCategoriasOptions,
+      menuLabelsById,
+      departamentoLabelsById
     },
     actions: {
       setError,
@@ -722,7 +1011,6 @@ const useRecetasAdmin = () => {
       closeCreateDrawer,
       openFiltersDrawer,
       closeFiltersDrawer,
-      closeAnyDrawer,
       onSubmit,
       onEditar,
       onCambiarEstado,

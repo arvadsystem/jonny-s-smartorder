@@ -828,8 +828,13 @@ export default function CajaView({
     setRegistrandoPagoPedido(true);
     try {
       const response = await onRegistrarPagoPedido(idPedido, payload);
-      await loadPendientesSummary();
-      setRegistrarPagoOpen(false);
+      const pendingAmount = Number(response?.monto_pendiente ?? 0) || 0;
+      const paymentState = String(response?.estado_pago || response?.estado_pago_control || '').trim().toUpperCase();
+      const stillPending = pendingAmount > 0.009 || paymentState === 'PENDIENTE_PAGO' || paymentState === 'PENDIENTE_DE_PAGO';
+      if (!stillPending) {
+        setRegistrarPagoOpen(false);
+      }
+      void loadPendientesSummary().catch(() => undefined);
       return response;
     } finally {
       registrandoPagoPedidoRef.current = false;

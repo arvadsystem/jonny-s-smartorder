@@ -9,7 +9,8 @@ import {
 const currencyFormatter = new Intl.NumberFormat('es-HN', {
   style: 'currency',
   currency: 'HNL',
-  maximumFractionDigits: 0
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 const MAX_LINE_NOTE_LENGTH = 100;

@@ -1,126 +1,179 @@
-# Frontend AGENTS.md - Jonny’s SmartOrden
+# AGENTS.md â€” Jonny's SmartOrder Frontend
 
-## Rol
+## Repository context
 
-Actúa como ingeniero frontend senior especializado en React/Vite, UX, responsive, control de errores, permisos visibles y preparación para producción.
+Repository:
 
-## Contexto frontend
+```text
+arvadsystem/jonny-s-smartorder
+```
 
-Proyecto Jonny’s SmartOrden frontend.
+This is the frontend for Jonny's SmartOrder.
 
-Estructura detectada:
-- src/pages/
-- src/services/
-- src/routes/
-- src/context/
-- src/utils/
-- docs/sql/
+Detected stack:
 
-Módulos críticos:
-- Inventario
-- Órdenes de compra
-- Productos
-- Insumos
-- Proveedores
-- Almacenes
-- Mobiliario
-- Campañas de correo
-- Seguridad / Roles / Permisos
-- Ventas
-- Cocina
-- Cajas
-- Menú público
+- React.
+- Vite.
+- JavaScript ES Modules.
+- React Router.
+- Bootstrap.
+- Bootstrap Icons.
+- Sass.
+- Framer Motion.
+- React Select.
+- Supabase JS dependency exists.
 
-## Reglas obligatorias
+Do not assume TypeScript.
 
-1. Analizar antes de modificar.
-2. No tocar pantallas, componentes, rutas, contextos, servicios o utilidades fuera del alcance solicitado.
-3. No refactorizar por preferencia personal.
-4. No romper navegación existente.
-5. No romper responsive.
-6. Mantener textos visibles en español.
-7. Mantener coherencia visual con los submódulos existentes.
-8. Reutilizar componentes, layouts, modales, tablas, cards, botones, badges, filtros y toasts existentes.
-9. No crear componentes duplicados si ya existe un patrón reutilizable.
-10. No mostrar errores técnicos al usuario final.
-11. No dejar console.log, console.error, console.warn ni trazas sensibles.
-12. Evitar spam de toasts.
-13. Validar formularios antes de enviar.
-14. Manejar estados loading, empty, error y success.
-15. Respetar permisos visibles por rol.
-16. No mostrar opciones no permitidas por rol.
-17. Los comentarios nuevos deben ser puntuales y llevar iniciales AM.
-18. No romper nada funcional existente.
+## Real scripts
 
-## Reglas críticas de Inventario
+Use only scripts that exist in `package.json`:
 
-1. Inventario es módulo crítico.
-2. Mantener coherencia visual entre submódulos:
-   - Productos
-   - Insumos
-   - Proveedores
-   - Almacenes
-   - Mobiliario
-   - Órdenes de compra
-3. No cambiar flujos funcionales sin justificación.
-4. No eliminar visualmente acciones necesarias de auditoría.
-5. No mostrar acciones si el rol no tiene permiso.
-6. Las órdenes de compra deben permitir revisar historial y evidencias.
-7. Facturas y depósitos deben visualizarse correctamente como imagen o PDF.
-8. Para documentos privados, consumir URLs firmadas cuando aplique.
-9. Las imágenes de productos deben cargar rápido y no romper la UI.
-10. Manejar errores de carga de imagen/documento con mensajes limpios.
-11. No duplicar filtros, buscadores o modales si ya existe patrón.
-12. Mantener secciones colapsables si el submódulo ya usa ese patrón.
+```bash
+npm run dev
+npm run build
+npm run lint
+npm run preview
+npm run qa:personas-planillas:smoke
+```
 
-## Reglas de Órdenes de Compra
+## Important structure
 
-Validar especialmente:
+Known important files and folders:
 
-1. Flujo de solicitud.
-2. Aprobación/rechazo.
-3. Abastecimiento.
-4. Visualización de factura.
-5. Visualización de depósito.
-6. Historial.
-7. Stock solicitado/aprobado/recibido.
-8. Estados visibles.
-9. Permisos por acción.
-10. Responsive de tablas y modales.
+```text
+src/App.jsx
+src/services/api.js
+src/services/ventasService.js
+src/utils/constants.js
+src/routes/
+src/context/
+src/hooks/
+src/components/
+src/pages/auth/
+src/pages/dashboard/
+src/pages/dashboard/ventas/
+src/modules/ventas/
+src/modules/public-menu/
+vite.config.js
+```
 
-## Reglas para Campañas de Correo
+## Architecture rules
 
-1. No disparar envíos desde frontend sin confirmación.
-2. Validar selección de destinatarios.
-3. Mostrar estados claros de campaña.
-4. No mostrar errores SMTP/técnicos al usuario.
-5. Reutilizar patrones existentes de tablas, filtros y modales.
-6. Mantener experiencia clara para Super Admin.
+- Route changes must respect `src/App.jsx`.
+- Protected dashboard routes must use existing route guards.
+- Permission-aware screens must use existing permission utilities.
+- API calls should go through existing service modules.
+- General JSON API calls should use `apiFetch`.
+- Do not bypass CSRF/cookie behavior.
+- Do not break Vite proxy assumptions.
+- Do not add direct Supabase calls unless the existing module already does it or the change is explicitly approved.
 
-## Validación obligatoria antes de cerrar
+## API rules
 
-1. Build frontend si aplica.
-2. Navegación principal.
-3. Responsive.
-4. Estados loading/error/empty/success.
-5. Formularios.
-6. Toasts.
-7. Mensajes visibles.
-8. Permisos visibles por rol.
-9. Ausencia de console.*.
-10. Integración con API.
-11. Visualización correcta de imágenes/PDF si aplica.
+`apiFetch` handles:
 
-## Formato final obligatorio
+- Base API URL.
+- JSON parsing.
+- CSRF header for unsafe methods.
+- `credentials: include`.
+- Request timeout.
+- Safe UI messages.
+- 401 logout event.
+- 403 CSRF/permission mapping.
 
-A. Resumen frontend  
-B. Archivos modificados  
-C. Pantallas/componentes afectados  
-D. Cambios aplicados  
-E. Validaciones realizadas  
-F. Riesgos pendientes  
-G. Impacto backend si aplica  
-H. SQL manual si aplica  
+Do not duplicate this logic in components.
 
-No modifiques ningún otro archivo.
-Solo crea jonny-s-smartorder/AGENTS.md.
+## Sales module rules
+
+The sales UI is critical.
+
+Before changing sales/cash/order UI, inspect:
+
+```text
+src/pages/dashboard/Ventas.jsx
+src/pages/dashboard/ventas/VentasPage.jsx
+src/pages/dashboard/ventas/hooks/useVentas.js
+src/services/ventasService.js
+src/pages/dashboard/ventas/components/
+src/pages/dashboard/ventas/utils/
+src/modules/ventas/
+```
+
+Do not break:
+
+- Direct sales.
+- Pending orders.
+- Payment registration.
+- Discounts.
+- Extras.
+- Combos.
+- Recipes.
+- Products.
+- Split bill.
+- Ticket detail.
+- Reversals.
+- Cash session dependency.
+- Kitchen visibility.
+
+## UI rules
+
+- Keep visual consistency with Bootstrap and existing cards, modals and tables.
+- Do not introduce a new component library.
+- Keep components focused.
+- Use existing toast, alert and loading patterns.
+- Always handle loading, error, empty and success states.
+- Avoid large UI rewrites.
+
+## State and hooks
+
+- Keep hooks focused.
+- Avoid stale closure bugs.
+- Do not add effects without correct dependencies.
+- Prefer extraction of pure helpers when a hook grows.
+- Avoid mixing API, normalization, UI state and business decisions in one new block.
+
+## Refactor rules
+
+- Refactor only the requested area.
+- Keep behavior.
+- Avoid mass formatting.
+- Do not rename public API fields.
+- Do not move files unless imports are updated and verified.
+- Prefer small extractions from large files.
+
+## Supabase/database impact rules
+
+If a frontend change depends on database fields:
+
+- Check backend response first.
+- Check backend SQL/service.
+- Check actual table/column if available.
+- Do not invent fields.
+- Do not assume decimal support unless verified.
+- Do not assume RLS protects the call.
+
+## Verification
+
+Preferred commands:
+
+```bash
+npm run lint
+npm run build
+```
+
+For UI changes, also provide manual test steps.
+
+Do not run repetitive checks in loops.
+
+## Do not do
+
+- Do not convert to TypeScript.
+- Do not install new dependencies without approval.
+- Do not bypass `apiFetch`.
+- Do not expose technical database errors to the user.
+- Do not hardcode production backend URLs.
+- Do not break `credentials: include`.
+- Do not break CSRF.
+- Do not change API contracts silently.
+- Do not touch unrelated modules.

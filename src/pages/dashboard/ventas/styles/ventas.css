@@ -370,6 +370,11 @@
   padding: 14px !important;
 }
 
+.ventas-page .ventas-page__sale-card.is-split-account {
+  border-color: rgba(37, 99, 235, 0.22);
+  box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.28), 0 3px 10px rgba(var(--c-shadow-rgb), 0.12);
+}
+
 .ventas-page .ventas-page__sale-card .inv-cat-card__halo {
   opacity: 0.32;
   transform: scale(0.82);
@@ -408,6 +413,15 @@
   border: 1px solid rgba(196, 45, 49, 0.22);
   background: rgba(196, 45, 49, 0.08);
   color: #a82b30;
+}
+
+.ventas-page__sale-badge.is-split,
+.ventas-page__table-subpill.is-split,
+.ventas-pedidos-card__badge.is-split,
+.ventas-registrar-pago-modal__badge.is-split {
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: #eff6ff;
+  color: #1d4ed8 !important;
 }
 
 .ventas-page .ventas-page__card-details {
@@ -530,6 +544,10 @@
   transition: background-color 160ms ease;
 }
 
+.ventas-page .ventas-page__table-row.is-split-account td:first-child {
+  box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.28);
+}
+
 .ventas-page .ventas-page__table-row:hover,
 .ventas-page .ventas-page__table-row:focus-within {
   background: rgba(243, 241, 216, 0.3);
@@ -555,6 +573,18 @@
 .ventas-page .ventas-page__table-date span {
   color: rgba(82, 44, 34, 0.74);
   font-size: 0.8rem;
+}
+
+.ventas-page__table-subpill {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 0.68rem !important;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .ventas-page .ventas-page__table-pill {
@@ -1643,6 +1673,15 @@
   font-weight: 700;
 }
 
+.ventas-create-modal__notice {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(34, 197, 94, 0.1);
+  color: #166534;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
 .ventas-create-modal__submit {
   min-height: 52px;
   border: 0;
@@ -2033,6 +2072,43 @@
   font-weight: 900;
 }
 
+.ventas-descuentos-vigencia {
+  display: grid;
+  gap: 5px;
+  color: #2f1a10;
+}
+
+.ventas-descuentos-vigencia__badge {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ventas-descuentos-vigencia__badge.is-active {
+  border-color: rgba(22, 163, 74, 0.2);
+  background: #ecfdf3;
+  color: #15803d;
+}
+
+.ventas-descuentos-vigencia__badge.is-expired {
+  border-color: rgba(180, 35, 24, 0.2);
+  background: #fff1f2;
+  color: #b42318;
+}
+
+.ventas-descuentos-vigencia__badge.is-scheduled {
+  border-color: rgba(154, 83, 25, 0.2);
+  background: #fff7ed;
+  color: #8a4915;
+}
+
 @media (max-width: 640px) {
   .ventas-discounts-toolbar-note {
     width: 100%;
@@ -2101,30 +2177,41 @@
 }
 
 .ventas-detail-modal__item-card dl,
-.ventas-detail-modal__reversion-lines {
+.ventas-detail-modal__reversion-lines,
+.ventas-detail-modal__delivery-grid {
   display: grid;
   gap: 7px;
   margin: 0;
 }
 
 .ventas-detail-modal__item-card dl div,
-.ventas-detail-modal__reversion-lines div {
+.ventas-detail-modal__reversion-lines div,
+.ventas-detail-modal__delivery-grid div {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   color: rgba(82, 44, 34, 0.82);
 }
 
-.ventas-detail-modal__item-card dt {
+.ventas-detail-modal__item-card dt,
+.ventas-detail-modal__delivery-grid dt {
   font-weight: 700;
   color: rgba(117, 85, 61, 0.74);
 }
 
-.ventas-detail-modal__item-card dd {
+.ventas-detail-modal__item-card dd,
+.ventas-detail-modal__delivery-grid dd {
   margin: 0;
   font-weight: 900;
   color: #2f1a10;
   text-align: right;
+}
+
+.ventas-detail-modal__delivery-grid {
+  padding: 14px 16px;
+  border: 1px solid rgba(157, 150, 112, 0.16);
+  border-radius: 18px;
+  background: rgba(250, 247, 243, 0.92);
 }
 
 .ventas-detail-modal__reversions {
@@ -2821,6 +2908,11 @@
   padding: 10px;
 }
 
+.ventas-registrar-pago-modal__pedido.is-split-account {
+  border-color: rgba(37, 99, 235, 0.22);
+  box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.24);
+}
+
 .ventas-registrar-pago-modal__pedido.is-selected {
   border-color: rgba(154, 83, 25, 0.52);
   box-shadow: 0 0 0 2px rgba(184, 104, 33, 0.1);
@@ -2838,6 +2930,14 @@
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+
+.ventas-registrar-pago-modal__pedido-badges {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 5px !important;
 }
 
 .ventas-registrar-pago-modal__pedido-main strong {
@@ -3772,6 +3872,12 @@
   border-radius: 14px;
   border: 1px solid rgba(157, 150, 112, 0.14);
   background: rgba(255, 255, 255, 0.92);
+}
+
+.ventas-cart__item.is-complement-incomplete {
+  border-color: rgba(196, 76, 49, 0.62);
+  background: rgba(255, 244, 240, 0.96);
+  box-shadow: 0 0 0 2px rgba(196, 76, 49, 0.12);
 }
 
 .ventas-cart__item-thumb {
@@ -6874,6 +6980,20 @@
   letter-spacing: 0;
 }
 
+.ventas-finalizar-modal__required {
+  color: #b4232a;
+  margin-left: 4px;
+  text-decoration: none;
+  font-weight: 900;
+}
+
+.ventas-finalizar-modal__field-hint {
+  color: #85634e;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  margin-top: 4px;
+}
+
 .ventas-finalizar-modal .ventas-create-modal__field input {
   width: 100%;
   min-height: 46px;
@@ -6884,6 +7004,26 @@
   padding: 10px 12px;
   font-size: 0.94rem;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.ventas-finalizar-modal__money-field {
+  position: relative;
+}
+
+.ventas-finalizar-modal__money-field::before {
+  content: "L";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(93, 55, 34, 0.72);
+  font-weight: 800;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ventas-finalizar-modal .ventas-create-modal__field .ventas-finalizar-modal__money-input {
+  padding-left: 32px;
 }
 
 .ventas-finalizar-modal .app-select__trigger {
@@ -7062,6 +7202,282 @@
   border-top: 1px solid rgba(15, 23, 42, .08);
   justify-content: space-between;
   padding-top: .55rem;
+}
+
+.ventas-cuenta-dividida-builder {
+  display: grid;
+  gap: .85rem;
+  grid-template-columns: minmax(220px, .85fr) minmax(280px, 1.15fr);
+}
+
+.ventas-cuenta-dividida-builder__available,
+.ventas-cuenta-dividida-builder__person {
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, .1);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.ventas-cuenta-dividida-builder__available {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.ventas-cuenta-dividida-builder__section-head,
+.ventas-cuenta-dividida-builder__person-total,
+.ventas-cuenta-dividida-builder__available-item,
+.ventas-cuenta-dividida-builder__assigned-item {
+  align-items: center;
+  display: flex;
+  gap: .65rem;
+  justify-content: space-between;
+}
+
+.ventas-cuenta-dividida-builder__section-head {
+  border-bottom: 1px solid rgba(15, 23, 42, .08);
+  padding: .75rem .85rem;
+}
+
+.ventas-cuenta-dividida-builder__section-head div {
+  align-items: center;
+  display: flex;
+  gap: .5rem;
+  min-width: 0;
+}
+
+.ventas-cuenta-dividida-builder__section-head span {
+  color: #1f2937;
+  font-weight: 800;
+}
+
+.ventas-cuenta-dividida-builder__section-head strong {
+  background: #eef2ff;
+  border-radius: 999px;
+  color: #1d4ed8;
+  font-size: .72rem;
+  padding: .2rem .5rem;
+}
+
+.ventas-cuenta-dividida-builder__section-head small {
+  color: #64748b;
+  font-weight: 700;
+  max-width: 48%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.ventas-cuenta-dividida-builder__available-list,
+.ventas-cuenta-dividida-builder__people {
+  display: grid;
+  gap: .5rem;
+  max-height: 420px;
+  overflow: auto;
+  padding: .7rem;
+}
+
+.ventas-cuenta-dividida-builder__people {
+  align-content: start;
+}
+
+.ventas-cuenta-dividida-builder__person {
+  display: grid;
+  gap: .65rem;
+  padding: .75rem;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.ventas-cuenta-dividida-builder__person.is-selected {
+  border-color: rgba(154, 83, 25, .55);
+  box-shadow: 0 0 0 2px rgba(184, 104, 33, .1);
+}
+
+.ventas-cuenta-dividida-builder__person-head {
+  display: grid;
+  gap: .5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.ventas-cuenta-dividida-builder__person-head .btn {
+  align-self: end;
+  min-width: 120px;
+  white-space: nowrap;
+}
+
+.ventas-cuenta-dividida-builder__person-label {
+  display: grid;
+  gap: 6px;
+}
+
+.ventas-cuenta-dividida-builder__person-label span {
+  color: rgba(82, 44, 34, 0.72);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.ventas-cuenta-dividida-builder__person-label strong {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border: 1px solid rgba(157, 150, 112, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #2f1a10;
+  font-size: 1rem;
+}
+
+.ventas-cuenta-dividida-builder__available-item,
+.ventas-cuenta-dividida-builder__assigned-item {
+  border: 1px solid rgba(15, 23, 42, .08);
+  border-radius: 8px;
+  min-height: 42px;
+  padding: .55rem .65rem;
+}
+
+.ventas-cuenta-dividida-builder__available-item {
+  background: #fff;
+  color: #1f2937;
+  text-align: left;
+  transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.ventas-cuenta-dividida-builder__available-item:hover,
+.ventas-cuenta-dividida-builder__available-item:focus-visible {
+  background: #fff7ed;
+  border-color: rgba(154, 83, 25, .4);
+  outline: 0;
+  transform: translateY(-1px);
+}
+
+.ventas-cuenta-dividida-builder__available-item:disabled {
+  cursor: not-allowed;
+  opacity: .68;
+  transform: none;
+}
+
+.ventas-cuenta-dividida-builder__available-item span,
+.ventas-cuenta-dividida-builder__assigned-item span {
+  color: #5f4a3b;
+  display: flex;
+  gap: .35rem;
+  line-height: 1.2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ventas-cuenta-dividida-builder__available-item small,
+.ventas-cuenta-dividida-builder__assigned-item small {
+  color: #94a3b8;
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.ventas-cuenta-dividida-builder__available-item strong,
+.ventas-cuenta-dividida-builder__assigned-item strong {
+  color: #47240d;
+  flex: 0 0 auto;
+  font-size: .86rem;
+  white-space: nowrap;
+}
+
+.ventas-cuenta-dividida-builder__available-item i {
+  color: #9a5319;
+  flex: 0 0 auto;
+}
+
+.ventas-cuenta-dividida-builder__assigned-list {
+  display: grid;
+  gap: .45rem;
+}
+
+.ventas-cuenta-dividida-builder__assigned-item {
+  background: #f8fafc;
+}
+
+.ventas-cuenta-dividida-builder__assigned-item button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, .32);
+  border-radius: 999px;
+  color: #9a1c12;
+  display: inline-flex;
+  flex: 0 0 28px;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.ventas-cuenta-dividida-builder__assigned-item button:hover,
+.ventas-cuenta-dividida-builder__assigned-item button:focus-visible {
+  background: #fee2e2;
+  border-color: rgba(185, 28, 28, .35);
+  outline: 0;
+}
+
+.ventas-cuenta-dividida-builder__person-total {
+  border-top: 1px solid rgba(15, 23, 42, .08);
+  padding-top: .55rem;
+}
+
+.ventas-cuenta-dividida-builder__person-total span {
+  color: #64748b;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.ventas-cuenta-dividida-builder__person-total strong {
+  color: #9a5319;
+}
+
+.ventas-cuenta-dividida-builder__empty {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px dashed rgba(148, 163, 184, .45);
+  border-radius: 8px;
+  color: #64748b;
+  display: flex;
+  gap: .5rem;
+  justify-content: center;
+  min-height: 72px;
+  padding: .75rem;
+  text-align: center;
+}
+
+.ventas-cuenta-dividida-builder__empty.is-compact {
+  min-height: 42px;
+}
+
+@media (max-width: 860px) {
+  .ventas-cuenta-dividida-builder {
+    grid-template-columns: 1fr;
+  }
+
+  .ventas-cuenta-dividida-builder__available-list,
+  .ventas-cuenta-dividida-builder__people {
+    max-height: 320px;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .ventas-cuenta-dividida-builder__person-head {
+    grid-template-columns: 1fr;
+  }
+
+  .ventas-cuenta-dividida-builder__person-head .btn {
+    width: 100%;
+  }
+
+  .ventas-cuenta-dividida-builder__section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ventas-cuenta-dividida-builder__section-head small {
+    max-width: 100%;
+    text-align: left;
+  }
 }
 
 .ventas-cuenta-dividida-detalle {
@@ -7579,6 +7995,12 @@
   color: #1f6b4a;
 }
 
+.ventas-cart__action-btn.is-attention {
+  border-color: rgba(196, 76, 49, 0.5);
+  background: rgba(255, 238, 232, 0.96);
+  color: #9f321f;
+}
+
 .ventas-cart__action-btn i,
 .ventas-cart__line-actions-row .ventas-cart__kitchen-note-toggle i {
   font-size: 0.9rem;
@@ -8034,6 +8456,10 @@
   max-height: min(90vh, 820px);
 }
 
+.ventas-registrar-pago-modal.is-splitting-account {
+  width: min(1180px, calc(100vw - 32px));
+}
+
 .ventas-registrar-pago-modal__header {
   padding: 16px 20px 12px;
 }
@@ -8041,6 +8467,10 @@
 .ventas-registrar-pago-modal__body {
   grid-template-columns: minmax(390px, 1fr) minmax(330px, 0.88fr);
   overflow-x: hidden;
+}
+
+.ventas-registrar-pago-modal__body.is-splitting-account {
+  grid-template-columns: minmax(280px, .72fr) minmax(560px, 1.28fr);
 }
 
 .ventas-registrar-pago-modal__search-panel,
@@ -8221,6 +8651,10 @@
 
 @media (max-width: 980px) {
   .ventas-registrar-pago-modal__body {
+    grid-template-columns: 1fr;
+  }
+
+  .ventas-registrar-pago-modal__body.is-splitting-account {
     grid-template-columns: 1fr;
   }
 
@@ -8649,6 +9083,11 @@
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 10px 24px rgba(82, 44, 34, 0.06);
+}
+
+.ventas-pedidos-card.is-split-account {
+  border-color: rgba(37, 99, 235, 0.22);
+  box-shadow: inset 3px 0 0 rgba(37, 99, 235, 0.24), 0 10px 24px rgba(82, 44, 34, 0.05);
 }
 
 .ventas-pedidos-card__header,

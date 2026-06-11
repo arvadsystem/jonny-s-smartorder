@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FaImage } from 'react-icons/fa';
 import AppSelect from '../../../../components/common/AppSelect';
+import { resolveInventarioImageUrl } from '../../../../utils/inventarioImagenes';
 import { CATALOG_TABS } from '../hooks/useVentaComposer';
 
 const buildDiscountBadgeLabel = (discount) => {
@@ -91,7 +92,10 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
     setFilterOpen(false);
   };
 
-  const resolveImageUrl = (row) => row.imagen_principal_url || row.url_imagen || null;
+  const resolveImageUrl = (row) => {
+    const rawUrl = row?.imagen_principal_url || row?.url_imagen || null;
+    return rawUrl ? resolveInventarioImageUrl(rawUrl) : null;
+  };
 
   const activeCatalogError = (() => {
     if (isDiscountCatalog) return null;

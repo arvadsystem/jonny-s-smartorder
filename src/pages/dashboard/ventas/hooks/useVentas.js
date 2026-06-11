@@ -2,6 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ventasService from '../../../../services/ventasService';
 import sucursalesService from '../../../../services/sucursalesService';
 import {
+  VENTAS_FILTER_ESTADOS_PERMITIDOS,
+  createConsumidorFinalCliente,
+  createDefaultVentasFilters,
+  createDefaultVentasPagination,
+  createDefaultVentasScopeInfo,
+  createDefaultVentasSummary,
+  createDefaultVentasToast
+} from '../../../../modules/ventas/constants/ventasDefaults';
+import {
   buildCategoriasMap,
   extractApiMessage,
   normalizeCategoriaRecord,
@@ -12,13 +21,6 @@ import {
   normalizeVentaDetail,
   normalizeVentaRecord
 } from '../utils/ventasHelpers';
-
-const initialToast = {
-  show: false,
-  title: '',
-  message: '',
-  variant: 'success'
-};
 
 const isTruthyState = (value) =>
   value === true || value === 'true' || value === 1 || value === '1';
@@ -40,40 +42,30 @@ const parsePositiveId = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const buildVentasTotalsCacheKey = (filters = {}) => JSON.stringify({
+  search: String(filters.search || '').trim(),
+  idSucursal: parsePositiveId(filters.idSucursal),
+  estado: String(filters.estado || '').trim().toUpperCase(),
+  fechaDesde: String(filters.fechaDesde || '').trim(),
+  fechaHasta: String(filters.fechaHasta || '').trim(),
+  pageSize: Number.parseInt(String(filters.pageSize ?? 6), 10) || 6
+});
+
+const normalizeVentasSummaryPayload = (summary = {}) => ({
+  ...createDefaultVentasSummary(),
+  totalVentas: Number.parseInt(String(summary?.ventas ?? summary?.totalVentas ?? 0), 10) || 0,
+  totalFacturado: Number(summary?.totalVendido ?? summary?.totalFacturado ?? 0) || 0,
+  ticketPromedio: Number(summary?.ticketPromedio ?? 0) || 0,
+  completadas: Number.parseInt(String(summary?.completadas ?? 0), 10) || 0,
+  pendientes: Number.parseInt(String(summary?.pendientes ?? 0), 10) || 0
+});
+
 export const useVentas = () => {
   const [ventas, setVentas] = useState([]);
-  const [summary, setSummary] = useState({
-    totalVentas: 0,
-    totalFacturado: 0,
-    ticketPromedio: 0,
-    completadas: 0,
-    pendientes: 0
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    pageSize: 6,
-    total: 0,
-    totalPages: 1,
-    hasNextPage: false,
-    hasPreviousPage: false
-  });
-  const [scopeInfo, setScopeInfo] = useState({
-    canSelectSucursal: false,
-    selectedSucursalId: null,
-    userSucursalId: null,
-    limitedByRole: false,
-    limitedToLast72Hours: false,
-    allowedSucursalIds: []
-  });
-  const [ventasFilters, setVentasFilters] = useState({
-    search: '',
-    idSucursal: null,
-    estado: '',
-    fechaDesde: '',
-    fechaHasta: '',
-    page: 1,
-    pageSize: 6
-  });
+  const [summary, setSummary] = useState(() => createDefaultVentasSummary());
+  const [pagination, setPagination] = useState(() => createDefaultVentasPagination());
+  const [scopeInfo, setScopeInfo] = useState(() => createDefaultVentasScopeInfo());
+  const [ventasFilters, setVentasFilters] = useState(() => createDefaultVentasFilters());
   const [sucursales, setSucursales] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -89,8 +81,15 @@ export const useVentas = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
   const [catalogErrors, setCatalogErrors] = useState({});
-  const [toast, setToast] = useState(initialToast);
+  const [toast, setToast] = useState(() => createDefaultVentasToast());
   const catalogRequestRef = useRef(0);
+  const ventasTotalsCacheRef = useRef({ key: '', summary: null, pagination: null });
+  const ventasLastFiltersRef = useRef(null);
+
+  const invalidateVentasTotalsCache = useCallback(() => {
+    ventasTotalsCacheRef.current = { key: '', summary: null, pagination: null };
+    ventasLastFiltersRef.current = null;
+  }, []);
 
   const openToast = useCallback((title, message, variant = 'success') => {
     setToast({
@@ -115,6 +114,21 @@ export const useVentas = () => {
 
   const loadVentas = useCallback(async (options = {}) => {
     const suppressErrors = Boolean(options?.suppressErrors);
+    const totalsKey = buildVentasTotalsCacheKey(ventasFilters);
+    const lastFilters = ventasLastFiltersRef.current;
+    const lastTotalsKey = lastFilters ? buildVentasTotalsCacheKey(lastFilters) : '';
+    const currentPage = Number.parseInt(String(ventasFilters.page ?? 1), 10) || 1;
+    const lastPage = Number.parseInt(String(lastFilters?.page ?? 1), 10) || 1;
+    const cachedTotals = ventasTotalsCacheRef.current?.key === totalsKey
+      ? ventasTotalsCacheRef.current
+      : null;
+    const reuseTotals = Boolean(
+      !options?.refreshTotals &&
+      cachedTotals?.summary &&
+      cachedTotals?.pagination &&
+      lastTotalsKey === totalsKey &&
+      currentPage !== lastPage
+    );
     setLoading(true);
     setError('');
 
@@ -126,7 +140,9 @@ export const useVentas = () => {
         idSucursal: ventasFilters.idSucursal,
         estado: ventasFilters.estado,
         fechaDesde: ventasFilters.fechaDesde,
-        fechaHasta: ventasFilters.fechaHasta
+        fechaHasta: ventasFilters.fechaHasta,
+        includeSummary: reuseTotals ? false : undefined,
+        includePaginationTotals: reuseTotals ? false : undefined
       });
 
       const rowsPayload = Array.isArray(response)
@@ -137,19 +153,35 @@ export const useVentas = () => {
       const serverPagination = response?.pagination || {};
       const resolvedPage = Number.parseInt(String(serverPagination.page ?? ventasFilters.page), 10) || 1;
       const resolvedPageSize = Number.parseInt(String(serverPagination.pageSize ?? ventasFilters.pageSize), 10) || 6;
-      const resolvedTotal = Number.parseInt(String(serverPagination.total ?? rows.length), 10) || 0;
-      const resolvedTotalPages = Number.parseInt(String(serverPagination.totalPages ?? 1), 10) || 1;
-      const backendSummary = response?.summary || {};
-
-      setVentas(rows);
-      setPagination({
+      const resolvedTotal = Number.parseInt(
+        String(serverPagination.total ?? cachedTotals?.pagination?.total ?? rows.length),
+        10
+      ) || 0;
+      const resolvedTotalPages = Number.parseInt(
+        String(serverPagination.totalPages ?? cachedTotals?.pagination?.totalPages ?? 1),
+        10
+      ) || 1;
+      const backendSummary = response?.summary && typeof response.summary === 'object'
+        ? response.summary
+        : null;
+      const normalizedSummary = backendSummary
+        ? normalizeVentasSummaryPayload(backendSummary)
+        : (cachedTotals?.summary || createDefaultVentasSummary());
+      const hasBackendTotals = serverPagination.total !== undefined &&
+        serverPagination.total !== null &&
+        serverPagination.totalPages !== undefined &&
+        serverPagination.totalPages !== null;
+      const normalizedPagination = {
         page: resolvedPage,
         pageSize: resolvedPageSize,
         total: resolvedTotal,
         totalPages: Math.max(1, resolvedTotalPages),
         hasNextPage: Boolean(serverPagination.hasNextPage ?? (resolvedPage < resolvedTotalPages)),
         hasPreviousPage: Boolean(serverPagination.hasPreviousPage ?? (resolvedPage > 1))
-      });
+      };
+
+      setVentas(rows);
+      setPagination(normalizedPagination);
       const canSelectSucursal = Boolean(response?.filters?.scope?.canSelectSucursal);
       setScopeInfo({
         canSelectSucursal,
@@ -161,13 +193,17 @@ export const useVentas = () => {
           ? response.filters.scope.allowedSucursalIds
           : []
       });
-      setSummary({
-        totalVentas: Number.parseInt(String(backendSummary?.ventas ?? 0), 10) || 0,
-        totalFacturado: Number(backendSummary?.totalVendido ?? 0) || 0,
-        ticketPromedio: Number(backendSummary?.ticketPromedio ?? 0) || 0,
-        completadas: Number.parseInt(String(backendSummary?.completadas ?? 0), 10) || 0,
-        pendientes: Number.parseInt(String(backendSummary?.pendientes ?? 0), 10) || 0
-      });
+      setSummary(normalizedSummary);
+      if (backendSummary || hasBackendTotals) {
+        ventasTotalsCacheRef.current = {
+          key: totalsKey,
+          summary: backendSummary ? normalizedSummary : cachedTotals?.summary,
+          pagination: hasBackendTotals
+            ? { total: normalizedPagination.total, totalPages: normalizedPagination.totalPages }
+            : cachedTotals?.pagination
+        };
+      }
+      ventasLastFiltersRef.current = { ...ventasFilters };
       return { rows, canSelectSucursal };
     } catch (error) {
       const message = extractApiMessage(error, 'No se pudieron cargar las ventas.');
@@ -180,6 +216,11 @@ export const useVentas = () => {
       setLoading(false);
     }
   }, [openToast, ventasFilters]);
+
+  const refreshVentas = useCallback((options = {}) => {
+    invalidateVentasTotalsCache();
+    return loadVentas({ ...options, refreshTotals: true });
+  }, [invalidateVentasTotalsCache, loadVentas]);
 
   const loadCatalogs = useCallback(async (options = {}) => {
     const requestId = catalogRequestRef.current + 1;
@@ -282,13 +323,7 @@ export const useVentas = () => {
         );
 
       const normalizedClientes = [
-        {
-          id_cliente: null,
-          value: 'cf',
-          label: 'Consumidor final',
-          nombre_cliente: 'Consumidor final',
-          es_consumidor_final: true
-        },
+        createConsumidorFinalCliente(),
         ...(Array.isArray(clientesResponse) ? clientesResponse : [])
           .map(normalizeClienteOption)
           .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
@@ -406,13 +441,7 @@ export const useVentas = () => {
   const refreshClientesCatalog = useCallback(async () => {
     const clientesResponse = await ventasService.getClientesCatalog();
     const normalizedClientes = [
-      {
-        id_cliente: null,
-        value: 'cf',
-        label: 'Consumidor final',
-        nombre_cliente: 'Consumidor final',
-        es_consumidor_final: true
-      },
+      createConsumidorFinalCliente(),
       ...(Array.isArray(clientesResponse) ? clientesResponse : [])
         .map(normalizeClienteOption)
         .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
@@ -467,9 +496,8 @@ export const useVentas = () => {
         next.idSucursal = Number.isInteger(parsed) && parsed > 0 ? parsed : null;
       }
       if (Object.prototype.hasOwnProperty.call(patch, 'estado')) {
-        const allowedEstados = new Set(['', 'VENTA_DIRECTA', 'EN_COCINA', 'LISTO', 'COMPLETADA', 'PENDIENTE']);
         const value = String(patch.estado || '').trim().toUpperCase().slice(0, 40);
-        next.estado = allowedEstados.has(value) ? value : '';
+        next.estado = VENTAS_FILTER_ESTADOS_PERMITIDOS.has(value) ? value : '';
       }
       if (Object.prototype.hasOwnProperty.call(patch, 'fechaDesde')) {
         const value = String(patch.fechaDesde || '').trim();
@@ -524,7 +552,7 @@ export const useVentas = () => {
           `${response?.numero_venta || response?.codigo_venta || 'La venta'} se registro correctamente.`,
           'success'
         );
-        void loadVentas({ suppressErrors: true }).catch(() => undefined);
+        void refreshVentas({ suppressErrors: true }).catch(() => undefined);
         return response;
       } catch (error) {
         const message = extractApiMessage(error, 'No se pudo registrar la venta.');
@@ -535,7 +563,7 @@ export const useVentas = () => {
         setSaving(false);
       }
     },
-    [loadVentas, openToast]
+    [openToast, refreshVentas]
   );
 
   const createPedidoPendiente = useCallback(
@@ -545,12 +573,12 @@ export const useVentas = () => {
 
       try {
         const response = await ventasService.createPedidoPendiente(payload);
-        await loadVentas();
         openToast(
           'PEDIDO PENDIENTE',
           'Pedido pendiente creado y enviado a cocina.',
           'success'
         );
+        void refreshVentas({ suppressErrors: true }).catch(() => undefined);
         return response;
       } catch (error) {
         const message = extractApiMessage(error, 'No se pudo crear el pedido pendiente.');
@@ -561,7 +589,7 @@ export const useVentas = () => {
         setSaving(false);
       }
     },
-    [loadVentas, openToast]
+    [openToast, refreshVentas]
   );
 
   const registrarPagoPedido = useCallback(
@@ -571,14 +599,11 @@ export const useVentas = () => {
 
       try {
         const response = await ventasService.registrarPagoPedido(idPedido, payload);
-        await loadVentas();
         openToast('PAGO REGISTRADO', 'Pago registrado correctamente.', 'success');
+        void refreshVentas({ suppressErrors: true }).catch(() => undefined);
         return response;
       } catch (error) {
-        const isConflict = Number(error?.status || 0) === 409;
-        const message = isConflict
-          ? 'Este pedido ya fue pagado o no está pendiente de pago.'
-          : extractApiMessage(error, 'No se pudo registrar el pago del pedido.');
+        const message = extractApiMessage(error, 'No se pudo registrar el pago del pedido.');
         setError(message);
         openToast('ERROR', message, 'danger');
         throw error;
@@ -586,7 +611,7 @@ export const useVentas = () => {
         setSaving(false);
       }
     },
-    [loadVentas, openToast]
+    [openToast, refreshVentas]
   );
 
   return {
@@ -613,7 +638,7 @@ export const useVentas = () => {
     toast,
     openToast,
     closeToast,
-    refreshVentas: loadVentas,
+    refreshVentas,
     refreshCatalogs,
     refreshClientesCatalog,
     setVentasSearch,

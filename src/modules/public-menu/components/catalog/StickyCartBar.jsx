@@ -1,7 +1,8 @@
 const currencyFormatter = new Intl.NumberFormat('es-HN', {
   style: 'currency',
   currency: 'HNL',
-  maximumFractionDigits: 0
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 // StickyCartBar: barra sticky inferior del carrito (solo capa visual).

@@ -21,8 +21,30 @@ export const shouldRequireSpiceLevel = (nombreReceta) =>
   SPICE_KEYWORDS_REGEX.test(String(nombreReceta || '').trim());
 
 export const defaultFilters = {
+  id_menu: '',
+  id_tipo_departamento: '',
+  precio_min: '',
+  precio_max: '',
+  imagen: 'todas',
+  detalle: 'todas',
   estado: 'todos',
   sortBy: 'recientes'
+};
+
+export const countActiveRecetaFilters = (filters) => {
+  const current = filters || {};
+  let total = 0;
+
+  if (String(current.id_menu || '').trim()) total += 1;
+  if (String(current.id_tipo_departamento || '').trim()) total += 1;
+  if (String(current.precio_min || '').trim()) total += 1;
+  if (String(current.precio_max || '').trim()) total += 1;
+  if (String(current.imagen || 'todas') !== 'todas') total += 1;
+  if (String(current.detalle || 'todas') !== 'todas') total += 1;
+  if (String(current.estado || 'todos') !== 'todos') total += 1;
+  if (String(current.sortBy || 'recientes') !== 'recientes') total += 1;
+
+  return total;
 };
 
 export const parseBoolean = (value) => {

@@ -239,27 +239,38 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
   // Categorias dinamicas desde productos disponibles para no dejar pestañas vacias.
   const categories = useMemo(() => {
     const unique = new Set(
-      availableProducts.map((product) => getProductCategoryBucket(product))
+      products.map((product) => getProductCategoryBucket(product))
     );
     return ['all', ...Array.from(unique)];
-  }, [availableProducts]);
+  }, [products]);
 
   // Filtrado por categoria y termino libre, ocultando agotados del menu publico.
   const filteredProducts = useMemo(() => {
     const normalizedSearch = normalizeText(searchTerm);
 
-    return availableProducts.filter((product) =>
-      matchesCatalogFilters({ product, selectedCategory, normalizedSearch })
-    );
-  }, [availableProducts, searchTerm, selectedCategory]);
+    return products
+      .map((product, index) => ({ product, index }))
+      .filter(({ product }) =>
+        matchesCatalogFilters({ product, selectedCategory, normalizedSearch })
+      )
+      .sort((left, right) => {
+        const leftAvailable = isProductAvailable(left.product);
+        const rightAvailable = isProductAvailable(right.product);
+        if (leftAvailable !== rightAvailable) return leftAvailable ? -1 : 1;
+        return left.index - right.index;
+      })
+      .map(({ product }) => product);
+  }, [products, searchTerm, selectedCategory]);
 
   // Estadisticas de productos visibles; los agotados ya no se muestran al cliente.
   const stats = useMemo(() => {
+    const availableCount = filteredProducts.filter((product) => isProductAvailable(product)).length;
+    const soldOutCount = filteredProducts.length - availableCount;
     return {
       total: filteredProducts.length,
-      available: filteredProducts.length,
-      soldOut: 0,
-      allFilteredSoldOut: false
+      available: availableCount,
+      soldOut: soldOutCount,
+      allFilteredSoldOut: filteredProducts.length > 0 && availableCount === 0
     };
   }, [filteredProducts]);
 

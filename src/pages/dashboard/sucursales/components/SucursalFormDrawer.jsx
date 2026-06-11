@@ -28,7 +28,7 @@ export default function SucursalFormDrawer({
       <div className="inv-prod-pmodal__overlay" onClick={saving ? undefined : onClose} />
       <div className="inv-prod-pmodal__viewport">
         <div
-          className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create fidelizacion-config-modal"
+          className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create fidelizacion-config-modal suc-form-modal"
           role="dialog"
           aria-modal="true"
           aria-labelledby="suc-form-title"

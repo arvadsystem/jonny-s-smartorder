@@ -12,9 +12,10 @@ import {
 } from '../../modules/planillas/navigation';
 
 const MAX_VISIBLE_TABS = 3;
-const NOTIFICATIONS_POLL_MS = 1500;
 const PHOTO_URL_RE = /^(https?:\/\/|\/uploads\/|data:image\/)/i;
 const NOTIFICATION_SOUND_BUCKET_PATH = 'notificacion/NotificacionJonnys.mp3';
+const SECURITY_NOTIFICATIONS_STREAM_PATH = '/seguridad/notificaciones/stream';
+const NOTIFICATIONS_MAX_ROWS = 30;
 const SUPABASE_PUBLIC_BASE = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '');
 const NOTIFICATION_SOUND_URL = SUPABASE_PUBLIC_BASE
   ? `${SUPABASE_PUBLIC_BASE}/storage/v1/object/public/${NOTIFICATION_SOUND_BUCKET_PATH}`
@@ -84,6 +85,18 @@ const getApiOrigin = () => {
     return new URL(clean).origin;
   } catch {
     return clean.replace(/\/+$/, '');
+  }
+};
+
+const buildApiUrl = (path) => {
+  const normalizedPath = String(path || '').startsWith('/') ? String(path || '') : `/${String(path || '')}`;
+  const clean = normalizeText(API_URL);
+  if (!clean) return normalizedPath;
+
+  try {
+    return new URL(normalizedPath, `${clean}/`).toString();
+  } catch {
+    return `${clean.replace(/\/+$/, '')}${normalizedPath}`;
   }
 };
 
@@ -347,6 +360,8 @@ const Navbar = () => {
   const readNotificationIdsRef = useRef([]);
   const lastSoundNotificationIdRef = useRef('');
   const notificationsHydratedRef = useRef(false);
+  const notificationsRequestRef = useRef(null);
+  const notificationsStreamRef = useRef(null);
   const audioUnlockedRef = useRef(false);
   const notificationAudioRef = useRef(null);
   const navigate = useNavigate();
@@ -520,11 +535,47 @@ const Navbar = () => {
     persistReadNotifications([...current, ...allIds]);
   }, [notificationsRows, persistReadNotifications]);
 
-  const loadNotifications = useCallback(async ({ silent = false } = {}) => {
+  const applyIncomingNotification = useCallback((notification) => {
+    const normalizedId = String(notification?.id || '').trim();
+    if (!normalizedId) return;
+
+    setNotificationsRows((current) => {
+      const rows = Array.isArray(current) ? current : [];
+      return [
+        notification,
+        ...rows.filter((item) => String(item?.id || '').trim() !== normalizedId)
+      ].slice(0, NOTIFICATIONS_MAX_ROWS);
+    });
+    setNotificationsError('');
+
+    if (!notificationsHydratedRef.current) {
+      notificationsHydratedRef.current = true;
+      lastSoundNotificationIdRef.current = normalizedId;
+      return;
+    }
+
+    if (
+      normalizedId !== lastSoundNotificationIdRef.current
+      && !((readNotificationIdsRef.current || []).includes(normalizedId))
+    ) {
+      playNotificationSound();
+      lastSoundNotificationIdRef.current = normalizedId;
+    }
+  }, [playNotificationSound]);
+
+  const loadNotifications = useCallback(async ({ silent = false, force = false } = {}) => {
     if (!canViewSecurityNotifications) {
       setNotificationsRows([]);
       setNotificationsError('');
       return;
+    }
+
+    if (!force && typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return;
+    }
+
+    if (notificationsRequestRef.current) {
+      return notificationsRequestRef.current;
     }
 
     if (!silent) {
@@ -532,39 +583,45 @@ const Navbar = () => {
       setNotificationsError('');
     }
 
-    try {
-      const qs = new URLSearchParams();
-      qs.set('limit', '30');
-      qs.set('_ts', String(Date.now()));
+    const request = (async () => {
+      try {
+        const qs = new URLSearchParams();
+        qs.set('limit', '30');
+        qs.set('_ts', String(Date.now()));
 
-      const payload = await securityService.getSecurityNotifications(qs.toString());
-      const rows = Array.isArray(payload?.rows) ? payload.rows : [];
-      const newestId = String(rows?.[0]?.id || '').trim();
+        const payload = await securityService.getSecurityNotifications(qs.toString());
+        const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+        const newestId = String(rows?.[0]?.id || '').trim();
 
-      if (!notificationsHydratedRef.current) {
-        notificationsHydratedRef.current = true;
-        lastSoundNotificationIdRef.current = newestId;
-      } else if (
-        newestId
-        && newestId !== lastSoundNotificationIdRef.current
-        && !((readNotificationIdsRef.current || []).includes(newestId))
-      ) {
-        playNotificationSound();
-        lastSoundNotificationIdRef.current = newestId;
-      }
+        if (!notificationsHydratedRef.current) {
+          notificationsHydratedRef.current = true;
+          lastSoundNotificationIdRef.current = newestId;
+        } else if (
+          newestId
+          && newestId !== lastSoundNotificationIdRef.current
+          && !((readNotificationIdsRef.current || []).includes(newestId))
+        ) {
+          playNotificationSound();
+          lastSoundNotificationIdRef.current = newestId;
+        }
 
       setNotificationsRows(rows);
       setNotificationsError('');
     } catch (error) {
-      if (error?.status === 401 || error?.status === 403) {
-        setNotificationsRows([]);
-        setNotificationsError('');
-      } else {
-        setNotificationsError(error?.message || 'No se pudieron cargar las notificaciones.');
+        if (error?.status === 401 || error?.status === 403) {
+          setNotificationsRows([]);
+          setNotificationsError('');
+        } else {
+          setNotificationsError(error?.message || 'No se pudieron cargar las notificaciones.');
+        }
+      } finally {
+        if (!silent) setNotificationsLoading(false);
+        notificationsRequestRef.current = null;
       }
-    } finally {
-      if (!silent) setNotificationsLoading(false);
-    }
+    })();
+
+    notificationsRequestRef.current = request;
+    return request;
   }, [canViewSecurityNotifications, playNotificationSound]);
 
   const toggleDropdown = () => {
@@ -596,7 +653,9 @@ const Navbar = () => {
         closeProfileDropdown();
         closeGearDropdown();
         unlockNotificationAudio();
-        void loadNotifications();
+        if (!notificationsHydratedRef.current || notificationsError) {
+          void loadNotifications({ force: true });
+        }
       }
       return nextState;
     });
@@ -685,36 +744,45 @@ const Navbar = () => {
 
   useEffect(() => {
     if (!canViewSecurityNotifications) return undefined;
-
-    void loadNotifications();
-    const timer = window.setInterval(() => {
-      void loadNotifications({ silent: true });
-    }, NOTIFICATIONS_POLL_MS);
-
-    return () => window.clearInterval(timer);
+    void loadNotifications({ force: true });
+    return undefined;
   }, [canViewSecurityNotifications, loadNotifications]);
 
   useEffect(() => {
-    if (!canViewSecurityNotifications) return undefined;
+    if (!canViewSecurityNotifications || !isSuperAdmin) return undefined;
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') return undefined;
 
-    const refreshOnFocus = () => {
-      void loadNotifications({ silent: true });
+    const streamUrl = buildApiUrl(SECURITY_NOTIFICATIONS_STREAM_PATH);
+    const source = new EventSource(streamUrl, { withCredentials: true });
+    notificationsStreamRef.current = source;
+
+    const handleConnected = () => {
+      setNotificationsError('');
     };
 
-    const refreshOnVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        void loadNotifications({ silent: true });
+    const handleNotification = (event) => {
+      try {
+        const payload = JSON.parse(String(event?.data || '{}'));
+        if (payload?.notification) {
+          applyIncomingNotification(payload.notification);
+        }
+      } catch {
+        // Ignore malformed stream events and keep the connection alive.
       }
     };
 
-    window.addEventListener('focus', refreshOnFocus);
-    document.addEventListener('visibilitychange', refreshOnVisibility);
+    source.addEventListener('connected', handleConnected);
+    source.addEventListener('notification', handleNotification);
 
     return () => {
-      window.removeEventListener('focus', refreshOnFocus);
-      document.removeEventListener('visibilitychange', refreshOnVisibility);
+      source.removeEventListener('connected', handleConnected);
+      source.removeEventListener('notification', handleNotification);
+      source.close();
+      if (notificationsStreamRef.current === source) {
+        notificationsStreamRef.current = null;
+      }
     };
-  }, [canViewSecurityNotifications, loadNotifications]);
+  }, [applyIncomingNotification, canViewSecurityNotifications, isSuperAdmin]);
 
   const getPrimaryNotificationAction = useCallback((item) => {
     if (!item || !Array.isArray(item.actions) || item.actions.length === 0) return null;
@@ -862,7 +930,7 @@ const Navbar = () => {
                       type="button"
                       className="notifications-refresh-btn"
                       onClick={() => {
-                        void loadNotifications();
+                        void loadNotifications({ force: true });
                       }}
                       aria-label="Actualizar notificaciones"
                     >

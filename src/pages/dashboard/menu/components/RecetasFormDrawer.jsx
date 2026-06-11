@@ -3,6 +3,66 @@ import Select from 'react-select';
 import RecetasImagePreview from './RecetasImagePreview';
 import { shouldRequireSpiceLevel } from '../utils/recetasAdminUtils';
 
+const buildInsumoOptionLabel = (insumo) => {
+  const nombre = String(insumo?.nombre_insumo || '').trim();
+  const rawAlmacen = String(insumo?.nombre_almacen || '').trim();
+  const normalizedAlmacen = rawAlmacen.toLowerCase();
+
+  let almacenCorto = rawAlmacen;
+  if (normalizedAlmacen.includes('el carmen')) {
+    almacenCorto = 'JN-CARMEN';
+  } else if (normalizedAlmacen.includes('21 de agosto')) {
+    almacenCorto = 'JN-21';
+  } else if (rawAlmacen.length > 18) {
+    almacenCorto = rawAlmacen
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((segment) => segment.replace(/[^a-z0-9]/gi, '').slice(0, 3).toUpperCase())
+      .filter(Boolean)
+      .join('-') || 'ALM';
+  }
+
+  return almacenCorto ? `${nombre} / ${almacenCorto}` : nombre;
+};
+
+const getUnitLabel = (source, nameKey, symbolKey) => {
+  const nombre = String(source?.[nameKey] || '').trim();
+  const simbolo = String(source?.[symbolKey] || '').trim();
+  if (nombre && simbolo) return `${nombre} (${simbolo})`;
+  return nombre || simbolo || 'Sin unidad';
+};
+
+const formatDecimal = (value, decimals = 4) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '';
+  return parsed.toLocaleString('es-HN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals
+  });
+};
+
+const getPresentacionFactor = (presentacion) => {
+  const cantidadBase = Number(presentacion?.cantidad_base || 0);
+  const cantidadPresentacion = Number(presentacion?.cantidad_presentacion || 0);
+  if (!Number.isFinite(cantidadBase) || !Number.isFinite(cantidadPresentacion) || cantidadPresentacion <= 0) return null;
+  return cantidadBase / cantidadPresentacion;
+};
+
+const buildPresentacionLabel = (presentacion) => {
+  const nombre = String(presentacion?.nombre_presentacion || 'Presentacion').trim();
+  const unidadPresentacion = getUnitLabel(presentacion, 'unidad_presentacion_nombre', 'unidad_presentacion_simbolo');
+  const unidadBase = getUnitLabel(presentacion, 'unidad_base_nombre', 'unidad_base_simbolo');
+  const cantidadPresentacion = formatDecimal(presentacion?.cantidad_presentacion, 4) || '1';
+  const cantidadBase = formatDecimal(presentacion?.cantidad_base, 4) || '0';
+  return `${nombre} - ${cantidadPresentacion} ${unidadPresentacion} = ${cantidadBase} ${unidadBase}`;
+};
+
+const blockInvalidQuantityKey = (event) => {
+  if (['e', 'E', '+', '-'].includes(event.key)) {
+    event.preventDefault();
+  }
+};
+
 const RecetasFormDrawer = ({
   drawerOpen,
   drawerMode,
@@ -10,6 +70,8 @@ const RecetasFormDrawer = ({
   form,
   detalleReceta = [],
   insumosDetalleCatalog = [],
+  unidadesMedidaCatalog = [],
+  insumoCategoriasOptions = [],
   loadingDetalleCatalog = false,
   saving,
   onChangeField,
@@ -34,19 +96,12 @@ const RecetasFormDrawer = ({
   const selectedMenuOption = menusCatalog.find((option) => String(option.value) === String(form.id_menu)) || null;
   const selectedDepartamentoOption =
     departamentosCatalog.find((option) => String(option.value) === String(form.id_tipo_departamento)) || null;
-  const unidadesDetalleOptions = Array.from(
-    new Map(
-      (Array.isArray(insumosDetalleCatalog) ? insumosDetalleCatalog : [])
-        .filter((item) => String(item?.id_unidad_medida || '').trim())
-        .map((item) => {
-          const value = String(item.id_unidad_medida);
-          const nombre = String(item.unidad_nombre || '').trim();
-          const simbolo = String(item.unidad_simbolo || '').trim();
-          const label = simbolo && nombre ? `${simbolo} - ${nombre}` : (simbolo || nombre || `Unidad ${value}`);
-          return [value, { value, label }];
-        })
-    ).values()
-  );
+  const insumoOptions = (Array.isArray(insumosDetalleCatalog) ? insumosDetalleCatalog : []).map((insumo) => ({
+    value: String(insumo.id_insumo),
+    label: buildInsumoOptionLabel(insumo),
+    id_categoria_insumo: String(insumo?.id_categoria_insumo || '')
+  }));
+  const unidadesDetalleOptions = Array.isArray(unidadesMedidaCatalog) ? unidadesMedidaCatalog : [];
 
   if (!drawerOpen) return null;
 
@@ -267,73 +322,202 @@ const RecetasFormDrawer = ({
                       const selectedInsumo = insumosDetalleCatalog.find(
                         (item) => String(item.id_insumo) === String(row.id_insumo)
                       );
-                      const unidadLabel = selectedInsumo?.unidad_simbolo || selectedInsumo?.unidad_nombre || 'Unidad';
+                      const selectedCategoriaId = String(
+                        row?.id_categoria_insumo || selectedInsumo?.id_categoria_insumo || ''
+                      );
+                      const filteredInsumoOptions = selectedCategoriaId
+                        ? insumoOptions.filter(
+                          (option) => String(option.id_categoria_insumo) === selectedCategoriaId
+                        )
+                        : insumoOptions;
+                      const unidadBloqueada = Boolean(selectedInsumo?.id_unidad_medida);
+                      const requiresInitialUnit = Boolean(selectedInsumo) && !unidadBloqueada;
+                      const presentacionesReceta = Array.isArray(selectedInsumo?.presentaciones_receta)
+                        ? selectedInsumo.presentaciones_receta
+                        : [];
+                      const selectedPresentacion = presentacionesReceta.find(
+                        (presentacion) => String(presentacion.id_presentacion) === String(row.id_presentacion_insumo)
+                      ) || null;
+                      const hasHistoricalPresentacion =
+                        String(row?.modo_unidad) === 'presentacion' &&
+                        String(row?.id_presentacion_insumo || '').trim() &&
+                        !selectedPresentacion;
+                      const selectedInitialUnitOption = unidadesDetalleOptions.find(
+                        (option) => String(option.value) === String(row.id_unidad_medida)
+                      ) || null;
+                      const unidadBaseLabel = requiresInitialUnit && selectedInitialUnitOption
+                        ? selectedInitialUnitOption.label
+                        : selectedInsumo
+                          ? getUnitLabel(selectedInsumo, 'unidad_nombre', 'unidad_simbolo')
+                          : 'Unidad base';
+                      const presentacionOptions = selectedInsumo && !requiresInitialUnit
+                        ? [
+                          {
+                            value: 'base',
+                            label: `Unidad base - ${unidadBaseLabel}`,
+                            tipo: 'base'
+                          },
+                          ...presentacionesReceta.map((presentacion) => ({
+                            value: `presentacion:${presentacion.id_presentacion}`,
+                            label: buildPresentacionLabel(presentacion),
+                            tipo: 'presentacion',
+                            id_presentacion: String(presentacion.id_presentacion)
+                          })),
+                          ...(hasHistoricalPresentacion ? [{
+                            value: `presentacion:${row.id_presentacion_insumo}`,
+                            label: `${row.nombre_presentacion || 'Presentacion'} - No disponible`,
+                            tipo: 'presentacion',
+                            id_presentacion: String(row.id_presentacion_insumo),
+                            isDisabled: true
+                          }] : [])
+                        ]
+                        : [];
+                      const selectedUnidadOption = String(row?.modo_unidad) === 'presentacion'
+                        ? presentacionOptions.find((option) => option.value === `presentacion:${row.id_presentacion_insumo}`) || null
+                        : presentacionOptions.find((option) => option.value === 'base') || null;
+                      const cantidadValue = String(row?.modo_unidad) === 'presentacion'
+                        ? row.cantidad_presentacion
+                        : row.cant;
+                      const cantidadField = String(row?.modo_unidad) === 'presentacion' ? 'cantidad_presentacion' : 'cant';
+                      const factorPresentacion = selectedPresentacion ? getPresentacionFactor(selectedPresentacion) : null;
+                      const cantidadPresentacion = Number(row?.cantidad_presentacion || 0);
+                      const equivalenciaBase = factorPresentacion !== null && cantidadPresentacion > 0
+                        ? cantidadPresentacion * factorPresentacion
+                        : null;
+                      const equivalenciaTexto = String(row?.modo_unidad) === 'presentacion'
+                        ? hasHistoricalPresentacion
+                          ? 'Presentacion no disponible. Cambia a unidad base o elige una presentacion activa.'
+                          : equivalenciaBase !== null
+                            ? `${formatDecimal(cantidadPresentacion, 4)} ${selectedPresentacion?.nombre_presentacion || 'presentaciones'} equivalen a ${formatDecimal(equivalenciaBase, 2)} ${unidadBaseLabel} de inventario`
+                            : 'Ingresa una cantidad para ver la equivalencia en unidad base.'
+                        : row?.cant
+                          ? `${formatDecimal(row.cant, 2)} ${unidadBaseLabel} de inventario`
+                          : 'La cantidad se consumira directamente en la unidad base.';
 
                       return (
                         <div className="menu-recetas-admin__detalle-row" key={`detalle-receta-${index}`}>
-                          <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--insumo">
-                            <label className="form-label" htmlFor={`receta_detalle_insumo_${index}`}>Insumo</label>
-                            <select
-                              id={`receta_detalle_insumo_${index}`}
-                              className="form-select"
-                              value={row.id_insumo}
-                              onChange={(event) => onUpdateDetalleRow(index, 'id_insumo', event.target.value)}
-                              disabled={saving || loadingDetalleCatalog}
-                              required
+                          <div className="menu-recetas-admin__detalle-main">
+                            <div className="menu-recetas-admin__detalle-field">
+                              <label className="form-label" htmlFor={`receta_detalle_categoria_${index}`}>Categoria</label>
+                              <Select
+                                inputId={`receta_detalle_categoria_${index}`}
+                                classNamePrefix="menu-salsas-receta-select"
+                                options={insumoCategoriasOptions}
+                                value={
+                                  insumoCategoriasOptions.find(
+                                    (option) => String(option.value) === selectedCategoriaId
+                                  ) || null
+                                }
+                                onChange={(option) => onUpdateDetalleRow(index, 'id_categoria_insumo', option?.value || '')}
+                                placeholder="Todas las categorias"
+                                isDisabled={saving || loadingDetalleCatalog}
+                                isClearable
+                                maxMenuHeight={192}
+                              />
+                            </div>
+
+                            <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--insumo">
+                              <label className="form-label" htmlFor={`receta_detalle_insumo_${index}`}>Insumo</label>
+                              <Select
+                                inputId={`receta_detalle_insumo_${index}`}
+                                classNamePrefix="menu-salsas-receta-select"
+                                options={filteredInsumoOptions}
+                                value={
+                                  filteredInsumoOptions.find(
+                                    (option) => String(option.value) === String(row.id_insumo)
+                                  ) || null
+                                }
+                                onChange={(option) => onUpdateDetalleRow(index, 'id_insumo', option?.value || '')}
+                                placeholder="Buscar insumo"
+                                isDisabled={saving || loadingDetalleCatalog}
+                                isClearable={false}
+                                maxMenuHeight={192}
+                                noOptionsMessage={() => 'No hay insumos para esa categoria'}
+                              />
+                            </div>
+
+                            <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--cantidad">
+                              <label className="form-label" htmlFor={`receta_detalle_cant_${index}`}>Cantidad</label>
+                              <input
+                                id={`receta_detalle_cant_${index}`}
+                                type="number"
+                                min="0.0001"
+                                step="0.0001"
+                                className="form-control"
+                                value={cantidadValue}
+                                onKeyDown={blockInvalidQuantityKey}
+                                onChange={(event) => onUpdateDetalleRow(index, cantidadField, event.target.value)}
+                                disabled={saving}
+                                placeholder={String(row?.modo_unidad) === 'presentacion' ? 'Ej: 2.5000' : 'Ej: 0.25'}
+                                required
+                              />
+                            </div>
+
+                            <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--unidad">
+                              <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>Presentacion o unidad</label>
+                              {requiresInitialUnit ? (
+                                <Select
+                                  inputId={`receta_detalle_unidad_${index}`}
+                                  classNamePrefix="menu-salsas-receta-select"
+                                  options={unidadesDetalleOptions}
+                                  value={selectedInitialUnitOption}
+                                  onChange={(option) => onUpdateDetalleRow(index, 'id_unidad_medida', option?.value || '')}
+                                  placeholder="Seleccionar unidad base"
+                                  isDisabled={saving || loadingDetalleCatalog}
+                                  isClearable={false}
+                                  maxMenuHeight={192}
+                                />
+                              ) : (
+                                <Select
+                                  inputId={`receta_detalle_unidad_${index}`}
+                                  classNamePrefix="menu-salsas-receta-select"
+                                  options={presentacionOptions}
+                                  value={selectedUnidadOption}
+                                  onChange={(option) => {
+                                    if (!option || option.value === 'base') {
+                                      onUpdateDetalleRow(index, 'modo_unidad', 'base');
+                                      return;
+                                    }
+                                    onUpdateDetalleRow(index, 'id_presentacion_insumo', option.id_presentacion || '');
+                                  }}
+                                  placeholder="Seleccionar unidad base o presentacion"
+                                  isDisabled={saving || loadingDetalleCatalog || !selectedInsumo}
+                                  isClearable={false}
+                                  maxMenuHeight={192}
+                                />
+                              )}
+                              {hasHistoricalPresentacion ? (
+                                <small className="form-text text-danger">No disponible</small>
+                              ) : unidadBloqueada ? (
+                                <small className="form-text">Unidad base definida en el insumo</small>
+                              ) : selectedInsumo ? (
+                                <small className="form-text">
+                                  Este insumo no tiene unidad definida. Al guardar, se completara en el insumo.
+                                </small>
+                              ) : null}
+                            </div>
+
+                            <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--equivalencia">
+                              <label className="form-label">Equivalencia en unidad base</label>
+                              <div className={`menu-recetas-admin__detalle-equivalencia ${hasHistoricalPresentacion ? 'is-warning' : ''}`}>
+                                {equivalenciaTexto}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="menu-recetas-admin__detalle-action">
+                            <label className="form-label menu-recetas-admin__detalle-action-label">Eliminar</label>
+                            <button
+                              type="button"
+                              className="btn menu-recetas-admin__detalle-remove"
+                              onClick={() => onRemoveDetalleRow(index)}
+                              disabled={saving || detalleReceta.length <= 1}
+                              title="Quitar insumo"
+                              aria-label="Quitar insumo"
                             >
-                              <option value="">Ej: Salsa roja</option>
-                              {insumosDetalleCatalog.map((insumo) => (
-                                <option key={insumo.id_insumo} value={insumo.id_insumo}>
-                                  {insumo.nombre_insumo}
-                                </option>
-                              ))}
-                            </select>
+                              <i className="bi bi-trash3" aria-hidden="true" />
+                            </button>
                           </div>
-
-                          <div className="menu-recetas-admin__detalle-field">
-                            <label className="form-label" htmlFor={`receta_detalle_cant_${index}`}>Cantidad</label>
-                            <input
-                              id={`receta_detalle_cant_${index}`}
-                              type="number"
-                              min="0.0001"
-                              step="0.0001"
-                              className="form-control"
-                              value={row.cant}
-                              onChange={(event) => onUpdateDetalleRow(index, 'cant', event.target.value)}
-                              disabled={saving}
-                              placeholder="Ej: 0.2500"
-                              required
-                            />
-                          </div>
-
-                          <div className="menu-recetas-admin__detalle-field">
-                            <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>Unidad</label>
-                            <Select
-                              inputId={`receta_detalle_unidad_${index}`}
-                              classNamePrefix="menu-salsas-receta-select"
-                              options={unidadesDetalleOptions}
-                              value={unidadesDetalleOptions.find((option) => String(option.value) === String(row.id_unidad_medida)) || null}
-                              onChange={(option) => onUpdateDetalleRow(index, 'id_unidad_medida', option?.value || '')}
-                              placeholder="Seleccionar unidad"
-                              isDisabled={saving || loadingDetalleCatalog}
-                              isClearable={false}
-                              maxMenuHeight={192}
-                            />
-                            {!row.id_unidad_medida && unidadLabel && unidadLabel !== 'Unidad' ? (
-                              <small className="form-text">Sugerida por insumo: {unidadLabel}</small>
-                            ) : null}
-                          </div>
-
-                          <button
-                            type="button"
-                            className="btn menu-recetas-admin__detalle-remove"
-                            onClick={() => onRemoveDetalleRow(index)}
-                            disabled={saving || detalleReceta.length <= 1}
-                            title="Quitar insumo"
-                            aria-label="Quitar insumo"
-                          >
-                            <i className="bi bi-trash3" aria-hidden="true" />
-                          </button>
                         </div>
                       );
                     })}

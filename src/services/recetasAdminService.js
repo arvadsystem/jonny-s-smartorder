@@ -2,7 +2,6 @@ import { apiFetch } from './api';
 
 // Endpoint base del módulo administrativo de recetas.
 const BASE_ENDPOINT = '/api/admin/recetas';
-const MENU_PUBLIC_BUCKET = 'jonnys-assets';
 
 const recetasAdminService = {
   // Lista todas las recetas administrativas.
@@ -24,10 +23,6 @@ const recetasAdminService = {
   obtenerContextoEdicionReceta: async (id) =>
     apiFetch(`${BASE_ENDPOINT}/${id}/contexto-edicion`, 'GET', null, { noCache: true }),
 
-  // Reemplaza el detalle de insumos de una receta.
-  guardarDetalleReceta: async (id, detalleReceta) =>
-    apiFetch(`${BASE_ENDPOINT}/${id}/detalle`, 'PUT', { detalle_receta: detalleReceta }),
-
   // Crea una receta nueva.
   crearRecetaAdmin: async (data) => apiFetch(BASE_ENDPOINT, 'POST', data),
 
@@ -36,35 +31,22 @@ const recetasAdminService = {
 
   // Registra un archivo para receta y retorna su id_archivo.
   registrarArchivoReceta: async (data) => {
-    const hasPublicUrl = String(data?.url_publica || '').trim().length > 0;
-    const hasBinaryPayload =
-      Boolean(data?.data_url) ||
-      Boolean(data?.dataUrl) ||
-      Boolean(data?.base64) ||
-      Boolean(data?.archivo);
-
-    // Para flujo por URL publica usamos endpoint URL-based de menu_pos.
-    // El bucket queda explicito para mantener menu como contenido publico.
-    if (hasPublicUrl && !hasBinaryPayload) {
-      return apiFetch('/menu-pos/archivos/upload', 'POST', {
-        ...data,
-        bucket: MENU_PUBLIC_BUCKET
-      });
+    const hasDataUrl = String(data?.data_url || data?.dataUrl || '').trim().length > 0;
+    if (!hasDataUrl) {
+      throw new Error('Recetas solo permite imagenes locales subidas desde archivo.');
     }
 
-    try {
-      return await apiFetch('/archivos', 'POST', data);
-    } catch (error) {
-      const message = String(error?.message || '').toLowerCase();
-      if (message.includes('la imagen es obligatoria')) {
-        // Fallback para entornos donde /archivos solo acepta base64 y el alta por URL vive en menu-pos.
-        return apiFetch('/menu-pos/archivos/upload', 'POST', {
-          ...data,
-          bucket: MENU_PUBLIC_BUCKET
-        });
-      }
-      throw error;
+    return apiFetch('/archivos', 'POST', data);
+  },
+
+  // Limpia un archivo temporal de receta usando el endpoint compensatorio existente.
+  eliminarArchivoReceta: async (idArchivo) => {
+    const parsedId = Number.parseInt(String(idArchivo ?? ''), 10);
+    if (!Number.isInteger(parsedId) || parsedId <= 0) {
+      return null;
     }
+
+    return apiFetch(`/archivos/${parsedId}`, 'DELETE');
   },
 
   // Cambia el estado de una receta por ID.

@@ -38,13 +38,19 @@ const CartSheet = ({
 }) => {
   if (!open) return null;
 
+  const handleRequestClose = () => {
+    if (confirming) return;
+    onClose?.();
+  };
+
   return (
-    <div className="pm-cart-sheet__backdrop" role="presentation" onClick={onClose}>
+    <div className="pm-cart-sheet__backdrop" role="presentation" onClick={handleRequestClose}>
       <section
         className="pm-cart-sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="pm-cart-sheet-title"
+        aria-busy={confirming}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="pm-cart-sheet__header">
@@ -58,8 +64,9 @@ const CartSheet = ({
           <button
             type="button"
             className="pm-cart-sheet__close"
-            onClick={onClose}
+            onClick={handleRequestClose}
             aria-label="Cerrar carrito"
+            disabled={confirming}
           >
             <i className="bi bi-x-lg" aria-hidden="true" />
           </button>
@@ -92,11 +99,19 @@ const CartSheet = ({
                   <div className="pm-cart-sheet__item-side">
                     <span>{currencyFormatter.format(item.subtotal || 0)}</span>
                     <div className="pm-cart-sheet__qty">
-                      <button type="button" onClick={() => onDecrease?.(item.line_key)}>
+                      <button
+                        type="button"
+                        onClick={() => onDecrease?.(item.line_key)}
+                        disabled={confirming}
+                      >
                         -
                       </button>
                       <span>{item.cantidad}</span>
-                      <button type="button" onClick={() => onIncrease?.(item.line_key)}>
+                      <button
+                        type="button"
+                        onClick={() => onIncrease?.(item.line_key)}
+                        disabled={confirming}
+                      >
                         +
                       </button>
                     </div>
@@ -104,6 +119,7 @@ const CartSheet = ({
                       type="button"
                       className="pm-cart-sheet__remove"
                       onClick={() => onRemove?.(item.line_key)}
+                      disabled={confirming}
                     >
                       Quitar
                     </button>
@@ -124,7 +140,10 @@ const CartSheet = ({
             type="button"
             className="btn btn-dark pm-cart-sheet__confirm"
             disabled={items.length === 0 || confirming || disabled}
-            onClick={onConfirm}
+            onClick={(event) => {
+              event.stopPropagation();
+              onConfirm?.();
+            }}
           >
             {confirming ? 'Enviando pedido...' : (disabled && items.length > 0 ? disabledReason || 'Sucursal cerrada' : 'Confirmar pedido')}
           </button>

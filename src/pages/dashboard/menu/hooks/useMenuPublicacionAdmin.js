@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
+import { useRef } from 'react';
 import { buildPublicMenuUrlByBranch } from '../utils/publicMenuBranchUrl';
 
 // Hook centralizado de estado/validacion para publicacion admin por sucursal.
@@ -29,13 +30,39 @@ const parseDraftVisible = (value) => {
   return Boolean(value);
 };
 
-const normalizeDraftRow = (row, index) => ({
-  ...row,
-  visible: parseDraftVisible(row?.visible),
-  precio_publico_input:
-    row?.precio_publico === null || row?.precio_publico === undefined ? '' : String(row.precio_publico),
-  orden_input: row?.orden === null || row?.orden === undefined ? String(index + 1) : String(row.orden)
-});
+const normalizeOptionalInput = (value) =>
+  value === null || value === undefined ? '' : String(value).trim();
+
+const normalizeDraftRow = (row, index) => {
+  const visible = Boolean(row?.estado_item) ? parseDraftVisible(row?.visible) : false;
+  const savedPublicPriceInput = normalizeOptionalInput(row?.precio_publico);
+  const basePrice = Number(row?.precio_base);
+  const publicPrice = Number(savedPublicPriceInput);
+  const usesRedundantOverride =
+    savedPublicPriceInput !== '' &&
+    Number.isFinite(basePrice) &&
+    Number.isFinite(publicPrice) &&
+    publicPrice === basePrice;
+  const priceInput = usesRedundantOverride ? '' : savedPublicPriceInput;
+  const orderInput = row?.orden === null || row?.orden === undefined
+    ? String(index + 1)
+    : String(row.orden);
+
+  return {
+    ...row,
+    visible,
+    precio_publico_input: priceInput,
+    orden_input: orderInput,
+    saved_visible: visible,
+    saved_precio_publico_input: savedPublicPriceInput,
+    saved_orden_input: orderInput
+  };
+};
+
+const hasDraftChanges = (row) =>
+  Boolean(row?.visible) !== Boolean(row?.saved_visible) ||
+  normalizeOptionalInput(row?.precio_publico_input) !== normalizeOptionalInput(row?.saved_precio_publico_input) ||
+  normalizeOptionalInput(row?.orden_input) !== normalizeOptionalInput(row?.saved_orden_input);
 
 const useMenuPublicacionAdmin = () => {
   const [sucursales, setSucursales] = useState([]);
@@ -60,6 +87,8 @@ const useMenuPublicacionAdmin = () => {
   const [success, setSuccess] = useState('');
   const [warnings, setWarnings] = useState([]);
   const [validationErrors, setValidationErrors] = useState([]);
+  const catalogRequestRef = useRef(0);
+  const previewRequestRef = useRef(0);
 
   const selectedSucursal = useMemo(
     () => (Array.isArray(sucursales) ? sucursales : []).find(
@@ -89,16 +118,21 @@ const useMenuPublicacionAdmin = () => {
   const loadCatalogo = useCallback(async (idSucursal, idMenu = null) => {
     const id = Number(idSucursal || 0);
     if (!id) {
+      catalogRequestRef.current += 1;
       setMenuSummary(null);
       setCapabilities({});
       setItems([]);
       return;
     }
 
+    const requestId = catalogRequestRef.current + 1;
+    catalogRequestRef.current = requestId;
+
     try {
       setLoadingCatalogo(true);
       setError('');
       const data = await menuPublicacionAdminService.getCatalogoPublicacion(id, idMenu);
+      if (requestId !== catalogRequestRef.current) return;
       const nextItems = (Array.isArray(data?.items) ? data.items : []).map(normalizeDraftRow);
       setMenuSummary(data?.menu || null);
       setCapabilities(data?.capabilities || {});
@@ -107,6 +141,7 @@ const useMenuPublicacionAdmin = () => {
       setSharedMenuImpact(data?.shared_menu_impact || null);
       setAppliedScope('');
     } catch (e) {
+      if (requestId !== catalogRequestRef.current) return;
       setError(e?.message || 'No se pudo cargar el catalogo de publicacion.');
       setMenuSummary(null);
       setItems([]);
@@ -114,30 +149,40 @@ const useMenuPublicacionAdmin = () => {
       setSharedMenuImpact(null);
       setAppliedScope('');
     } finally {
-      setLoadingCatalogo(false);
+      if (requestId === catalogRequestRef.current) {
+        setLoadingCatalogo(false);
+      }
     }
   }, []);
 
   const loadPreview = useCallback(async (idSucursal, idMenu = null) => {
     const id = Number(idSucursal || 0);
     if (!id) {
+      previewRequestRef.current += 1;
       setPreview(null);
       return;
     }
+
+    const requestId = previewRequestRef.current + 1;
+    previewRequestRef.current = requestId;
 
     try {
       setLoadingPreview(true);
       setPreviewError('');
       const data = await menuPublicacionAdminService.getPreviewPublico(id, idMenu);
+      if (requestId !== previewRequestRef.current) return;
       setPreview(data);
       if (data?.shared_menu_impact) {
         setSharedMenuImpact(data.shared_menu_impact);
       }
     } catch (e) {
+      if (requestId !== previewRequestRef.current) return;
       setPreviewError(e?.message || 'No se pudo cargar el preview del menu publico.');
       setPreview(null);
     } finally {
-      setLoadingPreview(false);
+      if (requestId === previewRequestRef.current) {
+        setLoadingPreview(false);
+      }
     }
   }, []);
 
@@ -194,7 +239,7 @@ const useMenuPublicacionAdmin = () => {
       return;
     }
 
-    if (selectedSucursal && !Boolean(selectedSucursal?.estado)) {
+    if (selectedSucursal && !selectedSucursal?.estado) {
       setMenuSummary(null);
       setCapabilities({});
       setItems([]);
@@ -239,12 +284,6 @@ const useMenuPublicacionAdmin = () => {
         nextRow.orden_input = String(index + 1);
       }
 
-      if (nextRow.visible && !String(nextRow.precio_publico_input || '').trim()) {
-        if (Number.isFinite(Number(nextRow.precio_base))) {
-          nextRow.precio_publico_input = String(nextRow.precio_base);
-        }
-      }
-
       return nextRow;
     }));
   }, []);
@@ -258,12 +297,6 @@ const useMenuPublicacionAdmin = () => {
         nextRow.orden_input = String(index + 1);
       }
 
-      if (nextRow.visible && !String(nextRow.precio_publico_input || '').trim()) {
-        if (Number.isFinite(Number(nextRow.precio_base))) {
-          nextRow.precio_publico_input = String(nextRow.precio_base);
-        }
-      }
-
       return nextRow;
     }));
   }, []);
@@ -273,6 +306,13 @@ const useMenuPublicacionAdmin = () => {
       if (String(row?.item_key || '') !== String(itemKey || '')) return row;
       return { ...row, precio_publico_input: value };
     }));
+  }, []);
+
+  const onUseOriginalPriceForAll = useCallback(() => {
+    setItems((current) => (Array.isArray(current) ? current : []).map((row) => ({
+      ...row,
+      precio_publico_input: ''
+    })));
   }, []);
 
   const onChangeOrden = useCallback((itemKey, value) => {
@@ -287,7 +327,7 @@ const useMenuPublicacionAdmin = () => {
     const localWarnings = [];
     const seenKeys = new Set();
 
-    const payload = (Array.isArray(rows) ? rows : []).map((row) => {
+    const parsedRows = (Array.isArray(rows) ? rows : []).map((row) => {
       const key = String(row?.item_key || '');
       const parsedPublicPrice = parseDraftPrice(row?.precio_publico_input);
       const parsedOrder = parseDraftOrder(row?.orden_input);
@@ -311,6 +351,7 @@ const useMenuPublicacionAdmin = () => {
       }
 
       return {
+        changed: hasDraftChanges(row),
         tipo_item: row?.tipo_item,
         id_item_origen: Number(row?.id_item_origen || 0),
         id_detalle_menu: Number(row?.id_detalle_menu || 0) || null,
@@ -320,10 +361,21 @@ const useMenuPublicacionAdmin = () => {
       };
     });
 
-    const visibleItemsCount = payload.filter((item) => item.visible).length;
+    const visibleItemsCount = parsedRows.filter((item) => item.visible).length;
     if (visibleItemsCount === 0) {
       localWarnings.push('La sucursal quedara sin items visibles para el cliente.');
     }
+
+    const payload = parsedRows
+      .filter((item) => item.changed)
+      .map((item) => ({
+        tipo_item: item.tipo_item,
+        id_item_origen: item.id_item_origen,
+        id_detalle_menu: item.id_detalle_menu,
+        visible: item.visible,
+        precio_publico: item.precio_publico,
+        orden: item.orden
+      }));
 
     return { errors, warnings: localWarnings, payload };
   }, []);
@@ -344,7 +396,7 @@ const useMenuPublicacionAdmin = () => {
       return;
     }
 
-    if (!Boolean(selectedSucursal?.estado)) {
+    if (!selectedSucursal?.estado) {
       setValidationErrors(['La sucursal seleccionada esta inactiva y no permite guardar publicacion.']);
       return;
     }
@@ -352,6 +404,12 @@ const useMenuPublicacionAdmin = () => {
     const validation = validateAndBuildPayload(items);
     if (validation.errors.length > 0) {
       setValidationErrors(validation.errors);
+      setWarnings(validation.warnings);
+      return;
+    }
+
+    if (validation.payload.length === 0) {
+      setSuccess('No hay cambios pendientes por guardar.');
       setWarnings(validation.warnings);
       return;
     }
@@ -366,6 +424,11 @@ const useMenuPublicacionAdmin = () => {
 
       setSuccess(response?.message || 'Publicacion guardada correctamente.');
 
+      // AM: invalida cualquier lectura antigua del catalogo para que no pise
+      // el estado visible recien confirmado por el guardado.
+      catalogRequestRef.current += 1;
+      setLoadingCatalogo(false);
+
       // Conserva en UI el estado recien guardado para evitar parpadeos/desmarcados
       // visuales inmediatamente despues del guardado.
       const savedByKey = new Map(
@@ -378,12 +441,22 @@ const useMenuPublicacionAdmin = () => {
 
         return {
           ...row,
+          publicado: Boolean(row?.publicado || saved.visible),
           visible: Boolean(saved.visible),
           precio_publico_input:
             saved.precio_publico === null || saved.precio_publico === undefined
               ? ''
               : String(saved.precio_publico),
           orden_input:
+            saved.orden === null || saved.orden === undefined
+              ? ''
+              : String(saved.orden),
+          saved_visible: Boolean(saved.visible),
+          saved_precio_publico_input:
+            saved.precio_publico === null || saved.precio_publico === undefined
+              ? ''
+              : String(saved.precio_publico),
+          saved_orden_input:
             saved.orden === null || saved.orden === undefined
               ? ''
               : String(saved.orden)
@@ -395,7 +468,7 @@ const useMenuPublicacionAdmin = () => {
       setSharedMenuImpact(response?.data?.shared_menu_impact || null);
       setAppliedScope(String(response?.data?.applied_scope || ''));
 
-      await loadPreview(idSucursal, selectedCatalogMenuId || null);
+      void loadPreview(idSucursal, selectedCatalogMenuId || null);
     } catch (e) {
       setError(e?.message || 'No se pudo guardar la publicacion.');
       const serverErrors = Array.isArray(e?.data?.errors) ? e.data.errors : [];
@@ -405,7 +478,6 @@ const useMenuPublicacionAdmin = () => {
     }
   }, [
     items,
-    loadCatalogo,
     loadPreview,
     selectedCatalogMenuId,
     selectedSucursal,
@@ -451,6 +523,7 @@ const useMenuPublicacionAdmin = () => {
       onToggleVisible,
       onToggleAllVisible,
       onChangePrecioPublico,
+      onUseOriginalPriceForAll,
       onChangeOrden,
       savePublication,
       reloadCurrent

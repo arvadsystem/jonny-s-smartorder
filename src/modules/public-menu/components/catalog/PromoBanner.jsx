@@ -1,7 +1,8 @@
 const currencyFormatter = new Intl.NumberFormat('es-HN', {
   style: 'currency',
   currency: 'HNL',
-  maximumFractionDigits: 0
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
 });
 
 // PromoBanner: bloque promocional cinematografico solo visual.

@@ -1,4 +1,5 @@
 ﻿import { apiFetch } from './api';
+import { API_URL } from '../utils/constants';
 
 const buildQuery = (params = {}) => {
   const searchParams = new URLSearchParams();
@@ -13,18 +14,75 @@ const buildQuery = (params = {}) => {
   return query ? `?${query}` : '';
 };
 
+const buildVentasListQuery = (params = {}) => buildQuery({
+  ...params,
+  includeSummary: params.includeSummary === false ? 'false' : params.includeSummary,
+  includePaginationTotals: params.includePaginationTotals === false
+    ? 'false'
+    : params.includePaginationTotals
+});
+const VENTAS_CREATE_TIMEOUT_MS = 30000;
+
+const createIdempotencyKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+};
+
+const withIdempotencyKey = (config = {}) => ({
+  ...config,
+  headers: {
+    ...(config.headers || {}),
+    'Idempotency-Key': createIdempotencyKey()
+  }
+});
+
+const readBlobError = async (response) => {
+  const text = await response.text().catch(() => '');
+  if (!text) return `No se pudo descargar el PDF (HTTP ${response.status}).`;
+  try {
+    const payload = JSON.parse(text);
+    return payload?.message || payload?.mensaje || `No se pudo descargar el PDF (HTTP ${response.status}).`;
+  } catch {
+    return text;
+  }
+};
+
+const fetchPdfBlob = async (endpoint) => {
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/pdf'
+    }
+  });
+
+  if (response.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth:logout'));
+  }
+
+  if (!response.ok) {
+    throw new Error(await readBlobError(response));
+  }
+
+  return response.blob();
+};
+
 const ventasService = {
-  list: (params = {}) => apiFetch(`/ventas${buildQuery(params)}`, 'GET'),
+  list: (params = {}) => apiFetch(`/ventas${buildVentasListQuery(params)}`, 'GET'),
   buscarVenta: (params = {}) => apiFetch(`/ventas/buscar${buildQuery(params)}`, 'GET'),
   getById: (id) => apiFetch(`/ventas/${id}`, 'GET'),
+  getTicketById: (id) => apiFetch(`/ventas/${id}/ticket`, 'GET'),
+  getTicketPdf: (id) => fetchPdfBlob(`/ventas/${id}/ticket.pdf`),
   createReversion: (id, payload) => apiFetch(`/ventas/${id}/reversiones`, 'POST', payload),
   listReversiones: (id) => apiFetch(`/ventas/${id}/reversiones`, 'GET'),
-  create: (payload) => apiFetch('/ventas', 'POST', payload, { timeoutMs: 7000 }),
-  createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload),
+  create: (payload) => apiFetch('/ventas', 'POST', payload, withIdempotencyKey({ timeoutMs: VENTAS_CREATE_TIMEOUT_MS })),
+  createPedidoPendiente: (payload) => apiFetch('/ventas/pedidos-pendientes', 'POST', payload, withIdempotencyKey()),
   listPedidosPendientesPago: (params = {}) =>
     apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),
   registrarPagoPedido: (idPedido, payload) =>
-    apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload),
+    apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload, withIdempotencyKey()),
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
   getCombosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/combos${buildQuery(params)}`, 'GET'),
   getRecetasCatalog: (params = {}) => apiFetch(`/ventas/catalogos/recetas${buildQuery(params)}`, 'GET'),
@@ -47,7 +105,7 @@ const ventasService = {
   getDashboardResumen: (params = {}) => apiFetch(`/ventas/dashboard-resumen${buildQuery(params)}`, 'GET'),
   getDashboardFlujoPedidos: (params = {}) =>
     apiFetch(`/ventas/dashboard-flujo-pedidos${buildQuery(params)}`, 'GET'),
-  // Pedidos menÃº pÃºblico
+  // Pedidos menÃƒÂº pÃƒÂºblico
   getPedidosMenu: (params = {}) => apiFetch(`/ventas/pedidos-menu${buildQuery(params)}`, 'GET'),
   confirmarPagoPedido: (id) =>
     apiFetch(`/ventas/pedidos-menu/${id}/confirmar-pago`, 'POST', {}),

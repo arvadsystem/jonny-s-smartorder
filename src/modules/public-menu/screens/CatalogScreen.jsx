@@ -206,6 +206,78 @@ const getGreetingName = (user) => {
   return rawName.includes('@') ? rawName.split('@')[0] : rawName.split(/\s+/)[0];
 };
 
+const normalizeOrderFormText = (value, maxLength = 240) =>
+  String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, maxLength);
+
+const normalizeContactPhone = (value) =>
+  String(value ?? '')
+    .replace(/\D+/g, '')
+    .slice(0, 8);
+
+const validateOrderContactContext = ({
+  orderType,
+  pickupPaymentMethod,
+  contactPhone,
+  deliveryAddress,
+  deliveryReference,
+  transferProof
+}) => {
+  const normalizedOrderType = String(orderType || '').trim().toLowerCase();
+  const normalizedPickupMethod = String(pickupPaymentMethod || '').trim().toLowerCase();
+  const normalizedPhone = normalizeContactPhone(contactPhone);
+  const normalizedAddress = normalizeOrderFormText(deliveryAddress, 240);
+  const normalizedReference = normalizeOrderFormText(deliveryReference, 240);
+  const normalizedTransferProof = normalizeOrderFormText(transferProof, 120);
+  const errors = {};
+
+  if (
+    (normalizedOrderType === 'pickup' || normalizedOrderType === 'delivery') &&
+    normalizedPhone.length !== 8
+  ) {
+    errors.contactPhone = 'El telefono debe tener exactamente 8 digitos.';
+  }
+
+  if (normalizedOrderType === 'delivery') {
+    if (!normalizedAddress) {
+      errors.deliveryAddress = 'Ingresa la direccion de entrega.';
+    }
+    if (!normalizedReference) {
+      errors.deliveryReference = 'Ingresa una referencia de entrega.';
+    }
+    if (!normalizedTransferProof) {
+      errors.transferProof = 'Ingresa la referencia o comprobante de transferencia.';
+    }
+  }
+
+  return {
+    errors,
+    data: {
+      contacto: {
+        nombre: '',
+        telefono: normalizedPhone
+      },
+      entrega: {
+        direccion: normalizedOrderType === 'delivery' ? normalizedAddress : '',
+        referencia: normalizedOrderType === 'delivery' ? normalizedReference : ''
+      },
+      pago: {
+        metodo:
+          normalizedOrderType === 'pickup'
+            ? normalizedPickupMethod
+            : (normalizedOrderType === 'delivery' ? 'transferencia' : 'caja'),
+        comprobante_transferencia:
+          normalizedOrderType === 'delivery' ? normalizedTransferProof : ''
+      },
+      servicio: {
+        mesa: ''
+      }
+    }
+  };
+};
+
 const buildCatalogHeroSlides = ({
   products = [],
   branchName = 'Sucursal',
@@ -368,6 +440,17 @@ const CatalogScreen = () => {
   const [entrySetupOpen, setEntrySetupOpen] = useState(false);
   const [entrySetupBranchId, setEntrySetupBranchId] = useState('');
   const [entrySetupOrderType, setEntrySetupOrderType] = useState('');
+  const [orderContactContextOpen, setOrderContactContextOpen] = useState(false);
+  const [orderContactContextResumeConfig, setOrderContactContextResumeConfig] = useState({
+    keepCartSheetVisible: false
+  });
+  const [orderContactContextDraft, setOrderContactContextDraft] = useState({
+    contactPhone: '',
+    deliveryAddress: '',
+    deliveryReference: '',
+    transferProof: ''
+  });
+  const [orderContactContextErrors, setOrderContactContextErrors] = useState({});
   const [closedHoursConfirmOpen, setClosedHoursConfirmOpen] = useState(false);
   const [closedHoursDismissedByBranch, setClosedHoursDismissedByBranch] = useState(
     loadDismissedClosedHoursBranches
@@ -389,9 +472,11 @@ const CatalogScreen = () => {
   const recentlyAddedTimerRef = useRef(null);
   const categorySwitchTimerRef = useRef(null);
   const confirmLockRef = useRef(false);
+  const confirmOriginRef = useRef('');
   const authRedirectRef = useRef(false);
   const idempotencyRef = useRef({ fingerprint: '', key: '' });
   const previousTotalItemsRef = useRef(0);
+  const previousUserIdRef = useRef(Number(user?.id_usuario || 0) || null);
   const catalogAnchorRef = useRef(null);
   const prefersReducedMotion = usePrefersReducedMotion();
   const playOrderSuccessSound = useOrderSuccessSound();
@@ -448,6 +533,22 @@ const CatalogScreen = () => {
   }, [actions, liveSelectedBranch, state.selectedBranch]);
 
   useEffect(() => {
+    const previousUserId = previousUserIdRef.current;
+    const currentUserId = Number(user?.id_usuario || 0) || null;
+
+    if (previousUserId && !currentUserId) {
+      setCartOpen(false);
+      clearCart();
+      setDetailOpen(false);
+      setDetailItem(null);
+      setOrderSuccess({ open: false, order: null });
+      idempotencyRef.current = { fingerprint: '', key: '' };
+    }
+
+    previousUserIdRef.current = currentUserId;
+  }, [clearCart, user]);
+
+  useEffect(() => {
     if (pauseAutoContextBootstrap) return;
     if (!state.selectedBranch?.id) return;
     if (!state.orderType) {
@@ -498,6 +599,24 @@ const CatalogScreen = () => {
   const branchScheduleText = liveSelectedBranch?.schedule || 'Horario no configurado';
   const branchClosedReason = liveSelectedBranch?.closedReason || `Disponible de ${branchScheduleText}`;
   const orderDisabledReason = selectedBranchOpen ? '' : 'Sucursal cerrada';
+  const transferInfoMessage = useMemo(() => {
+    const account = normalizeOrderFormText(state.selectedBranch?.transferAccount || '', 120);
+    const whatsapp = formatWhatsAppNumber(state.selectedBranch?.whatsapp || '');
+
+    if (account && whatsapp) {
+      return `Envia tu transferencia de la cuenta ${account} y registra aqui la referencia. Si necesitas apoyo, escribe al WhatsApp ${whatsapp}.`;
+    }
+
+    if (account) {
+      return `Envia tu transferencia de la cuenta ${account} y registra aqui la referencia del comprobante.`;
+    }
+
+    if (whatsapp) {
+      return `Registra aqui tu referencia de transferencia. Si necesitas apoyo, escribe al WhatsApp ${whatsapp}.`;
+    }
+
+    return 'Registra aqui la referencia o comprobante de tu transferencia para confirmar el delivery.';
+  }, [state.selectedBranch?.transferAccount, state.selectedBranch?.whatsapp]);
   const liveBranchId = Number(liveSelectedBranch?.id || 0);
   const liveBranchKey = liveBranchId > 0 ? String(liveBranchId) : '';
   const topNavCategories = useMemo(
@@ -731,12 +850,9 @@ const CatalogScreen = () => {
   };
 
   const closeOrderSuccessModal = () => {
+    setCartOpen(false);
+    clearCart();
     setOrderSuccess({ open: false, order: null });
-  };
-
-  const startNewOrderAfterSuccess = () => {
-    closeOrderSuccessModal();
-    handleScrollToCatalog();
   };
 
   const handleHomeClick = () => {
@@ -774,6 +890,36 @@ const CatalogScreen = () => {
     markEntrySetupDismissed();
   };
 
+  const closeOrderContactContextModal = () => {
+    setOrderContactContextOpen(false);
+    setOrderContactContextErrors({});
+    setOrderContactContextResumeConfig({ keepCartSheetVisible: false });
+    setOrderContactContextDraft({
+      contactPhone: '',
+      deliveryAddress: '',
+      deliveryReference: '',
+      transferProof: ''
+    });
+  };
+
+  const handleOrderContactContextChange = (field, value) => {
+    const nextValue =
+      field === 'contactPhone' ? normalizeContactPhone(value) : value;
+
+    setOrderContactContextDraft((current) => ({
+      ...current,
+      [field]: nextValue
+    }));
+
+    setOrderContactContextErrors((current) => {
+      if (!current?.[field]) return current;
+      return {
+        ...current,
+        [field]: ''
+      };
+    });
+  };
+
   const cancelHomeNavigation = () => {
     setHomeConfirmOpen(false);
   };
@@ -802,16 +948,25 @@ const CatalogScreen = () => {
   const handleLogout = async () => {
     await logout();
     setCartOpen(false);
+    clearCart();
     closeConfigSheet();
     navigate('/menu-publico');
   };
+
+  useEffect(() => {
+    setOrderContactContextErrors({});
+    setOrderContactContextOpen(false);
+  }, [orderType]);
 
   // Guarda menu vigente en store para los siguientes pasos del flujo.
   useEffect(() => {
     actions.selectMenu(menuSummary);
   }, [actions, menuSummary]);
 
-  const handleConfirmOrder = async () => {
+  const handleConfirmOrder = async ({
+    keepCartSheetVisible = false,
+    skipContextPrompt = false
+  } = {}) => {
     if (confirmingOrder || confirmLockRef.current) return;
     if (!selectedBranchOpen) {
       setClosedHoursConfirmOpen(true);
@@ -841,19 +996,42 @@ const CatalogScreen = () => {
       });
     }
 
+    const orderContactValidation = validateOrderContactContext({
+      orderType,
+      pickupPaymentMethod,
+      contactPhone: orderContactContextDraft.contactPhone,
+      deliveryAddress: orderContactContextDraft.deliveryAddress,
+      deliveryReference: orderContactContextDraft.deliveryReference,
+      transferProof: orderContactContextDraft.transferProof
+    });
+
+    if (
+      !skipContextPrompt &&
+      orderType !== 'dine-in' &&
+      Object.keys(orderContactValidation.errors).length > 0
+    ) {
+      setOrderContactContextErrors(orderContactValidation.errors);
+      setOrderContactContextResumeConfig({ keepCartSheetVisible });
+      setOrderContactContextOpen(true);
+      return;
+    }
+
+    if (orderType !== 'dine-in' && Object.keys(orderContactValidation.errors).length > 0) {
+      actions.pushToast({
+        type: 'error',
+        message: 'Completa los datos obligatorios del pedido antes de confirmar.'
+      });
+      return;
+    }
+
     const payload = {
       ...buildOrderPayload(),
       tipo_pedido: orderType,
-      pago: {
-        metodo:
-          orderType === 'pickup'
-            ? pickupPaymentMethod
-            : (orderType === 'dine-in' ? 'caja' : 'transferencia')
-      },
+      contacto: orderContactValidation.data.contacto,
+      entrega: orderContactValidation.data.entrega,
+      pago: orderContactValidation.data.pago,
       // Backend espera servicio en raiz del payload.
-      servicio: {
-        mesa: ''
-      }
+      servicio: orderContactValidation.data.servicio
     };
 
     if (!payload.id_sucursal || !payload.tipo_pedido || !Array.isArray(payload.items) || payload.items.length === 0) {
@@ -875,12 +1053,11 @@ const CatalogScreen = () => {
     payload.idempotency_key = idempotencyRef.current.key;
 
     try {
+      confirmOriginRef.current = keepCartSheetVisible ? 'cart-sheet' : 'summary';
       setConfirmingOrder(true);
       confirmLockRef.current = true;
       const created = await publicMenuBootstrapService.createOrder(payload);
 
-      setCartOpen(false);
-      clearCart();
       idempotencyRef.current = { fingerprint: '', key: '' };
       playOrderSuccessSound();
       setOrderSuccess({ open: true, order: created });
@@ -905,9 +1082,33 @@ const CatalogScreen = () => {
         message: toPublicMenuUiErrorMessage(e, 'No se pudo enviar el pedido. Intenta nuevamente.')
       });
     } finally {
+      confirmOriginRef.current = '';
       setConfirmingOrder(false);
       confirmLockRef.current = false;
     }
+  };
+
+  const handleOrderContactContextConfirm = () => {
+    const validation = validateOrderContactContext({
+      orderType,
+      pickupPaymentMethod: String(state.pickupPaymentMethod || '').trim().toLowerCase(),
+      contactPhone: orderContactContextDraft.contactPhone,
+      deliveryAddress: orderContactContextDraft.deliveryAddress,
+      deliveryReference: orderContactContextDraft.deliveryReference,
+      transferProof: orderContactContextDraft.transferProof
+    });
+
+    if (Object.keys(validation.errors).length > 0) {
+      setOrderContactContextErrors(validation.errors);
+      return;
+    }
+
+    setOrderContactContextErrors({});
+    setOrderContactContextOpen(false);
+    void handleConfirmOrder({
+      keepCartSheetVisible: orderContactContextResumeConfig.keepCartSheetVisible,
+      skipContextPrompt: true
+    });
   };
 
   // Permite corregir sucursal desde catalogo sin mezclar carrito entre sedes.
@@ -1114,7 +1315,7 @@ const CatalogScreen = () => {
       />
 
       <CartSheet
-        open={cartOpen}
+        open={cartOpen || (confirmingOrder && confirmOriginRef.current === 'cart-sheet')}
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
         items={cartItems}
         total={total}
@@ -1124,7 +1325,7 @@ const CatalogScreen = () => {
         onIncrease={increaseItemByLine}
         onDecrease={decreaseItemByLine}
         onRemove={removeItemByLine}
-        onConfirm={handleConfirmOrder}
+        onConfirm={() => handleConfirmOrder({ keepCartSheetVisible: true })}
         confirming={confirmingOrder}
       />
 
@@ -1143,6 +1344,110 @@ const CatalogScreen = () => {
         onLogin={goToLoginFromAuthModal}
         onClose={closeAuthRequiredModal}
       />
+
+      {orderContactContextOpen ? (
+        <div className="pm-confirm-modal__backdrop pm-order-context-modal__backdrop" role="presentation">
+          <div
+            className="pm-confirm-modal pm-order-context-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pm-order-context-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="pm-confirm-modal__icon" aria-hidden="true">
+              <i className={`bi ${getOrderTypeIconById(orderType)}`} />
+            </div>
+            <h2 id="pm-order-context-title" className="pm-confirm-modal__title">
+              {orderType === 'delivery'
+                ? 'COMPLETA TU PEDIDO PARA DELIVERY'
+                : 'COMPLETA TU PEDIDO PARA RETIRO EN LOCAL'}
+            </h2>
+            <p className="pm-confirm-modal__message">
+              {orderType === 'delivery'
+                ? 'Necesitamos estos datos para confirmar tu pedido a domicilio sin errores.'
+                : 'Necesitamos un telefono de contacto para confirmar tu pedido de retiro en local.'}
+            </p>
+
+            <div className="pm-order-type-table pm-order-context-modal__fields">
+              <label className="pm-order-context-modal__field">
+                <span className="pm-order-context-modal__label">Telefono de contacto</span>
+                <input
+                  type="tel"
+                  className="form-control"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={8}
+                  placeholder="Ejemplo: 87763566"
+                  value={orderContactContextDraft.contactPhone}
+                  onChange={(event) =>
+                    handleOrderContactContextChange('contactPhone', event.target.value)
+                  }
+                />
+              </label>
+
+              {orderType === 'delivery' ? (
+                <>
+                  <label className="pm-order-context-modal__field">
+                    <span className="pm-order-context-modal__label">Direccion de entrega</span>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Colonia, calle, casa o punto de entrega"
+                      value={orderContactContextDraft.deliveryAddress}
+                      onChange={(event) =>
+                        handleOrderContactContextChange('deliveryAddress', event.target.value)
+                      }
+                    />
+                  </label>
+
+                  <label className="pm-order-context-modal__field">
+                    <span className="pm-order-context-modal__label">Referencia de entrega</span>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Ejemplo: porton negro, frente al parque"
+                      value={orderContactContextDraft.deliveryReference}
+                      onChange={(event) =>
+                        handleOrderContactContextChange('deliveryReference', event.target.value)
+                      }
+                    />
+                  </label>
+
+                  <label className="pm-order-context-modal__field">
+                    <span className="pm-order-context-modal__label">
+                      Referencia o comprobante de transferencia
+                    </span>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Ejemplo: captura 4582 o transferencia 001245"
+                      value={orderContactContextDraft.transferProof}
+                      onChange={(event) =>
+                        handleOrderContactContextChange('transferProof', event.target.value)
+                      }
+                    />
+                  </label>
+
+                  <small className="pm-order-context-modal__hint">{transferInfoMessage}</small>
+                </>
+              ) : null}
+            </div>
+
+            <div className="pm-confirm-modal__actions pm-order-context-modal__actions">
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={closeOrderContactContextModal}
+              >
+                Seguir viendo menu
+              </button>
+              <button type="button" className="btn btn-dark" onClick={handleOrderContactContextConfirm}>
+                Continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {entrySetupOpen ? (
         <div className="pm-confirm-modal__backdrop pm-entry-setup-modal__backdrop" role="presentation">
@@ -1286,7 +1591,6 @@ const CatalogScreen = () => {
         branchName={state.selectedBranch?.displayName || state.selectedBranch?.name}
         orderTypeLabel={orderTypeLabel}
         onClose={closeOrderSuccessModal}
-        onNewOrder={startNewOrderAfterSuccess}
       />
     </section>
   );

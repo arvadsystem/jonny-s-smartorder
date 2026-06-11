@@ -36,7 +36,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       onToggleVisible,
       onToggleAllVisible,
       onChangePrecioPublico,
-      onChangeOrden,
+      onUseOriginalPriceForAll,
       savePublication,
       reloadCurrent
     }
@@ -54,6 +54,13 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [creatingMenu, setCreatingMenu] = useState(false);
   const [createMenuSuccess, setCreateMenuSuccess] = useState('');
   const [createMenuError, setCreateMenuError] = useState('');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editMenuName, setEditMenuName] = useState('');
+  const [editMenuDescription, setEditMenuDescription] = useState('');
+  const [editingMenu, setEditingMenu] = useState(false);
+  const [deletingMenu, setDeletingMenu] = useState(false);
+  const [editMenuSuccess, setEditMenuSuccess] = useState('');
+  const [editMenuError, setEditMenuError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const loadMenusProgramables = useCallback(async () => {
     try {
@@ -138,6 +145,12 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     return Math.max(...ids) + 1;
   }, [menusProgramables]);
 
+  const selectedMenuProgramable = useMemo(() => (
+    (Array.isArray(menusProgramables) ? menusProgramables : []).find(
+      (menu) => Number(menu?.id_menu || 0) === Number(selectedMenuProgramacionId || 0)
+    ) || null
+  ), [menusProgramables, selectedMenuProgramacionId]);
+
   const branchRows = useMemo(() => {
     const rows = Array.isArray(sucursales) ? sucursales : [];
     return rows
@@ -162,7 +175,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       return;
     }
 
-    if (!selectedSucursal || !Boolean(selectedSucursal?.estado)) {
+    if (!selectedSucursal || !selectedSucursal?.estado) {
       setScheduleError('La sucursal seleccionada no esta disponible para cambios.');
       return;
     }
@@ -242,6 +255,104 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     }
   };
 
+  const openEditMenuModal = useCallback(() => {
+    if (!selectedMenuProgramable) return;
+    setEditMenuName(String(selectedMenuProgramable?.nombre_menu || '').trim());
+    setEditMenuDescription(String(selectedMenuProgramable?.descripcion || '').trim());
+    setEditMenuError('');
+    setEditMenuSuccess('');
+    setEditModalOpen(true);
+  }, [selectedMenuProgramable]);
+
+  const closeEditMenuModal = useCallback(() => {
+    if (editingMenu) return;
+    setEditModalOpen(false);
+    setEditMenuError('');
+    setEditMenuSuccess('');
+  }, [editingMenu]);
+
+  const handleSaveEditMenu = async () => {
+    const idMenu = Number(selectedMenuProgramable?.id_menu || 0);
+    const nombreMenu = String(editMenuName || '').trim();
+    const descripcion = String(editMenuDescription || '').trim();
+
+    setEditMenuError('');
+    setEditMenuSuccess('');
+
+    if (!idMenu) {
+      setEditMenuError('Selecciona un menu valido antes de editar.');
+      return;
+    }
+
+    if (!nombreMenu || nombreMenu.length < 3) {
+      setEditMenuError('El nombre del menu debe tener al menos 3 caracteres.');
+      return;
+    }
+
+    try {
+      setEditingMenu(true);
+      const response = await menuPublicacionAdminService.updateMenuProgramable({
+        idMenu,
+        nombreMenu,
+        descripcion: descripcion || null
+      });
+
+      const updatedMenu = response?.data?.menu || null;
+      if (!updatedMenu?.id_menu) {
+        throw new Error('No se recibio el menu actualizado.');
+      }
+
+      setMenusProgramables((current) => (Array.isArray(current) ? current : []).map((menu) => (
+        Number(menu?.id_menu || 0) === Number(updatedMenu.id_menu) ? { ...menu, ...updatedMenu } : menu
+      )));
+      setEditMenuSuccess(response?.message || `Menu #${updatedMenu.id_menu} actualizado correctamente.`);
+      setToastMessage(response?.message || `Menu #${updatedMenu.id_menu} actualizado correctamente.`);
+      setEditModalOpen(false);
+      await reloadCurrent();
+    } catch (e) {
+      setEditMenuError(e?.message || 'No se pudo actualizar el menu.');
+    } finally {
+      setEditingMenu(false);
+    }
+  };
+
+  const handleDeleteMenu = async () => {
+    const idMenu = Number(selectedMenuProgramable?.id_menu || 0);
+    if (!idMenu) {
+      setScheduleError('Selecciona un menu valido antes de eliminar.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Se eliminara el menu #${idMenu} ${selectedMenuProgramable?.nombre_menu || ''} si no tiene vigencias, publicaciones, recetas ni combos activos.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingMenu(true);
+      setScheduleError('');
+      setScheduleSuccess('');
+      const response = await menuPublicacionAdminService.deleteMenuProgramable(idMenu);
+
+      const remaining = (Array.isArray(menusProgramables) ? menusProgramables : [])
+        .filter((menu) => Number(menu?.id_menu || 0) !== idMenu);
+      setMenusProgramables(remaining);
+
+      const fallbackMenuId = Number(menuSummary?.id_menu || 0) > 0
+        ? String(menuSummary.id_menu)
+        : String(remaining?.[0]?.id_menu || '');
+      setSelectedMenuProgramacionId(fallbackMenuId);
+      onSelectCatalogMenu(fallbackMenuId);
+
+      setScheduleSuccess(response?.message || `Menu #${idMenu} eliminado correctamente.`);
+      setToastMessage(response?.message || `Menu #${idMenu} eliminado correctamente.`);
+    } catch (e) {
+      setScheduleError(e?.message || 'No se pudo eliminar el menu.');
+    } finally {
+      setDeletingMenu(false);
+    }
+  };
+
   return (
     <div className="card shadow-sm mb-3 inv-prod-card menu-pub-admin">
       <div className="card-header inv-prod-header">
@@ -251,7 +362,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             <span className="inv-prod-title">Publicacion por sucursal</span>
           </div>
           <div className="inv-prod-subtitle">
-            Controla visibilidad, precio publico y orden del menu cliente por sucursal.
+            Controla visibilidad y precio publico del menu cliente por sucursal.
           </div>
         </div>
 
@@ -260,7 +371,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             type="button"
             className="btn inv-prod-btn-primary"
             onClick={savePublication}
-            disabled={saving || loadingCatalogo || !selectedSucursalId || !selectedSucursal || !Boolean(selectedSucursal?.estado)}
+            disabled={saving || loadingCatalogo || !selectedSucursalId || !selectedSucursal || !selectedSucursal?.estado}
           >
             {saving ? 'Guardando...' : 'Guardar publicacion'}
           </button>
@@ -339,7 +450,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
                       const label = String(branch?.nombre_sucursal || `Sucursal #${id}`).trim();
                       return (
                         <option key={`menu-pub-branch-${id}`} value={id}>
-                          {label}{Boolean(branch?.estado) ? '' : ' (Inactiva)'}
+                          {label}{branch?.estado ? '' : ' (Inactiva)'}
                         </option>
                       );
                     })}
@@ -359,7 +470,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
                 {selectedSucursalId ? (
                   !selectedSucursal ? (
                     <span className="text-danger">La sucursal seleccionada ya no esta disponible. Selecciona otra sucursal.</span>
-                  ) : !Boolean(selectedSucursal?.estado) ? (
+                  ) : !selectedSucursal?.estado ? (
                     <span className="text-danger">La sucursal seleccionada esta inactiva.</span>
                   ) : menuSummary ? (
                     <>
@@ -390,17 +501,31 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           selectedSucursal={selectedSucursal}
           menus={menusProgramables}
           selectedMenuId={selectedMenuProgramacionId}
+          selectedMenu={selectedMenuProgramable}
           currentMenuId={String(menuSummary?.id_menu || '')}
           loading={loadingMenus}
           scheduling={schedulingMenu}
+          editingMenu={editingMenu}
+          deletingMenu={deletingMenu}
           success={scheduleSuccess}
           error={scheduleError}
+          editMenuSuccess={editMenuSuccess}
+          editMenuError={editMenuError}
+          editModalOpen={editModalOpen}
+          editName={editMenuName}
+          editDescription={editMenuDescription}
           onChangeMenu={(nextMenuId) => {
             setSelectedMenuProgramacionId(nextMenuId);
             onSelectCatalogMenu(nextMenuId);
           }}
           onProgramar={handleProgramarMenu}
           onReloadMenus={loadMenusProgramables}
+          onOpenEditModal={openEditMenuModal}
+          onCloseEditModal={closeEditMenuModal}
+          onChangeEditName={setEditMenuName}
+          onChangeEditDescription={setEditMenuDescription}
+          onSaveEditMenu={handleSaveEditMenu}
+          onDeleteMenu={handleDeleteMenu}
           nextMenuNumber={nextMenuNumber}
           createName={newMenuName}
           createDescription={newMenuDescription}
@@ -420,7 +545,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
               onToggleVisible={onToggleVisible}
               onToggleAllVisible={onToggleAllVisible}
               onChangePrecioPublico={onChangePrecioPublico}
-              onChangeOrden={onChangeOrden}
+              onUseOriginalPriceForAll={onUseOriginalPriceForAll}
             />
           </div>
 
