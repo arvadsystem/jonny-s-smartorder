@@ -12,6 +12,20 @@ const MenuProgramacionPanel = ({
   onChangeMenu,
   onProgramar,
   onReloadMenus,
+  selectedMenu = null,
+  editingMenu = false,
+  deletingMenu = false,
+  editMenuSuccess = '',
+  editMenuError = '',
+  editModalOpen = false,
+  editName = '',
+  editDescription = '',
+  onOpenEditModal,
+  onCloseEditModal,
+  onChangeEditName,
+  onChangeEditDescription,
+  onSaveEditMenu,
+  onDeleteMenu,
   nextMenuNumber = null,
   createName = '',
   createDescription = '',
@@ -92,8 +106,37 @@ const MenuProgramacionPanel = ({
               >
                 {scheduling ? 'Cambiando...' : 'Activar menu ahora'}
               </button>
+              <button
+                type="button"
+                className="btn inv-prod-btn-subtle w-100"
+                disabled={loading || scheduling || !selectedMenu}
+                onClick={onOpenEditModal}
+              >
+                Editar menu
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-danger w-100"
+                disabled={loading || scheduling || deletingMenu || !selectedMenu || selectedIsCurrent}
+                onClick={onDeleteMenu}
+                title={selectedIsCurrent ? 'No puedes eliminar el menu activo de la sucursal.' : 'Eliminar menu sin uso'}
+              >
+                {deletingMenu ? 'Eliminando...' : 'Eliminar menu'}
+              </button>
             </div>
           </div>
+          {selectedMenu ? (
+            <div className="menu-pub-admin__program-info-note mt-2">
+              <i className="bi bi-card-text" aria-hidden="true" />
+              <div>
+                <strong>Menu seleccionado</strong>
+                <p className="mb-0">
+                  #{selectedMenu.id_menu} {selectedMenu.nombre_menu}
+                  {selectedMenu.descripcion ? ` - ${selectedMenu.descripcion}` : ''}
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div className="menu-pub-admin__program-info-note">
             <i className="bi bi-info-circle-fill" aria-hidden="true" />
             <div>
@@ -199,6 +242,97 @@ const MenuProgramacionPanel = ({
           </div>
         </article>
       </div>
+
+      {editModalOpen ? (
+        <div className="inv-prod-pmodal inv-prod-pmodal--create show">
+          <div className="inv-prod-pmodal__overlay" onClick={editingMenu ? undefined : onCloseEditModal} />
+          <div className="inv-prod-pmodal__viewport">
+            <div
+              className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="menu-publicacion-edit-modal-title"
+            >
+              <form
+                className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onSaveEditMenu?.();
+                }}
+              >
+                <div className="inv-prod-pmodal__body">
+                  <div className="d-flex align-items-start justify-content-between gap-3">
+                    <div>
+                      <div id="menu-publicacion-edit-modal-title" className="inv-ins-create-hero__title">
+                        Editar menu
+                      </div>
+                      <div className="text-muted small">
+                        Actualiza nombre y descripcion del menu seleccionado.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      aria-label="Cerrar modal de edicion"
+                      onClick={onCloseEditModal}
+                      disabled={editingMenu}
+                    />
+                  </div>
+
+                  {editMenuSuccess ? <div className="alert alert-success py-2 mt-3 mb-0">{editMenuSuccess}</div> : null}
+                  {editMenuError ? <div className="alert alert-danger py-2 mt-3 mb-0">{editMenuError}</div> : null}
+
+                  <div className="inv-prod-pmodal__sections mt-3">
+                    <section className="inv-prod-pmodal__section">
+                      <div className="inv-prod-pmodal__section-head">
+                        <div className="inv-prod-pmodal__section-title">Datos del menu</div>
+                        <div className="inv-prod-pmodal__section-sub">
+                          Se mantiene el mismo `id_menu`; solo cambia su presentacion.
+                        </div>
+                      </div>
+
+                      <div className="mb-3">
+                        <label className="form-label mb-1" htmlFor="menu_publicacion_edit_name">Nombre del menu</label>
+                        <input
+                          id="menu_publicacion_edit_name"
+                          type="text"
+                          className="form-control menu-pub-admin__program-input"
+                          value={editName}
+                          onChange={(event) => onChangeEditName?.(event.target.value)}
+                          disabled={editingMenu}
+                          maxLength={120}
+                        />
+                      </div>
+
+                      <div className="mb-0">
+                        <label className="form-label mb-1" htmlFor="menu_publicacion_edit_description">Descripcion</label>
+                        <textarea
+                          id="menu_publicacion_edit_description"
+                          className="form-control menu-pub-admin__program-input"
+                          rows={3}
+                          value={editDescription}
+                          onChange={(event) => onChangeEditDescription?.(event.target.value)}
+                          disabled={editingMenu}
+                          maxLength={250}
+                        />
+                      </div>
+                    </section>
+                  </div>
+                </div>
+
+                <div className="inv-prod-pmodal__footer inv-prod-pmodal__footer--create">
+                  <button type="button" className="btn inv-prod-btn-subtle" onClick={onCloseEditModal} disabled={editingMenu}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn inv-prod-btn-primary" disabled={editingMenu || !String(editName || '').trim()}>
+                    {editingMenu ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 };

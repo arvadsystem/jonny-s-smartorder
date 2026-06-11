@@ -34,7 +34,7 @@ const normalizeOptionalInput = (value) =>
   value === null || value === undefined ? '' : String(value).trim();
 
 const normalizeDraftRow = (row, index) => {
-  const visible = parseDraftVisible(row?.visible);
+  const visible = Boolean(row?.estado_item) ? parseDraftVisible(row?.visible) : false;
   const savedPublicPriceInput = normalizeOptionalInput(row?.precio_publico);
   const basePrice = Number(row?.precio_base);
   const publicPrice = Number(savedPublicPriceInput);

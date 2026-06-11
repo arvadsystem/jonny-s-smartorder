@@ -54,6 +54,13 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [creatingMenu, setCreatingMenu] = useState(false);
   const [createMenuSuccess, setCreateMenuSuccess] = useState('');
   const [createMenuError, setCreateMenuError] = useState('');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editMenuName, setEditMenuName] = useState('');
+  const [editMenuDescription, setEditMenuDescription] = useState('');
+  const [editingMenu, setEditingMenu] = useState(false);
+  const [deletingMenu, setDeletingMenu] = useState(false);
+  const [editMenuSuccess, setEditMenuSuccess] = useState('');
+  const [editMenuError, setEditMenuError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const loadMenusProgramables = useCallback(async () => {
     try {
@@ -137,6 +144,12 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     if (ids.length === 0) return 1;
     return Math.max(...ids) + 1;
   }, [menusProgramables]);
+
+  const selectedMenuProgramable = useMemo(() => (
+    (Array.isArray(menusProgramables) ? menusProgramables : []).find(
+      (menu) => Number(menu?.id_menu || 0) === Number(selectedMenuProgramacionId || 0)
+    ) || null
+  ), [menusProgramables, selectedMenuProgramacionId]);
 
   const branchRows = useMemo(() => {
     const rows = Array.isArray(sucursales) ? sucursales : [];
@@ -239,6 +252,104 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       setCreateMenuError(e?.message || 'No se pudo crear el menu de temporada.');
     } finally {
       setCreatingMenu(false);
+    }
+  };
+
+  const openEditMenuModal = useCallback(() => {
+    if (!selectedMenuProgramable) return;
+    setEditMenuName(String(selectedMenuProgramable?.nombre_menu || '').trim());
+    setEditMenuDescription(String(selectedMenuProgramable?.descripcion || '').trim());
+    setEditMenuError('');
+    setEditMenuSuccess('');
+    setEditModalOpen(true);
+  }, [selectedMenuProgramable]);
+
+  const closeEditMenuModal = useCallback(() => {
+    if (editingMenu) return;
+    setEditModalOpen(false);
+    setEditMenuError('');
+    setEditMenuSuccess('');
+  }, [editingMenu]);
+
+  const handleSaveEditMenu = async () => {
+    const idMenu = Number(selectedMenuProgramable?.id_menu || 0);
+    const nombreMenu = String(editMenuName || '').trim();
+    const descripcion = String(editMenuDescription || '').trim();
+
+    setEditMenuError('');
+    setEditMenuSuccess('');
+
+    if (!idMenu) {
+      setEditMenuError('Selecciona un menu valido antes de editar.');
+      return;
+    }
+
+    if (!nombreMenu || nombreMenu.length < 3) {
+      setEditMenuError('El nombre del menu debe tener al menos 3 caracteres.');
+      return;
+    }
+
+    try {
+      setEditingMenu(true);
+      const response = await menuPublicacionAdminService.updateMenuProgramable({
+        idMenu,
+        nombreMenu,
+        descripcion: descripcion || null
+      });
+
+      const updatedMenu = response?.data?.menu || null;
+      if (!updatedMenu?.id_menu) {
+        throw new Error('No se recibio el menu actualizado.');
+      }
+
+      setMenusProgramables((current) => (Array.isArray(current) ? current : []).map((menu) => (
+        Number(menu?.id_menu || 0) === Number(updatedMenu.id_menu) ? { ...menu, ...updatedMenu } : menu
+      )));
+      setEditMenuSuccess(response?.message || `Menu #${updatedMenu.id_menu} actualizado correctamente.`);
+      setToastMessage(response?.message || `Menu #${updatedMenu.id_menu} actualizado correctamente.`);
+      setEditModalOpen(false);
+      await reloadCurrent();
+    } catch (e) {
+      setEditMenuError(e?.message || 'No se pudo actualizar el menu.');
+    } finally {
+      setEditingMenu(false);
+    }
+  };
+
+  const handleDeleteMenu = async () => {
+    const idMenu = Number(selectedMenuProgramable?.id_menu || 0);
+    if (!idMenu) {
+      setScheduleError('Selecciona un menu valido antes de eliminar.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Se eliminara el menu #${idMenu} ${selectedMenuProgramable?.nombre_menu || ''} si no tiene vigencias, publicaciones, recetas ni combos activos.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingMenu(true);
+      setScheduleError('');
+      setScheduleSuccess('');
+      const response = await menuPublicacionAdminService.deleteMenuProgramable(idMenu);
+
+      const remaining = (Array.isArray(menusProgramables) ? menusProgramables : [])
+        .filter((menu) => Number(menu?.id_menu || 0) !== idMenu);
+      setMenusProgramables(remaining);
+
+      const fallbackMenuId = Number(menuSummary?.id_menu || 0) > 0
+        ? String(menuSummary.id_menu)
+        : String(remaining?.[0]?.id_menu || '');
+      setSelectedMenuProgramacionId(fallbackMenuId);
+      onSelectCatalogMenu(fallbackMenuId);
+
+      setScheduleSuccess(response?.message || `Menu #${idMenu} eliminado correctamente.`);
+      setToastMessage(response?.message || `Menu #${idMenu} eliminado correctamente.`);
+    } catch (e) {
+      setScheduleError(e?.message || 'No se pudo eliminar el menu.');
+    } finally {
+      setDeletingMenu(false);
     }
   };
 
@@ -390,17 +501,31 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           selectedSucursal={selectedSucursal}
           menus={menusProgramables}
           selectedMenuId={selectedMenuProgramacionId}
+          selectedMenu={selectedMenuProgramable}
           currentMenuId={String(menuSummary?.id_menu || '')}
           loading={loadingMenus}
           scheduling={schedulingMenu}
+          editingMenu={editingMenu}
+          deletingMenu={deletingMenu}
           success={scheduleSuccess}
           error={scheduleError}
+          editMenuSuccess={editMenuSuccess}
+          editMenuError={editMenuError}
+          editModalOpen={editModalOpen}
+          editName={editMenuName}
+          editDescription={editMenuDescription}
           onChangeMenu={(nextMenuId) => {
             setSelectedMenuProgramacionId(nextMenuId);
             onSelectCatalogMenu(nextMenuId);
           }}
           onProgramar={handleProgramarMenu}
           onReloadMenus={loadMenusProgramables}
+          onOpenEditModal={openEditMenuModal}
+          onCloseEditModal={closeEditMenuModal}
+          onChangeEditName={setEditMenuName}
+          onChangeEditDescription={setEditMenuDescription}
+          onSaveEditMenu={handleSaveEditMenu}
+          onDeleteMenu={handleDeleteMenu}
           nextMenuNumber={nextMenuNumber}
           createName={newMenuName}
           createDescription={newMenuDescription}

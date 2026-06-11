@@ -99,6 +99,17 @@ const menuPublicacionAdminService = {
     });
   },
 
+  async updateMenuProgramable({ idMenu, nombreMenu, descripcion }) {
+    return apiFetch(`${BASE_ENDPOINT}/menus/${idMenu}`, 'PUT', {
+      nombre_menu: nombreMenu,
+      descripcion: descripcion || null
+    });
+  },
+
+  async deleteMenuProgramable(idMenu) {
+    return apiFetch(`${BASE_ENDPOINT}/menus/${idMenu}`, 'DELETE');
+  },
+
   // Activa un menu de inmediato para la sucursal seleccionada.
   async activarMenuSucursal({ idSucursal, idMenu }) {
     return apiFetch(`${BASE_ENDPOINT}/programacion`, 'POST', {
