@@ -5,7 +5,11 @@ export const PHONE_DIGITS_LENGTH = 8;
 export const PHONE_DISPLAY_MAX_LENGTH = 9;
 export const RTN_FORMAT_ERROR = "El RTN debe contener 14 digitos numericos.";
 
-export const normalizeText = (value) => String(value ?? "").trim();
+export const normalizeText = (value, options = {}) => {
+  const text = String(value ?? "");
+  if (!options?.preserveTrailingSpace) return text.trim();
+  return text.replace(/^\s+/, "");
+};
 export const digitsOnly = (value) => String(value ?? "").replace(/\D/g, "");
 export const limitText = (value, max) => String(value ?? "").slice(0, max);
 
@@ -61,6 +65,14 @@ const firstNonEmptyText = (...values) => {
   return "";
 };
 
+const firstNonEmptyTextPreservingTrailingSpace = (...values) => {
+  for (const value of values) {
+    const text = normalizeText(value, { preserveTrailingSpace: true });
+    if (text) return text;
+  }
+  return "";
+};
+
 const isLikelyForeignId = (value) => /^\d{1,6}$/.test(normalizeText(value));
 
 const resolvePhoneDisplayValue = (value = {}) => {
@@ -78,7 +90,7 @@ const resolvePhoneDisplayValue = (value = {}) => {
 };
 
 const resolveAddressDisplayValue = (value = {}) => {
-  const preferredAddress = firstNonEmptyText(
+  const preferredAddress = firstNonEmptyTextPreservingTrailingSpace(
     value?.texto_direccion,
     value?.direccion,
     value?.direccion_detalle,
@@ -86,7 +98,7 @@ const resolveAddressDisplayValue = (value = {}) => {
   );
   if (preferredAddress) return preferredAddress;
 
-  const idAddress = firstNonEmptyText(value?.id_direccion);
+  const idAddress = firstNonEmptyTextPreservingTrailingSpace(value?.id_direccion);
   return isLikelyForeignId(idAddress) ? "" : idAddress;
 };
 
