@@ -75,6 +75,7 @@ const buildCreateProductoInitialForm = () => ({
   fecha_caducidad: '',
   id_categoria_producto: '',
   id_almacen: '',
+  id_almacenes: [],
   id_tipo_departamento: ''
 });
 
@@ -411,44 +412,125 @@ const ProductosTab = ({ categorias = [], openToast }) => {
 
   const sanitizeInteger = (value) => String(value ?? '').replace(/[^\d]/g, '');
 
-  // AM: renderer compartido de selector unico de almacen para create/edit.
+  const updateCreateAlmacenes = useCallback((ids) => {
+    const normalized = [...new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    setForm((state) => ({
+      ...state,
+      id_almacenes: normalized,
+      id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
+    }));
+  }, []);
+
+  // AM: renderer compartido de selector multi-almacen para create.
   const renderAlmacenSelectField = useCallback(({
     scope,
     selectedValue,
+    selectedValues,
     error,
     onChange,
+    onChangeMulti,
     compact = false,
     feedbackClassName = 'invalid-feedback'
   }) => {
     const safeScope = String(scope || 'default');
-    const safeValue = String(selectedValue ?? '');
-    const selectClassName = compact ? 'form-select form-select-sm' : 'form-select';
+    const selectedIds = new Set(
+      (Array.isArray(selectedValues) && selectedValues.length > 0 ? selectedValues : [selectedValue])
+        .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    );
+    const activeAlmacenes = (Array.isArray(almacenes) ? almacenes : []).filter((almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      const estado = almacen?.estado;
+      const active = estado === undefined || estado === null || estado === '' || estado === true || estado === 'true' || estado === 1 || estado === '1';
+      return Number.isInteger(idAlmacen) && idAlmacen > 0 && active;
+    });
+    const grouped = activeAlmacenes.reduce((acc, almacen) => {
+      const idSucursal = String(almacen?.id_sucursal ?? almacen?.sucursal_id ?? 'sin-sucursal');
+      const nombreSucursal = String(almacen?.sucursal || almacen?.nombre_sucursal || (idSucursal === 'sin-sucursal' ? 'Sucursal sin asignar' : `Sucursal #${idSucursal}`));
+      if (!acc.has(idSucursal)) acc.set(idSucursal, { idSucursal, nombreSucursal, items: [] });
+      acc.get(idSucursal).items.push(almacen);
+      return acc;
+    }, new Map());
+    const groups = [...grouped.values()].sort((a, b) => a.nombreSucursal.localeCompare(b.nombreSucursal, 'es'));
+    const canSelectAll = groups.length > 0 && groups.every((group) => group.items.length === 1);
+    const emitChange = (ids) => {
+      const normalized = [...new Set(ids)];
+      if (onChangeMulti) {
+        onChangeMulti(normalized);
+      } else if (onChange) {
+        onChange(normalized.length > 0 ? String(normalized[0]) : '');
+      }
+    };
+    const toggleWarehouse = (almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return;
+      const idSucursal = String(almacen?.id_sucursal ?? almacen?.sucursal_id ?? 'sin-sucursal');
+      const current = activeAlmacenes
+        .filter((item) => {
+          const itemId = Number.parseInt(String(item?.id_almacen ?? ''), 10);
+          if (!selectedIds.has(itemId)) return false;
+          if (itemId === idAlmacen) return false;
+          return String(item?.id_sucursal ?? item?.sucursal_id ?? 'sin-sucursal') !== idSucursal;
+        })
+        .map((item) => Number.parseInt(String(item.id_almacen), 10));
+      if (!selectedIds.has(idAlmacen)) current.push(idAlmacen);
+      emitChange(current);
+    };
+    const selectAllBranches = () => {
+      if (!canSelectAll) return;
+      emitChange(groups.map((group) => Number.parseInt(String(group.items[0].id_almacen), 10)));
+    };
 
     return (
-      <>
-        <select
-          id={`inv-prod-alm-${safeScope}`}
-          className={`${selectClassName} ${error ? 'is-invalid' : ''}`}
-          value={safeValue}
-          disabled={loadingAlmacenes}
-          onChange={(e) => onChange(e.target.value)}
+      <div className={error ? 'is-invalid' : ''} id={`inv-prod-alm-${safeScope}`}>
+        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+          <div className="form-text m-0">El producto sera global y tendra una asignacion local en cada almacen seleccionado.</div>
+          <span className="badge text-bg-light border">{selectedIds.size} seleccionados</span>
+        </div>
+        <button
+          type="button"
+          className={`btn btn-sm ${canSelectAll ? 'btn-outline-primary' : 'btn-outline-secondary'} mb-2`}
+          onClick={selectAllBranches}
+          disabled={loadingAlmacenes || !canSelectAll}
         >
-          <option value="">{loadingAlmacenes ? 'Cargando...' : 'Seleccione almacén'}</option>
-          {almacenes.map((a) => {
-            const idAlmacen = Number.parseInt(String(a.id_almacen ?? ''), 10);
-            if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return null;
-            return (
-              <option key={idAlmacen} value={String(idAlmacen)}>
-                {a.nombre}
-              </option>
-            );
-          })}
-        </select>
-        {!loadingAlmacenes && almacenes.length === 0 ? (
+          Todas las sucursales
+        </button>
+        {!canSelectAll && groups.length > 0 ? (
+          <div className="form-text text-muted mb-2">Hay sucursales con varios almacenes. Selecciona manualmente un almacen para esas sucursales.</div>
+        ) : null}
+        {loadingAlmacenes ? <div className="form-text text-muted">Cargando almacenes...</div> : null}
+        {!loadingAlmacenes && groups.map((group) => (
+          <div key={group.idSucursal} className={`border rounded-2 p-2 mb-2 ${compact ? 'py-1' : ''}`}>
+            <div className="fw-semibold small mb-1">{group.nombreSucursal}</div>
+            <div className="d-grid gap-1">
+              {group.items.map((almacen) => {
+                const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+                const checked = selectedIds.has(idAlmacen);
+                const name = String(almacen?.nombre || almacen?.nombre_almacen || `Almacen #${idAlmacen}`);
+                return (
+                  <label key={idAlmacen} className="form-check mb-0">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleWarehouse(almacen)}
+                    />
+                    <span className="form-check-label">{name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {!loadingAlmacenes && activeAlmacenes.length === 0 ? (
           <div className="form-text text-muted">No hay almacenes disponibles</div>
         ) : null}
         {error ? <div className={feedbackClassName}>{error}</div> : null}
-      </>
+      </div>
     );
   }, [almacenes, loadingAlmacenes]);
 
@@ -847,14 +929,20 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   }, [normalizeProductoDuplicateId, normalizeProductoDuplicateText]);
 
   const findDuplicateProducto = useCallback((data, { excludeId = null } = {}) => {
-    const candidateKey = buildProductoDuplicateKey(data);
-    if (!candidateKey) return null;
+    const candidateAlmacenes = Array.isArray(data?.id_almacenes) && data.id_almacenes.length > 0
+      ? data.id_almacenes
+      : [data?.id_almacen];
+    const candidateKeys = candidateAlmacenes
+      .map((idAlmacen) => buildProductoDuplicateKey({ ...data, id_almacen: idAlmacen }))
+      .filter(Boolean);
+    if (candidateKeys.length === 0) return null;
+    const candidateKeySet = new Set(candidateKeys);
 
     return productos.find((item) => {
       const sameRecord = excludeId !== null && Number(item.id_producto) === Number(excludeId);
       if (sameRecord) return false;
       if (item?.estado === false) return false;
-      return buildProductoDuplicateKey(item) === candidateKey;
+      return candidateKeySet.has(buildProductoDuplicateKey(item));
     }) || null;
   }, [buildProductoDuplicateKey, productos]);
 
@@ -1186,7 +1274,14 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const stockMinimoRaw = String(data.stock_minimo ?? '').trim();
 
     const categoriaRaw = String(data.id_categoria_producto ?? '').trim();
-    const almacenRaw = String(data.id_almacen ?? '').trim();
+    const almacenesSeleccionados = [...new Set(
+      (Array.isArray(data.id_almacenes) && data.id_almacenes.length > 0
+        ? data.id_almacenes
+        : [data.id_almacen]
+      )
+        .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )];
     const deptoRaw = SHOW_PRODUCTO_DEPARTAMENTOS ? String(data.id_tipo_departamento ?? '').trim() : '';
 
     const fechaIngreso = String(data.fecha_ingreso_producto ?? '').trim();
@@ -1225,11 +1320,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       errors.id_categoria_producto = 'DEBE SER UN NÚMERO > 0';
 
     // === FK ALMACÉN OBLIGATORIA ===
-    const id_almacen = Number.parseInt(almacenRaw, 10);
-    if (!almacenRaw) {
-      errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACÉN';
-    } else if (Number.isNaN(id_almacen) || id_almacen <= 0) {
-      errors.id_almacen = 'DEBE SER UN NÚMERO > 0';
+    const id_almacen = almacenesSeleccionados[0] || null;
+    if (almacenesSeleccionados.length === 0) {
+      errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACEN';
     }
 
     // === FK TIPO_DEPARTAMENTO (OPCIONAL) ===
@@ -1275,6 +1368,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         fecha_caducidad: fechaCaducidad,
         id_categoria_producto,
         id_almacen,
+        id_almacenes: almacenesSeleccionados,
         id_tipo_departamento // PUEDE SER null (PERO NO LO ENVIAREMOS SI ES NULL)
       }
     };
@@ -1292,7 +1386,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       // AJUSTE: se incluye stock_minimo como numero para alinear create con backend.
       stock_minimo: cleaned.stock_minimo,
       id_categoria_producto: cleaned.id_categoria_producto,
-      id_almacen: cleaned.id_almacen
+      id_almacen: cleaned.id_almacen,
+      id_almacenes: cleaned.id_almacenes
     };
 
     if (cleaned.descripcion_producto) payload.descripcion_producto = cleaned.descripcion_producto;
@@ -2943,8 +3038,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               {renderAlmacenSelectField({
                                 scope: 'create-1',
                                 selectedValue: form.id_almacen,
+                                selectedValues: form.id_almacenes,
                                 error: createErrors.id_almacen,
-                                onChange: (idAlmacen) => setForm((s) => ({ ...s, id_almacen: idAlmacen }))
+                                onChangeMulti: updateCreateAlmacenes
                               })}
                             </div>
 
@@ -3200,8 +3296,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                   {renderAlmacenSelectField({
                     scope: 'create-2',
                     selectedValue: form.id_almacen,
+                    selectedValues: form.id_almacenes,
                     error: createErrors.id_almacen,
-                    onChange: (idAlmacen) => setForm((s) => ({ ...s, id_almacen: idAlmacen }))
+                    onChangeMulti: updateCreateAlmacenes
                   })}
                 </div>
 
@@ -3371,8 +3468,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               {renderAlmacenSelectField({
                 scope: 'create-3',
                 selectedValue: form.id_almacen,
+                selectedValues: form.id_almacenes,
                 error: createErrors.id_almacen,
-                onChange: (idAlmacen) => setForm((s) => ({ ...s, id_almacen: idAlmacen }))
+                onChangeMulti: updateCreateAlmacenes
               })}
             </div>
 
@@ -4591,8 +4689,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       {renderAlmacenSelectField({
                         scope: 'create-4',
                         selectedValue: form.id_almacen,
+                        selectedValues: form.id_almacenes,
                         error: createErrors.id_almacen,
-                        onChange: (idAlmacen) => setForm((s) => ({ ...s, id_almacen: idAlmacen }))
+                        onChangeMulti: updateCreateAlmacenes
                       })}
                     </div>
 

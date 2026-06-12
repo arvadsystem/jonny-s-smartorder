@@ -424,7 +424,13 @@ const useRecetasAdmin = () => {
 
   const isAnyDrawerOpen = drawerOpen || filtersOpen;
   const showSaveResult = useCallback((variant, message) => {
-    setResultModal({ open: true, variant, message: String(message || '').trim() });
+    const safeMessage = String(message || '').trim();
+    if (variant === 'success') {
+      setSuccess(safeMessage);
+      setResultModal((current) => ({ ...current, open: false }));
+      return;
+    }
+    setResultModal({ open: true, variant, message: safeMessage });
   }, []);
   const closeResultModal = useCallback(() => {
     setResultModal((current) => ({ ...current, open: false }));
