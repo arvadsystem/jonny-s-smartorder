@@ -2272,6 +2272,86 @@ export default function Empleados({ openToast }) {
     estado: Boolean(form.estado),
   });
 
+  const upsertPersonaCatalogoLocal = useCallback((personaId, personaFormState) => {
+    const id = toEmpleadoId(personaId);
+    if (!id || !personaFormState || typeof personaFormState !== "object") return;
+
+    const normalizedPersona = normalizePersonaFormValues(personaFormState);
+    setPersonasCatalogo((prev) => {
+      const source = Array.isArray(prev) ? prev : [];
+      const nextItem = {
+        id_persona: id,
+        nombre: String(normalizedPersona.nombre ?? "").trim(),
+        apellido: String(normalizedPersona.apellido ?? "").trim(),
+        dni: String(normalizedPersona.dni ?? "").trim(),
+        genero: String(normalizedPersona.genero ?? "").trim(),
+        fecha_nacimiento: String(normalizedPersona.fecha_nacimiento ?? "").trim(),
+        rtn: String(normalizedPersona.rtn ?? "").trim(),
+        RTN: String(normalizedPersona.rtn ?? "").trim(),
+        persona_rtn: String(normalizedPersona.rtn ?? "").trim(),
+        persona_rtn_complemento: String(normalizedPersona.rtn ?? "").trim(),
+        rtn_persona: String(normalizedPersona.rtn ?? "").trim(),
+        rtn_complemento: String(normalizedPersona.rtn ?? "").trim(),
+        complemento_rtn: String(normalizedPersona.rtn ?? "").trim(),
+        numero_rtn: String(normalizedPersona.rtn ?? "").trim(),
+        telefono: String(normalizedPersona.id_telefono ?? "").trim(),
+        texto_telefono: String(normalizedPersona.id_telefono ?? "").trim(),
+        telefono_numero: String(normalizedPersona.id_telefono ?? "").trim(),
+        numero_telefono: String(normalizedPersona.id_telefono ?? "").trim(),
+        direccion: String(normalizedPersona.id_direccion ?? "").trim(),
+        texto_direccion: String(normalizedPersona.id_direccion ?? "").trim(),
+        direccion_detalle: String(normalizedPersona.id_direccion ?? "").trim(),
+        correo: String(normalizedPersona.id_correo ?? "").trim(),
+        texto_correo: String(normalizedPersona.id_correo ?? "").trim(),
+        direccion_correo: String(normalizedPersona.id_correo ?? "").trim(),
+        email: String(normalizedPersona.id_correo ?? "").trim(),
+      };
+
+      const index = source.findIndex((item) => toEmpleadoId(item?.id_persona) === id);
+      if (index >= 0) {
+        const next = [...source];
+        next[index] = { ...next[index], ...nextItem };
+        return next;
+      }
+      return [nextItem, ...source];
+    });
+  }, []);
+
+  const shouldShowCreatedEmpleadoInCurrentView = useCallback((empleado) => {
+    if (!empleado || debouncedSearch) return false;
+    if (shouldHideSystemEmployee(empleado)) return false;
+
+    const activo = isActivo(empleado);
+    const selectedSucursal = toEmpleadoId(selectedSucursalFilter);
+    const empleadoSucursal = toEmpleadoId(empleado?.id_sucursal);
+
+    if (estadoFiltro === "activo" && !activo) return false;
+    if (estadoFiltro === "inactivo" && activo) return false;
+    if (selectedSucursal && empleadoSucursal !== selectedSucursal) return false;
+
+    return true;
+  }, [debouncedSearch, estadoFiltro, selectedSucursalFilter]);
+
+  const insertCreatedEmpleadoLocally = useCallback((empleado) => {
+    if (!empleado || !shouldShowCreatedEmpleadoInCurrentView(empleado) || page !== 1) {
+      return false;
+    }
+
+    const empleadoId = String(empleado?.id_empleado ?? "").trim();
+    if (!empleadoId) return false;
+
+    setEmpleados((prev) => {
+      const source = Array.isArray(prev) ? prev : [];
+      const nextRows = [
+        empleado,
+        ...source.filter((item) => String(item?.id_empleado ?? "").trim() !== empleadoId),
+      ];
+      return nextRows.slice(0, limit);
+    });
+    setTotal((prev) => Math.max(0, Number(prev) || 0) + 1);
+    return true;
+  }, [limit, page, shouldShowCreatedEmpleadoInCurrentView]);
+
   const validar = () => {
     const currentErrors = {};
     const today = new Date().toISOString().split("T")[0];
@@ -2467,6 +2547,7 @@ export default function Empleados({ openToast }) {
 
   const guardar = async (event) => {
     event.preventDefault();
+    const isCreateMode = !editId;
     if (editId && !canEditEmpleado) {
       safeToast("ERROR", "No tienes permiso para editar empleados.", "danger");
       return;
@@ -2483,6 +2564,7 @@ export default function Empleados({ openToast }) {
 
     const payloadLimpio = sanitizeForm();
     setActionLoading(true);
+    let createResp = null;
 
     try {
       if (editId) {
@@ -2565,7 +2647,7 @@ export default function Empleados({ openToast }) {
         const empleadoPayloadForFullCreate = { ...payloadLimpio };
         delete empleadoPayloadForFullCreate.id_persona;
 
-        const createResp = useInlinePersonaCreate
+        createResp = useInlinePersonaCreate
           ? await personaService.createEmpleadoFull({
               persona: buildPersonaPayloadFromForm(inlinePersonaForm),
               empleado: empleadoPayloadForFullCreate,
@@ -2604,6 +2686,43 @@ export default function Empleados({ openToast }) {
         }
       }
 
+      const createdEmpleado =
+        createResp?.data?.empleado
+        || createResp?.empleado
+        || createResp?.data?.entidad
+        || null;
+      const createdPersonaId = toEmpleadoId(createResp?.data?.id_persona);
+      const insertedLocally =
+        isCreateMode && createdEmpleado
+          ? insertCreatedEmpleadoLocally(createdEmpleado)
+          : false;
+
+      if (isCreateMode) {
+        const createdIsActive = isActivo(createdEmpleado ?? payloadLimpio);
+        setGlobalStats((prev) => {
+          const current = {
+            total: Math.max(0, Number(prev?.total) || 0),
+            activas: Math.max(0, Number(prev?.activas) || 0),
+            inactivas: Math.max(0, Number(prev?.inactivas) || 0),
+          };
+          return createdIsActive
+            ? {
+                total: current.total + 1,
+                activas: current.activas + 1,
+                inactivas: current.inactivas,
+              }
+            : {
+                total: current.total + 1,
+                activas: current.activas,
+                inactivas: current.inactivas + 1,
+              };
+        });
+      }
+
+      if (isCreateMode && useInlinePersonaCreate && createdPersonaId) {
+        upsertPersonaCatalogoLocal(createdPersonaId, inlinePersonaForm);
+      }
+
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
@@ -2611,13 +2730,17 @@ export default function Empleados({ openToast }) {
       setInlinePersonaForm(emptyInlinePersonaForm);
       clearFormImageDraft();
       clearEmpleadosListCache();
-      if (!editId && page !== 1) {
-        setPage(1);
-        await cargarEmpleados({ page: 1, force: true });
-      } else {
+      if (!isCreateMode) {
         await cargarEmpleados({ force: true });
+        void cargarEmpleadosGlobalStats();
+      } else if (!insertedLocally) {
+        if (page !== 1) {
+          setPage(1);
+          void cargarEmpleados({ page: 1, force: true });
+        } else if (debouncedSearch || !createdEmpleado || shouldShowCreatedEmpleadoInCurrentView(createdEmpleado)) {
+          void cargarEmpleados({ force: true });
+        }
       }
-      await cargarEmpleadosGlobalStats();
     } catch (error) {
       const errorMessage = String(error?.message || "No se pudo guardar").trim();
       const statusCode = Number(error?.status);

@@ -1162,6 +1162,111 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     };
   };
 
+  const upsertPersonaCatalogoLocal = useCallback((personaId, personaFormState) => {
+    const id = parsePositiveInteger(personaId);
+    if (!id || !personaFormState || typeof personaFormState !== "object") return;
+
+    const normalizedPersona = normalizePersonaFormValues(personaFormState);
+    setPersonasCatalogo((prev) => {
+      const source = Array.isArray(prev) ? prev : [];
+      const nextItem = {
+        id_persona: id,
+        nombre: String(normalizedPersona.nombre ?? "").trim(),
+        apellido: String(normalizedPersona.apellido ?? "").trim(),
+        dni: String(normalizedPersona.dni ?? "").trim(),
+        genero: String(normalizedPersona.genero ?? "").trim(),
+        fecha_nacimiento: String(normalizedPersona.fecha_nacimiento ?? "").trim(),
+        rtn: String(normalizedPersona.rtn ?? "").trim(),
+        RTN: String(normalizedPersona.rtn ?? "").trim(),
+        persona_rtn: String(normalizedPersona.rtn ?? "").trim(),
+        persona_rtn_complemento: String(normalizedPersona.rtn ?? "").trim(),
+        rtn_persona: String(normalizedPersona.rtn ?? "").trim(),
+        rtn_complemento: String(normalizedPersona.rtn ?? "").trim(),
+        complemento_rtn: String(normalizedPersona.rtn ?? "").trim(),
+        numero_rtn: String(normalizedPersona.rtn ?? "").trim(),
+        telefono: String(normalizedPersona.id_telefono ?? "").trim(),
+        texto_telefono: String(normalizedPersona.id_telefono ?? "").trim(),
+        telefono_numero: String(normalizedPersona.id_telefono ?? "").trim(),
+        numero_telefono: String(normalizedPersona.id_telefono ?? "").trim(),
+        direccion: String(normalizedPersona.id_direccion ?? "").trim(),
+        texto_direccion: String(normalizedPersona.id_direccion ?? "").trim(),
+        direccion_detalle: String(normalizedPersona.id_direccion ?? "").trim(),
+        correo: String(normalizedPersona.id_correo ?? "").trim(),
+        texto_correo: String(normalizedPersona.id_correo ?? "").trim(),
+        direccion_correo: String(normalizedPersona.id_correo ?? "").trim(),
+        email: String(normalizedPersona.id_correo ?? "").trim(),
+      };
+
+      const index = source.findIndex((item) => Number(item?.id_persona) === id);
+      if (index >= 0) {
+        const next = [...source];
+        next[index] = { ...next[index], ...nextItem };
+        return next;
+      }
+      return [nextItem, ...source];
+    });
+  }, []);
+
+  const upsertEmpresaCatalogoLocal = useCallback((empresaId, empresaFormState) => {
+    const id = parsePositiveInteger(empresaId);
+    if (!id || !empresaFormState || typeof empresaFormState !== "object") return;
+
+    const normalizedEmpresa = normalizeEmpresaFormValues(empresaFormState);
+    setEmpresasCatalogo((prev) => {
+      const source = Array.isArray(prev) ? prev : [];
+      const nextItem = {
+        id_empresa: id,
+        nombre_empresa: String(normalizedEmpresa.nombre_empresa ?? "").trim(),
+        rtn: String(normalizedEmpresa.rtn ?? "").trim(),
+        telefono: String(normalizedEmpresa.id_telefono ?? "").trim(),
+        correo: String(normalizedEmpresa.id_correo ?? "").trim(),
+        direccion_correo: String(normalizedEmpresa.id_correo ?? "").trim(),
+        direccion: String(normalizedEmpresa.id_direccion ?? "").trim(),
+      };
+
+      const index = source.findIndex((item) => Number(item?.id_empresa) === id);
+      if (index >= 0) {
+        const next = [...source];
+        next[index] = { ...next[index], ...nextItem };
+        return next;
+      }
+      return [nextItem, ...source];
+    });
+  }, []);
+
+  const shouldShowCreatedClienteInCurrentView = useCallback((cliente) => {
+    if (!cliente || debouncedSearch) return false;
+    const activo = isActivo(cliente);
+    const origen = resolveClienteOrigen(cliente);
+
+    if (estadoFiltro === "activo" && !activo) return false;
+    if (estadoFiltro === "inactivo" && activo) return false;
+    if (tipoFiltro !== "todos" && origen !== tipoFiltro) return false;
+
+    return true;
+  }, [debouncedSearch, estadoFiltro, tipoFiltro]);
+
+  const insertCreatedClienteLocally = useCallback((cliente) => {
+    if (!cliente || !shouldShowCreatedClienteInCurrentView(cliente) || page !== 1) {
+      return false;
+    }
+
+    const normalizedCliente = normalizeClienteForView(cliente);
+    const clienteId = String(normalizedCliente?.id_cliente ?? "").trim();
+    if (!clienteId) return false;
+
+    setClientes((prev) => {
+      const source = Array.isArray(prev) ? prev : [];
+      const nextRows = [
+        normalizedCliente,
+        ...source.filter((item) => String(item?.id_cliente ?? "").trim() !== clienteId),
+      ];
+      return nextRows.slice(0, limit);
+    });
+    setTotal((prev) => Math.max(0, Number(prev) || 0) + 1);
+    return true;
+  }, [limit, page, shouldShowCreatedClienteInCurrentView]);
+
   const validar = () => {
     const currentErrors = {};
     const isCreateMode = !editId;
@@ -1275,6 +1380,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
   const guardar = async (event) => {
     event.preventDefault();
+    const isCreateMode = !editId;
     if (!editId && createStep !== 3) {
       safeToast("INFO", "Completa los pasos y presiona 'Crear cliente' en el paso 3.", "info");
       return;
@@ -1298,6 +1404,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
     const payloadLimpio = sanitizeForm();
     setActionLoading(true);
+    let createResult = null;
 
     try {
       if (editId) {
@@ -1348,7 +1455,6 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
             : { persona: buildPersonaPayloadFromForm(inlinePersonaForm) }),
         };
 
-        let createResult = null;
         try {
           const forceCompatCreate =
             typeof window !== "undefined"
@@ -1462,6 +1568,51 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         }
       }
 
+      const createdCliente =
+        createResult?.data?.cliente
+        || createResult?.cliente
+        || createResult?.data?.entidad
+        || null;
+      const createdPersonaId = parsePositiveInteger(createResult?.data?.id_persona);
+      const createdEmpresaId = parsePositiveInteger(
+        createResult?.data?.id_empresa_cliente
+        ?? createResult?.data?.id_empresa
+      );
+      const wasLinked = Boolean(createResult?.vinculado);
+      const insertedLocally =
+        isCreateMode && !wasLinked && createdCliente
+          ? insertCreatedClienteLocally(createdCliente)
+          : false;
+
+      if (isCreateMode && !wasLinked) {
+        const createdIsActive = isActivo(createdCliente ?? payloadLimpio);
+        setGlobalStats((prev) => {
+          const current = {
+            total: Math.max(0, Number(prev?.total) || 0),
+            activas: Math.max(0, Number(prev?.activas) || 0),
+            inactivas: Math.max(0, Number(prev?.inactivas) || 0),
+          };
+          return createdIsActive
+            ? {
+                total: current.total + 1,
+                activas: current.activas + 1,
+                inactivas: current.inactivas,
+              }
+            : {
+                total: current.total + 1,
+                activas: current.activas,
+                inactivas: current.inactivas + 1,
+              };
+        });
+      }
+
+      if (isCreateMode && clienteOriginType === "persona" && createdPersonaId) {
+        upsertPersonaCatalogoLocal(createdPersonaId, inlinePersonaForm);
+      }
+      if (isCreateMode && clienteOriginType === "empresa" && createdEmpresaId) {
+        upsertEmpresaCatalogoLocal(createdEmpresaId, inlineEmpresaForm);
+      }
+
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
@@ -1472,15 +1623,19 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       resetDuplicateResolution();
       setShowPersonaCreateModal(false);
       setShowEmpresaCreateModal(false);
-      await cargarCatalogos({ force: true });
+
       clearClientesListCache();
-      if (!editId && page !== 1) {
-        setPage(1);
-        await cargarClientes({ page: 1, force: true });
-      } else {
+      if (!isCreateMode) {
         await cargarClientes({ force: true });
+        void cargarClientesGlobalStats();
+      } else if (!insertedLocally) {
+        if (page !== 1) {
+          setPage(1);
+          void cargarClientes({ page: 1, force: true });
+        } else if (debouncedSearch || !createdCliente || wasLinked || shouldShowCreatedClienteInCurrentView(createdCliente)) {
+          void cargarClientes({ force: true });
+        }
       }
-      await cargarClientesGlobalStats();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo guardar", "danger");
     } finally {
@@ -1548,6 +1703,15 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         createResult?.vinculado ? "info" : "success"
       );
 
+      const createdCliente =
+        createResult?.data?.cliente
+        || createResult?.cliente
+        || createResult?.data?.entidad
+        || null;
+      const insertedLocally = createdCliente
+        ? insertCreatedClienteLocally(createdCliente)
+        : false;
+
       closeFormDrawer();
       setEditId(null);
       setForm(emptyForm);
@@ -1558,15 +1722,16 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       resetDuplicateResolution();
       setShowPersonaCreateModal(false);
       setShowEmpresaCreateModal(false);
-      await cargarCatalogos({ force: true });
+
       clearClientesListCache();
-      if (page !== 1) {
-        setPage(1);
-        await cargarClientes({ page: 1, force: true });
-      } else {
-        await cargarClientes({ force: true });
+      if (!insertedLocally) {
+        if (page !== 1) {
+          setPage(1);
+          void cargarClientes({ page: 1, force: true });
+        } else {
+          void cargarClientes({ force: true });
+        }
       }
-      await cargarClientesGlobalStats();
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudo vincular el registro existente.", "danger");
     } finally {
@@ -1581,11 +1746,10 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     duplicateResolution,
     safeToast,
     clearClientesListCache,
-    cargarCatalogos,
     page,
     cargarClientes,
-    cargarClientesGlobalStats,
-    resetDuplicateResolution
+    resetDuplicateResolution,
+    insertCreatedClienteLocally
   ]);
 
   const handleInlinePersonaModalSave = useCallback(async (_personaPayload, personaFormState) => {
