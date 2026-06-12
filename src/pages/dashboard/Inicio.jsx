@@ -1,4 +1,4 @@
-import React, { startTransition, useEffect, useMemo, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import SinPermiso from '../../components/common/SinPermiso';
 import { useAuth } from '../../hooks/useAuth';
@@ -44,7 +44,7 @@ const buildScopedLink = (path, params = {}) => {
 const Inicio = () => {
   const { user } = useAuth();
   const { can, isSuperAdmin, loading, permisos } = usePermisos();
-  const safeCan = typeof can === 'function' ? can : () => false;
+  const safeCan = useCallback((permiso) => (typeof can === 'function' ? can(permiso) : false), [can]);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const nombre = user?.nombre_usuario || 'Usuario';
@@ -237,20 +237,39 @@ const Inicio = () => {
 
       <KpiGrid metrics={metrics} links={kpiLinks} />
 
-      <SalesSummaryPanel
-        financial={financial}
-        selectedRange={selectedSalesRange}
-        onRangeChange={(value) => startTransition(() => setSelectedSalesRange(value))}
-      />
+      {selectedViewMode === 'operativa' ? (
+        <>
+          <div className="inicio-priority-grid">
+            <AlertsPanel alerts={alerts} />
+            <QuickActions
+              can={safeCan}
+              permissions={PERMISSIONS}
+              sucursalFilter={selectedSucursalFilter}
+              turnFilter={selectedTurnFilter}
+              selectedDate={selectedOrdersFlowDate}
+            />
+          </div>
 
-      <ExecutiveInsightsPanel
-        insights={insights}
-        branchRanking={branchRanking}
-        healthSemaphores={healthSemaphores}
-        visible={selectedViewMode === 'ejecutiva'}
-        financial={financial}
-        metrics={metrics}
-      />
+          <OperationsSnapshot metrics={metrics} />
+        </>
+      ) : (
+        <>
+          <SalesSummaryPanel
+            financial={financial}
+            selectedRange={selectedSalesRange}
+            onRangeChange={(value) => startTransition(() => setSelectedSalesRange(value))}
+          />
+
+          <ExecutiveInsightsPanel
+            insights={insights}
+            branchRanking={branchRanking}
+            healthSemaphores={healthSemaphores}
+            visible={selectedViewMode === 'ejecutiva'}
+            financial={financial}
+            metrics={metrics}
+          />
+        </>
+      )}
 
       <div className="inicio-charts-grid">
         <InventoryRiskChart data={charts.inventoryRisk} />
@@ -268,18 +287,18 @@ const Inicio = () => {
         />
       </div>
 
-      <div className="inicio-panels-grid">
-        <AlertsPanel alerts={alerts} />
-        <OperationsSnapshot metrics={metrics} />
-      </div>
-
-      <QuickActions
-        can={safeCan}
-        permissions={PERMISSIONS}
-        sucursalFilter={selectedSucursalFilter}
-        turnFilter={selectedTurnFilter}
-        selectedDate={selectedOrdersFlowDate}
-      />
+      {selectedViewMode === 'operativa' ? (
+        <SalesSummaryPanel
+          financial={financial}
+          selectedRange={selectedSalesRange}
+          onRangeChange={(value) => startTransition(() => setSelectedSalesRange(value))}
+        />
+      ) : (
+        <div className="inicio-priority-grid">
+          <AlertsPanel alerts={alerts} />
+          <OperationsSnapshot metrics={metrics} />
+        </div>
+      )}
     </div>
   );
 };

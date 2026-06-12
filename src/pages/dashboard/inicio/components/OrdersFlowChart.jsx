@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import Select from 'react-select';
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import EmptyState from './EmptyState';
 
 const tooltipStyle = {
   borderRadius: 14,
@@ -95,6 +96,7 @@ const OrdersFlowChart = ({
     () => chartData.reduce((acc, row) => acc + (Number(row?.pedidos) || 0), 0),
     [chartData]
   );
+  const hasRealData = totalPedidos > 0;
   const focusedShare = highlightedPoint
     ? totalPedidos > 0
       ? ((Number(highlightedPoint.pedidos || 0) / totalPedidos) * 100).toFixed(1)
@@ -142,47 +144,56 @@ const OrdersFlowChart = ({
         </div>
       </header>
 
-      <div className="inicio-chart-card">
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-            <defs>
-              <linearGradient id="inicioOrdersFlow" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#a35d2b" stopOpacity={0.42} />
-                <stop offset="100%" stopColor="#a35d2b" stopOpacity={0.04} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(194, 177, 153, 0.35)" vertical={false} />
-            <XAxis dataKey="hour" tick={{ fill: '#6f6258', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fill: '#6f6258', fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip
-              cursor={{ stroke: 'rgba(140, 86, 47, 0.4)', strokeWidth: 1.2 }}
-              contentStyle={tooltipStyle}
-              formatter={(value) => [`${value}`, 'Pedidos']}
-              labelFormatter={(label) => `Hora: ${label}`}
-            />
-            {selectedHour !== 'all' ? (
-              <ReferenceLine x={selectedHour} stroke="#c94f43" strokeWidth={2} strokeDasharray="5 5" />
-            ) : null}
-            <Area
-              type="monotone"
-              dataKey="pedidos"
-              stroke="#8c522f"
-              strokeWidth={3}
-              fill="url(#inicioOrdersFlow)"
-              dot={(props) => (
-                <circle
-                  cx={props.cx}
-                  cy={props.cy}
-                  r={props.payload?.foco ? 6 : 4}
-                  strokeWidth={2}
-                  stroke={props.payload?.foco ? '#c94f43' : '#8c522f'}
-                  fill="#fff"
-                />
-              )}
-              activeDot={{ r: 6 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+      <div className={`inicio-chart-card ${!hasRealData ? 'is-empty' : ''}`}>
+        {hasRealData ? (
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+              <defs>
+                <linearGradient id="inicioOrdersFlow" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="#a35d2b" stopOpacity={0.42} />
+                  <stop offset="100%" stopColor="#a35d2b" stopOpacity={0.04} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(194, 177, 153, 0.35)" vertical={false} />
+              <XAxis dataKey="hour" tick={{ fill: '#6f6258', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fill: '#6f6258', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Tooltip
+                cursor={{ stroke: 'rgba(140, 86, 47, 0.4)', strokeWidth: 1.2 }}
+                contentStyle={tooltipStyle}
+                formatter={(value) => [`${value}`, 'Pedidos']}
+                labelFormatter={(label) => `Hora: ${label}`}
+              />
+              {selectedHour !== 'all' ? (
+                <ReferenceLine x={selectedHour} stroke="#c94f43" strokeWidth={2} strokeDasharray="5 5" />
+              ) : null}
+              <Area
+                type="monotone"
+                dataKey="pedidos"
+                stroke="#8c522f"
+                strokeWidth={3}
+                fill="url(#inicioOrdersFlow)"
+                dot={(props) => (
+                  <circle
+                    cx={props.cx}
+                    cy={props.cy}
+                    r={props.payload?.foco ? 6 : 4}
+                    strokeWidth={2}
+                    stroke={props.payload?.foco ? '#c94f43' : '#8c522f'}
+                    fill="#fff"
+                  />
+                )}
+                activeDot={{ r: 6 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <EmptyState
+            icon="bi-graph-down"
+            title="Sin flujo horario disponible"
+            description="Cuando ingresen pedidos, aquí verás el flujo por hora y la concentración del turno."
+            compact
+          />
+        )}
       </div>
 
       <div className="inicio-panel__insight" role="status" aria-live="polite">
@@ -191,7 +202,9 @@ const OrdersFlowChart = ({
           {highlightedPoint
             ? `${highlightedPoint.pedidos} pedidos registrados a las ${highlightedPoint.hour}. Representa ${focusedShare}% del flujo del día.`
             : selectedHour === 'all'
-              ? 'Selecciona una hora para ver el detalle puntual y su peso dentro del flujo diario.'
+              ? hasRealData
+                ? 'Selecciona una hora para ver el detalle puntual y su peso dentro del flujo diario.'
+                : 'Sin pedidos activos en la fecha seleccionada.'
               : `No se registran pedidos a las ${selectedHour} para la fecha seleccionada.`}
         </span>
       </div>

@@ -4,16 +4,16 @@ import Select from 'react-select';
 const buildHeroSelectStyles = (isDark = false) => ({
   control: (base, state) => ({
     ...base,
-    minHeight: 48,
+    minHeight: 44,
     borderRadius: 14,
     borderColor: isDark
       ? state.isFocused
         ? 'rgba(255, 244, 229, 0.56)'
-        : 'rgba(255, 234, 214, 0.22)'
+        : 'rgba(255, 234, 214, 0.18)'
       : state.isFocused
         ? '#c58a54'
         : '#e8d8c4',
-    background: isDark ? 'rgba(255, 255, 255, 0.14)' : '#fffdfa',
+    background: isDark ? 'rgba(255, 255, 255, 0.12)' : '#fffdfa',
     boxShadow: state.isFocused
       ? isDark
         ? '0 0 0 3px rgba(255, 244, 229, 0.12)'
@@ -25,7 +25,7 @@ const buildHeroSelectStyles = (isDark = false) => ({
   }),
   valueContainer: (base) => ({
     ...base,
-    padding: '4px 12px'
+    padding: '2px 12px'
   }),
   singleValue: (base) => ({
     ...base,
@@ -104,40 +104,43 @@ const DashboardHeader = ({
             Panel operativo
           </span>
           <h1>Panel operativo, {nombre}</h1>
-          <p>Resumen general de pedidos, inventario, sucursales y catálogo con foco operativo del turno.</p>
+          <p>Control rápido de operación, inventario y ventas del turno actual.</p>
         </div>
 
-        <div className="inicio-hero__actions">
-          <span className="inicio-hero__timestamp">
-            <i className="bi bi-clock-history" aria-hidden="true" />
-            Última actualización: {updateLabel}
-          </span>
-          <span className="inicio-hero__source-pill">
-            <i className="bi bi-lightning-charge" aria-hidden="true" />
-            {dataSourceMode}
-          </span>
-          <div className="inicio-hero__view-switch" role="tablist" aria-label="Modo del dashboard">
-            {VIEW_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={`inicio-hero__view-btn ${viewMode === option.value ? 'is-active' : ''}`}
-                onClick={() => onViewModeChange?.(option.value)}
-                aria-pressed={viewMode === option.value}
-              >
-                {option.label}
-              </button>
-            ))}
+        <div className="inicio-hero__controls">
+          <div className="inicio-hero__meta-bar">
+            <span className="inicio-hero__timestamp" aria-live="polite">
+              <i className="bi bi-clock-history" aria-hidden="true" />
+              Última actualización: {updateLabel}
+            </span>
+            <span className="inicio-hero__source-pill">
+              <i className="bi bi-lightning-charge" aria-hidden="true" />
+              {dataSourceMode}
+            </span>
+            <div className="inicio-hero__view-switch" role="tablist" aria-label="Modo del dashboard">
+              {VIEW_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`inicio-hero__view-btn ${viewMode === option.value ? 'is-active' : ''}`}
+                  onClick={() => onViewModeChange?.(option.value)}
+                  aria-pressed={viewMode === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="inicio-hero__refresh"
+              onClick={onRefresh}
+              disabled={loading}
+              aria-label="Actualizar métricas"
+              title="Actualizar métricas"
+            >
+              <i className={`bi ${loading ? 'bi-arrow-repeat' : 'bi-arrow-clockwise'}`} aria-hidden="true" />
+            </button>
           </div>
-          <button
-            type="button"
-            className="inicio-hero__refresh"
-            onClick={onRefresh}
-            disabled={loading}
-            aria-label="Actualizar métricas"
-          >
-            <i className={`bi ${loading ? 'bi-arrow-repeat' : 'bi-arrow-clockwise'}`} aria-hidden="true" />
-          </button>
         </div>
       </div>
 
@@ -196,7 +199,11 @@ const DashboardHeader = ({
 
       <div className="inicio-hero__highlights">
         {highlights.map((item) => (
-          <article key={item.id} className={`inicio-hero__highlight is-${item.tone || 'neutral'}`}>
+          <article
+            key={item.id}
+            className={`inicio-hero__highlight is-${item.tone || 'neutral'}`}
+            aria-label={`${item.label}: ${item.value}`}
+          >
             <span>{item.label}</span>
             <strong>{item.value}</strong>
           </article>

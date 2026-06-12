@@ -1,4 +1,5 @@
 import React from 'react';
+import EmptyState from './EmptyState';
 
 const money = (value) =>
   Number(value || 0).toLocaleString('es-HN', {
@@ -38,7 +39,7 @@ const SalesSummaryPanel = ({
       <header className="inicio-panel__head inicio-sales-panel__head">
         <div>
           <h2>Resumen financiero</h2>
-          <p>Seguimiento rápido de ventas del periodo seleccionado.</p>
+          <p>Lectura ejecutiva del rendimiento comercial para el rango seleccionado.</p>
         </div>
 
         <div className="inicio-sales-panel__range" role="tablist" aria-label="Rango financiero">
@@ -58,14 +59,18 @@ const SalesSummaryPanel = ({
 
       <div className="inicio-sales-panel__hero">
         <div className="inicio-sales-panel__hero-copy">
-          <span className="inicio-sales-panel__eyebrow">Ventas totales</span>
+          <span className="inicio-sales-panel__eyebrow">Ventas del rango</span>
           <strong>{financial.loading ? 'Cargando...' : `L ${money(financial.totalVendido)}`}</strong>
           <p>{financial.rangeLabel}</p>
         </div>
 
         <div className="inicio-sales-panel__hero-meta">
           <span>{financial.summaryLabel}</span>
-          <small>Última sincronización operativa del dashboard.</small>
+          <small>
+            {financial.hasSummary
+              ? 'Resumen consolidado para lectura rápida.'
+              : 'Sin consolidado financiero disponible todavía.'}
+          </small>
         </div>
       </div>
 
@@ -98,8 +103,13 @@ const SalesSummaryPanel = ({
       ) : null}
 
       {!financial.loading && !financial.error && !financial.hasSummary ? (
-        <div className="inicio-chart-note" role="status" aria-live="polite">
-          Aún no hay un resumen financiero consolidado para este rango. Verifica si existen ventas cerradas en el periodo.
+        <div className="inicio-sales-panel__empty-state">
+          <EmptyState
+            icon="bi-graph-down-arrow"
+            title="Sin ventas registradas en este rango"
+            description="Cuando existan ventas cerradas, aquí verás el total, el comparativo y el ticket promedio."
+            compact
+          />
         </div>
       ) : null}
 
@@ -107,20 +117,36 @@ const SalesSummaryPanel = ({
         <article className="inicio-sales-stat">
           <span>Cantidad de ventas</span>
           <strong>{financial.loading ? '--' : financial.ventas}</strong>
-          <small>Transacciones registradas en el periodo.</small>
+          <small>
+            {financial.loading
+              ? 'Actualizando transacciones del periodo.'
+              : financial.ventas > 0
+                ? 'Transacciones cerradas registradas en el periodo.'
+                : 'Sin ventas registradas en este rango.'}
+          </small>
         </article>
 
         <article className="inicio-sales-stat">
           <span>Ticket promedio</span>
           <strong>{financial.loading ? '--' : `L ${money(financial.ticketPromedio)}`}</strong>
-          <small>Valor promedio por venta cerrada.</small>
+          <small>
+            {financial.loading
+              ? 'Calculando promedio por venta.'
+              : financial.ticketPromedio > 0
+                ? 'Valor promedio por venta cerrada.'
+                : 'Aún no hay base suficiente para calcular ticket promedio.'}
+          </small>
         </article>
 
         <article className="inicio-sales-stat">
           <span>Completadas</span>
           <strong>{financial.loading ? '--' : financial.completadas}</strong>
           <small>
-            {financial.loading ? 'Actualizando resumen del periodo.' : `${financial.pendientes} pendientes dentro del mismo rango.`}
+            {financial.loading
+              ? 'Actualizando resumen del periodo.'
+              : financial.completadas > 0
+                ? `${financial.pendientes} pendientes dentro del mismo rango.`
+                : 'Sin ventas completadas detectadas en este rango.'}
           </small>
         </article>
       </div>

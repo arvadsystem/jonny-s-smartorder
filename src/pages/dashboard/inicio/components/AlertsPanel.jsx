@@ -4,14 +4,15 @@ import { Link } from 'react-router-dom';
 const levelMeta = {
   critical: { icon: 'bi-exclamation-octagon-fill', className: 'is-critical', label: 'Crítico' },
   warning: { icon: 'bi-exclamation-triangle-fill', className: 'is-warning', label: 'Advertencia' },
-  ok: { icon: 'bi-check-circle-fill', className: 'is-ok', label: 'Estable' }
+  ok: { icon: 'bi-check-circle-fill', className: 'is-ok', label: 'Estable' },
+  neutral: { icon: 'bi-info-circle-fill', className: 'is-neutral', label: 'Informativo' }
 };
 
 const AlertsPanel = ({ alerts = [] }) => (
-  <section className="inicio-panel">
+  <section className="inicio-panel inicio-panel--alerts">
     <header className="inicio-panel__head">
       <h2>Alertas operativas</h2>
-      <p>Riesgos detectados para el turno actual con prioridad de atención.</p>
+      <p>Riesgos del turno con prioridad de atención y seguimiento rápido.</p>
     </header>
 
     <div className="inicio-alerts-list">
@@ -45,7 +46,7 @@ const AlertsPanel = ({ alerts = [] }) => (
                 </button>
               )}
             </div>
-            <p>{alert.text}</p>
+            <strong className="inicio-alert-item__summary">{alert.text}</strong>
             {alert.recommendation ? (
               <small className="inicio-alert-item__recommendation">{alert.recommendation}</small>
             ) : null}

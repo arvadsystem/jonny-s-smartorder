@@ -18,14 +18,15 @@ const ExecutiveInsightsPanel = ({
 
   return (
     <section className="inicio-panel inicio-executive-panel">
-      <header className="inicio-panel__head">
+      <header className="inicio-panel__head inicio-executive-panel__head">
         <div>
           <h2>Vista ejecutiva</h2>
           <p>Lectura rápida de salud operativa, tendencia comercial y cumplimiento del turno.</p>
         </div>
         <div className="inicio-executive-panel__summary">
-          <span>Ventas</span>
+          <span>Ventas del rango</span>
           <strong>{financial.loading ? 'Cargando...' : `L ${money(financial.totalVendido)}`}</strong>
+          <small>{financial.summaryLabel || 'Resumen consolidado actual'}</small>
         </div>
       </header>
 
@@ -49,7 +50,7 @@ const ExecutiveInsightsPanel = ({
         <section className="inicio-executive-subpanel">
           <header className="inicio-executive-subpanel__head">
             <h3>Semáforos operativos</h3>
-            <p>Resumen rápido por frente crítico del dashboard.</p>
+            <p>Resumen ejecutivo por frente crítico del dashboard.</p>
           </header>
 
           <div className="inicio-semaphore-list">
@@ -67,8 +68,8 @@ const ExecutiveInsightsPanel = ({
 
         <section className="inicio-executive-subpanel">
           <header className="inicio-executive-subpanel__head">
-            <h3>Ranking por sucursal</h3>
-            <p>Prioriza las sedes con mayor presión operativa visible.</p>
+            <h3>Rendimiento por sucursal</h3>
+            <p>Identifica rápidamente las sedes con mayor presión operativa visible.</p>
           </header>
 
           <div className="inicio-branch-ranking">
