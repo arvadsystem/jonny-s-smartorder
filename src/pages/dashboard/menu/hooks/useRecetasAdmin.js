@@ -829,13 +829,11 @@ const useRecetasAdmin = () => {
 
     const validationMessage = validarFormulario(form);
     if (validationMessage) {
-      setError(validationMessage);
       showSaveResult('error', validationMessage);
       return;
     }
     const detalleValidation = validarDetalleReceta(detalleReceta, insumosDetalleCatalog);
     if (!detalleValidation.ok) {
-      setError(detalleValidation.message);
       showSaveResult('error', detalleValidation.message);
       return;
     }
@@ -889,7 +887,6 @@ const useRecetasAdmin = () => {
         }
       }
       const message = String(e?.message || '').trim() || 'No se pudo guardar la receta.';
-      setError(message);
       showSaveResult('error', message);
     } finally {
       setSaving(false);
