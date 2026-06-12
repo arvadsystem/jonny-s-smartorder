@@ -237,6 +237,7 @@ function App() {
                 </RequirePerm>
               }
             />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Route>
 

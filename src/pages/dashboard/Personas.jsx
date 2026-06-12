@@ -6,12 +6,14 @@ import { usePermisos } from "../../context/PermisosContext";
 import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from "../../utils/permissions";
 import sucursalesService from "../../services/sucursalesService";
 
+import PersonasTab from "./personas/PersonasTab";
+import EmpresasTab from "./personas/EmpresasTab";
 import EmpleadosTab from "./personas/EmpleadosTab";
 import UsuariosTab from "./personas/UsuariosTab";
 import ClientesTab from "./personas/ClientesTab";
 import RolesPermisosTab from "./personas/components/RolesPermisosTab";
 
-const VISIBLE_PERSONAS_TABS = new Set(["clientes", "empleados", "usuarios", "roles"]);
+const VISIBLE_PERSONAS_TABS = new Set(["personas", "empresas", "clientes", "empleados", "usuarios", "roles"]);
 
 const parsePositiveInt = (value) => {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -173,6 +175,10 @@ export default function Personas() {
   const tabContent = useMemo(() => {
     if (!activeTab) return null;
     switch (activeTab) {
+      case "personas":
+        return <PersonasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
+      case "empresas":
+        return <EmpresasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "empleados":
         return <EmpleadosTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "usuarios":

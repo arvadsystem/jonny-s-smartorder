@@ -81,7 +81,8 @@ const BottomNav = () => {
 
   const resolveIsActive = (item, isActive) => {
     if (item.key === 'planillas') {
-      return location.pathname === '/dashboard/personas' && currentTab === 'planillas';
+      return location.pathname === '/dashboard/planillas'
+        || (location.pathname === '/dashboard/personas' && currentTab === 'planillas');
     }
 
     if (item.key === 'personas' && location.pathname === '/dashboard/personas' && currentTab === 'planillas') {
@@ -192,4 +193,3 @@ const BottomNav = () => {
 };
 
 export default BottomNav;
-
