@@ -208,16 +208,16 @@ function MaestroAsignacionesModal({
                       const isProcessing = deactivatingWarehouseId === Number(assignment?.id_almacen);
                       return (
                         <tr key={`assigned-${assignment?.id_almacen}`}>
-                          <td>{assignment?.sucursal || '-'}</td>
-                          <td>{assignment?.almacen || '-'}</td>
-                          <td>{formatNumeric(assignment?.cantidad)}</td>
-                          <td>{formatNumeric(assignment?.stock_minimo)}</td>
-                          <td>
+                          <td data-label="Sucursal">{assignment?.sucursal || '-'}</td>
+                          <td data-label="Almacen">{assignment?.almacen || '-'}</td>
+                          <td data-label="Cantidad">{formatNumeric(assignment?.cantidad)}</td>
+                          <td data-label="Stock minimo">{formatNumeric(assignment?.stock_minimo)}</td>
+                          <td data-label="Estado local">
                             <span className={`badge ${assignmentIsActive ? 'text-bg-success' : 'text-bg-secondary'}`}>
                               {assignmentIsActive ? 'Activa' : 'Inactiva'}
                             </span>
                           </td>
-                          <td className="text-end">
+                          <td className="text-end" data-label="Accion">
                             {canDeactivate && assignmentIsActive ? (
                               <button
                                 type="button"
@@ -263,9 +263,9 @@ function MaestroAsignacionesModal({
                       const isProcessing = assigningWarehouseId === Number(warehouse?.id_almacen);
                       return (
                         <tr key={`available-${warehouse?.id_almacen}`}>
-                          <td>{warehouse?.sucursal || '-'}</td>
-                          <td>{warehouse?.almacen || '-'}</td>
-                          <td className="text-end">
+                          <td data-label="Sucursal">{warehouse?.sucursal || '-'}</td>
+                          <td data-label="Almacen">{warehouse?.almacen || '-'}</td>
+                          <td className="text-end" data-label="Accion">
                             {canAssign ? (
                               <button
                                 type="button"

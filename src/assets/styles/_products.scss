@@ -1621,6 +1621,182 @@
   box-shadow: none !important;
 }
 
+.inv-master-assign-modal-dialog {
+  width: min(760px, calc(100vw - 2rem));
+  max-width: min(760px, calc(100vw - 2rem));
+  margin: 1rem auto;
+}
+
+.inv-master-assign-modal {
+  border-radius: 18px !important;
+}
+
+.inv-master-assign-modal__header {
+  padding: 0.9rem 1rem 0.8rem !important;
+  gap: 0.8rem;
+  background: #fffdfa;
+  border-bottom: 1px solid rgba(157, 150, 112, 0.24) !important;
+}
+
+.inv-master-assign-modal__body {
+  max-height: min(72vh, 680px);
+  padding: 0.85rem 1rem 1rem !important;
+  overflow-y: auto;
+}
+
+.inv-master-assign-modal__intro {
+  display: grid;
+  gap: 0.32rem;
+  margin-bottom: 0.75rem;
+  color: rgba(23, 8, 10, 0.9);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.inv-master-assign-modal__alert {
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.86rem;
+}
+
+.inv-master-assign-modal__section {
+  border: 1px solid rgba(157, 150, 112, 0.22);
+  border-radius: 14px;
+  padding: 0.78rem 0.85rem;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.inv-master-assign-modal__section + .inv-master-assign-modal__section {
+  margin-top: 0.8rem;
+}
+
+.inv-master-assign-modal__section h6 {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #17080a;
+}
+
+.inv-master-assign-modal__table {
+  margin-bottom: 0;
+  font-size: 0.84rem;
+  vertical-align: middle;
+}
+
+.inv-master-assign-modal__table th {
+  padding: 0.48rem 0.36rem;
+  color: #17080a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+  border-bottom-color: rgba(157, 150, 112, 0.3);
+}
+
+.inv-master-assign-modal__table td {
+  padding: 0.48rem 0.36rem;
+  border-bottom-color: rgba(157, 150, 112, 0.16);
+}
+
+.inv-master-assign-modal__table .btn {
+  min-height: 30px;
+  padding: 0.28rem 0.58rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.inv-master-assign-modal__table .badge {
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+@media (max-width: 767.98px) {
+  .inv-master-assign-modal-dialog {
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    margin: 0.5rem auto;
+  }
+
+  .inv-master-assign-modal {
+    border-radius: 16px !important;
+  }
+
+  .inv-master-assign-modal__header {
+    padding: 0.78rem 0.82rem !important;
+  }
+
+  .inv-master-assign-modal__body {
+    max-height: calc(100dvh - 6rem);
+    padding: 0.72rem !important;
+  }
+
+  .inv-master-assign-modal__intro {
+    font-size: 0.82rem;
+  }
+
+  .inv-master-assign-modal__section {
+    padding: 0.68rem;
+  }
+
+  .inv-master-assign-modal__section .table-responsive {
+    overflow-x: visible;
+  }
+
+  .inv-master-assign-modal__table,
+  .inv-master-assign-modal__table thead,
+  .inv-master-assign-modal__table tbody,
+  .inv-master-assign-modal__table tr,
+  .inv-master-assign-modal__table th,
+  .inv-master-assign-modal__table td {
+    display: block;
+    width: 100%;
+  }
+
+  .inv-master-assign-modal__table thead {
+    display: none;
+  }
+
+  .inv-master-assign-modal__table tr {
+    padding: 0.58rem 0;
+    border-bottom: 1px solid rgba(157, 150, 112, 0.2);
+  }
+
+  .inv-master-assign-modal__table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .inv-master-assign-modal__table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
+    padding: 0.26rem 0;
+    border-bottom: 0;
+    text-align: right !important;
+  }
+
+  .inv-master-assign-modal__table td::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: rgba(82, 44, 34, 0.72);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-align: left;
+  }
+
+  .inv-master-assign-modal__table td[colspan] {
+    display: block;
+    text-align: center !important;
+  }
+
+  .inv-master-assign-modal__table td[colspan]::before {
+    content: none;
+  }
+
+  .inv-master-assign-modal__table .btn {
+    width: auto;
+    max-width: 100%;
+  }
+}
+
 .inv-prod-modal-footer {
   border-top: 1px solid rgba(237, 235, 179, 0.58) !important;
 }
