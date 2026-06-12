@@ -6,14 +6,15 @@ import { usePermisos } from "../../context/PermisosContext";
 import { getAllowedTabs, MODULE_PRIMARY_PERMISSION } from "../../utils/permissions";
 import sucursalesService from "../../services/sucursalesService";
 
-import PersonasTab from "./personas/PersonasTab";
 import EmpresasTab from "./personas/EmpresasTab";
 import EmpleadosTab from "./personas/EmpleadosTab";
 import UsuariosTab from "./personas/UsuariosTab";
 import ClientesTab from "./personas/ClientesTab";
 import RolesPermisosTab from "./personas/components/RolesPermisosTab";
 
-const VISIBLE_PERSONAS_TABS = new Set(["personas", "empresas", "clientes", "empleados", "usuarios", "roles"]);
+const LEGACY_PERSONAS_TAB = "personas";
+const PERSONAS_TAB_REDIRECT_TARGET = "clientes";
+const VISIBLE_PERSONAS_TABS = new Set(["empresas", "clientes", "empleados", "usuarios", "roles"]);
 
 const parsePositiveInt = (value) => {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -46,7 +47,10 @@ export default function Personas() {
     return tabs.filter((key) => VISIBLE_PERSONAS_TABS.has(String(key || "").toLowerCase()));
   }, [isSuperAdmin, permisos]);
 
-  const fallbackTab = allowedTabs[0] || null;
+  const fallbackTab = useMemo(() => {
+    if (allowedTabs.includes(PERSONAS_TAB_REDIRECT_TARGET)) return PERSONAS_TAB_REDIRECT_TARGET;
+    return allowedTabs[0] || null;
+  }, [allowedTabs]);
   const selectedSucursalId = useMemo(() => {
     const parsed = parsePositiveInt(searchParams.get("sucursal"));
     return parsed ? String(parsed) : "";
@@ -92,8 +96,9 @@ export default function Personas() {
 
   const activeTab = useMemo(() => {
     if (!fallbackTab) return null;
-    const t = (searchParams.get("tab") || fallbackTab).toLowerCase();
-    return allowedTabs.includes(t) ? t : fallbackTab;
+    const rawTab = (searchParams.get("tab") || fallbackTab).toLowerCase();
+    const normalizedTab = rawTab === LEGACY_PERSONAS_TAB ? PERSONAS_TAB_REDIRECT_TARGET : rawTab;
+    return allowedTabs.includes(normalizedTab) ? normalizedTab : fallbackTab;
   }, [allowedTabs, fallbackTab, searchParams]);
 
   const isPlanillasTab = activeTab === "planillas";
@@ -175,8 +180,6 @@ export default function Personas() {
   const tabContent = useMemo(() => {
     if (!activeTab) return null;
     switch (activeTab) {
-      case "personas":
-        return <PersonasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "empresas":
         return <EmpresasTab openToast={openToast} selectedSucursalId={selectedSucursalId} />;
       case "empleados":

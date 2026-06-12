@@ -959,7 +959,7 @@ export const REPORTES_TAB_PERMISSIONS = Object.freeze(REPORTES_TAB_PERMISSIONS_M
 export const MODULE_NAV_ITEMS = Object.freeze([
   { key: 'dashboard', name: 'Dashboard', path: '/dashboard', icon: 'bi-grid-1x2' },
   { key: 'sucursales', name: 'Sucursales', path: '/dashboard/sucursales', icon: 'bi-shop' },
-  { key: 'personas', name: 'Personas/Empresas', path: '/dashboard/personas', icon: 'bi-people' },
+  { key: 'personas', name: 'Personas/Empresas', path: '/dashboard/personas?tab=clientes', icon: 'bi-people' },
   { key: 'planillas', name: 'Planillas', path: '/dashboard/planillas', icon: 'bi-cash-coin' },
   { key: 'inventario', name: 'Inventario', path: '/dashboard/inventario', icon: 'bi-box-seam' },
   { key: 'ventas', name: 'Ventas', path: '/dashboard/ventas', icon: 'bi-cart3' },
