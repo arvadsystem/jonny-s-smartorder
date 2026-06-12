@@ -899,7 +899,10 @@ export default function Empleados({ openToast }) {
   const listAbortRef = useRef(null);
   const listPrefetchAbortRef = useRef(null);
   const empleadosListCacheRef = useRef(new Map());
-  const catalogosCargadosRef = useRef(false);
+  const catalogosBaseCargadosRef = useRef(false);
+  const catalogosBaseLoadingRef = useRef(false);
+  const personasCatalogoCargadoRef = useRef(false);
+  const personasCatalogoLoadingRef = useRef(false);
   const panelRef = useRef(null);
   const imageInputRef = useRef(null);
   const telefonoReferenciaInputRef = useRef(null);
@@ -1249,6 +1252,11 @@ export default function Empleados({ openToast }) {
         const empleadoId = toEmpleadoId(row?.id_empleado ?? row?.id ?? row?.empleado_id);
         if (!empleadoId) return;
         const employeeKey = String(empleadoId);
+        const signedEmployeeImage = resolveRenderableImageSrc(toImageValue(employeeSignedImages[employeeKey]));
+        const localEmployeeImage = resolveRenderableImageSrc(toImageValue(employeeLocalImages[employeeKey]));
+        const directEmployeeImage = resolveRenderableImageSrc(extractEmpleadoImageRawValue(row));
+
+        if (signedEmployeeImage || localEmployeeImage || directEmployeeImage) return;
 
         const directUserId = extractEmpleadoUsuarioId(row);
         if (directUserId) {
@@ -1276,8 +1284,10 @@ export default function Empleados({ openToast }) {
       }
     },
     [
+      employeeLocalImages,
       employeeUserIds,
       employeeUserImages,
+      employeeSignedImages,
       findUsuariosByEmpleadoIds,
       mergeEmployeeUserIdMap,
       mergeEmployeeUserImageMap,
@@ -1688,26 +1698,50 @@ export default function Empleados({ openToast }) {
     ]
   );
 
-  const cargarCatalogos = useCallback(async () => {
-    if (catalogosCargadosRef.current) return;
+  const cargarCatalogosBase = useCallback(async () => {
+    if (catalogosBaseCargadosRef.current || catalogosBaseLoadingRef.current) return;
 
+    catalogosBaseLoadingRef.current = true;
     try {
-      const [personasResp, sucursalesResp, cargosResp] = await Promise.all([
-        personaService.getPersonasDetalle(1, 100),
+      const [sucursalesResp, cargosResp] = await Promise.all([
         sucursalesService.getAll(),
         personaService.getCargosEmpleados(),
       ]);
 
       if (!mountedRef.current) return;
 
-      setPersonasCatalogo(normalizeListResponse(personasResp).items);
       setSucursales(normalizeArrayPayload(sucursalesResp));
       setCargosCatalogo(normalizeArrayPayload(cargosResp));
-      catalogosCargadosRef.current = true;
+      catalogosBaseCargadosRef.current = true;
     } catch (error) {
-      safeToast("ERROR", error.message || "No se pudieron cargar catalogos", "danger");
+      safeToast("ERROR", error.message || "No se pudieron cargar los catalogos base", "danger");
+    } finally {
+      catalogosBaseLoadingRef.current = false;
     }
   }, [safeToast]);
+
+  const cargarPersonasCatalogo = useCallback(async () => {
+    if (personasCatalogoCargadoRef.current || personasCatalogoLoadingRef.current) return;
+
+    personasCatalogoLoadingRef.current = true;
+    try {
+      const personasResp = await personaService.getPersonasDetalle(1, 100);
+      if (!mountedRef.current) return;
+      setPersonasCatalogo(normalizeListResponse(personasResp).items);
+      personasCatalogoCargadoRef.current = true;
+    } catch (error) {
+      safeToast("ERROR", error.message || "No se pudo cargar el catalogo de personas", "danger");
+    } finally {
+      personasCatalogoLoadingRef.current = false;
+    }
+  }, [safeToast]);
+
+  const cargarCatalogos = useCallback(async ({ includePersonas = true } = {}) => {
+    await cargarCatalogosBase();
+    if (includePersonas) {
+      await cargarPersonasCatalogo();
+    }
+  }, [cargarCatalogosBase, cargarPersonasCatalogo]);
 
   const cargarEmpleados = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
@@ -1844,11 +1878,15 @@ export default function Empleados({ openToast }) {
 
   useEffect(() => {
     if (!showModal) return;
-    cargarCatalogos();
-  }, [showModal, cargarCatalogos]);
+    if (editId || !useInlinePersonaCreate) {
+      void cargarCatalogos({ includePersonas: true });
+      return;
+    }
+    void cargarCatalogos({ includePersonas: false });
+  }, [showModal, editId, useInlinePersonaCreate, cargarCatalogos]);
 
   useEffect(() => {
-    void cargarCatalogos();
+    void cargarCatalogos({ includePersonas: false });
   }, [cargarCatalogos]);
 
   useEffect(() => {
@@ -1865,9 +1903,10 @@ export default function Empleados({ openToast }) {
   }, [empleados, fetchSignedImagesForRows]);
 
   useEffect(() => {
+    if (viewMode === "table") return;
     if (!Array.isArray(empleados) || !empleados.length) return;
     void fetchLinkedUsuarioImagesForRows(empleados);
-  }, [empleados, fetchLinkedUsuarioImagesForRows]);
+  }, [empleados, fetchLinkedUsuarioImagesForRows, viewMode]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => {
@@ -2507,9 +2546,10 @@ export default function Empleados({ openToast }) {
   }, []);
 
   const resolveCreatedEmpleadoId = useCallback(
-    async (createResponse) => {
+    async (createResponse, { allowFallback = true } = {}) => {
       const fromResponse = extractEmpleadoIdFromCreateResponse(createResponse);
       if (fromResponse) return fromResponse;
+      if (!allowFallback) return null;
       return fetchNewestEmpleadoId();
     },
     [fetchNewestEmpleadoId]
@@ -2565,6 +2605,8 @@ export default function Empleados({ openToast }) {
     const payloadLimpio = sanitizeForm();
     setActionLoading(true);
     let createResp = null;
+    let editNeedsListReload = false;
+    let editNeedsStatsRefresh = false;
 
     try {
       if (editId) {
@@ -2593,6 +2635,7 @@ export default function Empleados({ openToast }) {
           safeToast("INFO", "No hay cambios para guardar", "info");
         } else {
           let imageWarning = "";
+          const changedKeySet = new Set(changedKeys);
 
           if (changedKeys.length) {
             const updatePayload = {};
@@ -2627,6 +2670,47 @@ export default function Empleados({ openToast }) {
             }
           }
 
+          editNeedsStatsRefresh = changedKeySet.has("estado");
+          editNeedsListReload =
+            Boolean(debouncedSearch)
+            || changedKeySet.has("estado")
+            || changedKeySet.has("id_sucursal");
+
+          if (!editNeedsListReload) {
+            const nextSucursalLabel = form.id_sucursal
+              ? (
+                  sucursalOptions.find((item) => String(item.id) === String(form.id_sucursal))?.label
+                  || getSucursalNombre(empleadoOriginal)
+                )
+              : getSucursalNombre(empleadoOriginal);
+            const nextCargoLabel = String(form.cargo ?? "").trim() || getCargo(empleadoOriginal);
+            const nextEstado = Boolean(payloadLimpio.estado);
+
+            setEmpleados((prev) =>
+              (Array.isArray(prev) ? prev : []).map((item) => {
+                if (String(item?.id_empleado ?? "") !== String(editId)) return item;
+                return {
+                  ...item,
+                  id_persona: form.id_persona || item?.id_persona,
+                  id_sucursal: form.id_sucursal || item?.id_sucursal,
+                  sucursal_nombre: nextSucursalLabel,
+                  nombre_sucursal: nextSucursalLabel,
+                  sucursal: nextSucursalLabel,
+                  id_cargo: form.id_cargo || item?.id_cargo,
+                  cargo: nextCargoLabel,
+                  nombre_cargo: nextCargoLabel,
+                  cargo_nombre: nextCargoLabel,
+                  cargo_puesto: nextCargoLabel,
+                  fecha_ingreso: form.fecha_ingreso || item?.fecha_ingreso,
+                  salario_base: payloadLimpio.salario_base,
+                  nombre_referencia: String(form.nombre_referencia ?? "").trim(),
+                  telefono_referencia: String(form.telefono_referencia ?? "").trim(),
+                  [detectEstadoField(item) || "estado"]: nextEstado,
+                };
+              })
+            );
+          }
+
           if (imageWarning) {
             const toastMessage = changedKeys.length
               ? `Empleado actualizado. ${imageWarning}`
@@ -2656,7 +2740,9 @@ export default function Empleados({ openToast }) {
 
         let imageWarning = "";
         if (imagePlan.shouldSend) {
-          const createdEmpleadoId = await resolveCreatedEmpleadoId(createResp);
+          const createdEmpleadoId = await resolveCreatedEmpleadoId(createResp, {
+            allowFallback: !useInlinePersonaCreate,
+          });
           if (createdEmpleadoId) {
             try {
               await persistEmployeeImageViaUsuario(createdEmpleadoId, imagePlan.value);
@@ -2731,8 +2817,12 @@ export default function Empleados({ openToast }) {
       clearFormImageDraft();
       clearEmpleadosListCache();
       if (!isCreateMode) {
-        await cargarEmpleados({ force: true });
-        void cargarEmpleadosGlobalStats();
+        if (editNeedsListReload) {
+          await cargarEmpleados({ force: true });
+        }
+        if (editNeedsStatsRefresh) {
+          void cargarEmpleadosGlobalStats();
+        }
       } else if (!insertedLocally) {
         if (page !== 1) {
           setPage(1);
@@ -2911,18 +3001,13 @@ export default function Empleados({ openToast }) {
         setErrors((state) => ({ ...state, id_persona: undefined }));
         setShowPersonaEditModal(false);
         safeToast("OK", "Datos de persona actualizados");
-        catalogosCargadosRef.current = false;
-        await cargarCatalogos();
-        clearEmpleadosListCache();
-        await cargarEmpleados({ force: true });
-        await cargarEmpleadosGlobalStats();
       } catch (error) {
         safeToast("ERROR", error.message || "No se pudo actualizar la persona.", "danger");
       } finally {
         if (mountedRef.current) setInlinePersonaSaving(false);
       }
     },
-    [editId, empleados, form.id_persona, safeToast, clearEmpleadosListCache, cargarEmpleados, cargarEmpleadosGlobalStats, cargarCatalogos]
+    [editId, empleados, form.id_persona, safeToast]
   );
 
   const openPersonaEditModal = useCallback(() => {
