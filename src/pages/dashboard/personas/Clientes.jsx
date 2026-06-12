@@ -519,6 +519,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const listPrefetchAbortRef = useRef(null);
   const clientesListCacheRef = useRef(new Map());
   const clientesTipoFallbackCacheRef = useRef(new Map());
+  const clientesOrigenFilterSupportRef = useRef(null);
   const catalogosCargadosRef = useRef(false);
   const catalogosLoadingRef = useRef(false);
   const panelRef = useRef(null);
@@ -911,82 +912,94 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           estado: estadoQuery,
           search: normalizeSearchText(debouncedSearch),
         });
-        const cachedTipoList = clientesTipoFallbackCacheRef.current.get(tipoCacheKey);
-        if (Array.isArray(cachedTipoList)) {
+        const backendSupportsOrigenFilter = clientesOrigenFilterSupportRef.current;
+        const cachedTipoList =
+          backendSupportsOrigenFilter === false
+            ? clientesTipoFallbackCacheRef.current.get(tipoCacheKey)
+            : null;
+        if (backendSupportsOrigenFilter === false && Array.isArray(cachedTipoList)) {
           setUsingTipoCache(true);
           totalResp = cachedTipoList.length;
           const start = Math.max(0, (targetPage - 1) * limit);
           normalizedItems = cachedTipoList.slice(start, start + limit);
         } else {
-        setUsingTipoCache(false);
-        const firstResp = await personaService.getClientes({
-          page: targetPage,
-          limit,
-          nombre: debouncedSearch || undefined,
-          estado: estadoQuery,
-          origen: tipoFiltro,
-          signal: controller.signal,
-        });
-        const firstNormalized = normalizeListResponse(firstResp);
-        const firstItems = normalizeClientesPage(firstNormalized.items);
-        const backendRespectsTipo = firstItems.every(
-          (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
-        );
+          setUsingTipoCache(false);
+          const firstResp = await personaService.getClientes({
+            page: targetPage,
+            limit,
+            nombre: debouncedSearch || undefined,
+            estado: estadoQuery,
+            origen: tipoFiltro,
+            signal: controller.signal,
+          });
+          const firstNormalized = normalizeListResponse(firstResp);
+          const firstItems = normalizeClientesPage(firstNormalized.items);
+          const canProbeOrigenSupport = firstItems.length > 0;
+          const backendRespectsTipo = canProbeOrigenSupport
+            ? firstItems.every(
+                (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
+              )
+            : backendSupportsOrigenFilter === true;
 
-        if (backendRespectsTipo) {
-          normalizedItems = firstItems;
-          totalResp = Number(firstNormalized.total) || 0;
-        } else {
-          const matchedByPage = new Map();
-          const firstPageMatches = firstItems.filter(
-            (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
-          );
-          matchedByPage.set(targetPage, firstPageMatches);
-          const backendTotalPages = Math.min(
-            CLIENTES_FILTRO_SCAN_MAX_PAGES,
-            Math.max(1, Math.ceil((Number(firstNormalized.total) || 0) / limit))
-          );
-          const remainingPages = [];
-          for (let pageNum = 1; pageNum <= backendTotalPages; pageNum += 1) {
-            if (pageNum !== targetPage) remainingPages.push(pageNum);
-          }
-
-          for (let index = 0; index < remainingPages.length; index += CLIENTES_FILTRO_SCAN_CONCURRENCY) {
-            const batch = remainingPages.slice(index, index + CLIENTES_FILTRO_SCAN_CONCURRENCY);
-            const responses = await Promise.all(
-              batch.map(async (pageNum) => {
-                const pageResp = await personaService.getClientes({
-                  page: pageNum,
-                  limit,
-                  nombre: debouncedSearch || undefined,
-                  estado: estadoQuery,
-                  origen: tipoFiltro,
-                  signal: controller.signal,
-                });
-                const normalized = normalizeListResponse(pageResp);
-                const pageItems = normalizeClientesPage(normalized.items).filter(
-                  (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
-                );
-                return { pageNum, pageItems };
-              })
+          if (backendSupportsOrigenFilter === true || backendRespectsTipo) {
+            if (canProbeOrigenSupport) clientesOrigenFilterSupportRef.current = true;
+            normalizedItems = firstItems;
+            totalResp = Number(firstNormalized.total) || 0;
+          } else if (!canProbeOrigenSupport) {
+            normalizedItems = firstItems;
+            totalResp = Number(firstNormalized.total) || 0;
+          } else {
+            clientesOrigenFilterSupportRef.current = false;
+            const matchedByPage = new Map();
+            const firstPageMatches = firstItems.filter(
+              (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
             );
-            responses.forEach(({ pageNum, pageItems }) => {
-              matchedByPage.set(pageNum, pageItems);
-            });
+            matchedByPage.set(targetPage, firstPageMatches);
+            const backendTotalPages = Math.min(
+              CLIENTES_FILTRO_SCAN_MAX_PAGES,
+              Math.max(1, Math.ceil((Number(firstNormalized.total) || 0) / limit))
+            );
+            const remainingPages = [];
+            for (let pageNum = 1; pageNum <= backendTotalPages; pageNum += 1) {
+              if (pageNum !== targetPage) remainingPages.push(pageNum);
+            }
+
+            for (let index = 0; index < remainingPages.length; index += CLIENTES_FILTRO_SCAN_CONCURRENCY) {
+              const batch = remainingPages.slice(index, index + CLIENTES_FILTRO_SCAN_CONCURRENCY);
+              const responses = await Promise.all(
+                batch.map(async (pageNum) => {
+                  const pageResp = await personaService.getClientes({
+                    page: pageNum,
+                    limit,
+                    nombre: debouncedSearch || undefined,
+                    estado: estadoQuery,
+                    origen: tipoFiltro,
+                    signal: controller.signal,
+                  });
+                  const normalized = normalizeListResponse(pageResp);
+                  const pageItems = normalizeClientesPage(normalized.items).filter(
+                    (item) => String(item?.origen_cliente ?? "").trim().toLowerCase() === tipoFiltro
+                  );
+                  return { pageNum, pageItems };
+                })
+              );
+              responses.forEach(({ pageNum, pageItems }) => {
+                matchedByPage.set(pageNum, pageItems);
+              });
+            }
+
+            const matchedItems = [];
+            for (let pageNum = 1; pageNum <= backendTotalPages; pageNum += 1) {
+              const itemsFromPage = matchedByPage.get(pageNum) || [];
+              matchedItems.push(...itemsFromPage);
+            }
+
+            clientesTipoFallbackCacheRef.current.set(tipoCacheKey, matchedItems);
+
+            totalResp = matchedItems.length;
+            const start = Math.max(0, (targetPage - 1) * limit);
+            normalizedItems = matchedItems.slice(start, start + limit);
           }
-
-          const matchedItems = [];
-          for (let pageNum = 1; pageNum <= backendTotalPages; pageNum += 1) {
-            const itemsFromPage = matchedByPage.get(pageNum) || [];
-            matchedItems.push(...itemsFromPage);
-          }
-
-          clientesTipoFallbackCacheRef.current.set(tipoCacheKey, matchedItems);
-
-          totalResp = matchedItems.length;
-          const start = Math.max(0, (targetPage - 1) * limit);
-          normalizedItems = matchedItems.slice(start, start + limit);
-        }
         }
       } else {
         const resp = await personaService.getClientes({
@@ -1077,13 +1090,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   }, []);
 
   useEffect(() => {
-    cargarCatalogos();
-  }, [cargarCatalogos]);
-
-  useEffect(() => {
-    if (!showModal) return;
-    cargarCatalogos();
-  }, [showModal, cargarCatalogos]);
+    if (!showModal || !editId) return;
+    void cargarCatalogos();
+  }, [showModal, editId, cargarCatalogos]);
 
   useEffect(() => {
     cargarClientes();
@@ -1976,8 +1985,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         );
         setShowPersonaEditModal(false);
         safeToast("OK", "Datos de persona actualizados");
-        catalogosCargadosRef.current = false;
-        await cargarCatalogos();
+        upsertPersonaCatalogoLocal(personaId, normalizedPersona);
         clearClientesListCache();
         await cargarClientes({ force: true });
       } catch (error) {
@@ -1986,7 +1994,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         if (mountedRef.current) setInlinePersonaSaving(false);
       }
     },
-    [editId, clientes, form.id_persona, safeToast, clearClientesListCache, cargarClientes, cargarCatalogos]
+    [editId, clientes, form.id_persona, safeToast, clearClientesListCache, cargarClientes, upsertPersonaCatalogoLocal]
   );
 
   const handleInlineEmpresaEditSave = useCallback(
@@ -2005,11 +2013,11 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       setInlineEmpresaSaving(true);
       try {
         await personaService.updateEmpresa(empresaId, buildEmpresaPayloadFromForm(empresaFormState));
-        setInlineEmpresaForm(normalizeEmpresaFormValues(empresaFormState));
+        const normalizedEmpresa = normalizeEmpresaFormValues(empresaFormState);
+        setInlineEmpresaForm(normalizedEmpresa);
         setShowEmpresaEditModal(false);
         safeToast("OK", "Datos de empresa actualizados");
-        catalogosCargadosRef.current = false;
-        await cargarCatalogos();
+        upsertEmpresaCatalogoLocal(empresaId, normalizedEmpresa);
         clearClientesListCache();
         await cargarClientes({ force: true });
       } catch (error) {
@@ -2018,7 +2026,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         if (mountedRef.current) setInlineEmpresaSaving(false);
       }
     },
-    [editId, clientes, form.id_empresa, safeToast, clearClientesListCache, cargarClientes, cargarCatalogos]
+    [editId, clientes, form.id_empresa, safeToast, clearClientesListCache, cargarClientes, upsertEmpresaCatalogoLocal]
   );
 
   const openPersonaEditModal = useCallback(() => {
