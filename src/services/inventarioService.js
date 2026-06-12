@@ -467,12 +467,6 @@ export const inventarioService = {
       id_campo: 'id_producto',
       id_valor: id
     }),
-  // AM: endpoint legado de compatibilidad; el flujo principal de Productos usa `actualizarProductoCampo`.
-  actualizarProductoMultiAlmacen: (id, data = {}) =>
-    apiFetch('/productos/multi-almacen', 'PUT', {
-      id_producto: id,
-      ...data
-    }),
   obtenerAsignacionesProducto: (idProducto) => apiFetch(`/productos/${idProducto}/asignaciones`, 'GET'),
   obtenerAlmacenesDisponiblesProducto: (idProducto) => apiFetch(`/productos/${idProducto}/almacenes-disponibles`, 'GET'),
   asignarProductoASucursal: (idProducto, idAlmacen) =>

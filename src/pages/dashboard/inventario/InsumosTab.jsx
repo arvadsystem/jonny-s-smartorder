@@ -252,7 +252,6 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [togglingEstado, setTogglingEstado] = useState(false);
   const [togglingEstadoId, setTogglingEstadoId] = useState(null);
-  const [duplicateSourceContext, setDuplicateSourceContext] = useState(null);
   const [localEstadoMap, setLocalEstadoMap] = useState({});
   const [drawerImage, setDrawerImage] = useState(() => buildDrawerImageState());
   const [imageErrorMap, setImageErrorMap] = useState({});
@@ -684,6 +683,11 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const data = e?.data;
     const backendCode = String(data?.code || '').trim().toUpperCase();
     let msg = String((data && typeof data === 'object' && (data.message || data.mensaje)) || e?.message || fallback || 'ERROR');
+    if (backendCode === 'CATALOGO_MAESTRO_EXISTENTE') {
+      msg = 'Este insumo ya existe. Usa Gestionar sucursales para asignarlo.';
+    } else if (backendCode === 'CATALOGO_LEGACY_READ_ONLY') {
+      msg = 'Este registro pertenece al modelo anterior. Modifica el maestro correspondiente.';
+    }
     if (backendCode === 'INSUMO_IN_USE') {
       // AM: detalle humano para bloqueo por recetas activas y stock disponible usando dependency_summary.
       const modules = Array.isArray(data?.dependency_summary?.blocking_modules) ? data.dependency_summary.blocking_modules : [];
@@ -861,7 +865,6 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   const resetCreate = useCallback(() => {
     setForm(emptyForm());
     setCreateErrors({});
-    setDuplicateSourceContext(null);
     resetDrawerImage();
   }, [resetDrawerImage]);
 
@@ -913,39 +916,6 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setFocusCantidad(false);
   }, [canCrearInsumos, cancelEdit, resetCreate]);
 
-  const duplicarInsumoDesdeDrawer = useCallback(() => {
-    if (!canCrearInsumos) return;
-    if (!selectedInsumo) return;
-
-    const sourceAlmacenId = Number.parseInt(String(selectedInsumo?.id_almacen ?? ''), 10);
-    // AM: reutiliza create con datos base y conserva el contexto para bloquear el mismo almacen origen.
-    setDuplicateSourceContext({
-      sourceInsumoId: Number.parseInt(String(selectedInsumo?.id_insumo ?? ''), 10) || null,
-      sourceAlmacenId: Number.isInteger(sourceAlmacenId) && sourceAlmacenId > 0 ? sourceAlmacenId : null
-    });
-
-    setCreateErrors({});
-    setForm({
-      nombre_insumo: String(selectedInsumo?.nombre_insumo ?? ''),
-      precio: String(selectedInsumo?.precio ?? ''),
-      cantidad: '',
-      stock_minimo: String(selectedInsumo?.stock_minimo ?? '0'),
-      fecha_ingreso_insumo: toDateInputValue(selectedInsumo?.fecha_ingreso_insumo),
-      id_almacen: '',
-      id_categoria_insumo: String(selectedInsumo?.id_categoria_insumo ?? ''),
-      id_unidad_medida: String(selectedInsumo?.id_unidad_medida ?? ''),
-      fecha_caducidad: toDateInputValue(selectedInsumo?.fecha_caducidad),
-      descripcion: String(selectedInsumo?.descripcion ?? '')
-    });
-    resetDrawerImage();
-    cancelEdit();
-    setSelectedId(null);
-    setDrawerMode('create');
-    setDrawer('form');
-    setDrawerMsg('');
-    setFocusCantidad(false);
-  }, [canCrearInsumos, cancelEdit, resetDrawerImage, selectedInsumo]);
-
   const openEdit = useCallback((i, opts = {}) => {
     if (!canEditarInsumos) return;
     if (!i) return;
@@ -983,7 +953,6 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     setDrawer(null);
     setDrawerMsg('');
     setFocusCantidad(false);
-    if (drawerMode === 'create') setDuplicateSourceContext(null);
     resetDrawerImage();
   }, [
     creating,
@@ -1228,15 +1197,6 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const v = validarInsumo(form);
     setCreateErrors(v.errors);
     if (!v.ok) return;
-    if (
-      duplicateSourceContext?.sourceAlmacenId &&
-      Number(v.cleaned?.id_almacen) === Number(duplicateSourceContext.sourceAlmacenId)
-    ) {
-      const duplicateWarehouseMessage = 'Seleccione un almacén diferente al original para duplicar el insumo.';
-      setCreateErrors((prev) => ({ ...prev, id_almacen: duplicateWarehouseMessage }));
-      setDrawerMsg(duplicateWarehouseMessage);
-      return;
-    }
     if (createSubmitLockRef.current || creating) return;
     createSubmitLockRef.current = true;
     setCreating(true);
@@ -1269,6 +1229,9 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       closeDrawer({ force: true });
       safeToast('CREADO', 'EL INSUMO SE CREO CORRECTAMENTE.', 'success');
     } catch (e) {
+      if (Number(e?.status) === 409 && String(e?.code || e?.data?.code || '').toUpperCase() === 'CATALOGO_MAESTRO_EXISTENTE') {
+        await syncInsumosSilently();
+      }
       const msg = apiError(e, 'ERROR CREANDO INSUMO', setCreateErrors);
       setError(msg);
       setDrawerMsg(msg);
@@ -1276,7 +1239,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       setCreating(false);
       createSubmitLockRef.current = false;
     }
-  }, [apiError, buildLocalInsumoFromCreate, buildPayload, canCrearInsumos, closeDrawer, creating, drawerImage.file, duplicateSourceContext?.sourceAlmacenId, form, resetCreate, safeToast, syncInsumosSilently, uploadInsumoImageFile, upsertInsumoLocal, validarInsumo]);
+  }, [apiError, buildLocalInsumoFromCreate, buildPayload, canCrearInsumos, closeDrawer, creating, drawerImage.file, form, resetCreate, safeToast, syncInsumosSilently, uploadInsumoImageFile, upsertInsumoLocal, validarInsumo]);
 
   const saveEdit = useCallback(async () => {
     if (!canEditarInsumos) return;
@@ -2747,16 +2710,6 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
             <button type="button" className="btn inv-prod-btn-subtle" onClick={closeDrawer} disabled={creating || savingEdit || togglingEstado}>Cancelar</button>
             {drawerMode === 'edit' ? (
               <>
-                {canCrearInsumos ? (
-                  <button
-                    type="button"
-                    className="btn inv-prod-btn-subtle"
-                    onClick={duplicarInsumoDesdeDrawer}
-                    disabled={savingEdit || togglingEstado || !selectedInsumo}
-                  >
-                    Duplicar
-                  </button>
-                ) : null}
                 {canGestionarSucursalesInsumos ? (
                   <button
                     type="button"

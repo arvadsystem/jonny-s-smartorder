@@ -220,9 +220,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [createErrors, setCreateErrors] = useState({});
   const [creating, setCreating] = useState(false);
   const [createImage, setCreateImage] = useState(buildCreateImageState);
-  // AM: referencia opcional para reutilizar imagen existente al duplicar sin re-subir archivo.
-  // undefined: create normal (no enviar campo); number: reutilizar archivo; null: quitar imagen explicitamente.
-  const [createImageReferenceId, setCreateImageReferenceId] = useState(undefined);
 
   // ==============================
   // EDITAR
@@ -628,6 +625,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     const rawMessage = String(backendMessage || apiError.message || fallbackByStatus || 'Error inesperado');
     let message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
     const backendCode = String(backendData?.code || '').trim().toUpperCase();
+    if (status === 409 && backendCode === 'CATALOGO_MAESTRO_EXISTENTE') {
+      message = 'Este producto ya existe. Usa Gestionar sucursales para asignarlo.';
+    } else if (status === 409 && backendCode === 'CATALOGO_LEGACY_READ_ONLY') {
+      message = 'Este registro pertenece al modelo anterior. Modifica el maestro correspondiente.';
+    }
     if (status === 409 && backendCode === 'PRODUCT_IN_USE') {
       const detailText = buildProductInUseDetail(backendData?.dependency_summary);
       if (detailText) {
@@ -1030,8 +1032,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     // IMPACT: solo UX/estado local del formulario de create.
     if (createImageInputRef.current) createImageInputRef.current.value = '';
     setCreateImage(buildCreateImageState());
-    // AM: si existe contexto de referencia (duplicado), limpiar significa quitar imagen en el nuevo producto.
-    setCreateImageReferenceId((prev) => (prev === undefined ? prev : null));
   }, []);
 
   const setCreateImageError = useCallback((message) => {
@@ -1085,8 +1085,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     }
 
     const previewUrl = URL.createObjectURL(file);
-    // AM: al elegir archivo nuevo, deja de reutilizar referencia del original.
-    setCreateImageReferenceId(undefined);
     setCreateImage({
       file,
       previewUrl,
@@ -1408,7 +1406,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setForm(buildCreateProductoInitialForm());
     setCreateErrors({});
     clearCreateImage();
-    setCreateImageReferenceId(undefined);
   };
 
   // ==============================
@@ -1452,9 +1449,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         }
         uploadedArchivoId = archivoId;
         payload.id_archivo_imagen_principal = archivoId;
-      } else if (createImageReferenceId !== undefined) {
-        // AM: en duplicado, conserva referencia original o envia null si el usuario la quito.
-        payload.id_archivo_imagen_principal = createImageReferenceId;
       }
 
       const createResp = await inventarioService.crearProducto(payload);
@@ -1477,6 +1471,9 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       safeToast('CREADO', 'EL PRODUCTO SE CREÓ CORRECTAMENTE.', 'success');
     } catch (e2) {
       const cleanupOk = await cleanupArchivoTemporal(uploadedArchivoId, 'productos_create_failed');
+      if (Number(e2?.status) === 409 && String(e2?.code || e2?.data?.code || '').toUpperCase() === 'CATALOGO_MAESTRO_EXISTENTE') {
+        await syncProductosSilently();
+      }
       // AJUSTE: se maneja ApiError por status y errores de campo para feedback consistente.
       const msg = handleApiStatusError(e2, 'ERROR CREANDO PRODUCTO', setCreateErrors);
       setError(msg);
@@ -1749,63 +1746,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     upsertProductoLocal,
     canEliminarImagenProducto
   ]);
-
-  const duplicarProductoDesdeDrawer = () => {
-    if (!canCrear) {
-      safeToast('SIN PERMISOS', 'No tienes permisos para crear productos.', 'warning');
-      return;
-    }
-    if (!selectedProducto) return;
-
-    // AJUSTE: se toma snapshot antes de cerrar drawer para no perder la referencia seleccionada.
-    const productoBase = { ...selectedProducto };
-    // VALIDACION: se normalizan campos numericos para evitar valores invalidos al precargar.
-    const precioRaw = Number.parseFloat(String(productoBase.precio ?? '0'));
-    const precioNormalizado = Number.isNaN(precioRaw) || precioRaw < 0 ? 0 : precioRaw;
-    const costoCompraRaw = Number.parseFloat(String(productoBase.costo_compra ?? ''));
-    const costoCompraNormalizado = Number.isNaN(costoCompraRaw) || costoCompraRaw < 0 ? '' : String(costoCompraRaw);
-    const stockMinimoRaw = Number.parseInt(String(productoBase.stock_minimo ?? '0'), 10);
-    const stockMinimoNormalizado = Number.isNaN(stockMinimoRaw) || stockMinimoRaw < 0 ? 0 : stockMinimoRaw;
-    setForm({
-      nombre_producto: productoBase.nombre_producto ? `${productoBase.nombre_producto} (copia)` : '',
-      precio: String(precioNormalizado),
-      costo_compra: costoCompraNormalizado,
-      // AJUSTE: al duplicar se replica stock_minimo y si no existe se usa 0.
-      stock_minimo: String(stockMinimoNormalizado),
-      descripcion_producto: productoBase.descripcion_producto ?? '',
-      fecha_ingreso_producto: toDateInputValue(productoBase.fecha_ingreso_producto),
-      fecha_caducidad: toDateInputValue(productoBase.fecha_caducidad),
-      id_categoria_producto: String(productoBase.id_categoria_producto ?? ''),
-      id_almacen: String(productoBase.id_almacen ?? ''),
-      id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && productoBase.id_tipo_departamento ? String(productoBase.id_tipo_departamento) : ''
-    });
-    setCreateErrors({});
-    const duplicatedImageSrc = getProductoImageSrc(productoBase);
-    const duplicatedImageRefId = Number.parseInt(String(productoBase.id_archivo_imagen_principal ?? ''), 10);
-    const hasImageRef = Number.isInteger(duplicatedImageRefId) && duplicatedImageRefId > 0;
-    if (createImageInputRef.current) createImageInputRef.current.value = '';
-    setCreateImage({
-      ...buildCreateImageState(),
-      previewUrl: duplicatedImageSrc || ''
-    });
-    setCreateImageReferenceId(hasImageRef ? duplicatedImageRefId : undefined);
-    // AJUSTE: al duplicar se cierra el drawer y filtros antes de redirigir al flujo de alta.
-    setFiltersOpen(false);
-    cerrarDrawerProducto();
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      setCreatePanelOpen(false);
-      setShowCreateProductoSheet(true);
-      return;
-    }
-    setShowCreateProductoSheet(false);
-    setCreatePanelOpen(true);
-    // NUEVO: al abrir Nuevo desde duplicar se desplaza al formulario para completar datos.
-    if (typeof window !== 'undefined') {
-      window.requestAnimationFrame(() => {
-        createSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    }
-  };
 
   const toggleEstadoProductoDesdeDrawer = async () => {
     if (!canEditar) {
@@ -4499,11 +4439,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 </div>
 
                 <div className="inv-prod-drawer-actions inv-prod-drawer-actions--edit inv-ins-drawer-footer">
-                  {canCrear ? (
-                    <button type="button" className="btn inv-prod-btn-subtle" onClick={duplicarProductoDesdeDrawer} disabled={togglingEstado}>
-                      Duplicar
-                    </button>
-                  ) : null}
                   {canGestionarSucursales ? (
                     <button
                       type="button"
