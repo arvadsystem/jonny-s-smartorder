@@ -763,7 +763,9 @@
 }
 
 @media (max-width: 768px) {
-  .dashboard-shell .top-navbar.top-navbar--menu {
+  .dashboard-shell .top-navbar.top-navbar--menu,
+  .dashboard-shell .top-navbar.top-navbar--personas,
+  .dashboard-shell .top-navbar.top-navbar--planillas {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -773,31 +775,41 @@
     overflow: visible;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-tabs-zone {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-tabs-zone,
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-tabs-zone,
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-tabs-zone {
     width: 100%;
     min-width: 0;
     overflow: visible !important;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-bar {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-bar,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tabs-bar,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tabs-bar {
     width: 100%;
     overflow: visible !important;
     overflow-x: visible !important;
     overflow-y: visible !important;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-fixed {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-fixed,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tabs-fixed,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tabs-fixed {
     width: 100%;
     justify-content: space-between;
     gap: 0;
     overflow: visible !important;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-active-slider {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-active-slider,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-active-slider,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-active-slider {
     display: none !important;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn {
     width: 34px;
     height: 34px;
     min-width: 34px;
@@ -808,27 +820,37 @@
     gap: 0;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn i {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn i {
     display: block;
     font-size: 0.95rem;
     line-height: 1;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn span:not(.active-dot) {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn span:not(.active-dot) {
     display: none !important;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn .active-dot {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn .active-dot,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn .active-dot,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn .active-dot {
     display: none;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-wrap {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-wrap,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-more-wrap,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-wrap {
     margin-left: 0;
     position: relative;
     z-index: 1405;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-menu {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-menu {
     position: fixed;
     top: calc(env(safe-area-inset-top, 0px) + 78px);
     right: max(0px, env(safe-area-inset-right, 0px));
@@ -840,27 +862,39 @@
     z-index: 1450;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn.inventory-tab-active {
     border-color: rgba(139, 84, 47, 0.32) !important;
     background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
     box-shadow: 0 10px 20px rgba(122, 30, 36, 0.34) !important;
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active i,
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active span:not(.active-dot) {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn.inventory-tab-active span:not(.active-dot) {
     color: #fff !important;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-group {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-group,
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-group,
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-group {
     gap: 6px;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-right {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-right,
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-right,
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-right {
     margin-left: 0;
     gap: 6px;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-btn {
     width: 34px;
     height: 34px;
     min-width: 34px;
@@ -868,19 +902,27 @@
     border-radius: 12px;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn i {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-btn i {
     display: block;
     font-size: 1rem;
     line-height: 1;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-notification-dot {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-notification-dot,
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-notification-dot,
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-notification-dot {
     top: 6px;
     right: 6px;
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn.is-active {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn.is-active,
+  .dashboard-shell .top-navbar.top-navbar--personas .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-btn.is-active,
+  .dashboard-shell .top-navbar.top-navbar--planillas .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-btn.is-active {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 241, 232, 0.96));
     border-color: rgba(159, 110, 67, 0.32);
     color: #4f311f;
@@ -1099,13 +1141,19 @@
     column-gap: 8px;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu {
+  .dashboard-shell .top-navbar.top-navbar--menu,
+  .dashboard-shell .top-navbar.top-navbar--personas,
+  .dashboard-shell .top-navbar.top-navbar--planillas {
     padding: 7px 9px;
     column-gap: 8px;
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn,
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-btn {
     width: 32px;
     height: 32px;
     min-width: 32px;
@@ -1114,11 +1162,17 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn i,
-  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn i {
+  .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-btn i {
     font-size: 0.92rem;
   }
 
-  .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-menu {
+  .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--personas .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-menu {
     width: max-content;
     min-width: 176px;
     max-width: min(212px, calc(100vw - 6px));

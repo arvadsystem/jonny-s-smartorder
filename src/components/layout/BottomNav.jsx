@@ -32,6 +32,7 @@ const INVENTARIO_STRONG_ADMIN_PERMISSIONS = [
   PERMISSIONS.INVENTARIO_MOBILIARIO_CREAR,
   PERMISSIONS.INVENTARIO_MOBILIARIO_EDITAR
 ];
+
 const INVENTARIO_OPERATIONAL_PERMISSIONS = [
   PERMISSIONS.INVENTARIO_ORDENES_COMPRA_VER,
   PERMISSIONS.INVENTARIO_ORDENES_COMPRA_CREAR,
@@ -42,6 +43,12 @@ const INVENTARIO_OPERATIONAL_PERMISSIONS = [
   PERMISSIONS.INVENTARIO_OC_EDITAR_SOLICITUD,
   PERMISSIONS.INVENTARIO_OC_RECEPCIONAR
 ];
+
+const BOTTOM_NAV_LABELS = Object.freeze({
+  personas: 'Personas',
+  planillas: 'Planillas'
+});
+
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -92,6 +99,11 @@ const BottomNav = () => {
     return isActive;
   };
 
+  const resolveBottomNavLabel = (item) => {
+    const key = String(item?.key || '').trim().toLowerCase();
+    return BOTTOM_NAV_LABELS[key] || item?.name || '';
+  };
+
   return (
     <>
       <div className="bottom-nav">
@@ -115,7 +127,7 @@ const BottomNav = () => {
                     title={item.name}
                   >
                     <i className={`bi ${item.icon}`} />
-                    <span>{item.name}</span>
+                    <span>{resolveBottomNavLabel(item)}</span>
                   </button>
                 );
               }
@@ -129,7 +141,7 @@ const BottomNav = () => {
                   title={item.name}
                 >
                   <i className={`bi ${item.icon}`} />
-                  <span>{item.name}</span>
+                  <span>{resolveBottomNavLabel(item)}</span>
                 </NavLink>
               );
             })}
