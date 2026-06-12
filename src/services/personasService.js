@@ -401,6 +401,9 @@ export const personaService = {
   getPersonasDetalle: (pageOrOptions = 1, limitArg = 10, searchArg = '') =>
     personaService.getPersonas(pageOrOptions, limitArg, searchArg),
 
+  getPersonaById: (id) =>
+    apiFetch(`/personas/${id}`, 'GET'),
+
 
   getTelefonos: () => apiFetch('/telefonos', 'GET'),
   getDirecciones: () => apiFetch('/direcciones', 'GET'),

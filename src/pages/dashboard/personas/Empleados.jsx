@@ -849,6 +849,7 @@ export default function Empleados({ openToast }) {
   const limit = isTableView ? 10 : 9;
   const [total, setTotal] = useState(0);
   const [globalStats, setGlobalStats] = useState({ total: 0, activas: 0, inactivas: 0 });
+  const [predictiveSuggestions, setPredictiveSuggestions] = useState([]);
 
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -898,6 +899,7 @@ export default function Empleados({ openToast }) {
   const globalStatsRequestIdRef = useRef(0);
   const listAbortRef = useRef(null);
   const listPrefetchAbortRef = useRef(null);
+  const suggestionsAbortRef = useRef(null);
   const empleadosListCacheRef = useRef(new Map());
   const catalogosBaseCargadosRef = useRef(false);
   const catalogosBaseLoadingRef = useRef(false);
@@ -3090,6 +3092,7 @@ export default function Empleados({ openToast }) {
     const id = confirmModal.idToDelete;
     if (!id || actionLoading || deletingId) return;
     const shouldActivate = confirmModal.estadoActual === false;
+    const wasActive = confirmModal.estadoActual === true;
     let linkedUserSyncError = "";
 
     setDeletingId(id);
@@ -3133,16 +3136,82 @@ export default function Empleados({ openToast }) {
       }
 
       if (String(detailEmpleado?.id_empleado) === String(id)) {
-        setDetailEmpleado(null);
+        setDetailEmpleado((prev) => {
+          if (String(prev?.id_empleado ?? "") !== String(id)) return prev;
+          return {
+            ...prev,
+            [detectEstadoField(prev) || "estado"]: shouldActivate,
+          };
+        });
       }
 
-      const quedaVaciaPagina = empleados.length === 1 && page > 1;
+      const matchesEstadoFilter = (estadoValue) =>
+        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? estadoValue : !estadoValue;
+      const wasVisible = matchesEstadoFilter(wasActive);
+      const willBeVisible = matchesEstadoFilter(shouldActivate);
+      const quedaVaciaPagina = wasVisible && !willBeVisible && empleados.length === 1 && page > 1;
+
+      setEmpleados((prev) => {
+        const rows = Array.isArray(prev) ? prev : [];
+        const nextRows = rows.map((item) => {
+          if (String(item?.id_empleado ?? item?.id ?? item?.empleado_id ?? "") !== String(id)) return item;
+          return {
+            ...item,
+            [detectEstadoField(item) || "estado"]: shouldActivate,
+            ...(item?.usuario && typeof item.usuario === "object"
+              ? {
+                  usuario: {
+                    ...item.usuario,
+                    estado: shouldActivate,
+                  },
+                }
+              : {}),
+          };
+        });
+
+        if (wasVisible && !willBeVisible) {
+          return nextRows.filter(
+            (item) => String(item?.id_empleado ?? item?.id ?? item?.empleado_id ?? "") !== String(id)
+          );
+        }
+
+        return nextRows;
+      });
+      setTotal((prev) => {
+        const safePrev = Math.max(0, Number(prev) || 0);
+        if (wasVisible && !willBeVisible) return Math.max(0, safePrev - 1);
+        if (!wasVisible && willBeVisible) return safePrev + 1;
+        return safePrev;
+      });
+      setGlobalStats((prev) => {
+        const safePrev = {
+          total: Math.max(0, Number(prev?.total) || 0),
+          activas: Math.max(0, Number(prev?.activas) || 0),
+          inactivas: Math.max(0, Number(prev?.inactivas) || 0),
+        };
+
+        if (wasActive === shouldActivate) return safePrev;
+        if (shouldActivate) {
+          return {
+            ...safePrev,
+            activas: safePrev.activas + 1,
+            inactivas: Math.max(0, safePrev.inactivas - 1),
+          };
+        }
+
+        return {
+          ...safePrev,
+          activas: Math.max(0, safePrev.activas - 1),
+          inactivas: safePrev.inactivas + 1,
+        };
+      });
+
       if (quedaVaciaPagina) {
         clearEmpleadosListCache();
         setPage((prev) => Math.max(1, prev - 1));
       } else {
         clearEmpleadosListCache();
-        await cargarEmpleados({ force: true });
+        void cargarEmpleados({ force: true, silent: true });
       }
 
       safeToast("OK", shouldActivate ? "Empleado activado" : "Empleado inactivado");
@@ -3150,7 +3219,9 @@ export default function Empleados({ openToast }) {
         safeToast("ERROR", linkedUserSyncError, "danger");
       }
       closeConfirmDelete();
-      await cargarEmpleadosGlobalStats();
+      if (quedaVaciaPagina) {
+        void cargarEmpleadosGlobalStats();
+      }
     } catch (error) {
       safeToast("ERROR", error.message || (shouldActivate ? "No se pudo activar" : "No se pudo inactivar"), "danger");
       clearEmpleadosListCache();
@@ -3214,51 +3285,76 @@ export default function Empleados({ openToast }) {
     [empleadosFiltrados.length, limit, page, total]
   );
 
-  const predictiveSuggestions = useMemo(() => {
-    const searchTerm = normalizeSearchToken(search);
-    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
+  useEffect(() => {
+    const searchTerm = normalizeSearchText(search);
+    suggestionsAbortRef.current?.abort();
 
-    const source = Array.isArray(empleados) ? empleados : [];
-    const suggestions = [];
-    const seen = new Set();
-
-    for (const empleado of source) {
-      const activo = isActivo(empleado);
-      const matchEstado =
-        estadoFiltro === "todos" ? true : estadoFiltro === "activo" ? activo : !activo;
-      if (!matchEstado) continue;
-
-      const nombre = toDisplayValue(getPersonaNombre(empleado), "Empleado sin nombre");
-      const dni = toDisplayValue(getDni(empleado), "");
-      const telefono = toDisplayValue(getTelefono(empleado), "");
-      const correo = toDisplayValue(getCorreo(empleado), "");
-      const sucursal = toDisplayValue(getSucursalNombre(empleado), "");
-      const cargo = toDisplayValue(getCargo(empleado), "");
-      const haystack = normalizeSearchToken([nombre, dni, telefono, correo, sucursal, cargo].join(" "));
-      if (!haystack.includes(searchTerm)) continue;
-
-      const dedupeKey = normalizeSearchToken(nombre);
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-
-      const detailParts = [];
-      if (dni && dni !== "No registrado") detailParts.push(`DNI: ${dni}`);
-      if (telefono && telefono !== "No registrado") detailParts.push(telefono);
-      if (correo && correo !== "No registrado") detailParts.push(correo);
-      if (sucursal && sucursal !== "No registrado") detailParts.push(sucursal);
-
-      suggestions.push({
-        id: `empd-${empleado?.id_empleado ?? dedupeKey}`,
-        value: nombre,
-        label: nombre,
-        detail: detailParts.join(" | ") || cargo || "Empleado registrado",
-      });
-
-      if (suggestions.length >= SUGGESTION_LIMIT) break;
+    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) {
+      setPredictiveSuggestions([]);
+      return undefined;
     }
 
-    return suggestions;
-  }, [empleados, estadoFiltro, search, getPersonaNombre, getSucursalNombre]);
+    const controller = new AbortController();
+    suggestionsAbortRef.current = controller;
+    const timerId = window.setTimeout(async () => {
+      try {
+        const normalizedSucursalId = toEmpleadoId(selectedSucursalFilter);
+        const estadoQuery = estadoFiltro === "inactivo" ? false : true;
+        const response = await personaService.getEmpleados({
+          page: 1,
+          limit: SUGGESTION_LIMIT,
+          nombre: searchTerm,
+          id_sucursal: normalizedSucursalId || undefined,
+          estado: estadoQuery,
+          signal: controller.signal,
+        });
+        if (!mountedRef.current || controller.signal.aborted) return;
+
+        const { items } = normalizeListResponse(response);
+        const visibleItems = (Array.isArray(items) ? items : []).filter((item) => !shouldHideSystemEmployee(item));
+        const suggestions = [];
+        const seen = new Set();
+
+        for (const empleado of visibleItems) {
+          const nombre = toDisplayValue(getPersonaNombre(empleado), "Empleado sin nombre");
+          const dni = toDisplayValue(getDni(empleado), "");
+          const telefono = toDisplayValue(getTelefono(empleado), "");
+          const correo = toDisplayValue(getCorreo(empleado), "");
+          const sucursal = toDisplayValue(getSucursalNombre(empleado), "");
+          const cargo = toDisplayValue(getCargo(empleado), "");
+          const dedupeKey = normalizeSearchToken(`${nombre}|${dni}|${correo}|${telefono}`);
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+
+          const detailParts = [];
+          if (dni && dni !== "No registrado") detailParts.push(`DNI: ${dni}`);
+          if (telefono && telefono !== "No registrado") detailParts.push(telefono);
+          if (correo && correo !== "No registrado") detailParts.push(correo);
+          if (sucursal && sucursal !== "No registrado") detailParts.push(sucursal);
+
+          suggestions.push({
+            id: `empd-${empleado?.id_empleado ?? dedupeKey}`,
+            value: nombre,
+            label: nombre,
+            detail: detailParts.join(" | ") || cargo || "Empleado registrado",
+          });
+
+          if (suggestions.length >= SUGGESTION_LIMIT) break;
+        }
+
+        setPredictiveSuggestions(suggestions);
+      } catch (error) {
+        if (isAbortError(error)) return;
+        if (!mountedRef.current) return;
+        setPredictiveSuggestions([]);
+      }
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timerId);
+      controller.abort();
+    };
+  }, [estadoFiltro, getPersonaNombre, getSucursalNombre, search, selectedSucursalFilter]);
 
   const handleSearchUpdate = useCallback((value, { source } = {}) => {
     const normalized = normalizeSearchText(value);

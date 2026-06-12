@@ -150,6 +150,14 @@ const normalizeListResponse = (resp) => {
   return { items: Array.isArray(items) ? items : [], total: Number(total) || 0 };
 };
 
+const extractDetailPayload = (resp) => {
+  if (resp && typeof resp === "object" && !Array.isArray(resp)) {
+    if (resp.data && typeof resp.data === "object" && !Array.isArray(resp.data)) return resp.data;
+    return resp;
+  }
+  return null;
+};
+
 const normalizeValue = (value) => String(value ?? "").trim().toLowerCase();
 const normalizeSearchKey = (value) => String(value ?? "").trim().toLowerCase();
 
@@ -158,8 +166,6 @@ const ASYNC_SELECT_DEBOUNCE_MS = 300;
 const SUGGESTION_LIMIT = 8;
 const MAX_CLIENTES_PAGE_CACHE = 24;
 const GLOBAL_STATS_FETCH_LIMIT = 1;
-const PERSONAS_CATALOGO_PAGE_LIMIT = 200;
-const PERSONAS_CATALOGO_MAX_PAGES = 200;
 const CLIENTES_FILTRO_SCAN_MAX_PAGES = 200;
 const CLIENTES_FILTRO_SCAN_CONCURRENCY = 4;
 const CLIENTES_FORCE_COMPAT_CREATE_FLAG = "clientes_force_compat_create_v1";
@@ -447,7 +453,6 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
   const canCreateCliente = canAny([PERMISSIONS.CLIENTES_CREAR]);
   const canListPersonas = canAny([PERMISSIONS.PERSONAS_LISTADO_VER, PERMISSIONS.PERSONAS_VER]);
   const canListEmpresas = canAny([PERMISSIONS.EMPRESAS_LISTADO_VER, PERMISSIONS.EMPRESAS_VER]);
-  const canCreateEmpresaDesdeClientes = canAny([PERMISSIONS.EMPRESAS_CREAR_DESDE_CLIENTES, PERMISSIONS.EMPRESAS_CREAR]);
   const canEditCliente = canAny([PERMISSIONS.CLIENTES_EDITAR]);
   const canInactivateCliente = canAny([PERMISSIONS.CLIENTES_ESTADO_CAMBIAR]);
   const canDeleteCliente = canAny([PERMISSIONS.CLIENTES_ELIMINAR]);
@@ -791,28 +796,53 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     ]
   );
 
-  const cargarPersonasCatalogoCompleto = useCallback(async () => {
-    const personas = [];
-    let currentPage = 1;
-    let totalPages = 1;
+  const ensurePersonaDetailLoaded = useCallback(async (personaId) => {
+    const resolvedId = parsePositiveInteger(personaId);
+    if (!resolvedId) return;
+    const alreadyLoaded = (Array.isArray(personasCatalogo) ? personasCatalogo : []).some(
+      (item) => Number(item?.id_persona) === resolvedId
+    );
+    if (alreadyLoaded) return;
 
-    while (currentPage <= totalPages && currentPage <= PERSONAS_CATALOGO_MAX_PAGES) {
-      const response = await personaService.getPersonas({
-        page: currentPage,
-        limit: PERSONAS_CATALOGO_PAGE_LIMIT,
-      });
-      const { items, total: totalItems } = normalizeListResponse(response);
-      if (Array.isArray(items) && items.length) {
-        personas.push(...items);
+    const response = await personaService.getPersonaById(resolvedId);
+    const detail = extractDetailPayload(response);
+    if (!detail || !mountedRef.current) return;
+
+    setPersonasCatalogo((prev) => {
+      const source = Array.isArray(prev) ? prev : [];
+      const index = source.findIndex((item) => Number(item?.id_persona) === resolvedId);
+      if (index >= 0) {
+        const next = [...source];
+        next[index] = { ...source[index], ...detail };
+        return next;
       }
+      return [{ ...detail, id_persona: detail?.id_persona ?? resolvedId }, ...source];
+    });
+  }, [personasCatalogo]);
 
-      const safeTotal = Math.max(0, Number(totalItems) || 0);
-      totalPages = Math.max(1, Math.ceil(safeTotal / PERSONAS_CATALOGO_PAGE_LIMIT));
-      currentPage += 1;
-    }
+  const ensureEmpresaDetailLoaded = useCallback(async (empresaId) => {
+    const resolvedId = parsePositiveInteger(empresaId);
+    if (!resolvedId) return;
+    const alreadyLoaded = (Array.isArray(empresasCatalogo) ? empresasCatalogo : []).some(
+      (item) => Number(item?.id_empresa) === resolvedId
+    );
+    if (alreadyLoaded) return;
 
-    return personas;
-  }, []);
+    const response = await personaService.getEmpresaById(resolvedId);
+    const detail = extractDetailPayload(response);
+    if (!detail || !mountedRef.current) return;
+
+    setEmpresasCatalogo((prev) => {
+      const source = Array.isArray(prev) ? prev : [];
+      const index = source.findIndex((item) => Number(item?.id_empresa) === resolvedId);
+      if (index >= 0) {
+        const next = [...source];
+        next[index] = { ...source[index], ...detail };
+        return next;
+      }
+      return [{ ...detail, id_empresa: detail?.id_empresa ?? resolvedId }, ...source];
+    });
+  }, [empresasCatalogo]);
 
   const cargarCatalogos = useCallback(async (options = {}) => {
     const force = Boolean(options?.force);
@@ -821,58 +851,31 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     catalogosLoadingRef.current = true;
 
     try {
-      const [personasResult, empresasResult] = await Promise.allSettled([
-        canListPersonas ? cargarPersonasCatalogoCompleto() : Promise.resolve([]),
-        canListEmpresas ? personaService.getEmpresas({ page: 1, limit: 100 }) : Promise.resolve({ items: [] }),
-      ]);
+      const currentEditId = parsePositiveInteger(editId);
+      const currentCliente = currentEditId
+        ? (Array.isArray(clientes) ? clientes.find((item) => Number(item?.id_cliente) === currentEditId) : null)
+        : null;
 
-      const personasTodas = personasResult.status === "fulfilled" && Array.isArray(personasResult.value)
-        ? personasResult.value
-        : [];
-      const empresasResp = empresasResult.status === "fulfilled"
-        ? empresasResult.value
-        : { items: [] };
+      if (currentCliente) {
+        const personaId = parsePositiveInteger(currentCliente?.id_persona);
+        const empresaId =
+          parsePositiveInteger(currentCliente?.id_empresa_cliente)
+          || parsePositiveInteger(currentCliente?.id_empresa);
 
-      if (!mountedRef.current) return;
-
-      const personasMap = new Map();
-      personasTodas.forEach((persona) => {
-        const id = String(persona?.id_persona ?? "").trim();
-        if (!id) return;
-        const previo = personasMap.get(id);
-        if (!previo) {
-          personasMap.set(id, persona);
-          return;
+        if (personaId && canListPersonas) {
+          await ensurePersonaDetailLoaded(personaId);
+        } else if (empresaId && canListEmpresas) {
+          await ensureEmpresaDetailLoaded(empresaId);
         }
-        const rtnSiguiente = firstNonEmptyValue(
-          persona?.rtn,
-          persona?.RTN,
-          persona?.persona_rtn_complemento,
-          persona?.rtn_persona,
-          persona?.rtn_complemento,
-          persona?.complemento_rtn,
-          persona?.numero_rtn
-        );
-
-        if (rtnSiguiente) {
-          personasMap.set(id, { ...previo, ...persona });
-        } else {
-          personasMap.set(id, { ...persona, ...previo });
-        }
-      });
-
-      setPersonasCatalogo(Array.from(personasMap.values()));
-      setEmpresasCatalogo(normalizeListResponse(empresasResp).items);
-      catalogosCargadosRef.current = true;
-      if (empresasResult.status === "rejected" && canCreateEmpresaDesdeClientes) {
-        safeToast("INFO", "Continuamos sin catalogo de empresas. Puedes crear empresa desde el formulario.", "info");
       }
+
+      catalogosCargadosRef.current = true;
     } catch (error) {
       safeToast("ERROR", error.message || "No se pudieron cargar catalogos", "danger");
     } finally {
       catalogosLoadingRef.current = false;
     }
-  }, [canCreateEmpresaDesdeClientes, canListEmpresas, canListPersonas, cargarPersonasCatalogoCompleto, safeToast]);
+  }, [canListEmpresas, canListPersonas, editId, clientes, ensureEmpresaDetailLoaded, ensurePersonaDetailLoaded, safeToast]);
 
   const cargarClientes = useCallback(async (options = {}) => {
     const requestId = ++requestIdRef.current;
@@ -1963,13 +1966,24 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         setClientes((prev) =>
           (Array.isArray(prev) ? prev : []).map((item) => {
             if (String(item?.id_cliente ?? "") !== String(editId)) return item;
+            const nombre = String(normalizedPersona?.nombre ?? "").trim();
+            const apellido = String(normalizedPersona?.apellido ?? "").trim();
+            const nombreCompleto = `${nombre} ${apellido}`.trim();
             return {
               ...item,
               id_persona: item?.id_persona ?? personaId,
+              persona_nombre: nombre,
+              persona_apellido: apellido,
+              persona_nombre_completo: nombreCompleto,
+              nombre_completo: nombreCompleto || item?.nombre_completo,
+              nombre_principal: nombreCompleto || item?.nombre_principal,
               persona_dni: String(normalizedPersona?.dni ?? "").trim(),
+              dni: String(normalizedPersona?.dni ?? "").trim(),
               persona_genero: String(normalizedPersona?.genero ?? "").trim(),
+              genero: String(normalizedPersona?.genero ?? "").trim(),
               persona_rtn: String(normalizedPersona?.rtn ?? "").trim(),
               persona_rtn_complemento: String(normalizedPersona?.rtn ?? "").trim(),
+              rtn: String(normalizedPersona?.rtn ?? "").trim(),
               rtn_persona: String(normalizedPersona?.rtn ?? "").trim(),
               rtn_complemento: String(normalizedPersona?.rtn ?? "").trim(),
               complemento_rtn: String(normalizedPersona?.rtn ?? "").trim(),
@@ -1986,15 +2000,17 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         setShowPersonaEditModal(false);
         safeToast("OK", "Datos de persona actualizados");
         upsertPersonaCatalogoLocal(personaId, normalizedPersona);
-        clearClientesListCache();
-        await cargarClientes({ force: true });
+        if (debouncedSearch) {
+          clearClientesListCache();
+          await cargarClientes({ force: true, silent: true });
+        }
       } catch (error) {
         safeToast("ERROR", error.message || "No se pudo actualizar la persona.", "danger");
       } finally {
         if (mountedRef.current) setInlinePersonaSaving(false);
       }
     },
-    [editId, clientes, form.id_persona, safeToast, clearClientesListCache, cargarClientes, upsertPersonaCatalogoLocal]
+    [editId, clientes, form.id_persona, safeToast, debouncedSearch, clearClientesListCache, cargarClientes, upsertPersonaCatalogoLocal]
   );
 
   const handleInlineEmpresaEditSave = useCallback(
@@ -2015,18 +2031,44 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         await personaService.updateEmpresa(empresaId, buildEmpresaPayloadFromForm(empresaFormState));
         const normalizedEmpresa = normalizeEmpresaFormValues(empresaFormState);
         setInlineEmpresaForm(normalizedEmpresa);
+        setClientes((prev) =>
+          (Array.isArray(prev) ? prev : []).map((item) => {
+            if (String(item?.id_cliente ?? "") !== String(editId)) return item;
+            const nombreEmpresa = String(normalizedEmpresa?.nombre_empresa ?? "").trim();
+            return {
+              ...item,
+              id_empresa_cliente: item?.id_empresa_cliente ?? empresaId,
+              id_empresa: item?.id_empresa ?? empresaId,
+              nombre_empresa: nombreEmpresa,
+              empresa_nombre: nombreEmpresa,
+              nombre_completo: nombreEmpresa || item?.nombre_completo,
+              nombre_principal: nombreEmpresa || item?.nombre_principal,
+              empresa_rtn: String(normalizedEmpresa?.rtn ?? "").trim(),
+              rtn_empresa: String(normalizedEmpresa?.rtn ?? "").trim(),
+              rtn: String(normalizedEmpresa?.rtn ?? "").trim(),
+              empresa_telefono: String(normalizedEmpresa?.id_telefono ?? "").trim(),
+              telefono: String(normalizedEmpresa?.id_telefono ?? "").trim(),
+              empresa_direccion: String(normalizedEmpresa?.id_direccion ?? "").trim(),
+              direccion: String(normalizedEmpresa?.id_direccion ?? "").trim(),
+              empresa_correo: String(normalizedEmpresa?.id_correo ?? "").trim(),
+              correo: String(normalizedEmpresa?.id_correo ?? "").trim(),
+            };
+          })
+        );
         setShowEmpresaEditModal(false);
         safeToast("OK", "Datos de empresa actualizados");
         upsertEmpresaCatalogoLocal(empresaId, normalizedEmpresa);
-        clearClientesListCache();
-        await cargarClientes({ force: true });
+        if (debouncedSearch) {
+          clearClientesListCache();
+          await cargarClientes({ force: true, silent: true });
+        }
       } catch (error) {
         safeToast("ERROR", error.message || "No se pudo actualizar la empresa.", "danger");
       } finally {
         if (mountedRef.current) setInlineEmpresaSaving(false);
       }
     },
-    [editId, clientes, form.id_empresa, safeToast, clearClientesListCache, cargarClientes, upsertEmpresaCatalogoLocal]
+    [editId, clientes, form.id_empresa, safeToast, debouncedSearch, clearClientesListCache, cargarClientes, upsertEmpresaCatalogoLocal]
   );
 
   const openPersonaEditModal = useCallback(() => {
