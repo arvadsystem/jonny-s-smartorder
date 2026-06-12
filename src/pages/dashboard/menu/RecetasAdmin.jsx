@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
 import RecetasFormDrawer from './components/RecetasFormDrawer';
@@ -36,7 +36,8 @@ const RecetasAdmin = () => {
       viewMode,
       cardImageErrors,
       formPreviewError,
-      selectedImageFileName
+      selectedImageFileName,
+      resultModal
     },
     derived: {
       recetasFiltradas,
@@ -48,6 +49,7 @@ const RecetasAdmin = () => {
       departamentoLabelsById
     },
     actions: {
+      setSuccess,
       setSearch,
       setViewMode,
       setFiltersDraft,
@@ -69,21 +71,15 @@ const RecetasAdmin = () => {
       setShowInactiveOnly,
       clearFormImage,
       onPickImageFile,
-      setCardImageError
+      setCardImageError,
+      closeResultModal
     }
   } = useRecetasAdmin();
 
-  const [toastMessage, setToastMessage] = useState('');
   const [estadoConfirm, setEstadoConfirm] = useState(null);
   const canCreateReceta = canAny([PERMISSIONS.MENU_RECETAS_CREAR, PERMISSIONS.MENU_VER]);
   const canEditReceta = canAny([PERMISSIONS.MENU_RECETAS_EDITAR, PERMISSIONS.MENU_VER]);
   const canToggleReceta = canAny([PERMISSIONS.MENU_RECETAS_ESTADO_CAMBIAR, PERMISSIONS.MENU_VER]);
-
-  // Muestra confirmacion visible despues de crear/editar/cambiar estado de recetas.
-  useEffect(() => {
-    if (!success) return;
-    setToastMessage(success);
-  }, [success]);
 
   const closeEstadoConfirm = () => {
     if (togglingId) return;
@@ -361,8 +357,19 @@ const RecetasAdmin = () => {
 
       <MenuActionToast
         title="Recetas"
-        message={toastMessage}
-        onClose={() => setToastMessage('')}
+        message={success}
+        onClose={() => setSuccess('')}
+      />
+
+      <MenuConfirmDialog
+        open={resultModal.open}
+        title={resultModal.variant === 'success' ? 'Operacion exitosa' : 'No se pudo guardar'}
+        subtitle={resultModal.variant === 'success' ? 'La receta se guardo correctamente' : 'Revisa los datos e intenta nuevamente'}
+        question={resultModal.message}
+        itemIcon={resultModal.variant === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}
+        confirmLabel="Entendido"
+        onClose={closeResultModal}
+        onConfirm={closeResultModal}
       />
 
       <MenuConfirmDialog

@@ -62,28 +62,61 @@ export const toNumberOrNull = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+export const sanitizeRecipeQuantityInput = (value) => {
+  const raw = String(value ?? '');
+  if (raw === '') return '';
+  if (/\s|[eE+-]/.test(raw)) return null;
+
+  const normalized = raw.replace(',', '.');
+  if ((normalized.match(/\./g) || []).length > 1) return null;
+  if (!/^\d+(?:\.\d{0,4})?$/.test(normalized)) return null;
+  return normalized;
+};
+
+export const countRecipeQuantityDecimals = (value) => {
+  const normalized = sanitizeRecipeQuantityInput(value);
+  if (normalized === null || normalized === '') return 0;
+  return normalized.includes('.') ? normalized.split('.')[1].length : 0;
+};
+
+export const normalizeRecipeQuantity = (value) => {
+  const isNumericValue = typeof value === 'number';
+  const normalizedInput = isNumericValue ? value : sanitizeRecipeQuantityInput(value);
+  if (normalizedInput === null || normalizedInput === '' || String(normalizedInput).endsWith('.')) return null;
+  const parsed = Number(normalizedInput);
+  if (!Number.isFinite(parsed)) return null;
+  return Number(parsed.toFixed(4));
+};
+
+export const parseRecipeQuantity = (value) => {
+  if (countRecipeQuantityDecimals(value) > 4) return null;
+  const normalized = normalizeRecipeQuantity(value);
+  return normalized !== null && normalized >= 0.0001 ? normalized : null;
+};
+
 export const calculateCantidadPresentacionApi = (cantidadPorciones, presentacion) => {
-  const porciones = toNumberOrNull(cantidadPorciones);
+  const porciones = parseRecipeQuantity(cantidadPorciones);
   const contenidoPresentacion = toNumberOrNull(presentacion?.cantidad_presentacion);
-  if (porciones === null || contenidoPresentacion === null || porciones <= 0 || contenidoPresentacion <= 0) {
+  if (porciones === null || contenidoPresentacion === null || contenidoPresentacion <= 0) {
     return null;
   }
-  return porciones * contenidoPresentacion;
+  return normalizeRecipeQuantity(porciones * contenidoPresentacion);
 };
 
 export const calculateCantidadBasePresentacion = (cantidadPorciones, presentacion) => {
-  const porciones = toNumberOrNull(cantidadPorciones);
+  const porciones = parseRecipeQuantity(cantidadPorciones);
   const cantidadBase = toNumberOrNull(presentacion?.cantidad_base);
-  if (porciones === null || cantidadBase === null || porciones <= 0 || cantidadBase <= 0) {
+  if (porciones === null || cantidadBase === null || cantidadBase <= 0) {
     return null;
   }
-  return porciones * cantidadBase;
+  const normalized = normalizeRecipeQuantity(porciones * cantidadBase);
+  return normalized !== null && normalized >= 0.0001 ? normalized : null;
 };
 
 export const buildRecetaDetallePayloadItem = ({ idInsumo, idUnidadMedida, cant }) => ({
   id_insumo: Number(idInsumo),
   id_unidad_medida: Number(idUnidadMedida),
-  cant: Number(cant)
+  cant: normalizeRecipeQuantity(cant)
 });
 
 export const deriveCantidadPorciones = (cantidadPresentacionApi, presentacion) => {
@@ -92,7 +125,7 @@ export const deriveCantidadPorciones = (cantidadPresentacionApi, presentacion) =
   if (cantidadApi === null || contenidoPresentacion === null || contenidoPresentacion <= 0) {
     return null;
   }
-  return cantidadApi / contenidoPresentacion;
+  return normalizeRecipeQuantity(cantidadApi / contenidoPresentacion);
 };
 
 export const normalizeRows = (response) => {

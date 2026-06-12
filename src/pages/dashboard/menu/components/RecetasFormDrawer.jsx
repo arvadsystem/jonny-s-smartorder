@@ -4,6 +4,7 @@ import RecetasImagePreview from './RecetasImagePreview';
 import {
   calculateCantidadBasePresentacion,
   calculateCantidadPresentacionApi,
+  sanitizeRecipeQuantityInput,
   shouldRequireSpiceLevel
 } from '../utils/recetasAdminUtils';
 
@@ -52,12 +53,6 @@ const buildPresentacionLabel = (presentacion) => {
   const cantidadPresentacion = formatDecimal(presentacion?.cantidad_presentacion, 4) || '1';
   const cantidadBase = formatDecimal(presentacion?.cantidad_base, 4) || '0';
   return `${nombre} - ${cantidadPresentacion} ${unidadPresentacion} = ${cantidadBase} ${unidadBase}`;
-};
-
-const blockInvalidQuantityKey = (event) => {
-  if (['e', 'E', '+', '-'].includes(event.key)) {
-    event.preventDefault();
-  }
 };
 
 const RecetasFormDrawer = ({
@@ -114,7 +109,11 @@ const RecetasFormDrawer = ({
           aria-labelledby="menu-recetas-modal-title"
           onClick={(event) => event.stopPropagation()}
         >
-          <form className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create menu-recetas-admin__form" onSubmit={onSubmit}>
+          <form
+            className="inv-prod-pmodal__form-shell inv-prod-pmodal__form-shell--create menu-recetas-admin__form"
+            onSubmit={onSubmit}
+            noValidate
+          >
             <div className="inv-prod-pmodal__body">
               <div className="inv-ins-create-hero is-create">
                 <button
@@ -444,13 +443,14 @@ const RecetasFormDrawer = ({
                               </label>
                               <input
                                 id={`receta_detalle_cant_${index}`}
-                                type="number"
-                                min="0.0001"
-                                step="0.0001"
+                                type="text"
+                                inputMode="decimal"
                                 className="form-control"
                                 value={cantidadValue}
-                                onKeyDown={blockInvalidQuantityKey}
-                                onChange={(event) => onUpdateDetalleRow(index, cantidadField, event.target.value)}
+                                onChange={(event) => {
+                                  const sanitized = sanitizeRecipeQuantityInput(event.target.value);
+                                  if (sanitized !== null) onUpdateDetalleRow(index, cantidadField, sanitized);
+                                }}
                                 disabled={saving || hasHistoricalPresentacion}
                                 placeholder={isPresentacionMode ? 'Ej: 1' : 'Ej: 0.25'}
                                 required

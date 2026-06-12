@@ -10,6 +10,7 @@ import {
   deriveCantidadPorciones,
   emptyForm,
   normalizeRecetaForForm,
+  parseRecipeQuantity,
   normalizeRows,
   parseBoolean,
   resolveRecetaActiva,
@@ -68,6 +69,7 @@ const validarFormulario = (form) => {
 };
 
 const validarDetalleReceta = (rows, insumosCatalog = []) => {
+  const quantityMessage = 'La cantidad debe ser mayor o igual a 0.0001 y usar como máximo 4 decimales.';
   const detalleInput = (Array.isArray(rows) ? rows : []).filter((row) => (
     String(row?.id_insumo || '').trim() ||
     String(row?.id_unidad_medida || '').trim() ||
@@ -101,12 +103,12 @@ const validarDetalleReceta = (rows, insumosCatalog = []) => {
 
     if (String(row?.modo_unidad) === 'presentacion') {
       const idPresentacion = toNumberOrNull(row?.id_presentacion_insumo);
-      const cantidadPorciones = toNumberOrNull(row?.cantidad_porciones);
+      const cantidadPorciones = parseRecipeQuantity(row?.cantidad_porciones);
       if (idPresentacion === null) {
         return { ok: false, message: `Selecciona una presentacion en la linea ${index + 1}.` };
       }
-      if (cantidadPorciones === null || cantidadPorciones <= 0) {
-        return { ok: false, message: 'La cantidad de porciones debe ser mayor que cero.' };
+      if (cantidadPorciones === null) {
+        return { ok: false, message: quantityMessage };
       }
       const availablePresentation = getPresentacionesReceta(selectedInsumo).find(
         (presentacion) => Number(presentacion.id_presentacion) === Number(idPresentacion)
@@ -119,7 +121,7 @@ const validarDetalleReceta = (rows, insumosCatalog = []) => {
       }
       const cantidadBase = calculateCantidadBasePresentacion(cantidadPorciones, availablePresentation);
       if (cantidadBase === null) {
-        return { ok: false, message: 'La cantidad de porciones debe ser mayor que cero.' };
+        return { ok: false, message: quantityMessage };
       }
       detalle.push(buildRecetaDetallePayloadItem({
         idInsumo,
@@ -131,12 +133,12 @@ const validarDetalleReceta = (rows, insumosCatalog = []) => {
     }
 
     const idUnidadMedida = toNumberOrNull(row?.id_unidad_medida);
-    const cantidadBase = toNumberOrNull(row?.cant);
+    const cantidadBase = parseRecipeQuantity(row?.cant);
     if (idUnidadMedida === null) {
       return { ok: false, message: `Selecciona unidad de medida en la linea ${index + 1}.` };
     }
-    if (cantidadBase === null || cantidadBase <= 0) {
-      return { ok: false, message: `La cantidad de la linea ${index + 1} debe ser mayor a 0.` };
+    if (cantidadBase === null) {
+      return { ok: false, message: quantityMessage };
     }
     detalle.push(buildRecetaDetallePayloadItem({
       idInsumo,
@@ -393,6 +395,7 @@ const useRecetasAdmin = () => {
   const [togglingId, setTogglingId] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [resultModal, setResultModal] = useState({ open: false, variant: 'success', message: '' });
 
   // Estado de UI alineado al patron de modulos.
   const [search, setSearch] = useState('');
@@ -420,6 +423,12 @@ const useRecetasAdmin = () => {
   });
 
   const isAnyDrawerOpen = drawerOpen || filtersOpen;
+  const showSaveResult = useCallback((variant, message) => {
+    setResultModal({ open: true, variant, message: String(message || '').trim() });
+  }, []);
+  const closeResultModal = useCallback(() => {
+    setResultModal((current) => ({ ...current, open: false }));
+  }, []);
 
   // Carga principal del listado.
   const cargarRecetas = useCallback(async () => {
@@ -790,12 +799,13 @@ const useRecetasAdmin = () => {
     setDrawerOpen(true);
     setError('');
     setSuccess('');
+    closeResultModal();
     setFormPreviewError(false);
     setSelectedImageFile(null);
     setSelectedImagePreviewUrl('');
     setDetalleReceta([createEmptyDetalleRow()]);
     void cargarCatalogoDetalle(true);
-  }, [cargarCatalogoDetalle, defaultIds.id_menu]);
+  }, [cargarCatalogoDetalle, closeResultModal, defaultIds.id_menu]);
 
   const closeCreateDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -820,11 +830,13 @@ const useRecetasAdmin = () => {
     const validationMessage = validarFormulario(form);
     if (validationMessage) {
       setError(validationMessage);
+      showSaveResult('error', validationMessage);
       return;
     }
     const detalleValidation = validarDetalleReceta(detalleReceta, insumosDetalleCatalog);
     if (!detalleValidation.ok) {
       setError(detalleValidation.message);
+      showSaveResult('error', detalleValidation.message);
       return;
     }
 
@@ -838,11 +850,11 @@ const useRecetasAdmin = () => {
       uploadedArchivoId = buildResult.uploadedArchivoId;
 
       if (editingId) {
-        await recetasAdminService.actualizarRecetaAdmin(editingId, {
+        const response = await recetasAdminService.actualizarRecetaAdmin(editingId, {
           ...payload,
           detalle_receta: detalleValidation.detalle
         });
-        setSuccess('Receta actualizada correctamente.');
+        showSaveResult('success', response?.message || 'Receta actualizada correctamente.');
       } else {
         const response = await recetasAdminService.crearRecetaAdmin({
           ...payload,
@@ -852,7 +864,7 @@ const useRecetasAdmin = () => {
         if (!createdId) {
           throw new Error('La receta se creo, pero no se pudo confirmar su id.');
         }
-        setSuccess('Receta creada correctamente.');
+        showSaveResult('success', response?.message || 'Receta creada correctamente.');
       }
 
       setForm({
@@ -876,11 +888,13 @@ const useRecetasAdmin = () => {
           console.warn('[recetas] cleanup temporal de imagen fallido.');
         }
       }
-      setError(e?.message || 'No se pudo guardar la receta.');
+      const message = String(e?.message || '').trim() || 'No se pudo guardar la receta.';
+      setError(message);
+      showSaveResult('error', message);
     } finally {
       setSaving(false);
     }
-  }, [cargarRecetas, defaultIds.id_menu, detalleReceta, editingId, form, insumosDetalleCatalog, selectedImageFile]);
+  }, [cargarRecetas, defaultIds.id_menu, detalleReceta, editingId, form, insumosDetalleCatalog, selectedImageFile, showSaveResult]);
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {
@@ -1039,6 +1053,7 @@ const useRecetasAdmin = () => {
       cardImageErrors,
       formPreviewError,
       selectedImageFileName: String(selectedImageFile?.name || ''),
+      resultModal,
       isAnyDrawerOpen
     },
     derived: {
@@ -1074,7 +1089,8 @@ const useRecetasAdmin = () => {
       setShowInactiveOnly,
       clearFormImage,
       onPickImageFile,
-      setCardImageError
+      setCardImageError,
+      closeResultModal
     }
   };
 };
