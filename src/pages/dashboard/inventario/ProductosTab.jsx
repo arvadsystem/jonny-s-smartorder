@@ -79,6 +79,18 @@ const buildCreateProductoInitialForm = () => ({
   id_tipo_departamento: ''
 });
 
+const normalizePositiveIdList = (ids) => [...new Set(
+  (Array.isArray(ids) ? ids : [])
+    .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
+    .filter((id) => Number.isInteger(id) && id > 0)
+)];
+
+const areSamePositiveIdList = (left, right) => {
+  const leftIds = normalizePositiveIdList(left).sort((a, b) => a - b);
+  const rightIds = normalizePositiveIdList(right).sort((a, b) => a - b);
+  return leftIds.length === rightIds.length && leftIds.every((id, index) => id === rightIds[index]);
+};
+
 const buildDrawerImageActionState = () => ({
   loading: false,
   error: ''
@@ -413,12 +425,18 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const sanitizeInteger = (value) => String(value ?? '').replace(/[^\d]/g, '');
 
   const updateCreateAlmacenes = useCallback((ids) => {
-    const normalized = [...new Set(
-      (Array.isArray(ids) ? ids : [])
-        .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
-        .filter((id) => Number.isInteger(id) && id > 0)
-    )];
+    const normalized = normalizePositiveIdList(ids);
     setForm((state) => ({
+      ...state,
+      id_almacenes: normalized,
+      id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
+    }));
+  }, []);
+
+  const updateEditAlmacenes = useCallback((ids) => {
+    const normalized = normalizePositiveIdList(ids);
+    setDrawerEditMode(true);
+    setEditForm((state) => ({
       ...state,
       id_almacenes: normalized,
       id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
@@ -488,7 +506,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     return (
       <div className={error ? 'is-invalid' : ''} id={`inv-prod-alm-${safeScope}`}>
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-          <div className="form-text m-0">El producto sera global y tendra una asignacion local en cada almacen seleccionado.</div>
+          <div className="form-text m-0">Selecciona las sucursales donde se vendera. Cada sucursal usa su almacen activo.</div>
           <span className="badge text-bg-light border">{selectedIds.size} seleccionados</span>
         </div>
         <button
@@ -510,7 +528,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
               {group.items.map((almacen) => {
                 const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
                 const checked = selectedIds.has(idAlmacen);
-                const name = String(almacen?.nombre || almacen?.nombre_almacen || `Almacen #${idAlmacen}`);
+                const almacenName = String(almacen?.nombre || almacen?.nombre_almacen || `Almacen #${idAlmacen}`);
+                const displayName = group.items.length === 1 ? group.nombreSucursal : almacenName;
                 return (
                   <label key={idAlmacen} className="form-check mb-0">
                     <input
@@ -519,7 +538,10 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                       checked={checked}
                       onChange={() => toggleWarehouse(almacen)}
                     />
-                    <span className="form-check-label">{name}</span>
+                    <span className="form-check-label">
+                      {displayName}
+                      <span className="d-block small text-muted">{almacenName}</span>
+                    </span>
                   </label>
                 );
               })}
@@ -708,7 +730,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     let message = toSafeProductoUiErrorMessage(status, rawMessage, fallbackByStatus);
     const backendCode = String(backendData?.code || '').trim().toUpperCase();
     if (status === 409 && backendCode === 'CATALOGO_MAESTRO_EXISTENTE') {
-      message = 'Este producto ya existe. Usa Gestionar sucursales para asignarlo.';
+      message = 'Este producto ya existe. Edita sus sucursales desde la lista de almacenes.';
     } else if (status === 409 && backendCode === 'CATALOGO_LEGACY_READ_ONLY') {
       message = 'Este registro pertenece al modelo anterior. Modifica el maestro correspondiente.';
     }
@@ -1588,6 +1610,11 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     setError('');
     setEditErrors({});
     setEditId(p.id_producto);
+    const editAlmacenes = normalizePositiveIdList(
+      Array.isArray(p.id_almacenes) && p.id_almacenes.length > 0
+        ? p.id_almacenes
+        : [p.id_almacen]
+    );
 
     const nextEditForm = {
       nombre_producto: p.nombre_producto ?? '',
@@ -1599,7 +1626,8 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       fecha_ingreso_producto: toDateInputValue(p.fecha_ingreso_producto),
       fecha_caducidad: toDateInputValue(p.fecha_caducidad),
       id_categoria_producto: String(p.id_categoria_producto ?? ''),
-      id_almacen: String(p.id_almacen ?? ''),
+      id_almacen: editAlmacenes.length > 0 ? String(editAlmacenes[0]) : String(p.id_almacen ?? ''),
+      id_almacenes: editAlmacenes,
       id_tipo_departamento: SHOW_PRODUCTO_DEPARTAMENTOS && p.id_tipo_departamento ? String(p.id_tipo_departamento) : ''
     };
     setEditForm(nextEditForm);
@@ -2077,6 +2105,12 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       const caducidadActual = toDateInputValue(actual.fecha_caducidad);
 
       const deptoActual = actual.id_tipo_departamento ? Number.parseInt(String(actual.id_tipo_departamento), 10) : null;
+      const almacenesActuales = normalizePositiveIdList(
+        Array.isArray(actual.id_almacenes) && actual.id_almacenes.length > 0
+          ? actual.id_almacenes
+          : [actual.id_almacen]
+      );
+      const almacenesChanged = !areSamePositiveIdList(v.cleaned.id_almacenes, almacenesActuales);
 
       if (v.cleaned.nombre_producto !== nombreActual) cambios.push(['nombre_producto', v.cleaned.nombre_producto]);
       if (!Number.isNaN(v.cleaned.precio) && v.cleaned.precio !== precioActual) cambios.push(['precio', v.cleaned.precio]);
@@ -2104,7 +2138,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
         cambios.push(['id_tipo_departamento', v.cleaned.id_tipo_departamento]);
       }
 
-      if (cambios.length === 0) {
+      if (cambios.length === 0 && !almacenesChanged) {
         setDrawerMessage('Cambios guardados.');
         safeToast('INFO', 'Cambios guardados.', 'success');
         return;
@@ -2131,8 +2165,31 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       for (const [campo, valor] of cambiosOrdenados) {
         await inventarioService.actualizarProductoCampo(persistedEditId, campo, valor);
       }
+      let updatedProductoFromAssignments = null;
+      if (almacenesChanged) {
+        const assignmentResp = await inventarioService.reemplazarAsignacionesProducto(
+          persistedEditId,
+          v.cleaned.id_almacenes
+        );
+        updatedProductoFromAssignments = extractProductoFromApiResponse(assignmentResp);
+      }
       const patchLocal = Object.fromEntries(cambiosOrdenados);
-      patchProductoLocalById(persistedEditId, patchLocal);
+      if (updatedProductoFromAssignments?.id_producto) {
+        upsertProductoLocal({
+          ...updatedProductoFromAssignments,
+          id_producto: parseProductoPersistedId(updatedProductoFromAssignments.id_producto) || persistedEditId
+        });
+      } else {
+        patchProductoLocalById(persistedEditId, {
+          ...patchLocal,
+          ...(almacenesChanged
+            ? {
+                id_almacen: v.cleaned.id_almacen,
+                id_almacenes: v.cleaned.id_almacenes
+              }
+            : {})
+        });
+      }
       setLocalEstadoMap((prev) => {
         if (!Object.prototype.hasOwnProperty.call(prev, persistedEditId)) return prev;
         const next = { ...prev };
@@ -4047,11 +4104,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                                   <i className="bi bi-pencil-square" /> Editar
                                 </button>
                               ) : null}
-                              {canGestionarSucursales ? (
-                                <button className="btn btn-sm btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={(e) => { e.stopPropagation(); openAssignmentsModal(p); }}>
-                                  <i className="bi bi-diagram-3" /> Gestionar sucursales
-                                </button>
-                              ) : null}
                               {canInactivar ? (
                                 <button
                                   className="btn btn-sm btn-outline-danger inv-prod-btn-danger-lite"
@@ -4226,11 +4278,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                               {canEditar ? (
                                 <button className="btn btn-sm btn-outline-primary inv-prod-btn-outline" type="button" onClick={() => iniciarEdicion(p)}>
                                   <i className="bi bi-pencil-square" /> Editar
-                                </button>
-                              ) : null}
-                              {canGestionarSucursales ? (
-                                <button className="btn btn-sm btn-outline-secondary inv-prod-btn-subtle" type="button" onClick={(e) => { e.stopPropagation(); openAssignmentsModal(p); }}>
-                                  <i className="bi bi-diagram-3" /> Gestionar sucursales
                                 </button>
                               ) : null}
                               {canInactivar ? (
@@ -4462,12 +4509,19 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                     </select>
                     {editErrors.id_categoria_producto ? <div className="invalid-feedback d-block">{editErrors.id_categoria_producto}</div> : null}
                   </div>
-                  <div>
-                    <label>Almacén asignado</label>
-                    <div className="form-control" title="El almacén no puede modificarse desde la edición de catálogo.">
-                      {getAlmacenLabel(editForm.id_almacen)}
+                  <div className="inv-prod-drawer-field--span-2">
+                    <label>Sucursales donde se vendera</label>
+                    <div>
+                      {renderAlmacenSelectField({
+                        scope: 'edit-drawer',
+                        selectedValue: editForm.id_almacen,
+                        selectedValues: editForm.id_almacenes,
+                        error: editErrors.id_almacen,
+                        onChangeMulti: updateEditAlmacenes,
+                        compact: true,
+                        feedbackClassName: 'invalid-feedback d-block'
+                      })}
                     </div>
-                    <div className="form-text">El almacén se define al crear el producto.</div>
                   </div>
                   {SHOW_PRODUCTO_DEPARTAMENTOS ? (
                     <div>
@@ -4537,16 +4591,6 @@ const ProductosTab = ({ categorias = [], openToast }) => {
                 </div>
 
                 <div className="inv-prod-drawer-actions inv-prod-drawer-actions--edit inv-ins-drawer-footer">
-                  {canGestionarSucursales ? (
-                    <button
-                      type="button"
-                      className="btn inv-prod-btn-outline"
-                      onClick={() => openAssignmentsModal(selectedProducto)}
-                      disabled={togglingEstado || !selectedProducto}
-                    >
-                      Gestionar sucursales
-                    </button>
-                  ) : null}
                   {canEditar ? (
                     <button
                       type="button"

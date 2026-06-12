@@ -469,6 +469,10 @@ export const inventarioService = {
     }),
   obtenerAsignacionesProducto: (idProducto) => apiFetch(`/productos/${idProducto}/asignaciones`, 'GET'),
   obtenerAlmacenesDisponiblesProducto: (idProducto) => apiFetch(`/productos/${idProducto}/almacenes-disponibles`, 'GET'),
+  reemplazarAsignacionesProducto: (idProducto, idAlmacenes) =>
+    apiFetch(`/productos/${idProducto}/asignaciones`, 'PUT', {
+      id_almacenes: Array.isArray(idAlmacenes) ? idAlmacenes : []
+    }),
   asignarProductoASucursal: (idProducto, idAlmacen) =>
     apiFetch(`/productos/${idProducto}/asignaciones`, 'POST', {
       id_almacen: idAlmacen
