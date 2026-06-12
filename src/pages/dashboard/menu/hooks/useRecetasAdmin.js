@@ -4,7 +4,9 @@ import { inventarioService } from '../../../../services/inventarioService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
   countActiveRecetaFilters,
+  calculateCantidadPresentacionApi,
   defaultFilters,
+  deriveCantidadPorciones,
   emptyForm,
   normalizeRecetaForForm,
   normalizeRows,
@@ -112,7 +114,14 @@ const validarDetalleReceta = (rows, insumosCatalog = []) => {
       return { ok: false, message: `Selecciona un insumo en la linea ${index + 1}.` };
     }
     if (seen.has(row.id_insumo)) {
-      return { ok: false, message: 'No repitas el mismo insumo en el detalle de receta.' };
+      return { ok: false, message: 'Este insumo ya fue agregado a la receta.' };
+    }
+
+    const selectedInsumo = (Array.isArray(insumosCatalog) ? insumosCatalog : []).find(
+      (insumo) => Number(insumo?.id_insumo) === Number(row.id_insumo)
+    );
+    if (!selectedInsumo?.id_unidad_medida) {
+      return { ok: false, message: 'Configura primero la unidad base en Inventario > Insumos.' };
     }
 
     if (row.modo_unidad === 'presentacion') {
@@ -120,18 +129,15 @@ const validarDetalleReceta = (rows, insumosCatalog = []) => {
         return { ok: false, message: `Selecciona una presentacion en la linea ${index + 1}.` };
       }
       if (row.cantidad_presentacion === null || row.cantidad_presentacion <= 0) {
-        return { ok: false, message: `La cantidad de presentaciones de la linea ${index + 1} debe ser mayor a 0.` };
+        return { ok: false, message: 'La cantidad de porciones debe ser mayor que cero.' };
       }
-      const selectedInsumo = (Array.isArray(insumosCatalog) ? insumosCatalog : []).find(
-        (insumo) => Number(insumo?.id_insumo) === Number(row.id_insumo)
-      );
       const availablePresentation = getPresentacionesReceta(selectedInsumo).some(
         (presentacion) => Number(presentacion.id_presentacion) === Number(row.id_presentacion_insumo)
       );
       if (!availablePresentation) {
         return {
           ok: false,
-          message: `La presentacion de la linea ${index + 1} no esta disponible. Elige una presentacion activa o la unidad base.`
+          message: 'Esta presentación no está disponible para recetas.'
         };
       }
       seen.add(row.id_insumo);
@@ -217,6 +223,8 @@ const createEmptyDetalleRow = () => ({
   id_unidad_medida: '',
   cant: '',
   id_presentacion_insumo: '',
+  cantidad_porciones: '',
+  cantidad_porciones_pendiente_derivar: false,
   cantidad_presentacion: '',
   id_unidad_presentacion: '',
   factor_conversion_usado: ''
@@ -235,6 +243,8 @@ const resolveDefaultDetalleForInsumo = (selected, previous = {}) => {
     id_unidad_medida: selected?.id_unidad_medida || '',
     cant: '',
     id_presentacion_insumo: '',
+    cantidad_porciones: '',
+    cantidad_porciones_pendiente_derivar: false,
     cantidad_presentacion: '',
     id_unidad_presentacion: '',
     factor_conversion_usado: ''
@@ -248,6 +258,9 @@ const resolveDefaultDetalleForInsumo = (selected, previous = {}) => {
     ...base,
     modo_unidad: 'presentacion',
     id_presentacion_insumo: String(defaultPresentacion.id_presentacion),
+    cantidad_porciones: '1',
+    cantidad_porciones_pendiente_derivar: false,
+    cantidad_presentacion: String(defaultPresentacion.cantidad_presentacion),
     id_unidad_presentacion: String(defaultPresentacion.id_unidad_presentacion || ''),
     factor_conversion_usado: roundDecimal(
       Number(defaultPresentacion.cantidad_base || 0) / Number(defaultPresentacion.cantidad_presentacion || 1),
@@ -291,8 +304,17 @@ const normalizeUnidadesMedidaCatalog = (response) =>
     })
     .filter(Boolean);
 
-const normalizeDetalleFromApi = (response) => normalizeRows(response).map((row) => {
+const normalizeDetalleFromApi = (response, insumosCatalog = []) => normalizeRows(response).map((row) => {
   const idPresentacion = String(row?.id_presentacion_insumo ?? '').trim();
+  const selectedInsumo = insumosCatalog.find(
+    (insumo) => String(insumo.id_insumo) === String(row?.id_insumo)
+  );
+  const selectedPresentacion = getPresentacionesReceta(selectedInsumo).find(
+    (presentacion) => String(presentacion.id_presentacion) === idPresentacion
+  );
+  const cantidadPorciones = selectedPresentacion
+    ? deriveCantidadPorciones(row?.cantidad_presentacion, selectedPresentacion)
+    : null;
   return {
     id_categoria_insumo: '',
     id_insumo: String(row?.id_insumo ?? ''),
@@ -300,6 +322,10 @@ const normalizeDetalleFromApi = (response) => normalizeRows(response).map((row) 
     id_unidad_medida: String(row?.id_unidad_medida ?? ''),
     cant: String(row?.cant ?? ''),
     id_presentacion_insumo: idPresentacion,
+    cantidad_porciones: cantidadPorciones === null
+      ? String(row?.cantidad_presentacion ?? '')
+      : String(cantidadPorciones),
+    cantidad_porciones_pendiente_derivar: Boolean(idPresentacion) && !selectedPresentacion,
     cantidad_presentacion: String(row?.cantidad_presentacion ?? ''),
     id_unidad_presentacion: String(row?.id_unidad_presentacion ?? ''),
     factor_conversion_usado: String(row?.factor_conversion_usado ?? ''),
@@ -629,6 +655,22 @@ const useRecetasAdmin = () => {
           return row;
         }
 
+        if (String(row.modo_unidad) === 'presentacion' && row.cantidad_porciones_pendiente_derivar) {
+          const presentacion = getPresentacionesReceta(selected).find(
+            (item) => String(item.id_presentacion) === String(row.id_presentacion_insumo)
+          );
+          const cantidadPorciones = deriveCantidadPorciones(row.cantidad_presentacion, presentacion);
+          if (cantidadPorciones !== null) {
+            changed = true;
+            return {
+              ...row,
+              id_unidad_medida: String(selected.id_unidad_medida),
+              cantidad_porciones: String(cantidadPorciones),
+              cantidad_porciones_pendiente_derivar: false
+            };
+          }
+        }
+
         const resolvedUnidadId = String(selected.id_unidad_medida);
         if (String(row.id_unidad_medida) === resolvedUnidadId) {
           return row;
@@ -683,7 +725,9 @@ const useRecetasAdmin = () => {
             id_unidad_medida: selected?.id_unidad_medida || '',
             cant: '',
             id_presentacion_insumo: firstPresentacion ? String(firstPresentacion.id_presentacion) : '',
-            cantidad_presentacion: '',
+            cantidad_porciones: firstPresentacion ? '1' : '',
+            cantidad_porciones_pendiente_derivar: false,
+            cantidad_presentacion: firstPresentacion ? String(firstPresentacion.cantidad_presentacion) : '',
             id_unidad_presentacion: firstPresentacion ? String(firstPresentacion.id_unidad_presentacion || '') : '',
             factor_conversion_usado: firstPresentacion
               ? String(roundDecimal(
@@ -699,6 +743,8 @@ const useRecetasAdmin = () => {
           id_unidad_medida: selected?.id_unidad_medida || next.id_unidad_medida || '',
           cant: '',
           id_presentacion_insumo: '',
+          cantidad_porciones: '',
+          cantidad_porciones_pendiente_derivar: false,
           cantidad_presentacion: '',
           id_unidad_presentacion: '',
           factor_conversion_usado: ''
@@ -713,7 +759,9 @@ const useRecetasAdmin = () => {
           ...next,
           modo_unidad: 'presentacion',
           id_presentacion_insumo: value,
-          cantidad_presentacion: '',
+          cantidad_porciones: presentacion ? '1' : '',
+          cantidad_porciones_pendiente_derivar: false,
+          cantidad_presentacion: presentacion ? String(presentacion.cantidad_presentacion) : '',
           id_unidad_presentacion: presentacion ? String(presentacion.id_unidad_presentacion || '') : '',
           factor_conversion_usado: presentacion
             ? String(roundDecimal(
@@ -721,6 +769,18 @@ const useRecetasAdmin = () => {
               6
             ))
             : ''
+        };
+      }
+      if (field === 'cantidad_porciones') {
+        const selected = insumosDetalleCatalog.find((item) => String(item.id_insumo) === String(row.id_insumo));
+        const presentacion = getPresentacionesReceta(selected).find(
+          (item) => String(item.id_presentacion) === String(row.id_presentacion_insumo)
+        );
+        const cantidadPresentacionApi = calculateCantidadPresentacionApi(value, presentacion);
+        return {
+          ...next,
+          cantidad_porciones_pendiente_derivar: false,
+          cantidad_presentacion: cantidadPresentacionApi === null ? '' : String(cantidadPresentacionApi)
         };
       }
       return next;
@@ -843,6 +903,7 @@ const useRecetasAdmin = () => {
       setSuccess('');
       let receta = null;
       let detalleResponse = [];
+      let detalleCatalog = insumosDetalleCatalog;
 
       try {
         const contexto = await recetasAdminService.obtenerContextoEdicionReceta(idReceta);
@@ -851,7 +912,8 @@ const useRecetasAdmin = () => {
 
         const catalogoInsumos = contexto?.catalogos?.insumos;
         if (Array.isArray(catalogoInsumos) && catalogoInsumos.length > 0) {
-          setInsumosDetalleCatalog(normalizeInsumoCatalog(catalogoInsumos));
+          detalleCatalog = normalizeInsumoCatalog(catalogoInsumos);
+          setInsumosDetalleCatalog(detalleCatalog);
         } else {
           await cargarCatalogoDetalle(false);
         }
@@ -867,7 +929,7 @@ const useRecetasAdmin = () => {
 
       setEditingId(Number(receta?.id_receta || idReceta));
       setForm(normalizeRecetaForForm(receta || {}));
-      const detalleRows = normalizeDetalleFromApi(detalleResponse);
+      const detalleRows = normalizeDetalleFromApi(detalleResponse, detalleCatalog);
       setDetalleReceta(
         detalleRows.length > 0
           ? detalleRows
@@ -877,7 +939,7 @@ const useRecetasAdmin = () => {
     } catch (e) {
       setError(e?.message || 'No se pudo cargar la receta para edicion.');
     }
-  }, [cargarCatalogoDetalle]);
+  }, [cargarCatalogoDetalle, insumosDetalleCatalog]);
 
   // Cambia estado activo/inactivo usando el endpoint PATCH del backend.
   const onCambiarEstado = useCallback(async (receta, nextEstado = null) => {

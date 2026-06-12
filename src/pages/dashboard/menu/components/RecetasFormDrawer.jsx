@@ -1,7 +1,10 @@
 ﻿import { useRef } from 'react';
 import Select from 'react-select';
 import RecetasImagePreview from './RecetasImagePreview';
-import { shouldRequireSpiceLevel } from '../utils/recetasAdminUtils';
+import {
+  calculateCantidadBasePresentacion,
+  shouldRequireSpiceLevel
+} from '../utils/recetasAdminUtils';
 
 const buildInsumoOptionLabel = (insumo) => {
   const nombre = String(insumo?.nombre_insumo || '').trim();
@@ -39,13 +42,6 @@ const formatDecimal = (value, decimals = 4) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals
   });
-};
-
-const getPresentacionFactor = (presentacion) => {
-  const cantidadBase = Number(presentacion?.cantidad_base || 0);
-  const cantidadPresentacion = Number(presentacion?.cantidad_presentacion || 0);
-  if (!Number.isFinite(cantidadBase) || !Number.isFinite(cantidadPresentacion) || cantidadPresentacion <= 0) return null;
-  return cantidadBase / cantidadPresentacion;
 };
 
 const buildPresentacionLabel = (presentacion) => {
@@ -376,23 +372,25 @@ const RecetasFormDrawer = ({
                         ? presentacionOptions.find((option) => option.value === `presentacion:${row.id_presentacion_insumo}`) || null
                         : presentacionOptions.find((option) => option.value === 'base') || null;
                       const cantidadValue = String(row?.modo_unidad) === 'presentacion'
-                        ? row.cantidad_presentacion
+                        ? row.cantidad_porciones
                         : row.cant;
-                      const cantidadField = String(row?.modo_unidad) === 'presentacion' ? 'cantidad_presentacion' : 'cant';
-                      const factorPresentacion = selectedPresentacion ? getPresentacionFactor(selectedPresentacion) : null;
-                      const cantidadPresentacion = Number(row?.cantidad_presentacion || 0);
-                      const equivalenciaBase = factorPresentacion !== null && cantidadPresentacion > 0
-                        ? cantidadPresentacion * factorPresentacion
+                      const isPresentacionMode = String(row?.modo_unidad) === 'presentacion';
+                      const cantidadField = isPresentacionMode ? 'cantidad_porciones' : 'cant';
+                      const equivalenciaBase = selectedPresentacion
+                        ? calculateCantidadBasePresentacion(row?.cantidad_porciones, selectedPresentacion)
                         : null;
-                      const equivalenciaTexto = String(row?.modo_unidad) === 'presentacion'
+                      const contenidoPresentacionTexto = selectedPresentacion
+                        ? `${formatDecimal(selectedPresentacion.cantidad_presentacion, 4)} ${getUnitLabel(selectedPresentacion, 'unidad_presentacion_nombre', 'unidad_presentacion_simbolo')}`
+                        : '';
+                      const equivalenciaTexto = isPresentacionMode
                         ? hasHistoricalPresentacion
-                          ? 'Presentacion no disponible. Cambia a unidad base o elige una presentacion activa.'
+                          ? 'No disponible. Cambia a unidad base o elige otra presentación antes de guardar.'
                           : equivalenciaBase !== null
-                            ? `${formatDecimal(cantidadPresentacion, 4)} ${selectedPresentacion?.nombre_presentacion || 'presentaciones'} equivalen a ${formatDecimal(equivalenciaBase, 2)} ${unidadBaseLabel} de inventario`
-                            : 'Ingresa una cantidad para ver la equivalencia en unidad base.'
+                            ? `Contenido: ${contenidoPresentacionTexto}. Se descontarán ${formatDecimal(equivalenciaBase, 4)} ${unidadBaseLabel}.`
+                            : `Contenido: ${contenidoPresentacionTexto}. Ingresa la cantidad de porciones para calcular el descuento.`
                         : row?.cant
-                          ? `${formatDecimal(row.cant, 2)} ${unidadBaseLabel} de inventario`
-                          : 'La cantidad se consumira directamente en la unidad base.';
+                          ? `Se descontarán ${formatDecimal(row.cant, 4)} ${unidadBaseLabel}.`
+                          : 'La cantidad se consumirá directamente en la unidad base.';
 
                       return (
                         <div className="menu-recetas-admin__detalle-row" key={`detalle-receta-${index}`}>
@@ -437,7 +435,9 @@ const RecetasFormDrawer = ({
                             </div>
 
                             <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--cantidad">
-                              <label className="form-label" htmlFor={`receta_detalle_cant_${index}`}>Cantidad</label>
+                              <label className="form-label" htmlFor={`receta_detalle_cant_${index}`}>
+                                {isPresentacionMode ? 'Cantidad de porciones' : 'Cantidad consumida'}
+                              </label>
                               <input
                                 id={`receta_detalle_cant_${index}`}
                                 type="number"
@@ -447,14 +447,16 @@ const RecetasFormDrawer = ({
                                 value={cantidadValue}
                                 onKeyDown={blockInvalidQuantityKey}
                                 onChange={(event) => onUpdateDetalleRow(index, cantidadField, event.target.value)}
-                                disabled={saving}
-                                placeholder={String(row?.modo_unidad) === 'presentacion' ? 'Ej: 2.5000' : 'Ej: 0.25'}
+                                disabled={saving || hasHistoricalPresentacion}
+                                placeholder={isPresentacionMode ? 'Ej: 1' : 'Ej: 0.25'}
                                 required
                               />
                             </div>
 
                             <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--unidad">
-                              <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>Presentacion o unidad</label>
+                              <label className="form-label" htmlFor={`receta_detalle_unidad_${index}`}>
+                                {isPresentacionMode ? 'Presentación' : 'Unidad de consumo'}
+                              </label>
                               {requiresInitialUnit ? (
                                 <Select
                                   inputId={`receta_detalle_unidad_${index}`}
@@ -498,7 +500,7 @@ const RecetasFormDrawer = ({
                             </div>
 
                             <div className="menu-recetas-admin__detalle-field menu-recetas-admin__detalle-field--equivalencia">
-                              <label className="form-label">Equivalencia en unidad base</label>
+                              <label className="form-label">Descuento de inventario</label>
                               <div className={`menu-recetas-admin__detalle-equivalencia ${hasHistoricalPresentacion ? 'is-warning' : ''}`}>
                                 {equivalenciaTexto}
                               </div>

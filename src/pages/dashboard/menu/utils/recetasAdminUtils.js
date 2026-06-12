@@ -62,6 +62,33 @@ export const toNumberOrNull = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+export const calculateCantidadPresentacionApi = (cantidadPorciones, presentacion) => {
+  const porciones = toNumberOrNull(cantidadPorciones);
+  const contenidoPresentacion = toNumberOrNull(presentacion?.cantidad_presentacion);
+  if (porciones === null || contenidoPresentacion === null || porciones <= 0 || contenidoPresentacion <= 0) {
+    return null;
+  }
+  return porciones * contenidoPresentacion;
+};
+
+export const calculateCantidadBasePresentacion = (cantidadPorciones, presentacion) => {
+  const porciones = toNumberOrNull(cantidadPorciones);
+  const cantidadBase = toNumberOrNull(presentacion?.cantidad_base);
+  if (porciones === null || cantidadBase === null || porciones <= 0 || cantidadBase <= 0) {
+    return null;
+  }
+  return porciones * cantidadBase;
+};
+
+export const deriveCantidadPorciones = (cantidadPresentacionApi, presentacion) => {
+  const cantidadApi = toNumberOrNull(cantidadPresentacionApi);
+  const contenidoPresentacion = toNumberOrNull(presentacion?.cantidad_presentacion);
+  if (cantidadApi === null || contenidoPresentacion === null || contenidoPresentacion <= 0) {
+    return null;
+  }
+  return cantidadApi / contenidoPresentacion;
+};
+
 export const normalizeRows = (response) => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.data)) return response.data;
