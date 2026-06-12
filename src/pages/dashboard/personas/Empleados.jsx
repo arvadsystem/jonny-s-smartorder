@@ -3489,17 +3489,17 @@ export default function Empleados({ openToast }) {
         <HeaderModulo
           iconClass="bi bi-person-badge-fill"
           title="Empleados"
-          subtitle="Gestion visual de empleados"
+          subtitle="Gestión visual de empleados"
           search={search}
           onSearchChange={handleSearchInputChange}
-          searchPlaceholder="Buscar por nombre, sucursal, DNI, cargo o telefono..."
+          searchPlaceholder="Buscar por nombre, sucursal, DNI, cargo o teléfono..."
           searchAriaLabel="Buscar empleados"
           filtersOpen={filtersOpen}
           onOpenFilters={openFiltersDrawer}
           createOpen={showModal}
           onOpenCreate={openCreate}
           canCreate={canCreateEmpleado}
-          createLabel="Nuevo"
+          createLabel="Nuevo empleado"
           filtersControlsId="empd-filtros-drawer"
           formControlsId="empd-form-drawer"
           viewMode={viewMode}
@@ -3589,11 +3589,11 @@ export default function Empleados({ openToast }) {
                       <th scope="col">Empleado</th>
                       <th scope="col">Sucursal</th>
                       <th scope="col">DNI</th>
-                      <th scope="col">Telefono</th>
+                      <th scope="col">Teléfono</th>
                       <th scope="col">Cargo</th>
                       <th scope="col">Fecha ingreso</th>
                       <th scope="col">Estado</th>
-                      <th scope="col">Codigo</th>
+                      <th scope="col">Código</th>
                       <th scope="col" className="text-end">Acciones</th>
                     </tr>
                   </thead>
@@ -3611,7 +3611,7 @@ export default function Empleados({ openToast }) {
                           </td>
                           <td>{toDisplayValue(getSucursalNombre(empleado))}</td>
                           <td>{toDisplayValue(getDni(empleado), "N/D")}</td>
-                          <td>{toDisplayValue(getTelefono(empleado), "Sin telefono")}</td>
+                          <td>{toDisplayValue(getTelefono(empleado), "Sin teléfono")}</td>
                           <td>{toDisplayValue(getCargo(empleado), "Sin cargo")}</td>
                           <td>{formatDateLabel(empleado?.fecha_ingreso)}</td>
                           <td>
@@ -3706,7 +3706,7 @@ export default function Empleados({ openToast }) {
                 className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
                 disabled={page <= 1 || loading || actionLoading || !!deletingId}
-                aria-label="Pagina anterior"
+                aria-label="Página anterior"
               >
                 <i className="bi bi-chevron-left" aria-hidden="true" />
                 <span>Anterior</span>
@@ -3719,7 +3719,7 @@ export default function Empleados({ openToast }) {
                     type="button"
                     className={`inv-warehouse-moves__page-number ${pageNumber === page ? "is-active" : ""}`.trim()}
                     onClick={() => setPage(pageNumber)}
-                    aria-label={`Ir a la pagina ${pageNumber}`}
+                    aria-label={`Ir a la página ${pageNumber}`}
                     aria-current={pageNumber === page ? "page" : undefined}
                   >
                     {pageNumber}
@@ -3728,7 +3728,7 @@ export default function Empleados({ openToast }) {
               </div>
 
               <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">
-                {`Pagina ${page} de ${totalPages}`}
+                {`Página ${page} de ${totalPages}`}
               </div>
 
               <button
@@ -3736,7 +3736,7 @@ export default function Empleados({ openToast }) {
                 className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
                 onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                 disabled={page >= totalPages || loading || actionLoading || !!deletingId}
-                aria-label="Pagina siguiente"
+                aria-label="Página siguiente"
               >
                 <span>Siguiente</span>
                 <i className="bi bi-chevron-right" aria-hidden="true" />
@@ -3815,7 +3815,7 @@ export default function Empleados({ openToast }) {
               <i className="bi bi-person-workspace" />
             </div>
             <div className="crud-modal__hero-main">
-              <div className="crud-modal__hero-kicker">{drawerMode === "create" ? "Nuevo registro" : "Edicion activa"}</div>
+              <div className="crud-modal__hero-kicker">{drawerMode === "create" ? "Nuevo registro" : "Edición activa"}</div>
               <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo empleado" : "Editar empleado"}</div>
               <div className="inv-prod-drawer-sub crud-modal__subtitle">{drawerSubtitle}</div>
             </div>
@@ -3901,8 +3901,8 @@ export default function Empleados({ openToast }) {
                         <strong>{toDisplayValue(selectedPersonaDni, "N/D")}</strong>
                       </div>
                       <div className="empleados-modal__persona-meta-item">
-                        <span>Telefono</span>
-                        <strong>{toDisplayValue(selectedPersonaTelefono, "Sin telefono")}</strong>
+                        <span>Teléfono</span>
+                        <strong>{toDisplayValue(selectedPersonaTelefono, "Sin teléfono")}</strong>
                       </div>
                     </div>
                   </div>
@@ -3984,7 +3984,7 @@ export default function Empleados({ openToast }) {
                   </div>
 
                   <div className="col-12 col-md-6">
-                    <label className="form-label text-light text-opacity-75">Genero</label>
+                    <label className="form-label text-light text-opacity-75">Género</label>
                     <Select
                       inputId="empleado-genero-select"
                       className={`empleados-select ${errors.genero ? "is-invalid" : ""}`}
@@ -4014,7 +4014,7 @@ export default function Empleados({ openToast }) {
                   </div>
 
                   <div className="col-12 col-md-6">
-                    <label className="form-label text-light text-opacity-75">Telefono</label>
+                    <label className="form-label text-light text-opacity-75">Teléfono</label>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -4069,7 +4069,7 @@ export default function Empleados({ openToast }) {
                         DNI: {toDisplayValue(inlinePersonaForm.dni, "N/D")}
                       </span>
                       <span className="empleados-inline-summary__chip">
-                        Telefono: {toDisplayValue(inlinePersonaForm.id_telefono, "N/D")}
+                        Teléfono: {toDisplayValue(inlinePersonaForm.id_telefono, "N/D")}
                       </span>
                     </div>
                     <button
@@ -4187,7 +4187,7 @@ export default function Empleados({ openToast }) {
               </div>
 
               <div className="col-12 col-md-6">
-                <label className="form-label text-light text-opacity-75">Telefono referencia</label>
+                <label className="form-label text-light text-opacity-75">Teléfono referencia</label>
                 <input
                   ref={telefonoReferenciaInputRef}
                   type="text"

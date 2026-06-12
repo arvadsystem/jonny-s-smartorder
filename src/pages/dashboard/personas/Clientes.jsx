@@ -2514,11 +2514,11 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       },
       { label: "DNI", value: inlinePersonaForm?.dni },
       { label: "RTN complemento", value: inlinePersonaForm?.rtn },
-      { label: "Genero", value: inlinePersonaForm?.genero },
+      { label: "Género", value: inlinePersonaForm?.genero },
       { label: "Fecha nacimiento", value: inlinePersonaForm?.fecha_nacimiento },
-      { label: "Telefono", value: inlinePersonaForm?.id_telefono },
+      { label: "Teléfono", value: inlinePersonaForm?.id_telefono },
       { label: "Correo", value: inlinePersonaForm?.id_correo },
-      { label: "Direccion", value: inlinePersonaForm?.id_direccion },
+      { label: "Dirección", value: inlinePersonaForm?.id_direccion },
     ],
     [inlinePersonaForm]
   );
@@ -2526,9 +2526,9 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     () => [
       { label: "Nombre empresa", value: inlineEmpresaForm?.nombre_empresa },
       { label: "RTN", value: inlineEmpresaForm?.rtn },
-      { label: "Telefono", value: inlineEmpresaForm?.id_telefono },
+      { label: "Teléfono", value: inlineEmpresaForm?.id_telefono },
       { label: "Correo", value: inlineEmpresaForm?.id_correo },
-      { label: "Direccion", value: inlineEmpresaForm?.id_direccion },
+      { label: "Dirección", value: inlineEmpresaForm?.id_direccion },
     ],
     [inlineEmpresaForm]
   );
@@ -2581,16 +2581,16 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
         <HeaderModulo
           iconClass="bi bi-person-lines-fill"
           title="Clientes"
-          subtitle="Gestion visual de clientes"
+          subtitle="Gestión visual de clientes"
           search={search}
           onSearchChange={handleSearchInputChange}
-          searchPlaceholder="Buscar por persona, empresa, DNI, telefono o correo..."
+          searchPlaceholder="Buscar por persona, empresa, DNI, teléfono o correo..."
           searchAriaLabel="Buscar clientes"
           filtersOpen={filtersOpen}
           onOpenFilters={openFiltersDrawer}
           createOpen={showModal}
           onOpenCreate={openCreate}
-          createLabel="Nuevo"
+          createLabel="Nuevo cliente"
           canCreate={canCreateCliente}
           filtersControlsId="cli-filtros-drawer"
           formControlsId="cli-form-drawer"
@@ -2684,12 +2684,12 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       <th scope="col">Cliente</th>
                       <th scope="col">Empresa</th>
                       <th scope="col">Documento</th>
-                      <th scope="col">Telefono</th>
+                      <th scope="col">Teléfono</th>
                       <th scope="col">Correo</th>
                       <th scope="col">Puntos</th>
                       <th scope="col">Fecha registro</th>
                       <th scope="col">Estado</th>
-                      <th scope="col">Codigo</th>
+                      <th scope="col">Código</th>
                       <th scope="col" className="text-end">Acciones</th>
                     </tr>
                   </thead>
@@ -2720,7 +2720,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                           </td>
                           <td>{toDisplayValue(cliente?.nombre_empresa)}</td>
                           <td>{toDisplayValue(cliente?.documento_valor, "N/D")}</td>
-                          <td>{toDisplayValue(cliente?.telefono, "Sin telefono")}</td>
+                          <td>{toDisplayValue(cliente?.telefono, "Sin teléfono")}</td>
                           <td>{toDisplayValue(cliente?.correo, "Sin correo")}</td>
                           <td>
                             <span className="badge bg-secondary rounded-pill">
@@ -2807,7 +2807,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                 className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
                 disabled={page <= 1 || loading || actionLoading || !!deletingId}
-                aria-label="Pagina anterior"
+                aria-label="Página anterior"
               >
                 <i className="bi bi-chevron-left" aria-hidden="true" />
                 <span>Anterior</span>
@@ -2820,7 +2820,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                     type="button"
                     className={`inv-warehouse-moves__page-number ${pageNumber === page ? "is-active" : ""}`.trim()}
                     onClick={() => setPage(pageNumber)}
-                    aria-label={`Ir a la pagina ${pageNumber}`}
+                    aria-label={`Ir a la página ${pageNumber}`}
                     aria-current={pageNumber === page ? "page" : undefined}
                   >
                     {pageNumber}
@@ -2829,7 +2829,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               </div>
 
               <div className="inv-warehouse-moves__pagination-status inv-ins-pagination__page">
-                {`Pagina ${page} de ${totalPages}`}
+                {`Página ${page} de ${totalPages}`}
               </div>
 
               <button
@@ -2837,7 +2837,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                 className="inv-prod-toolbar-btn inv-warehouse-moves__page-btn"
                 onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                 disabled={page >= totalPages || loading || actionLoading || !!deletingId}
-                aria-label="Pagina siguiente"
+                aria-label="Página siguiente"
               >
                 <span>Siguiente</span>
                 <i className="bi bi-chevron-right" aria-hidden="true" />
@@ -2925,7 +2925,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
               <i className="bi bi-people" />
             </div>
             <div className="crud-modal__hero-main">
-              <div className="crud-modal__hero-kicker">{drawerMode === "create" ? "Nuevo registro" : "Edicion activa"}</div>
+              <div className="crud-modal__hero-kicker">{drawerMode === "create" ? "Nuevo registro" : "Edición activa"}</div>
               <div className="inv-prod-drawer-title crud-modal__title">{drawerMode === "create" ? "Nuevo cliente" : "Editar cliente"}</div>
               <div className="inv-prod-drawer-sub crud-modal__subtitle">
                 {drawerMode === "create" ? createSubtitle : "Actualiza los campos necesarios y guarda los cambios."}
@@ -3092,12 +3092,12 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       {errors.rtn ? <div className="invalid-feedback d-block">{errors.rtn}</div> : null}
                     </div>
                     <div className="col-12 col-md-6">
-                      <label className="form-label">Genero</label>
+                      <label className="form-label">Género</label>
                       <Select
                         inputId="cliente-genero-select"
                         className={errors.genero ? "is-invalid" : ""}
                         classNamePrefix="clientes-genero-select"
-                        placeholder="Selecciona genero"
+                        placeholder="Selecciona género"
                         isClearable
                         options={[
                           { value: "M", label: "Masculino" },
@@ -3131,7 +3131,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       {errors.fecha_nacimiento ? <div className="invalid-feedback d-block">{errors.fecha_nacimiento}</div> : null}
                     </div>
                     <div className="col-12 col-md-6">
-                      <label className="form-label">Telefono</label>
+                      <label className="form-label">Teléfono</label>
                       <input
                         className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
                         value={inlinePersonaForm.id_telefono}
@@ -3154,7 +3154,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       {errors.id_correo ? <div className="invalid-feedback d-block">{errors.id_correo}</div> : null}
                     </div>
                     <div className="col-12">
-                      <label className="form-label">Direccion</label>
+                      <label className="form-label">Dirección</label>
                       <input
                         className="form-control"
                         value={inlinePersonaForm.id_direccion}
@@ -3192,7 +3192,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       {errors.nombre_empresa ? <div className="invalid-feedback d-block">{errors.nombre_empresa}</div> : null}
                     </div>
                     <div className="col-12 col-md-6">
-                      <label className="form-label">Telefono</label>
+                      <label className="form-label">Teléfono</label>
                       <input
                         className={`form-control ${errors.id_telefono ? "is-invalid" : ""}`}
                         value={inlineEmpresaForm.id_telefono}
@@ -3215,7 +3215,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
                       {errors.id_correo ? <div className="invalid-feedback d-block">{errors.id_correo}</div> : null}
                     </div>
                     <div className="col-12">
-                      <label className="form-label">Direccion</label>
+                      <label className="form-label">Dirección</label>
                       <input
                         className="form-control"
                         value={inlineEmpresaForm.id_direccion}
