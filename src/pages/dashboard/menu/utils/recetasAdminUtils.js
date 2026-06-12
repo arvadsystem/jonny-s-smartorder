@@ -80,6 +80,12 @@ export const calculateCantidadBasePresentacion = (cantidadPorciones, presentacio
   return porciones * cantidadBase;
 };
 
+export const buildRecetaDetallePayloadItem = ({ idInsumo, idUnidadMedida, cant }) => ({
+  id_insumo: Number(idInsumo),
+  id_unidad_medida: Number(idUnidadMedida),
+  cant: Number(cant)
+});
+
 export const deriveCantidadPorciones = (cantidadPresentacionApi, presentacion) => {
   const cantidadApi = toNumberOrNull(cantidadPresentacionApi);
   const contenidoPresentacion = toNumberOrNull(presentacion?.cantidad_presentacion);

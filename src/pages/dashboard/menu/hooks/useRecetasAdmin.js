@@ -3,8 +3,9 @@ import recetasAdminService from '../../../../services/recetasAdminService';
 import { inventarioService } from '../../../../services/inventarioService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
 import {
+  calculateCantidadBasePresentacion,
+  buildRecetaDetallePayloadItem,
   countActiveRecetaFilters,
-  calculateCantidadPresentacionApi,
   defaultFilters,
   deriveCantidadPorciones,
   emptyForm,
@@ -66,73 +67,49 @@ const validarFormulario = (form) => {
   return '';
 };
 
-const normalizeDetalleRows = (rows) =>
-  (Array.isArray(rows) ? rows : [])
-    .map((row) => {
-      const idInsumo = toNumberOrNull(row?.id_insumo);
-      const idPresentacion = toNumberOrNull(row?.id_presentacion_insumo);
-      const modoUnidad = String(row?.modo_unidad || '').trim() === 'presentacion' || idPresentacion !== null
-        ? 'presentacion'
-        : 'base';
-
-      if (modoUnidad === 'presentacion') {
-        return {
-          id_insumo: idInsumo,
-          modo_unidad: 'presentacion',
-          id_presentacion_insumo: idPresentacion,
-          cantidad_presentacion: toNumberOrNull(row?.cantidad_presentacion)
-        };
-      }
-
-      return {
-        id_insumo: idInsumo,
-        modo_unidad: 'base',
-        id_unidad_medida: toNumberOrNull(row?.id_unidad_medida),
-        cant: toNumberOrNull(row?.cant),
-        id_presentacion_insumo: null,
-        cantidad_presentacion: null
-      };
-    })
-    .filter((row) => (
-      row.id_insumo !== null ||
-      row.id_unidad_medida !== null ||
-      row.cant !== null ||
-      row.id_presentacion_insumo !== null ||
-      row.cantidad_presentacion !== null
-    ));
-
 const validarDetalleReceta = (rows, insumosCatalog = []) => {
-  const detalle = normalizeDetalleRows(rows);
-  if (detalle.length === 0) {
+  const detalleInput = (Array.isArray(rows) ? rows : []).filter((row) => (
+    String(row?.id_insumo || '').trim() ||
+    String(row?.id_unidad_medida || '').trim() ||
+    String(row?.cant || '').trim() ||
+    String(row?.id_presentacion_insumo || '').trim() ||
+    String(row?.cantidad_porciones || '').trim()
+  ));
+  if (detalleInput.length === 0) {
     return { ok: false, message: 'Agrega al menos un insumo al detalle de receta.' };
   }
 
   const seen = new Set();
-  for (let index = 0; index < detalle.length; index += 1) {
-    const row = detalle[index];
-    if (row.id_insumo === null) {
+  const detalle = [];
+  for (let index = 0; index < detalleInput.length; index += 1) {
+    const row = detalleInput[index];
+    const idInsumo = toNumberOrNull(row?.id_insumo);
+    if (idInsumo === null) {
       return { ok: false, message: `Selecciona un insumo en la linea ${index + 1}.` };
     }
-    if (seen.has(row.id_insumo)) {
+    if (seen.has(idInsumo)) {
       return { ok: false, message: 'Este insumo ya fue agregado a la receta.' };
     }
 
     const selectedInsumo = (Array.isArray(insumosCatalog) ? insumosCatalog : []).find(
-      (insumo) => Number(insumo?.id_insumo) === Number(row.id_insumo)
+      (insumo) => Number(insumo?.id_insumo) === Number(idInsumo)
     );
-    if (!selectedInsumo?.id_unidad_medida) {
+    const idUnidadBase = toNumberOrNull(selectedInsumo?.id_unidad_medida);
+    if (idUnidadBase === null) {
       return { ok: false, message: 'Configura primero la unidad base en Inventario > Insumos.' };
     }
 
-    if (row.modo_unidad === 'presentacion') {
-      if (row.id_presentacion_insumo === null) {
+    if (String(row?.modo_unidad) === 'presentacion') {
+      const idPresentacion = toNumberOrNull(row?.id_presentacion_insumo);
+      const cantidadPorciones = toNumberOrNull(row?.cantidad_porciones);
+      if (idPresentacion === null) {
         return { ok: false, message: `Selecciona una presentacion en la linea ${index + 1}.` };
       }
-      if (row.cantidad_presentacion === null || row.cantidad_presentacion <= 0) {
+      if (cantidadPorciones === null || cantidadPorciones <= 0) {
         return { ok: false, message: 'La cantidad de porciones debe ser mayor que cero.' };
       }
-      const availablePresentation = getPresentacionesReceta(selectedInsumo).some(
-        (presentacion) => Number(presentacion.id_presentacion) === Number(row.id_presentacion_insumo)
+      const availablePresentation = getPresentacionesReceta(selectedInsumo).find(
+        (presentacion) => Number(presentacion.id_presentacion) === Number(idPresentacion)
       );
       if (!availablePresentation) {
         return {
@@ -140,17 +117,33 @@ const validarDetalleReceta = (rows, insumosCatalog = []) => {
           message: 'Esta presentación no está disponible para recetas.'
         };
       }
-      seen.add(row.id_insumo);
+      const cantidadBase = calculateCantidadBasePresentacion(cantidadPorciones, availablePresentation);
+      if (cantidadBase === null) {
+        return { ok: false, message: 'La cantidad de porciones debe ser mayor que cero.' };
+      }
+      detalle.push(buildRecetaDetallePayloadItem({
+        idInsumo,
+        idUnidadMedida: idUnidadBase,
+        cant: cantidadBase
+      }));
+      seen.add(idInsumo);
       continue;
     }
 
-    if (row.id_unidad_medida === null) {
+    const idUnidadMedida = toNumberOrNull(row?.id_unidad_medida);
+    const cantidadBase = toNumberOrNull(row?.cant);
+    if (idUnidadMedida === null) {
       return { ok: false, message: `Selecciona unidad de medida en la linea ${index + 1}.` };
     }
-    if (row.cant === null || row.cant <= 0) {
+    if (cantidadBase === null || cantidadBase <= 0) {
       return { ok: false, message: `La cantidad de la linea ${index + 1} debe ser mayor a 0.` };
     }
-    seen.add(row.id_insumo);
+    detalle.push(buildRecetaDetallePayloadItem({
+      idInsumo,
+      idUnidadMedida: idUnidadBase,
+      cant: cantidadBase
+    }));
+    seen.add(idInsumo);
   }
 
   return { ok: true, detalle };
@@ -213,7 +206,7 @@ const normalizePresentacionCatalog = (presentacion) => ({
   id_unidad_base: String(presentacion?.id_unidad_base ?? ''),
   unidad_base_nombre: String(presentacion?.unidad_base_nombre || '').trim(),
   unidad_base_simbolo: String(presentacion?.unidad_base_simbolo || '').trim(),
-  es_predeterminada_receta: Boolean(presentacion?.es_predeterminada_receta)
+  es_predeterminada_receta: parseBoolean(presentacion?.es_predeterminada_receta)
 });
 
 const createEmptyDetalleRow = () => ({
@@ -234,6 +227,13 @@ const getPresentacionesReceta = (insumo) =>
   (Array.isArray(insumo?.presentaciones_receta) ? insumo.presentaciones_receta : [])
     .filter((presentacion) => Number(presentacion?.id_presentacion || 0) > 0);
 
+const getPreferredPresentacion = (insumo) => {
+  const presentaciones = getPresentacionesReceta(insumo);
+  return presentaciones.find((presentacion) => presentacion.es_predeterminada_receta === true)
+    || presentaciones[0]
+    || null;
+};
+
 const resolveDefaultDetalleForInsumo = (selected, previous = {}) => {
   const base = {
     ...previous,
@@ -250,7 +250,7 @@ const resolveDefaultDetalleForInsumo = (selected, previous = {}) => {
     factor_conversion_usado: ''
   };
   const defaultPresentacion = getPresentacionesReceta(selected).find(
-    (presentacion) => Boolean(presentacion.es_predeterminada_receta)
+    (presentacion) => presentacion.es_predeterminada_receta === true
   );
   if (!defaultPresentacion) return base;
 
@@ -630,10 +630,13 @@ const useRecetasAdmin = () => {
     try {
       setLoadingDetalleCatalog(true);
       const response = await recetasAdminService.listarInsumosDetalleReceta();
-      setInsumosDetalleCatalog(normalizeInsumoCatalog(response));
+      const nextCatalog = normalizeInsumoCatalog(response);
+      setInsumosDetalleCatalog(nextCatalog);
+      return nextCatalog;
     } catch (e) {
       setError(e?.message || 'No se pudo cargar el catalogo de insumos para detalle receta.');
       setInsumosDetalleCatalog([]);
+      return [];
     } finally {
       setLoadingDetalleCatalog(false);
     }
@@ -718,7 +721,7 @@ const useRecetasAdmin = () => {
       if (field === 'modo_unidad') {
         const selected = insumosDetalleCatalog.find((item) => String(item.id_insumo) === String(row.id_insumo));
         if (value === 'presentacion') {
-          const firstPresentacion = getPresentacionesReceta(selected)[0] || null;
+          const firstPresentacion = getPreferredPresentacion(selected);
           return {
             ...next,
             modo_unidad: 'presentacion',
@@ -771,18 +774,7 @@ const useRecetasAdmin = () => {
             : ''
         };
       }
-      if (field === 'cantidad_porciones') {
-        const selected = insumosDetalleCatalog.find((item) => String(item.id_insumo) === String(row.id_insumo));
-        const presentacion = getPresentacionesReceta(selected).find(
-          (item) => String(item.id_presentacion) === String(row.id_presentacion_insumo)
-        );
-        const cantidadPresentacionApi = calculateCantidadPresentacionApi(value, presentacion);
-        return {
-          ...next,
-          cantidad_porciones_pendiente_derivar: false,
-          cantidad_presentacion: cantidadPresentacionApi === null ? '' : String(cantidadPresentacionApi)
-        };
-      }
+      if (field === 'cantidad_porciones') return { ...next, cantidad_porciones_pendiente_derivar: false };
       return next;
     }));
   }, [insumosDetalleCatalog]);
@@ -802,7 +794,7 @@ const useRecetasAdmin = () => {
     setSelectedImageFile(null);
     setSelectedImagePreviewUrl('');
     setDetalleReceta([createEmptyDetalleRow()]);
-    void cargarCatalogoDetalle(false);
+    void cargarCatalogoDetalle(true);
   }, [cargarCatalogoDetalle, defaultIds.id_menu]);
 
   const closeCreateDrawer = useCallback(() => {
@@ -915,16 +907,17 @@ const useRecetasAdmin = () => {
           detalleCatalog = normalizeInsumoCatalog(catalogoInsumos);
           setInsumosDetalleCatalog(detalleCatalog);
         } else {
-          await cargarCatalogoDetalle(false);
+          detalleCatalog = await cargarCatalogoDetalle(true);
         }
       } catch {
-        const [recetaFallback, detalleFallback] = await Promise.all([
+        const [recetaFallback, detalleFallback, catalogoFallback] = await Promise.all([
           recetasAdminService.obtenerRecetaAdmin(idReceta),
           recetasAdminService.obtenerDetalleReceta(idReceta),
-          cargarCatalogoDetalle(false)
+          cargarCatalogoDetalle(true)
         ]);
         receta = recetaFallback;
         detalleResponse = detalleFallback;
+        detalleCatalog = catalogoFallback;
       }
 
       setEditingId(Number(receta?.id_receta || idReceta));

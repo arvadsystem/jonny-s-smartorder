@@ -3,6 +3,7 @@ import Select from 'react-select';
 import RecetasImagePreview from './RecetasImagePreview';
 import {
   calculateCantidadBasePresentacion,
+  calculateCantidadPresentacionApi,
   shouldRequireSpiceLevel
 } from '../utils/recetasAdminUtils';
 
@@ -379,8 +380,11 @@ const RecetasFormDrawer = ({
                       const equivalenciaBase = selectedPresentacion
                         ? calculateCantidadBasePresentacion(row?.cantidad_porciones, selectedPresentacion)
                         : null;
-                      const contenidoPresentacionTexto = selectedPresentacion
-                        ? `${formatDecimal(selectedPresentacion.cantidad_presentacion, 4)} ${getUnitLabel(selectedPresentacion, 'unidad_presentacion_nombre', 'unidad_presentacion_simbolo')}`
+                      const contenidoPresentacion = selectedPresentacion
+                        ? calculateCantidadPresentacionApi(row?.cantidad_porciones, selectedPresentacion)
+                        : null;
+                      const contenidoPresentacionTexto = selectedPresentacion && contenidoPresentacion !== null
+                        ? `${formatDecimal(contenidoPresentacion, 4)} ${getUnitLabel(selectedPresentacion, 'unidad_presentacion_nombre', 'unidad_presentacion_simbolo')}`
                         : '';
                       const equivalenciaTexto = isPresentacionMode
                         ? hasHistoricalPresentacion
