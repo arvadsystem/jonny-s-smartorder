@@ -313,15 +313,25 @@ const ExtrasAdmin = () => {
       .filter((group) => group.items.length > 0);
   }, [almacenSearch, groupedAlmacenes]);
 
+  const activeAlmacenesById = useMemo(() => {
+    const map = new Map();
+    activeAlmacenes.forEach((almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      if (Number.isInteger(idAlmacen) && idAlmacen > 0) {
+        map.set(idAlmacen, almacen);
+      }
+    });
+    return map;
+  }, [activeAlmacenes]);
+
   const renderAlmacenSelectField = useCallback((selectedValues, errorMessage = '') => {
     const selectedIds = new Set(normalizePositiveIdList(selectedValues));
     const groups = filteredAlmacenGroups;
     const allGroups = groupedAlmacenes;
     const canSelectAll = allGroups.length > 0 && allGroups.every((group) => group.items.length === 1);
-    const selectedRows = activeAlmacenes.filter((almacen) => {
-      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
-      return selectedIds.has(idAlmacen);
-    });
+    const selectedRows = [...selectedIds]
+      .map((idAlmacen) => activeAlmacenesById.get(idAlmacen))
+      .filter(Boolean);
 
     const toggleWarehouse = (almacen) => {
       const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
@@ -445,7 +455,7 @@ const ExtrasAdmin = () => {
         {errorMessage ? <div className="invalid-feedback d-block">{errorMessage}</div> : null}
       </div>
     );
-  }, [activeAlmacenes, almacenSearch, filteredAlmacenGroups, groupedAlmacenes, loadingAlmacenes, updateAlmacenes]);
+  }, [activeAlmacenes, activeAlmacenesById, almacenSearch, filteredAlmacenGroups, groupedAlmacenes, loadingAlmacenes, updateAlmacenes]);
 
   const validate = () => {
     if (!String(form.nombre || '').trim()) return 'El nombre del extra es obligatorio.';

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import combosAdminService from '../../../../services/combosAdminService';
 import recetasAdminService from '../../../../services/recetasAdminService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
@@ -216,6 +216,8 @@ const useCombosAdmin = () => {
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
   const [menusCatalog, setMenusCatalog] = useState([]);
+  const recetasCatalogLoadedRef = useRef(false);
+  const recetasCatalogPromiseRef = useRef(null);
   // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
     id_menu: ''
@@ -235,7 +237,15 @@ const useCombosAdmin = () => {
     }
   }, []);
 
-  const cargarCatalogoRecetas = useCallback(async () => {
+  const cargarCatalogoRecetas = useCallback(async ({ force = false } = {}) => {
+    if (!force && recetasCatalogLoadedRef.current && recetasCatalogo.length > 0) {
+      return recetasCatalogo;
+    }
+    if (!force && recetasCatalogPromiseRef.current) {
+      return recetasCatalogPromiseRef.current;
+    }
+
+    const request = (async () => {
     try {
       setError('');
       setLoadingRecetasCatalogo(true);
@@ -278,17 +288,26 @@ const useCombosAdmin = () => {
       ));
 
       setRecetasCatalogo(mergedRows);
+      recetasCatalogLoadedRef.current = mergedRows.length > 0;
 
       if (mergedRows.length === 0) {
         setError('No se encontraron recetas activas para agregar al combo.');
       }
+      return mergedRows;
     } catch (e) {
       setError((prev) => prev || e?.message || 'No se pudo cargar el catalogo de recetas para combos.');
       setRecetasCatalogo([]);
+      recetasCatalogLoadedRef.current = false;
+      return [];
     } finally {
       setLoadingRecetasCatalogo(false);
+      recetasCatalogPromiseRef.current = null;
     }
-  }, []);
+    })();
+
+    recetasCatalogPromiseRef.current = request;
+    return request;
+  }, [recetasCatalogo]);
 
   useEffect(() => {
     void cargarCombos();
@@ -436,9 +455,7 @@ const useCombosAdmin = () => {
     setFormPreviewError(false);
     setSelectedImageFile(null);
     setSelectedImagePreviewUrl('');
-    // Refresca el catalogo al abrir para tomar recetas nuevas sin recargar pagina.
-    void cargarCatalogoRecetas();
-  }, [cargarCatalogoRecetas, defaultIds.id_menu]);
+  }, [defaultIds.id_menu]);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -508,32 +525,13 @@ const useCombosAdmin = () => {
     try {
       setSaving(true);
       const payload = await buildPayload({ form, editingId, selectedImageFile });
-      let comboGuardado = null;
 
       if (editingId) {
-        const response = await combosAdminService.actualizarComboAdmin(editingId, payload);
-        comboGuardado = response?.data || null;
+        await combosAdminService.actualizarComboAdmin(editingId, payload);
         setSuccess('Combo actualizado correctamente.');
       } else {
-        const response = await combosAdminService.crearComboAdmin(payload);
-        comboGuardado = response?.data || null;
+        await combosAdminService.crearComboAdmin(payload);
         setSuccess('Combo creado correctamente.');
-      }
-
-      // Refleja de inmediato la imagen/estado del combo guardado antes del refetch.
-      if (comboGuardado && Number(comboGuardado?.id_combo || 0) > 0) {
-        const idCombo = Number(comboGuardado.id_combo);
-        setCombos((current) => (Array.isArray(current) ? current : []).map((item) => (
-          Number(item?.id_combo || 0) === idCombo
-            ? {
-              ...item,
-              ...comboGuardado,
-              total_detalle: Array.isArray(comboGuardado?.detalle)
-                ? comboGuardado.detalle.filter((detalle) => parseBoolean(detalle?.estado ?? true)).length
-                : Number(item?.total_detalle || 0)
-            }
-            : item
-        )));
       }
 
       // Reinicia fallback de imagen para que pruebe la URL nueva al volver a pintar cards.
@@ -560,7 +558,7 @@ const useCombosAdmin = () => {
     try {
       setError('');
       setSuccess('');
-      await cargarCatalogoRecetas();
+      await cargarCatalogoRecetas({ force: recetasCatalogo.length === 0 });
       const combo = await combosAdminService.obtenerComboAdmin(idCombo);
 
       setEditingId(Number(combo?.id_combo || idCombo));
@@ -573,7 +571,7 @@ const useCombosAdmin = () => {
     } catch (e) {
       setError(e?.message || 'No se pudo cargar el combo para edicion.');
     }
-  }, [cargarCatalogoRecetas]);
+  }, [cargarCatalogoRecetas, recetasCatalogo.length]);
 
   const onCambiarEstado = useCallback(async (combo) => {
     const comboId = Number(combo?.id_combo || 0);

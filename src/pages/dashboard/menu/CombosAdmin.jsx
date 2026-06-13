@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
 import CombosFormDrawer from './components/CombosFormDrawer';
@@ -71,13 +71,13 @@ const CombosAdmin = () => {
     sortBy: 'recientes'
   });
 
-  const combosVisibles = [...(Array.isArray(combosFiltrados) ? combosFiltrados : [])].sort((a, b) => {
+  const combosVisibles = useMemo(() => [...(Array.isArray(combosFiltrados) ? combosFiltrados : [])].sort((a, b) => {
     if (filtersDraft.sortBy === 'nombre_asc') return String(resolveComboNombre(a)).localeCompare(String(resolveComboNombre(b)), 'es');
     if (filtersDraft.sortBy === 'nombre_desc') return String(resolveComboNombre(b)).localeCompare(String(resolveComboNombre(a)), 'es');
     if (filtersDraft.sortBy === 'precio_asc') return Number(a?.precio || 0) - Number(b?.precio || 0);
     if (filtersDraft.sortBy === 'precio_desc') return Number(b?.precio || 0) - Number(a?.precio || 0);
     return Number(b?.id_combo || 0) - Number(a?.id_combo || 0);
-  });
+  }), [combosFiltrados, filtersDraft.sortBy]);
 
   // Muestra confirmacion visible despues de crear/editar/cambiar estado de combos.
   useEffect(() => {
