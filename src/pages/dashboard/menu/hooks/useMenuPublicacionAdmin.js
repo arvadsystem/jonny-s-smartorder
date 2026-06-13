@@ -30,11 +30,24 @@ const parseDraftVisible = (value) => {
   return Boolean(value);
 };
 
+const normalizePublicationWarning = (warning) => {
+  const text = String(warning || '').trim();
+  if (/publicaciones cruzadas/i.test(text) && /limpia detalle_menu/i.test(text)) {
+    return 'Se detectaron publicaciones que requieren auditoría posterior. No se realizará ninguna limpieza automática.';
+  }
+  return text;
+};
+
+const normalizePublicationWarnings = (warnings) =>
+  (Array.isArray(warnings) ? warnings : [])
+    .map(normalizePublicationWarning)
+    .filter(Boolean);
+
 const normalizeOptionalInput = (value) =>
   value === null || value === undefined ? '' : String(value).trim();
 
 const normalizeDraftRow = (row, index) => {
-  const visible = Boolean(row?.estado_item) ? parseDraftVisible(row?.visible) : false;
+  const visible = row?.estado_item ? parseDraftVisible(row?.visible) : false;
   const savedPublicPriceInput = normalizeOptionalInput(row?.precio_publico);
   const basePrice = Number(row?.precio_base);
   const publicPrice = Number(savedPublicPriceInput);
@@ -137,7 +150,7 @@ const useMenuPublicacionAdmin = () => {
       setMenuSummary(data?.menu || null);
       setCapabilities(data?.capabilities || {});
       setItems(nextItems);
-      setWarnings(Array.isArray(data?.warnings) ? data.warnings : []);
+      setWarnings(normalizePublicationWarnings(data?.warnings));
       setSharedMenuImpact(data?.shared_menu_impact || null);
       setAppliedScope('');
     } catch (e) {
@@ -463,7 +476,7 @@ const useMenuPublicacionAdmin = () => {
         };
       }));
 
-      const responseWarnings = Array.isArray(response?.data?.warnings) ? response.data.warnings : [];
+      const responseWarnings = normalizePublicationWarnings(response?.data?.warnings);
       setWarnings([...validation.warnings, ...responseWarnings]);
       setSharedMenuImpact(response?.data?.shared_menu_impact || null);
       setAppliedScope(String(response?.data?.applied_scope || ''));

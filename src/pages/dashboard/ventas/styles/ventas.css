@@ -6846,6 +6846,9 @@
   width: min(940px, 100%);
   max-height: 88vh;
   max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-radius: 20px;
   background: #fbfaf7;
 }
@@ -7554,6 +7557,61 @@
   padding: 10px 16px;
 }
 
+.ventas-finalizar-error-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4300;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(47, 26, 16, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.ventas-finalizar-error-modal {
+  width: min(440px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px;
+  border-radius: 20px;
+  text-align: center;
+  background: #fffdf9;
+}
+
+.ventas-finalizar-error-modal__icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #fff1f2;
+  color: #b42318;
+  font-size: 1.35rem;
+}
+
+.ventas-finalizar-error-modal__copy {
+  display: grid;
+  gap: 7px;
+}
+
+.ventas-finalizar-error-modal__copy h5,
+.ventas-finalizar-error-modal__copy p {
+  margin: 0;
+}
+
+.ventas-finalizar-error-modal__copy p {
+  color: rgba(82, 44, 34, 0.78);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ventas-finalizar-error-modal .btn {
+  min-width: 150px;
+  min-height: 44px;
+  border-radius: 12px;
+}
+
 .ventas-cliente-quick-backdrop {
   z-index: 70;
   align-items: center;
@@ -7651,8 +7709,8 @@
   .ventas-finalizar-modal {
     width: 100%;
     max-width: 100%;
-    max-height: 94vh;
-    max-height: 94dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
     border-radius: 22px 22px 0 0;
   }
 
@@ -7671,7 +7729,9 @@
   }
 
   .ventas-finalizar-modal .ventas-modal-body {
+    min-height: 0;
     padding: 12px 14px 14px;
+    overflow-y: auto;
   }
 
   .ventas-finalizar-modal__section {
@@ -7700,6 +7760,7 @@
   }
 
   .ventas-finalizar-modal .ventas-modal-footer {
+    flex: 0 0 auto;
     flex-direction: column;
     padding: 12px 14px max(14px, env(safe-area-inset-bottom));
   }
@@ -7808,12 +7869,10 @@
   }
 
   .ventas-finalizar-modal__total {
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
+    position: static;
     background: #fffdf8;
     border: 1px solid rgba(154, 83, 25, 0.16);
-    box-shadow: 0 -10px 24px rgba(82, 44, 34, 0.06);
+    box-shadow: none;
   }
 
   .ventas-finalizar-modal .ventas-modal-footer {

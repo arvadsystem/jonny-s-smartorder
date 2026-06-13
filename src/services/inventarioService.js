@@ -445,6 +445,10 @@ export const inventarioService = {
     }),
   obtenerAsignacionesInsumo: (idInsumo) => apiFetch(`/insumos/${idInsumo}/asignaciones`, 'GET'),
   obtenerAlmacenesDisponiblesInsumo: (idInsumo) => apiFetch(`/insumos/${idInsumo}/almacenes-disponibles`, 'GET'),
+  reemplazarAsignacionesInsumo: (idInsumo, idAlmacenes) =>
+    apiFetch(`/insumos/${idInsumo}/asignaciones`, 'PUT', {
+      id_almacenes: Array.isArray(idAlmacenes) ? idAlmacenes : []
+    }),
   asignarInsumoASucursal: (idInsumo, idAlmacen) =>
     apiFetch(`/insumos/${idInsumo}/asignaciones`, 'POST', {
       id_almacen: idAlmacen

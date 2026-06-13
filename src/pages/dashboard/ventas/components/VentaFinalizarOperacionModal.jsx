@@ -60,6 +60,17 @@ const isGenericComplementError = (error) => {
   return message.includes('complementos requeridos') && message.includes('este item');
 };
 
+const resolveSubmitErrorMessage = (error, fallback) => {
+  const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+  const message = String(
+    typeof error === 'string' ? error : (error?.message || error?.data?.message || fallback || '')
+  ).trim();
+  if (code === 'VENTAS_DESCUENTO_ITEM_NO_APLICA' || message.toLowerCase().includes('el descuento no aplica')) {
+    return 'El descuento seleccionado ya no aplica a uno de los items. Revisa los descuentos del carrito e intenta nuevamente.';
+  }
+  return message || fallback;
+};
+
 const normalizeOptionSearchText = (cliente) => [
   cliente.label,
   cliente.nombre_cliente,
@@ -86,12 +97,14 @@ export default function VentaFinalizarOperacionModal({
   const [contact, setContact] = useState(CONTACT_INITIAL);
   const [delivery, setDelivery] = useState(DELIVERY_INITIAL);
   const [localError, setLocalError] = useState('');
+  const [submitDialogError, setSubmitDialogError] = useState('');
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateSearch, setQuickCreateSearch] = useState('');
   const [paidSubmitting, setPaidSubmitting] = useState(false);
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
   const paidSubmittingRef = useRef(false);
   const pendingSubmittingRef = useRef(false);
+  const paidErrorPendingRef = useRef(false);
   const lastAutoPhoneRef = useRef('');
   const isSubmitting = saving || paidSubmitting || pendingSubmitting;
 
@@ -161,8 +174,16 @@ export default function VentaFinalizarOperacionModal({
     pendingSubmittingRef.current = false;
     setPaidSubmitting(false);
     setPendingSubmitting(false);
+    setSubmitDialogError('');
+    paidErrorPendingRef.current = false;
     lastAutoPhoneRef.current = '';
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !paidErrorPendingRef.current || !composer.submitError) return;
+    paidErrorPendingRef.current = false;
+    setSubmitDialogError(resolveSubmitErrorMessage(composer.submitError, 'No se pudo registrar la venta.'));
+  }, [composer.submitError, open]);
 
   if (!open) return null;
 
@@ -233,9 +254,14 @@ export default function VentaFinalizarOperacionModal({
     paidSubmittingRef.current = true;
     setPaidSubmitting(true);
     setLocalError('');
+    setSubmitDialogError('');
+    paidErrorPendingRef.current = true;
     try {
       const response = await composer.submitPaidSale();
-      if (response) onClose();
+      if (response) {
+        paidErrorPendingRef.current = false;
+        onClose();
+      }
     } finally {
       paidSubmittingRef.current = false;
       setPaidSubmitting(false);
@@ -247,6 +273,7 @@ export default function VentaFinalizarOperacionModal({
     pendingSubmittingRef.current = true;
     setPendingSubmitting(true);
     setLocalError('');
+    setSubmitDialogError('');
 
     try {
       if (!validateCommon()) return;
@@ -297,7 +324,7 @@ export default function VentaFinalizarOperacionModal({
         const blockedByComposer = !composer.validateComplementosForPending({ openSelector: true });
         setLocalError(blockedByComposer ? '' : (error?.message || 'No se pudo crear el pedido pendiente.'));
       } else {
-        setLocalError(error?.message || 'No se pudo crear el pedido pendiente.');
+        setSubmitDialogError(resolveSubmitErrorMessage(error, 'No se pudo crear el pedido pendiente.'));
       }
     } finally {
       pendingSubmittingRef.current = false;
@@ -404,7 +431,11 @@ export default function VentaFinalizarOperacionModal({
   };
 
   return (
-    <div className="ventas-modal-backdrop ventas-finalizar-modal-backdrop" role="presentation">
+    <div
+      className="ventas-modal-backdrop ventas-finalizar-modal-backdrop"
+      role="presentation"
+      style={composer.complementModal.open ? { zIndex: 4100 } : undefined}
+    >
       <section
         className="ventas-modal-card ventas-finalizar-modal"
         role="dialog"
@@ -679,8 +710,8 @@ export default function VentaFinalizarOperacionModal({
             </div>
           </div>
 
-          {(localError || composer.submitError) ? (
-            <div className="ventas-create-modal__error">{localError || composer.submitError}</div>
+          {localError && !submitDialogError ? (
+            <div className="ventas-create-modal__error">{localError}</div>
           ) : null}
         </div>
 
@@ -706,6 +737,27 @@ export default function VentaFinalizarOperacionModal({
         onClose={() => setQuickCreateOpen(false)}
         onCreated={handleClienteCreated}
       />
+      {submitDialogError ? (
+        <div className="ventas-finalizar-error-backdrop" role="presentation">
+          <section
+            className="ventas-modal-card ventas-finalizar-error-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="ventas-finalizar-error-title"
+          >
+            <div className="ventas-finalizar-error-modal__icon" aria-hidden="true">
+              <i className="bi bi-exclamation-triangle" />
+            </div>
+            <div className="ventas-finalizar-error-modal__copy">
+              <h5 id="ventas-finalizar-error-title">No se pudo completar</h5>
+              <p>{submitDialogError}</p>
+            </div>
+            <button type="button" className="btn btn-primary" onClick={() => setSubmitDialogError('')} autoFocus>
+              Entendido
+            </button>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

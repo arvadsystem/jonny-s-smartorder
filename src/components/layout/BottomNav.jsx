@@ -168,7 +168,7 @@ const BottomNav = () => {
                   className="btn btn-sm btn-light inv-submodule-close"
                   onClick={() => setShowInventarioSheet(false)}
                 >
-                  ×
+                  Ã—
                 </button>
               </div>
 

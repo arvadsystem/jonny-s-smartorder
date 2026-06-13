@@ -10,6 +10,7 @@ import {
   getExtrasSubtotal,
   getResultsLabel,
   normalizeComplementIds,
+  normalizeValidComplementIds,
   normalizeExtras,
   toNormalizedId
 } from '../../../../modules/ventas/utils/ventasCartUtils';
@@ -102,9 +103,44 @@ const getLineComplementRequirement = (line) => {
 };
 
 const getLineComplementSelectionIssue = (line) => {
-  if (!line || line.kind === 'PRODUCTO') return null;
+  if (!line) return null;
   const name = String(line.nombre_item || line.nombre || line.descripcion_item || 'Item').trim();
+  const rawComplementos = Array.isArray(line.complementos) ? line.complementos : [];
+  const rawIds = rawComplementos
+    .map((entry) => Number(entry?.id_complemento ?? entry))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  const normalizedIds = normalizeComplementIds(rawComplementos);
+  const validIds = normalizeValidComplementIds(line);
+  const permitsComplementos = (Array.isArray(line.complementos_disponibles)
+    ? line.complementos_disponibles
+    : []).some((entry) => entry?.disponible !== false);
   const requirement = getLineComplementRequirement(line);
+  const invalidSelection =
+    rawComplementos.length !== rawIds.length
+    || rawIds.length !== normalizedIds.length
+    || normalizedIds.length !== validIds.length
+    || (line.kind === 'PRODUCTO' && rawComplementos.length > 0)
+    || (!line.complementos_requiere && !permitsComplementos && normalizedIds.length > 0);
+  if (invalidSelection) {
+    return {
+      type: 'invalid',
+      line,
+      cartKey: line.cartKey,
+      name,
+      ...requirement,
+      message: `Revisa los complementos de ${name}. Hay una seleccion que ya no es valida.`
+    };
+  }
+  if (requirement.required > 0 && requirement.selectedCount < requirement.required && !requirement.authorizedIncomplete) {
+    return {
+      type: 'missing',
+      line,
+      cartKey: line.cartKey,
+      name,
+      ...requirement,
+      message: `Revisa los complementos de ${name}. Faltan complementos por seleccionar.`
+    };
+  }
   if (requirement.max > 0 && requirement.selectedCount > requirement.max) {
     const quantity = Math.max(1, Number(line.cantidad || 1));
     return {
@@ -318,6 +354,68 @@ export const useVentaComposer = ({
 
   const selectedSucursalId = toNormalizedId(state.selectedSucursal);
   const hasSelectedSucursal = Boolean(selectedSucursalId);
+
+  useEffect(() => {
+    setState((current) => {
+      let changed = false;
+      const nextCart = current.cart.map((line) => {
+        if (line.kind === 'PRODUCTO') {
+          if (!Array.isArray(line.complementos) || line.complementos.length === 0) return line;
+          changed = true;
+          return {
+            ...line,
+            complementos: [],
+            complementos_disponibles: [],
+            cartKey: buildCartKey(line.kind, line.entityId, [], line.extras)
+          };
+        }
+
+        const catalogRow = line.kind === 'COMBO'
+          ? (Array.isArray(combos) ? combos : []).find((row) => Number(row?.id_combo) === Number(line.id_combo))
+          : (Array.isArray(recetas) ? recetas : []).find((row) => Number(row?.id_receta) === Number(line.id_receta));
+        if (!catalogRow) return line;
+
+        const disponibles = (Array.isArray(catalogRow.complementos_disponibles) ? catalogRow.complementos_disponibles : [])
+          .map((entry) => ({
+            id_complemento: Number(entry?.id_complemento ?? 0) || null,
+            nombre: String(entry?.nombre ?? 'Complemento').trim(),
+            disponible: entry?.disponible !== false
+          }))
+          .filter((entry) => entry.id_complemento);
+        const allowedIds = new Set(
+          disponibles.filter((entry) => entry.disponible).map((entry) => entry.id_complemento)
+        );
+        const complementos = normalizeComplementIds(line.complementos).filter((id) => allowedIds.has(id));
+        const minimo = Number(catalogRow.minimo_complementos ?? 0) || 0;
+        const maximo = Number(catalogRow.maximo_complementos ?? 0) || 0;
+        const requiere = Boolean(catalogRow.requiere_complementos) || minimo > 0;
+        const nextCartKey = buildCartKey(line.kind, line.entityId, complementos, line.extras);
+        const lineChanged =
+          complementos.length !== normalizeComplementIds(line.complementos).length
+          || JSON.stringify(disponibles) !== JSON.stringify(line.complementos_disponibles || [])
+          || minimo !== Number(line.minimo_complementos || 0)
+          || maximo !== Number(line.maximo_complementos || 0)
+          || requiere !== Boolean(line.complementos_requiere)
+          || nextCartKey !== line.cartKey;
+        if (!lineChanged) return line;
+        changed = true;
+        return {
+          ...line,
+          complementos,
+          complementos_disponibles: disponibles,
+          complementos_requiere: requiere,
+          minimo_complementos: minimo,
+          maximo_complementos: maximo,
+          tipo_complemento: catalogRow.tipo_complemento || line.tipo_complemento,
+          complementos_incompletos_autorizados: complementos.length < minimo
+            ? Boolean(line.complementos_incompletos_autorizados)
+            : false,
+          cartKey: nextCartKey
+        };
+      });
+      return changed ? { ...current, cart: nextCart } : current;
+    });
+  }, [combos, recetas]);
 
   const descuentoGlobalOptions = useMemo(
     () =>
@@ -669,7 +767,7 @@ export const useVentaComposer = ({
   const openComplementModalForLine = (cartKey) => {
     const line = state.cart.find((row) => row.cartKey === cartKey);
     if (!line) return;
-    if (!line.complementos_requiere) return;
+    if (line.kind === 'PRODUCTO') return;
 
     const requirement = getLineComplementRequirement(line);
     setComplementModal({
@@ -1062,6 +1160,7 @@ export const useVentaComposer = ({
 
   const submitPaidSale = async (cuentaDividida) => {
     if (!validatePaidSale()) return null;
+    if (!validateComplementosForPending()) return null;
 
     try {
       const response = await onSubmit(

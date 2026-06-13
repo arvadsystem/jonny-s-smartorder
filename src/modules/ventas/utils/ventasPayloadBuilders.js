@@ -1,5 +1,5 @@
 import {
-  normalizeComplementIds,
+  normalizeValidComplementIds,
   normalizeExtras,
   toNormalizedId
 } from './ventasCartUtils';
@@ -20,7 +20,9 @@ export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) 
     if (line.kind !== 'PRODUCTO') {
       payload.observacion = String(line.observacion || '').trim() || null;
     }
-    const complementos = normalizeComplementIds(line.complementos);
+    const complementos = line.kind === 'PRODUCTO'
+      ? []
+      : normalizeValidComplementIds(line);
     if (complementos.length > 0) {
       payload.complementos = complementos.map((id) => ({ id_complemento: id }));
     }
@@ -36,16 +38,6 @@ export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) 
     }
     return payload;
   });
-
-export const buildDescuentosLineaPayload = (cart, { canApplyDiscount = false } = {}) => {
-  if (!canApplyDiscount) return [];
-  return (Array.isArray(cart) ? cart : [])
-    .map((line) => ({
-      cart_key: line.cartKey,
-      id_descuento_catalogo: Number(line.id_descuento_catalogo_linea || 0)
-    }))
-    .filter((line) => line.id_descuento_catalogo > 0);
-};
 
 export const applyDiscountPayloadFields = (payload, { canApplyDiscount = false, selectedDiscountId = '' } = {}) => {
   if (!canApplyDiscount) return payload;
@@ -90,11 +82,11 @@ export const buildPedidoPendientePayload = ({
   delivery,
   cuentaDividida
 }) => {
-  const descuentosLinea = buildDescuentosLineaPayload(state.cart, { canApplyDiscount });
-  const payload = applyDiscountPayloadFields({
+  const items = buildVentaItemsPayload(state.cart, { canApplyDiscount });
+  return applyDiscountPayloadFields({
     id_cliente: state.selectedClient === 'cf' ? null : Number(state.selectedClient),
     id_sucursal: selectedSucursalId,
-    items: buildVentaItemsPayload(state.cart, { canApplyDiscount }),
+    items,
     id_sesion_caja: toNormalizedId(state.temporarySessionId),
     contacto,
     contexto,
@@ -105,8 +97,4 @@ export const buildPedidoPendientePayload = ({
     canApplyDiscount,
     selectedDiscountId: state.selectedDiscountId
   });
-  if (descuentosLinea.length > 0) {
-    payload.descuentos_linea = descuentosLinea;
-  }
-  return payload;
 };

@@ -115,7 +115,8 @@ const menuPublicacionAdminService = {
     return apiFetch(`${BASE_ENDPOINT}/programacion`, 'POST', {
       id_sucursal: idSucursal,
       id_menu: idMenu,
-      fecha_inicio: null
+      fecha_inicio: null,
+      sync_catalog: false
     });
   },
 
@@ -124,7 +125,8 @@ const menuPublicacionAdminService = {
     return apiFetch(`${BASE_ENDPOINT}/programacion`, 'POST', {
       id_sucursal: idSucursal,
       id_menu: idMenu,
-      fecha_inicio: fechaInicio || null
+      fecha_inicio: fechaInicio || null,
+      sync_catalog: false
     });
   },
 

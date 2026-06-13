@@ -6,6 +6,16 @@ import MenuActionToast from './components/MenuActionToast';
 import useMenuPublicacionAdmin from './hooks/useMenuPublicacionAdmin';
 import menuPublicacionAdminService from './services/menuPublicacionAdminService';
 
+const buildScheduleError = (error, fallback) => {
+  const data = error?.data && typeof error.data === 'object' ? error.data : {};
+  return {
+    message: String(error?.message || data?.message || fallback),
+    code: String(data?.code || error?.code || '').trim(),
+    phase: String(data?.phase || '').trim(),
+    correlationId: String(data?.correlationId || '').trim()
+  };
+};
+
 // million-ignore
 // Pantalla MVP para publicar menu por sucursal desde el panel admin.
 const MenuPublicacionAdmin = ({ showPreview = false }) => {
@@ -47,7 +57,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [selectedMenuProgramacionId, setSelectedMenuProgramacionId] = useState('');
   const [schedulingMenu, setSchedulingMenu] = useState(false);
   const [scheduleSuccess, setScheduleSuccess] = useState('');
-  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleError, setScheduleError] = useState(null);
 
   const [newMenuName, setNewMenuName] = useState('');
   const [newMenuDescription, setNewMenuDescription] = useState('');
@@ -69,7 +79,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       setMenusProgramables(Array.isArray(rows) ? rows : []);
     } catch (e) {
       setMenusProgramables([]);
-      setScheduleError(e?.message || 'No se pudieron cargar los menus disponibles.');
+      setScheduleError(buildScheduleError(e, 'No se pudieron cargar los menus disponibles.'));
     } finally {
       setLoadingMenus(false);
     }
@@ -104,7 +114,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   }, [menuSummary?.id_menu, onSelectCatalogMenu]);
 
   useEffect(() => {
-    setScheduleError('');
+    setScheduleError(null);
     setScheduleSuccess('');
   }, [selectedSucursalId]);
 
@@ -164,24 +174,24 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   }, [sucursales]);
 
   const handleProgramarMenu = async () => {
-    setScheduleError('');
+    setScheduleError(null);
     setScheduleSuccess('');
 
     const idSucursal = Number(selectedSucursalId || 0);
     const idMenu = Number(selectedMenuProgramacionId || 0);
 
     if (!idSucursal) {
-      setScheduleError('Selecciona una sucursal antes de cambiar el menu.');
+      setScheduleError({ message: 'Selecciona una sucursal antes de cambiar el menu.' });
       return;
     }
 
     if (!selectedSucursal || !selectedSucursal?.estado) {
-      setScheduleError('La sucursal seleccionada no esta disponible para cambios.');
+      setScheduleError({ message: 'La sucursal seleccionada no esta disponible para cambios.' });
       return;
     }
 
     if (!idMenu) {
-      setScheduleError('Selecciona un menu para activar.');
+      setScheduleError({ message: 'Selecciona un menu para activar.' });
       return;
     }
 
@@ -198,10 +208,10 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
       setSelectedMenuProgramacionId(String(idMenu));
       onSelectCatalogMenu(String(idMenu));
-      setScheduleSuccess(response?.message || 'Menu activo actualizado correctamente.');
+      setScheduleSuccess(response?.message || 'Menú activo actualizado correctamente.');
       await reloadCurrent();
     } catch (e) {
-      setScheduleError(e?.message || 'No se pudo activar el menu para esta sucursal.');
+      setScheduleError(buildScheduleError(e, 'No se pudo activar el menu para esta sucursal.'));
     } finally {
       setSchedulingMenu(false);
     }
@@ -319,7 +329,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const handleDeleteMenu = async () => {
     const idMenu = Number(selectedMenuProgramable?.id_menu || 0);
     if (!idMenu) {
-      setScheduleError('Selecciona un menu valido antes de eliminar.');
+      setScheduleError({ message: 'Selecciona un menu valido antes de eliminar.' });
       return;
     }
 
@@ -330,7 +340,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
     try {
       setDeletingMenu(true);
-      setScheduleError('');
+      setScheduleError(null);
       setScheduleSuccess('');
       const response = await menuPublicacionAdminService.deleteMenuProgramable(idMenu);
 
@@ -347,7 +357,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       setScheduleSuccess(response?.message || `Menu #${idMenu} eliminado correctamente.`);
       setToastMessage(response?.message || `Menu #${idMenu} eliminado correctamente.`);
     } catch (e) {
-      setScheduleError(e?.message || 'No se pudo eliminar el menu.');
+      setScheduleError(buildScheduleError(e, 'No se pudo eliminar el menu.'));
     } finally {
       setDeletingMenu(false);
     }
