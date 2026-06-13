@@ -66,6 +66,7 @@ const RecetasTable = ({
               <th>ID</th>
               <th>Nombre</th>
               <th>Precio</th>
+              <th>Sucursales</th>
               <th>Estado</th>
               <th className="text-end">Acciones</th>
             </tr>
@@ -79,6 +80,7 @@ const RecetasTable = ({
                   <td>#{id}</td>
                   <td>{String(receta?.nombre_receta || '')}</td>
                   <td>{formatMoney(receta?.precio)}</td>
+                  <td>{Number(receta?.total_sucursales || 0)}</td>
                   <td>
                     <span className={`menu-recetas-admin__estado-badge ${estadoActivo ? 'is-active' : 'is-inactive'}`}>
                       {estadoActivo ? 'Activo' : 'Inactivo'}
@@ -205,6 +207,10 @@ const RecetasTable = ({
                 <div>
                   <small>Departamento</small>
                   <strong>{departamentoLabel}</strong>
+                </div>
+                <div>
+                  <small>Sucursales</small>
+                  <strong>{Number(receta?.total_sucursales || 0)}</strong>
                 </div>
               </div>
             </div>

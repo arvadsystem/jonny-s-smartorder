@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import recetasAdminService from '../../../../services/recetasAdminService';
 import { inventarioService } from '../../../../services/inventarioService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
+import { normalizePositiveIdList } from '../utils/warehouseAssignmentUtils';
 import {
   calculateCantidadBasePresentacion,
   buildRecetaDetallePayloadItem,
@@ -416,6 +417,10 @@ const useRecetasAdmin = () => {
   const [unidadesMedidaCatalog, setUnidadesMedidaCatalog] = useState([]);
   const [menusCatalog, setMenusCatalog] = useState([]);
   const [departamentosCatalog, setDepartamentosCatalog] = useState([]);
+  const [almacenes, setAlmacenes] = useState([]);
+  const [loadingAlmacenes, setLoadingAlmacenes] = useState(false);
+  const [almacenSearch, setAlmacenSearch] = useState('');
+  const [almacenError, setAlmacenError] = useState('');
   const [loadingDetalleCatalog, setLoadingDetalleCatalog] = useState(false);
   // Prefill tecnico para reducir captura manual de id_menu en el MVP.
   const [defaultIds, setDefaultIds] = useState({
@@ -431,6 +436,30 @@ const useRecetasAdmin = () => {
       return;
     }
     setResultModal({ open: true, variant, message: safeMessage });
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAlmacenes = async () => {
+      try {
+        setLoadingAlmacenes(true);
+        const response = await recetasAdminService.listarAlmacenesRecetas();
+        if (!isMounted) return;
+        setAlmacenes(normalizeRows(response));
+      } catch {
+        if (!isMounted) return;
+        setAlmacenes([]);
+      } finally {
+        if (isMounted) setLoadingAlmacenes(false);
+      }
+    };
+
+    void loadAlmacenes();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
   const closeResultModal = useCallback(() => {
     setResultModal((current) => ({ ...current, open: false }));
@@ -640,6 +669,16 @@ const useRecetasAdmin = () => {
     setForm((prev) => ({ ...prev, [field]: String(value || '') }));
   }, []);
 
+  const updateAlmacenes = useCallback((ids) => {
+    const normalized = normalizePositiveIdList(ids);
+    setAlmacenError('');
+    setForm((prev) => ({
+      ...prev,
+      id_almacenes: normalized,
+      id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
+    }));
+  }, []);
+
   const cargarCatalogoDetalle = useCallback(async (force = false) => {
     if (!force && Array.isArray(insumosDetalleCatalog) && insumosDetalleCatalog.length > 0) return;
     try {
@@ -805,6 +844,8 @@ const useRecetasAdmin = () => {
     setDrawerOpen(true);
     setError('');
     setSuccess('');
+    setAlmacenError('');
+    setAlmacenSearch('');
     closeResultModal();
     setFormPreviewError(false);
     setSelectedImageFile(null);
@@ -838,6 +879,19 @@ const useRecetasAdmin = () => {
       showSaveResult('error', validationMessage);
       return;
     }
+    if ((Array.isArray(almacenes) ? almacenes : []).length === 0) {
+      const message = 'No hay almacenes activos disponibles para asignar.';
+      setAlmacenError(message);
+      showSaveResult('error', message);
+      return;
+    }
+    const selectedWarehouses = normalizePositiveIdList(form.id_almacenes);
+    if (selectedWarehouses.length === 0) {
+      const message = 'Selecciona al menos una sucursal donde estará disponible esta receta.';
+      setAlmacenError(message);
+      showSaveResult('error', message);
+      return;
+    }
     const detalleValidation = validarDetalleReceta(detalleReceta, insumosDetalleCatalog);
     if (!detalleValidation.ok) {
       showSaveResult('error', detalleValidation.message);
@@ -856,12 +910,14 @@ const useRecetasAdmin = () => {
       if (editingId) {
         const response = await recetasAdminService.actualizarRecetaAdmin(editingId, {
           ...payload,
+          id_almacenes: selectedWarehouses,
           detalle_receta: detalleValidation.detalle
         });
         showSaveResult('success', response?.message || 'Receta actualizada correctamente.');
       } else {
         const response = await recetasAdminService.crearRecetaAdmin({
           ...payload,
+          id_almacenes: selectedWarehouses,
           detalle_receta: detalleValidation.detalle
         });
         const createdId = extractRecetaId(response);
@@ -897,7 +953,7 @@ const useRecetasAdmin = () => {
     } finally {
       setSaving(false);
     }
-  }, [cargarRecetas, defaultIds.id_menu, detalleReceta, editingId, form, insumosDetalleCatalog, selectedImageFile, showSaveResult]);
+  }, [almacenes, cargarRecetas, defaultIds.id_menu, detalleReceta, editingId, form, insumosDetalleCatalog, selectedImageFile, showSaveResult]);
 
   // Carga receta puntual para abrir drawer en modo edicion.
   const onEditar = useCallback(async (idReceta) => {
@@ -939,6 +995,8 @@ const useRecetasAdmin = () => {
 
       setEditingId(Number(receta?.id_receta || idReceta));
       setForm(normalizeRecetaForForm(receta || {}));
+      setAlmacenError('');
+      setAlmacenSearch('');
       const detalleRows = normalizeDetalleFromApi(detalleResponse, detalleCatalog);
       setDetalleReceta(
         detalleRows.length > 0
@@ -1044,9 +1102,13 @@ const useRecetasAdmin = () => {
       editingId,
       form,
       detalleReceta,
+      almacenes,
       insumosDetalleCatalog,
       unidadesMedidaCatalog,
       loadingDetalleCatalog,
+      loadingAlmacenes,
+      almacenSearch,
+      almacenError,
       menusCatalog,
       departamentosCatalog,
       filtersOpen,
@@ -1077,6 +1139,8 @@ const useRecetasAdmin = () => {
       setFormPreviewError,
       onChangeField,
       onChangeSelectField,
+      updateAlmacenes,
+      setAlmacenSearch,
       addDetalleRow,
       removeDetalleRow,
       updateDetalleRow,

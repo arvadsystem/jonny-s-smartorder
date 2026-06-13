@@ -23,6 +23,9 @@ const recetasAdminService = {
   obtenerContextoEdicionReceta: async (id) =>
     apiFetch(`${BASE_ENDPOINT}/${id}/contexto-edicion`, 'GET', null, { noCache: true }),
 
+  listarAlmacenesRecetas: async () =>
+    apiFetch(`${BASE_ENDPOINT}/catalogos/almacenes`, 'GET', null, { noCache: true }),
+
   // Crea una receta nueva.
   crearRecetaAdmin: async (data) => apiFetch(BASE_ENDPOINT, 'POST', data),
 
@@ -51,7 +54,23 @@ const recetasAdminService = {
 
   // Cambia el estado de una receta por ID.
   cambiarEstadoRecetaAdmin: async (id, data) =>
-    apiFetch(`${BASE_ENDPOINT}/${id}/estado`, 'PATCH', data)
+    apiFetch(`${BASE_ENDPOINT}/${id}/estado`, 'PATCH', data),
+
+  obtenerAsignacionesReceta: async (idReceta) =>
+    apiFetch(`${BASE_ENDPOINT}/${idReceta}/asignaciones`, 'GET', null, { noCache: true }),
+
+  reemplazarAsignacionesReceta: async (idReceta, idAlmacenes) =>
+    apiFetch(`${BASE_ENDPOINT}/${idReceta}/asignaciones`, 'PUT', {
+      id_almacenes: Array.isArray(idAlmacenes) ? idAlmacenes : []
+    }),
+
+  asignarRecetaAlmacen: async (idReceta, idAlmacen) =>
+    apiFetch(`${BASE_ENDPOINT}/${idReceta}/asignaciones`, 'POST', {
+      id_almacen: idAlmacen
+    }),
+
+  inactivarAsignacionReceta: async (idReceta, idAlmacen) =>
+    apiFetch(`${BASE_ENDPOINT}/${idReceta}/asignaciones/${idAlmacen}/inactivar`, 'PATCH', {})
 };
 
 export default recetasAdminService;

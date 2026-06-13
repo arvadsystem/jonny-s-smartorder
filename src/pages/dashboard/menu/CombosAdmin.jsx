@@ -25,11 +25,15 @@ const CombosAdmin = () => {
       drawerMode,
       editingId,
       form,
+      almacenes,
       menusCatalog,
       cardImageErrors,
       formPreviewError,
       selectedImageFileName,
-      loadingRecetasCatalogo
+      loadingRecetasCatalogo,
+      loadingAlmacenes,
+      almacenSearch,
+      almacenError
     },
     derived: {
       combosFiltrados,
@@ -41,6 +45,8 @@ const CombosAdmin = () => {
       setShowInactiveOnly,
       setFormPreviewError,
       onChangeField,
+      updateAlmacenes,
+      setAlmacenSearch,
       openCreateDrawer,
       closeDrawer,
       onAgregarRecetaDetalle,
@@ -213,9 +219,15 @@ const CombosAdmin = () => {
         editingId={editingId}
         form={form}
         menusCatalog={menusCatalog}
+        almacenes={almacenes}
         saving={saving}
         recetasDisponibles={recetasDisponibles}
+        loadingAlmacenes={loadingAlmacenes}
+        almacenSearch={almacenSearch}
+        almacenError={almacenError}
         onChangeField={onChangeField}
+        onUpdateAlmacenes={updateAlmacenes}
+        onAlmacenSearchChange={setAlmacenSearch}
         onSubmit={onSubmit}
         onClose={closeDrawer}
         onClearImage={clearFormImage}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import combosAdminService from '../../../../services/combosAdminService';
 import recetasAdminService from '../../../../services/recetasAdminService';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
+import { normalizePositiveIdList } from '../utils/warehouseAssignmentUtils';
 import {
   emptyComboForm,
   extractArchivoId,
@@ -216,6 +217,10 @@ const useCombosAdmin = () => {
   const [selectedImageFile, setSelectedImageFile] = useState(null);
   const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState('');
   const [menusCatalog, setMenusCatalog] = useState([]);
+  const [almacenes, setAlmacenes] = useState([]);
+  const [loadingAlmacenes, setLoadingAlmacenes] = useState(false);
+  const [almacenSearch, setAlmacenSearch] = useState('');
+  const [almacenError, setAlmacenError] = useState('');
   const recetasCatalogLoadedRef = useRef(false);
   const recetasCatalogPromiseRef = useRef(null);
   // Prefill tecnico para reducir captura manual de id_menu en el MVP.
@@ -370,6 +375,30 @@ const useCombosAdmin = () => {
   useEffect(() => {
     let isMounted = true;
 
+    const loadAlmacenes = async () => {
+      try {
+        setLoadingAlmacenes(true);
+        const response = await combosAdminService.listarAlmacenesCombos();
+        if (!isMounted) return;
+        setAlmacenes(normalizeRows(response));
+      } catch {
+        if (!isMounted) return;
+        setAlmacenes([]);
+      } finally {
+        if (isMounted) setLoadingAlmacenes(false);
+      }
+    };
+
+    void loadAlmacenes();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
     const loadMenusCatalog = async () => {
       try {
         const menusResponse = await menuPublicacionAdminService.getMenusProgramables();
@@ -442,6 +471,16 @@ const useCombosAdmin = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   }, []);
 
+  const updateAlmacenes = useCallback((ids) => {
+    const normalized = normalizePositiveIdList(ids);
+    setAlmacenError('');
+    setForm((prev) => ({
+      ...prev,
+      id_almacenes: normalized,
+      id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
+    }));
+  }, []);
+
   const openCreateDrawer = useCallback(() => {
     setDrawerMode('create');
     setEditingId(null);
@@ -452,6 +491,8 @@ const useCombosAdmin = () => {
     setDrawerOpen(true);
     setError('');
     setSuccess('');
+    setAlmacenError('');
+    setAlmacenSearch('');
     setFormPreviewError(false);
     setSelectedImageFile(null);
     setSelectedImagePreviewUrl('');
@@ -521,18 +562,23 @@ const useCombosAdmin = () => {
       setError(validationMessage);
       return;
     }
+    if ((Array.isArray(almacenes) ? almacenes : []).length === 0) {
+      const message = 'No hay almacenes activos disponibles para asignar.';
+      setAlmacenError(message);
+      setError(message);
+      return;
+    }
+    const selectedWarehouses = normalizePositiveIdList(form.id_almacenes);
+    if (selectedWarehouses.length === 0) {
+      const message = 'Selecciona al menos una sucursal donde estará disponible este combo.';
+      setAlmacenError(message);
+      setError(message);
+      return;
+    }
 
     try {
       setSaving(true);
       const payload = await buildPayload({ form, editingId, selectedImageFile });
-
-      if (editingId) {
-        await combosAdminService.actualizarComboAdmin(editingId, payload);
-        setSuccess('Combo actualizado correctamente.');
-      } else {
-        await combosAdminService.crearComboAdmin(payload);
-        setSuccess('Combo creado correctamente.');
-      }
 
       // Reinicia fallback de imagen para que pruebe la URL nueva al volver a pintar cards.
       setCardImageErrors({});
@@ -546,13 +592,20 @@ const useCombosAdmin = () => {
       setDrawerOpen(false);
       setSelectedImageFile(null);
       setSelectedImagePreviewUrl('');
+      if (editingId) {
+        await combosAdminService.actualizarComboAdmin(editingId, { ...payload, id_almacenes: selectedWarehouses });
+        setSuccess('Combo actualizado correctamente.');
+      } else {
+        await combosAdminService.crearComboAdmin({ ...payload, id_almacenes: selectedWarehouses });
+        setSuccess('Combo creado correctamente.');
+      }
       await cargarCombos();
     } catch (e) {
       setError(e?.message || 'No se pudo guardar el combo.');
     } finally {
       setSaving(false);
     }
-  }, [cargarCombos, defaultIds.id_menu, editingId, form, selectedImageFile]);
+  }, [almacenes, cargarCombos, defaultIds.id_menu, editingId, form, selectedImageFile]);
 
   const onEditar = useCallback(async (idCombo) => {
     try {
@@ -565,6 +618,8 @@ const useCombosAdmin = () => {
       setForm(normalizeComboForForm(combo));
       setDrawerMode('edit');
       setDrawerOpen(true);
+      setAlmacenError('');
+      setAlmacenSearch('');
       setFormPreviewError(false);
       setSelectedImageFile(null);
       setSelectedImagePreviewUrl('');
@@ -643,13 +698,17 @@ const useCombosAdmin = () => {
       drawerMode,
       editingId,
       form,
+      almacenes,
       menusCatalog,
       cardImageErrors,
       formPreviewError,
       selectedImageFileName: String(selectedImageFile?.name || ''),
       loadingRecetasCatalogo,
       showInactiveOnly,
-      recetasCatalogo
+      recetasCatalogo,
+      loadingAlmacenes,
+      almacenSearch,
+      almacenError
     },
     derived: {
       combosFiltrados,
@@ -661,6 +720,8 @@ const useCombosAdmin = () => {
       setShowInactiveOnly,
       setFormPreviewError,
       onChangeField,
+      updateAlmacenes,
+      setAlmacenSearch,
       openCreateDrawer,
       closeDrawer,
       onAgregarRecetaDetalle,

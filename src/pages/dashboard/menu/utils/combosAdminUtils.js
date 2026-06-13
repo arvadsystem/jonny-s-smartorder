@@ -11,6 +11,8 @@ export const emptyComboForm = {
   precio: '',
   cant_personas: '1',
   id_menu: '',
+  id_almacen: '',
+  id_almacenes: [],
   estado: 'true',
   url_imagen_publica: '',
   url_imagen_original: '',
@@ -87,6 +89,15 @@ export const normalizeComboForForm = (combo) => {
         ? '1'
         : String(combo.cant_personas),
     id_menu: String(combo?.id_menu ?? ''),
+    id_almacen:
+      combo?.id_almacen === null || combo?.id_almacen === undefined
+        ? ''
+        : String(combo.id_almacen),
+    id_almacenes: Array.isArray(combo?.id_almacenes)
+      ? combo.id_almacenes
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+      : [],
     estado: parseBoolean(combo?.estado) ? 'true' : 'false',
     url_imagen_publica: imageUrl,
     url_imagen_original: imageUrl,

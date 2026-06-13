@@ -38,6 +38,9 @@ const combosAdminService = {
     return apiFetch('/api/admin/recetas', 'GET', null, { noCache: true });
   },
 
+  listarAlmacenesCombos: async () =>
+    apiFetch(`${BASE_ENDPOINT}/catalogos/almacenes`, 'GET', null, { noCache: true }),
+
   agregarDetalleCombo: async (idCombo, payload) =>
     apiFetch(`${BASE_ENDPOINT}/${idCombo}/detalle`, 'POST', payload),
 
@@ -73,7 +76,23 @@ const combosAdminService = {
       }
       throw error;
     }
-  }
+  },
+
+  obtenerAsignacionesCombo: async (idCombo) =>
+    apiFetch(`${BASE_ENDPOINT}/${idCombo}/asignaciones`, 'GET', null, { noCache: true }),
+
+  reemplazarAsignacionesCombo: async (idCombo, idAlmacenes) =>
+    apiFetch(`${BASE_ENDPOINT}/${idCombo}/asignaciones`, 'PUT', {
+      id_almacenes: Array.isArray(idAlmacenes) ? idAlmacenes : []
+    }),
+
+  asignarComboAlmacen: async (idCombo, idAlmacen) =>
+    apiFetch(`${BASE_ENDPOINT}/${idCombo}/asignaciones`, 'POST', {
+      id_almacen: idAlmacen
+    }),
+
+  inactivarAsignacionCombo: async (idCombo, idAlmacen) =>
+    apiFetch(`${BASE_ENDPOINT}/${idCombo}/asignaciones/${idAlmacen}/inactivar`, 'PATCH', {})
 };
 
 export default combosAdminService;

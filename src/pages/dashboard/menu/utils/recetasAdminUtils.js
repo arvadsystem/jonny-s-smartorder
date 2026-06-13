@@ -4,6 +4,8 @@ export const emptyForm = {
   precio: '',
   id_menu: '',
   id_nivel_picante: '1',
+  id_almacen: '',
+  id_almacenes: [],
   estado: 'true',
   id_tipo_departamento: '',
   url_imagen_publica: '',
@@ -306,6 +308,15 @@ export const normalizeRecetaForForm = (receta) => {
       receta?.id_nivel_picante === null || receta?.id_nivel_picante === undefined
         ? ''
         : String(receta.id_nivel_picante),
+    id_almacen:
+      receta?.id_almacen === null || receta?.id_almacen === undefined
+        ? ''
+        : String(receta.id_almacen),
+    id_almacenes: Array.isArray(receta?.id_almacenes)
+      ? receta.id_almacenes
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+      : [],
     estado: parseBoolean(receta?.estado) ? 'true' : 'false',
     id_tipo_departamento: String(receta?.id_tipo_departamento ?? ''),
     url_imagen_publica: imageUrl,

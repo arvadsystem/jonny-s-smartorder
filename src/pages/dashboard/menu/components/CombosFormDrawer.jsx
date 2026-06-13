@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Select from 'react-select';
 import RecetasImagePreview from './RecetasImagePreview';
+import WarehouseAssignmentPicker from './WarehouseAssignmentPicker';
 
 const CombosFormDrawer = ({
   drawerOpen,
@@ -9,8 +10,14 @@ const CombosFormDrawer = ({
   form,
   saving,
   menusCatalog = [],
+  almacenes = [],
   recetasDisponibles,
+  loadingAlmacenes = false,
+  almacenSearch = '',
+  almacenError = '',
   onChangeField,
+  onUpdateAlmacenes,
+  onAlmacenSearchChange,
   onSubmit,
   onClose,
   onClearImage,
@@ -186,6 +193,31 @@ const CombosFormDrawer = ({
               isDisabled={saving || !canSubmit}
               maxMenuHeight={192}
             />
+          </div>
+
+          <div className="col-12">
+            <div className="menu-recetas-admin__detail-section-head">
+              <div className="menu-recetas-admin__detail-section-icon">
+                <i className="bi bi-box-seam" aria-hidden="true" />
+              </div>
+              <div>
+                <div className="menu-recetas-admin__detail-section-title">Inventario</div>
+                <div className="menu-recetas-admin__detail-section-subtitle">Stock mínimo y ubicación.</div>
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="form-label mb-1">Almacén asignado</label>
+              <WarehouseAssignmentPicker
+                selectedValues={form.id_almacenes}
+                almacenes={almacenes}
+                loading={loadingAlmacenes}
+                search={almacenSearch}
+                onSearchChange={onAlmacenSearchChange}
+                onChange={onUpdateAlmacenes}
+                errorMessage={almacenError}
+              />
+            </div>
           </div>
 
           <div className="col-12">

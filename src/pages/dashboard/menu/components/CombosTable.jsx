@@ -120,6 +120,10 @@ const CombosTable = ({
                   <small>Detalle</small>
                   <strong>{Number(combo?.total_detalle || 0)} recetas</strong>
                 </div>
+                <div>
+                  <small>Sucursales</small>
+                  <strong>{Number(combo?.total_sucursales || 0)}</strong>
+                </div>
               </div>
             </div>
 

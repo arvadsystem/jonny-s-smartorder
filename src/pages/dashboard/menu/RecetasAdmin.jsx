@@ -25,9 +25,13 @@ const RecetasAdmin = () => {
       editingId,
       form,
       detalleReceta,
+      almacenes,
       insumosDetalleCatalog,
       unidadesMedidaCatalog,
       loadingDetalleCatalog,
+      loadingAlmacenes,
+      almacenSearch,
+      almacenError,
       menusCatalog,
       departamentosCatalog,
       filtersOpen,
@@ -56,6 +60,8 @@ const RecetasAdmin = () => {
       setFormPreviewError,
       onChangeField,
       onChangeSelectField,
+      updateAlmacenes,
+      setAlmacenSearch,
       addDetalleRow,
       removeDetalleRow,
       updateDetalleRow,
@@ -333,16 +339,22 @@ const RecetasAdmin = () => {
         editingId={editingId}
         form={form}
         detalleReceta={detalleReceta}
+        almacenes={almacenes}
         insumosDetalleCatalog={insumosDetalleCatalog}
         unidadesMedidaCatalog={unidadesMedidaCatalog}
         insumoCategoriasOptions={insumoCategoriasOptions}
         loadingDetalleCatalog={loadingDetalleCatalog}
+        loadingAlmacenes={loadingAlmacenes}
+        almacenSearch={almacenSearch}
+        almacenError={almacenError}
         saving={saving}
         onChangeField={onChangeField}
         onChangeSelectField={onChangeSelectField}
         onAddDetalleRow={addDetalleRow}
         onRemoveDetalleRow={removeDetalleRow}
         onUpdateDetalleRow={updateDetalleRow}
+        onUpdateAlmacenes={updateAlmacenes}
+        onAlmacenSearchChange={setAlmacenSearch}
         onSubmit={onSubmit}
         onClose={closeCreateDrawer}
         onClearImage={clearFormImage}

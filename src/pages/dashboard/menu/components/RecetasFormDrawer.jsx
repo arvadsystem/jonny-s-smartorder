@@ -1,6 +1,7 @@
 ﻿import { useRef } from 'react';
 import Select from 'react-select';
 import RecetasImagePreview from './RecetasImagePreview';
+import WarehouseAssignmentPicker from './WarehouseAssignmentPicker';
 import {
   calculateCantidadBasePresentacion,
   calculateCantidadPresentacionApi,
@@ -65,12 +66,18 @@ const RecetasFormDrawer = ({
   unidadesMedidaCatalog = [],
   insumoCategoriasOptions = [],
   loadingDetalleCatalog = false,
+  almacenes = [],
+  loadingAlmacenes = false,
+  almacenSearch = '',
+  almacenError = '',
   saving,
   onChangeField,
   onChangeSelectField,
   onAddDetalleRow,
   onRemoveDetalleRow,
   onUpdateDetalleRow,
+  onUpdateAlmacenes,
+  onAlmacenSearchChange,
   onSubmit,
   onClose,
   onClearImage,
@@ -282,6 +289,31 @@ const RecetasFormDrawer = ({
                         maxMenuHeight={192}
                       />
                     </div>
+                  </div>
+                </section>
+
+                <section className="inv-prod-pmodal__section mt-3">
+                  <div className="menu-recetas-admin__detail-section-head">
+                    <div className="menu-recetas-admin__detail-section-icon">
+                      <i className="bi bi-box-seam" aria-hidden="true" />
+                    </div>
+                    <div>
+                      <div className="menu-recetas-admin__detail-section-title">Inventario</div>
+                      <div className="menu-recetas-admin__detail-section-subtitle">Stock mínimo y ubicación.</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="form-label mb-1">Almacén asignado</label>
+                    <WarehouseAssignmentPicker
+                      selectedValues={form.id_almacenes}
+                      almacenes={almacenes}
+                      loading={loadingAlmacenes}
+                      search={almacenSearch}
+                      onSearchChange={onAlmacenSearchChange}
+                      onChange={onUpdateAlmacenes}
+                      errorMessage={almacenError}
+                    />
                   </div>
                 </section>
 
