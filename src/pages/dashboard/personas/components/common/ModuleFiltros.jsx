@@ -9,7 +9,6 @@ export default function ModuleFiltros({
   drawerId,
   iconClass,
   title,
-  subtitle,
   draft,
   onChangeDraft,
   onClose,

@@ -54,6 +54,46 @@ const INVENTARIO_OPERATIONAL_PERMISSIONS = [
   PERMISSIONS.INVENTARIO_OC_EDITAR_SOLICITUD,
   PERMISSIONS.INVENTARIO_OC_RECEPCIONAR
 ];
+const STREAM_RELEASE_DELAY_MS = 150;
+
+let sharedSecurityNotificationsStream = null;
+let sharedSecurityNotificationsStreamUrl = '';
+let sharedSecurityNotificationsStreamConsumers = 0;
+let sharedSecurityNotificationsStreamReleaseTimer = null;
+
+const acquireSecurityNotificationsStream = (streamUrl) => {
+  if (sharedSecurityNotificationsStreamReleaseTimer) {
+    window.clearTimeout(sharedSecurityNotificationsStreamReleaseTimer);
+    sharedSecurityNotificationsStreamReleaseTimer = null;
+  }
+
+  if (
+    !sharedSecurityNotificationsStream
+    || sharedSecurityNotificationsStreamUrl !== streamUrl
+  ) {
+    sharedSecurityNotificationsStream?.close();
+    sharedSecurityNotificationsStream = new EventSource(streamUrl, { withCredentials: true });
+    sharedSecurityNotificationsStreamUrl = streamUrl;
+  }
+
+  sharedSecurityNotificationsStreamConsumers += 1;
+  return sharedSecurityNotificationsStream;
+};
+
+const releaseSecurityNotificationsStream = (source) => {
+  if (!source || sharedSecurityNotificationsStream !== source) return;
+
+  sharedSecurityNotificationsStreamConsumers = Math.max(0, sharedSecurityNotificationsStreamConsumers - 1);
+  if (sharedSecurityNotificationsStreamConsumers > 0) return;
+
+  sharedSecurityNotificationsStreamReleaseTimer = window.setTimeout(() => {
+    if (sharedSecurityNotificationsStreamConsumers > 0) return;
+    sharedSecurityNotificationsStream?.close();
+    sharedSecurityNotificationsStream = null;
+    sharedSecurityNotificationsStreamUrl = '';
+    sharedSecurityNotificationsStreamReleaseTimer = null;
+  }, STREAM_RELEASE_DELAY_MS);
+};
 
 const getTabFromSearch = (search, tabs, fallbackKey, options = {}) => {
   const sp = new URLSearchParams(search || '');
@@ -753,7 +793,7 @@ const Navbar = () => {
     if (typeof window === 'undefined' || typeof EventSource === 'undefined') return undefined;
 
     const streamUrl = buildApiUrl(SECURITY_NOTIFICATIONS_STREAM_PATH);
-    const source = new EventSource(streamUrl, { withCredentials: true });
+    const source = acquireSecurityNotificationsStream(streamUrl);
     notificationsStreamRef.current = source;
 
     const handleConnected = () => {
@@ -777,7 +817,7 @@ const Navbar = () => {
     return () => {
       source.removeEventListener('connected', handleConnected);
       source.removeEventListener('notification', handleNotification);
-      source.close();
+      releaseSecurityNotificationsStream(source);
       if (notificationsStreamRef.current === source) {
         notificationsStreamRef.current = null;
       }

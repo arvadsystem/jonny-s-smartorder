@@ -472,7 +472,10 @@ const buildPermisoRenderBlocks = (rows) => {
 
   return [...plainEntries, ...groupedEntries]
     .sort((left, right) => left.sortIndex - right.sortIndex)
-    .map(({ sortIndex, ...block }) => block);
+    .map((entry) => ({
+      type: entry.type,
+      groups: entry.groups
+    }));
 };
 
 const resolvePreviewGroup = (nombrePermiso) => {

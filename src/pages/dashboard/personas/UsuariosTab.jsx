@@ -849,7 +849,7 @@ export default function UsuariosTab({ openToast }) {
     } finally {
       if (mountedRef.current) setResetPasswordLoading(false);
     }
-  }, [canResetPassword, editId, drawerMode, resetPasswordLoading, actionLoading, safeToast, usuarios]);
+  }, [canResetPassword, editId, drawerMode, resetPasswordLoading, actionLoading, safeToast]);
 
   const iniciarEdicion = (usuario) => {
     if (!canEditUsuario) return;

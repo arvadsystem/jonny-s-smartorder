@@ -1,6 +1,7 @@
 import { apiFetch } from './api';
 import { API_URL } from '../utils/constants';
 const CLIENTES_ATOMIC_ROUTE_BLOCK_FLAG = 'clientes_atomic_route_blocked_v1';
+const sharedGetRequests = new Map();
 
 const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -145,14 +146,19 @@ const getErrorMessage = (payload, fallback) => {
 };
 
 const fetchGetWithSignal = async (endpoint, signal) => {
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const requestOptions = {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json'
     },
-    credentials: 'include',
-    signal
-  });
+    credentials: 'include'
+  };
+
+  if (signal) {
+    requestOptions.signal = signal;
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, requestOptions);
 
   const payload = await readResponseBody(response);
   const buildHttpError = (fallbackMessage) => {
@@ -179,6 +185,63 @@ const fetchGetWithSignal = async (endpoint, signal) => {
 
   if (response.status === 204) return null;
   return payload;
+};
+
+const createAbortError = () => {
+  try {
+    return new DOMException('The operation was aborted.', 'AbortError');
+  } catch {
+    const error = new Error('The operation was aborted.');
+    error.name = 'AbortError';
+    error.code = 'ABORT_ERR';
+    return error;
+  }
+};
+
+const attachConsumerAbort = (promise, signal) => {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(createAbortError());
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      reject(createAbortError());
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      }
+    );
+  });
+};
+
+const fetchGetShared = (endpoint, signal, requestKey) => {
+  if (!requestKey) return fetchGetWithSignal(endpoint, signal);
+
+  let sharedPromise = sharedGetRequests.get(requestKey);
+  if (!sharedPromise) {
+    sharedPromise = fetchGetWithSignal(endpoint).finally(() => {
+      sharedGetRequests.delete(requestKey);
+    });
+    sharedGetRequests.set(requestKey, sharedPromise);
+  }
+
+  return attachConsumerAbort(sharedPromise, signal);
 };
 
 const PHOTO_ROUTE_RETRYABLE_STATUS = new Set([404, 405, 415]);
@@ -350,8 +413,8 @@ export const personaService = {
     if (suggest) params.set('suggest', '1');
     const endpoint = `/personas?${params.toString()}`;
     if (!hasEstadoFilter) {
-      if (signal) return fetchGetWithSignal(endpoint, signal);
-      return apiFetch(endpoint, 'GET');
+      if (signal) return fetchGetShared(endpoint, signal, `personas:${endpoint}`);
+      return apiFetch(endpoint, 'GET', null, { noCache: true });
     }
 
     const paramsWithoutEstado = new URLSearchParams(params);
@@ -359,8 +422,8 @@ export const personaService = {
     const fallbackEndpoint = `/personas?${paramsWithoutEstado.toString()}`;
 
     try {
-      if (signal) return await fetchGetWithSignal(endpoint, signal);
-      return await apiFetch(endpoint, 'GET');
+      if (signal) return await fetchGetShared(endpoint, signal, `personas:${endpoint}`);
+      return await apiFetch(endpoint, 'GET', null, { noCache: true });
     } catch (error) {
       const status = Number(error?.status);
       const message = String(error?.message || '').toLowerCase();
@@ -373,8 +436,8 @@ export const personaService = {
         && (message.includes('estado') || payloadMessage.includes('estado') || payloadMessage.includes('no soporta'));
 
       if (!shouldRetryWithoutEstado) throw error;
-      if (signal) return fetchGetWithSignal(fallbackEndpoint, signal);
-      return apiFetch(fallbackEndpoint, 'GET');
+      if (signal) return fetchGetShared(fallbackEndpoint, signal, `personas:${fallbackEndpoint}`);
+      return apiFetch(fallbackEndpoint, 'GET', null, { noCache: true });
     }
   },
 
@@ -450,8 +513,8 @@ export const personaService = {
     if (normalizedSearch) params.set('nombre', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
     const endpoint = `/empresas?${params.toString()}`;
-    if (signal) return fetchGetWithSignal(endpoint, signal);
-    return apiFetch(endpoint, 'GET');
+    if (signal) return fetchGetShared(endpoint, signal, `empresas:${endpoint}`);
+    return apiFetch(endpoint, 'GET', null, { noCache: true });
   },
 
   getEmpresaById: (id) =>
@@ -524,8 +587,8 @@ export const personaService = {
     const query = params.toString();
     const requestGet = (endpoint) =>
       signal
-        ? fetchGetWithSignal(endpoint, signal)
-        : apiFetch(endpoint, 'GET');
+        ? fetchGetShared(endpoint, signal, `empleados:${endpoint}`)
+        : apiFetch(endpoint, 'GET', null, { noCache: true });
 
     try {
       return await requestGet(`/empleados?${query}`);
@@ -626,8 +689,8 @@ export const personaService = {
 
     const request = (endpoint) => (
       signal
-        ? fetchGetWithSignal(endpoint, signal)
-        : apiFetch(endpoint, 'GET')
+        ? fetchGetShared(endpoint, signal, `cargos:${endpoint}`)
+        : apiFetch(endpoint, 'GET', null, { noCache: true })
     );
 
     const endpoints = [
@@ -916,7 +979,7 @@ export const personaService = {
     const query = params.toString();
     const requestGet = (endpoint) =>
       signal
-        ? fetchGetWithSignal(endpoint, signal)
+        ? fetchGetShared(endpoint, signal, `clientes:${endpoint}`)
         : apiFetch(endpoint, 'GET', null, { noCache: true });
 
     try {

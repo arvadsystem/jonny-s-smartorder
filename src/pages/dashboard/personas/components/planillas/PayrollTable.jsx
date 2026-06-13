@@ -34,7 +34,6 @@ export default function PayrollTable({
     if (typeof window === 'undefined') return undefined;
     const mediaQuery = window.matchMedia('(max-width: 767.98px)');
     const onChange = (event) => setIsMobileLayout(event.matches);
-    setIsMobileLayout(mediaQuery.matches);
     if (typeof mediaQuery.addEventListener === 'function') {
       mediaQuery.addEventListener('change', onChange);
       return () => mediaQuery.removeEventListener('change', onChange);
