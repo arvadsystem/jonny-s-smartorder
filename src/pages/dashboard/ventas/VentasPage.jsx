@@ -178,8 +178,8 @@ export default function VentasPage() {
     }
   };
 
-  const handleCreateVenta = async (payload) => {
-    const response = await createVenta(payload);
+  const handleCreateVenta = async (payload, options) => {
+    const response = await createVenta(payload, options);
 
     if (response?.id_factura) {
       goToTab('ventas');

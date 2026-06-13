@@ -232,6 +232,7 @@ export const useVentaComposer = ({
   recetas,
   descuentosCatalogo,
   onSubmit,
+  suppressSubmitErrorToast = false,
   onRequireAutoAuxiliar,
   resetKey,
   canApplyDiscount = false
@@ -859,7 +860,14 @@ export const useVentaComposer = ({
           nombre: String(entry.nombre || 'Extra').trim(),
           precio: roundMoney(entry.precio),
           id_insumo: Number(entry.id_insumo || 0) || null,
-          stock_disponible: entry.stock_disponible ?? null
+          id_insumo_maestro: Number(entry.id_insumo_maestro || 0) || null,
+          stock_disponible: entry.stock_disponible ?? null,
+          cantidad_consumo_base: entry.cantidad_consumo_base ?? null,
+          id_unidad_base: Number(entry.id_unidad_base || 0) || null,
+          disponible: entry.disponible !== false,
+          inventario_configurado: entry.inventario_configurado !== false,
+          motivo_no_disponible: String(entry.motivo_no_disponible || '').trim() || null,
+          codigo_no_disponible: String(entry.codigo_no_disponible || '').trim() || null
         }))
         .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0);
       setExtrasModal((current) => ({
@@ -882,6 +890,22 @@ export const useVentaComposer = ({
   };
 
   const confirmExtrasModal = (selectedExtras) => {
+    const optionsById = new Map(
+      extrasModal.options.map((option) => [Number(option.id_extra), option])
+    );
+    const unavailableSelection = normalizeExtras(selectedExtras).find((entry) => {
+      const option = optionsById.get(Number(entry.id_extra));
+      return !option || option.disponible !== true;
+    });
+    if (unavailableSelection) {
+      const option = optionsById.get(Number(unavailableSelection.id_extra));
+      setExtrasModal((current) => ({
+        ...current,
+        error: option?.motivo_no_disponible || 'Uno de los extras seleccionados ya no esta disponible.'
+      }));
+      return;
+    }
+
     const nextExtras = clampExtrasToQuantity(selectedExtras, extrasModal.row?.cantidad);
     setState((current) => {
       const currentLine = current.cart.find((line) => line.cartKey === extrasModal.cartKey);
@@ -1040,7 +1064,10 @@ export const useVentaComposer = ({
     if (!validatePaidSale()) return null;
 
     try {
-      const response = await onSubmit(buildPaidSalePayload({ cuentaDividida }));
+      const response = await onSubmit(
+        buildPaidSalePayload({ cuentaDividida }),
+        { suppressErrorToast: suppressSubmitErrorToast }
+      );
 
       resetComposer({ preserveSucursal: true, preserveSession: true });
       return response;

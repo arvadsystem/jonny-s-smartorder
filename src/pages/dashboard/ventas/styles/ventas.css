@@ -8029,6 +8029,11 @@
   background: #fff;
 }
 
+.ventas-extras-modal__card.is-unavailable {
+  background: rgba(248, 249, 250, 0.92);
+  opacity: 0.82;
+}
+
 .ventas-extras-modal__card > div:first-child {
   min-width: 0;
   display: grid;
@@ -8045,6 +8050,12 @@
   color: rgba(82, 44, 34, 0.72);
   font-size: 0.84rem;
   font-weight: 800;
+}
+
+.ventas-extras-modal__card small {
+  color: rgba(82, 44, 34, 0.68);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .ventas-extras-modal__footer {

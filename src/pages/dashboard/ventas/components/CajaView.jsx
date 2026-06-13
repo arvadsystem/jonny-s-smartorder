@@ -348,6 +348,7 @@ export default function CajaView({
     isSuperAdmin,
     defaultSucursalId,
     onSubmit,
+    suppressSubmitErrorToast: true,
     onRequireAutoAuxiliar: openAutoAuxiliarForSucursal
   });
   composerRef.current = composer;

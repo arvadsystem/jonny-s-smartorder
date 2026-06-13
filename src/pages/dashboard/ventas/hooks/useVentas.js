@@ -541,7 +541,7 @@ export const useVentas = () => {
   }, [openToast]);
 
   const createVenta = useCallback(
-    async (payload) => {
+    async (payload, { suppressErrorToast = false } = {}) => {
       setSaving(true);
       setError('');
 
@@ -557,7 +557,7 @@ export const useVentas = () => {
       } catch (error) {
         const message = extractApiMessage(error, 'No se pudo registrar la venta.');
         setError(message);
-        openToast('ERROR', message, 'danger');
+        if (!suppressErrorToast) openToast('ERROR', message, 'danger');
         throw error;
       } finally {
         setSaving(false);

@@ -22,7 +22,14 @@ export const normalizeExtras = (value) =>
       nombre: String(entry?.nombre || 'Extra').trim(),
       precio: roundMoney(entry?.precio ?? entry?.precio_unitario ?? 0),
       id_insumo: Number(entry?.id_insumo ?? 0) || null,
-      stock_disponible: entry?.stock_disponible ?? null
+      id_insumo_maestro: Number(entry?.id_insumo_maestro ?? 0) || null,
+      stock_disponible: entry?.stock_disponible ?? null,
+      cantidad_consumo_base: entry?.cantidad_consumo_base ?? null,
+      id_unidad_base: Number(entry?.id_unidad_base ?? 0) || null,
+      disponible: entry?.disponible !== false,
+      inventario_configurado: entry?.inventario_configurado !== false,
+      motivo_no_disponible: String(entry?.motivo_no_disponible || '').trim() || null,
+      codigo_no_disponible: String(entry?.codigo_no_disponible || '').trim() || null
     }))
     .filter((entry) => Number.isInteger(entry.id_extra) && entry.id_extra > 0 && Number.isInteger(entry.cantidad) && entry.cantidad > 0)
     .sort((left, right) => left.id_extra - right.id_extra);
