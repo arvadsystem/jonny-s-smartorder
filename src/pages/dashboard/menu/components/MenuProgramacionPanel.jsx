@@ -72,7 +72,21 @@ const MenuProgramacionPanel = ({
             </header>
 
           {success ? <div className="alert alert-success py-2 mb-2">{success}</div> : null}
-          {error ? <div className="alert alert-danger py-2 mb-2">{error}</div> : null}
+          {error?.message ? (
+            <div className="alert alert-danger py-2 mb-2">
+              <div>{error.message}</div>
+              {(error.code || error.phase || error.correlationId) ? (
+                <details className="mt-1">
+                  <summary className="small">Detalle técnico para soporte</summary>
+                  <div className="small mt-1">
+                    {error.code ? <div>Código: {error.code}</div> : null}
+                    {error.phase ? <div>Fase: {error.phase}</div> : null}
+                    {error.correlationId ? <div>Referencia: {error.correlationId}</div> : null}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
 
           <label className="form-label mb-1">Menu activo destino</label>
 
@@ -141,7 +155,9 @@ const MenuProgramacionPanel = ({
             <i className="bi bi-info-circle-fill" aria-hidden="true" />
             <div>
               <strong>Que cambia al activar un menu?</strong>
-              <p className="mb-0">El menu seleccionado sera el que veran los clientes al realizar pedidos en esta sucursal.</p>
+              <p className="mb-0">
+                Solo cambia el menu vigente de esta sucursal. No copia, limpia ni publica items automaticamente.
+              </p>
             </div>
           </div>
           <div className="menu-pub-admin__program-card-foot">
