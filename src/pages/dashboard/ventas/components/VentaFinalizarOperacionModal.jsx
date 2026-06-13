@@ -404,7 +404,11 @@ export default function VentaFinalizarOperacionModal({
   };
 
   return (
-    <div className="ventas-modal-backdrop ventas-finalizar-modal-backdrop" role="presentation">
+    <div
+      className="ventas-modal-backdrop ventas-finalizar-modal-backdrop"
+      role="presentation"
+      style={composer.complementModal.open ? { zIndex: 4100 } : undefined}
+    >
       <section
         className="ventas-modal-card ventas-finalizar-modal"
         role="dialog"

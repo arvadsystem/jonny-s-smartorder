@@ -7,6 +7,17 @@ export const normalizeComplementIds = (value) =>
       .filter((id) => Number.isInteger(id) && id > 0)
   )].sort((a, b) => a - b);
 
+export const normalizeValidComplementIds = (line) => {
+  if (!line || line.kind === 'PRODUCTO') return [];
+  const allowedIds = new Set(
+    (Array.isArray(line.complementos_disponibles) ? line.complementos_disponibles : [])
+      .filter((entry) => entry?.disponible !== false)
+      .map((entry) => Number(entry?.id_complemento ?? entry?.id_salsa ?? 0))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  );
+  return normalizeComplementIds(line.complementos).filter((id) => allowedIds.has(id));
+};
+
 export const buildComplementSignature = (value) => {
   const ids = normalizeComplementIds(value);
   if (ids.length === 0) return 'none';

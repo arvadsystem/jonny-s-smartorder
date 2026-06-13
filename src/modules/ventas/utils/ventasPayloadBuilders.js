@@ -1,5 +1,5 @@
 import {
-  normalizeComplementIds,
+  normalizeValidComplementIds,
   normalizeExtras,
   toNormalizedId
 } from './ventasCartUtils';
@@ -20,7 +20,9 @@ export const buildVentaItemsPayload = (cart, { canApplyDiscount = false } = {}) 
     if (line.kind !== 'PRODUCTO') {
       payload.observacion = String(line.observacion || '').trim() || null;
     }
-    const complementos = normalizeComplementIds(line.complementos);
+    const complementos = line.kind === 'PRODUCTO'
+      ? []
+      : normalizeValidComplementIds(line);
     if (complementos.length > 0) {
       payload.complementos = complementos.map((id) => ({ id_complemento: id }));
     }
