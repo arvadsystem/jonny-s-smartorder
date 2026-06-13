@@ -119,7 +119,7 @@ const resolveEmailDisplayValue = (value = {}) => {
 
 export const normalizeEmpresaFormValues = (value = {}) => ({
   rtn: formatRtn(value?.rtn),
-  nombre_empresa: normalizeText(value?.nombre_empresa),
+  nombre_empresa: normalizeText(value?.nombre_empresa, { preserveTrailingSpace: true }),
   id_telefono: formatPhone(
     limitText(digitsOnly(resolvePhoneDisplayValue(value)), PHONE_DIGITS_LENGTH)
   ),

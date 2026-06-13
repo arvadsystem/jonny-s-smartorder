@@ -1640,6 +1640,8 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
       if (!isCreateMode) {
         await cargarClientes({ force: true });
         void cargarClientesGlobalStats();
+      } else if (insertedLocally) {
+        void cargarClientes({ force: true, silent: true });
       } else if (!insertedLocally) {
         if (page !== 1) {
           setPage(1);

@@ -2825,6 +2825,8 @@ export default function Empleados({ openToast }) {
         if (editNeedsStatsRefresh) {
           void cargarEmpleadosGlobalStats();
         }
+      } else if (insertedLocally) {
+        void cargarEmpleados({ force: true, silent: true });
       } else if (!insertedLocally) {
         if (page !== 1) {
           setPage(1);
