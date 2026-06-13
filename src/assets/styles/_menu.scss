@@ -2408,6 +2408,159 @@
   font-weight: 800;
 }
 
+.menu-extras-admin__warehouse-picker {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.menu-extras-admin__warehouse-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 34px;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(72, 116, 219, 0.18);
+  background: rgba(236, 243, 255, 0.92);
+  color: #365fb5;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.menu-extras-admin__warehouse-search {
+  position: relative;
+}
+
+.menu-extras-admin__warehouse-search i {
+  position: absolute;
+  top: 50%;
+  left: 0.9rem;
+  transform: translateY(-50%);
+  color: #9b7b68;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.menu-extras-admin__warehouse-search .form-control {
+  padding-left: 2.4rem;
+  border-radius: 14px;
+  min-height: 46px;
+}
+
+.menu-extras-admin__warehouse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.menu-extras-admin__warehouse-chip,
+.menu-extras-admin__warehouse-chip-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 34px;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(72, 116, 219, 0.18);
+  background: rgba(244, 247, 255, 0.96);
+  color: #4b5e8f;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.menu-extras-admin__warehouse-chip {
+  cursor: pointer;
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.menu-extras-admin__warehouse-chip:hover {
+  border-color: rgba(72, 116, 219, 0.34);
+  background: #eef3ff;
+  transform: translateY(-1px);
+}
+
+.menu-extras-admin__warehouse-chip i {
+  font-size: 0.68rem;
+}
+
+.menu-extras-admin__warehouse-chip-more {
+  border-style: dashed;
+}
+
+.menu-extras-admin__warehouse-list {
+  display: grid;
+  gap: 0;
+  max-height: 290px;
+  overflow: auto;
+  border: 1px solid rgba(121, 75, 42, 0.12);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.96), #fff);
+}
+
+.menu-extras-admin__warehouse-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 0.95rem;
+  margin: 0;
+  border-bottom: 1px solid rgba(121, 75, 42, 0.08);
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.menu-extras-admin__warehouse-row:last-child {
+  border-bottom: 0;
+}
+
+.menu-extras-admin__warehouse-row:hover {
+  background: rgba(181, 96, 31, 0.045);
+}
+
+.menu-extras-admin__warehouse-row.is-selected {
+  background: rgba(72, 116, 219, 0.08);
+  box-shadow: inset 3px 0 0 #4f77d9;
+}
+
+.menu-extras-admin__warehouse-checkbox {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #4f77d9;
+}
+
+.menu-extras-admin__warehouse-copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.menu-extras-admin__warehouse-copy strong {
+  color: #2f160c;
+  font-size: 0.92rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.menu-extras-admin__warehouse-copy small {
+  color: #9b7b68;
+  font-size: 0.77rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.menu-extras-admin__warehouse-empty {
+  padding: 1rem;
+  color: #8b6b58;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.menu-extras-admin__warehouse-empty.is-danger {
+  color: #c14b52;
+}
+
 .menu-recetas-admin__image-controls {
   display: grid;
   gap: 10px;

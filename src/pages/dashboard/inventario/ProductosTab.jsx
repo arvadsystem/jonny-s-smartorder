@@ -175,6 +175,7 @@ const ProductosTab = ({ categorias = [], openToast }) => {
   const [showInactiveProductos, setShowInactiveProductos] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [createPanelOpen, setCreatePanelOpen] = useState(false);
+  const [almacenPickerSearch, setAlmacenPickerSearch] = useState('');
   // NUEVO: feature flag para mantener fallback del formulario legacy sin eliminar código funcional.
   const USE_PREMIUM_NEW_FORM = true;
   // NUEVO: historial local para micro-gráficos de KPI sin requerir backend adicional.
@@ -473,8 +474,25 @@ const ProductosTab = ({ categorias = [], openToast }) => {
       acc.get(idSucursal).items.push(almacen);
       return acc;
     }, new Map());
-    const groups = [...grouped.values()].sort((a, b) => a.nombreSucursal.localeCompare(b.nombreSucursal, 'es'));
-    const canSelectAll = groups.length > 0 && groups.every((group) => group.items.length === 1);
+    const allGroups = [...grouped.values()]
+      .map((group) => ({
+        ...group,
+        items: [...group.items].sort((left, right) => String(left?.nombre || left?.nombre_almacen || '').localeCompare(String(right?.nombre || right?.nombre_almacen || ''), 'es'))
+      }))
+      .sort((a, b) => a.nombreSucursal.localeCompare(b.nombreSucursal, 'es'));
+    const term = String(almacenPickerSearch || '').trim().toLowerCase();
+    const groups = !term
+      ? allGroups
+      : allGroups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((almacen) => (
+            String(group.nombreSucursal || '').toLowerCase().includes(term)
+            || String(almacen?.nombre || almacen?.nombre_almacen || '').toLowerCase().includes(term)
+          ))
+        }))
+        .filter((group) => group.items.length > 0);
+    const canSelectAll = allGroups.length > 0 && allGroups.every((group) => group.items.length === 1);
     const emitChange = (ids) => {
       const normalized = [...new Set(ids)];
       if (onChangeMulti) {
@@ -500,61 +518,107 @@ const ProductosTab = ({ categorias = [], openToast }) => {
     };
     const selectAllBranches = () => {
       if (!canSelectAll) return;
-      emitChange(groups.map((group) => Number.parseInt(String(group.items[0].id_almacen), 10)));
+      emitChange(allGroups.map((group) => Number.parseInt(String(group.items[0].id_almacen), 10)));
     };
+    const clearAll = () => emitChange([]);
+    const selectedRows = activeAlmacenes.filter((almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      return selectedIds.has(idAlmacen);
+    });
+    const visibleChips = selectedRows.slice(0, 3);
+    const hiddenChipCount = Math.max(0, selectedRows.length - visibleChips.length);
 
     return (
-      <div className={error ? 'is-invalid' : ''} id={`inv-prod-alm-${safeScope}`}>
+      <div className={`inv-prod-warehouse-picker ${error ? 'is-invalid' : ''}`} id={`inv-prod-alm-${safeScope}`}>
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-          <div className="form-text m-0">Selecciona las sucursales donde se vendera. Cada sucursal usa su almacen activo.</div>
-          <span className="badge text-bg-light border">{selectedIds.size} seleccionados</span>
+          <div className="form-text m-0">Selecciona las sucursales donde se venderá. Cada sucursal usa su almacén activo.</div>
+          <span className="inv-prod-warehouse-counter">{selectedIds.size} {selectedIds.size === 1 ? 'seleccionado' : 'seleccionados'}</span>
         </div>
-        <button
-          type="button"
-          className={`btn btn-sm ${canSelectAll ? 'btn-outline-primary' : 'btn-outline-secondary'} mb-2`}
-          onClick={selectAllBranches}
-          disabled={loadingAlmacenes || !canSelectAll}
-        >
-          Todas las sucursales
-        </button>
-        {!canSelectAll && groups.length > 0 ? (
-          <div className="form-text text-muted mb-2">Hay sucursales con varios almacenes. Selecciona manualmente un almacen para esas sucursales.</div>
-        ) : null}
-        {loadingAlmacenes ? <div className="form-text text-muted">Cargando almacenes...</div> : null}
-        {!loadingAlmacenes && groups.map((group) => (
-          <div key={group.idSucursal} className={`border rounded-2 p-2 mb-2 ${compact ? 'py-1' : ''}`}>
-            <div className="fw-semibold small mb-1">{group.nombreSucursal}</div>
-            <div className="d-grid gap-1">
-              {group.items.map((almacen) => {
-                const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
-                const checked = selectedIds.has(idAlmacen);
-                const almacenName = String(almacen?.nombre || almacen?.nombre_almacen || `Almacen #${idAlmacen}`);
-                const displayName = group.items.length === 1 ? group.nombreSucursal : almacenName;
-                return (
-                  <label key={idAlmacen} className="form-check mb-0">
-                    <input
-                      className="form-check-input"
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleWarehouse(almacen)}
-                    />
-                    <span className="form-check-label">
-                      {displayName}
-                      <span className="d-block small text-muted">{almacenName}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+        <div className="inv-prod-warehouse-search mb-2">
+          <i className="bi bi-search" />
+          <input
+            type="search"
+            className="form-control"
+            value={almacenPickerSearch}
+            onChange={(event) => setAlmacenPickerSearch(event.target.value)}
+            placeholder="Buscar sucursal o almacén..."
+            disabled={loadingAlmacenes || activeAlmacenes.length === 0}
+          />
+        </div>
+        {selectedRows.length > 0 ? (
+          <div className="inv-prod-warehouse-chips mb-2">
+            {visibleChips.map((almacen) => {
+              const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+              return (
+                <button
+                  key={idAlmacen}
+                  type="button"
+                  className="inv-prod-warehouse-chip"
+                  onClick={() => emitChange([...selectedIds].filter((id) => id !== idAlmacen))}
+                >
+                  <span>{String(almacen?.sucursal || almacen?.nombre_sucursal || `Sucursal #${almacen?.id_sucursal || ''}`)}</span>
+                  <i className="bi bi-x-lg" />
+                </button>
+              );
+            })}
+            {hiddenChipCount > 0 ? <span className="inv-prod-warehouse-chip-more">+{hiddenChipCount} más</span> : null}
           </div>
-        ))}
+        ) : null}
+        <div className="d-flex flex-wrap gap-2 mb-2">
+          <button
+            type="button"
+            className={`btn btn-sm ${canSelectAll ? 'btn-outline-primary' : 'btn-outline-secondary'}`}
+            onClick={selectAllBranches}
+            disabled={loadingAlmacenes || !canSelectAll}
+          >
+            Todas las sucursales
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            onClick={clearAll}
+            disabled={loadingAlmacenes || selectedIds.size === 0}
+          >
+            Limpiar
+          </button>
+        </div>
+        {!canSelectAll && groups.length > 0 ? (
+          <div className="form-text text-muted mb-2">Hay sucursales con varios almacenes. Selecciona manualmente un almacén para esas sucursales.</div>
+        ) : null}
+        <div className={`inv-prod-warehouse-list ${compact ? 'is-compact' : ''}`}>
+          {loadingAlmacenes ? <div className="inv-prod-warehouse-empty">Cargando almacenes...</div> : null}
+          {!loadingAlmacenes && activeAlmacenes.length > 0 && groups.length === 0 ? (
+            <div className="inv-prod-warehouse-empty">No se encontraron sucursales o almacenes.</div>
+          ) : null}
+          {!loadingAlmacenes && groups.map((group) => (
+            group.items.map((almacen) => {
+              const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+              const checked = selectedIds.has(idAlmacen);
+              const almacenName = String(almacen?.nombre || almacen?.nombre_almacen || `Almacén #${idAlmacen}`);
+              return (
+                <label key={idAlmacen} className={`inv-prod-warehouse-row ${checked ? 'is-selected' : ''}`}>
+                  <input
+                    className="inv-prod-warehouse-checkbox"
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleWarehouse(almacen)}
+                  />
+                  <span className="inv-prod-warehouse-copy">
+                    <strong>{group.nombreSucursal}</strong>
+                    <small>{almacenName}</small>
+                  </span>
+                </label>
+              );
+            })
+          ))}
+        </div>
         {!loadingAlmacenes && activeAlmacenes.length === 0 ? (
-          <div className="form-text text-muted">No hay almacenes disponibles</div>
+          <div className="inv-prod-warehouse-empty is-danger">No hay almacenes activos disponibles para asignar.</div>
         ) : null}
         {error ? <div className={feedbackClassName}>{error}</div> : null}
       </div>
     );
-  }, [almacenes, loadingAlmacenes]);
+  }, [almacenes, almacenPickerSearch, loadingAlmacenes]);
 
   // NEW: normalizador local para campos de texto elegibles del formulario de Productos.
   // WHY: aplicar mayúsculas de forma segura solo en nombre/descripcion sin afectar números, fechas o selects.

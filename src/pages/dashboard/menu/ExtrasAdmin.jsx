@@ -14,11 +14,19 @@ const emptyForm = {
   id_insumo: '',
   cant: '',
   id_unidad_medida: '',
+  id_almacen: '',
+  id_almacenes: [],
   orden: '0',
   estado: true,
   recetas: [],
   combos: []
 };
+
+const normalizePositiveIdList = (ids) => [...new Set(
+  (Array.isArray(ids) ? ids : [])
+    .map((id) => Number.parseInt(String(id ?? '').trim(), 10))
+    .filter((id) => Number.isInteger(id) && id > 0)
+)];
 
 const normalizeRows = (response) => {
   if (Array.isArray(response)) return response;
@@ -47,7 +55,9 @@ const ExtrasAdmin = () => {
   const [insumos, setInsumos] = useState([]);
   const [recetas, setRecetas] = useState([]);
   const [combos, setCombos] = useState([]);
+  const [almacenes, setAlmacenes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingAlmacenes, setLoadingAlmacenes] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -58,9 +68,11 @@ const ExtrasAdmin = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...emptyForm });
+  const [almacenSearch, setAlmacenSearch] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [estadoConfirm, setEstadoConfirm] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [almacenError, setAlmacenError] = useState('');
   const canCreateExtra = canAny([PERMISSIONS.MENU_EXTRAS_CREAR, PERMISSIONS.MENU_VER]);
   const canEditExtra = canAny([PERMISSIONS.MENU_EXTRAS_EDITAR, PERMISSIONS.MENU_VER]);
   const canToggleExtra = canAny([PERMISSIONS.MENU_EXTRAS_ESTADO_CAMBIAR, PERMISSIONS.MENU_VER]);
@@ -68,21 +80,31 @@ const ExtrasAdmin = () => {
   const cargarDatos = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadingAlmacenes(true);
       setError('');
-      const [extrasResponse, insumosResponse, recetasResponse, combosResponse] = await Promise.all([
+      const [
+        extrasResponse,
+        insumosResponse,
+        recetasResponse,
+        combosResponse,
+        almacenesResponse
+      ] = await Promise.all([
         extrasAdminService.listarExtras(),
         extrasAdminService.listarInsumos(),
         extrasAdminService.listarRecetas(),
-        extrasAdminService.listarCombos()
+        extrasAdminService.listarCombos(),
+        extrasAdminService.listarAlmacenesExtras()
       ]);
       setExtras(normalizeRows(extrasResponse));
       setInsumos(normalizeRows(insumosResponse));
       setRecetas(normalizeRows(recetasResponse));
       setCombos(normalizeRows(combosResponse));
+      setAlmacenes(normalizeRows(almacenesResponse));
     } catch (e) {
       setError(e?.message || 'No se pudieron cargar los extras.');
     } finally {
       setLoading(false);
+      setLoadingAlmacenes(false);
     }
   }, []);
 
@@ -138,8 +160,7 @@ const ExtrasAdmin = () => {
     const map = new Map();
     rows.forEach((item) => {
       const idUnidad = String(item?.id_unidad_medida || '').trim();
-      if (!idUnidad) return;
-      if (map.has(idUnidad)) return;
+      if (!idUnidad || map.has(idUnidad)) return;
       const simbolo = String(item?.unidad_simbolo || '').trim();
       const nombre = String(item?.unidad_nombre || '').trim();
       const label = simbolo && nombre ? `${simbolo} - ${nombre}` : (simbolo || nombre || `Unidad ${idUnidad}`);
@@ -153,11 +174,7 @@ const ExtrasAdmin = () => {
     return rows.map((combo) => {
       const idCombo = Number(combo?.id_combo || 0);
       const nombre = String(combo?.nombre_combo || combo?.descripcion || `Combo #${idCombo}`);
-      return {
-        value: idCombo,
-        label: `#${idCombo} - ${nombre}`,
-        nombre
-      };
+      return { value: idCombo, label: `#${idCombo} - ${nombre}`, nombre };
     });
   }, [combos]);
 
@@ -166,9 +183,21 @@ const ExtrasAdmin = () => {
     return comboOptions.filter((option) => selected.has(Number(option.value)));
   }, [comboOptions, form.combos]);
 
+  const updateAlmacenes = useCallback((ids) => {
+    const normalized = normalizePositiveIdList(ids);
+    setAlmacenError('');
+    setForm((prev) => ({
+      ...prev,
+      id_almacenes: normalized,
+      id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
+    }));
+  }, []);
+
   const openCreate = () => {
     setEditingId(null);
     setForm({ ...emptyForm });
+    setAlmacenSearch('');
+    setAlmacenError('');
     setError('');
     setSuccess('');
     setDrawerOpen(true);
@@ -178,7 +207,10 @@ const ExtrasAdmin = () => {
     try {
       setError('');
       setSuccess('');
+      setAlmacenError('');
+      setAlmacenSearch('');
       const extra = await extrasAdminService.obtenerExtra(idExtra);
+      const selectedIds = normalizePositiveIdList(extra?.id_almacenes);
       setEditingId(Number(extra?.id_extra || idExtra));
       setForm({
         codigo: String(extra?.codigo || ''),
@@ -187,6 +219,8 @@ const ExtrasAdmin = () => {
         id_insumo: String(extra?.id_insumo ?? ''),
         cant: String(extra?.cant ?? ''),
         id_unidad_medida: String(extra?.id_unidad_medida ?? ''),
+        id_almacen: selectedIds.length > 0 ? String(selectedIds[0]) : '',
+        id_almacenes: selectedIds,
         orden: String(extra?.orden ?? '0'),
         estado: Boolean(extra?.estado ?? true),
         recetas: Array.isArray(extra?.recetas) ? extra.recetas.map((id) => Number(id)) : [],
@@ -240,6 +274,179 @@ const ExtrasAdmin = () => {
     setForm((prev) => ({ ...prev, combos: [...new Set(nextCombos)] }));
   };
 
+  const activeAlmacenes = useMemo(() => (
+    (Array.isArray(almacenes) ? almacenes : []).filter((almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      const active = almacen?.estado === undefined || almacen?.estado === null || almacen?.estado === '' || almacen?.estado === true || almacen?.estado === 'true' || almacen?.estado === 1 || almacen?.estado === '1';
+      return Number.isInteger(idAlmacen) && idAlmacen > 0 && active;
+    })
+  ), [almacenes]);
+
+  const groupedAlmacenes = useMemo(() => {
+    const grouped = activeAlmacenes.reduce((acc, almacen) => {
+      const idSucursal = String(almacen?.id_sucursal ?? 'sin-sucursal');
+      const nombreSucursal = String(almacen?.nombre_sucursal || (idSucursal === 'sin-sucursal' ? 'Sucursal sin asignar' : `Sucursal #${idSucursal}`));
+      if (!acc.has(idSucursal)) acc.set(idSucursal, { idSucursal, nombreSucursal, items: [] });
+      acc.get(idSucursal).items.push(almacen);
+      return acc;
+    }, new Map());
+
+    return [...grouped.values()]
+      .map((group) => ({
+        ...group,
+        items: [...group.items].sort((left, right) => String(left?.nombre_almacen || '').localeCompare(String(right?.nombre_almacen || ''), 'es'))
+      }))
+      .sort((a, b) => a.nombreSucursal.localeCompare(b.nombreSucursal, 'es'));
+  }, [activeAlmacenes]);
+
+  const filteredAlmacenGroups = useMemo(() => {
+    const term = String(almacenSearch || '').trim().toLowerCase();
+    if (!term) return groupedAlmacenes;
+    return groupedAlmacenes
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((almacen) => (
+          String(group.nombreSucursal || '').toLowerCase().includes(term)
+          || String(almacen?.nombre_almacen || '').toLowerCase().includes(term)
+        ))
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [almacenSearch, groupedAlmacenes]);
+
+  const renderAlmacenSelectField = useCallback((selectedValues, errorMessage = '') => {
+    const selectedIds = new Set(normalizePositiveIdList(selectedValues));
+    const groups = filteredAlmacenGroups;
+    const allGroups = groupedAlmacenes;
+    const canSelectAll = allGroups.length > 0 && allGroups.every((group) => group.items.length === 1);
+    const selectedRows = activeAlmacenes.filter((almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      return selectedIds.has(idAlmacen);
+    });
+
+    const toggleWarehouse = (almacen) => {
+      const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+      if (!Number.isInteger(idAlmacen) || idAlmacen <= 0) return;
+      const idSucursal = String(almacen?.id_sucursal ?? 'sin-sucursal');
+      const current = activeAlmacenes
+        .filter((item) => {
+          const itemId = Number.parseInt(String(item?.id_almacen ?? ''), 10);
+          if (!selectedIds.has(itemId) || itemId === idAlmacen) return false;
+          return String(item?.id_sucursal ?? 'sin-sucursal') !== idSucursal;
+        })
+        .map((item) => Number.parseInt(String(item.id_almacen), 10));
+      if (!selectedIds.has(idAlmacen)) current.push(idAlmacen);
+      updateAlmacenes(current);
+    };
+
+    const selectAllBranches = () => {
+      if (!canSelectAll) return;
+      updateAlmacenes(allGroups.map((group) => Number.parseInt(String(group.items[0].id_almacen), 10)));
+    };
+
+    const clearAll = () => updateAlmacenes([]);
+    const visibleChips = selectedRows.slice(0, 3);
+    const hiddenChipCount = Math.max(0, selectedRows.length - visibleChips.length);
+
+    return (
+      <div className={`menu-extras-admin__warehouse-picker ${errorMessage ? 'is-invalid' : ''}`}>
+        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+          <div className="form-text m-0">Selecciona las sucursales donde se venderá. Cada sucursal usa su almacén activo.</div>
+          <span className="menu-extras-admin__warehouse-counter">
+            {selectedIds.size} {selectedIds.size === 1 ? 'seleccionado' : 'seleccionados'}
+          </span>
+        </div>
+        <div className="menu-extras-admin__warehouse-search mb-2">
+          <i className="bi bi-search" />
+          <input
+            type="search"
+            className="form-control"
+            value={almacenSearch}
+            onChange={(event) => setAlmacenSearch(event.target.value)}
+            placeholder="Buscar sucursal o almacén..."
+            disabled={loadingAlmacenes || activeAlmacenes.length === 0}
+          />
+        </div>
+        {selectedRows.length > 0 ? (
+          <div className="menu-extras-admin__warehouse-chips mb-2">
+            {visibleChips.map((almacen) => {
+              const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+              return (
+                <button
+                  key={idAlmacen}
+                  type="button"
+                  className="menu-extras-admin__warehouse-chip"
+                  onClick={() => updateAlmacenes([...selectedIds].filter((id) => id !== idAlmacen))}
+                >
+                  <span>{String(almacen?.nombre_sucursal || `Sucursal #${almacen?.id_sucursal || ''}`)}</span>
+                  <i className="bi bi-x-lg" />
+                </button>
+              );
+            })}
+            {hiddenChipCount > 0 ? <span className="menu-extras-admin__warehouse-chip-more">+{hiddenChipCount} más</span> : null}
+          </div>
+        ) : null}
+        <div className="d-flex flex-wrap gap-2 mb-2">
+          <button
+            type="button"
+            className={`btn btn-sm ${canSelectAll ? 'btn-outline-primary' : 'btn-outline-secondary'}`}
+            onClick={selectAllBranches}
+            disabled={loadingAlmacenes || !canSelectAll}
+          >
+            Todas las sucursales
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            onClick={clearAll}
+            disabled={loadingAlmacenes || selectedIds.size === 0}
+          >
+            Limpiar
+          </button>
+        </div>
+        {!canSelectAll && groups.length > 0 ? (
+          <div className="form-text text-muted mb-2">Hay sucursales con varios almacenes. Selecciona manualmente un almacén para esas sucursales.</div>
+        ) : null}
+        <div className="menu-extras-admin__warehouse-list">
+          {loadingAlmacenes ? <div className="menu-extras-admin__warehouse-empty">Cargando almacenes...</div> : null}
+          {!loadingAlmacenes && activeAlmacenes.length === 0 ? (
+            <div className="menu-extras-admin__warehouse-empty is-danger">No hay almacenes activos disponibles para asignar.</div>
+          ) : null}
+          {!loadingAlmacenes && activeAlmacenes.length > 0 && groups.length === 0 ? (
+            <div className="menu-extras-admin__warehouse-empty">No se encontraron sucursales o almacenes.</div>
+          ) : null}
+          {!loadingAlmacenes && groups.map((group) => (
+            group.items.map((almacen) => {
+              const idAlmacen = Number.parseInt(String(almacen?.id_almacen ?? ''), 10);
+              const checked = selectedIds.has(idAlmacen);
+              const almacenName = String(almacen?.nombre_almacen || `Almacén #${idAlmacen}`);
+              return (
+                <label
+                  key={idAlmacen}
+                  className={`menu-extras-admin__warehouse-row ${checked ? 'is-selected' : ''}`}
+                >
+                  <input
+                    className="menu-extras-admin__warehouse-checkbox"
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleWarehouse(almacen)}
+                  />
+                  <span className="menu-extras-admin__warehouse-copy">
+                    <strong>{group.nombreSucursal}</strong>
+                    <small>{almacenName}</small>
+                  </span>
+                </label>
+              );
+            })
+          ))}
+        </div>
+        {!loadingAlmacenes && activeAlmacenes.length === 0 ? (
+          null
+        ) : null}
+        {errorMessage ? <div className="invalid-feedback d-block">{errorMessage}</div> : null}
+      </div>
+    );
+  }, [activeAlmacenes, almacenSearch, filteredAlmacenGroups, groupedAlmacenes, loadingAlmacenes, updateAlmacenes]);
+
   const validate = () => {
     if (!String(form.nombre || '').trim()) return 'El nombre del extra es obligatorio.';
     if (!String(form.codigo || '').trim()) return 'El codigo del extra es obligatorio.';
@@ -250,6 +457,12 @@ const ExtrasAdmin = () => {
       return 'Para enlazar inventario indica insumo, cantidad y unidad.';
     }
     if (form.cant && Number(form.cant) <= 0) return 'La cantidad del insumo debe ser mayor a 0.';
+    if ((Array.isArray(almacenes) ? almacenes : []).length === 0) return 'No existen almacenes activos para asignar este extra.';
+    const selectedWarehouses = normalizePositiveIdList(form.id_almacenes);
+    if (selectedWarehouses.length === 0) {
+      setAlmacenError('Selecciona al menos una sucursal donde estará disponible este extra.');
+      return 'Selecciona al menos una sucursal donde estará disponible este extra.';
+    }
     return '';
   };
 
@@ -257,6 +470,7 @@ const ExtrasAdmin = () => {
     event.preventDefault();
     setError('');
     setSuccess('');
+    setAlmacenError('');
 
     const message = validate();
     if (message) {
@@ -264,6 +478,7 @@ const ExtrasAdmin = () => {
       return;
     }
 
+    const idAlmacenes = normalizePositiveIdList(form.id_almacenes);
     const payload = {
       codigo: buildCode(form.nombre),
       nombre: form.nombre,
@@ -271,6 +486,8 @@ const ExtrasAdmin = () => {
       id_insumo: form.id_insumo || null,
       cant: form.cant || null,
       id_unidad_medida: form.id_unidad_medida || null,
+      id_almacen: idAlmacenes.length > 0 ? idAlmacenes[0] : null,
+      id_almacenes: idAlmacenes,
       orden: Number(form.orden || 0),
       estado: Boolean(form.estado),
       recetas: form.recetas,
@@ -391,10 +608,7 @@ const ExtrasAdmin = () => {
             ) : (
               <div className="menu-extras-admin__grid">
                 {extrasVisibles.map((extra) => (
-                  <article
-                    className={`menu-extras-card ${extra.estado ? 'is-active' : 'is-inactive'}`}
-                    key={extra.id_extra}
-                  >
+                  <article className={`menu-extras-card ${extra.estado ? 'is-active' : 'is-inactive'}`} key={extra.id_extra}>
                     <header className="menu-extras-card__head">
                       <span className={`menu-recetas-admin__estado-badge ${extra.estado ? 'is-active' : 'is-inactive'}`}>
                         {extra.estado ? 'Activo' : 'Inactivo'}
@@ -410,9 +624,11 @@ const ExtrasAdmin = () => {
                       </div>
                       <div className="menu-extras-card__meta">
                         <span>Cantidad</span>
-                        <strong>
-                          {extra.cant ? `${extra.cant} ${String(extra.unidad_simbolo || extra.unidad_nombre || '').trim()}` : 'No aplica'}
-                        </strong>
+                        <strong>{extra.cant ? `${extra.cant} ${String(extra.unidad_simbolo || extra.unidad_nombre || '').trim()}` : 'No aplica'}</strong>
+                      </div>
+                      <div className="menu-extras-card__meta">
+                        <span>Sucursales</span>
+                        <strong>{Number(extra.total_sucursales || 0)}</strong>
                       </div>
                       <div className="menu-extras-card__meta">
                         <span>Recetas</span>
@@ -470,18 +686,10 @@ const ExtrasAdmin = () => {
         <div className="inv-prod-drawer-section">
           <div className="inv-prod-drawer-section-title">Estado</div>
           <div className="inv-ins-chip-grid">
-            <button
-              type="button"
-              className={`inv-ins-chip ${!showInactiveOnly ? 'is-active' : ''}`}
-              onClick={() => setShowInactiveOnly(false)}
-            >
+            <button type="button" className={`inv-ins-chip ${!showInactiveOnly ? 'is-active' : ''}`} onClick={() => setShowInactiveOnly(false)}>
               Activos
             </button>
-            <button
-              type="button"
-              className={`inv-ins-chip ${showInactiveOnly ? 'is-active' : ''}`}
-              onClick={() => setShowInactiveOnly(true)}
-            >
+            <button type="button" className={`inv-ins-chip ${showInactiveOnly ? 'is-active' : ''}`} onClick={() => setShowInactiveOnly(true)}>
               Inactivos
             </button>
           </div>
@@ -491,12 +699,7 @@ const ExtrasAdmin = () => {
         <div className="inv-prod-drawer-section">
           <div className="inv-prod-drawer-section-title">Orden</div>
           <label className="form-label" htmlFor="menu_extras_sort">Ordenar por</label>
-          <select
-            id="menu_extras_sort"
-            className="form-select"
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value)}
-          >
+          <select id="menu_extras_sort" className="form-select" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
             <option value="recientes">Mas recientes</option>
             <option value="nombre_asc">Nombre (A-Z)</option>
             <option value="nombre_desc">Nombre (Z-A)</option>
@@ -536,134 +739,153 @@ const ExtrasAdmin = () => {
 
                   <div className="inv-prod-pmodal__sections mt-3">
                     <section className="inv-prod-pmodal__section">
-          <div className="row g-2">
-            <div className="col-12">
-              <label className="form-label" htmlFor="extra_nombre">Nombre</label>
-              <input
-                id="extra_nombre"
-                className="form-control"
-                value={form.nombre}
-                onChange={(event) => updateForm('nombre', event.target.value)}
-                placeholder="Ej: Extra queso"
-                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-                required
-              />
-            </div>
-            <div className="col-12 col-md-6">
-              <label className="form-label" htmlFor="extra_precio">Precio adicional</label>
-              <input
-                id="extra_precio"
-                type="number"
-                min="0"
-                step="0.01"
-                className="form-control"
-                value={form.precio_adicional}
-                onChange={(event) => updateForm('precio_adicional', event.target.value)}
-                placeholder="Ej: 25.00"
-                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-                required
-              />
-            </div>
-            <div className="col-12">
-              <label className="form-label" htmlFor="extra_insumo">Insumo que consume</label>
-              <Select
-                inputId="extra_insumo"
-                classNamePrefix="menu-salsas-receta-select"
-                options={insumoOptions}
-                value={insumoOptions.find((opt) => String(opt.value) === String(form.id_insumo)) || insumoOptions[0]}
-                onChange={(option) => updateForm('id_insumo', String(option?.value || ''))}
-                placeholder="Seleccionar insumo..."
-                isClearable={false}
-                isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-                maxMenuHeight={176}
-                menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                menuPosition="fixed"
-              />
-            </div>
-            <div className="col-12 col-md-6">
-              <label className="form-label" htmlFor="extra_cantidad">Cantidad del insumo</label>
-              <input
-                id="extra_cantidad"
-                type="number"
-                min="0.0001"
-                step="0.0001"
-                className="form-control"
-                value={form.cant}
-                onChange={(event) => updateForm('cant', event.target.value)}
-                placeholder="Ej: 0.2500"
-                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-              />
-            </div>
-            <div className="col-12 col-md-6">
-              <label className="form-label" htmlFor="extra_unidad">Unidad</label>
-              <Select
-                inputId="extra_unidad"
-                classNamePrefix="menu-salsas-receta-select"
-                options={unidadOptions}
-                value={unidadOptions.find((opt) => String(opt.value) === String(form.id_unidad_medida)) || null}
-                onChange={(option) => updateForm('id_unidad_medida', String(option?.value || ''))}
-                placeholder="Seleccionar unidad..."
-                isClearable={false}
-                isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-                maxMenuHeight={176}
-                menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                menuPosition="fixed"
-              />
-            </div>
-          </div>
+                      <div className="row g-2">
+                        <div className="col-12">
+                          <label className="form-label" htmlFor="extra_nombre">Nombre</label>
+                          <input
+                            id="extra_nombre"
+                            className="form-control"
+                            value={form.nombre}
+                            onChange={(event) => updateForm('nombre', event.target.value)}
+                            placeholder="Ej: Extra queso"
+                            disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                            required
+                          />
+                        </div>
+                        <div className="col-12 col-md-6">
+                          <label className="form-label" htmlFor="extra_precio">Precio adicional</label>
+                          <input
+                            id="extra_precio"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="form-control"
+                            value={form.precio_adicional}
+                            onChange={(event) => updateForm('precio_adicional', event.target.value)}
+                            placeholder="Ej: 25.00"
+                            disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                            required
+                          />
+                        </div>
+                        <div className="col-12">
+                          <label className="form-label" htmlFor="extra_insumo">Insumo que consume</label>
+                          <Select
+                            inputId="extra_insumo"
+                            classNamePrefix="menu-salsas-receta-select"
+                            options={insumoOptions}
+                            value={insumoOptions.find((opt) => String(opt.value) === String(form.id_insumo)) || insumoOptions[0]}
+                            onChange={(option) => updateForm('id_insumo', String(option?.value || ''))}
+                            placeholder="Seleccionar insumo..."
+                            isClearable={false}
+                            isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                            maxMenuHeight={176}
+                            menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                            menuPosition="fixed"
+                          />
+                        </div>
+                        <div className="col-12 col-md-6">
+                          <label className="form-label" htmlFor="extra_cantidad">Cantidad del insumo</label>
+                          <input
+                            id="extra_cantidad"
+                            type="number"
+                            min="0.0001"
+                            step="0.0001"
+                            className="form-control"
+                            value={form.cant}
+                            onChange={(event) => updateForm('cant', event.target.value)}
+                            placeholder="Ej: 0.2500"
+                            disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                          />
+                        </div>
+                        <div className="col-12 col-md-6">
+                          <label className="form-label" htmlFor="extra_unidad">Unidad</label>
+                          <Select
+                            inputId="extra_unidad"
+                            classNamePrefix="menu-salsas-receta-select"
+                            options={unidadOptions}
+                            value={unidadOptions.find((opt) => String(opt.value) === String(form.id_unidad_medida)) || null}
+                            onChange={(option) => updateForm('id_unidad_medida', String(option?.value || ''))}
+                            placeholder="Seleccionar unidad..."
+                            isClearable={false}
+                            isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                            maxMenuHeight={176}
+                            menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                            menuPosition="fixed"
+                          />
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="inv-prod-pmodal__section">
+                      <div className="menu-extras-admin__section-head">
+                        <div className="menu-recetas-admin__detalle-title">Inventario</div>
+                      </div>
+                      <div className="form-text mb-2">Stock mínimo y ubicación.</div>
+                      <label className="form-label mb-1">Almacén asignado</label>
+                      {renderAlmacenSelectField(form.id_almacenes, almacenError)}
                     </section>
 
                     <section className="menu-extras-admin__recipes">
-            <div className="menu-extras-admin__section-head">
-              <div className="menu-recetas-admin__detalle-title">Recetas donde aparece</div>
-              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={clearRecetas} disabled={saving || form.recetas.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}>
-                Limpiar
-              </button>
-            </div>
-            <div className="menu-extras-admin__recipe-list">
-              {recetas.map((receta) => {
-                const idReceta = Number(receta.id_receta);
-                return (
-                  <label className="menu-extras-admin__recipe-option" key={idReceta}>
-                    <input
-                      type="checkbox"
-                      checked={form.recetas.includes(idReceta)}
-                      onChange={() => toggleReceta(idReceta)}
-                      disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-                    />
-                    <span>{receta.nombre_receta}</span>
-                  </label>
-                );
-              })}
-            </div>
+                      <div className="menu-extras-admin__section-head">
+                        <div className="menu-recetas-admin__detalle-title">Recetas donde aparece</div>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={clearRecetas}
+                          disabled={saving || form.recetas.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+                      <div className="menu-extras-admin__recipe-list">
+                        {recetas.map((receta) => {
+                          const idReceta = Number(receta.id_receta);
+                          return (
+                            <label className="menu-extras-admin__recipe-option" key={idReceta}>
+                              <input
+                                type="checkbox"
+                                checked={form.recetas.includes(idReceta)}
+                                onChange={() => toggleReceta(idReceta)}
+                                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                              />
+                              <span>{receta.nombre_receta}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </section>
 
                     <section className="menu-extras-admin__recipes">
-            <div className="menu-extras-admin__section-head">
-              <div className="menu-recetas-admin__detalle-title">Combos donde aparece</div>
-              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => updateCombos([])} disabled={saving || selectedComboOptions.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}>
-                Limpiar
-              </button>
-            </div>
-            <Select
-              inputId="extra_combos"
-              classNamePrefix="menu-salsas-receta-select"
-              options={comboOptions}
-              value={selectedComboOptions}
-              onChange={updateCombos}
-              placeholder="Buscar combo..."
-              isMulti
-              isClearable
-              isSearchable
-              isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-              closeMenuOnSelect={false}
-              maxMenuHeight={220}
-              menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-              menuPosition="fixed"
-            />
-            <div className="menu-extras-admin__selection-count">
-              {selectedComboOptions.length} combos seleccionados
-            </div>
+                      <div className="menu-extras-admin__section-head">
+                        <div className="menu-recetas-admin__detalle-title">Combos donde aparece</div>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => updateCombos([])}
+                          disabled={saving || selectedComboOptions.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+                      <Select
+                        inputId="extra_combos"
+                        classNamePrefix="menu-salsas-receta-select"
+                        options={comboOptions}
+                        value={selectedComboOptions}
+                        onChange={updateCombos}
+                        placeholder="Buscar combo..."
+                        isMulti
+                        isClearable
+                        isSearchable
+                        isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                        closeMenuOnSelect={false}
+                        maxMenuHeight={220}
+                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                        menuPosition="fixed"
+                      />
+                      <div className="menu-extras-admin__selection-count">
+                        {selectedComboOptions.length} combos seleccionados
+                      </div>
                     </section>
                   </div>
                 </div>
@@ -675,7 +897,7 @@ const ExtrasAdmin = () => {
                   <button
                     type="submit"
                     className="btn inv-prod-btn-primary"
-                    disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                    disabled={saving || loadingAlmacenes || (editingId ? !canEditExtra : !canCreateExtra)}
                   >
                     {saving ? 'Guardando...' : 'Guardar extra'}
                   </button>

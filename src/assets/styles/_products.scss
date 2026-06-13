@@ -1022,6 +1022,155 @@
   border-color: #dc3545;
 }
 
+.inv-prod-warehouse-picker {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.inv-prod-warehouse-counter {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(72, 116, 219, 0.18);
+  background: rgba(236, 243, 255, 0.92);
+  color: #365fb5;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.inv-prod-warehouse-search {
+  position: relative;
+}
+
+.inv-prod-warehouse-search i {
+  position: absolute;
+  top: 50%;
+  left: 0.9rem;
+  transform: translateY(-50%);
+  color: #9b7b68;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.inv-prod-warehouse-search .form-control {
+  min-height: 44px;
+  padding-left: 2.4rem;
+  border-radius: 14px;
+}
+
+.inv-prod-warehouse-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.inv-prod-warehouse-chip,
+.inv-prod-warehouse-chip-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 34px;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(72, 116, 219, 0.18);
+  background: rgba(244, 247, 255, 0.96);
+  color: #4b5e8f;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.inv-prod-warehouse-chip {
+  cursor: pointer;
+}
+
+.inv-prod-warehouse-chip i {
+  font-size: 0.68rem;
+}
+
+.inv-prod-warehouse-chip-more {
+  border-style: dashed;
+}
+
+.inv-prod-warehouse-list {
+  display: grid;
+  gap: 0;
+  max-height: 290px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.inv-prod-warehouse-list.is-compact {
+  max-height: 260px;
+}
+
+.inv-prod-warehouse-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.8rem 0.9rem;
+  margin: 0;
+  border-bottom: 1px solid rgba(121, 75, 42, 0.08);
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.inv-prod-warehouse-row:last-child {
+  border-bottom: 0;
+}
+
+.inv-prod-warehouse-row:hover {
+  background: rgba(178, 45, 48, 0.04);
+}
+
+.inv-prod-warehouse-row.is-selected {
+  background: rgba(72, 116, 219, 0.08);
+  box-shadow: inset 3px 0 0 #4f77d9;
+}
+
+.inv-prod-warehouse-checkbox {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #4f77d9;
+}
+
+.inv-prod-warehouse-copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.inv-prod-warehouse-copy strong {
+  color: #17080a;
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.inv-prod-warehouse-copy small {
+  color: rgba(72, 43, 47, 0.72);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.inv-prod-warehouse-empty {
+  padding: 1rem;
+  color: rgba(72, 43, 47, 0.72);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.inv-prod-warehouse-empty.is-danger {
+  color: #c14b52;
+}
+
 // NEW: soporte visual para dropdowns custom dentro de Productos (si existen en futuros ajustes).
 // WHY: mantener consistencia visual sin tocar otros modulos.
 // IMPACT: limitado al scope de Productos.
