@@ -8,7 +8,7 @@ const formatMoney = (value) => {
 
 const FORMATS = [
   { value: 'pdf', title: 'PDF', icon: 'bi-file-earmark-pdf', helper: 'Usa la vista imprimible para guardar PDF.' },
-  { value: 'print', title: 'Imprimir', icon: 'bi-printer', helper: 'Abre la ficha para impresion directa.' }
+  { value: 'print', title: 'Imprimir', icon: 'bi-printer', helper: 'Descarga el PDF directamente.' }
 ];
 
 const initialOptions = {
@@ -35,6 +35,7 @@ export default function ExportModal({
   open,
   onClose,
   onSubmit,
+  onQuickPrint,
   loading = false,
   resumen = {},
   planillaLabel = 'Planilla seleccionada'
@@ -67,7 +68,15 @@ export default function ExportModal({
               key={format.value}
               type="button"
               className={`planillas-export__format ${options.format === format.value ? 'is-active' : ''}`}
-              onClick={() => setOptions((prev) => ({ ...prev, format: format.value }))}
+              onClick={() => {
+                if (loading) return;
+                const nextOptions = { ...options, format: format.value };
+                setOptions(nextOptions);
+                if (format.value === 'print') {
+                  onQuickPrint?.(nextOptions);
+                }
+              }}
+              disabled={loading}
             >
               <i className={`bi ${format.icon}`} aria-hidden="true" />
               <strong>{format.title}</strong>
@@ -129,7 +138,7 @@ export default function ExportModal({
             disabled={loading}
           >
             {loading ? <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" /> : <i className="bi bi-download me-1" />}
-            {loading ? 'Generando...' : 'Exportar'}
+            {loading ? 'Generando...' : options.format === 'pdf' ? 'Exportar' : 'Descargar PDF'}
           </button>
         </div>
       </div>
