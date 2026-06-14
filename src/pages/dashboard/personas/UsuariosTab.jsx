@@ -17,6 +17,7 @@ import useSearchSuggestionsDropdown, {
 import { buildPageRangeLabel, buildVisiblePageNumbers } from './components/common/paginationWindow';
 import { usePermisos } from '../../../context/PermisosContext';
 import { PERMISSIONS } from '../../../utils/permissions';
+import useUsuariosAdmin from './hooks/useUsuariosAdmin';
 import {
   isUsuarioDataImageUrl,
   isUsuarioRenderableImageValue,
@@ -40,8 +41,6 @@ const createInitialFiltersDraft = () => ({
 
 const IMAGE_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const IMAGE_MAX_BYTES = 6 * 1024 * 1024;
-const USERS_FETCH_BATCH_LIMIT = 100;
-const USERS_FETCH_MAX_PAGES = 40;
 const FOTO_PERFIL_MAX_LENGTH = 500;
 const FOTO_PERFIL_TOO_LARGE_MESSAGE = 'La imagen supera el limite de 6 MB.';
 const FOTO_PERFIL_URL_TOO_LARGE_MESSAGE = 'URL de imagen demasiado larga. Maximo 500 caracteres.';
@@ -66,14 +65,6 @@ const validatePhotoUrlValue = (value) => {
     return { ok: true, value: normalized };
   }
   return { ok: false, message: FOTO_PERFIL_INVALID_URL_MESSAGE };
-};
-
-const normalizeListResponse = (resp) => {
-  if (Array.isArray(resp)) return { items: resp, total: resp.length };
-  const items =
-    (resp && (resp.items || resp.data || resp.rows || resp.resultados || resp.usuarios || [])) || [];
-  const total = Number(resp?.total || resp?.totalItems || resp?.count || resp?.total_count || items.length || 0);
-  return { items: Array.isArray(items) ? items : [], total };
 };
 
 const normalizeText = (value) => String(value ?? '').trim();
@@ -146,21 +137,6 @@ const buildUsernamePreview = (empleado, usedSet) => {
 
 const parseBooleanField = (row) => parseEstadoUsuario(row);
 
-const resolveCardsPerPage = (width) => {
-  if (width >= 1200) return 6;
-  if (width >= 620) return 4;
-  return 2;
-};
-
-const readViewMode = (key) => {
-  if (typeof window === 'undefined') return 'cards';
-  try {
-    return window.localStorage.getItem(key) === 'table' ? 'table' : 'cards';
-  } catch {
-    return 'cards';
-  }
-};
-
 const formatDateLabel = (value) => {
   if (!value) return 'Sin fecha';
   const date = new Date(value);
@@ -201,26 +177,46 @@ export default function UsuariosTab({ openToast }) {
     if (typeof openToast === 'function') openToast(title, message, variant);
   }, [openToast]);
 
-  const [usuarios, setUsuarios] = useState([]);
-  const [empleadosCatalogo, setEmpleadosCatalogo] = useState([]);
-  const [clientesCatalogo, setClientesCatalogo] = useState([]);
-  const [rolesCatalogo, setRolesCatalogo] = useState([]);
-
-  const [loading, setLoading] = useState(true);
-  const [catalogLoading, setCatalogLoading] = useState(true);
-  const [rolesLoading, setRolesLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [viewMode, setViewMode] = useState(() => readViewMode('usuariosViewMode'));
-
-  const [estadoFiltro, setEstadoFiltro] = useState('activo');
-  const [sortBy, setSortBy] = useState('recientes');
+  const {
+    usuarios,
+    loading,
+    search,
+    setSearch,
+    debouncedSearch,
+    page,
+    setPage,
+    limit,
+    total,
+    totalPages,
+    estadoFiltro,
+    setEstadoFiltro,
+    sortBy,
+    setSortBy,
+    viewMode,
+    setViewMode,
+    cardsPerPage,
+    rolesCatalogo,
+    rolesLoading,
+    catalogLoading,
+    employeeDefaultOptions,
+    clienteDefaultOptions,
+    loadEmployeeOptions,
+    loadClienteOptions,
+    selectedEmpleadoById,
+    selectedClienteById,
+    cacheEmpleado,
+    cacheCliente,
+    rememberPhotoOverride,
+    cargarUsuarios,
+    usernamesInUse,
+    stats,
+  } = useUsuariosAdmin({
+    canListUsuarios,
+    canReadRolesCatalog,
+    safeToast,
+  });
   const [filtersDraft, setFiltersDraft] = useState(createInitialFiltersDraft);
   const [filtersOpen, setFiltersOpen] = useState(false);
-
-  const [page, setPage] = useState(1);
-  const limit = 9;
-  const [total, setTotal] = useState(0);
 
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -251,16 +247,9 @@ export default function UsuariosTab({ openToast }) {
     });
   }, []);
 
-  const [cardsPerPage, setCardsPerPage] = useState(() =>
-    typeof window === 'undefined' ? 6 : resolveCardsPerPage(window.innerWidth)
-  );
-
   const mountedRef = useRef(false);
-  const requestIdRef = useRef(0);
-  const catalogLoadedRef = useRef(false);
   const panelRef = useRef(null);
   const imageInputRef = useRef(null);
-  const userPhotoOverridesRef = useRef(new Map());
 
   const getNombreCompleto = useCallback((u) =>
     normalizeText(u?.nombre_completo || u?.empleado?.nombre_completo || u?.cliente?.nombre_completo) || normalizeText(u?.nombre_usuario) || 'No registrado',
@@ -277,59 +266,16 @@ export default function UsuariosTab({ openToast }) {
     return normalizeText(u?.rol?.nombre || u?.rol_nombre || u?.nombre_rol);
   }, []);
 
-  const applyUsuarioPhotoOverride = useCallback((usuario) => {
-    const idUsuario = String(usuario?.id_usuario ?? '').trim();
-    if (!idUsuario) return usuario;
-
-    const photoOverrides = userPhotoOverridesRef.current;
-    if (!photoOverrides.has(idUsuario)) return usuario;
-
-    const overrideValue = toImageValue(photoOverrides.get(idUsuario));
-    return {
-      ...usuario,
-      foto_perfil: overrideValue,
-      foto_perfil_url: overrideValue,
-      foto_url: overrideValue,
-      imagen_url: overrideValue,
-    };
-  }, []);
-
   const drawerMode = editId ? 'edit' : 'create';
   const isAnyDrawerOpen = showModal || filtersOpen;
 
-  const empleadosConUsuario = useMemo(() => {
-    const ids = new Set();
-    usuarios.forEach((u) => {
-      const idEmp = String(u?.id_empleado || u?.empleado?.id_empleado || '');
-      if (idEmp) ids.add(idEmp);
-    });
-    return ids;
-  }, [usuarios]);
-  const clientesConUsuario = useMemo(() => {
-    const ids = new Set();
-    usuarios.forEach((u) => {
-      const idCli = String(u?.id_cliente || u?.cliente?.id_cliente || '');
-      if (idCli) ids.add(idCli);
-    });
-    return ids;
-  }, [usuarios]);
-
-  const usernamesInUse = useMemo(() => {
-    const set = new Set();
-    usuarios.forEach((u) => {
-      const name = sanitizeToken(u?.nombre_usuario);
-      if (name) set.add(name);
-    });
-    return set;
-  }, [usuarios]);
-
   const selectedEmpleado = useMemo(
-    () => empleadosCatalogo.find((e) => e.id === String(form.id_empleado)) || null,
-    [empleadosCatalogo, form.id_empleado]
+    () => selectedEmpleadoById(form.id_empleado),
+    [form.id_empleado, selectedEmpleadoById]
   );
   const selectedCliente = useMemo(
-    () => clientesCatalogo.find((c) => c.id === String(form.id_cliente)) || null,
-    [clientesCatalogo, form.id_cliente]
+    () => selectedClienteById(form.id_cliente),
+    [form.id_cliente, selectedClienteById]
   );
   const targetType = String(form?.tipo_objetivo || 'EMPLEADO').toUpperCase() === 'CLIENTE' ? 'CLIENTE' : 'EMPLEADO';
 
@@ -343,9 +289,6 @@ export default function UsuariosTab({ openToast }) {
     return buildUsernamePreview(selectedEmpleado, usernamesInUse);
   }, [drawerMode, targetType, selectedCliente, selectedEmpleado, usernamesInUse]);
 
-  const filteredEmpleadoOptions = useMemo(() => empleadosCatalogo, [empleadosCatalogo]);
-  const filteredClienteOptions = useMemo(() => clientesCatalogo, [clientesCatalogo]);
-
   const sortedRoles = useMemo(
     () =>
       [...rolesCatalogo].sort((a, b) => Number(a?.id_rol ?? 0) - Number(b?.id_rol ?? 0)),
@@ -356,152 +299,6 @@ export default function UsuariosTab({ openToast }) {
     if (imageInputRef.current) imageInputRef.current.value = '';
   }, []);
 
-  const cargarCatalogos = useCallback(async ({ force = false } = {}) => {
-    if (catalogLoadedRef.current && !force) return;
-
-    setCatalogLoading(true);
-    setRolesLoading(true);
-    try {
-      const [empleadosResp, personasResp, clientesResp] = await Promise.all([
-        personaService.getEmpleados({ page: 1, limit: 100 }),
-        personaService.getPersonasDetalle({ page: 1, limit: 100 }),
-        personaService.getClientes({ page: 1, limit: 200 })
-      ]);
-
-      let rolesItems = [];
-      if (canReadRolesCatalog) {
-        try {
-          const rolesResp = await personaService.getRolesUsuariosV2();
-          rolesItems = Array.isArray(rolesResp)
-            ? rolesResp
-            : normalizeListResponse(rolesResp).items;
-        } catch (error) {
-          safeToast('ERROR', error.message || 'No se pudo cargar el catalogo de roles', 'danger');
-        }
-      }
-
-      if (!mountedRef.current) return;
-
-      const empleados = normalizeListResponse(empleadosResp).items;
-      const clientes = normalizeListResponse(clientesResp).items;
-      const personas = normalizeListResponse(personasResp).items;
-      const personaMap = new Map(personas.map((p) => [String(p?.id_persona ?? ''), p]));
-
-      const options = empleados.map((e) => {
-        const persona = personaMap.get(String(e?.id_persona ?? '')) || null;
-        const nombre = normalizeText(e?.persona_nombre || persona?.nombre);
-        const apellido = normalizeText(e?.persona_apellido || persona?.apellido);
-        const nombreCompleto =
-          normalizeText(e?.persona_nombre_completo)
-          || `${nombre} ${apellido}`.trim()
-          || "Empleado sin nombre";
-
-        return {
-          id: String(e?.id_empleado ?? ''),
-          nombre,
-          apellido,
-          nombre_completo: nombreCompleto,
-          correo: normalizeText(persona?.direccion_correo || persona?.correo || persona?.email),
-          telefono: normalizeText(persona?.telefono || e?.telefono),
-          dni: normalizeText(e?.persona_dni || persona?.dni || e?.dni),
-          sucursal_nombre: normalizeText(e?.sucursal_nombre || e?.nombre_sucursal || e?.sucursal),
-        };
-      }).filter((row) => row.id);
-
-      const parsedRoles = rolesItems
-        .map((role) => ({
-          id_rol: String(role?.id_rol ?? ''),
-          nombre: normalizeText(role?.nombre),
-        }))
-        .filter((role) => role.id_rol && role.nombre);
-
-      setEmpleadosCatalogo(options);
-      setClientesCatalogo(
-        clientes.map((c) => {
-          const nombreCompleto = normalizeText(
-            c?.nombre_completo
-            || c?.persona_nombre_completo
-            || c?.nombre_principal
-            || `${c?.persona_nombre || ''} ${c?.persona_apellido || ''}`
-          ) || "Cliente sin nombre";
-          return {
-            id: String(c?.id_cliente ?? ''),
-            nombre_completo: nombreCompleto,
-            nombre: normalizeText(c?.persona_nombre || c?.nombre),
-            apellido: normalizeText(c?.persona_apellido || c?.apellido),
-            dni: normalizeText(c?.dni || c?.persona_dni || c?.documento_valor),
-            correo: normalizeText(c?.correo || c?.direccion_correo || c?.email),
-            telefono: normalizeText(c?.telefono),
-          };
-        }).filter((row) => row.id)
-      );
-      setRolesCatalogo(parsedRoles);
-      catalogLoadedRef.current = true;
-    } catch (error) {
-      safeToast('ERROR', error.message || 'No se pudieron cargar catalogos', 'danger');
-    } finally {
-      if (mountedRef.current) setCatalogLoading(false);
-      if (mountedRef.current) setRolesLoading(false);
-    }
-  }, [canReadRolesCatalog, safeToast]);
-
-  const cargarUsuarios = useCallback(async () => {
-    if (!canListUsuarios) {
-      if (mountedRef.current) {
-        setUsuarios([]);
-        setTotal(0);
-        setLoading(false);
-      }
-      return;
-    }
-
-    setLoading(true);
-    const reqId = ++requestIdRef.current;
-
-    try {
-      const allItems = [];
-      let pageCursor = 1;
-      let expectedTotal = Number.POSITIVE_INFINITY;
-
-      while (pageCursor <= USERS_FETCH_MAX_PAGES && allItems.length < expectedTotal) {
-        const response = await personaService.getUsuariosV2({
-          page: pageCursor,
-          limit: USERS_FETCH_BATCH_LIMIT,
-        });
-        if (!mountedRef.current || reqId !== requestIdRef.current) return;
-
-        const { items, total: totalResp } = normalizeListResponse(response);
-        const batch = Array.isArray(items) ? items : [];
-        const parsedTotal = Number(totalResp);
-        if (Number.isFinite(parsedTotal) && parsedTotal >= 0) expectedTotal = parsedTotal;
-        if (batch.length === 0) break;
-        allItems.push(...batch);
-        if (batch.length < USERS_FETCH_BATCH_LIMIT) break;
-        pageCursor += 1;
-      }
-
-      const seen = new Set();
-      const deduped = allItems.filter((item) => {
-        const id = String(item?.id_usuario ?? '').trim();
-        if (!id) return true;
-        if (seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-
-      const withPhotoOverrides = deduped.map((item) => applyUsuarioPhotoOverride(item));
-      setUsuarios(withPhotoOverrides);
-      setTotal(withPhotoOverrides.length);
-    } catch (error) {
-      if (!mountedRef.current) return;
-      setUsuarios([]);
-      setTotal(0);
-      safeToast('ERROR', error.message || 'No se pudo cargar usuarios', 'danger');
-    } finally {
-      if (mountedRef.current && reqId === requestIdRef.current) setLoading(false);
-    }
-  }, [canListUsuarios, safeToast, applyUsuarioPhotoOverride]);
-
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -509,37 +306,6 @@ export default function UsuariosTab({ openToast }) {
       clearImagePicker();
     };
   }, [clearImagePicker]);
-
-  useEffect(() => {
-    cargarCatalogos();
-  }, [cargarCatalogos]);
-
-  useEffect(() => {
-    cargarUsuarios();
-  }, [cargarUsuarios]);
-
-  useEffect(() => {
-    const timerId = window.setTimeout(() => {
-      const nextSearch = normalizeSearchText(search);
-      setDebouncedSearch((prev) => (prev === nextSearch ? prev : nextSearch));
-    }, 300);
-
-    return () => window.clearTimeout(timerId);
-  }, [search]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('usuariosViewMode', viewMode);
-    } catch {
-      // ignore storage errors
-    }
-  }, [viewMode]);
-
-  useEffect(() => {
-    const onResize = () => setCardsPerPage(resolveCardsPerPage(window.innerWidth));
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   useEffect(() => {
     if (!showModal || !editId) return;
@@ -579,20 +345,20 @@ export default function UsuariosTab({ openToast }) {
     const currentErrors = {};
     if (targetType === 'CLIENTE') {
       if (!form.id_cliente) currentErrors.id_cliente = 'Seleccione un cliente';
-      if (selectedCliente && clientesConUsuario.has(selectedCliente.id)) {
+      if (selectedCliente?.has_usuario) {
         currentErrors.id_cliente = 'Cliente ya tiene usuario';
       }
     } else {
       if (!form.id_empleado) currentErrors.id_empleado = 'Seleccione un empleado';
       if (normalizeRoleIds(form.id_roles).length === 0) currentErrors.id_roles = 'Seleccione al menos un rol';
-      if (selectedEmpleado && empleadosConUsuario.has(selectedEmpleado.id)) {
+      if (selectedEmpleado?.has_usuario) {
         currentErrors.id_empleado = 'Empleado ya tiene usuario';
       }
     }
 
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
-  }, [targetType, form.id_cliente, form.id_empleado, form.id_roles, selectedCliente, selectedEmpleado, clientesConUsuario, empleadosConUsuario]);
+  }, [targetType, form.id_cliente, form.id_empleado, form.id_roles, selectedCliente, selectedEmpleado]);
 
   const onFormImageChange = useCallback(async (event) => {
     if (!canEditFotoUsuario) return;
@@ -729,10 +495,7 @@ export default function UsuariosTab({ openToast }) {
 
         if (photoPlan.shouldSend && response?.usuario?.id_usuario) {
           await personaService.updateUsuarioFotoV2(response.usuario.id_usuario, { foto_perfil: photoPlan.value });
-          userPhotoOverridesRef.current.set(
-            String(response.usuario.id_usuario),
-            withImageRenderVersion(photoPlan.value)
-          );
+          rememberPhotoOverride(String(response.usuario.id_usuario), withImageRenderVersion(photoPlan.value));
         }
 
         setCreateCredentialsResult({
@@ -788,7 +551,7 @@ export default function UsuariosTab({ openToast }) {
 
         if (photoPlan.shouldSend) {
           tasks.push(personaService.updateUsuarioFotoV2(editId, { foto_perfil: photoPlan.value }));
-          userPhotoOverridesRef.current.set(String(editId), withImageRenderVersion(photoPlan.value));
+          rememberPhotoOverride(String(editId), withImageRenderVersion(photoPlan.value));
         }
 
         if (tasks.length) {
@@ -916,50 +679,15 @@ export default function UsuariosTab({ openToast }) {
     }
   };
 
-  const usuariosFiltrados = useMemo(() => {
-    const needle = search.toLowerCase().trim();
-    const list = [...(Array.isArray(usuarios) ? usuarios : [])];
-
-    const filtered = list.filter((usuario) => {
-      const active = parseBooleanField(usuario);
-      const matchEstado = estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? active : !active;
-      if (!matchEstado) return false;
-
-      if (!needle) return true;
-
-      const hay = [
-        getNombreCompleto(usuario),
-        getSucursalNombre(usuario),
-        getDni(usuario),
-        getTelefono(usuario),
-        getCorreo(usuario),
-        getRolNombre(usuario),
-        usuario?.nombre_usuario,
-        usuario?.fecha_creacion,
-      ].filter(Boolean).join(' ').toLowerCase();
-
-      return hay.includes(needle);
-    });
-
-    filtered.sort((a, b) => {
-      if (sortBy === 'nombre_asc') return getNombreCompleto(a).localeCompare(getNombreCompleto(b), 'es', { sensitivity: 'base' });
-      if (sortBy === 'nombre_desc') return getNombreCompleto(b).localeCompare(getNombreCompleto(a), 'es', { sensitivity: 'base' });
-      return Number(b?.id_usuario ?? 0) - Number(a?.id_usuario ?? 0);
-    });
-
-    return filtered;
-  }, [usuarios, search, estadoFiltro, sortBy, getNombreCompleto, getSucursalNombre, getDni, getTelefono, getCorreo, getRolNombre]);
-
-  const totalPages = Math.max(1, Math.ceil(usuariosFiltrados.length / limit));
+  const usuariosPaginados = useMemo(
+    () => (Array.isArray(usuarios) ? usuarios : []),
+    [usuarios]
+  );
   const visiblePageNumbers = useMemo(() => buildVisiblePageNumbers(page, totalPages), [page, totalPages]);
-  const usuariosPaginados = useMemo(() => {
-    const start = Math.max(0, (page - 1) * limit);
-    return usuariosFiltrados.slice(start, start + limit);
-  }, [limit, page, usuariosFiltrados]);
 
   const pageWindowLabel = useMemo(
-    () => buildPageRangeLabel({ page, limit, total: usuariosFiltrados.length, currentLength: usuariosPaginados.length }),
-    [limit, page, usuariosFiltrados.length, usuariosPaginados.length]
+    () => buildPageRangeLabel({ page, limit, total, currentLength: usuariosPaginados.length }),
+    [limit, page, total, usuariosPaginados.length]
   );
 
   const predictiveSuggestions = useMemo(() => {
@@ -971,10 +699,6 @@ export default function UsuariosTab({ openToast }) {
     const seen = new Set();
 
     for (const usuario of source) {
-      const active = parseBooleanField(usuario);
-      const matchEstado = estadoFiltro === 'todos' ? true : estadoFiltro === 'activo' ? active : !active;
-      if (!matchEstado) continue;
-
       const nombre = toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre');
       const dni = toDisplayValue(getDni(usuario), '');
       const correo = toDisplayValue(getCorreo(usuario), '');
@@ -1003,19 +727,14 @@ export default function UsuariosTab({ openToast }) {
     }
 
     return suggestions;
-  }, [estadoFiltro, getCorreo, getDni, getNombreCompleto, getRolNombre, search, usuarios]);
+  }, [getCorreo, getDni, getNombreCompleto, getRolNombre, search, usuarios]);
 
   const handleSearchUpdate = useCallback((value, { source } = {}) => {
-    const normalized = normalizeSearchText(value);
     setPage((prev) => (prev === 1 ? prev : 1));
-    if (!normalized) {
-      setDebouncedSearch('');
-      return;
-    }
     if (source === 'suggestion') {
-      setDebouncedSearch((prev) => (prev === normalized ? prev : normalized));
+      setSearch(normalizeSearchText(value));
     }
-  }, []);
+  }, [setPage, setSearch]);
 
   const {
     handleSearchInputChange,
@@ -1041,15 +760,6 @@ export default function UsuariosTab({ openToast }) {
     recentStorageKey: 'usuariosRecentSearchesV1',
   });
 
-  const stats = useMemo(
-    () => ({
-      total: usuarios.length,
-      activas: usuarios.filter((item) => parseBooleanField(item)).length,
-      inactivas: Math.max(0, usuarios.length - usuarios.filter((item) => parseBooleanField(item)).length),
-    }),
-    [usuarios]
-  );
-
   const hasActiveFilters = search.trim() !== '' || estadoFiltro !== 'activo' || sortBy !== 'recientes';
   const colsClass = cardsPerPage >= 6 ? 'cols-3' : cardsPerPage >= 4 ? 'cols-2' : 'cols-1';
 
@@ -1071,7 +781,7 @@ export default function UsuariosTab({ openToast }) {
     setEstadoFiltro('activo');
     setSortBy('recientes');
     setFiltersDraft(createInitialFiltersDraft());
-  }, []);
+  }, [setEstadoFiltro, setSortBy]);
 
   const closeAnyDrawer = () => {
     if (actionLoading) return;
@@ -1083,7 +793,7 @@ export default function UsuariosTab({ openToast }) {
     if (page > totalPages) {
       setPage(totalPages);
     }
-  }, [page, totalPages]);
+  }, [page, setPage, totalPages]);
 
   const selectedUser = usuarios.find((item) => String(item.id_usuario) === String(editId)) || null;
   const clearAllFilters = useCallback(() => {
@@ -1123,7 +833,7 @@ export default function UsuariosTab({ openToast }) {
 
         <div className="inv-catpro-body inv-prod-body p-3">
           <div className="inv-prod-results-meta personas-page__results-meta">
-            <span>{loading ? 'Cargando usuarios...' : `${usuariosFiltrados.length} resultados`}</span>
+            <span>{loading ? 'Cargando usuarios...' : `${total} resultados`}</span>
             <span>{loading ? '' : `Total: ${total}`}</span>
             <label className="form-check form-switch mb-0 personas-page__inactive-toggle inv-catpro-inline-toggle">
               <input
@@ -1147,7 +857,7 @@ export default function UsuariosTab({ openToast }) {
           <div className={`inv-catpro-list ${isAnyDrawerOpen ? 'drawer-open' : ''}`}>
             {loading ? (
               <div className="inv-catpro-loading" role="status" aria-live="polite"><span className="spinner-border spinner-border-sm" aria-hidden="true" /><span>Cargando usuarios...</span></div>
-            ) : usuariosFiltrados.length === 0 ? (
+            ) : usuariosPaginados.length === 0 ? (
               <div className={`inv-catpro-empty ${estadoFiltro === 'inactivo' ? 'inv-catpro-empty--inactive-clean' : ''}`}><div className="inv-catpro-empty-icon"><i className="bi bi-people" /></div><div className="inv-catpro-empty-title">{estadoFiltro === 'inactivo' ? 'No hay usuarios inactivos para mostrar' : 'No hay usuarios para mostrar'}</div>{estadoFiltro !== 'inactivo' ? (<><div className="inv-catpro-empty-sub">{hasActiveFilters ? 'Prueba limpiar filtros o crea un nuevo usuario.' : 'Crea tu primer usuario.'}</div><div className="d-flex gap-2 justify-content-center flex-wrap">{hasActiveFilters ? <button type="button" className="btn btn-outline-secondary" onClick={clearAllFilters}>Limpiar filtros</button> : null}{canCreateUsuario ? <button type="button" className="btn btn-primary" onClick={openCreate}>Nuevo usuario</button> : null}</div></>) : null}</div>
             ) : viewMode === 'table' ? (
               <EntityTable>
@@ -1169,7 +879,7 @@ export default function UsuariosTab({ openToast }) {
 
           <div className="inv-warehouse-moves__pagination inv-ins-pagination">
             <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
-              {`Mostrando ${pageWindowLabel} de ${usuariosFiltrados.length}`}
+              {`Mostrando ${pageWindowLabel} de ${total}`}
             </div>
             <div className="inv-warehouse-moves__pagination-controls">
               <button
@@ -1229,7 +939,9 @@ export default function UsuariosTab({ openToast }) {
         mode={drawerMode}
         form={form}
         errors={errors}
-        onFieldChange={(field, value) => {
+        onFieldChange={(field, value, optionMeta) => {
+          if (field === 'id_empleado' && optionMeta) cacheEmpleado(optionMeta);
+          if (field === 'id_cliente' && optionMeta) cacheCliente(optionMeta);
           setForm((prev) => {
             if (field === 'tipo_objetivo') {
               const nextType = String(value || 'EMPLEADO').toUpperCase() === 'CLIENTE' ? 'CLIENTE' : 'EMPLEADO';
@@ -1281,14 +993,24 @@ export default function UsuariosTab({ openToast }) {
         deletingId={deletingId}
         catalogLoading={catalogLoading}
         rolesLoading={rolesLoading}
-        filteredEmpleadoOptions={filteredEmpleadoOptions}
-        filteredClienteOptions={filteredClienteOptions}
-        empleadosConUsuario={empleadosConUsuario}
-        clientesConUsuario={clientesConUsuario}
+        defaultEmployeeOptions={employeeDefaultOptions}
+        defaultClienteOptions={clienteDefaultOptions}
+        loadEmpleadoOptions={loadEmployeeOptions}
+        loadClienteOptions={loadClienteOptions}
+        employeeSelectValue={selectedEmpleado ? {
+          value: String(selectedEmpleado.id),
+          label: `${toDisplayValue(selectedEmpleado.nombre_completo, 'Empleado seleccionado')} | DNI: ${toDisplayValue(selectedEmpleado.dni, 'N/D')} | ${toDisplayValue(selectedEmpleado.correo, 'Sin correo')}${selectedEmpleado?.has_usuario ? ' (ya tiene usuario)' : ''}`,
+          isDisabled: Boolean(selectedEmpleado?.has_usuario),
+          meta: selectedEmpleado,
+        } : (form.id_empleado ? { value: String(form.id_empleado), label: toDisplayValue(getNombreCompleto(selectedUser), 'Empleado seleccionado') } : null)}
+        clienteSelectValue={selectedCliente ? {
+          value: String(selectedCliente.id),
+          label: `${toDisplayValue(selectedCliente.nombre_completo, 'Cliente seleccionado')} | DNI: ${toDisplayValue(selectedCliente.dni, 'N/D')} | ${toDisplayValue(selectedCliente.correo, 'Sin correo')}${selectedCliente?.has_usuario ? ' (ya tiene usuario)' : ''}`,
+          isDisabled: Boolean(selectedCliente?.has_usuario),
+          meta: selectedCliente,
+        } : (form.id_cliente ? { value: String(form.id_cliente), label: toDisplayValue(getNombreCompleto(selectedUser), 'Cliente seleccionado') } : null)}
         targetType={targetType}
         generatedUsernamePreview={generatedUsernamePreview}
-        empleadoDisplayName={toDisplayValue(selectedEmpleado?.nombre_completo || getNombreCompleto(selectedUser), 'No registrado')}
-        clienteDisplayName={toDisplayValue(selectedCliente?.nombre_completo || getNombreCompleto(selectedUser), 'No registrado')}
         usernameDisplay={toDisplayValue(selectedUser?.nombre_usuario, 'Sin usuario')}
         sortedRoles={sortedRoles}
         formImage={formImage}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import AsyncSelect from 'react-select/async';
 import './usuarios-modal.css';
 import '../common/crud-modal-theme.css';
@@ -79,20 +79,6 @@ const buildUsuariosSelectStyles = (hasError = false) => ({
   }),
 });
 
-const buildEmpleadoOptionLabel = (empleado, linked = false) => {
-  const nombreCompleto = toDisplayValue(empleado?.nombre_completo, 'Empleado sin nombre');
-  const dni = toDisplayValue(empleado?.dni, 'N/D');
-  const correo = toDisplayValue(empleado?.correo, 'Sin correo');
-  return `${nombreCompleto} | DNI: ${dni} | ${correo}${linked ? ' (ya tiene usuario)' : ''}`;
-};
-
-const buildClienteOptionLabel = (cliente, linked = false) => {
-  const nombreCompleto = toDisplayValue(cliente?.nombre_completo, 'Cliente sin nombre');
-  const dni = toDisplayValue(cliente?.dni, 'N/D');
-  const correo = toDisplayValue(cliente?.correo, 'Sin correo');
-  return `${nombreCompleto} | DNI: ${dni} | ${correo}${linked ? ' (ya tiene usuario)' : ''}`;
-};
-
 const ROLE_VISUAL_META = {
   administrador: { icon: 'bi-shield-check', description: 'Acceso administrativo completo al sistema.' },
   super_admin: { icon: 'bi-crown', description: 'Super usuario con acceso total.' },
@@ -129,14 +115,14 @@ export default function UsuarioModal({
   deletingId = null,
   catalogLoading = false,
   rolesLoading = false,
-  filteredEmpleadoOptions = [],
-  filteredClienteOptions = [],
-  empleadosConUsuario,
-  clientesConUsuario,
+  defaultEmployeeOptions = [],
+  defaultClienteOptions = [],
+  loadEmpleadoOptions,
+  loadClienteOptions,
+  employeeSelectValue = null,
+  clienteSelectValue = null,
   targetType = 'EMPLEADO',
   generatedUsernamePreview = '',
-  empleadoDisplayName = '',
-  clienteDisplayName = '',
   usernameDisplay = '',
   sortedRoles = [],
   formImage,
@@ -150,163 +136,12 @@ export default function UsuarioModal({
 }) {
   const isCreate = mode === 'create';
   const isOpen = Boolean(open);
-
-  const employeeOptions = useMemo(
-    () => (Array.isArray(filteredEmpleadoOptions) ? filteredEmpleadoOptions : []),
-    [filteredEmpleadoOptions]
-  );
-  const clienteOptions = useMemo(
-    () => (Array.isArray(filteredClienteOptions) ? filteredClienteOptions : []),
-    [filteredClienteOptions]
-  );
   const isTargetCliente = String(targetType || 'EMPLEADO').toUpperCase() === 'CLIENTE';
   const canEditRoles = !isTargetCliente;
-
-  const employeeSelectOptions = useMemo(
-    () =>
-      employeeOptions.map((item) => {
-        const linked = Boolean(empleadosConUsuario?.has?.(String(item.id)));
-        const label = buildEmpleadoOptionLabel(item, linked);
-        const searchText = [
-          item?.nombre_completo,
-          item?.nombre,
-          item?.apellido,
-          item?.dni,
-          item?.correo
-        ]
-          .map((value) => String(value ?? '').trim().toLowerCase())
-          .filter(Boolean)
-          .join(' ');
-
-        return {
-          value: String(item.id ?? ''),
-          label,
-          isDisabled: linked,
-          searchText
-        };
-      }),
-    [employeeOptions, empleadosConUsuario]
-  );
-
-  const employeeSelectValue = useMemo(() => {
-    const selectedId = String(form?.id_empleado ?? '').trim();
-    if (!selectedId) return null;
-
-    const found = employeeSelectOptions.find((option) => option.value === selectedId);
-    if (found) return found;
-
-    return {
-      value: selectedId,
-      label: toDisplayValue(empleadoDisplayName, 'Empleado seleccionado')
-    };
-  }, [employeeSelectOptions, form?.id_empleado, empleadoDisplayName]);
-
-  const clienteSelectOptions = useMemo(
-    () =>
-      clienteOptions.map((item) => {
-        const linked = Boolean(clientesConUsuario?.has?.(String(item.id)));
-        const label = buildClienteOptionLabel(item, linked);
-        const searchText = [
-          item?.nombre_completo,
-          item?.nombre,
-          item?.apellido,
-          item?.dni,
-          item?.correo
-        ]
-          .map((value) => String(value ?? '').trim().toLowerCase())
-          .filter(Boolean)
-          .join(' ');
-
-        return {
-          value: String(item.id ?? ''),
-          label,
-          isDisabled: linked,
-          searchText
-        };
-      }),
-    [clienteOptions, clientesConUsuario]
-  );
-
-  const clienteSelectValue = useMemo(() => {
-    const selectedId = String(form?.id_cliente ?? '').trim();
-    if (!selectedId) return null;
-
-    const found = clienteSelectOptions.find((option) => option.value === selectedId);
-    if (found) return found;
-
-    return {
-      value: selectedId,
-      label: toDisplayValue(clienteDisplayName, 'Cliente seleccionado')
-    };
-  }, [clienteSelectOptions, form?.id_cliente, clienteDisplayName]);
 
   const empleadoSelectStyles = useMemo(
     () => buildUsuariosSelectStyles(Boolean(errors?.id_empleado || errors?.id_cliente)),
     [errors?.id_empleado, errors?.id_cliente]
-  );
-
-  const filterEmpleadoOption = useCallback((candidate, inputValue) => {
-    const needle = String(inputValue ?? '').trim().toLowerCase();
-    if (!needle) return true;
-    const searchText = String(candidate?.data?.searchText ?? '').toLowerCase();
-    const label = String(candidate?.label ?? '').toLowerCase();
-    return searchText.includes(needle) || label.includes(needle);
-  }, []);
-
-  const filterEmpleadoOptionsList = useCallback((inputValue = '') => {
-    const needle = String(inputValue ?? '').trim().toLowerCase();
-    const filtered = needle
-      ? employeeSelectOptions.filter((option) => {
-        const searchText = String(option?.searchText ?? '').toLowerCase();
-        const label = String(option?.label ?? '').toLowerCase();
-        return searchText.includes(needle) || label.includes(needle);
-      })
-      : employeeSelectOptions;
-
-    // Limita opciones renderizadas para mantener el dropdown fluido en catalogos grandes.
-    return filtered.slice(0, 80);
-  }, [employeeSelectOptions]);
-
-  const loadEmpleadoOptions = useCallback(
-    (inputValue) =>
-      new Promise((resolve) => {
-        window.setTimeout(() => {
-          resolve(filterEmpleadoOptionsList(inputValue));
-        }, 0);
-      }),
-    [filterEmpleadoOptionsList]
-  );
-
-  const defaultEmployeeOptions = useMemo(
-    () => filterEmpleadoOptionsList(''),
-    [filterEmpleadoOptionsList]
-  );
-  const filterClienteOptionsList = useCallback((inputValue = '') => {
-    const needle = String(inputValue ?? '').trim().toLowerCase();
-    const filtered = needle
-      ? clienteSelectOptions.filter((option) => {
-        const searchText = String(option?.searchText ?? '').toLowerCase();
-        const label = String(option?.label ?? '').toLowerCase();
-        return searchText.includes(needle) || label.includes(needle);
-      })
-      : clienteSelectOptions;
-
-    return filtered.slice(0, 80);
-  }, [clienteSelectOptions]);
-
-  const loadClienteOptions = useCallback(
-    (inputValue) =>
-      new Promise((resolve) => {
-        window.setTimeout(() => {
-          resolve(filterClienteOptionsList(inputValue));
-        }, 0);
-      }),
-    [filterClienteOptionsList]
-  );
-
-  const defaultClienteOptions = useMemo(
-    () => filterClienteOptionsList(''),
-    [filterClienteOptionsList]
   );
 
   const roleOptions = useMemo(
@@ -457,7 +292,7 @@ export default function UsuarioModal({
                       loadOptions={loadClienteOptions}
                       isClearable
                       value={clienteSelectValue}
-                      onChange={(option) => onFieldChange?.('id_cliente', option?.value ? String(option.value) : '')}
+                      onChange={(option) => onFieldChange?.('id_cliente', option?.value ? String(option.value) : '', option?.meta ?? null)}
                       isOptionDisabled={(option) => Boolean(option?.isDisabled)}
                       styles={empleadoSelectStyles}
                       menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
@@ -480,9 +315,8 @@ export default function UsuarioModal({
                       loadOptions={loadEmpleadoOptions}
                       isClearable
                       value={employeeSelectValue}
-                      onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '')}
+                      onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '', option?.meta ?? null)}
                       isOptionDisabled={(option) => Boolean(option?.isDisabled)}
-                      filterOption={filterEmpleadoOption}
                       styles={empleadoSelectStyles}
                       menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
                       menuPosition="fixed"
@@ -536,7 +370,7 @@ export default function UsuarioModal({
                     loadOptions={loadClienteOptions}
                     isClearable={false}
                     value={clienteSelectValue}
-                    onChange={(option) => onFieldChange?.('id_cliente', option?.value ? String(option.value) : '')}
+                    onChange={(option) => onFieldChange?.('id_cliente', option?.value ? String(option.value) : '', option?.meta ?? null)}
                     styles={empleadoSelectStyles}
                     menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
                     menuPosition="fixed"
@@ -555,9 +389,8 @@ export default function UsuarioModal({
                     loadOptions={loadEmpleadoOptions}
                     isClearable={false}
                     value={employeeSelectValue}
-                    onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '')}
+                    onChange={(option) => onFieldChange?.('id_empleado', option?.value ? String(option.value) : '', option?.meta ?? null)}
                     isOptionDisabled={(option) => Boolean(option?.isDisabled)}
-                    filterOption={filterEmpleadoOption}
                     styles={empleadoSelectStyles}
                     menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
                     menuPosition="fixed"

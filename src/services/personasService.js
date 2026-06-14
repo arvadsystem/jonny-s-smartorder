@@ -1157,7 +1157,7 @@ export const personaService = {
   getRolesUsuariosV2: () =>
     apiFetch('/usuarios/v2/roles', 'GET'),
 
-  getUsuariosV2: ({ page = 1, limit = 10, q = '', search = '', nombre = '', estado } = {}) => {
+  getUsuariosV2: ({ page = 1, limit = 10, q = '', search = '', nombre = '', estado, sort = '' } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
@@ -1168,7 +1168,30 @@ export const personaService = {
         : (typeof nombre === 'string' ? nombre.trim() : ''));
     if (normalizedSearch) params.set('q', normalizedSearch);
     if (estado !== undefined && estado !== null) params.set('estado', String(estado));
+    if (typeof sort === 'string' && sort.trim()) params.set('sort', sort.trim());
     return apiFetch(`/usuarios/v2/list?${params.toString()}`, 'GET');
+  },
+
+  searchUsuariosEmpleadosCatalogV2: ({ page = 1, limit = 20, q = '', search = '' } = {}) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    const normalizedSearch = typeof q === 'string' && q.trim()
+      ? q.trim()
+      : (typeof search === 'string' ? search.trim() : '');
+    if (normalizedSearch) params.set('q', normalizedSearch);
+    return apiFetch(`/usuarios/v2/catalogos/empleados?${params.toString()}`, 'GET');
+  },
+
+  searchUsuariosClientesCatalogV2: ({ page = 1, limit = 20, q = '', search = '' } = {}) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('limit', String(limit));
+    const normalizedSearch = typeof q === 'string' && q.trim()
+      ? q.trim()
+      : (typeof search === 'string' ? search.trim() : '');
+    if (normalizedSearch) params.set('q', normalizedSearch);
+    return apiFetch(`/usuarios/v2/catalogos/clientes?${params.toString()}`, 'GET');
   },
 
   createUsuarioV2: (payload) =>
