@@ -52,13 +52,30 @@ const planillasService = {
 
   listarDetallePlanilla: (
     idPlanilla,
-    { page = 1, limit = 10, search, id_sucursal, tipo_periodo, quincena } = {}
+    {
+      page = 1,
+      limit = 10,
+      search,
+      cargo,
+      salario_min,
+      salario_max,
+      sort_by,
+      sort_dir,
+      id_sucursal,
+      tipo_periodo,
+      quincena
+    } = {}
   ) =>
     apiFetch(
       `/planillas/${idPlanilla}/detalle${buildQuery({
         page,
         limit,
         search,
+        cargo,
+        salario_min,
+        salario_max,
+        sort_by,
+        sort_dir,
         id_sucursal,
         tipo_periodo,
         quincena

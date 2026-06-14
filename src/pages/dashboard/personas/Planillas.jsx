@@ -35,10 +35,11 @@ import PlanillaBonosDeduccionesHistorialModal from './components/planillas/Plani
 import PayrollFilters from './components/planillas/PayrollFilters';
 import ExportModal from './components/planillas/ExportModal';
 import { buildPageRangeLabel, buildVisiblePageNumbers } from './components/common/paginationWindow';
+import usePlanillasAdmin from './hooks/usePlanillasAdmin';
 
 const LIST_LIMIT = 20;
 const DETAIL_LIMIT = 10;
-const DETAIL_FETCH_LIMIT = 2000;
+const DETAIL_FETCH_LIMIT = 1000;
 const SUCURSAL_QUERY_PARAM = 'sucursal';
 const PAGO_RESUMEN_CARD_KEYS = Object.freeze(['salario_base', 'bonos', 'deducciones', 'adelantos', 'neto']);
 const ADELANTO_STATUS = Object.freeze({
@@ -881,52 +882,6 @@ const buildInitialFilters = (selectedSucursal = '') => ({
   _expanded: false
 });
 
-const filterDetalleRows = ({ rows = [], filters = {}, selectedSucursal = '', selectedPlanilla = null }) => {
-  const searchTerm = toText(filters.search).toLowerCase();
-  const sucursalTerm = normalizeSucursalId(filters.sucursal || selectedSucursal);
-  const cargoTerm = toText(filters.cargo).toLowerCase();
-  const salarioMin = Number.parseFloat(filters.salarioMin);
-  const salarioMax = Number.parseFloat(filters.salarioMax);
-  const hasMin = Number.isFinite(salarioMin);
-  const hasMax = Number.isFinite(salarioMax);
-  const planillaSucursal = normalizeSucursalId(selectedPlanilla?.id_sucursal || selectedSucursal);
-
-  if (sucursalTerm && selectedPlanilla?.id_planilla && planillaSucursal && planillaSucursal !== sucursalTerm) {
-    return [];
-  }
-
-  return rows.filter((item) => {
-    const textBag = [
-      extractEmpleadoNombre(item),
-      item?.dni,
-      item?.cargo,
-      item?.sucursal,
-      item?.nombre_sucursal,
-      item?.telefono,
-      item?.correo,
-      item?.direccion
-    ]
-      .map((value) => toText(value).toLowerCase())
-      .join(' ');
-
-    if (searchTerm && !textBag.includes(searchTerm)) return false;
-    if (cargoTerm && !toText(item?.cargo).toLowerCase().includes(cargoTerm)) return false;
-
-    const salario = safeNumber(item?.salario_base, 0);
-    if (hasMin && salario < salarioMin) return false;
-    if (hasMax && salario > salarioMax) return false;
-
-    if (sucursalTerm && !selectedPlanilla?.id_planilla) {
-      const rowSucursal = normalizeSucursalId(
-        item?.id_sucursal || item?.id_sucursal_empleado || selectedSucursal
-      );
-      if (!rowSucursal || rowSucursal !== sucursalTerm) return false;
-    }
-
-    return true;
-  });
-};
-
 const csvValue = (value) => {
   const text = String(value ?? '');
   return `"${text.replace(/"/g, '""')}"`;
@@ -1592,22 +1547,37 @@ export default function Planillas({
   }, [localToast.show]);
 
   const [sucursales, setSucursales] = useState([]);
-  const [selectedSucursal, setSelectedSucursal] = useState('');
-  const [periodo, setPeriodo] = useState(currentMonth());
-  const [tipoPeriodo, setTipoPeriodo] = useState(TIPO_PERIODO.mensual);
-  const [quincena, setQuincena] = useState(QUINCENA_DEFAULT);
-  const [estadoFiltro, setEstadoFiltro] = useState('');
-  const [listPage, setListPage] = useState(1);
-  const [filters, setFilters] = useState(buildInitialFilters(''));
+  const {
+    selectedSucursal,
+    setSelectedSucursal,
+    periodo,
+    setPeriodo,
+    tipoPeriodo,
+    setTipoPeriodo,
+    quincena,
+    setQuincena,
+    estadoFiltro,
+    setEstadoFiltro,
+    listPage,
+    setListPage,
+    filters,
+    setFilters,
+    clearFilters,
+    selectedPlanillaId,
+    setSelectedPlanillaId,
+    planillaPeriodoLookup,
+    setPlanillaPeriodoLookup,
+    detallePage,
+    setDetallePage
+  } = usePlanillasAdmin({
+    initialPeriodo: currentMonth(),
+    initialTipoPeriodo: TIPO_PERIODO.mensual,
+    initialQuincena: QUINCENA_DEFAULT,
+    buildInitialFilters
+  });
 
   const [planillas, setPlanillas] = useState([]);
   const [planillasTotal, setPlanillasTotal] = useState(0);
-  const [selectedPlanillaId, setSelectedPlanillaId] = useState('');
-  const [planillaPeriodoLookup, setPlanillaPeriodoLookup] = useState({
-    loading: false,
-    hasPlanilla: false,
-    idPlanilla: 0
-  });
 
   const [resumen, setResumen] = useState({});
   const [empleadosActivosSucursal, setEmpleadosActivosSucursal] = useState([]);
@@ -1615,7 +1585,6 @@ export default function Planillas({
   const [adelantosHistorialMovimientos, setAdelantosHistorialMovimientos] = useState([]);
   const [bonosDeduccionesHistorial, setBonosDeduccionesHistorial] = useState([]);
   const [detalle, setDetalle] = useState([]);
-  const [detallePage, setDetallePage] = useState(1);
   const [detalleTotal, setDetalleTotal] = useState(0);
 
   const [loadingSucursales, setLoadingSucursales] = useState(true);
@@ -1799,26 +1768,12 @@ export default function Planillas({
     [periodo, tipoPeriodo, quincena]
   );
 
-  const filteredDetalle = useMemo(
-    () =>
-      filterDetalleRows({
-        rows: detalle,
-        filters,
-        selectedSucursal,
-        selectedPlanilla
-      }),
-    [detalle, filters, selectedSucursal, selectedPlanilla]
-  );
-
   const totalPagesDetalle = useMemo(
-    () => Math.max(1, Math.ceil(filteredDetalle.length / DETAIL_LIMIT)),
-    [filteredDetalle.length]
+    () => Math.max(1, Math.ceil(detalleTotal / DETAIL_LIMIT)),
+    [detalleTotal]
   );
 
-  const pagedDetalle = useMemo(() => {
-    const start = (detallePage - 1) * DETAIL_LIMIT;
-    return filteredDetalle.slice(start, start + DETAIL_LIMIT);
-  }, [detallePage, filteredDetalle]);
+  const pagedDetalle = detalle;
   const totalPagesPlanillas = useMemo(() => Math.max(1, Math.ceil(planillasTotal / LIST_LIMIT)), [planillasTotal]);
   const visiblePlanillaPageNumbers = useMemo(
     () => buildVisiblePageNumbers(listPage, totalPagesPlanillas),
@@ -1833,8 +1788,8 @@ export default function Planillas({
     [listPage, planillas.length, planillasTotal]
   );
   const detallePageWindowLabel = useMemo(
-    () => buildPageRangeLabel({ page: detallePage, limit: DETAIL_LIMIT, total: filteredDetalle.length, currentLength: pagedDetalle.length }),
-    [detallePage, filteredDetalle.length, pagedDetalle.length]
+    () => buildPageRangeLabel({ page: detallePage, limit: DETAIL_LIMIT, total: detalleTotal, currentLength: detalle.length }),
+    [detalle.length, detallePage, detalleTotal]
   );
   const detalleEmpleadoOptions = useMemo(
     () => (Array.isArray(detalle) ? detalle : []).map((row) => buildEmpleadoOption(row)).filter(Boolean),
@@ -2082,14 +2037,14 @@ export default function Planillas({
       if (currentId && validSucursalIds.has(currentId)) return currentId;
       return firstSucursalId || '';
     });
-  }, [preferredSucursalId, sucursalOptions]);
+  }, [preferredSucursalId, setSelectedSucursal, sucursalOptions]);
 
   useEffect(() => {
     setFilters((previous) => ({
       ...previous,
       sucursal: selectedSucursal || ''
     }));
-  }, [selectedSucursal]);
+  }, [selectedSucursal, setFilters]);
 
   useEffect(() => {
     const currentParam = normalizeSucursalId(searchParams.get(SUCURSAL_QUERY_PARAM));
@@ -2214,7 +2169,7 @@ export default function Planillas({
         setLoadingPlanillas(false);
       }
     }
-  }, [canView, estadoFiltro, listPage, periodo, quincena, selectedPlanillaId, selectedSucursal, tipoPeriodo]);
+  }, [canView, estadoFiltro, listPage, periodo, quincena, selectedPlanillaId, selectedSucursal, setSelectedPlanillaId, tipoPeriodo]);
 
   const loadDetalleAndResumen = useCallback(async () => {
     const requestId = detalleRequestRef.current + 1;
@@ -2244,7 +2199,7 @@ export default function Planillas({
 
     setLoadingDetalle(true);
     try {
-      const [resumenResp, detalleItems] = await Promise.all([
+      const [resumenResp, detalleResp] = await Promise.all([
         planillasService.obtenerResumenPlanilla(selectedPlanilla.id_planilla, {
           id_sucursal: activePlanillaSucursalId || undefined,
           tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
@@ -2253,29 +2208,32 @@ export default function Planillas({
               ? normalizeQuincena(quincena)
               : undefined
         }),
-        collectPaginatedApiRows(
-          ({ page, limit }) =>
-            planillasService.listarDetallePlanilla(selectedPlanilla.id_planilla, {
-              page,
-              limit,
-              id_sucursal: activePlanillaSucursalId || undefined,
-              tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
-              quincena:
-                normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
-                  ? normalizeQuincena(quincena)
-                  : undefined
-            }),
-          { pageSize: 100, maxPages: 80 }
-        )
+        planillasService.listarDetallePlanilla(selectedPlanilla.id_planilla, {
+          page: detallePage,
+          limit: DETAIL_LIMIT,
+          search: toText(filters.search, '') || undefined,
+          cargo: toText(filters.cargo, '') || undefined,
+          salario_min: toText(filters.salarioMin, '') || undefined,
+          salario_max: toText(filters.salarioMax, '') || undefined,
+          sort_by: 'nombre',
+          sort_dir: 'asc',
+          id_sucursal: activePlanillaSucursalId || undefined,
+          tipo_periodo: normalizeTipoPeriodo(tipoPeriodo),
+          quincena:
+            normalizeTipoPeriodo(tipoPeriodo) === TIPO_PERIODO.quincenal
+              ? normalizeQuincena(quincena)
+              : undefined
+        })
       ]);
 
       if (requestId !== detalleRequestRef.current) return;
       setResumen(normalizeResumenForDisplay(normalizeResumen(resumenResp)));
-      const normalizedDetalle = (Array.isArray(detalleItems) ? detalleItems : []).map((row) =>
+      const detalleParsed = normalizeListResponse(detalleResp);
+      const normalizedDetalle = (Array.isArray(detalleParsed.items) ? detalleParsed.items : []).map((row) =>
         normalizeDetalleRowForDisplay(row)
       );
       setDetalle(normalizedDetalle);
-      setDetalleTotal(normalizedDetalle.length);
+      setDetalleTotal(detalleParsed.total);
     } catch (error) {
       if (requestId !== detalleRequestRef.current) return;
       safeToast('ERROR', error.message || 'No se pudo cargar el detalle de planilla', 'danger');
@@ -2290,6 +2248,11 @@ export default function Planillas({
   }, [
     activePlanillaSucursalId,
     canViewDetalle,
+    detallePage,
+    filters.cargo,
+    filters.salarioMax,
+    filters.salarioMin,
+    filters.search,
     quincena,
     safeToast,
     selectedPlanilla?.id_planilla,
@@ -2503,7 +2466,7 @@ export default function Planillas({
         idPlanilla: 0
       });
     }
-  }, [canView, loadPlanillasByContext, periodo, quincena, selectedSucursal, tipoPeriodo]);
+  }, [canView, loadPlanillasByContext, periodo, quincena, selectedSucursal, setPlanillaPeriodoLookup, tipoPeriodo]);
 
   useEffect(() => {
     loadSucursales();
@@ -2511,7 +2474,7 @@ export default function Planillas({
 
   useEffect(() => {
     setListPage(1);
-  }, [selectedSucursal, periodo, estadoFiltro, tipoPeriodo, quincena]);
+  }, [estadoFiltro, periodo, quincena, selectedSucursal, setListPage, tipoPeriodo]);
 
   useEffect(() => {
     if (!selectedSucursal) return;
@@ -2522,7 +2485,7 @@ export default function Planillas({
     setDetallePage(1);
     setAdelantosHistorialMovimientos([]);
     setBonosDeduccionesHistorial([]);
-  }, [periodo, quincena, selectedSucursal, tipoPeriodo]);
+  }, [periodo, quincena, selectedSucursal, setDetallePage, setSelectedPlanillaId, tipoPeriodo]);
 
   useEffect(() => {
     setSelectedPlanillaId('');
@@ -2530,7 +2493,7 @@ export default function Planillas({
     setResumen({});
     setDetalleTotal(0);
     setDetallePage(1);
-  }, [selectedSucursal]);
+  }, [selectedSucursal, setDetallePage, setSelectedPlanillaId]);
 
   useEffect(() => {
     loadPlanillas();
@@ -2542,7 +2505,7 @@ export default function Planillas({
 
   useEffect(() => {
     setDetallePage(1);
-  }, [selectedPlanillaId, filters.search, filters.sucursal, filters.cargo, filters.salarioMin, filters.salarioMax]);
+  }, [filters.cargo, filters.salarioMax, filters.salarioMin, filters.search, filters.sucursal, selectedPlanillaId, setDetallePage]);
 
   useEffect(() => {
     loadDetalleAndResumen();
@@ -2568,13 +2531,13 @@ export default function Planillas({
     if (detallePage > totalPagesDetalle) {
       setDetallePage(totalPagesDetalle);
     }
-  }, [detallePage, totalPagesDetalle]);
+  }, [detallePage, setDetallePage, totalPagesDetalle]);
 
   useEffect(() => {
     if (listPage > totalPagesPlanillas) {
       setListPage(totalPagesPlanillas);
     }
-  }, [listPage, totalPagesPlanillas]);
+  }, [listPage, setListPage, totalPagesPlanillas]);
 
   useEffect(() => {
     if (hasSucursalSelected) return;
@@ -2721,7 +2684,16 @@ export default function Planillas({
         return null;
       }
     },
-    [loadPlanillasByContext, periodo, quincena, safeToast, selectedSucursal, tipoPeriodo]
+    [
+      loadPlanillasByContext,
+      periodo,
+      quincena,
+      safeToast,
+      selectedSucursal,
+      setPlanillaPeriodoLookup,
+      setSelectedPlanillaId,
+      tipoPeriodo
+    ]
   );
 
   const resolveDetalleIdForEmpleado = useCallback(
@@ -2748,9 +2720,6 @@ export default function Planillas({
           }),
         { pageSize: 100, maxPages: 80 }
       )).map((row) => normalizeDetalleRowForDisplay(row));
-
-      setDetalle(rows);
-      setDetalleTotal(rows.length);
 
       const remoteDetalle = rows.find((row) => safeNumber(row?.id_empleado, 0) === safeNumber(idEmpleado, 0));
       return safeNumber(remoteDetalle?.id_detalle_planilla ?? remoteDetalle?.id_detalle, 0);
@@ -2919,7 +2888,7 @@ export default function Planillas({
 
   const resolveExportDataset = useCallback(async (options = {}) => {
     let summaryData = normalizeResumenForDisplay(resumen);
-    let rows = filteredDetalle.map((row) => normalizeDetalleRowForDisplay(row));
+    let rows = detalle.map((row) => normalizeDetalleRowForDisplay(row));
     let movimientos = [];
     const normalizedTipoPeriodo = normalizeTipoPeriodo(tipoPeriodo);
     const normalizedQuincena =
@@ -2930,28 +2899,45 @@ export default function Planillas({
       return { summaryData, rows, movimientos };
     }
 
-    if (!isQuincenalContext) {
-      try {
-        const response = await planillasService.obtenerPlanillaCompleta(selectedPlanilla.id_planilla, {
-          id_sucursal: activePlanillaSucursalId || undefined,
-          tipo_periodo: normalizedTipoPeriodo,
-          quincena: normalizedQuincena
-        });
-        const parsed = normalizePlanillaCompleta(response);
-        if (parsed.detalle.length > 0) {
-          const normalizedRows = parsed.detalle.map((row) => normalizeDetalleRowForDisplay(row));
-          rows = filterDetalleRows({
-            rows: normalizedRows,
-            filters,
-            selectedSucursal,
-            selectedPlanilla
+    try {
+      const allRows = await collectPaginatedApiRows(
+        ({ page, limit }) =>
+          planillasService.listarDetallePlanilla(selectedPlanilla.id_planilla, {
+            page,
+            limit,
+            search: toText(filters.search, '') || undefined,
+            cargo: toText(filters.cargo, '') || undefined,
+            salario_min: toText(filters.salarioMin, '') || undefined,
+            salario_max: toText(filters.salarioMax, '') || undefined,
+            sort_by: 'nombre',
+            sort_dir: 'asc',
+            id_sucursal: activePlanillaSucursalId || undefined,
+            tipo_periodo: normalizedTipoPeriodo,
+            quincena: normalizedQuincena
+          }),
+        { pageSize: 100, maxPages: 80 }
+      );
+      if (allRows.length > 0) {
+        rows = allRows.map((row) => normalizeDetalleRowForDisplay(row));
+      }
+    } catch {
+      if (!isQuincenalContext) {
+        try {
+          const response = await planillasService.obtenerPlanillaCompleta(selectedPlanilla.id_planilla, {
+            id_sucursal: activePlanillaSucursalId || undefined,
+            tipo_periodo: normalizedTipoPeriodo,
+            quincena: normalizedQuincena
           });
+          const parsed = normalizePlanillaCompleta(response);
+          if (parsed.detalle.length > 0) {
+            rows = parsed.detalle.map((row) => normalizeDetalleRowForDisplay(row));
+          }
+          if (Object.keys(parsed.resumen || {}).length > 0) {
+            summaryData = normalizeResumenForDisplay(parsed.resumen);
+          }
+        } catch {
+          // fallback
         }
-        if (Object.keys(parsed.resumen || {}).length > 0) {
-          summaryData = normalizeResumenForDisplay(parsed.resumen);
-        }
-      } catch {
-        // fallback
       }
     }
 
@@ -2994,13 +2980,12 @@ export default function Planillas({
     };
   }, [
     activePlanillaSucursalId,
+    detalle,
     filters,
-    filteredDetalle,
     quincena,
     resumen,
     safeToast,
     selectedPlanilla,
-    selectedSucursal,
     tipoPeriodo
   ]);
 
@@ -3064,11 +3049,11 @@ export default function Planillas({
     if (normalized !== TIPO_PERIODO.quincenal) {
       setQuincena(QUINCENA_DEFAULT);
     }
-  }, []);
+  }, [setQuincena, setTipoPeriodo]);
 
   const handleQuincenaChange = useCallback((nextValue) => {
     setQuincena(normalizeQuincena(nextValue));
-  }, []);
+  }, [setQuincena]);
 
   const handleGenerar = () => {
     if (!selectedSucursal || !periodo) {
@@ -4608,12 +4593,7 @@ export default function Planillas({
             <PayrollFilters
               values={filters}
               onChange={setFilters}
-              onClear={() =>
-                setFilters((prev) => ({
-                  ...buildInitialFilters(selectedSucursal),
-                  _expanded: prev._expanded
-                }))
-              }
+              onClear={clearFilters}
               sucursalOptions={sucursalOptions}
             />
           ) : null}
@@ -4678,7 +4658,7 @@ export default function Planillas({
             <span>
               {loadingDetalle
                 ? 'Cargando detalle...'
-                : `Detalle visible: ${pagedDetalle.length} (filtrado: ${filteredDetalle.length} - total: ${detalleTotal})`}
+                : `Detalle visible: ${detalle.length} (total: ${detalleTotal})`}
             </span>
           </div>
 
@@ -4741,7 +4721,7 @@ export default function Planillas({
             <PlanillasLoadingState message="Cargando detalle de planilla..." />
           ) : (
             <>
-              {filteredDetalle.length === 0 ? (
+              {detalleTotal === 0 ? (
                 <div className="inv-catpro-empty planillas-state">
                   <div className="inv-catpro-empty-icon">
                     <i className="bi bi-funnel" />
@@ -4780,7 +4760,7 @@ export default function Planillas({
 
               <div className="inv-warehouse-moves__pagination inv-ins-pagination">
                 <div className="inv-warehouse-moves__pagination-meta inv-ins-pagination__page">
-                  {`Mostrando ${detallePageWindowLabel} de ${filteredDetalle.length}`}
+                  {`Mostrando ${detallePageWindowLabel} de ${detalleTotal}`}
                 </div>
 
                 <div className="inv-warehouse-moves__pagination-controls">
