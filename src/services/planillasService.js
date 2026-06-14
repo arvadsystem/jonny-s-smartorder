@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { API_URL } from '../utils/constants';
 
 const buildQuery = (params = {}) => {
   const searchParams = new URLSearchParams();
@@ -10,6 +11,24 @@ const buildQuery = (params = {}) => {
 
   const query = searchParams.toString();
   return query ? `?${query}` : '';
+};
+
+const parseContentDispositionFilename = (value = '') => {
+  const text = String(value || '');
+  if (!text) return '';
+
+  const utfMatch = text.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]).trim();
+    } catch {
+      return String(utfMatch[1]).trim();
+    }
+  }
+
+  const plainMatch = text.match(/filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/i);
+  const raw = plainMatch?.[1] || plainMatch?.[2] || '';
+  return String(raw).trim();
 };
 
 const pickAllowedFields = (payload, allowedFields = []) => {
@@ -98,6 +117,62 @@ const planillasService = {
       `/planillas/${idPlanilla}/completa${buildQuery({ id_sucursal, tipo_periodo, quincena })}`,
       'GET'
     ),
+
+  exportarPlanillaPdf: async (
+    idPlanilla,
+    {
+      includeDetalle = true,
+      includeMovimientos = false,
+      includeCorreo = true,
+      search,
+      cargo,
+      salario_min,
+      salario_max,
+      id_sucursal,
+      tipo_periodo,
+      quincena
+    } = {}
+  ) => {
+    const query = buildQuery({
+      includeDetalle,
+      includeMovimientos,
+      includeCorreo,
+      search,
+      cargo,
+      salario_min,
+      salario_max,
+      id_sucursal,
+      tipo_periodo,
+      quincena,
+      _ts: Date.now()
+    });
+
+    const response = await fetch(`${API_URL}/planillas/${idPlanilla}/export/pdf${query}`, {
+      method: 'GET',
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      let message = 'No se pudo generar el PDF de la planilla.';
+      try {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const payload = await response.json();
+          message = payload?.message || payload?.mensaje || message;
+        } else {
+          const text = await response.text();
+          if (text) message = text;
+        }
+      } catch {
+        // fallback message
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const filename = parseContentDispositionFilename(response.headers.get('content-disposition')) || '';
+    return { blob, filename };
+  },
 
   listarHorasExtraPlanilla: (
     idPlanilla,

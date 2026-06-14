@@ -916,6 +916,28 @@ const downloadTextFile = ({ fileName, content, mimeType }) => {
   URL.revokeObjectURL(url);
 };
 
+const downloadBlobFile = ({ fileName, blob, fallbackOpen = false }) => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  if (fallbackOpen) {
+    window.setTimeout(() => {
+      try {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } catch {
+        // noop
+      }
+    }, 180);
+  }
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
+
 const buildInitialConfirmModal = () => ({
   open: false,
   actionType: '',
@@ -2995,9 +3017,35 @@ export default function Planillas({
     let printPopup = null;
     setLoadingExport(true);
     try {
+      if (options?.format === 'print') {
+        const normalizedTipoPeriodo = normalizeTipoPeriodo(tipoPeriodo);
+        const normalizedQuincena =
+          normalizedTipoPeriodo === TIPO_PERIODO.quincenal ? normalizeQuincena(quincena) : undefined;
+        const { blob, filename } = await planillasService.exportarPlanillaPdf(selectedPlanilla.id_planilla, {
+          includeDetalle: options?.includeDetalle !== false,
+          includeMovimientos: options?.includeMovimientos === true,
+          includeCorreo: options?.includeCorreo !== false,
+          search: toText(filters.search, '') || undefined,
+          cargo: toText(filters.cargo, '') || undefined,
+          salario_min: toText(filters.salarioMin, '') || undefined,
+          salario_max: toText(filters.salarioMax, '') || undefined,
+          id_sucursal: activePlanillaSucursalId || undefined,
+          tipo_periodo: normalizedTipoPeriodo,
+          quincena: normalizedQuincena
+        });
+
+        const fallbackFileName = `${sanitizeFileName(`${selectedPlanillaLabel}_${periodo}`)}.pdf`;
+        downloadBlobFile({
+          fileName: filename || fallbackFileName,
+          blob,
+          fallbackOpen: true
+        });
+        safeToast('OK', 'PDF generado correctamente.', 'success');
+        setExportModalOpen(false);
+        return;
+      }
+
       if (options?.format !== 'excel') {
-        // Reservamos la ventana dentro del gesto de usuario para evitar bloqueo del navegador
-        // cuando la carga de datos tarda y se ejecuta asincrÃ³nicamente.
         printPopup = createPrintWindow();
         showPendingPrintWindow(printPopup);
       }
@@ -3037,11 +3085,31 @@ export default function Planillas({
       if (printPopup && !printPopup.closed) {
         printPopup.close();
       }
-      safeToast('ERROR', error.message || 'No se pudo generar la exportacion.', 'danger');
+      safeToast(
+        'ERROR',
+        error.message || (options?.format === 'print'
+          ? 'No se pudo generar el PDF de la planilla.'
+          : 'No se pudo generar la exportacion.'),
+        'danger'
+      );
     } finally {
       setLoadingExport(false);
     }
-  }, [buildCsvContent, periodo, resolveExportDataset, safeToast, selectedPlanilla?.id_planilla, selectedPlanillaLabel]);
+  }, [
+    activePlanillaSucursalId,
+    buildCsvContent,
+    filters.cargo,
+    filters.salarioMax,
+    filters.salarioMin,
+    filters.search,
+    periodo,
+    quincena,
+    resolveExportDataset,
+    safeToast,
+    selectedPlanilla?.id_planilla,
+    selectedPlanillaLabel,
+    tipoPeriodo
+  ]);
 
   const handleTipoPeriodoChange = useCallback((nextValue) => {
     const normalized = normalizeTipoPeriodo(nextValue);
@@ -5113,6 +5181,7 @@ export default function Planillas({
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         onSubmit={handleExportSubmit}
+        onQuickPrint={handleExportSubmit}
         loading={loadingExport}
         resumen={resumen}
         planillaLabel={selectedPlanillaLabel}
