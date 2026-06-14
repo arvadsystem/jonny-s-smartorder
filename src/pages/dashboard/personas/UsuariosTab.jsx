@@ -11,7 +11,6 @@ import UsuarioModal from './components/usuarios/UsuarioModal';
 import { parseEstadoUsuario } from './components/usuarios/estadoUtils';
 import SearchSuggestionsDropdown from './components/common/SearchSuggestionsDropdown';
 import useSearchSuggestionsDropdown, {
-  MIN_CHARS_FOR_SUGGESTIONS,
   normalizeSearchText,
 } from './components/common/useSearchSuggestionsDropdown';
 import { buildPageRangeLabel, buildVisiblePageNumbers } from './components/common/paginationWindow';
@@ -153,8 +152,6 @@ const readFileAsDataUrl = (file) =>
   });
 
 const isValidUrlPhoto = (value) => isUsuarioUploadsImageUrl(value);
-const SUGGESTION_LIMIT = 8;
-
 export default function UsuariosTab({ openToast }) {
   const { canAny } = usePermisos();
   const canListUsuarios = canAny([PERMISSIONS.USUARIOS_LISTADO_VER, PERMISSIONS.USUARIOS_VER]);
@@ -206,10 +203,12 @@ export default function UsuariosTab({ openToast }) {
     selectedClienteById,
     cacheEmpleado,
     cacheCliente,
+    ensureModalCatalogs,
     rememberPhotoOverride,
     cargarUsuarios,
     usernamesInUse,
     stats,
+    predictiveSuggestions,
   } = useUsuariosAdmin({
     canListUsuarios,
     canReadRolesCatalog,
@@ -257,14 +256,6 @@ export default function UsuariosTab({ openToast }) {
   const getSucursalNombre = useCallback((u) => normalizeText(u?.empleado?.sucursal_nombre || u?.sucursal_nombre) || 'No registrado', []);
   const getDni = useCallback((u) => normalizeText(u?.dni || u?.empleado?.dni || u?.cliente?.dni), []);
   const getTelefono = useCallback((u) => normalizeText(u?.telefono || u?.empleado?.telefono || u?.cliente?.telefono), []);
-  const getCorreo = useCallback((u) => normalizeText(u?.correo || u?.empleado?.correo || u?.cliente?.correo), []);
-  const getRolNombre = useCallback((u) => {
-    const roles = getUsuarioRoles(u);
-    if (roles.length > 0) {
-      return roles.map((role) => role.nombre).join(', ');
-    }
-    return normalizeText(u?.rol?.nombre || u?.rol_nombre || u?.nombre_rol);
-  }, []);
 
   const drawerMode = editId ? 'edit' : 'create';
   const isAnyDrawerOpen = showModal || filtersOpen;
@@ -616,6 +607,7 @@ export default function UsuariosTab({ openToast }) {
 
   const iniciarEdicion = (usuario) => {
     if (!canEditUsuario) return;
+    void ensureModalCatalogs();
     setFiltersOpen(false);
     setDetailUsuario(null);
     setEditId(usuario?.id_usuario ?? null);
@@ -632,6 +624,7 @@ export default function UsuariosTab({ openToast }) {
   const openCreate = () => {
     if (!canCreateUsuario) return;
     if (actionLoading || deletingId) return;
+    void ensureModalCatalogs();
     setFiltersOpen(false);
     setDetailUsuario(null);
     resetFormState();
@@ -689,45 +682,6 @@ export default function UsuariosTab({ openToast }) {
     () => buildPageRangeLabel({ page, limit, total, currentLength: usuariosPaginados.length }),
     [limit, page, total, usuariosPaginados.length]
   );
-
-  const predictiveSuggestions = useMemo(() => {
-    const searchTerm = normalizeSearchText(search).toLowerCase();
-    if (searchTerm.length < MIN_CHARS_FOR_SUGGESTIONS) return [];
-
-    const source = Array.isArray(usuarios) ? usuarios : [];
-    const suggestions = [];
-    const seen = new Set();
-
-    for (const usuario of source) {
-      const nombre = toDisplayValue(getNombreCompleto(usuario), 'Usuario sin nombre');
-      const dni = toDisplayValue(getDni(usuario), '');
-      const correo = toDisplayValue(getCorreo(usuario), '');
-      const username = toDisplayValue(usuario?.nombre_usuario, '');
-      const rol = toDisplayValue(getRolNombre(usuario), '');
-      const haystack = [nombre, dni, correo, username, rol].join(' ').toLowerCase();
-      if (!haystack.includes(searchTerm)) continue;
-
-      const dedupeKey = normalizeText(nombre).toLowerCase();
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
-
-      const detailParts = [];
-      if (dni && dni !== 'No registrado') detailParts.push(`DNI: ${dni}`);
-      if (correo && correo !== 'No registrado') detailParts.push(correo);
-      if (username && username !== 'No registrado') detailParts.push(`Usuario: ${username}`);
-
-      suggestions.push({
-        id: `usr-${usuario?.id_usuario ?? dedupeKey}`,
-        value: nombre,
-        label: nombre,
-        detail: detailParts.join(' | ') || rol || 'Usuario registrado',
-      });
-
-      if (suggestions.length >= SUGGESTION_LIMIT) break;
-    }
-
-    return suggestions;
-  }, [getCorreo, getDni, getNombreCompleto, getRolNombre, search, usuarios]);
 
   const handleSearchUpdate = useCallback((value, { source } = {}) => {
     setPage((prev) => (prev === 1 ? prev : 1));

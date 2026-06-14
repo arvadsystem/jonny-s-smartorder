@@ -3,6 +3,7 @@ import { personaService } from '../../../../services/personasService';
 
 const DEFAULT_LIMIT = 9;
 const DEFAULT_SELECTOR_LIMIT = 20;
+const MIN_CHARS_FOR_REMOTE_SUGGESTIONS = 2;
 
 const normalizeText = (value) => String(value ?? '').trim();
 
@@ -99,9 +100,12 @@ export default function useUsuariosAdmin({
 }) {
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const suggestionsRequestIdRef = useRef(0);
   const empleadosCacheRef = useRef(new Map());
   const clientesCacheRef = useRef(new Map());
   const photoOverridesRef = useRef(new Map());
+  const modalCatalogsLoadedRef = useRef(false);
+  const modalCatalogsLoadingRef = useRef(false);
 
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(Boolean(canListUsuarios));
@@ -117,11 +121,12 @@ export default function useUsuariosAdmin({
     typeof window === 'undefined' ? 6 : resolveCardsPerPage(window.innerWidth)
   );
   const [rolesCatalogo, setRolesCatalogo] = useState([]);
-  const [rolesLoading, setRolesLoading] = useState(Boolean(canReadRolesCatalog));
-  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [employeeDefaultOptions, setEmployeeDefaultOptions] = useState([]);
   const [clienteDefaultOptions, setClienteDefaultOptions] = useState([]);
   const [summary, setSummary] = useState({ total: 0, activas: 0, inactivas: 0 });
+  const [predictiveSuggestions, setPredictiveSuggestions] = useState([]);
 
   const limit = DEFAULT_LIMIT;
 
@@ -159,6 +164,7 @@ export default function useUsuariosAdmin({
   }, []);
 
   const loadRolesCatalog = useCallback(async () => {
+    if (rolesCatalogo.length > 0) return;
     if (!canReadRolesCatalog) {
       if (mountedRef.current) setRolesLoading(false);
       return;
@@ -183,7 +189,7 @@ export default function useUsuariosAdmin({
     } finally {
       if (mountedRef.current) setRolesLoading(false);
     }
-  }, [canReadRolesCatalog, safeToast]);
+  }, [canReadRolesCatalog, rolesCatalogo.length, safeToast]);
 
   const loadEmployeeOptions = useCallback(async (inputValue = '') => {
     const resp = await personaService.searchUsuariosEmpleadosCatalogV2({
@@ -211,22 +217,31 @@ export default function useUsuariosAdmin({
       .map(buildClienteOption);
   }, [cacheCliente]);
 
-  const warmUpCatalogs = useCallback(async () => {
+  const ensureModalCatalogs = useCallback(async ({ force = false } = {}) => {
+    if (!force && modalCatalogsLoadedRef.current) return;
+    if (modalCatalogsLoadingRef.current) return;
+    modalCatalogsLoadingRef.current = true;
     setCatalogLoading(true);
     try {
-      const [empleadosOptions, clientesOptions] = await Promise.all([
+      const tasks = [
         loadEmployeeOptions(''),
         loadClienteOptions(''),
-      ]);
+      ];
+      if (canReadRolesCatalog && rolesCatalogo.length === 0) {
+        tasks.push(loadRolesCatalog());
+      }
+      const [empleadosOptions, clientesOptions] = await Promise.all(tasks);
       if (!mountedRef.current) return;
       setEmployeeDefaultOptions(empleadosOptions);
       setClienteDefaultOptions(clientesOptions);
+      modalCatalogsLoadedRef.current = true;
     } catch (error) {
       safeToast('ERROR', error.message || 'No se pudieron cargar catalogos', 'danger');
     } finally {
+      modalCatalogsLoadingRef.current = false;
       if (mountedRef.current) setCatalogLoading(false);
     }
-  }, [loadClienteOptions, loadEmployeeOptions, safeToast]);
+  }, [canReadRolesCatalog, loadClienteOptions, loadEmployeeOptions, loadRolesCatalog, rolesCatalogo.length, safeToast]);
 
   const cargarUsuarios = useCallback(async () => {
     if (!canListUsuarios) {
@@ -322,11 +337,41 @@ export default function useUsuariosAdmin({
   }, [cargarUsuarios]);
 
   useEffect(() => {
-    void Promise.all([
-      warmUpCatalogs(),
-      loadRolesCatalog(),
-    ]);
-  }, [loadRolesCatalog, warmUpCatalogs]);
+    if (!canReadRolesCatalog) return;
+    setRolesLoading(false);
+  }, [canReadRolesCatalog]);
+
+  useEffect(() => {
+    const normalizedSearch = normalizeText(search);
+    if (normalizedSearch.length < MIN_CHARS_FOR_REMOTE_SUGGESTIONS) {
+      setPredictiveSuggestions([]);
+      suggestionsRequestIdRef.current += 1;
+      return;
+    }
+
+    const requestId = suggestionsRequestIdRef.current + 1;
+    suggestionsRequestIdRef.current = requestId;
+    const timerId = window.setTimeout(async () => {
+      try {
+        const response = await personaService.getUsuariosSuggestionsV2({ q: normalizedSearch });
+        if (!mountedRef.current || suggestionsRequestIdRef.current !== requestId) return;
+        const items = Array.isArray(response?.items) ? response.items : [];
+        setPredictiveSuggestions(
+          items.map((item, index) => ({
+            id: item?.id ?? item?.id_usuario ?? `usr-suggest-${index}`,
+            value: normalizeText(item?.value ?? item?.label),
+            label: normalizeText(item?.label ?? item?.value),
+            detail: normalizeText(item?.detail ?? item?.type ?? 'Usuario registrado'),
+          })).filter((item) => item.value && item.label)
+        );
+      } catch {
+        if (!mountedRef.current || suggestionsRequestIdRef.current !== requestId) return;
+        setPredictiveSuggestions([]);
+      }
+    }, 220);
+
+    return () => window.clearTimeout(timerId);
+  }, [search]);
 
   const selectedEmpleadoById = useCallback((id) => {
     const key = String(id ?? '').trim();
@@ -382,9 +427,11 @@ export default function useUsuariosAdmin({
     selectedClienteById,
     cacheEmpleado,
     cacheCliente,
+    ensureModalCatalogs,
     rememberPhotoOverride,
     cargarUsuarios,
     usernamesInUse,
     stats: summary,
+    predictiveSuggestions,
   };
 }

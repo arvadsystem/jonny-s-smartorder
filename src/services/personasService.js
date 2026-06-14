@@ -1172,6 +1172,15 @@ export const personaService = {
     return apiFetch(`/usuarios/v2/list?${params.toString()}`, 'GET');
   },
 
+  getUsuariosSuggestionsV2: ({ q = '', search = '' } = {}) => {
+    const params = new URLSearchParams();
+    const normalizedSearch = typeof q === 'string' && q.trim()
+      ? q.trim()
+      : (typeof search === 'string' ? search.trim() : '');
+    if (normalizedSearch) params.set('q', normalizedSearch);
+    return apiFetch(`/usuarios/v2/suggestions?${params.toString()}`, 'GET');
+  },
+
   searchUsuariosEmpleadosCatalogV2: ({ page = 1, limit = 20, q = '', search = '' } = {}) => {
     const params = new URLSearchParams();
     params.set('page', String(page));
