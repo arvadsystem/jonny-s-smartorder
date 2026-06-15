@@ -16,6 +16,16 @@ const buildScheduleError = (error, fallback) => {
   };
 };
 
+const formatDateTimeLabel = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('es-HN', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  });
+};
+
 // million-ignore
 // Pantalla MVP para publicar menu por sucursal desde el panel admin.
 const MenuPublicacionAdmin = ({ showPreview = false }) => {
@@ -55,6 +65,10 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [menusProgramables, setMenusProgramables] = useState([]);
   const [loadingMenus, setLoadingMenus] = useState(false);
   const [selectedMenuProgramacionId, setSelectedMenuProgramacionId] = useState('');
+  const [publicationType, setPublicationType] = useState('DEFAULT');
+  const [seasonStartDate, setSeasonStartDate] = useState('');
+  const [seasonEndDate, setSeasonEndDate] = useState('');
+  const [seasonPriority, setSeasonPriority] = useState('100');
   const [schedulingMenu, setSchedulingMenu] = useState(false);
   const [scheduleSuccess, setScheduleSuccess] = useState('');
   const [scheduleError, setScheduleError] = useState(null);
@@ -179,9 +193,10 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
     const idSucursal = Number(selectedSucursalId || 0);
     const idMenu = Number(selectedMenuProgramacionId || 0);
+    const isSeason = publicationType === 'TEMPORADA';
 
     if (!idSucursal) {
-      setScheduleError({ message: 'Selecciona una sucursal antes de cambiar el menu.' });
+      setScheduleError({ message: 'Selecciona una sucursal.' });
       return;
     }
 
@@ -191,27 +206,48 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     }
 
     if (!idMenu) {
-      setScheduleError({ message: 'Selecciona un menu para activar.' });
+      setScheduleError({ message: 'Selecciona un menú para publicar.' });
       return;
     }
 
-    if (Number(menuSummary?.id_menu || 0) === idMenu) {
+    if (!isSeason && Number(menuSummary?.id_menu || 0) === idMenu && menuSummary?.es_default === true) {
       setScheduleSuccess('Ese menu ya esta activo en esta sucursal.');
       return;
     }
+
+    if (isSeason && !String(seasonEndDate || '').trim()) {
+      setScheduleError({ message: 'Selecciona fecha fin para el menú de temporada.' });
+      return;
+    }
+
+    if (isSeason && seasonStartDate && seasonEndDate) {
+      const startDate = new Date(seasonStartDate);
+      const endDate = new Date(seasonEndDate);
+      if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime()) && endDate <= startDate) {
+        setScheduleError({ message: 'La fecha fin debe ser mayor que la fecha inicio.' });
+        return;
+      }
+    }
+
     try {
       setSchedulingMenu(true);
-      const response = await menuPublicacionAdminService.activarMenuSucursal({
+      await menuPublicacionAdminService.activarMenuSucursal({
         idSucursal,
-        idMenu
+        idMenu,
+        tipoPublicacion: isSeason ? 'TEMPORADA' : 'DEFAULT',
+        fechaInicio: isSeason ? seasonStartDate || null : null,
+        fechaFin: isSeason ? seasonEndDate : null,
+        prioridad: isSeason ? Number(seasonPriority || 100) : 1000
       });
 
       setSelectedMenuProgramacionId(String(idMenu));
       onSelectCatalogMenu(String(idMenu));
-      setScheduleSuccess(response?.message || 'Menú activo actualizado correctamente.');
+      setScheduleSuccess(isSeason
+        ? 'Menú de temporada programado correctamente.'
+        : 'Menú DEFAULT actualizado correctamente.');
       await reloadCurrent();
     } catch (e) {
-      setScheduleError(buildScheduleError(e, 'No se pudo activar el menu para esta sucursal.'));
+      setScheduleError(buildScheduleError(e, 'No se pudo publicar el menu para esta sucursal.'));
     } finally {
       setSchedulingMenu(false);
     }
@@ -483,10 +519,29 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
                   ) : !selectedSucursal?.estado ? (
                     <span className="text-danger">La sucursal seleccionada esta inactiva.</span>
                   ) : menuSummary ? (
-                    <>
-                      <span>Menu vigente: <strong>{menuSummary.nombre_menu || 'Menu'}</strong></span>
-                      <span>ID menu: <strong>{menuSummary.id_menu}</strong></span>
-                    </>
+                    <div className="d-flex flex-column gap-1">
+                      <div className="d-flex align-items-center gap-2 flex-wrap">
+                        <span>Menu vigente: <strong>{menuSummary.nombre_menu || 'Menu'}</strong></span>
+                        <span>ID menu: <strong>{menuSummary.id_menu}</strong></span>
+                        <span className={`badge ${menuSummary?.tipo_publicacion === 'TEMPORADA' ? 'text-bg-warning' : 'text-bg-success'}`}>
+                          {menuSummary?.tipo_publicacion === 'TEMPORADA' ? 'TEMPORADA' : 'DEFAULT'}
+                        </span>
+                      </div>
+                      <div className="d-flex align-items-center gap-2 flex-wrap small text-muted">
+                        {formatDateTimeLabel(menuSummary?.fecha_inicio) ? (
+                          <span>Desde: {formatDateTimeLabel(menuSummary.fecha_inicio)}</span>
+                        ) : null}
+                        {formatDateTimeLabel(menuSummary?.fecha_fin) ? (
+                          <span>Hasta: {formatDateTimeLabel(menuSummary.fecha_fin)}</span>
+                        ) : null}
+                        {menuSummary?.es_default === true ? (
+                          <span>Menú normal de respaldo</span>
+                        ) : null}
+                        {menuSummary?.tipo_publicacion === 'TEMPORADA' ? (
+                          <span>Al finalizar, vuelve al DEFAULT</span>
+                        ) : null}
+                      </div>
+                    </div>
                   ) : (
                     <span className="text-danger">La sucursal no tiene menu vigente activo.</span>
                   )
@@ -513,6 +568,11 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           selectedMenuId={selectedMenuProgramacionId}
           selectedMenu={selectedMenuProgramable}
           currentMenuId={String(menuSummary?.id_menu || '')}
+          publicationType={publicationType}
+          seasonStartDate={seasonStartDate}
+          seasonEndDate={seasonEndDate}
+          seasonPriority={seasonPriority}
+          menuSummary={menuSummary}
           loading={loadingMenus}
           scheduling={schedulingMenu}
           editingMenu={editingMenu}
@@ -528,6 +588,10 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             setSelectedMenuProgramacionId(nextMenuId);
             onSelectCatalogMenu(nextMenuId);
           }}
+          onChangePublicationType={setPublicationType}
+          onChangeSeasonStartDate={setSeasonStartDate}
+          onChangeSeasonEndDate={setSeasonEndDate}
+          onChangeSeasonPriority={setSeasonPriority}
           onProgramar={handleProgramarMenu}
           onReloadMenus={loadMenusProgramables}
           onOpenEditModal={openEditMenuModal}

@@ -5,11 +5,20 @@ const MenuProgramacionPanel = ({
   menus = [],
   selectedMenuId = '',
   currentMenuId = '',
+  publicationType = 'DEFAULT',
+  seasonStartDate = '',
+  seasonEndDate = '',
+  seasonPriority = '100',
+  menuSummary = null,
   loading = false,
   scheduling = false,
   success = '',
   error = '',
   onChangeMenu,
+  onChangePublicationType,
+  onChangeSeasonStartDate,
+  onChangeSeasonEndDate,
+  onChangeSeasonPriority,
   onProgramar,
   onReloadMenus,
   selectedMenu = null,
@@ -46,6 +55,8 @@ const MenuProgramacionPanel = ({
     .filter((menu) => Number.isInteger(menu.id_menu) && menu.id_menu > 0);
 
   const selectedIsCurrent = Number(selectedMenuId || 0) > 0 && Number(selectedMenuId || 0) === Number(currentMenuId || 0);
+  const isSeason = publicationType === 'TEMPORADA';
+  const defaultAlreadySelected = !isSeason && selectedIsCurrent && menuSummary?.es_default === true;
 
   return (
     <section className="menu-pub-admin__program-panel" aria-label="Gestion de menu por sucursal">
@@ -114,14 +125,6 @@ const MenuProgramacionPanel = ({
             <div className="col-12 col-lg-4 d-grid gap-2">
               <button
                 type="button"
-                className="btn inv-prod-btn-primary w-100"
-                disabled={loading || scheduling || !selectedSucursal || !selectedMenuId || selectedIsCurrent}
-                onClick={onProgramar}
-              >
-                {scheduling ? 'Cambiando...' : 'Activar menu ahora'}
-              </button>
-              <button
-                type="button"
                 className="btn inv-prod-btn-subtle w-100"
                 disabled={loading || scheduling || !selectedMenu}
                 onClick={onOpenEditModal}
@@ -138,6 +141,84 @@ const MenuProgramacionPanel = ({
                 {deletingMenu ? 'Eliminando...' : 'Eliminar menu'}
               </button>
             </div>
+          </div>
+
+          <div className="row g-2 align-items-start mt-2">
+            <div className="col-12 col-lg-4">
+              <label className="form-label mb-1">Publicar como</label>
+              <select
+                className="form-select menu-pub-admin__program-select"
+                value={publicationType}
+                onChange={(event) => onChangePublicationType?.(event.target.value)}
+                disabled={loading || scheduling}
+              >
+                <option value="DEFAULT">Menú normal / DEFAULT</option>
+                <option value="TEMPORADA">Menú de temporada</option>
+              </select>
+            </div>
+
+            {isSeason ? (
+              <>
+                <div className="col-12 col-lg-4">
+                  <label className="form-label mb-1">Fecha/hora inicio opcional</label>
+                  <input
+                    type="datetime-local"
+                    className="form-control menu-pub-admin__program-input"
+                    value={seasonStartDate}
+                    onChange={(event) => onChangeSeasonStartDate?.(event.target.value)}
+                    disabled={loading || scheduling}
+                  />
+                </div>
+                <div className="col-12 col-lg-4">
+                  <label className="form-label mb-1">Fecha/hora fin obligatorio</label>
+                  <input
+                    type="datetime-local"
+                    className="form-control menu-pub-admin__program-input"
+                    value={seasonEndDate}
+                    onChange={(event) => onChangeSeasonEndDate?.(event.target.value)}
+                    disabled={loading || scheduling}
+                  />
+                </div>
+                <div className="col-12 col-lg-4">
+                  <label className="form-label mb-1">Prioridad opcional</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    className="form-control menu-pub-admin__program-input"
+                    value={seasonPriority}
+                    onChange={(event) => onChangeSeasonPriority?.(event.target.value)}
+                    disabled={loading || scheduling}
+                    placeholder="100"
+                  />
+                </div>
+              </>
+            ) : null}
+
+            <div className={isSeason ? 'col-12 col-lg-8' : 'col-12'}>
+              <div className="menu-pub-admin__program-info-note h-100">
+                <i className={isSeason ? 'bi bi-calendar2-range' : 'bi bi-house-check'} aria-hidden="true" />
+                <div>
+                  <strong>{isSeason ? 'Menú de temporada' : 'Menú normal / DEFAULT'}</strong>
+                  <p className="mb-0">
+                    {isSeason
+                      ? 'Al vencer, la sucursal vuelve automáticamente al DEFAULT.'
+                      : 'Reemplaza el menú normal de la sucursal. Las temporadas activas no se eliminan.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="d-grid d-lg-flex justify-content-lg-end mt-2">
+            <button
+              type="button"
+              className="btn inv-prod-btn-primary"
+              disabled={loading || scheduling || !selectedSucursal || !selectedMenuId || defaultAlreadySelected}
+              onClick={onProgramar}
+            >
+              {scheduling ? 'Guardando...' : isSeason ? 'Programar temporada' : 'Establecer como DEFAULT'}
+            </button>
           </div>
           {selectedMenu ? (
             <div className="menu-pub-admin__program-info-note mt-2">

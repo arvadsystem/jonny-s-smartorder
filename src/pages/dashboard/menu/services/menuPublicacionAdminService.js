@@ -110,23 +110,47 @@ const menuPublicacionAdminService = {
     return apiFetch(`${BASE_ENDPOINT}/menus/${idMenu}`, 'DELETE');
   },
 
-  // Activa un menu de inmediato para la sucursal seleccionada.
-  async activarMenuSucursal({ idSucursal, idMenu }) {
+  // Activa o programa un menu para la sucursal seleccionada.
+  async activarMenuSucursal({
+    idSucursal,
+    idMenu,
+    tipoPublicacion = 'DEFAULT',
+    fechaInicio = null,
+    fechaFin = null,
+    prioridad = null,
+    syncCatalog = false
+  }) {
+    const normalizedType = String(tipoPublicacion || 'DEFAULT').trim().toUpperCase();
+    const isSeason = normalizedType === 'TEMPORADA';
     return apiFetch(`${BASE_ENDPOINT}/programacion`, 'POST', {
       id_sucursal: idSucursal,
       id_menu: idMenu,
-      fecha_inicio: null,
-      sync_catalog: false
+      tipo_publicacion: isSeason ? 'TEMPORADA' : 'DEFAULT',
+      fecha_inicio: fechaInicio || null,
+      fecha_fin: isSeason ? fechaFin || null : null,
+      prioridad: isSeason ? Number(prioridad || 100) : 1000,
+      sync_catalog: syncCatalog
     });
   },
 
   // Compatibilidad temporal con llamadas anteriores.
-  async programarMenuSucursal({ idSucursal, idMenu, fechaInicio }) {
-    return apiFetch(`${BASE_ENDPOINT}/programacion`, 'POST', {
-      id_sucursal: idSucursal,
-      id_menu: idMenu,
-      fecha_inicio: fechaInicio || null,
-      sync_catalog: false
+  async programarMenuSucursal({
+    idSucursal,
+    idMenu,
+    fechaInicio,
+    fechaFin = null,
+    tipoPublicacion = 'DEFAULT',
+    prioridad = null,
+    syncCatalog = false
+  }) {
+    return this.activarMenuSucursal({
+      idSucursal,
+      idMenu,
+      fechaInicio,
+      fechaFin,
+      tipoPublicacion,
+      prioridad,
+      syncCatalog
     });
   },
 
