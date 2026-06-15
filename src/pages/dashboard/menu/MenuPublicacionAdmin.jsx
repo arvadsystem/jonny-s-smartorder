@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import MenuPreviewPanel from './components/MenuPreviewPanel';
 import MenuProgramacionPanel from './components/MenuProgramacionPanel';
-import MenuPublicationTable from './components/MenuPublicationTable';
+import MenuContentEditorModal from './components/MenuContentEditorModal';
 import MenuActionToast from './components/MenuActionToast';
 import useMenuPublicacionAdmin from './hooks/useMenuPublicacionAdmin';
 import menuPublicacionAdminService from './services/menuPublicacionAdminService';
@@ -85,6 +85,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [deletingMenu, setDeletingMenu] = useState(false);
   const [editMenuSuccess, setEditMenuSuccess] = useState('');
   const [editMenuError, setEditMenuError] = useState('');
+  const [contentEditorOpen, setContentEditorOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const loadMenusProgramables = useCallback(async () => {
     try {
@@ -186,6 +187,26 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       .filter((branch) => Number(branch?.id_sucursal || 0) > 0)
       .sort((a, b) => Number(a.id_sucursal) - Number(b.id_sucursal));
   }, [sucursales]);
+
+  const contentSummary = useMemo(() => {
+    const rows = Array.isArray(items) ? items : [];
+    const totalItems = rows.length;
+    const visibleItems = rows.filter((item) => item?.visible === true).length;
+    const customPriceItems = rows.filter((item) => (
+      item?.precio_publico_input !== null &&
+      item?.precio_publico_input !== undefined &&
+      String(item.precio_publico_input).trim() !== ''
+    )).length;
+
+    return {
+      totalItems,
+      visibleItems,
+      hiddenItems: totalItems - visibleItems,
+      customPriceItems
+    };
+  }, [items]);
+
+  const canEditContent = Boolean(selectedSucursalId && selectedSucursal?.estado && selectedMenuProgramacionId);
 
   const handleProgramarMenu = async () => {
     setScheduleError(null);
@@ -416,10 +437,11 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           <button
             type="button"
             className="btn inv-prod-btn-primary"
-            onClick={savePublication}
-            disabled={saving || loadingCatalogo || !selectedSucursalId || !selectedSucursal || !selectedSucursal?.estado}
+            onClick={() => setContentEditorOpen(true)}
+            disabled={!canEditContent}
           >
-            {saving ? 'Guardando...' : 'Guardar publicacion'}
+            <i className="bi bi-pencil-square me-1" aria-hidden="true" />
+            Editar contenido
           </button>
         </div>
       </div>
@@ -592,6 +614,8 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           onChangeSeasonStartDate={setSeasonStartDate}
           onChangeSeasonEndDate={setSeasonEndDate}
           onChangeSeasonPriority={setSeasonPriority}
+          onEditContent={() => setContentEditorOpen(true)}
+          canEditContent={canEditContent}
           onProgramar={handleProgramarMenu}
           onReloadMenus={loadMenusProgramables}
           onOpenEditModal={openEditMenuModal}
@@ -613,14 +637,49 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
         <div className="row g-3 mt-1">
           <div className={showPreview ? 'col-12 col-xl-7' : 'col-12'}>
-            <MenuPublicationTable
-              items={items}
-              loading={loadingCatalogo}
-              onToggleVisible={onToggleVisible}
-              onToggleAllVisible={onToggleAllVisible}
-              onChangePrecioPublico={onChangePrecioPublico}
-              onUseOriginalPriceForAll={onUseOriginalPriceForAll}
-            />
+            <section className="menu-pub-admin__content-summary" aria-label="Contenido del menu">
+              <div className="menu-pub-admin__content-summary-head">
+                <div>
+                  <div className="fw-semibold">Contenido del menú</div>
+                  <div className="text-muted small">
+                    Edita productos, recetas, combos, visibilidad y precios en un espacio dedicado.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn inv-prod-btn-primary"
+                  onClick={() => setContentEditorOpen(true)}
+                  disabled={!canEditContent}
+                >
+                  <i className="bi bi-pencil-square me-1" aria-hidden="true" />
+                  Editar contenido
+                </button>
+              </div>
+
+              <div className="menu-pub-admin__content-summary-grid">
+                <article>
+                  <span>Total</span>
+                  <strong>{contentSummary.totalItems}</strong>
+                </article>
+                <article>
+                  <span>Visibles</span>
+                  <strong>{contentSummary.visibleItems}</strong>
+                </article>
+                <article>
+                  <span>Ocultos</span>
+                  <strong>{contentSummary.hiddenItems}</strong>
+                </article>
+                <article>
+                  <span>Precio personalizado</span>
+                  <strong>{contentSummary.customPriceItems}</strong>
+                </article>
+              </div>
+
+              <div className="menu-pub-admin__content-summary-meta">
+                <span>Menú: <strong>{selectedMenuProgramable?.nombre_menu || menuSummary?.nombre_menu || 'Sin menú seleccionado'}</strong></span>
+                <span>Sucursal: <strong>{selectedSucursal?.nombre_sucursal || 'Sin sucursal seleccionada'}</strong></span>
+              </div>
+            </section>
           </div>
 
           {showPreview ? (
@@ -635,6 +694,23 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             </div>
           ) : null}
         </div>
+
+        <MenuContentEditorModal
+          open={contentEditorOpen}
+          title="Editar contenido del menú"
+          subtitle="Controla visibilidad, precio público y filtros del contenido publicado."
+          menuSummary={menuSummary}
+          selectedSucursal={selectedSucursal}
+          items={items}
+          loading={loadingCatalogo}
+          saving={saving}
+          onClose={() => setContentEditorOpen(false)}
+          onSave={savePublication}
+          onToggleVisible={onToggleVisible}
+          onToggleAllVisible={onToggleAllVisible}
+          onChangePrecioPublico={onChangePrecioPublico}
+          onUseOriginalPriceForAll={onUseOriginalPriceForAll}
+        />
 
         <MenuActionToast
           title="Publicacion"

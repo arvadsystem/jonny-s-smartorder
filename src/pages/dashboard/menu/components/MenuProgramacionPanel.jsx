@@ -20,6 +20,8 @@ const MenuProgramacionPanel = ({
   onChangeSeasonEndDate,
   onChangeSeasonPriority,
   onProgramar,
+  onEditContent,
+  canEditContent = false,
   onReloadMenus,
   selectedMenu = null,
   editingMenu = false,
@@ -223,13 +225,22 @@ const MenuProgramacionPanel = ({
           {selectedMenu ? (
             <div className="menu-pub-admin__program-info-note mt-2">
               <i className="bi bi-card-text" aria-hidden="true" />
-              <div>
+              <div className="flex-grow-1">
                 <strong>Menu seleccionado</strong>
                 <p className="mb-0">
                   #{selectedMenu.id_menu} {selectedMenu.nombre_menu}
                   {selectedMenu.descripcion ? ` - ${selectedMenu.descripcion}` : ''}
                 </p>
               </div>
+              <button
+                type="button"
+                className="btn btn-sm inv-prod-btn-primary"
+                onClick={onEditContent}
+                disabled={!canEditContent || loading || scheduling}
+              >
+                <i className="bi bi-pencil-square me-1" aria-hidden="true" />
+                Editar contenido
+              </button>
             </div>
           ) : null}
           <div className="menu-pub-admin__program-info-note">
