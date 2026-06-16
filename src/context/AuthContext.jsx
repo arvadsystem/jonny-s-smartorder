@@ -252,24 +252,59 @@ export const AuthProvider = ({ children }) => {
     });
   }, []);
 
-  const login = (authPayload) => {
+  const login = async (authPayload) => {
     const baseUser = normalizeAuthPayloadUser(authPayload);
-    setUser(baseUser);
     setSessionHint(Boolean(baseUser));
     setBootstrapError('');
-    setBootstrapState(BOOTSTRAP_STATES.ready);
 
-    if (!baseUser || typeof baseUser !== 'object') return;
+    if (!baseUser || typeof baseUser !== 'object') {
+      setUser(baseUser);
+      setBootstrapState(BOOTSTRAP_STATES.ready);
+      return baseUser;
+    }
 
-    void (async () => {
-      const nextUser = await enrichUserWithPerfil(baseUser);
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setBootstrapState(BOOTSTRAP_STATES.checking);
 
-      setUser((current) => {
-        if (!current || typeof current !== 'object') return current;
-        if (String(current.id_usuario ?? '') !== String(baseUser.id_usuario ?? '')) return current;
-        return nextUser;
-      });
-    })();
+    try {
+      const sessionData = await authService.me({ timeoutMs: AUTH_BOOTSTRAP_TIMEOUT_MS });
+      if (!isCurrentRequest(requestId)) return baseUser;
+
+      const hydratedUser = normalizeAuthPayloadUser(sessionData) || baseUser;
+      setUser(hydratedUser);
+      setSessionHint(Boolean(hydratedUser));
+      setBootstrapState(BOOTSTRAP_STATES.ready);
+
+      void (async () => {
+        const nextUser = await enrichUserWithPerfil(hydratedUser);
+
+        setUser((current) => {
+          if (!current || typeof current !== 'object') return current;
+          if (String(current.id_usuario ?? '') !== String(hydratedUser.id_usuario ?? '')) return current;
+          return nextUser;
+        });
+      })();
+
+      return hydratedUser;
+    } catch {
+      if (!isCurrentRequest(requestId)) return baseUser;
+
+      setUser(baseUser);
+      setBootstrapState(BOOTSTRAP_STATES.ready);
+
+      void (async () => {
+        const nextUser = await enrichUserWithPerfil(baseUser);
+
+        setUser((current) => {
+          if (!current || typeof current !== 'object') return current;
+          if (String(current.id_usuario ?? '') !== String(baseUser.id_usuario ?? '')) return current;
+          return nextUser;
+        });
+      })();
+
+      return baseUser;
+    }
   };
 
   const logout = async () => {

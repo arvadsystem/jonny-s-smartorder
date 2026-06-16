@@ -217,10 +217,28 @@ const normalizeContactPhone = (value) =>
     .replace(/\D+/g, '')
     .slice(0, 8);
 
+const formatContactPhoneForInput = (value) => {
+  const digits = normalizeContactPhone(value);
+  if (digits.length <= 4) return digits;
+  return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+};
+
 const normalizeContactEmail = (value) =>
   normalizeOrderFormText(value, 120).toLowerCase();
 
 const isValidContactEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ''));
+
+const getKnownCustomerEmail = (user) => {
+  const candidates = [
+    user?.correo_cliente,
+    user?.email,
+    user?.correo,
+    user?.correo_usuario
+  ];
+  return candidates
+    .map((value) => normalizeContactEmail(value))
+    .find((value) => isValidContactEmail(value)) || '';
+};
 
 const getAuthenticatedCustomerContact = (user) => ({
   nombre: normalizeOrderFormText(
@@ -230,7 +248,7 @@ const getAuthenticatedCustomerContact = (user) => ({
     120
   ),
   telefono: normalizeContactPhone(user?.telefono_cliente_normalizado || user?.telefono_cliente || ''),
-  correo: normalizeContactEmail(user?.correo_cliente || user?.email || user?.nombre_usuario || '')
+  correo: getKnownCustomerEmail(user)
 });
 
 const buildEffectiveCustomerContact = (draft, authenticatedContact) => ({
@@ -1119,6 +1137,7 @@ const CatalogScreen = () => {
         hasKnownCustomerPhone,
         hasKnownCustomerEmail
       });
+      setCartOpen(false);
       setOrderContactContextDraft(effectiveContactDraft);
       setOrderContactContextErrors(visibleErrors);
       setOrderContactContextResumeConfig({ keepCartSheetVisible });
@@ -1510,10 +1529,10 @@ const CatalogScreen = () => {
                     type="tel"
                     className="form-control"
                     inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={8}
-                    placeholder="Ejemplo: 87763566"
-                    value={orderContactContextDraft.contactPhone}
+                    pattern="[0-9-]*"
+                    maxLength={9}
+                    placeholder="Ejemplo: 8916-1389"
+                    value={formatContactPhoneForInput(orderContactContextDraft.contactPhone)}
                     onChange={(event) =>
                       handleOrderContactContextChange('contactPhone', event.target.value)
                     }

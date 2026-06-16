@@ -16,6 +16,10 @@
   padding: 1rem;
 }
 
+.pm-order-context-modal__backdrop {
+  z-index: 130;
+}
+
 .pm-confirm-modal {
   width: 100%;
   max-width: 420px;
