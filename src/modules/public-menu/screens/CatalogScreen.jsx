@@ -217,27 +217,41 @@ const normalizeContactPhone = (value) =>
     .replace(/\D+/g, '')
     .slice(0, 8);
 
+const normalizeContactEmail = (value) =>
+  normalizeOrderFormText(value, 120).toLowerCase();
+
+const isValidContactEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ''));
+
 const validateOrderContactContext = ({
   orderType,
   pickupPaymentMethod,
+  contactName,
   contactPhone,
+  contactEmail,
   deliveryAddress,
   deliveryReference,
   transferProof
 }) => {
   const normalizedOrderType = String(orderType || '').trim().toLowerCase();
   const normalizedPickupMethod = String(pickupPaymentMethod || '').trim().toLowerCase();
+  const normalizedName = normalizeOrderFormText(contactName, 120);
   const normalizedPhone = normalizeContactPhone(contactPhone);
+  const normalizedEmail = normalizeContactEmail(contactEmail);
   const normalizedAddress = normalizeOrderFormText(deliveryAddress, 240);
   const normalizedReference = normalizeOrderFormText(deliveryReference, 240);
   const normalizedTransferProof = normalizeOrderFormText(transferProof, 120);
   const errors = {};
 
-  if (
-    (normalizedOrderType === 'pickup' || normalizedOrderType === 'delivery') &&
-    normalizedPhone.length !== 8
-  ) {
-    errors.contactPhone = 'El telefono debe tener exactamente 8 digitos.';
+  if (!normalizedName) {
+    errors.contactName = 'Ingresa tu nombre completo.';
+  }
+
+  if (normalizedPhone.length !== 8) {
+    errors.contactPhone = 'El teléfono debe tener 8 dígitos.';
+  }
+
+  if (!normalizedEmail || !isValidContactEmail(normalizedEmail)) {
+    errors.contactEmail = 'Ingresa un correo válido.';
   }
 
   if (normalizedOrderType === 'delivery') {
@@ -256,8 +270,9 @@ const validateOrderContactContext = ({
     errors,
     data: {
       contacto: {
-        nombre: '',
-        telefono: normalizedPhone
+        nombre: normalizedName,
+        telefono: normalizedPhone,
+        correo: normalizedEmail
       },
       entrega: {
         direccion: normalizedOrderType === 'delivery' ? normalizedAddress : '',
@@ -356,8 +371,18 @@ const buildOrderPayloadFingerprint = (payload) => {
   return JSON.stringify({
     id_sucursal: Number(payload?.id_sucursal || 0),
     tipo_pedido: String(payload?.tipo_pedido || ''),
+    contacto: {
+      nombre: String(payload?.contacto?.nombre || '').trim().toLowerCase(),
+      telefono: String(payload?.contacto?.telefono || '').trim(),
+      correo: String(payload?.contacto?.correo || '').trim().toLowerCase()
+    },
+    entrega: {
+      direccion: String(payload?.entrega?.direccion || '').trim().toLowerCase(),
+      referencia: String(payload?.entrega?.referencia || '').trim().toLowerCase()
+    },
     pago: {
-      metodo: String(payload?.pago?.metodo || '').trim().toLowerCase()
+      metodo: String(payload?.pago?.metodo || '').trim().toLowerCase(),
+      comprobante_transferencia: String(payload?.pago?.comprobante_transferencia || '').trim().toLowerCase()
     },
     servicio: {
       mesa: String(payload?.servicio?.mesa || '').trim()
@@ -445,7 +470,9 @@ const CatalogScreen = () => {
     keepCartSheetVisible: false
   });
   const [orderContactContextDraft, setOrderContactContextDraft] = useState({
+    contactName: '',
     contactPhone: '',
+    contactEmail: '',
     deliveryAddress: '',
     deliveryReference: '',
     transferProof: ''
@@ -895,7 +922,9 @@ const CatalogScreen = () => {
     setOrderContactContextErrors({});
     setOrderContactContextResumeConfig({ keepCartSheetVisible: false });
     setOrderContactContextDraft({
+      contactName: '',
       contactPhone: '',
+      contactEmail: '',
       deliveryAddress: '',
       deliveryReference: '',
       transferProof: ''
@@ -904,7 +933,11 @@ const CatalogScreen = () => {
 
   const handleOrderContactContextChange = (field, value) => {
     const nextValue =
-      field === 'contactPhone' ? normalizeContactPhone(value) : value;
+      field === 'contactPhone'
+        ? normalizeContactPhone(value)
+        : field === 'contactEmail'
+          ? normalizeContactEmail(value)
+          : value;
 
     setOrderContactContextDraft((current) => ({
       ...current,
@@ -999,7 +1032,9 @@ const CatalogScreen = () => {
     const orderContactValidation = validateOrderContactContext({
       orderType,
       pickupPaymentMethod,
+      contactName: orderContactContextDraft.contactName,
       contactPhone: orderContactContextDraft.contactPhone,
+      contactEmail: orderContactContextDraft.contactEmail,
       deliveryAddress: orderContactContextDraft.deliveryAddress,
       deliveryReference: orderContactContextDraft.deliveryReference,
       transferProof: orderContactContextDraft.transferProof
@@ -1007,7 +1042,6 @@ const CatalogScreen = () => {
 
     if (
       !skipContextPrompt &&
-      orderType !== 'dine-in' &&
       Object.keys(orderContactValidation.errors).length > 0
     ) {
       setOrderContactContextErrors(orderContactValidation.errors);
@@ -1016,7 +1050,7 @@ const CatalogScreen = () => {
       return;
     }
 
-    if (orderType !== 'dine-in' && Object.keys(orderContactValidation.errors).length > 0) {
+    if (Object.keys(orderContactValidation.errors).length > 0) {
       actions.pushToast({
         type: 'error',
         message: 'Completa los datos obligatorios del pedido antes de confirmar.'
@@ -1092,7 +1126,9 @@ const CatalogScreen = () => {
     const validation = validateOrderContactContext({
       orderType,
       pickupPaymentMethod: String(state.pickupPaymentMethod || '').trim().toLowerCase(),
+      contactName: orderContactContextDraft.contactName,
       contactPhone: orderContactContextDraft.contactPhone,
+      contactEmail: orderContactContextDraft.contactEmail,
       deliveryAddress: orderContactContextDraft.deliveryAddress,
       deliveryReference: orderContactContextDraft.deliveryReference,
       transferProof: orderContactContextDraft.transferProof
@@ -1360,15 +1396,33 @@ const CatalogScreen = () => {
             <h2 id="pm-order-context-title" className="pm-confirm-modal__title">
               {orderType === 'delivery'
                 ? 'COMPLETA TU PEDIDO PARA DELIVERY'
-                : 'COMPLETA TU PEDIDO PARA RETIRO EN LOCAL'}
+                : orderType === 'pickup'
+                  ? 'COMPLETA TU PEDIDO PARA RETIRO EN LOCAL'
+                  : 'COMPLETA TU PEDIDO PARA COMER EN LOCAL'}
             </h2>
             <p className="pm-confirm-modal__message">
               {orderType === 'delivery'
                 ? 'Necesitamos estos datos para confirmar tu pedido a domicilio sin errores.'
-                : 'Necesitamos un telefono de contacto para confirmar tu pedido de retiro en local.'}
+                : 'Necesitamos tus datos de contacto para confirmar tu pedido sin errores.'}
             </p>
 
             <div className="pm-order-type-table pm-order-context-modal__fields">
+              <label className="pm-order-context-modal__field">
+                <span className="pm-order-context-modal__label">Nombre completo</span>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Ejemplo: Juan Perez"
+                  value={orderContactContextDraft.contactName}
+                  onChange={(event) =>
+                    handleOrderContactContextChange('contactName', event.target.value)
+                  }
+                />
+                {orderContactContextErrors.contactName ? (
+                  <small className="text-danger">{orderContactContextErrors.contactName}</small>
+                ) : null}
+              </label>
+
               <label className="pm-order-context-modal__field">
                 <span className="pm-order-context-modal__label">Telefono de contacto</span>
                 <input
@@ -1383,6 +1437,25 @@ const CatalogScreen = () => {
                     handleOrderContactContextChange('contactPhone', event.target.value)
                   }
                 />
+                {orderContactContextErrors.contactPhone ? (
+                  <small className="text-danger">{orderContactContextErrors.contactPhone}</small>
+                ) : null}
+              </label>
+
+              <label className="pm-order-context-modal__field">
+                <span className="pm-order-context-modal__label">Correo electronico</span>
+                <input
+                  type="email"
+                  className="form-control"
+                  placeholder="Ejemplo: cliente@correo.com"
+                  value={orderContactContextDraft.contactEmail}
+                  onChange={(event) =>
+                    handleOrderContactContextChange('contactEmail', event.target.value)
+                  }
+                />
+                {orderContactContextErrors.contactEmail ? (
+                  <small className="text-danger">{orderContactContextErrors.contactEmail}</small>
+                ) : null}
               </label>
 
               {orderType === 'delivery' ? (
@@ -1398,6 +1471,9 @@ const CatalogScreen = () => {
                         handleOrderContactContextChange('deliveryAddress', event.target.value)
                       }
                     />
+                    {orderContactContextErrors.deliveryAddress ? (
+                      <small className="text-danger">{orderContactContextErrors.deliveryAddress}</small>
+                    ) : null}
                   </label>
 
                   <label className="pm-order-context-modal__field">
@@ -1411,6 +1487,9 @@ const CatalogScreen = () => {
                         handleOrderContactContextChange('deliveryReference', event.target.value)
                       }
                     />
+                    {orderContactContextErrors.deliveryReference ? (
+                      <small className="text-danger">{orderContactContextErrors.deliveryReference}</small>
+                    ) : null}
                   </label>
 
                   <label className="pm-order-context-modal__field">
@@ -1426,6 +1505,9 @@ const CatalogScreen = () => {
                         handleOrderContactContextChange('transferProof', event.target.value)
                       }
                     />
+                    {orderContactContextErrors.transferProof ? (
+                      <small className="text-danger">{orderContactContextErrors.transferProof}</small>
+                    ) : null}
                   </label>
 
                   <small className="pm-order-context-modal__hint">{transferInfoMessage}</small>

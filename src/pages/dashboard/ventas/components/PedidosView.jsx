@@ -118,6 +118,7 @@ const normalizePedidoForPagoModal = (pedido) => ({
   ).trim(),
   telefono_contacto: String(pedido?.telefono_contacto || '').trim(),
   telefono_normalizado: String(pedido?.telefono_normalizado || '').trim(),
+  correo_contacto: String(pedido?.correo_contacto || pedido?.correo || '').trim(),
   canal: pedido?.canal,
   modalidad: pedido?.modalidad,
   id_sucursal: toPositiveId(pedido?.id_sucursal),
@@ -526,6 +527,8 @@ export default function PedidosView({
         String(pedido?.codigo_venta || '').toLowerCase().includes(q) ||
         String(pedido?.nombre_contacto || '').toLowerCase().includes(q) ||
         String(pedido?.telefono_contacto || '').toLowerCase().includes(q) ||
+        String(pedido?.telefono_normalizado || '').toLowerCase().includes(q) ||
+        String(pedido?.correo_contacto || '').toLowerCase().includes(q) ||
         `${pedido?.nombres_cliente || ''} ${pedido?.apellidos_cliente || ''}`.toLowerCase().includes(q) ||
         String(pedido?.descripcion_pedido || '').toLowerCase().includes(q)
     );
@@ -794,6 +797,8 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
     : String(pedido?.nombre_contacto || 'Consumidor final').trim();
 
   const cleanDescription = cleanPedidoDescription(pedido?.descripcion_pedido);
+  const correoContacto = String(pedido?.correo_contacto || '').trim();
+  const telefonoContacto = String(pedido?.telefono_contacto || pedido?.telefono_normalizado || '').trim();
   const laneCode = mapPedidoStateCode(pedido);
   const visibleCode = buildPedidoVisibleCode(pedido);
   const pendingPago = isPedidoPendientePago(pedido);
@@ -821,6 +826,18 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
             <i className="bi bi-clock" />
             {formatPedidoTime(pedido?.fecha_hora_pedido)}
           </span>
+          {telefonoContacto ? (
+            <span className="ventas-pedidos-card__meta">
+              <i className="bi bi-telephone" />
+              {telefonoContacto}
+            </span>
+          ) : null}
+          {correoContacto ? (
+            <span className="ventas-pedidos-card__meta">
+              <i className="bi bi-envelope" />
+              {correoContacto}
+            </span>
+          ) : null}
         </div>
         <div className="ventas-pedidos-card__total">
           <span>Total</span>
