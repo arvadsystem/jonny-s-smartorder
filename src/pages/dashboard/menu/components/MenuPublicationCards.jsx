@@ -27,7 +27,9 @@ const MenuPublicationCards = ({
   menus = [],
   selectedMenuId = '',
   currentMenuId = '',
-  menuSummary = null,
+  publishedMenuSummary = null,
+  selectedCatalogMenuSummary = null,
+  defaultMenuId = '',
   selectedSucursal = null,
   loading = false,
   viewMode = 'cards',
@@ -39,21 +41,29 @@ const MenuPublicationCards = ({
   onDeleteMenu
 }) => {
   const rows = normalizeMenuRows(menus);
-  const currentId = Number(menuSummary?.id_menu || currentMenuId || 0);
+  const currentId = Number(publishedMenuSummary?.id_menu || currentMenuId || 0);
   const selectedId = Number(selectedMenuId || 0);
+  const activeSeasonId = publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? currentId : 0;
+  const resolvedDefaultId = Number(
+    defaultMenuId
+      || (publishedMenuSummary?.es_default === true ? publishedMenuSummary?.id_menu : 0)
+      || (selectedCatalogMenuSummary?.es_default === true ? selectedCatalogMenuSummary?.id_menu : 0)
+      || 0
+  );
   const canUseBranch = Boolean(selectedSucursal?.estado);
   const isList = viewMode === 'list';
 
-  const resolveType = (menu) => {
-    const isCurrent = Number(menu.id_menu) === currentId;
-    if (!isCurrent) return 'DISPONIBLE';
-    if (menuSummary?.tipo_publicacion === 'TEMPORADA') return 'TEMPORADA';
-    if (menuSummary?.es_default === true) return 'DEFAULT';
-    return 'ACTUAL';
+  const resolveStates = (menu) => {
+    const menuId = Number(menu.id_menu || 0);
+    const states = [];
+    if (menuId > 0 && menuId === currentId) states.push('PUBLICADO AHORA');
+    if (menuId > 0 && menuId === resolvedDefaultId) states.push('DEFAULT/FALLBACK');
+    if (menuId > 0 && menuId === activeSeasonId) states.push('TEMPORADA ACTIVA');
+    return states.length > 0 ? states : ['DISPONIBLE'];
   };
 
   const resolveBadgeClass = (type) => (
-    type === 'TEMPORADA'
+    type === 'TEMPORADA ACTIVA'
       ? 'menu-recetas-admin__estado-badge is-inactive'
       : type === 'DISPONIBLE'
         ? 'menu-recetas-admin__estado-badge is-neutral'
@@ -63,8 +73,8 @@ const MenuPublicationCards = ({
   const resolveVigencia = (menu) => {
     const isCurrent = Number(menu.id_menu) === currentId;
     if (!isCurrent) return '--';
-    if (formatDateTimeLabel(menuSummary?.fecha_fin)) return `Hasta ${formatDateTimeLabel(menuSummary.fecha_fin)}`;
-    if (formatDateTimeLabel(menuSummary?.fecha_inicio)) return `Desde ${formatDateTimeLabel(menuSummary.fecha_inicio)}`;
+    if (formatDateTimeLabel(publishedMenuSummary?.fecha_fin)) return `Hasta ${formatDateTimeLabel(publishedMenuSummary.fecha_fin)}`;
+    if (formatDateTimeLabel(publishedMenuSummary?.fecha_inicio)) return `Desde ${formatDateTimeLabel(publishedMenuSummary.fecha_inicio)}`;
     return 'Sin fecha';
   };
 
@@ -94,7 +104,7 @@ const MenuPublicationCards = ({
             </thead>
             <tbody>
               {rows.map((menu) => {
-                const type = resolveType(menu);
+                const states = resolveStates(menu);
                 const isCurrent = Number(menu.id_menu) === currentId;
                 const isSelected = Number(menu.id_menu) === selectedId;
                 const canDelete = !isCurrent;
@@ -105,7 +115,13 @@ const MenuPublicationCards = ({
                       <div className="fw-semibold">{menu.nombre_menu}</div>
                       <div className="small text-muted">#{menu.id_menu} {menu.descripcion || 'Sin descripción registrada.'}</div>
                     </td>
-                    <td><span className={resolveBadgeClass(type)}>{type}</span></td>
+                    <td>
+                      <div className="d-flex flex-wrap gap-1">
+                        {states.map((state) => (
+                          <span key={`menu-pub-list-state-${menu.id_menu}-${state}`} className={resolveBadgeClass(state)}>{state}</span>
+                        ))}
+                      </div>
+                    </td>
                     <td>{isCurrent ? 'Publicado' : 'Disponible'}</td>
                     <td>{resolveVigencia(menu)}</td>
                     <td>
@@ -152,7 +168,12 @@ const MenuPublicationCards = ({
             const isSelected = Number(menu.id_menu) === selectedId;
             const canDelete = !isCurrent;
             const branchCount = menu?.total_sucursales || menu?.total_sucursales_activas || menu?.sucursales_count;
-            const type = resolveType(menu);
+            const states = resolveStates(menu);
+            const primaryState = states.includes('TEMPORADA ACTIVA')
+              ? 'TEMPORADA ACTIVA'
+              : states.includes('DEFAULT/FALLBACK')
+                ? 'DEFAULT/FALLBACK'
+                : states[0];
             const descripcion = truncateText(menu.descripcion || 'Sin descripción registrada.', 104);
 
             return (
@@ -166,7 +187,7 @@ const MenuPublicationCards = ({
                     <span>Menú</span>
                   </div>
                   <div className="menu-recetas-card__media-top">
-                    <span className={resolveBadgeClass(type)}>{isCurrent ? type : 'Disponible'}</span>
+                    <span className={resolveBadgeClass(primaryState)}>{primaryState}</span>
                     <span className="menu-recetas-card__price-pill">#{menu.id_menu}</span>
                   </div>
                 </header>
@@ -180,7 +201,7 @@ const MenuPublicationCards = ({
                   <div className="menu-recetas-card__meta">
                     <div>
                       <small>Tipo</small>
-                      <strong>{type}</strong>
+                      <strong>{states.join(' / ')}</strong>
                     </div>
                     <div>
                       <small>Sucursal</small>
@@ -226,11 +247,11 @@ const MenuPublicationCards = ({
                     type="button"
                     className="inv-catpro-action edit inv-catpro-action-compact"
                     onClick={() => onSetDefault?.(menu)}
-                    disabled={!canUseBranch || type === 'DEFAULT'}
-                    title="Establecer DEFAULT"
+                    disabled={!canUseBranch || states.includes('DEFAULT/FALLBACK')}
+                    title="Establecer como DEFAULT/fallback"
                   >
                     <i className="bi bi-house-check" aria-hidden="true" />
-                    <span className="inv-catpro-action-label">Default</span>
+                    <span className="inv-catpro-action-label">DEFAULT/fallback</span>
                   </button>
                   <button
                     type="button"

@@ -36,8 +36,11 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     state: {
       sucursales,
       selectedSucursalId,
+      selectedCatalogMenuId,
       selectedSucursal,
       menuSummary,
+      publishedMenuSummary,
+      selectedCatalogMenuSummary,
       items,
       preview,
       loadingSucursales,
@@ -95,6 +98,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [publicationSearch, setPublicationSearch] = useState('');
   const [publicationFilter, setPublicationFilter] = useState('todos');
   const [toastMessage, setToastMessage] = useState('');
+  const [defaultFallbackMenuId, setDefaultFallbackMenuId] = useState('');
   const loadMenusProgramables = useCallback(async () => {
     try {
       setLoadingMenus(true);
@@ -114,32 +118,37 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
   useEffect(() => {
     if (selectedMenuProgramacionId) return;
-    if (menuSummary?.id_menu) {
-      const nextMenuId = String(menuSummary.id_menu);
+    if (selectedCatalogMenuId) {
+      setSelectedMenuProgramacionId(String(selectedCatalogMenuId));
+      return;
+    }
+
+    if (publishedMenuSummary?.id_menu) {
+      const nextMenuId = String(publishedMenuSummary.id_menu);
       setSelectedMenuProgramacionId(nextMenuId);
       onSelectCatalogMenu(nextMenuId);
       return;
     }
 
-    if (Array.isArray(menusProgramables) && menusProgramables.length > 0) {
-      const nextMenuId = String(menusProgramables[0].id_menu);
-      setSelectedMenuProgramacionId(nextMenuId);
-      onSelectCatalogMenu(nextMenuId);
-    }
-  }, [menuSummary, menusProgramables, onSelectCatalogMenu, selectedMenuProgramacionId]);
+  }, [onSelectCatalogMenu, publishedMenuSummary, selectedCatalogMenuId, selectedMenuProgramacionId]);
 
   useEffect(() => {
-    // Si cambia el menu vigente de la sucursal, sincronizamos el selector para evitar errores de operador.
-    if (!menuSummary?.id_menu) return;
-    const nextMenuId = String(menuSummary.id_menu);
-    setSelectedMenuProgramacionId(nextMenuId);
-    onSelectCatalogMenu(nextMenuId);
-  }, [menuSummary?.id_menu, onSelectCatalogMenu]);
+    if (!selectedCatalogMenuId) return;
+    if (String(selectedMenuProgramacionId || '') === String(selectedCatalogMenuId)) return;
+    setSelectedMenuProgramacionId(String(selectedCatalogMenuId));
+  }, [selectedCatalogMenuId, selectedMenuProgramacionId]);
 
   useEffect(() => {
     setScheduleError(null);
     setScheduleSuccess('');
+    setDefaultFallbackMenuId('');
   }, [selectedSucursalId]);
+
+  useEffect(() => {
+    if (publishedMenuSummary?.es_default === true && publishedMenuSummary?.id_menu) {
+      setDefaultFallbackMenuId(String(publishedMenuSummary.id_menu));
+    }
+  }, [publishedMenuSummary]);
 
   // Refuerza feedback visual de acciones principales en publicacion/menu temporada.
   useEffect(() => {
@@ -184,6 +193,13 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     ) || null
   ), [menusProgramables, selectedMenuProgramacionId]);
 
+  const selectedEditableMenuName = selectedMenuProgramable?.nombre_menu
+    || selectedCatalogMenuSummary?.nombre_menu
+    || 'Menu seleccionado';
+  const isEditingDifferentPublishedMenu = Number(selectedMenuProgramacionId || 0) > 0
+    && Number(publishedMenuSummary?.id_menu || 0) > 0
+    && Number(selectedMenuProgramacionId || 0) !== Number(publishedMenuSummary.id_menu);
+
   const branchRows = useMemo(() => {
     const rows = Array.isArray(sucursales) ? sucursales : [];
     return rows
@@ -199,18 +215,20 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const filteredMenusProgramables = useMemo(() => {
     const rows = Array.isArray(menusProgramables) ? menusProgramables : [];
     const normalizedSearch = String(publicationSearch || '').trim().toLowerCase();
-    const currentId = Number(menuSummary?.id_menu || 0);
+    const publishedId = Number(publishedMenuSummary?.id_menu || 0);
+    const defaultId = Number(defaultFallbackMenuId || 0);
+    const activeSeasonId = publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? publishedId : 0;
 
     return rows.filter((menu) => {
       const idMenu = Number(menu?.id_menu || menu?.id || 0);
-      const isCurrent = idMenu > 0 && idMenu === currentId;
-      const isDefault = isCurrent && menuSummary?.es_default === true;
-      const isSeason = isCurrent && menuSummary?.tipo_publicacion === 'TEMPORADA';
+      const isPublished = idMenu > 0 && idMenu === publishedId;
+      const isDefault = idMenu > 0 && idMenu === defaultId;
+      const isSeason = idMenu > 0 && idMenu === activeSeasonId;
 
-      if (publicationFilter === 'actual' && !isCurrent) return false;
+      if (publicationFilter === 'actual' && !isPublished) return false;
       if (publicationFilter === 'default' && !isDefault) return false;
       if (publicationFilter === 'temporada' && !isSeason) return false;
-      if (publicationFilter === 'disponibles' && isCurrent) return false;
+      if (publicationFilter === 'disponibles' && (isPublished || isDefault || isSeason)) return false;
 
       if (!normalizedSearch) return true;
 
@@ -226,7 +244,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
         .toLowerCase()
         .includes(normalizedSearch);
     });
-  }, [menuSummary, menusProgramables, publicationFilter, publicationSearch]);
+  }, [defaultFallbackMenuId, menusProgramables, publicationFilter, publicationSearch, publishedMenuSummary]);
 
   const selectPublicationMenu = useCallback((menuOrId) => {
     const nextMenuId = String(
@@ -275,8 +293,8 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       return;
     }
 
-    if (!isSeason && Number(menuSummary?.id_menu || 0) === idMenu && menuSummary?.es_default === true) {
-      setScheduleSuccess('Ese menu ya esta activo en esta sucursal.');
+    if (!isSeason && Number(defaultFallbackMenuId || 0) === idMenu) {
+      setScheduleSuccess('Ese menu ya es el DEFAULT/fallback de esta sucursal.');
       return;
     }
 
@@ -307,9 +325,10 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
       setSelectedMenuProgramacionId(String(idMenu));
       onSelectCatalogMenu(String(idMenu));
+      if (!isSeason) setDefaultFallbackMenuId(String(idMenu));
       setScheduleSuccess(isSeason
         ? 'Menú de temporada programado correctamente.'
-        : 'Menú DEFAULT actualizado correctamente.');
+        : 'Menú DEFAULT/fallback actualizado correctamente.');
       setScheduleModalOpen(false);
       await reloadCurrent();
     } catch (e) {
@@ -454,8 +473,8 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
         .filter((menu) => Number(menu?.id_menu || 0) !== idMenu);
       setMenusProgramables(remaining);
 
-      const fallbackMenuId = Number(menuSummary?.id_menu || 0) > 0
-        ? String(menuSummary.id_menu)
+      const fallbackMenuId = Number(publishedMenuSummary?.id_menu || 0) > 0
+        ? String(publishedMenuSummary.id_menu)
         : String(remaining?.[0]?.id_menu || '');
       setSelectedMenuProgramacionId(fallbackMenuId);
       onSelectCatalogMenu(fallbackMenuId);
@@ -468,6 +487,18 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       setDeletingMenu(false);
     }
   };
+
+  const normalEditingWarnings = useMemo(() => (
+    (Array.isArray(warnings) ? warnings : []).filter((item) => (
+      String(item || '').trim() === 'Estás editando un menú que no es el publicado actualmente para esta sucursal.'
+    ))
+  ), [warnings]);
+
+  const importantWarnings = useMemo(() => (
+    (Array.isArray(warnings) ? warnings : []).filter((item) => (
+      String(item || '').trim() !== 'Estás editando un menú que no es el publicado actualmente para esta sucursal.'
+    ))
+  ), [warnings]);
 
   return (
     <div className="card shadow-sm mb-3 inv-prod-card menu-pub-admin">
@@ -576,14 +607,20 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           </div>
         ) : null}
 
-        {warnings.length > 0 ? (
+        {importantWarnings.length > 0 ? (
           <div className="alert alert-warning inv-prod-alert mb-2">
             <div className="fw-semibold mb-1">Advertencias</div>
             <ul className="mb-0 ps-3">
-              {warnings.map((item, index) => (
+              {importantWarnings.map((item, index) => (
                 <li key={`menu-pub-warn-${index}`}>{item}</li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {normalEditingWarnings.length > 0 ? (
+          <div className="menu-pub-admin__content-load-note mb-2">
+            {normalEditingWarnings[0]}
           </div>
         ) : null}
 
@@ -617,32 +654,37 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             <strong>{selectedSucursal?.nombre_sucursal || 'Sin sucursal seleccionada'}</strong>
           </div>
           <div>
-            <span className="text-muted small">Menú vigente</span>
+            <span className="text-muted small">Menú publicado actual</span>
             {selectedSucursalId ? (
               !selectedSucursal ? (
                 <strong className="text-danger">Sucursal no disponible</strong>
               ) : !selectedSucursal?.estado ? (
                 <strong className="text-danger">Sucursal inactiva</strong>
-              ) : menuSummary ? (
-                <strong>{menuSummary.nombre_menu || 'Menu'} · #{menuSummary.id_menu}</strong>
+              ) : publishedMenuSummary ? (
+                <strong>{publishedMenuSummary.nombre_menu || 'Menu'} · #{publishedMenuSummary.id_menu}</strong>
               ) : (
-                <strong className="text-danger">Sin menú vigente</strong>
+                <strong className="text-danger">Sin menú publicado actual</strong>
               )
             ) : (
               <strong>Selecciona una sucursal</strong>
             )}
           </div>
           <div className="menu-pub-admin__published-badges">
-            {menuSummary ? (
-              <span className={`badge ${menuSummary?.tipo_publicacion === 'TEMPORADA' ? 'text-bg-warning' : 'text-bg-success'}`}>
-                {menuSummary?.tipo_publicacion === 'TEMPORADA' ? 'TEMPORADA' : 'DEFAULT'}
+            {publishedMenuSummary ? (
+              <span className={`badge ${publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? 'text-bg-warning' : 'text-bg-success'}`}>
+                {publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? 'TEMPORADA' : 'DEFAULT'}
               </span>
             ) : null}
-            {formatDateTimeLabel(menuSummary?.fecha_inicio) ? <span>Desde: {formatDateTimeLabel(menuSummary.fecha_inicio)}</span> : null}
-            {formatDateTimeLabel(menuSummary?.fecha_fin) ? <span>Hasta: {formatDateTimeLabel(menuSummary.fecha_fin)}</span> : null}
-            {menuSummary?.es_default === true ? <span>Menú normal de respaldo</span> : null}
-            {menuSummary?.tipo_publicacion === 'TEMPORADA' ? <span>Al finalizar, vuelve al DEFAULT</span> : null}
+            {formatDateTimeLabel(publishedMenuSummary?.fecha_inicio) ? <span>Desde: {formatDateTimeLabel(publishedMenuSummary.fecha_inicio)}</span> : null}
+            {formatDateTimeLabel(publishedMenuSummary?.fecha_fin) ? <span>Hasta: {formatDateTimeLabel(publishedMenuSummary.fecha_fin)}</span> : null}
+            {publishedMenuSummary?.es_default === true ? <span>Menú DEFAULT/fallback</span> : null}
+            {publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? <span>Al finalizar, vuelve al DEFAULT.</span> : null}
           </div>
+          {isEditingDifferentPublishedMenu ? (
+            <div className="menu-pub-admin__content-load-note">
+              Estás editando {selectedEditableMenuName}. El menú publicado actualmente es {publishedMenuSummary?.nombre_menu || 'Menu publicado'}.
+            </div>
+          ) : null}
           <button
             type="button"
             className="btn inv-prod-btn-subtle menu-pub-admin__reload-btn"
@@ -668,8 +710,10 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
         <MenuPublicationCards
           menus={filteredMenusProgramables}
           selectedMenuId={selectedMenuProgramacionId}
-          currentMenuId={String(menuSummary?.id_menu || '')}
-          menuSummary={menuSummary}
+          currentMenuId={String(publishedMenuSummary?.id_menu || '')}
+          publishedMenuSummary={publishedMenuSummary}
+          selectedCatalogMenuSummary={selectedCatalogMenuSummary}
+          defaultMenuId={defaultFallbackMenuId}
           selectedSucursal={selectedSucursal}
           loading={loadingMenus}
           viewMode={publicationViewMode}
@@ -712,7 +756,8 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           menus={menusProgramables}
           selectedMenuId={selectedMenuProgramacionId}
           selectedMenu={selectedMenuProgramable}
-          currentMenuId={String(menuSummary?.id_menu || '')}
+          currentMenuId={String(publishedMenuSummary?.id_menu || '')}
+          defaultMenuId={defaultFallbackMenuId}
           publicationType={publicationType}
           seasonStartDate={seasonStartDate}
           seasonEndDate={seasonEndDate}
@@ -721,7 +766,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           scheduling={schedulingMenu}
           error={scheduleError}
           success={scheduleSuccess}
-          menuSummary={menuSummary}
+          menuSummary={publishedMenuSummary}
           onClose={() => setScheduleModalOpen(false)}
           onChangeMenu={selectPublicationMenu}
           onChangePublicationType={setPublicationType}

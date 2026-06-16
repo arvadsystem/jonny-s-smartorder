@@ -5,6 +5,7 @@ const MenuScheduleModal = ({
   selectedMenuId = '',
   selectedMenu = null,
   currentMenuId = '',
+  defaultMenuId = '',
   publicationType = 'DEFAULT',
   seasonStartDate = '',
   seasonEndDate = '',
@@ -34,8 +35,13 @@ const MenuScheduleModal = ({
     .filter((menu) => Number.isInteger(menu.id_menu) && menu.id_menu > 0);
 
   const isSeason = publicationType === 'TEMPORADA';
-  const selectedIsCurrent = Number(selectedMenuId || 0) > 0 && Number(selectedMenuId || 0) === Number(currentMenuId || 0);
-  const defaultAlreadySelected = !isSeason && selectedIsCurrent && menuSummary?.es_default === true;
+  const selectedId = Number(selectedMenuId || 0);
+  const resolvedDefaultId = Number(
+    defaultMenuId
+      || (menuSummary?.es_default === true ? currentMenuId : 0)
+      || 0
+  );
+  const defaultAlreadySelected = !isSeason && selectedId > 0 && selectedId === resolvedDefaultId;
 
   return (
     <div className="inv-prod-pmodal inv-prod-pmodal--create show">
@@ -184,7 +190,7 @@ const MenuScheduleModal = ({
                         <p className="mb-0">
                           {isSeason
                             ? 'Al vencer, la sucursal vuelve automáticamente al DEFAULT.'
-                            : 'Reemplaza el menú normal de la sucursal. Las temporadas activas no se eliminan.'}
+                            : 'Si existe una temporada activa, este menú quedará como respaldo y será visible cuando la temporada termine o sea cancelada.'}
                         </p>
                       </div>
                     </div>
@@ -204,7 +210,7 @@ const MenuScheduleModal = ({
               disabled={loading || scheduling || !selectedSucursal || !selectedMenuId || defaultAlreadySelected}
               onClick={onProgramar}
             >
-              {scheduling ? 'Guardando...' : isSeason ? 'Programar temporada' : 'Establecer como DEFAULT'}
+              {scheduling ? 'Guardando...' : isSeason ? 'Programar temporada' : 'Establecer como DEFAULT/fallback'}
             </button>
           </div>
         </div>
