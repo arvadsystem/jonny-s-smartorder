@@ -9,6 +9,7 @@ const MenuContentEditorModal = ({
   items = [],
   loading = false,
   saving = false,
+  error = '',
   onClose,
   onSave,
   onToggleVisible,
@@ -71,6 +72,11 @@ const MenuContentEditorModal = ({
           </header>
 
           <div className="inv-prod-pmodal__body menu-pub-admin__content-modal-body">
+            {error ? (
+              <div className="alert alert-warning mb-3">
+                No se pudo cargar el contenido editable de este menú. Puedes seguir administrando menús y volver a intentar.
+              </div>
+            ) : null}
             <MenuPublicationTable
               items={items}
               loading={loading}

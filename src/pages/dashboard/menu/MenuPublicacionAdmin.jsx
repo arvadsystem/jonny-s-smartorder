@@ -85,13 +85,15 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [editMenuName, setEditMenuName] = useState('');
   const [editMenuDescription, setEditMenuDescription] = useState('');
   const [editingMenu, setEditingMenu] = useState(false);
-  const [deletingMenu, setDeletingMenu] = useState(false);
+  const [, setDeletingMenu] = useState(false);
   const [editMenuSuccess, setEditMenuSuccess] = useState('');
   const [editMenuError, setEditMenuError] = useState('');
   const [contentEditorOpen, setContentEditorOpen] = useState(false);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [createSeasonModalOpen, setCreateSeasonModalOpen] = useState(false);
   const [publicationViewMode, setPublicationViewMode] = useState('cards');
+  const [publicationSearch, setPublicationSearch] = useState('');
+  const [publicationFilter, setPublicationFilter] = useState('todos');
   const [toastMessage, setToastMessage] = useState('');
   const loadMenusProgramables = useCallback(async () => {
     try {
@@ -194,25 +196,37 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       .sort((a, b) => Number(a.id_sucursal) - Number(b.id_sucursal));
   }, [sucursales]);
 
-  const contentSummary = useMemo(() => {
-    const rows = Array.isArray(items) ? items : [];
-    const totalItems = rows.length;
-    const visibleItems = rows.filter((item) => item?.visible === true).length;
-    const customPriceItems = rows.filter((item) => (
-      item?.precio_publico_input !== null &&
-      item?.precio_publico_input !== undefined &&
-      String(item.precio_publico_input).trim() !== ''
-    )).length;
+  const filteredMenusProgramables = useMemo(() => {
+    const rows = Array.isArray(menusProgramables) ? menusProgramables : [];
+    const normalizedSearch = String(publicationSearch || '').trim().toLowerCase();
+    const currentId = Number(menuSummary?.id_menu || 0);
 
-    return {
-      totalItems,
-      visibleItems,
-      hiddenItems: totalItems - visibleItems,
-      customPriceItems
-    };
-  }, [items]);
+    return rows.filter((menu) => {
+      const idMenu = Number(menu?.id_menu || menu?.id || 0);
+      const isCurrent = idMenu > 0 && idMenu === currentId;
+      const isDefault = isCurrent && menuSummary?.es_default === true;
+      const isSeason = isCurrent && menuSummary?.tipo_publicacion === 'TEMPORADA';
 
-  const canEditContent = Boolean(selectedSucursalId && selectedSucursal?.estado && selectedMenuProgramacionId);
+      if (publicationFilter === 'actual' && !isCurrent) return false;
+      if (publicationFilter === 'default' && !isDefault) return false;
+      if (publicationFilter === 'temporada' && !isSeason) return false;
+      if (publicationFilter === 'disponibles' && isCurrent) return false;
+
+      if (!normalizedSearch) return true;
+
+      return [
+        menu?.id_menu,
+        menu?.nombre_menu,
+        menu?.nombre,
+        menu?.descripcion,
+        menu?.menu_descripcion
+      ]
+        .filter((value) => value !== null && value !== undefined)
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedSearch);
+    });
+  }, [menuSummary, menusProgramables, publicationFilter, publicationSearch]);
 
   const selectPublicationMenu = useCallback((menuOrId) => {
     const nextMenuId = String(
@@ -468,38 +482,87 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           </div>
         </div>
 
-        <div className="inv-prod-header-actions">
-          <button
-            type="button"
-            className="btn inv-prod-btn-subtle"
-            onClick={() => openScheduleModal(null, publicationType)}
-            disabled={!selectedSucursal?.estado}
+        <div className="inv-prod-header-actions inv-ins-header-actions menu-recetas-admin__header-actions menu-toolbar-actions menu-pub-admin__header-actions">
+          <div className="menu-pub-admin__branch-toolbar">
+            <i className="bi bi-shop" aria-hidden="true" />
+            <select
+              className="form-select menu-pub-admin__branch-select"
+              value={String(selectedSucursalId || '')}
+              onChange={(event) => onSelectSucursal?.(event.target.value)}
+              disabled={loadingSucursales || loadingCatalogo || branchRows.length === 0}
+              aria-label="Sucursal"
+            >
+              <option value="">
+                {branchRows.length === 0 ? 'Sin sucursales' : 'Selecciona sucursal'}
+              </option>
+              {branchRows.map((branch) => {
+                const id = String(branch?.id_sucursal || '');
+                const label = String(branch?.nombre_sucursal || `Sucursal #${id}`).trim();
+                return (
+                  <option key={`menu-pub-header-branch-${id}`} value={id}>
+                    {label}{branch?.estado ? '' : ' (Inactiva)'}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <label className="inv-ins-search menu-toolbar-search" aria-label="Buscar menus">
+            <i className="bi bi-search" />
+            <input
+              type="search"
+              value={publicationSearch}
+              onChange={(event) => setPublicationSearch(event.target.value)}
+              placeholder="Buscar por nombre, descripcion o ID..."
+            />
+          </label>
+
+          <select
+            className="form-select menu-pub-admin__filter-select"
+            value={publicationFilter}
+            onChange={(event) => setPublicationFilter(event.target.value)}
+            aria-label="Filtro de publicacion"
           >
-            <i className="bi bi-shuffle me-1" aria-hidden="true" />
-            Cambiar / programar menú
-          </button>
+            <option value="todos">Todos</option>
+            <option value="actual">Actual</option>
+            <option value="default">DEFAULT</option>
+            <option value="temporada">TEMPORADA</option>
+            <option value="disponibles">Disponibles</option>
+          </select>
+
           <button
             type="button"
-            className="btn inv-prod-btn-subtle"
+            className="inv-prod-toolbar-btn"
             onClick={() => setCreateSeasonModalOpen(true)}
           >
-            <i className="bi bi-file-earmark-plus me-1" aria-hidden="true" />
+            <i className="bi bi-plus-circle" aria-hidden="true" />
             Crear menú de temporada
           </button>
-          <button
-            type="button"
-            className="btn inv-prod-btn-primary"
-            onClick={() => openContentEditor()}
-            disabled={!canEditContent}
-          >
-            <i className="bi bi-pencil-square me-1" aria-hidden="true" />
-            Editar contenido
-          </button>
+
+          <div className="menu-recetas-admin__view-toggle menu-pub-admin__view-toggle" role="tablist" aria-label="Cambiar vista publicacion">
+            <button
+              type="button"
+              className={`menu-recetas-admin__view-btn ${publicationViewMode === 'cards' ? 'is-active' : ''}`}
+              onClick={() => setPublicationViewMode('cards')}
+              aria-pressed={publicationViewMode === 'cards'}
+              title="Vista en tarjetas"
+            >
+              <i className="bi bi-grid-3x3-gap-fill" />
+            </button>
+            <button
+              type="button"
+              className={`menu-recetas-admin__view-btn ${publicationViewMode === 'list' ? 'is-active' : ''}`}
+              onClick={() => setPublicationViewMode('list')}
+              aria-pressed={publicationViewMode === 'list'}
+              title="Vista en lista"
+            >
+              <i className="bi bi-list-ul" />
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="card-body inv-prod-body">
-        {error ? <div className="alert alert-danger inv-prod-alert">{error}</div> : null}
         {success ? <div className="alert alert-success inv-prod-alert">{success}</div> : null}
 
         {validationErrors.length > 0 ? (
@@ -548,200 +611,99 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           </section>
         ) : null}
 
-        <section className="menu-pub-admin__selector" aria-label="Selector de sucursal para publicacion">
-          <div className="menu-pub-admin__selector-grid">
-            <div className="menu-pub-admin__selector-main">
-              <label className="form-label mb-1" htmlFor="menu_publicacion_sucursal">Sucursal</label>
-              <div className="menu-pub-admin__selector-row">
-                <div className="menu-pub-admin__selector-select-wrap">
-                  <i className="bi bi-shop menu-pub-admin__selector-select-icon" aria-hidden="true" />
-                  <select
-                    id="menu_publicacion_sucursal"
-                    className="form-select menu-pub-admin__selector-select"
-                    value={String(selectedSucursalId || '')}
-                    onChange={(event) => onSelectSucursal?.(event.target.value)}
-                    disabled={loadingSucursales || loadingCatalogo || branchRows.length === 0}
-                  >
-                    <option value="">
-                      {branchRows.length === 0 ? 'Sin sucursales disponibles' : 'Selecciona sucursal'}
-                    </option>
-                    {branchRows.map((branch) => {
-                      const id = String(branch?.id_sucursal || '');
-                      const label = String(branch?.nombre_sucursal || `Sucursal #${id}`).trim();
-                      return (
-                        <option key={`menu-pub-branch-${id}`} value={id}>
-                          {label}{branch?.estado ? '' : ' (Inactiva)'}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-                <button
-                  type="button"
-                  className="btn inv-prod-btn-subtle menu-pub-admin__reload-btn"
-                  onClick={reloadCurrent}
-                  disabled={loadingSucursales || loadingCatalogo || !selectedSucursalId}
-                >
-                  <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-                  <span>Recargar</span>
-                </button>
-              </div>
-              <div className="menu-pub-admin__selector-meta">
-                {selectedSucursalId ? (
-                  !selectedSucursal ? (
-                    <span className="text-danger">La sucursal seleccionada ya no esta disponible. Selecciona otra sucursal.</span>
-                  ) : !selectedSucursal?.estado ? (
-                    <span className="text-danger">La sucursal seleccionada esta inactiva.</span>
-                  ) : menuSummary ? (
-                    <div className="d-flex flex-column gap-1">
-                      <div className="d-flex align-items-center gap-2 flex-wrap">
-                        <span>Menu vigente: <strong>{menuSummary.nombre_menu || 'Menu'}</strong></span>
-                        <span>ID menu: <strong>{menuSummary.id_menu}</strong></span>
-                        <span className={`badge ${menuSummary?.tipo_publicacion === 'TEMPORADA' ? 'text-bg-warning' : 'text-bg-success'}`}>
-                          {menuSummary?.tipo_publicacion === 'TEMPORADA' ? 'TEMPORADA' : 'DEFAULT'}
-                        </span>
-                      </div>
-                      <div className="d-flex align-items-center gap-2 flex-wrap small text-muted">
-                        {formatDateTimeLabel(menuSummary?.fecha_inicio) ? (
-                          <span>Desde: {formatDateTimeLabel(menuSummary.fecha_inicio)}</span>
-                        ) : null}
-                        {formatDateTimeLabel(menuSummary?.fecha_fin) ? (
-                          <span>Hasta: {formatDateTimeLabel(menuSummary.fecha_fin)}</span>
-                        ) : null}
-                        {menuSummary?.es_default === true ? (
-                          <span>Menú normal de respaldo</span>
-                        ) : null}
-                        {menuSummary?.tipo_publicacion === 'TEMPORADA' ? (
-                          <span>Al finalizar, vuelve al DEFAULT</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-danger">La sucursal no tiene menu vigente activo.</span>
-                  )
-                ) : (
-                  <span className="text-muted">Selecciona una sucursal para editar publicacion.</span>
-                )}
-              </div>
-            </div>
-            <aside className="menu-pub-admin__selector-info" aria-label="Informacion operativa">
-              <div className="menu-pub-admin__selector-info-head">
-                <i className="bi bi-lightbulb" aria-hidden="true" />
-                <strong>Informacion</strong>
-              </div>
-              <p className="mb-0">
-                Puedes activar un menu existente o crear uno temporal para esta sucursal sin modificar la base de datos.
-              </p>
-            </aside>
+        <section className="menu-pub-admin__published-status" aria-label="Estado de publicacion por sucursal">
+          <div>
+            <span className="text-muted small">Sucursal</span>
+            <strong>{selectedSucursal?.nombre_sucursal || 'Sin sucursal seleccionada'}</strong>
           </div>
+          <div>
+            <span className="text-muted small">Menú vigente</span>
+            {selectedSucursalId ? (
+              !selectedSucursal ? (
+                <strong className="text-danger">Sucursal no disponible</strong>
+              ) : !selectedSucursal?.estado ? (
+                <strong className="text-danger">Sucursal inactiva</strong>
+              ) : menuSummary ? (
+                <strong>{menuSummary.nombre_menu || 'Menu'} · #{menuSummary.id_menu}</strong>
+              ) : (
+                <strong className="text-danger">Sin menú vigente</strong>
+              )
+            ) : (
+              <strong>Selecciona una sucursal</strong>
+            )}
+          </div>
+          <div className="menu-pub-admin__published-badges">
+            {menuSummary ? (
+              <span className={`badge ${menuSummary?.tipo_publicacion === 'TEMPORADA' ? 'text-bg-warning' : 'text-bg-success'}`}>
+                {menuSummary?.tipo_publicacion === 'TEMPORADA' ? 'TEMPORADA' : 'DEFAULT'}
+              </span>
+            ) : null}
+            {formatDateTimeLabel(menuSummary?.fecha_inicio) ? <span>Desde: {formatDateTimeLabel(menuSummary.fecha_inicio)}</span> : null}
+            {formatDateTimeLabel(menuSummary?.fecha_fin) ? <span>Hasta: {formatDateTimeLabel(menuSummary.fecha_fin)}</span> : null}
+            {menuSummary?.es_default === true ? <span>Menú normal de respaldo</span> : null}
+            {menuSummary?.tipo_publicacion === 'TEMPORADA' ? <span>Al finalizar, vuelve al DEFAULT</span> : null}
+          </div>
+          <button
+            type="button"
+            className="btn inv-prod-btn-subtle menu-pub-admin__reload-btn"
+            onClick={reloadCurrent}
+            disabled={loadingSucursales || loadingCatalogo || !selectedSucursalId}
+          >
+            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+            <span>Recargar</span>
+          </button>
         </section>
 
-        <MenuProgramacionPanel
-          selectedSucursal={selectedSucursal}
-          selectedMenu={selectedMenuProgramable}
-          loading={loadingMenus}
-          scheduling={schedulingMenu}
-          editingMenu={editingMenu}
-          deletingMenu={deletingMenu}
-          success={scheduleSuccess}
-          error={scheduleError}
-          editMenuSuccess={editMenuSuccess}
-          editMenuError={editMenuError}
-          editModalOpen={editModalOpen}
-          editName={editMenuName}
-          editDescription={editMenuDescription}
-          onOpenSchedule={() => openScheduleModal(null, publicationType)}
-          onOpenCreateSeason={() => setCreateSeasonModalOpen(true)}
-          onEditContent={() => openContentEditor()}
-          canEditContent={canEditContent}
-          onReloadMenus={loadMenusProgramables}
-          onCloseEditModal={closeEditMenuModal}
-          onChangeEditName={setEditMenuName}
-          onChangeEditDescription={setEditMenuDescription}
-          onSaveEditMenu={handleSaveEditMenu}
-        />
-
-        <div className="row g-3 mt-1">
-          <div className={showPreview ? 'col-12 col-xl-7' : 'col-12'}>
-            <section className="menu-pub-admin__content-summary" aria-label="Contenido del menu">
-              <div className="menu-pub-admin__content-summary-head">
-                <div>
-                  <div className="fw-semibold">Contenido del menú</div>
-                  <div className="text-muted small">
-                    Edita productos, recetas, combos, visibilidad y precios en un espacio dedicado.
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="btn inv-prod-btn-primary"
-                  onClick={() => setContentEditorOpen(true)}
-                  disabled={!canEditContent}
-                >
-                  <i className="bi bi-pencil-square me-1" aria-hidden="true" />
-                  Editar contenido
-                </button>
-              </div>
-
-              <div className="menu-pub-admin__content-summary-grid">
-                <article>
-                  <span>Total</span>
-                  <strong>{contentSummary.totalItems}</strong>
-                </article>
-                <article>
-                  <span>Visibles</span>
-                  <strong>{contentSummary.visibleItems}</strong>
-                </article>
-                <article>
-                  <span>Ocultos</span>
-                  <strong>{contentSummary.hiddenItems}</strong>
-                </article>
-                <article>
-                  <span>Precio personalizado</span>
-                  <strong>{contentSummary.customPriceItems}</strong>
-                </article>
-              </div>
-
-              <div className="menu-pub-admin__content-summary-meta">
-                <span>Menú: <strong>{selectedMenuProgramable?.nombre_menu || menuSummary?.nombre_menu || 'Sin menú seleccionado'}</strong></span>
-                <span>Sucursal: <strong>{selectedSucursal?.nombre_sucursal || 'Sin sucursal seleccionada'}</strong></span>
-              </div>
-              {contentSummary.totalItems === 0 && menuSummary ? (
-                <div className="menu-pub-admin__content-summary-note">
-                  Este menú no tiene contenido cargado o no se pudo cargar el catálogo.
-                </div>
-              ) : null}
-            </section>
+        {error ? (
+          <div className="menu-pub-admin__content-load-note">
+            No se pudo cargar el contenido editable de este menú. Puedes seguir administrando menús y volver a intentar.
           </div>
+        ) : null}
 
-          {showPreview ? (
-            <div className="col-12 col-xl-5">
-              <MenuPreviewPanel
-                loading={loadingPreview}
-                error={previewError}
-                preview={preview}
-                catalogItems={items}
-                openAsClientUrl={openAsClientUrl}
-              />
-            </div>
-          ) : null}
+        <div className="inv-prod-results-meta menu-recetas-admin__results-meta">
+          <span>{filteredMenusProgramables.length} menús</span>
+          {publicationFilter !== 'todos' ? <span className="inv-prod-active-filter-pill">{`Filtro: ${publicationFilter}`}</span> : null}
         </div>
 
         <MenuPublicationCards
-          menus={menusProgramables}
+          menus={filteredMenusProgramables}
           selectedMenuId={selectedMenuProgramacionId}
           currentMenuId={String(menuSummary?.id_menu || '')}
           menuSummary={menuSummary}
           selectedSucursal={selectedSucursal}
           loading={loadingMenus}
           viewMode={publicationViewMode}
-          onChangeViewMode={setPublicationViewMode}
           onSelectMenu={selectPublicationMenu}
           onEditContent={openContentEditor}
           onSetDefault={(menu) => openScheduleModal(menu, 'DEFAULT')}
           onProgramSeason={(menu) => openScheduleModal(menu, 'TEMPORADA')}
-          onOpenCreateSeason={() => setCreateSeasonModalOpen(true)}
           onOpenEditMenu={openEditMenuModal}
           onDeleteMenu={handleDeleteMenu}
+        />
+
+        {showPreview ? (
+          <div className="mt-3">
+            <MenuPreviewPanel
+              loading={loadingPreview}
+              error={previewError}
+              preview={preview}
+              catalogItems={items}
+              openAsClientUrl={openAsClientUrl}
+            />
+          </div>
+        ) : null}
+
+        <MenuProgramacionPanel
+          editingMenu={editingMenu}
+          editMenuSuccess={editMenuSuccess}
+          editMenuError={editMenuError}
+          editModalOpen={editModalOpen}
+          editName={editMenuName}
+          editDescription={editMenuDescription}
+          onCloseEditModal={closeEditMenuModal}
+          onChangeEditName={setEditMenuName}
+          onChangeEditDescription={setEditMenuDescription}
+          onSaveEditMenu={handleSaveEditMenu}
         />
 
         <MenuScheduleModal
@@ -793,6 +755,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           items={items}
           loading={loadingCatalogo}
           saving={saving}
+          error={error}
           onClose={() => setContentEditorOpen(false)}
           onSave={savePublication}
           onToggleVisible={onToggleVisible}
