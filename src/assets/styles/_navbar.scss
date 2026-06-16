@@ -763,7 +763,209 @@
 }
 
 @media (max-width: 768px) {
+  // AM: Inventario usa la misma navbar compacta que Menu en responsive para evitar tabs comprimidos y scroll horizontal.
+  .dashboard-shell .top-navbar.top-navbar--inventario {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 8px;
+    padding: 8px 10px;
+    border-radius: 18px;
+    overflow: visible;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-tabs-zone {
+    width: 100%;
+    min-width: 0;
+    overflow: visible !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tabs-bar {
+    width: 100%;
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tabs-fixed {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0;
+    overflow: visible !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-active-slider {
+    display: none !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn i {
+    display: block;
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn span:not(.active-dot) {
+    display: none !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn .active-dot {
+    display: none;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-more-wrap {
+    margin-left: 0;
+    position: relative;
+    z-index: 1405;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-more-menu {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 78px);
+    right: max(0px, env(safe-area-inset-right, 0px));
+    left: auto;
+    width: max-content;
+    min-width: 186px;
+    max-width: min(232px, calc(100vw - 8px));
+    overflow: hidden;
+    z-index: 1450;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn.inventory-tab-active {
+    border-color: rgba(139, 84, 47, 0.32) !important;
+    background: linear-gradient(145deg, #7a1e24, #b22d30) !important;
+    box-shadow: 0 10px 20px rgba(122, 30, 36, 0.34) !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn.inventory-tab-active span:not(.active-dot) {
+    color: #fff !important;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-icon-group {
+    gap: 6px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-right {
+    margin-left: 0;
+    gap: 6px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-icon-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    border-radius: 12px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-icon-btn i {
+    display: block;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-notification-dot {
+    top: 6px;
+    right: 6px;
+  }
+
+  // AM: fija el panel de notificaciones de los modulos con navbar dentro del viewport en responsive.
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--menu .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--inventario .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--personas .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notifications-dropdown-menu {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 78px);
+    right: max(12px, env(safe-area-inset-right, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: calc(100vh - (env(safe-area-inset-top, 0px) + 94px));
+    box-sizing: border-box;
+    transform: none;
+    overflow: hidden;
+    z-index: 1450;
+  }
+
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--menu .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--inventario .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--personas .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notifications-dropdown-head,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notifications-dropdown-head {
+    gap: 6px;
+    padding: 0 0 6px;
+  }
+
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--menu .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--inventario .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--personas .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notifications-list {
+    max-height: calc(100vh - (env(safe-area-inset-top, 0px) + 158px));
+    gap: 5px;
+    overflow-y: auto;
+  }
+
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--menu .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--inventario .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--personas .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notification-list-item,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notification-list-item {
+    padding: 8px 9px;
+    gap: 4px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-icon-btn.is-active {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 241, 232, 0.96));
+    border-color: rgba(159, 110, 67, 0.32);
+    color: #4f311f;
+    box-shadow: 0 9px 18px rgba(123, 80, 46, 0.24);
+  }
+
   .dashboard-shell .top-navbar.top-navbar--menu,
+  .dashboard-shell .top-navbar.top-navbar--reportes,
+  .dashboard-shell .top-navbar.top-navbar--sucursales,
+  .dashboard-shell .top-navbar.top-navbar--ventas,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion,
   .dashboard-shell .top-navbar.top-navbar--personas,
   .dashboard-shell .top-navbar.top-navbar--planillas {
     display: grid;
@@ -776,6 +978,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-tabs-zone,
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-tabs-zone,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-tabs-zone,
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-tabs-zone,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-tabs-zone,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-tabs-zone,
   .dashboard-shell .top-navbar.top-navbar--personas .navbar-tabs-zone,
   .dashboard-shell .top-navbar.top-navbar--planillas .navbar-tabs-zone {
     width: 100%;
@@ -784,6 +991,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-bar,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tabs-bar,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tabs-bar,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tabs-bar,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tabs-bar,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tabs-bar,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tabs-bar,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tabs-bar {
     width: 100%;
@@ -793,6 +1005,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tabs-fixed,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tabs-fixed,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tabs-fixed,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tabs-fixed,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tabs-fixed,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tabs-fixed,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tabs-fixed,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tabs-fixed {
     width: 100%;
@@ -802,12 +1019,22 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-active-slider,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-active-slider,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-active-slider,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-active-slider,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-active-slider,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-active-slider,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-active-slider,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-active-slider {
     display: none !important;
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn {
     width: 34px;
@@ -821,6 +1048,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn i,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn i,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn i {
     display: block;
@@ -829,18 +1061,33 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn span:not(.active-dot),
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn span:not(.active-dot),
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn span:not(.active-dot) {
     display: none !important;
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn .active-dot,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn .active-dot,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn .active-dot,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn .active-dot,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn .active-dot,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn .active-dot,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn .active-dot,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn .active-dot {
     display: none;
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-wrap,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-more-wrap,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-more-wrap,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-more-wrap,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-more-wrap,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-more-wrap,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-more-wrap,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-wrap {
     margin-left: 0;
@@ -849,6 +1096,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-more-menu,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-more-menu,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-menu {
     position: fixed;
@@ -863,6 +1115,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn.inventory-tab-active,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn.inventory-tab-active,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn.inventory-tab-active,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn.inventory-tab-active,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn.inventory-tab-active,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn.inventory-tab-active {
     border-color: rgba(139, 84, 47, 0.32) !important;
@@ -872,6 +1129,16 @@
 
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active i,
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn.inventory-tab-active i,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active i,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn.inventory-tab-active span:not(.active-dot),
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-tab-btn.inventory-tab-active i,
@@ -880,12 +1147,22 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-group,
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-icon-group,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-icon-group,
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-icon-group,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-icon-group,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-icon-group,
   .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-group,
   .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-group {
     gap: 6px;
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-right,
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-right,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-right,
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-right,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-right,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-right,
   .dashboard-shell .top-navbar.top-navbar--personas .navbar-right,
   .dashboard-shell .top-navbar.top-navbar--planillas .navbar-right {
     margin-left: 0;
@@ -893,6 +1170,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-icon-btn,
   .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-btn,
   .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-btn {
     width: 34px;
@@ -903,6 +1185,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-icon-btn i,
   .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-btn i,
   .dashboard-shell .top-navbar.top-navbar--planillas .navbar-icon-btn i {
     display: block;
@@ -911,6 +1198,11 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-notification-dot,
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-notification-dot,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-notification-dot,
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-notification-dot,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-notification-dot,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-notification-dot,
   .dashboard-shell .top-navbar.top-navbar--personas .navbar-notification-dot,
   .dashboard-shell .top-navbar.top-navbar--planillas .navbar-notification-dot {
     top: 6px;
@@ -919,6 +1211,16 @@
 
   .dashboard-shell .top-navbar.top-navbar--menu .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn.is-active,
+  .dashboard-shell .top-navbar.top-navbar--reportes .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-icon-btn.is-active,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-icon-btn.is-active,
+  .dashboard-shell .top-navbar.top-navbar--ventas .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-icon-btn.is-active,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-icon-btn.is-active,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-icon-btn.is-active,
   .dashboard-shell .top-navbar.top-navbar--personas .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
   .dashboard-shell .top-navbar.top-navbar--personas .navbar-icon-btn.is-active,
   .dashboard-shell .top-navbar.top-navbar--planillas .gear-dropdown-wrap .navbar-icon-btn[aria-expanded='true'],
@@ -951,6 +1253,20 @@
 
   .dashboard-shell .user-profile {
     padding-left: 6px;
+  }
+
+  .dashboard-shell .user-profile-container {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .dashboard-shell .navbar-right-tabs {
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .dashboard-shell .gear-dropdown-menu::before {
+    display: none;
   }
 
   .dashboard-shell .top-navbar {
@@ -1058,11 +1374,15 @@
   .dashboard-shell .top-navbar.top-navbar--seguridad .notifications-dropdown-menu {
     position: fixed;
     top: calc(env(safe-area-inset-top, 0px) + 78px);
-    right: max(0px, env(safe-area-inset-right, 0px));
-    left: auto;
-    min-width: 284px;
-    max-width: min(332px, calc(100vw - 8px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    width: auto;
+    min-width: 0;
+    max-width: none;
     max-height: calc(100vh - (env(safe-area-inset-top, 0px) + 94px));
+    box-sizing: border-box;
+    transform: none;
+    overflow: hidden;
   }
 
   .dashboard-shell .top-navbar.top-navbar--seguridad .gear-dropdown-item {
@@ -1142,12 +1462,30 @@
   }
 
   .dashboard-shell .top-navbar.top-navbar--menu,
+  .dashboard-shell .top-navbar.top-navbar--inventario,
+  .dashboard-shell .top-navbar.top-navbar--reportes,
+  .dashboard-shell .top-navbar.top-navbar--sucursales,
+  .dashboard-shell .top-navbar.top-navbar--ventas,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion,
   .dashboard-shell .top-navbar.top-navbar--personas,
   .dashboard-shell .top-navbar.top-navbar--planillas {
     padding: 7px 9px;
     column-gap: 8px;
   }
 
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-icon-btn,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-icon-btn,
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn,
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn,
@@ -1161,6 +1499,18 @@
     border-radius: 11px;
   }
 
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--inventario .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--reportes .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--ventas .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .navbar-icon-btn i,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-tab-btn i,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .navbar-icon-btn i,
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-tab-btn i,
   .dashboard-shell .top-navbar.top-navbar--menu .navbar-icon-btn i,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-tab-btn i,
@@ -1170,6 +1520,12 @@
     font-size: 0.92rem;
   }
 
+  .dashboard-shell .top-navbar.top-navbar--inventario .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--reportes .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--ventas .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .inventory-more-menu,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .inventory-more-menu,
   .dashboard-shell .top-navbar.top-navbar--menu .inventory-more-menu,
   .dashboard-shell .top-navbar.top-navbar--personas .inventory-more-menu,
   .dashboard-shell .top-navbar.top-navbar--planillas .inventory-more-menu {
@@ -1215,6 +1571,130 @@
     min-width: 264px;
     max-width: min(304px, calc(100vw - 6px));
     max-height: calc(100vh - (env(safe-area-inset-top, 0px) + 88px));
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--menu .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--personas .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notifications-dropdown-menu,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notifications-dropdown-menu {
+    top: calc(env(safe-area-inset-top, 0px) + 72px);
+    right: max(10px, env(safe-area-inset-right, 0px));
+    left: max(10px, env(safe-area-inset-left, 0px));
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: calc(100vh - (env(safe-area-inset-top, 0px) + 88px));
+    padding: 8px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notifications-list,
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--menu .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--personas .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notifications-list,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notifications-list {
+    max-height: calc(100vh - (env(safe-area-inset-top, 0px) + 142px));
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--menu .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--personas .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notifications-mark-all-btn,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notifications-mark-all-btn {
+    min-height: 28px;
+    padding: 4px 8px;
+    font-size: 0.68rem;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notifications-refresh-btn,
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--menu .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--personas .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notifications-refresh-btn,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notifications-refresh-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notification-list-item__head,
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--menu .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--personas .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notification-list-item__head,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notification-list-item__head {
+    gap: 6px;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notification-list-item__head strong,
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--menu .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--personas .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notification-list-item__head strong,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notification-list-item__head strong {
+    font-size: 0.82rem;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notification-list-item__head span,
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--menu .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--personas .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notification-list-item__head span,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notification-list-item__head span {
+    font-size: 0.68rem;
+  }
+
+  .dashboard-shell .top-navbar.top-navbar--inventario .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--reportes .notification-list-item p,
+  .dashboard-shell .top-navbar:not([class*='top-navbar--']) .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--menu .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--personas .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--planillas .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--seguridad .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--sucursales .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--ventas .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--cierres-caja .notification-list-item p,
+  .dashboard-shell .top-navbar.top-navbar--fidelizacion .notification-list-item p {
+    font-size: 0.76rem;
+    line-height: 1.25;
   }
 
   .dashboard-shell .top-navbar.top-navbar--seguridad .gear-dropdown-item {
