@@ -233,6 +233,25 @@ const getAuthenticatedCustomerContact = (user) => ({
   correo: normalizeContactEmail(user?.correo_cliente || user?.email || user?.nombre_usuario || '')
 });
 
+const buildEffectiveCustomerContact = (draft, authenticatedContact) => ({
+  contactName: normalizeOrderFormText(authenticatedContact.nombre || draft.contactName, 120),
+  contactPhone: normalizeContactPhone(authenticatedContact.telefono || draft.contactPhone),
+  contactEmail: normalizeContactEmail(authenticatedContact.correo || draft.contactEmail)
+});
+
+const filterVisibleOrderContactErrors = (
+  errors,
+  { hasKnownCustomerName, hasKnownCustomerPhone, hasKnownCustomerEmail }
+) => {
+  const visibleErrors = { ...(errors || {}) };
+
+  if (hasKnownCustomerName) delete visibleErrors.contactName;
+  if (hasKnownCustomerPhone) delete visibleErrors.contactPhone;
+  if (hasKnownCustomerEmail) delete visibleErrors.contactEmail;
+
+  return visibleErrors;
+};
+
 const validateOrderContactContext = ({
   orderType,
   pickupPaymentMethod,
@@ -427,7 +446,7 @@ const getOrderTypeIconById = (orderTypeId) => {
 const CatalogScreen = () => {
   const navigate = useNavigate();
   const outletContext = useOutletContext() || {};
-  const { user, logout } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const { state, actions } = usePublicMenuFlow();
   const branchId = state.selectedBranch?.id;
   const orderType = state.orderType;
@@ -659,6 +678,23 @@ const CatalogScreen = () => {
 
     return 'Registra aqui la referencia o comprobante de tu transferencia para confirmar el delivery.';
   }, [state.selectedBranch?.transferAccount, state.selectedBranch?.whatsapp]);
+  const hasKnownCustomerName = Boolean(authenticatedCustomerContact.nombre);
+  const hasKnownCustomerEmail = isValidContactEmail(authenticatedCustomerContact.correo);
+  const hasKnownCustomerPhone = normalizeContactPhone(authenticatedCustomerContact.telefono).length === 8;
+  const isOnlyMissingCustomerPhone =
+    hasKnownCustomerName && hasKnownCustomerEmail && !hasKnownCustomerPhone;
+  const orderContactModalTitle = isOnlyMissingCustomerPhone
+    ? 'Completa tu telefono de contacto'
+    : orderType === 'delivery'
+      ? 'COMPLETA TU PEDIDO PARA DELIVERY'
+      : orderType === 'pickup'
+        ? 'COMPLETA TU PEDIDO PARA RETIRO EN LOCAL'
+        : 'COMPLETA TU PEDIDO PARA COMER EN LOCAL';
+  const orderContactModalMessage = isOnlyMissingCustomerPhone
+    ? 'Ya tenemos tu nombre y correo. Solo necesitamos tu telefono para confirmar el pedido.'
+    : orderType === 'delivery'
+      ? 'Necesitamos estos datos para confirmar tu pedido a domicilio sin errores.'
+      : 'Necesitamos tus datos de contacto para confirmar tu pedido sin errores.';
   const liveBranchId = Number(liveSelectedBranch?.id || 0);
   const liveBranchKey = liveBranchId > 0 ? String(liveBranchId) : '';
   const topNavCategories = useMemo(
@@ -970,9 +1006,7 @@ const CatalogScreen = () => {
 
   const buildOrderContactContextDraft = (draft = orderContactContextDraft) => ({
     ...draft,
-    contactName: normalizeOrderFormText(draft.contactName || authenticatedCustomerContact.nombre, 120),
-    contactPhone: normalizeContactPhone(draft.contactPhone || authenticatedCustomerContact.telefono),
-    contactEmail: normalizeContactEmail(draft.contactEmail || authenticatedCustomerContact.correo)
+    ...buildEffectiveCustomerContact(draft, authenticatedCustomerContact)
   });
 
   const cancelHomeNavigation = () => {
@@ -1018,6 +1052,24 @@ const CatalogScreen = () => {
     skipContextPrompt = false
   } = {}) => {
     if (confirmingOrder || confirmLockRef.current) return;
+    if (authLoading) {
+      actions.pushToast({
+        type: 'info',
+        message: 'Estamos validando tu sesion. Intenta nuevamente en un momento.'
+      });
+      return;
+    }
+
+    if (!user) {
+      setCartOpen(false);
+      setOrderContactContextOpen(false);
+      setAuthRequired({
+        open: true,
+        message: 'Inicia sesion como cliente para confirmar tu pedido.'
+      });
+      return;
+    }
+
     if (!selectedBranchOpen) {
       setClosedHoursConfirmOpen(true);
       return;
@@ -1062,8 +1114,13 @@ const CatalogScreen = () => {
       !skipContextPrompt &&
       Object.keys(orderContactValidation.errors).length > 0
     ) {
+      const visibleErrors = filterVisibleOrderContactErrors(orderContactValidation.errors, {
+        hasKnownCustomerName,
+        hasKnownCustomerPhone,
+        hasKnownCustomerEmail
+      });
       setOrderContactContextDraft(effectiveContactDraft);
-      setOrderContactContextErrors(orderContactValidation.errors);
+      setOrderContactContextErrors(visibleErrors);
       setOrderContactContextResumeConfig({ keepCartSheetVisible });
       setOrderContactContextOpen(true);
       return;
@@ -1155,8 +1212,13 @@ const CatalogScreen = () => {
     });
 
     if (Object.keys(validation.errors).length > 0) {
+      const visibleErrors = filterVisibleOrderContactErrors(validation.errors, {
+        hasKnownCustomerName,
+        hasKnownCustomerPhone,
+        hasKnownCustomerEmail
+      });
       setOrderContactContextDraft(effectiveContactDraft);
-      setOrderContactContextErrors(validation.errors);
+      setOrderContactContextErrors(visibleErrors);
       return;
     }
 
@@ -1416,69 +1478,69 @@ const CatalogScreen = () => {
               <i className={`bi ${getOrderTypeIconById(orderType)}`} />
             </div>
             <h2 id="pm-order-context-title" className="pm-confirm-modal__title">
-              {orderType === 'delivery'
-                ? 'COMPLETA TU PEDIDO PARA DELIVERY'
-                : orderType === 'pickup'
-                  ? 'COMPLETA TU PEDIDO PARA RETIRO EN LOCAL'
-                  : 'COMPLETA TU PEDIDO PARA COMER EN LOCAL'}
+              {orderContactModalTitle}
             </h2>
             <p className="pm-confirm-modal__message">
-              {orderType === 'delivery'
-                ? 'Necesitamos estos datos para confirmar tu pedido a domicilio sin errores.'
-                : 'Necesitamos tus datos de contacto para confirmar tu pedido sin errores.'}
+              {orderContactModalMessage}
             </p>
 
             <div className="pm-order-type-table pm-order-context-modal__fields">
-              <label className="pm-order-context-modal__field">
-                <span className="pm-order-context-modal__label">Nombre completo</span>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="Ejemplo: Juan Perez"
-                  value={orderContactContextDraft.contactName}
-                  onChange={(event) =>
-                    handleOrderContactContextChange('contactName', event.target.value)
-                  }
-                />
-                {orderContactContextErrors.contactName ? (
-                  <small className="text-danger">{orderContactContextErrors.contactName}</small>
-                ) : null}
-              </label>
+              {!hasKnownCustomerName ? (
+                <label className="pm-order-context-modal__field">
+                  <span className="pm-order-context-modal__label">Nombre completo</span>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Ejemplo: Juan Perez"
+                    value={orderContactContextDraft.contactName}
+                    onChange={(event) =>
+                      handleOrderContactContextChange('contactName', event.target.value)
+                    }
+                  />
+                  {orderContactContextErrors.contactName ? (
+                    <small className="text-danger">{orderContactContextErrors.contactName}</small>
+                  ) : null}
+                </label>
+              ) : null}
 
-              <label className="pm-order-context-modal__field">
-                <span className="pm-order-context-modal__label">Telefono de contacto</span>
-                <input
-                  type="tel"
-                  className="form-control"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={8}
-                  placeholder="Ejemplo: 87763566"
-                  value={orderContactContextDraft.contactPhone}
-                  onChange={(event) =>
-                    handleOrderContactContextChange('contactPhone', event.target.value)
-                  }
-                />
-                {orderContactContextErrors.contactPhone ? (
-                  <small className="text-danger">{orderContactContextErrors.contactPhone}</small>
-                ) : null}
-              </label>
+              {!hasKnownCustomerPhone ? (
+                <label className="pm-order-context-modal__field">
+                  <span className="pm-order-context-modal__label">Telefono de contacto</span>
+                  <input
+                    type="tel"
+                    className="form-control"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={8}
+                    placeholder="Ejemplo: 87763566"
+                    value={orderContactContextDraft.contactPhone}
+                    onChange={(event) =>
+                      handleOrderContactContextChange('contactPhone', event.target.value)
+                    }
+                  />
+                  {orderContactContextErrors.contactPhone ? (
+                    <small className="text-danger">{orderContactContextErrors.contactPhone}</small>
+                  ) : null}
+                </label>
+              ) : null}
 
-              <label className="pm-order-context-modal__field">
-                <span className="pm-order-context-modal__label">Correo electronico</span>
-                <input
-                  type="email"
-                  className="form-control"
-                  placeholder="Ejemplo: cliente@correo.com"
-                  value={orderContactContextDraft.contactEmail}
-                  onChange={(event) =>
-                    handleOrderContactContextChange('contactEmail', event.target.value)
-                  }
-                />
-                {orderContactContextErrors.contactEmail ? (
-                  <small className="text-danger">{orderContactContextErrors.contactEmail}</small>
-                ) : null}
-              </label>
+              {!hasKnownCustomerEmail ? (
+                <label className="pm-order-context-modal__field">
+                  <span className="pm-order-context-modal__label">Correo electronico</span>
+                  <input
+                    type="email"
+                    className="form-control"
+                    placeholder="Ejemplo: cliente@correo.com"
+                    value={orderContactContextDraft.contactEmail}
+                    onChange={(event) =>
+                      handleOrderContactContextChange('contactEmail', event.target.value)
+                    }
+                  />
+                  {orderContactContextErrors.contactEmail ? (
+                    <small className="text-danger">{orderContactContextErrors.contactEmail}</small>
+                  ) : null}
+                </label>
+              ) : null}
 
               {orderType === 'delivery' ? (
                 <>
