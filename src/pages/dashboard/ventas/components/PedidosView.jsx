@@ -872,7 +872,7 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
           </button>
         ) : null}
 
-        {!pendingPago && laneCode === 'PENDIENTE' ? (
+        {laneCode === 'PENDIENTE' ? (
           <button
             className="ventas-pedidos-card__action ventas-pedidos-card__action--primary ventas-pedidos-card__btn is-primary"
             onClick={onSendKitchen}
