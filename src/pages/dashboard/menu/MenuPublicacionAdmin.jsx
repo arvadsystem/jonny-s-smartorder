@@ -2,6 +2,9 @@
 import MenuPreviewPanel from './components/MenuPreviewPanel';
 import MenuProgramacionPanel from './components/MenuProgramacionPanel';
 import MenuContentEditorModal from './components/MenuContentEditorModal';
+import MenuPublicationCards from './components/MenuPublicationCards';
+import MenuScheduleModal from './components/MenuScheduleModal';
+import MenuCreateSeasonModal from './components/MenuCreateSeasonModal';
 import MenuActionToast from './components/MenuActionToast';
 import useMenuPublicacionAdmin from './hooks/useMenuPublicacionAdmin';
 import menuPublicacionAdminService from './services/menuPublicacionAdminService';
@@ -86,6 +89,9 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [editMenuSuccess, setEditMenuSuccess] = useState('');
   const [editMenuError, setEditMenuError] = useState('');
   const [contentEditorOpen, setContentEditorOpen] = useState(false);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [createSeasonModalOpen, setCreateSeasonModalOpen] = useState(false);
+  const [publicationViewMode, setPublicationViewMode] = useState('cards');
   const [toastMessage, setToastMessage] = useState('');
   const loadMenusProgramables = useCallback(async () => {
     try {
@@ -208,6 +214,30 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
   const canEditContent = Boolean(selectedSucursalId && selectedSucursal?.estado && selectedMenuProgramacionId);
 
+  const selectPublicationMenu = useCallback((menuOrId) => {
+    const nextMenuId = String(
+      typeof menuOrId === 'object'
+        ? menuOrId?.id_menu || menuOrId?.id || ''
+        : menuOrId || ''
+    );
+    setSelectedMenuProgramacionId(nextMenuId);
+    onSelectCatalogMenu(nextMenuId);
+    return nextMenuId;
+  }, [onSelectCatalogMenu]);
+
+  const openScheduleModal = useCallback((menu = null, nextType = null) => {
+    if (menu?.id_menu) selectPublicationMenu(menu);
+    if (nextType) setPublicationType(nextType);
+    setScheduleError(null);
+    setScheduleSuccess('');
+    setScheduleModalOpen(true);
+  }, [selectPublicationMenu]);
+
+  const openContentEditor = useCallback((menu = null) => {
+    if (menu?.id_menu) selectPublicationMenu(menu);
+    setContentEditorOpen(true);
+  }, [selectPublicationMenu]);
+
   const handleProgramarMenu = async () => {
     setScheduleError(null);
     setScheduleSuccess('');
@@ -266,6 +296,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       setScheduleSuccess(isSeason
         ? 'Menú de temporada programado correctamente.'
         : 'Menú DEFAULT actualizado correctamente.');
+      setScheduleModalOpen(false);
       await reloadCurrent();
     } catch (e) {
       setScheduleError(buildScheduleError(e, 'No se pudo publicar el menu para esta sucursal.'));
@@ -315,6 +346,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       setNewMenuName('');
       setNewMenuDescription('');
       setCreateMenuSuccess(response?.message || `Menu #${createdMenu.id_menu} creado correctamente.`);
+      setCreateSeasonModalOpen(false);
     } catch (e) {
       setCreateMenuError(e?.message || 'No se pudo crear el menu de temporada.');
     } finally {
@@ -322,14 +354,16 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     }
   };
 
-  const openEditMenuModal = useCallback(() => {
-    if (!selectedMenuProgramable) return;
-    setEditMenuName(String(selectedMenuProgramable?.nombre_menu || '').trim());
-    setEditMenuDescription(String(selectedMenuProgramable?.descripcion || '').trim());
+  const openEditMenuModal = useCallback((menu = null) => {
+    const targetMenu = menu?.id_menu ? menu : selectedMenuProgramable;
+    if (!targetMenu) return;
+    selectPublicationMenu(targetMenu);
+    setEditMenuName(String(targetMenu?.nombre_menu || '').trim());
+    setEditMenuDescription(String(targetMenu?.descripcion || '').trim());
     setEditMenuError('');
     setEditMenuSuccess('');
     setEditModalOpen(true);
-  }, [selectedMenuProgramable]);
+  }, [selectPublicationMenu, selectedMenuProgramable]);
 
   const closeEditMenuModal = useCallback(() => {
     if (editingMenu) return;
@@ -383,15 +417,16 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     }
   };
 
-  const handleDeleteMenu = async () => {
-    const idMenu = Number(selectedMenuProgramable?.id_menu || 0);
+  const handleDeleteMenu = async (menu = null) => {
+    const targetMenu = menu?.id_menu ? menu : selectedMenuProgramable;
+    const idMenu = Number(targetMenu?.id_menu || 0);
     if (!idMenu) {
       setScheduleError({ message: 'Selecciona un menu valido antes de eliminar.' });
       return;
     }
 
     const confirmed = window.confirm(
-      `Se eliminara el menu #${idMenu} ${selectedMenuProgramable?.nombre_menu || ''} si no tiene vigencias, publicaciones, recetas ni combos activos.`
+      `Se eliminara el menu #${idMenu} ${targetMenu?.nombre_menu || ''} si no tiene vigencias, publicaciones, recetas ni combos activos.`
     );
     if (!confirmed) return;
 
@@ -436,8 +471,25 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
         <div className="inv-prod-header-actions">
           <button
             type="button"
+            className="btn inv-prod-btn-subtle"
+            onClick={() => openScheduleModal(null, publicationType)}
+            disabled={!selectedSucursal?.estado}
+          >
+            <i className="bi bi-shuffle me-1" aria-hidden="true" />
+            Cambiar / programar menú
+          </button>
+          <button
+            type="button"
+            className="btn inv-prod-btn-subtle"
+            onClick={() => setCreateSeasonModalOpen(true)}
+          >
+            <i className="bi bi-file-earmark-plus me-1" aria-hidden="true" />
+            Crear menú de temporada
+          </button>
+          <button
+            type="button"
             className="btn inv-prod-btn-primary"
-            onClick={() => setContentEditorOpen(true)}
+            onClick={() => openContentEditor()}
             disabled={!canEditContent}
           >
             <i className="bi bi-pencil-square me-1" aria-hidden="true" />
@@ -586,15 +638,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
         <MenuProgramacionPanel
           selectedSucursal={selectedSucursal}
-          menus={menusProgramables}
-          selectedMenuId={selectedMenuProgramacionId}
           selectedMenu={selectedMenuProgramable}
-          currentMenuId={String(menuSummary?.id_menu || '')}
-          publicationType={publicationType}
-          seasonStartDate={seasonStartDate}
-          seasonEndDate={seasonEndDate}
-          seasonPriority={seasonPriority}
-          menuSummary={menuSummary}
           loading={loadingMenus}
           scheduling={schedulingMenu}
           editingMenu={editingMenu}
@@ -606,33 +650,15 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           editModalOpen={editModalOpen}
           editName={editMenuName}
           editDescription={editMenuDescription}
-          onChangeMenu={(nextMenuId) => {
-            setSelectedMenuProgramacionId(nextMenuId);
-            onSelectCatalogMenu(nextMenuId);
-          }}
-          onChangePublicationType={setPublicationType}
-          onChangeSeasonStartDate={setSeasonStartDate}
-          onChangeSeasonEndDate={setSeasonEndDate}
-          onChangeSeasonPriority={setSeasonPriority}
-          onEditContent={() => setContentEditorOpen(true)}
+          onOpenSchedule={() => openScheduleModal(null, publicationType)}
+          onOpenCreateSeason={() => setCreateSeasonModalOpen(true)}
+          onEditContent={() => openContentEditor()}
           canEditContent={canEditContent}
-          onProgramar={handleProgramarMenu}
           onReloadMenus={loadMenusProgramables}
-          onOpenEditModal={openEditMenuModal}
           onCloseEditModal={closeEditMenuModal}
           onChangeEditName={setEditMenuName}
           onChangeEditDescription={setEditMenuDescription}
           onSaveEditMenu={handleSaveEditMenu}
-          onDeleteMenu={handleDeleteMenu}
-          nextMenuNumber={nextMenuNumber}
-          createName={newMenuName}
-          createDescription={newMenuDescription}
-          creating={creatingMenu}
-          createSuccess={createMenuSuccess}
-          createError={createMenuError}
-          onChangeCreateName={handleCreateNameChange}
-          onChangeCreateDescription={handleCreateDescriptionChange}
-          onCreateMenu={handleCreateMenu}
         />
 
         <div className="row g-3 mt-1">
@@ -679,6 +705,11 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
                 <span>Menú: <strong>{selectedMenuProgramable?.nombre_menu || menuSummary?.nombre_menu || 'Sin menú seleccionado'}</strong></span>
                 <span>Sucursal: <strong>{selectedSucursal?.nombre_sucursal || 'Sin sucursal seleccionada'}</strong></span>
               </div>
+              {contentSummary.totalItems === 0 && menuSummary ? (
+                <div className="menu-pub-admin__content-summary-note">
+                  Este menú no tiene contenido cargado o no se pudo cargar el catálogo.
+                </div>
+              ) : null}
             </section>
           </div>
 
@@ -694,6 +725,64 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             </div>
           ) : null}
         </div>
+
+        <MenuPublicationCards
+          menus={menusProgramables}
+          selectedMenuId={selectedMenuProgramacionId}
+          currentMenuId={String(menuSummary?.id_menu || '')}
+          menuSummary={menuSummary}
+          selectedSucursal={selectedSucursal}
+          loading={loadingMenus}
+          viewMode={publicationViewMode}
+          onChangeViewMode={setPublicationViewMode}
+          onSelectMenu={selectPublicationMenu}
+          onEditContent={openContentEditor}
+          onSetDefault={(menu) => openScheduleModal(menu, 'DEFAULT')}
+          onProgramSeason={(menu) => openScheduleModal(menu, 'TEMPORADA')}
+          onOpenCreateSeason={() => setCreateSeasonModalOpen(true)}
+          onOpenEditMenu={openEditMenuModal}
+          onDeleteMenu={handleDeleteMenu}
+        />
+
+        <MenuScheduleModal
+          open={scheduleModalOpen}
+          selectedSucursal={selectedSucursal}
+          menus={menusProgramables}
+          selectedMenuId={selectedMenuProgramacionId}
+          selectedMenu={selectedMenuProgramable}
+          currentMenuId={String(menuSummary?.id_menu || '')}
+          publicationType={publicationType}
+          seasonStartDate={seasonStartDate}
+          seasonEndDate={seasonEndDate}
+          seasonPriority={seasonPriority}
+          loading={loadingMenus}
+          scheduling={schedulingMenu}
+          error={scheduleError}
+          success={scheduleSuccess}
+          menuSummary={menuSummary}
+          onClose={() => setScheduleModalOpen(false)}
+          onChangeMenu={selectPublicationMenu}
+          onChangePublicationType={setPublicationType}
+          onChangeSeasonStartDate={setSeasonStartDate}
+          onChangeSeasonEndDate={setSeasonEndDate}
+          onChangeSeasonPriority={setSeasonPriority}
+          onProgramar={handleProgramarMenu}
+          onReloadMenus={loadMenusProgramables}
+        />
+
+        <MenuCreateSeasonModal
+          open={createSeasonModalOpen}
+          nextMenuNumber={nextMenuNumber}
+          createName={newMenuName}
+          createDescription={newMenuDescription}
+          creating={creatingMenu}
+          createSuccess={createMenuSuccess}
+          createError={createMenuError}
+          onClose={() => setCreateSeasonModalOpen(false)}
+          onChangeCreateName={handleCreateNameChange}
+          onChangeCreateDescription={handleCreateDescriptionChange}
+          onCreateMenu={handleCreateMenu}
+        />
 
         <MenuContentEditorModal
           open={contentEditorOpen}
