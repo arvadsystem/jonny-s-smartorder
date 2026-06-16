@@ -202,7 +202,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
 
   const defaultFallbackLabel = defaultFallbackMenu?.id_menu
     ? `${defaultFallbackMenu.nombre_menu || 'Menu DEFAULT'} #${defaultFallbackMenu.id_menu}`
-    : 'DEFAULT/fallback';
+    : 'DEFECTO';
 
   const selectedEditableMenuName = selectedMenuProgramable?.nombre_menu
     || selectedCatalogMenuSummary?.nombre_menu
@@ -305,7 +305,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     }
 
     if (!isSeason && Number(defaultFallbackMenuId || 0) === idMenu) {
-      setScheduleSuccess('Ese menu ya es el DEFAULT/fallback de esta sucursal.');
+      setScheduleSuccess('Ese menu ya es el DEFECTO de esta sucursal.');
       return;
     }
 
@@ -339,7 +339,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       if (!isSeason) setDefaultFallbackMenuId(String(idMenu));
       setScheduleSuccess(isSeason
         ? 'Menú de temporada programado correctamente.'
-        : 'Menú DEFAULT/fallback actualizado correctamente.');
+        : 'Menú DEFECTO actualizado correctamente.');
       setScheduleModalOpen(false);
       await reloadCurrent();
     } catch (e) {
@@ -370,7 +370,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
     }
 
     const confirmed = window.confirm(
-      'Se finalizará la temporada activa. La sucursal volverá al menú DEFAULT/fallback.'
+      'Se finalizará la temporada activa. La sucursal volverá al menú DEFECTO.'
     );
     if (!confirmed) return;
 
@@ -733,7 +733,6 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             ) : null}
             {formatDateTimeLabel(publishedMenuSummary?.fecha_inicio) ? <span>Desde: {formatDateTimeLabel(publishedMenuSummary.fecha_inicio)}</span> : null}
             {formatDateTimeLabel(publishedMenuSummary?.fecha_fin) ? <span>Hasta: {formatDateTimeLabel(publishedMenuSummary.fecha_fin)}</span> : null}
-            {publishedMenuSummary?.es_default === true ? <span>Menú DEFAULT/fallback</span> : null}
             {publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? <span>Al finalizar, vuelve a: {defaultFallbackLabel}</span> : null}
           </div>
           {isEditingDifferentPublishedMenu ? (

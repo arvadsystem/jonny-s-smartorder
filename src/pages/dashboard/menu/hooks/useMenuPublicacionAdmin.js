@@ -36,7 +36,7 @@ const normalizePublicationWarning = (warning) => {
     return 'Estás editando un menú que no es el publicado actualmente para esta sucursal.';
   }
   if (/publicaciones cruzadas/i.test(text) && /limpia detalle_menu/i.test(text)) {
-    return 'Se detectaron publicaciones que requieren auditoría posterior. No se realizará ninguna limpieza automática.';
+    return 'Hay publicaciones históricas compartidas que conviene revisar después. No se hará ninguna limpieza automática.';
   }
   return text;
 };

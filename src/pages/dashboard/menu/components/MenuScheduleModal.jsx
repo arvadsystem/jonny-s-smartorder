@@ -190,7 +190,7 @@ const MenuScheduleModal = ({
                         <p className="mb-0">
                           {isSeason
                             ? 'Al vencer, la sucursal vuelve automáticamente al DEFAULT.'
-                            : 'Si existe una temporada activa, este menú quedará como respaldo y será visible cuando la temporada termine o sea cancelada.'}
+                            : 'Este menú quedará como menú por defecto de la sucursal. Si existe una temporada activa, será visible cuando la temporada termine o sea cancelada.'}
                         </p>
                       </div>
                     </div>
@@ -210,7 +210,7 @@ const MenuScheduleModal = ({
               disabled={loading || scheduling || !selectedSucursal || !selectedMenuId || defaultAlreadySelected}
               onClick={onProgramar}
             >
-              {scheduling ? 'Guardando...' : isSeason ? 'Programar temporada' : 'Establecer como DEFAULT/fallback'}
+              {scheduling ? 'Guardando...' : isSeason ? 'Programar temporada' : 'Establecer como DEFECTO'}
             </button>
           </div>
         </div>

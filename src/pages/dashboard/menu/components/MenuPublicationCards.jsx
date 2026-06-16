@@ -83,7 +83,7 @@ const MenuPublicationCards = ({
     if (isDefaultFallback) {
       return {
         type: 'DEFAULT/FALLBACK',
-        badgeLabel: 'DEFAULT/fallback',
+        badgeLabel: 'DEFECTO',
         status: 'Respaldo',
         isActiveSeason,
         isDefaultFallback
@@ -280,10 +280,10 @@ const MenuPublicationCards = ({
                     className="inv-catpro-action edit inv-catpro-action-compact"
                     onClick={() => onSetDefault?.(menu)}
                     disabled={!canUseBranch || meta.isDefaultFallback}
-                    title="Establecer como DEFAULT/fallback"
+                    title="Establecer como DEFECTO"
                   >
                     <i className="bi bi-house-check" aria-hidden="true" />
-                    <span className="inv-catpro-action-label">DEFAULT/fallback</span>
+                    <span className="inv-catpro-action-label">DEFECTO</span>
                   </button>
                   {meta.isActiveSeason ? (
                     <button
