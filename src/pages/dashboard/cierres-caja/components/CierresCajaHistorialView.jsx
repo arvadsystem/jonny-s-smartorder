@@ -120,6 +120,13 @@ export default function CierresCajaHistorialView() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [resolveDetalle, setResolveDetalle] = useState(null);
   const [resolveOpen, setResolveOpen] = useState(false);
+  const [quickEditDialog, setQuickEditDialog] = useState({
+    open: false,
+    closure: null,
+    motivo: '',
+    monto: '',
+    error: ''
+  });
   const historyRequestIdRef = useRef(0);
 
   const userSucursalId = Number.parseInt(String(user?.id_sucursal ?? ''), 10);
@@ -358,18 +365,48 @@ export default function CierresCajaHistorialView() {
     }
   };
 
-  const handleQuickEdit = async (closure) => {
+  const handleQuickEdit = (closure) => {
     if (!canEditClose || !closure?.id_cierre_caja || !closure?.editable_en_ventana) return;
-    const motivo = window.prompt('Motivo de edicion (obligatorio):', 'Ajuste operativo');
-    if (!motivo || !motivo.trim()) return;
-    const montoInput = window.prompt(
-      'Monto declarado de cierre:',
-      String(closure?.monto_declarado_cierre ?? '0')
-    );
-    if (montoInput === null) return;
-    const parsed = Number(montoInput);
+    setQuickEditDialog({
+      open: true,
+      closure,
+      motivo: 'Ajuste operativo',
+      monto: String(closure?.monto_declarado_cierre ?? '0'),
+      error: ''
+    });
+  };
+
+  const closeQuickEditDialog = ({ force = false } = {}) => {
+    if (saving && !force) return;
+    setQuickEditDialog({
+      open: false,
+      closure: null,
+      motivo: '',
+      monto: '',
+      error: ''
+    });
+  };
+
+  const submitQuickEdit = async (event) => {
+    event.preventDefault();
+    const closure = quickEditDialog.closure;
+    if (!canEditClose || !closure?.id_cierre_caja || !closure?.editable_en_ventana) return;
+
+    const motivo = quickEditDialog.motivo.trim();
+    if (!motivo) {
+      setQuickEditDialog((current) => ({
+        ...current,
+        error: 'Indica el motivo de edicion.'
+      }));
+      return;
+    }
+
+    const parsed = Number(quickEditDialog.monto);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      openToast('ERROR', 'Monto declarado invalido.', 'danger');
+      setQuickEditDialog((current) => ({
+        ...current,
+        error: 'Monto declarado invalido.'
+      }));
       return;
     }
 
@@ -378,9 +415,10 @@ export default function CierresCajaHistorialView() {
         monto_declarado_cierre: parsed,
         id_resolucion_cierre_caja: closure.id_resolucion_cierre_caja || null,
         observacion_cierre: closure.resolucion_nombre || null,
-        motivo_edicion: motivo.trim()
+        motivo_edicion: motivo
       });
       await loadHistory();
+      closeQuickEditDialog({ force: true });
     } catch {
       // El hook ya muestra toast de error.
     }
@@ -880,6 +918,101 @@ export default function CierresCajaHistorialView() {
           />
         </div>
       </CierresCajaFiltersDrawer>
+
+      {quickEditDialog.open ? (
+        <div className="ventas-modal-backdrop">
+          <form
+            className="ventas-modal cierres-caja-action-modal cierres-caja-compact-modal"
+            onSubmit={submitQuickEdit}
+          >
+            <div className="ventas-modal__header">
+              <div className="ventas-modal__title-wrap">
+                <span className="ventas-modal__icon">
+                  <i className="bi bi-pencil-square" />
+                </span>
+                <div>
+                  <h3>Editar cierre</h3>
+                  <p>
+                    CIE-
+                    {String(quickEditDialog.closure?.id_cierre_caja || '').padStart(5, '0')}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="ventas-modal__close-btn"
+                onClick={closeQuickEditDialog}
+                disabled={saving}
+                aria-label="Cerrar"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <div className="cierres-caja-action-modal__body cierres-caja-compact-modal__body">
+              <div className="cierres-caja-action-modal__grid">
+                <label className="ventas-create-modal__field">
+                  <span>Monto declarado</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={quickEditDialog.monto}
+                    onChange={(event) =>
+                      setQuickEditDialog((current) => ({
+                        ...current,
+                        monto: event.target.value,
+                        error: ''
+                      }))
+                    }
+                    disabled={saving}
+                    required
+                  />
+                </label>
+
+                <label className="ventas-create-modal__field">
+                  <span>Motivo de edicion</span>
+                  <input
+                    type="text"
+                    value={quickEditDialog.motivo}
+                    onChange={(event) =>
+                      setQuickEditDialog((current) => ({
+                        ...current,
+                        motivo: event.target.value,
+                        error: ''
+                      }))
+                    }
+                    disabled={saving}
+                    maxLength={240}
+                    required
+                  />
+                </label>
+              </div>
+
+              {quickEditDialog.error ? (
+                <div className="cierres-caja-inline-error">{quickEditDialog.error}</div>
+              ) : null}
+
+              <div className="ventas-detail-modal__footer">
+                <div className="ventas-detail-modal__footer-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={closeQuickEditDialog}
+                    disabled={saving}
+                  >
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-warning" disabled={saving}>
+                    {saving ? 'Guardando...' : 'Guardar edicion'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       <CierreCajaDetalleModal
         open={detailOpen}
