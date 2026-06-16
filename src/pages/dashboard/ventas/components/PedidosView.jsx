@@ -59,12 +59,12 @@ const normalizePaymentCode = (value) =>
     .replace(/[\s-]+/g, '_');
 
 const buildPedidoVisibleCode = (pedido) => {
+  const operativeCode = String(pedido?.codigo_venta_operativo || '').trim();
+  if (operativeCode) return operativeCode;
   const ventaCode = String(pedido?.codigo_venta || '').trim();
   if (ventaCode) return ventaCode;
-  const pedidoCode = String(pedido?.codigo_pedido || '').trim();
-  if (pedidoCode) return pedidoCode;
   const idPedido = Number(pedido?.id_pedido ?? 0) || 0;
-  return idPedido ? `PED-${String(idPedido).padStart(5, '0')}` : 'PED-SIN-CODIGO';
+  return idPedido ? `VTA-${String(idPedido).padStart(5, '0')}` : 'VTA-SIN-CODIGO';
 };
 
 const isPedidoKdsVencido = (pedido) => {
@@ -109,6 +109,8 @@ const toPositiveId = (value) => {
 
 const normalizePedidoForPagoModal = (pedido) => ({
   id_pedido: Number(pedido?.id_pedido ?? 0) || null,
+  codigo_venta_operativo: buildPedidoVisibleCode(pedido),
+  codigo_venta: buildPedidoVisibleCode(pedido),
   codigo_pedido: buildPedidoVisibleCode(pedido),
   fecha_hora_pedido: pedido?.fecha_hora_pedido || null,
   nombre_contacto: String(
@@ -154,8 +156,9 @@ const normalizePedidoVentaDetail = (pedido) => {
 
   return normalizeVentaDetail({
     ...pedido,
-    id_factura: toPositiveId(pedido?.id_factura) || toPositiveId(pedido?.id_pedido),
+    id_factura: toPositiveId(pedido?.id_factura),
     codigo_venta: buildPedidoVisibleCode(pedido),
+    codigo_venta_operativo: buildPedidoVisibleCode(pedido),
     numero_venta: buildPedidoVisibleCode(pedido),
     cliente_nombre: clienteNombre || 'Consumidor final',
     estado_pedido: pedido?.nombre_estado_pedido,
@@ -523,6 +526,7 @@ export default function PedidosView({
     return pedidos.filter(
       (pedido) =>
         String(pedido?.id_pedido || '').includes(q) ||
+        String(pedido?.codigo_venta_operativo || '').toLowerCase().includes(q) ||
         String(pedido?.codigo_pedido || '').toLowerCase().includes(q) ||
         String(pedido?.codigo_venta || '').toLowerCase().includes(q) ||
         String(pedido?.nombre_contacto || '').toLowerCase().includes(q) ||

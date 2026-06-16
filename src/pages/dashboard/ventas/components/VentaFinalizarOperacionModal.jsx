@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AppSelect from '../../../../components/common/AppSelect';
+import ventasService from '../../../../services/ventasService';
 import { PAYMENT_OPTIONS } from '../hooks/useVentaComposer';
 import ClienteQuickCreateModal from './ClienteQuickCreateModal';
 
@@ -44,6 +45,7 @@ const normalizeOptionalText = (value) => {
 };
 
 const normalizePhoneText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+const normalizePhoneDigits = (value) => String(value || '').replace(/\D/g, '');
 
 const cleanMoneyInput = (value) => {
   const cleaned = String(value || '').replace(/[^\d.]/g, '');
@@ -100,12 +102,15 @@ export default function VentaFinalizarOperacionModal({
   const [submitDialogError, setSubmitDialogError] = useState('');
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateSearch, setQuickCreateSearch] = useState('');
+  const [phoneSaveDialog, setPhoneSaveDialog] = useState({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
   const [paidSubmitting, setPaidSubmitting] = useState(false);
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
   const paidSubmittingRef = useRef(false);
   const pendingSubmittingRef = useRef(false);
   const paidErrorPendingRef = useRef(false);
   const lastAutoPhoneRef = useRef('');
+  const phoneSaveAskedRef = useRef(new Set());
+  const phoneSaveBypassRef = useRef(false);
   const isSubmitting = saving || paidSubmitting || pendingSubmitting;
 
   const deliveryCost = useMemo(() => {
@@ -178,6 +183,9 @@ export default function VentaFinalizarOperacionModal({
     setSubmitDialogError('');
     paidErrorPendingRef.current = false;
     lastAutoPhoneRef.current = '';
+    phoneSaveAskedRef.current = new Set();
+    phoneSaveBypassRef.current = false;
+    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
   }, [open]);
 
   useEffect(() => {
@@ -196,6 +204,63 @@ export default function VentaFinalizarOperacionModal({
   const setDeliveryField = (field, value) => {
     setDelivery((current) => ({ ...current, [field]: value }));
     setLocalError('');
+  };
+
+  const shouldAskToSaveClientPhone = (pendingAction) => {
+    if (phoneSaveBypassRef.current) {
+      phoneSaveBypassRef.current = false;
+      return false;
+    }
+    if (!hasRegisteredClient) return false;
+    if (normalizePhoneText(selectedCliente?.telefono)) return false;
+    const telefono = normalizePhoneText(contact.telefono_contacto);
+    const telefonoDigits = normalizePhoneDigits(telefono);
+    if (telefonoDigits.length !== 8) return false;
+    const key = `${selectedClienteId}:${telefonoDigits}`;
+    if (phoneSaveAskedRef.current.has(key)) return false;
+    phoneSaveAskedRef.current.add(key);
+    setPhoneSaveDialog({
+      open: true,
+      pendingAction,
+      telefono,
+      cliente: selectedCliente,
+      saving: false
+    });
+    return true;
+  };
+
+  const continuePhoneSaveAction = (pendingAction) => {
+    phoneSaveBypassRef.current = true;
+    if (pendingAction === 'pagar') {
+      void handlePaidSubmit();
+      return;
+    }
+    void handlePendingSubmit();
+  };
+
+  const handlePhoneSaveCancel = () => {
+    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
+  };
+
+  const handlePhoneSaveSkip = () => {
+    const pendingAction = phoneSaveDialog.pendingAction;
+    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
+    continuePhoneSaveAction(pendingAction);
+  };
+
+  const handlePhoneSaveConfirm = async () => {
+    const pendingAction = phoneSaveDialog.pendingAction;
+    const telefono = phoneSaveDialog.telefono;
+    try {
+      setPhoneSaveDialog((current) => ({ ...current, saving: true }));
+      await ventasService.guardarTelefonoCliente(selectedClienteId, { telefono });
+      await onClientesRefresh?.();
+      setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
+      continuePhoneSaveAction(pendingAction);
+    } catch (error) {
+      setPhoneSaveDialog((current) => ({ ...current, saving: false }));
+      setSubmitDialogError(resolveSubmitErrorMessage(error, 'No se pudo guardar el telefono del cliente.'));
+    }
   };
 
   const validateCommon = () => {
@@ -252,6 +317,7 @@ export default function VentaFinalizarOperacionModal({
 
   const handlePaidSubmit = async () => {
     if (paidSubmittingRef.current || saving) return;
+    if (shouldAskToSaveClientPhone('pagar')) return;
     paidSubmittingRef.current = true;
     setPaidSubmitting(true);
     setLocalError('');
@@ -278,6 +344,7 @@ export default function VentaFinalizarOperacionModal({
 
     try {
       if (!validateCommon()) return;
+      if (shouldAskToSaveClientPhone('pendiente')) return;
 
       const modalidad = contact.modalidad;
       const canal = contact.canal;
@@ -738,6 +805,38 @@ export default function VentaFinalizarOperacionModal({
         onClose={() => setQuickCreateOpen(false)}
         onCreated={handleClienteCreated}
       />
+      {phoneSaveDialog.open ? (
+        <div className="ventas-finalizar-error-backdrop" role="presentation">
+          <section
+            className="ventas-modal-card ventas-finalizar-error-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ventas-finalizar-phone-title"
+          >
+            <div className="ventas-finalizar-error-modal__icon" aria-hidden="true">
+              <i className="bi bi-telephone-plus" />
+            </div>
+            <div className="ventas-finalizar-error-modal__copy">
+              <h5 id="ventas-finalizar-phone-title">Guardar telefono del cliente</h5>
+              <p>
+                {selectedClienteLabel || 'Este cliente'} no tiene telefono registrado.
+                ¿Deseas guardar {phoneSaveDialog.telefono} antes de continuar?
+              </p>
+            </div>
+            <div className="ventas-modal-footer">
+              <button type="button" className="btn btn-outline-secondary" onClick={handlePhoneSaveCancel} disabled={phoneSaveDialog.saving}>
+                Cancelar
+              </button>
+              <button type="button" className="btn btn-outline-primary" onClick={handlePhoneSaveSkip} disabled={phoneSaveDialog.saving}>
+                Continuar sin guardar
+              </button>
+              <button type="button" className="btn btn-primary" onClick={handlePhoneSaveConfirm} disabled={phoneSaveDialog.saving}>
+                {phoneSaveDialog.saving ? 'Guardando...' : 'Guardar y continuar'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {submitDialogError ? (
         <div className="ventas-finalizar-error-backdrop" role="presentation">
           <section

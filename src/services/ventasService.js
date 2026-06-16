@@ -83,6 +83,8 @@ const ventasService = {
     apiFetch(`/ventas/pedidos-pendientes${buildQuery(params)}`, 'GET'),
   registrarPagoPedido: (idPedido, payload) =>
     apiFetch(`/ventas/pedidos/${idPedido}/registrar-pago`, 'POST', payload, withIdempotencyKey()),
+  guardarTelefonoCliente: (idCliente, payload) =>
+    apiFetch(`/ventas/clientes/${idCliente}/telefono`, 'PATCH', payload),
   getClientesCatalog: () => apiFetch('/ventas/catalogos/clientes', 'GET'),
   getCombosCatalog: (params = {}) => apiFetch(`/ventas/catalogos/combos${buildQuery(params)}`, 'GET'),
   getRecetasCatalog: (params = {}) => apiFetch(`/ventas/catalogos/recetas${buildQuery(params)}`, 'GET'),

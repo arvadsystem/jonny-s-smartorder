@@ -76,14 +76,25 @@ const normalizePedidoItems = (value) => {
       cantidad: Number(item?.cantidad ?? 1) || 1,
       precio_unitario: Number(item?.precio_unitario ?? 0) || 0,
       sub_total: Number(item?.sub_total ?? item?.subtotal_linea ?? item?.sub_total_pedido ?? 0) || 0,
-      total_linea: Number(item?.total_linea ?? item?.total_pedido ?? item?.sub_total ?? 0) || 0
+      total_linea: Number(item?.total_linea ?? item?.total_pedido ?? item?.sub_total ?? 0) || 0,
+      descuento: Number(item?.descuento ?? 0) || 0,
+      descuento_linea: Number(item?.descuento_linea ?? item?.descuento ?? 0) || 0,
+      descuento_global: Number(item?.descuento_global ?? 0) || 0,
+      extras: Array.isArray(item?.extras) ? item.extras : []
     }))
     .filter((item) => item.id_detalle_pedido);
 };
 
 const normalizePendingOrder = (row) => ({
   id_pedido: Number(row?.id_pedido ?? 0) || null,
-  codigo_pedido: String(row?.codigo_pedido || `PED-${String(row?.id_pedido || '').padStart(5, '0')}`).trim(),
+  codigo_venta_operativo: String(row?.codigo_venta_operativo || row?.codigo_venta || '').trim(),
+  codigo_venta: String(row?.codigo_venta || row?.codigo_venta_operativo || '').trim(),
+  codigo_pedido: String(
+    row?.codigo_venta_operativo ||
+      row?.codigo_venta ||
+      row?.codigo_pedido ||
+      (row?.id_pedido ? `VTA-${String(row.id_pedido).padStart(5, '0')}` : '')
+  ).trim(),
   fecha_hora_pedido: row?.fecha_hora_pedido || null,
   nombre_contacto: String(row?.nombre_contacto || 'Consumidor final').trim(),
   telefono_contacto: String(row?.telefono_contacto || '').trim(),
@@ -124,6 +135,13 @@ const isPagoPedidoStillPending = (response) => {
   const pending = Number(response?.monto_pendiente ?? 0) || 0;
   const estadoPago = String(response?.estado_pago || response?.estado_pago_control || '').trim().toUpperCase();
   return pending > 0.009 || estadoPago === 'PENDIENTE_PAGO' || estadoPago === 'PENDIENTE_DE_PAGO';
+};
+
+const findNextPendingDivision = (pedido) => {
+  const divisiones = Array.isArray(pedido?.cuenta_dividida?.divisiones)
+    ? pedido.cuenta_dividida.divisiones
+    : [];
+  return divisiones.find((division) => division.estado === 'PENDIENTE') || null;
 };
 
 export default function VentaRegistrarPagoPedidoModal({
@@ -190,14 +208,19 @@ export default function VentaRegistrarPagoPedidoModal({
     const normalized = normalizePendingOrder(initialPedido);
     setSearch(normalized.codigo_pedido || String(initialPedidoId));
     if (normalized.id_pedido) {
+      const nextPendingDivision = findNextPendingDivision(normalized);
       setSelectedPedido(normalized);
-      setSelectedDivisionId('');
+      setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
       setSplitDraftEnabled(false);
       setSplitDraftDivisions(buildInitialSplitDivisions());
       setSelectedDraftDivisionId('persona-1');
       setForm((current) => ({
         ...current,
-        monto_recibido: normalized.cuenta_dividida?.activa ? '' : (current.monto_recibido || String(normalized.monto_pendiente || ''))
+        monto_recibido: nextPendingDivision
+          ? String(nextPendingDivision.monto_pendiente || nextPendingDivision.total || '')
+          : normalized.cuenta_dividida?.activa
+            ? ''
+            : (current.monto_recibido || String(normalized.monto_pendiente || ''))
       }));
     }
     setLocalError('');
@@ -229,14 +252,19 @@ export default function VentaRegistrarPagoPedidoModal({
         if (initialPedidoId) {
           const matched = rows.find((row) => row.id_pedido === initialPedidoId);
           if (matched) {
+            const nextPendingDivision = findNextPendingDivision(matched);
             setSelectedPedido(matched);
-            setSelectedDivisionId('');
+            setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
             setSplitDraftEnabled(false);
             setSplitDraftDivisions(buildInitialSplitDivisions());
             setSelectedDraftDivisionId('persona-1');
             setForm((current) => ({
               ...current,
-              monto_recibido: matched.cuenta_dividida?.activa ? '' : (current.monto_recibido || String(matched.monto_pendiente || ''))
+              monto_recibido: nextPendingDivision
+                ? String(nextPendingDivision.monto_pendiente || nextPendingDivision.total || '')
+                : matched.cuenta_dividida?.activa
+                  ? ''
+                  : (current.monto_recibido || String(matched.monto_pendiente || ''))
             }));
           }
         }
@@ -382,7 +410,8 @@ export default function VentaRegistrarPagoPedidoModal({
   const selectPedido = async (pedido) => {
     setSelectedPedido(pedido);
     const isDividido = Boolean(pedido.cuenta_dividida?.activa || (pedido.cuenta_dividida?.divisiones || []).length > 0);
-    setSelectedDivisionId('');
+    const nextPendingDivision = findNextPendingDivision(pedido);
+    setSelectedDivisionId(nextPendingDivision ? String(nextPendingDivision.id_cuenta_division) : '');
     setSplitDraftEnabled(false);
     setSplitDraftDivisions(buildInitialSplitDivisions());
     setSelectedDraftDivisionId('persona-1');
@@ -390,13 +419,19 @@ export default function VentaRegistrarPagoPedidoModal({
     setLocalNotice('');
     setForm((current) => ({
       ...current,
-      monto_recibido: isDividido ? '' : String(pedido.monto_pendiente || '')
+      monto_recibido: nextPendingDivision
+        ? String(nextPendingDivision.monto_pendiente || nextPendingDivision.total || '')
+        : isDividido
+          ? ''
+          : String(pedido.monto_pendiente || '')
     }));
     if (!pedido.items?.length || isDividido) {
       const detailed = await loadPedidoItems(pedido, { force: isDividido });
+      const detailedNextPendingDivision = findNextPendingDivision(detailed);
       setSelectedPedido((current) => (
         current?.id_pedido === pedido.id_pedido ? { ...current, ...detailed } : current
       ));
+      setSelectedDivisionId(detailedNextPendingDivision ? String(detailedNextPendingDivision.id_cuenta_division) : '');
     }
   };
 
@@ -485,7 +520,7 @@ export default function VentaRegistrarPagoPedidoModal({
 
   const refreshSelectedPedidoAfterPayment = async (pedidoId) => {
     const response = await ventasService.listPedidosPendientesPago({
-      search: selectedPedido?.codigo_pedido || String(pedidoId || ''),
+      search: String(pedidoId || ''),
       id_sucursal: effectiveSucursalId || undefined,
       page: 1,
       page_size: 10,
@@ -686,7 +721,7 @@ export default function VentaRegistrarPagoPedidoModal({
         <header className="ventas-modal-header ventas-finalizar-modal__header ventas-registrar-pago-modal__header">
           <div>
             <h5 id="ventas-registrar-pago-title">Registrar pago</h5>
-            <p>Busca un pedido pendiente real y cobra usando su código PED.</p>
+            <p>Busca un pedido pendiente real y cobra usando su código VTA.</p>
           </div>
           <button type="button" className="ventas-modal__close-btn" onClick={onClose} disabled={isSubmitting} aria-label="Cerrar">
             <i className="bi bi-x-lg" />
@@ -700,7 +735,7 @@ export default function VentaRegistrarPagoPedidoModal({
               <input
                 type="search"
                 value={search}
-                placeholder="Buscar por PED, teléfono o cliente"
+                placeholder="Buscar por VTA, teléfono o cliente"
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
