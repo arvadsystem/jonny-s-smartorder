@@ -37,6 +37,7 @@ const MenuPublicationCards = ({
   onEditContent,
   onSetDefault,
   onProgramSeason,
+  onCancelActiveSeason,
   onOpenEditMenu,
   onDeleteMenu
 }) => {
@@ -53,13 +54,49 @@ const MenuPublicationCards = ({
   const canUseBranch = Boolean(selectedSucursal?.estado);
   const isList = viewMode === 'list';
 
-  const resolveStates = (menu) => {
+  const resolvePublicationMeta = (menu) => {
     const menuId = Number(menu.id_menu || 0);
-    const states = [];
-    if (menuId > 0 && menuId === currentId) states.push('PUBLICADO AHORA');
-    if (menuId > 0 && menuId === resolvedDefaultId) states.push('DEFAULT/FALLBACK');
-    if (menuId > 0 && menuId === activeSeasonId) states.push('TEMPORADA ACTIVA');
-    return states.length > 0 ? states : ['DISPONIBLE'];
+    const isPublished = menuId > 0 && menuId === currentId;
+    const isActiveSeason = isPublished && menuId === activeSeasonId;
+    const isDefaultFallback = menuId > 0 && menuId === resolvedDefaultId;
+
+    if (isActiveSeason) {
+      return {
+        type: 'TEMPORADA ACTIVA',
+        badgeLabel: 'Temporada activa',
+        status: 'Publicado',
+        isActiveSeason,
+        isDefaultFallback
+      };
+    }
+
+    if (isPublished) {
+      return {
+        type: 'ACTUAL',
+        badgeLabel: 'Actual',
+        status: 'Publicado',
+        isActiveSeason,
+        isDefaultFallback
+      };
+    }
+
+    if (isDefaultFallback) {
+      return {
+        type: 'DEFAULT/FALLBACK',
+        badgeLabel: 'DEFAULT/fallback',
+        status: 'Respaldo',
+        isActiveSeason,
+        isDefaultFallback
+      };
+    }
+
+    return {
+      type: 'DISPONIBLE',
+      badgeLabel: 'Disponible',
+      status: 'Disponible',
+      isActiveSeason,
+      isDefaultFallback
+    };
   };
 
   const resolveBadgeClass = (type) => (
@@ -104,7 +141,7 @@ const MenuPublicationCards = ({
             </thead>
             <tbody>
               {rows.map((menu) => {
-                const states = resolveStates(menu);
+                const meta = resolvePublicationMeta(menu);
                 const isCurrent = Number(menu.id_menu) === currentId;
                 const isSelected = Number(menu.id_menu) === selectedId;
                 const canDelete = !isCurrent;
@@ -115,14 +152,8 @@ const MenuPublicationCards = ({
                       <div className="fw-semibold">{menu.nombre_menu}</div>
                       <div className="small text-muted">#{menu.id_menu} {menu.descripcion || 'Sin descripción registrada.'}</div>
                     </td>
-                    <td>
-                      <div className="d-flex flex-wrap gap-1">
-                        {states.map((state) => (
-                          <span key={`menu-pub-list-state-${menu.id_menu}-${state}`} className={resolveBadgeClass(state)}>{state}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>{isCurrent ? 'Publicado' : 'Disponible'}</td>
+                    <td><span className={resolveBadgeClass(meta.type)}>{meta.badgeLabel}</span></td>
+                    <td>{meta.status}</td>
                     <td>{resolveVigencia(menu)}</td>
                     <td>
                       <div className="menu-recetas-admin__row-actions justify-content-end">
@@ -134,6 +165,12 @@ const MenuPublicationCards = ({
                           <i className="bi bi-pencil-square" aria-hidden="true" />
                           <span className="inv-catpro-action-label">Contenido</span>
                         </button>
+                        {meta.isActiveSeason ? (
+                          <button type="button" className="inv-catpro-action state-off inv-catpro-action-compact" onClick={() => onCancelActiveSeason?.()} disabled={!canUseBranch} title="Finalizar temporada">
+                            <i className="bi bi-calendar-x" aria-hidden="true" />
+                            <span className="inv-catpro-action-label">Finalizar</span>
+                          </button>
+                        ) : null}
                         <button type="button" className="inv-catpro-action edit inv-catpro-action-compact" onClick={() => onProgramSeason?.(menu)} disabled={!canUseBranch} title="Programar temporada">
                           <i className="bi bi-calendar2-range" aria-hidden="true" />
                           <span className="inv-catpro-action-label">Programar</span>
@@ -168,12 +205,7 @@ const MenuPublicationCards = ({
             const isSelected = Number(menu.id_menu) === selectedId;
             const canDelete = !isCurrent;
             const branchCount = menu?.total_sucursales || menu?.total_sucursales_activas || menu?.sucursales_count;
-            const states = resolveStates(menu);
-            const primaryState = states.includes('TEMPORADA ACTIVA')
-              ? 'TEMPORADA ACTIVA'
-              : states.includes('DEFAULT/FALLBACK')
-                ? 'DEFAULT/FALLBACK'
-                : states[0];
+            const meta = resolvePublicationMeta(menu);
             const descripcion = truncateText(menu.descripcion || 'Sin descripción registrada.', 104);
 
             return (
@@ -187,7 +219,7 @@ const MenuPublicationCards = ({
                     <span>Menú</span>
                   </div>
                   <div className="menu-recetas-card__media-top">
-                    <span className={resolveBadgeClass(primaryState)}>{primaryState}</span>
+                    <span className={resolveBadgeClass(meta.type)}>{meta.badgeLabel}</span>
                     <span className="menu-recetas-card__price-pill">#{menu.id_menu}</span>
                   </div>
                 </header>
@@ -201,7 +233,7 @@ const MenuPublicationCards = ({
                   <div className="menu-recetas-card__meta">
                     <div>
                       <small>Tipo</small>
-                      <strong>{states.join(' / ')}</strong>
+                      <strong>{meta.badgeLabel}</strong>
                     </div>
                     <div>
                       <small>Sucursal</small>
@@ -209,7 +241,7 @@ const MenuPublicationCards = ({
                     </div>
                     <div>
                       <small>Estado</small>
-                      <strong>{isCurrent ? 'Publicado' : 'Disponible'}</strong>
+                      <strong>{meta.status}</strong>
                     </div>
                     <div>
                       <small>Vigencia</small>
@@ -247,12 +279,24 @@ const MenuPublicationCards = ({
                     type="button"
                     className="inv-catpro-action edit inv-catpro-action-compact"
                     onClick={() => onSetDefault?.(menu)}
-                    disabled={!canUseBranch || states.includes('DEFAULT/FALLBACK')}
+                    disabled={!canUseBranch || meta.isDefaultFallback}
                     title="Establecer como DEFAULT/fallback"
                   >
                     <i className="bi bi-house-check" aria-hidden="true" />
                     <span className="inv-catpro-action-label">DEFAULT/fallback</span>
                   </button>
+                  {meta.isActiveSeason ? (
+                    <button
+                      type="button"
+                      className="inv-catpro-action state-off inv-catpro-action-compact menu-recetas-admin__state-action"
+                      onClick={() => onCancelActiveSeason?.()}
+                      disabled={!canUseBranch}
+                      title="Finalizar temporada"
+                    >
+                      <i className="bi bi-calendar-x" aria-hidden="true" />
+                      <span className="inv-catpro-action-label">Finalizar</span>
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="inv-catpro-action edit inv-catpro-action-compact"

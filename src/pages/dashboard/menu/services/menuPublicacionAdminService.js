@@ -110,6 +110,12 @@ const menuPublicacionAdminService = {
     return apiFetch(`${BASE_ENDPOINT}/menus/${idMenu}`, 'DELETE');
   },
 
+  async cancelarTemporadaActiva(idSucursal) {
+    return apiFetch(`${BASE_ENDPOINT}/temporada-activa/cancelar`, 'PATCH', {
+      id_sucursal: idSucursal
+    });
+  },
+
   // Activa o programa un menu para la sucursal seleccionada.
   async activarMenuSucursal({
     idSucursal,

@@ -76,6 +76,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
   const [seasonEndDate, setSeasonEndDate] = useState('');
   const [seasonPriority, setSeasonPriority] = useState('100');
   const [schedulingMenu, setSchedulingMenu] = useState(false);
+  const [cancellingSeason, setCancellingSeason] = useState(false);
   const [scheduleSuccess, setScheduleSuccess] = useState('');
   const [scheduleError, setScheduleError] = useState(null);
 
@@ -192,6 +193,16 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       (menu) => Number(menu?.id_menu || 0) === Number(selectedMenuProgramacionId || 0)
     ) || null
   ), [menusProgramables, selectedMenuProgramacionId]);
+
+  const defaultFallbackMenu = useMemo(() => (
+    (Array.isArray(menusProgramables) ? menusProgramables : []).find(
+      (menu) => Number(menu?.id_menu || 0) === Number(defaultFallbackMenuId || 0)
+    ) || null
+  ), [defaultFallbackMenuId, menusProgramables]);
+
+  const defaultFallbackLabel = defaultFallbackMenu?.id_menu
+    ? `${defaultFallbackMenu.nombre_menu || 'Menu DEFAULT'} #${defaultFallbackMenu.id_menu}`
+    : 'DEFAULT/fallback';
 
   const selectedEditableMenuName = selectedMenuProgramable?.nombre_menu
     || selectedCatalogMenuSummary?.nombre_menu
@@ -335,6 +346,51 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
       setScheduleError(buildScheduleError(e, 'No se pudo publicar el menu para esta sucursal.'));
     } finally {
       setSchedulingMenu(false);
+    }
+  };
+
+  const handleCancelarTemporadaActiva = async () => {
+    setScheduleError(null);
+    setScheduleSuccess('');
+
+    const idSucursal = Number(selectedSucursalId || 0);
+    if (!idSucursal) {
+      setScheduleError({ message: 'Selecciona una sucursal.' });
+      return;
+    }
+
+    if (!selectedSucursal || !selectedSucursal?.estado) {
+      setScheduleError({ message: 'La sucursal seleccionada no esta disponible para cambios.' });
+      return;
+    }
+
+    if (publishedMenuSummary?.tipo_publicacion !== 'TEMPORADA') {
+      setScheduleSuccess('No hay temporada activa para finalizar.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Se finalizará la temporada activa. La sucursal volverá al menú DEFAULT/fallback.'
+    );
+    if (!confirmed) return;
+
+    try {
+      setCancellingSeason(true);
+      const response = await menuPublicacionAdminService.cancelarTemporadaActiva(idSucursal);
+      const activeMenu = response?.data?.menu_activo_actual || null;
+      if (activeMenu?.es_default === true && activeMenu?.id_menu) {
+        setDefaultFallbackMenuId(String(activeMenu.id_menu));
+        setSelectedMenuProgramacionId(String(activeMenu.id_menu));
+        onSelectCatalogMenu(String(activeMenu.id_menu));
+      }
+      setScheduleSuccess(response?.message || 'Temporada activa finalizada correctamente.');
+      setToastMessage(response?.message || 'Temporada activa finalizada correctamente.');
+      await reloadCurrent();
+      await loadMenusProgramables();
+    } catch (e) {
+      setScheduleError(buildScheduleError(e, 'No se pudo finalizar la temporada activa.'));
+    } finally {
+      setCancellingSeason(false);
     }
   };
 
@@ -678,22 +734,35 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
             {formatDateTimeLabel(publishedMenuSummary?.fecha_inicio) ? <span>Desde: {formatDateTimeLabel(publishedMenuSummary.fecha_inicio)}</span> : null}
             {formatDateTimeLabel(publishedMenuSummary?.fecha_fin) ? <span>Hasta: {formatDateTimeLabel(publishedMenuSummary.fecha_fin)}</span> : null}
             {publishedMenuSummary?.es_default === true ? <span>Menú DEFAULT/fallback</span> : null}
-            {publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? <span>Al finalizar, vuelve al DEFAULT.</span> : null}
+            {publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? <span>Al finalizar, vuelve a: {defaultFallbackLabel}</span> : null}
           </div>
           {isEditingDifferentPublishedMenu ? (
             <div className="menu-pub-admin__content-load-note">
               Estás editando {selectedEditableMenuName}. El menú publicado actualmente es {publishedMenuSummary?.nombre_menu || 'Menu publicado'}.
             </div>
           ) : null}
-          <button
-            type="button"
-            className="btn inv-prod-btn-subtle menu-pub-admin__reload-btn"
-            onClick={reloadCurrent}
-            disabled={loadingSucursales || loadingCatalogo || !selectedSucursalId}
-          >
-            <i className="bi bi-arrow-clockwise" aria-hidden="true" />
-            <span>Recargar</span>
-          </button>
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            {publishedMenuSummary?.tipo_publicacion === 'TEMPORADA' ? (
+              <button
+                type="button"
+                className="btn inv-prod-btn-subtle menu-pub-admin__reload-btn"
+                onClick={handleCancelarTemporadaActiva}
+                disabled={loadingSucursales || loadingCatalogo || cancellingSeason || !selectedSucursalId}
+              >
+                <i className="bi bi-calendar-x" aria-hidden="true" />
+                <span>{cancellingSeason ? 'Finalizando...' : 'Finalizar temporada'}</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn inv-prod-btn-subtle menu-pub-admin__reload-btn"
+              onClick={reloadCurrent}
+              disabled={loadingSucursales || loadingCatalogo || cancellingSeason || !selectedSucursalId}
+            >
+              <i className="bi bi-arrow-clockwise" aria-hidden="true" />
+              <span>Recargar</span>
+            </button>
+          </div>
         </section>
 
         {error ? (
@@ -721,6 +790,7 @@ const MenuPublicacionAdmin = ({ showPreview = false }) => {
           onEditContent={openContentEditor}
           onSetDefault={(menu) => openScheduleModal(menu, 'DEFAULT')}
           onProgramSeason={(menu) => openScheduleModal(menu, 'TEMPORADA')}
+          onCancelActiveSeason={handleCancelarTemporadaActiva}
           onOpenEditMenu={openEditMenuModal}
           onDeleteMenu={handleDeleteMenu}
         />
