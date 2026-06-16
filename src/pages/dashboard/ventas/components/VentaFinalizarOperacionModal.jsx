@@ -109,6 +109,7 @@ export default function VentaFinalizarOperacionModal({
   const isSubmitting = saving || paidSubmitting || pendingSubmitting;
 
   const deliveryCost = useMemo(() => {
+    if (!String(delivery.costo_envio || '').trim()) return 0;
     const parsed = Number(delivery.costo_envio);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   }, [delivery.costo_envio]);
@@ -230,8 +231,7 @@ export default function VentaFinalizarOperacionModal({
         ['nombre_receptor', 'Nombre receptor'],
         ['telefono_receptor', 'Telefono receptor'],
         ['direccion_entrega', 'Direccion entrega'],
-        ['referencia_entrega', 'Referencia entrega'],
-        ['costo_envio', 'Costo envio']
+        ['referencia_entrega', 'Referencia entrega']
       ].find(([field]) => !normalizeOptionalText(delivery[field]));
 
       if (missing) {
@@ -239,8 +239,9 @@ export default function VentaFinalizarOperacionModal({
         return false;
       }
 
+      const hasDeliveryCost = Boolean(String(delivery.costo_envio || '').trim());
       const parsedCost = Number(delivery.costo_envio);
-      if (!Number.isFinite(parsedCost) || parsedCost < 0) {
+      if (hasDeliveryCost && (!Number.isFinite(parsedCost) || parsedCost < 0)) {
         setLocalError('Costo de envio debe ser numerico y mayor o igual a 0.');
         return false;
       }
@@ -302,7 +303,7 @@ export default function VentaFinalizarOperacionModal({
         },
         delivery: modalidad === 'DELIVERY'
           ? {
-              costo_envio: deliveryCost,
+              costo_envio: normalizeOptionalText(delivery.costo_envio) === null ? null : deliveryCost,
               nombre_receptor: normalizeOptionalText(delivery.nombre_receptor),
               telefono_receptor: normalizeOptionalText(delivery.telefono_receptor),
               direccion_entrega: normalizeOptionalText(delivery.direccion_entrega),
@@ -585,7 +586,7 @@ export default function VentaFinalizarOperacionModal({
                   <input type="text" value={delivery.referencia_entrega} onChange={(event) => setDeliveryField('referencia_entrega', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
-                  <span>Costo envio</span>
+                  <span>Costo envio (opcional)</span>
                   <input type="number" min="0" step="0.01" value={delivery.costo_envio} onChange={(event) => setDeliveryField('costo_envio', event.target.value)} />
                 </label>
                 <label className="ventas-create-modal__field">
