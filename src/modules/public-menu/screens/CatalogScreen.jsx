@@ -222,6 +222,17 @@ const normalizeContactEmail = (value) =>
 
 const isValidContactEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ''));
 
+const getAuthenticatedCustomerContact = (user) => ({
+  nombre: normalizeOrderFormText(
+    user?.nombre_completo_cliente ||
+      user?.nombre_completo ||
+      '',
+    120
+  ),
+  telefono: normalizeContactPhone(user?.telefono_cliente_normalizado || user?.telefono_cliente || ''),
+  correo: normalizeContactEmail(user?.correo_cliente || user?.email || user?.nombre_usuario || '')
+});
+
 const validateOrderContactContext = ({
   orderType,
   pickupPaymentMethod,
@@ -457,6 +468,10 @@ const CatalogScreen = () => {
     () => (Array.isArray(branches) ? branches.some((branch) => branch?.isOpen !== false) : false),
     [branches]
   );
+  const authenticatedCustomerContact = useMemo(
+    () => getAuthenticatedCustomerContact(user),
+    [user]
+  );
 
   const [cartOpen, setCartOpen] = useState(false);
   const [authRequired, setAuthRequired] = useState({ open: false, message: '' });
@@ -470,9 +485,9 @@ const CatalogScreen = () => {
     keepCartSheetVisible: false
   });
   const [orderContactContextDraft, setOrderContactContextDraft] = useState({
-    contactName: '',
-    contactPhone: '',
-    contactEmail: '',
+    contactName: authenticatedCustomerContact.nombre,
+    contactPhone: authenticatedCustomerContact.telefono,
+    contactEmail: authenticatedCustomerContact.correo,
     deliveryAddress: '',
     deliveryReference: '',
     transferProof: ''
@@ -922,9 +937,9 @@ const CatalogScreen = () => {
     setOrderContactContextErrors({});
     setOrderContactContextResumeConfig({ keepCartSheetVisible: false });
     setOrderContactContextDraft({
-      contactName: '',
-      contactPhone: '',
-      contactEmail: '',
+      contactName: authenticatedCustomerContact.nombre,
+      contactPhone: authenticatedCustomerContact.telefono,
+      contactEmail: authenticatedCustomerContact.correo,
       deliveryAddress: '',
       deliveryReference: '',
       transferProof: ''
@@ -953,6 +968,13 @@ const CatalogScreen = () => {
     });
   };
 
+  const buildOrderContactContextDraft = (draft = orderContactContextDraft) => ({
+    ...draft,
+    contactName: normalizeOrderFormText(draft.contactName || authenticatedCustomerContact.nombre, 120),
+    contactPhone: normalizeContactPhone(draft.contactPhone || authenticatedCustomerContact.telefono),
+    contactEmail: normalizeContactEmail(draft.contactEmail || authenticatedCustomerContact.correo)
+  });
+
   const cancelHomeNavigation = () => {
     setHomeConfirmOpen(false);
   };
@@ -971,11 +993,6 @@ const CatalogScreen = () => {
       setClosedHoursDismissedByBranch((prev) => ({ ...prev, [branchKey]: true }));
     }
     setClosedHoursConfirmOpen(false);
-  };
-
-  const leaveClosedMenu = () => {
-    setClosedHoursConfirmOpen(false);
-    navigate('/menu-publico');
   };
 
   const handleLogout = async () => {
@@ -1029,21 +1046,23 @@ const CatalogScreen = () => {
       });
     }
 
+    const effectiveContactDraft = buildOrderContactContextDraft();
     const orderContactValidation = validateOrderContactContext({
       orderType,
       pickupPaymentMethod,
-      contactName: orderContactContextDraft.contactName,
-      contactPhone: orderContactContextDraft.contactPhone,
-      contactEmail: orderContactContextDraft.contactEmail,
-      deliveryAddress: orderContactContextDraft.deliveryAddress,
-      deliveryReference: orderContactContextDraft.deliveryReference,
-      transferProof: orderContactContextDraft.transferProof
+      contactName: effectiveContactDraft.contactName,
+      contactPhone: effectiveContactDraft.contactPhone,
+      contactEmail: effectiveContactDraft.contactEmail,
+      deliveryAddress: effectiveContactDraft.deliveryAddress,
+      deliveryReference: effectiveContactDraft.deliveryReference,
+      transferProof: effectiveContactDraft.transferProof
     });
 
     if (
       !skipContextPrompt &&
       Object.keys(orderContactValidation.errors).length > 0
     ) {
+      setOrderContactContextDraft(effectiveContactDraft);
       setOrderContactContextErrors(orderContactValidation.errors);
       setOrderContactContextResumeConfig({ keepCartSheetVisible });
       setOrderContactContextOpen(true);
@@ -1123,22 +1142,25 @@ const CatalogScreen = () => {
   };
 
   const handleOrderContactContextConfirm = () => {
+    const effectiveContactDraft = buildOrderContactContextDraft();
     const validation = validateOrderContactContext({
       orderType,
       pickupPaymentMethod: String(state.pickupPaymentMethod || '').trim().toLowerCase(),
-      contactName: orderContactContextDraft.contactName,
-      contactPhone: orderContactContextDraft.contactPhone,
-      contactEmail: orderContactContextDraft.contactEmail,
-      deliveryAddress: orderContactContextDraft.deliveryAddress,
-      deliveryReference: orderContactContextDraft.deliveryReference,
-      transferProof: orderContactContextDraft.transferProof
+      contactName: effectiveContactDraft.contactName,
+      contactPhone: effectiveContactDraft.contactPhone,
+      contactEmail: effectiveContactDraft.contactEmail,
+      deliveryAddress: effectiveContactDraft.deliveryAddress,
+      deliveryReference: effectiveContactDraft.deliveryReference,
+      transferProof: effectiveContactDraft.transferProof
     });
 
     if (Object.keys(validation.errors).length > 0) {
+      setOrderContactContextDraft(effectiveContactDraft);
       setOrderContactContextErrors(validation.errors);
       return;
     }
 
+    setOrderContactContextDraft(effectiveContactDraft);
     setOrderContactContextErrors({});
     setOrderContactContextOpen(false);
     void handleConfirmOrder({
