@@ -5742,8 +5742,24 @@
   padding: 5px 8px;
   border-color: rgba(184, 104, 33, 0.16);
   background: #fff7ef;
+  color: #9a5319;
   font-size: 0.72rem;
   font-weight: 900;
+}
+
+.ventas-caja-page .vcp-card:hover .vcp-card__add-btn:not(:disabled),
+.ventas-caja-page .ventas-catalog-card-compact:hover .vcp-card__add-btn:not(:disabled),
+.ventas-caja-page .vcp-card__add-btn:hover:not(:disabled),
+.ventas-caja-page .vcp-card__add-btn:focus-visible:not(:disabled) {
+  background: #9a5319;
+  border-color: #9a5319;
+  color: #ffffff;
+}
+
+.ventas-caja-page .vcp-card__add-btn:disabled {
+  background: rgba(157, 150, 112, 0.18);
+  border-color: rgba(157, 150, 112, 0.22);
+  color: rgba(82, 44, 34, 0.58);
 }
 
 .ventas-cart-panel {
