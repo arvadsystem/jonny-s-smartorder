@@ -85,6 +85,7 @@ export default function PersonaInlineCreateModal({
   subtitle = "Completa los campos y guarda los cambios.",
   saveLabel = "Crear",
   initialForm = null,
+  requireLastName = true,
   onClose,
   onSave,
   saving = false,
@@ -178,13 +179,13 @@ export default function PersonaInlineCreateModal({
         const nextForm =
           prevForm[fieldName] === nextValue ? prevForm : { ...prevForm, [fieldName]: nextValue };
         if (shouldValidate) {
-          const fieldError = validatePersonaField(fieldName, nextValue, nextForm);
+          const fieldError = validatePersonaField(fieldName, nextValue, nextForm, { requireLastName });
           setFieldErrorState(fieldName, fieldError);
         }
         return nextForm;
       });
     },
-    [setFieldErrorState, touched]
+    [requireLastName, setFieldErrorState, touched]
   );
 
   const handleFieldBlur = useCallback(
@@ -192,10 +193,10 @@ export default function PersonaInlineCreateModal({
       const touchedKey = personaFormFieldToTouchedKey[fieldName];
       if (!touchedKey) return;
       setTouched((prev) => (prev[touchedKey] ? prev : { ...prev, [touchedKey]: true }));
-      const fieldError = validatePersonaField(fieldName, form[fieldName], form);
+      const fieldError = validatePersonaField(fieldName, form[fieldName], form, { requireLastName });
       setFieldErrorState(fieldName, fieldError);
     },
-    [form, setFieldErrorState]
+    [form, requireLastName, setFieldErrorState]
   );
 
   const handleLettersFieldChange = (field) => (event) => {
@@ -369,7 +370,7 @@ export default function PersonaInlineCreateModal({
     event.preventDefault();
     if (saving) return;
 
-    const currentErrors = validatePersonaForm(form);
+    const currentErrors = validatePersonaForm(form, { requireLastName });
     setTouched(buildTouchedAllTrue());
     setErrors(currentErrors);
     if (Object.keys(currentErrors).length > 0) return;
@@ -454,7 +455,9 @@ export default function PersonaInlineCreateModal({
             <div className="col-12 col-md-6">
               <label className="form-label persona-field-label">
                 <span>Apellido</span>
-                <span className="persona-field-label__meta is-required">Oblig.</span>
+                <span className={`persona-field-label__meta ${requireLastName ? "is-required" : "is-optional"}`}>
+                  {requireLastName ? "Oblig." : "Opc."}
+                </span>
               </label>
               <input
                 type="text"

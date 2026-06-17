@@ -254,15 +254,19 @@ export const buildPersonaPayloadFromForm = (sourceForm = {}) => ({
   texto_correo: String(sourceForm?.id_correo ?? "").trim(),
 });
 
-export const validatePersonaField = (fieldName, value) => {
+export const validatePersonaField = (fieldName, value, _form, options = {}) => {
   const currentValue = String(value ?? "");
   const trimmedValue = currentValue.trim();
   const today = new Date().toISOString().split("T")[0];
+  const requireLastName = options?.requireLastName !== false;
 
   switch (fieldName) {
     case "nombre":
-    case "apellido":
       if (!trimmedValue) return "Requerido";
+      if (!LETTERS_INPUT_REGEX.test(trimmedValue)) return "Solo letras y espacios";
+      return "";
+    case "apellido":
+      if (!trimmedValue) return requireLastName ? "Requerido" : "";
       if (!LETTERS_INPUT_REGEX.test(trimmedValue)) return "Solo letras y espacios";
       return "";
     case "dni": {
@@ -297,7 +301,7 @@ export const validatePersonaField = (fieldName, value) => {
   }
 };
 
-export const validatePersonaForm = (form = {}) => {
+export const validatePersonaForm = (form = {}, options = {}) => {
   const fieldsToValidate = [
     "nombre",
     "apellido",
@@ -311,7 +315,7 @@ export const validatePersonaForm = (form = {}) => {
 
   const currentErrors = {};
   fieldsToValidate.forEach((fieldName) => {
-    const fieldError = validatePersonaField(fieldName, form[fieldName], form);
+    const fieldError = validatePersonaField(fieldName, form[fieldName], form, options);
     if (fieldError) currentErrors[fieldName] = fieldError;
   });
 
