@@ -380,15 +380,17 @@ export const publicMenuBootstrapService = {
   },
 
   // Obtiene catalogo real publicado para sucursal/tipo de pedido.
-  async getCatalog({ idSucursal, orderType }) {
+  async getCatalog({ idSucursal, orderType, forceRefresh = false }) {
     assertValidBranchId(idSucursal);
     const normalizedOrderType = assertValidOrderType(orderType);
 
     const cacheKey = buildCatalogCacheKey({ idSucursal, orderType: normalizedOrderType });
-    const cached = readValidCatalogCache(cacheKey);
+    if (forceRefresh) catalogCache.delete(cacheKey);
+
+    const cached = forceRefresh ? null : readValidCatalogCache(cacheKey);
     if (cached) return cached;
 
-    const inFlight = catalogCache.get(cacheKey)?.inFlight;
+    const inFlight = forceRefresh ? null : catalogCache.get(cacheKey)?.inFlight;
     if (inFlight) return inFlight;
 
     const endpoint = withQueryParams('/api/public-menu/catalogo', {

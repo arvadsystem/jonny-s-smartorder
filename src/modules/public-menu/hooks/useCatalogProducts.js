@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { publicMenuBootstrapService } from '../services/publicMenuBootstrapService';
 import { toPublicMenuUiErrorMessage } from '../utils/publicMenuApiError';
+import {
+  buildCatalogSnapshotKey,
+  clearPublicMenuCatalogSnapshots,
+  PUBLIC_MENU_CATALOG_REFRESH_EVENT,
+  PUBLIC_MENU_CATALOG_REFRESH_STORAGE_KEY
+} from '../utils/publicMenuCatalogRefresh';
 
 const CATALOG_SNAPSHOT_TTL_MS = 10 * 60 * 1000;
 const CATALOG_PERSISTENT_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
-
-const buildSnapshotKey = ({ branchId, orderType }) =>
-  `pm_catalog_snapshot::${Number(branchId) || 0}::${String(orderType || 'na').trim().toLowerCase()}`;
 
 const readStorageSnapshot = (storage, key, ttlMs) => {
   if (!storage) return null;
@@ -169,7 +172,7 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
   const [syncWarning, setSyncWarning] = useState('');
 
   // Carga catalogo real por sucursal y tipo de pedido.
-  const loadCatalog = useCallback(async () => {
+  const loadCatalog = useCallback(async ({ forceRefresh = false } = {}) => {
     if (!branchId) {
       setProducts([]);
       setMenuSummary(null);
@@ -178,8 +181,10 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
       return;
     }
 
-    const snapshotKey = buildSnapshotKey({ branchId, orderType });
-    const snapshot = readCatalogSnapshot(snapshotKey);
+    if (forceRefresh) clearPublicMenuCatalogSnapshots({ branchId });
+
+    const snapshotKey = buildCatalogSnapshotKey({ branchId, orderType });
+    const snapshot = forceRefresh ? null : readCatalogSnapshot(snapshotKey);
     const hasSnapshot = Boolean(snapshot && Array.isArray(snapshot.items));
 
     try {
@@ -196,7 +201,8 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
 
       const response = await publicMenuBootstrapService.getCatalog({
         idSucursal: branchId,
-        orderType
+        orderType,
+        forceRefresh
       });
 
       setProducts(Array.isArray(response?.items) ? response.items : []);
@@ -230,6 +236,39 @@ export const useCatalogProducts = ({ branchId, orderType }) => {
   useEffect(() => {
     loadCatalog();
   }, [loadCatalog]);
+
+  useEffect(() => {
+    if (!branchId) return undefined;
+
+    const shouldRefresh = (payload) => {
+      const changedBranchId = Number(payload?.branchId || 0);
+      return !changedBranchId || changedBranchId === Number(branchId);
+    };
+
+    const handleCatalogRefresh = (event) => {
+      if (!shouldRefresh(event?.detail)) return;
+      void loadCatalog({ forceRefresh: true });
+    };
+
+    const handleStorage = (event) => {
+      if (event.key !== PUBLIC_MENU_CATALOG_REFRESH_STORAGE_KEY || !event.newValue) return;
+      try {
+        const payload = JSON.parse(event.newValue);
+        if (!shouldRefresh(payload)) return;
+        void loadCatalog({ forceRefresh: true });
+      } catch {
+        void loadCatalog({ forceRefresh: true });
+      }
+    };
+
+    window.addEventListener(PUBLIC_MENU_CATALOG_REFRESH_EVENT, handleCatalogRefresh);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener(PUBLIC_MENU_CATALOG_REFRESH_EVENT, handleCatalogRefresh);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [branchId, loadCatalog]);
 
   const availableProducts = useMemo(
     () => products.filter((product) => isProductAvailable(product)),

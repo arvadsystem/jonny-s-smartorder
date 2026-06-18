@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import menuPublicacionAdminService from '../services/menuPublicacionAdminService';
+import { notifyPublicMenuCatalogChanged } from '../../../../modules/public-menu/utils/publicMenuCatalogRefresh';
 
 const TYPE_LABELS = Object.freeze({
   PRODUCTO: 'Producto',
@@ -126,6 +127,7 @@ const OrdenMenuPublicoDrawer = ({
         idSucursal: selectedBranchId,
         items: payload
       });
+      notifyPublicMenuCatalogChanged({ branchId: selectedBranchId });
       setInitialSignature(JSON.stringify(payload));
       onSaved?.('Orden del menu publico actualizado correctamente.');
       await loadOrder(selectedBranchId);
@@ -139,12 +141,12 @@ const OrdenMenuPublicoDrawer = ({
   if (!open) return null;
 
   return (
-    <div className="inv-prod-pmodal inv-prod-pmodal--create show">
+    <div className="inv-prod-pmodal inv-prod-pmodal--public-order show">
       <div className="inv-prod-pmodal__overlay" onClick={onClose} />
       <div className="inv-prod-pmodal__viewport">
         <section
           id="menu-publico-orden-drawer"
-          className="inv-prod-pmodal__panel inv-prod-pmodal__panel--create"
+          className="inv-prod-pmodal__panel inv-prod-pmodal__panel--public-order"
           role="dialog"
           aria-modal="true"
           aria-labelledby="menu-publico-orden-title"
@@ -222,7 +224,7 @@ const OrdenMenuPublicoDrawer = ({
                             </span>
                             <strong className="menu-public-order__position">{index + 1}</strong>
                             <div className="menu-public-order__main">
-                              <span>{item.nombre_publico}</span>
+                              <span title={item.nombre_publico}>{item.nombre_publico}</span>
                               <small>{formatContentCount(item)}</small>
                             </div>
                             <span className={`menu-pub-admin__type-badge is-${type === 'RECETA' ? 'receta' : type === 'COMBO' ? 'combo' : 'producto'}`}>

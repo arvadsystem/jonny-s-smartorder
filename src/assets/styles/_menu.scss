@@ -3722,6 +3722,40 @@
   border-color: rgba(184, 125, 54, 0.26);
 }
 
+.inv-prod-pmodal--public-order .inv-prod-pmodal__viewport {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.inv-prod-pmodal__panel--public-order {
+  width: min(1120px, calc(100vw - 48px));
+  max-width: min(1120px, calc(100vw - 48px));
+  height: min(820px, calc(100vh - 48px));
+  height: min(820px, calc(100dvh - 48px));
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(var(--c-shadow-rgb), 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  transform-origin: center center;
+  transform: translate3d(0, 16px, 0) scale(0.985);
+}
+
+.inv-prod-pmodal__panel--public-order .inv-prod-pmodal__form-shell {
+  height: 100%;
+  min-height: 0;
+}
+
+.inv-prod-pmodal__panel--public-order .inv-prod-pmodal__body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.inv-prod-pmodal__panel--public-order .inv-prod-pmodal__footer {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .menu-public-order__help {
   margin: 0 0 1rem;
   color: var(--inv-prod-muted, #6c757d);
@@ -3743,7 +3777,7 @@
 
 .menu-public-order__row {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto auto minmax(260px, 1fr) auto auto auto;
   align-items: center;
   gap: 0.75rem;
   padding: 0.85rem;
@@ -3781,6 +3815,7 @@
 .menu-public-order__actions {
   display: inline-flex;
   gap: 0.35rem;
+  justify-content: flex-end;
 }
 
 .menu-public-order__actions .inv-prod-toolbar-btn {
@@ -4542,6 +4577,20 @@
     border-radius: 12px;
   }
 
+  .inv-prod-pmodal--public-order .inv-prod-pmodal__viewport {
+    padding: 12px;
+  }
+
+  .inv-prod-pmodal__panel--public-order {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 14px;
+  }
+
   .menu-pub-admin__content-modal-actions {
     width: 100%;
   }
@@ -4564,14 +4613,21 @@
   }
 
   .menu-public-order__row {
-    grid-template-columns: auto auto minmax(0, 1fr);
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    gap: 0.65rem;
   }
 
   .menu-public-order__row .menu-pub-admin__type-badge,
-  .menu-public-order__row .menu-recetas-admin__estado-badge,
-  .menu-public-order__actions {
-    grid-column: 3;
+  .menu-public-order__row .menu-recetas-admin__estado-badge {
+    grid-column: 3 / 4;
     justify-self: start;
+  }
+
+  .menu-public-order__actions {
+    grid-column: 4;
+    grid-row: 1 / span 3;
+    flex-direction: column;
+    justify-self: end;
   }
 
   .menu-pub-admin__table-footer .inv-warehouse-moves__pagination-controls {
@@ -4602,6 +4658,66 @@
 }
 
 @media (max-width: 575.98px) {
+  .inv-prod-pmodal--public-order .inv-prod-pmodal__viewport {
+    padding: 8px;
+  }
+
+  .inv-prod-pmodal__panel--public-order {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    border-radius: 12px;
+  }
+
+  .inv-prod-pmodal__panel--public-order .inv-prod-pmodal__body {
+    padding: 0.75rem;
+  }
+
+  .inv-prod-pmodal__panel--public-order .inv-prod-pmodal__section {
+    padding: 0.75rem;
+  }
+
+  .inv-prod-pmodal__panel--public-order .inv-prod-pmodal__footer {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-public-order__row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    padding: 0.75rem;
+  }
+
+  .menu-public-order__handle {
+    grid-column: 1;
+    grid-row: 1;
+    padding-top: 0.12rem;
+  }
+
+  .menu-public-order__position {
+    grid-column: 1;
+    grid-row: 2;
+    width: auto;
+    text-align: left;
+  }
+
+  .menu-public-order__main {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .menu-public-order__row .menu-pub-admin__type-badge,
+  .menu-public-order__row .menu-recetas-admin__estado-badge {
+    grid-column: 2;
+  }
+
+  .menu-public-order__actions {
+    grid-column: 3;
+    grid-row: 1 / span 4;
+  }
+
   .menu-pub-admin__menus-grid {
     grid-template-columns: 1fr;
   }
