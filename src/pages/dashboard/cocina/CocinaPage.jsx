@@ -49,6 +49,11 @@ export default function CocinaPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isPantallaCocina = useMemo(() => isPantallaCocinaRole(user?.roles), [user?.roles]);
   const isCocinaOperativa = useMemo(() => isCocinaOperativaRole(user?.roles), [user?.roles]);
+  const pageClassName = [
+    'cocina-page',
+    isPantallaCocina ? 'cocina-page--tv-mode' : '',
+    isCocinaOperativa && !isPantallaCocina ? 'cocina-page--operator-mode' : ''
+  ].filter(Boolean).join(' ');
   const canSelectSucursalInCocina = isSuperAdmin;
   const toastPolicy = useMemo(
     () => ({
@@ -235,7 +240,7 @@ export default function CocinaPage() {
   }, []);
 
   return (
-    <div className={`cocina-page${isPantallaCocina ? ' cocina-page--tv-mode' : ''}`} ref={pageRef}>
+    <div className={pageClassName} ref={pageRef}>
       <div className="kds-root">
         {isPantallaCocina ? (
           <header className="kds-tv-header">
