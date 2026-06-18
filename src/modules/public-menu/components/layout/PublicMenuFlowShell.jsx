@@ -28,12 +28,12 @@ const STEP_COPY = {
   }
 };
 
-const THEME_STORAGE_KEY = 'pm_menu_theme';
+const THEME_STORAGE_KEY = 'pm_menu_theme_v2';
 
 const readInitialTheme = () => {
-  if (typeof window === 'undefined') return 'dark';
+  if (typeof window === 'undefined') return 'light';
   const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return saved === 'light' ? 'light' : 'dark';
+  return saved === 'dark' ? 'dark' : 'light';
 };
 
 // Shell keeps step navigation and sticky actions centralized.
