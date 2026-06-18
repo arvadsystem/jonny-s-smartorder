@@ -685,7 +685,7 @@ export default function VentaRegistrarPagoPedidoModal({
           setSplitDraftEnabled(false);
           setSplitDraftDivisions(buildInitialSplitDivisions());
           setSelectedDraftDivisionId('persona-1');
-          setLocalNotice('Pago registrado. No se pudo refrescar el saldo restante automaticamente.');
+          setLocalError(refreshError?.message || 'Pago registrado, pero no se pudo refrescar el saldo restante automaticamente.');
           if (Number(refreshError?.status || 0) >= 500) {
             console.error('[Ventas] Error refrescando pedido pendiente despues del pago', refreshError);
           }

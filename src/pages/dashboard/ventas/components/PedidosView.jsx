@@ -78,6 +78,16 @@ const isPedidoPendientePago = (pedido) => {
   return code === 'PENDIENTE_PAGO' || code === 'PENDIENTE_DE_PAGO';
 };
 
+const canCobrarPedido = (pedido) => {
+  if (pedido?.puede_cobrar === true) return true;
+  if (pedido?.puede_cobrar === false) return false;
+  return (
+    isPedidoPendientePago(pedido) &&
+    (Number(pedido?.monto_pendiente ?? 0) || 0) > 0 &&
+    !toPositiveId(pedido?.id_factura)
+  );
+};
+
 const TECHNICAL_MESSAGE_PATTERNS = [
   /cannot read/i,
   /internal server error/i,
@@ -124,9 +134,18 @@ const normalizePedidoForPagoModal = (pedido) => ({
   canal: pedido?.canal,
   modalidad: pedido?.modalidad,
   id_sucursal: toPositiveId(pedido?.id_sucursal),
+  id_factura: toPositiveId(pedido?.id_factura),
+  estado_pago_control: pedido?.estado_pago_control,
+  estado_pago_legacy: pedido?.estado_pago_legacy,
+  puede_cobrar: canCobrarPedido(pedido),
   estado_pago: pedido?.estado_pago_control || pedido?.estado_pago,
+  monto_total: Number(pedido?.monto_total ?? pedido?.total ?? 0) || 0,
+  monto_pagado: Number(pedido?.monto_pagado ?? 0) || 0,
   monto_pendiente: Number(pedido?.monto_pendiente ?? pedido?.total ?? 0) || 0,
-  total: Number(pedido?.total ?? 0) || 0
+  total: Number(pedido?.total ?? pedido?.monto_total ?? 0) || 0,
+  cuenta_dividida: pedido?.cuenta_dividida,
+  cuenta_dividida_activa: pedido?.cuenta_dividida_activa,
+  cuenta_dividida_divisiones: pedido?.cuenta_dividida_divisiones
 });
 
 const formatPedidoTime = (value) => {
@@ -806,6 +825,7 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
   const laneCode = mapPedidoStateCode(pedido);
   const visibleCode = buildPedidoVisibleCode(pedido);
   const pendingPago = isPedidoPendientePago(pedido);
+  const puedeCobrar = canCobrarPedido(pedido);
   const kdsVencido = isPedidoKdsVencido(pedido);
   const total = Number(pedido?.total || 0);
   const hasCuentaDividida = Boolean(
@@ -864,7 +884,7 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
           Ver detalle
         </button>
 
-        {pendingPago ? (
+        {puedeCobrar ? (
           <button
             className="ventas-pedidos-card__action ventas-pedidos-card__action--primary ventas-pedidos-card__btn is-primary"
             onClick={onCobrar}
@@ -888,7 +908,7 @@ function PedidoCard({ pedido, busy = false, onSendKitchen, onComplete, onNoEntre
           </button>
         ) : null}
 
-        {!pendingPago && laneCode === 'LISTO_PARA_ENTREGA' ? (
+        {!puedeCobrar && laneCode === 'LISTO_PARA_ENTREGA' ? (
           <>
             <button
               className="ventas-pedidos-card__action ventas-pedidos-card__action--primary ventas-pedidos-card__btn is-primary"
