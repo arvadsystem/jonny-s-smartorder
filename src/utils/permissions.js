@@ -769,6 +769,13 @@ const MENU_TAB_BASE_PERMISSIONS = uniquePermissions([
 ]);
 
 const MENU_TAB_PERMISSIONS_MAP = Object.freeze({
+  departamentos: uniquePermissions([
+    ...MENU_TAB_BASE_PERMISSIONS,
+    PERMISSIONS.MENU_DEPARTAMENTOS_VER,
+    PERMISSIONS.MENU_DEPARTAMENTOS_CREAR,
+    PERMISSIONS.MENU_DEPARTAMENTOS_EDITAR,
+    PERMISSIONS.MENU_DEPARTAMENTOS_ELIMINAR
+  ]),
   recetas: uniquePermissions([
     ...MENU_TAB_BASE_PERMISSIONS,
     PERMISSIONS.MENU_RECETAS_VER,
@@ -1045,11 +1052,12 @@ export const MODULE_TAB_CONFIG = Object.freeze({
     { key: 'asignaciones', label: 'Asignaciones', icon: 'bi bi-people-fill', required: CIERRES_CAJA_TAB_PERMISSIONS_MAP.asignaciones }
   ],
   menu: [
+    { key: 'departamentos', label: 'Departamentos', icon: 'bi bi-diagram-3', required: MENU_TAB_PERMISSIONS_MAP.departamentos },
     { key: 'recetas', label: 'Recetas', icon: 'bi bi-journal-richtext', required: MENU_TAB_PERMISSIONS_MAP.recetas },
-    { key: 'extras', label: 'Extras', icon: 'bi bi-plus-square-dotted', required: MENU_TAB_PERMISSIONS_MAP.extras },
     { key: 'combos', label: 'Combos', icon: 'bi bi-collection', required: MENU_TAB_PERMISSIONS_MAP.combos },
+    { key: 'extras', label: 'Extras', icon: 'bi bi-plus-square-dotted', required: MENU_TAB_PERMISSIONS_MAP.extras },
     { key: 'salsas', label: 'Salsas', icon: 'bi bi-droplet', required: MENU_TAB_PERMISSIONS_MAP.salsas },
-    { key: 'publicacion', label: 'Publicacion', icon: 'bi bi-cloud-upload', required: MENU_TAB_PERMISSIONS_MAP.publicacion },
+    { key: 'publicacion', label: 'Publicaciones', icon: 'bi bi-cloud-upload', required: MENU_TAB_PERMISSIONS_MAP.publicacion },
     { key: 'carrusel', label: 'Carrusel', icon: 'bi bi-images', required: MENU_TAB_PERMISSIONS_MAP.carrusel },
     {
       key: 'vista-previa',
