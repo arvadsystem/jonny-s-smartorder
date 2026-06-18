@@ -2,7 +2,8 @@ import { apiFetch } from './api';
 import {
   buildDepartamentoPayload,
   normalizeDepartamentoForForm,
-  parseBoolean
+  parseBoolean,
+  toPositiveInteger
 } from '../pages/dashboard/menu/utils/departamentosAdminUtils';
 
 const BASE_ENDPOINT = '/tipo_departamento';
@@ -19,17 +20,19 @@ const buildChangedFields = (original, edited) => {
   const normalizedOriginal = normalizeDepartamentoForForm(original || {});
   const payload = buildDepartamentoPayload(edited || {});
 
-  return EDITABLE_FIELDS
-    .filter((field) => !sameValue(field, normalizedOriginal[field], payload[field]))
-    .map((field) => ({ field, value: payload[field] }));
+  return EDITABLE_FIELDS.reduce((changes, field) => {
+    if (!sameValue(field, normalizedOriginal[field], payload[field])) {
+      changes[field] = payload[field];
+    }
+    return changes;
+  }, {});
 };
 
-const updateField = (id, field, value) =>
+const updateFields = (id, cambios) =>
   apiFetch(BASE_ENDPOINT, 'PUT', {
-    campo: field,
-    valor: value,
     id_campo: ID_FIELD,
-    id_valor: id
+    id_valor: id,
+    cambios
   });
 
 const departamentosAdminService = {
@@ -38,25 +41,34 @@ const departamentosAdminService = {
   crearDepartamento: async (form) => apiFetch(BASE_ENDPOINT, 'POST', buildDepartamentoPayload(form)),
 
   actualizarDepartamento: async (id, original, edited) => {
-    const parsedId = Number.parseInt(String(id ?? ''), 10);
-    if (!Number.isInteger(parsedId) || parsedId <= 0) {
+    const parsedId = toPositiveInteger(id);
+    if (parsedId === null) {
       throw new Error('ID de departamento invalido.');
     }
 
-    const changes = buildChangedFields(original, edited);
-    for (const change of changes) {
-      await updateField(parsedId, change.field, change.value);
+    const cambios = buildChangedFields(original, edited);
+    const changedFields = Object.keys(cambios);
+    if (changedFields.length === 0) {
+      return {
+        message: 'No hay cambios para guardar.',
+        changedFields: []
+      };
     }
 
+    await updateFields(parsedId, cambios);
     return {
-      message: changes.length > 0
-        ? 'Departamento actualizado correctamente.'
-        : 'No hay cambios para guardar.',
-      changedFields: changes.map((change) => change.field)
+      message: 'Departamento actualizado correctamente.',
+      changedFields
     };
   },
 
-  cambiarEstadoDepartamento: async (id, estado) => updateField(id, 'estado', Boolean(estado))
+  cambiarEstadoDepartamento: async (id, estado) => {
+    const parsedId = toPositiveInteger(id);
+    if (parsedId === null) {
+      throw new Error('ID de departamento invalido.');
+    }
+    return updateFields(parsedId, { estado: Boolean(estado) });
+  }
 };
 
 export default departamentosAdminService;

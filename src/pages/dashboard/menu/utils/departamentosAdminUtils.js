@@ -35,8 +35,7 @@ export const normalizeDepartamentoCode = (value) =>
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .slice(0, 80);
+    .replace(/^_|_$/g, '');
 
 export const normalizeDepartamentoForForm = (departamento) => ({
   nombre_departamento: String(departamento?.nombre_departamento || '').slice(0, 50),
@@ -56,8 +55,12 @@ export const truncateText = (value, maxLength = 100) => {
 };
 
 export const toPositiveInteger = (value) => {
-  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  const raw = String(value ?? '').trim();
+  if (!/^[1-9]\d*$/.test(raw)) return null;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) return null;
+  if (parsed > 2147483647) return null;
+  return parsed;
 };
 
 export const validateDepartamentoForm = (form) => {
@@ -71,7 +74,7 @@ export const validateDepartamentoForm = (form) => {
   if (descripcion.length > 50) return 'descripcion no puede exceder 50 caracteres.';
   if (!codigo) return 'codigo_departamento es obligatorio.';
   if (codigo.length > 80) return 'codigo_departamento no puede exceder 80 caracteres.';
-  if (orden === null) return 'orden_menu debe ser un entero positivo.';
+  if (orden === null) return 'orden_menu debe ser un entero positivo entre 1 y 2147483647.';
   return '';
 };
 

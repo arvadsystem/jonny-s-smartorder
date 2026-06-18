@@ -104,6 +104,7 @@ const DepartamentosFormDrawer = ({
                       <input
                         id="departamento_orden"
                         type="number"
+                        inputMode="numeric"
                         min="1"
                         step="1"
                         className="form-control"
