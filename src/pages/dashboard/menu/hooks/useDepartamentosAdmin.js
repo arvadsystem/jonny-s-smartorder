@@ -5,7 +5,6 @@ import {
   countActiveDepartamentoFilters,
   defaultDepartamentoFilters,
   emptyDepartamentoForm,
-  normalizeDepartamentoCode,
   normalizeDepartamentoForForm,
   normalizeRows,
   resolveDepartamentoActivo,
@@ -27,7 +26,6 @@ const useDepartamentosAdmin = () => {
   const [editingId, setEditingId] = useState(null);
   const [editingOriginal, setEditingOriginal] = useState(null);
   const [form, setForm] = useState({ ...emptyDepartamentoForm });
-  const [codeTouched, setCodeTouched] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState({ ...defaultDepartamentoFilters });
   const [filtersDraft, setFiltersDraft] = useState({ ...defaultDepartamentoFilters });
@@ -72,17 +70,7 @@ const useDepartamentosAdmin = () => {
         const nextNombre = String(value || '').slice(0, 50);
         return {
           ...prev,
-          nombre_departamento: nextNombre,
-          codigo_departamento: codeTouched
-            ? prev.codigo_departamento
-            : normalizeDepartamentoCode(nextNombre)
-        };
-      }
-      if (name === 'codigo_departamento') {
-        setCodeTouched(true);
-        return {
-          ...prev,
-          codigo_departamento: normalizeDepartamentoCode(value)
+          nombre_departamento: nextNombre
         };
       }
       if (name === 'descripcion') {
@@ -96,7 +84,7 @@ const useDepartamentosAdmin = () => {
         [name]: value
       };
     });
-  }, [codeTouched]);
+  }, []);
 
   const openCreateDrawer = useCallback(() => {
     setFiltersOpen(false);
@@ -104,7 +92,6 @@ const useDepartamentosAdmin = () => {
     setEditingId(null);
     setEditingOriginal(null);
     setForm({ ...emptyDepartamentoForm });
-    setCodeTouched(false);
     setDrawerOpen(true);
     setError('');
     setSuccess('');
@@ -156,7 +143,6 @@ const useDepartamentosAdmin = () => {
       setEditingOriginal(null);
       setDrawerMode('create');
       setDrawerOpen(false);
-      setCodeTouched(false);
       await cargarDepartamentos();
     } catch (e) {
       showSaveResult('error', e?.message || 'No se pudo guardar el departamento.');
@@ -180,7 +166,6 @@ const useDepartamentosAdmin = () => {
     setEditingId(id);
     setEditingOriginal(buildDepartamentoPayload(normalizeDepartamentoForForm(departamento)));
     setForm(normalizeDepartamentoForForm(departamento));
-    setCodeTouched(true);
     setDrawerOpen(true);
   }, [departamentos]);
 
@@ -233,13 +218,11 @@ const useDepartamentosAdmin = () => {
 
       const idText = String(departamento?.id_tipo_departamento ?? '').toLowerCase();
       const nombre = String(departamento?.nombre_departamento || '').toLowerCase();
-      const codigo = String(departamento?.codigo_departamento || '').toLowerCase();
       const descripcion = String(departamento?.descripcion || '').toLowerCase();
 
       return (
         idText.includes(searchTerm) ||
         nombre.includes(searchTerm) ||
-        codigo.includes(searchTerm) ||
         descripcion.includes(searchTerm)
       );
     });

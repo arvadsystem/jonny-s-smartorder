@@ -722,9 +722,6 @@ const CatalogScreen = () => {
         // Evita el "flash" inicial de solo Snacks/Helados mientras termina de cargar QA.
         return loading ? [...FALLBACK_TOP_NAV_CATEGORIES] : [];
       }
-      ['Snacks', 'Helados'].forEach((category) => {
-        if (!visibleCategories.includes(category)) visibleCategories.push(category);
-      });
       return visibleCategories.slice(0, 10);
     },
     [categories, loading]

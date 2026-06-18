@@ -7,6 +7,7 @@ import DepartamentosToolbar from './components/DepartamentosToolbar';
 import MenuActionToast from './components/MenuActionToast';
 import MenuConfirmDialog from './components/MenuConfirmDialog';
 import MenuFiltersDrawer from './components/MenuFiltersDrawer';
+import OrdenMenuPublicoDrawer from './components/OrdenMenuPublicoDrawer';
 import useDepartamentosAdmin from './hooks/useDepartamentosAdmin';
 import { resolveDepartamentoActivo } from './utils/departamentosAdminUtils';
 
@@ -56,9 +57,11 @@ const DepartamentosAdmin = () => {
   } = useDepartamentosAdmin();
 
   const [estadoConfirm, setEstadoConfirm] = useState(null);
+  const [orderDrawerOpen, setOrderDrawerOpen] = useState(false);
   const canCreateDepartamento = canAny([PERMISSIONS.MENU_DEPARTAMENTOS_CREAR, PERMISSIONS.MENU_VER]);
   const canEditDepartamento = canAny([PERMISSIONS.MENU_DEPARTAMENTOS_EDITAR, PERMISSIONS.MENU_VER]);
   const canToggleDepartamento = canAny([PERMISSIONS.MENU_DEPARTAMENTOS_EDITAR, PERMISSIONS.MENU_VER]);
+  const canOrderPublicMenu = canAny([PERMISSIONS.MENU_PUBLICACION_GUARDAR, PERMISSIONS.MENU_PUBLICACION_VER, PERMISSIONS.MENU_VER]);
 
   const closeEstadoConfirm = () => {
     if (togglingId) return;
@@ -118,6 +121,13 @@ const DepartamentosAdmin = () => {
               drawerOpen={drawerOpen}
               onOpenCreate={openCreateDrawer}
               canCreate={canCreateDepartamento}
+              canOrderPublicMenu={canOrderPublicMenu}
+              orderDrawerOpen={orderDrawerOpen}
+              onOpenPublicOrder={() => {
+                closeCreateDrawer();
+                closeFiltersDrawer();
+                setOrderDrawerOpen(true);
+              }}
               showInactiveOnly={filters.estado === 'inactivos'}
               onToggleInactiveOnly={setShowInactiveOnly}
             />
@@ -183,22 +193,6 @@ const DepartamentosAdmin = () => {
             </div>
             <div className="inv-ins-help">Filtra por estado de departamento.</div>
           </div>
-
-          <div className="inv-prod-drawer-section">
-            <div className="inv-prod-drawer-section-title">Orden</div>
-            <label className="form-label" htmlFor="menu_departamentos_sort">Ordenar por</label>
-            <select
-              id="menu_departamentos_sort"
-              className="form-select"
-              value={filtersDraft.sortBy}
-              onChange={(event) => setFiltersDraft((state) => ({ ...state, sortBy: event.target.value }))}
-            >
-              <option value="orden_asc">Orden ascendente</option>
-              <option value="orden_desc">Orden descendente</option>
-              <option value="nombre_asc">Nombre (A-Z)</option>
-              <option value="nombre_desc">Nombre (Z-A)</option>
-            </select>
-          </div>
         </div>
       </MenuFiltersDrawer>
 
@@ -211,6 +205,12 @@ const DepartamentosAdmin = () => {
         onChangeField={onChangeField}
         onSubmit={onSubmit}
         onClose={closeCreateDrawer}
+      />
+
+      <OrdenMenuPublicoDrawer
+        open={orderDrawerOpen}
+        onClose={() => setOrderDrawerOpen(false)}
+        onSaved={(message) => setSuccess(message)}
       />
 
       <MenuActionToast

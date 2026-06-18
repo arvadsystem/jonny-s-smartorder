@@ -9,6 +9,23 @@ const CARDS_PER_PAGE = 10;
 
 const getDepartamentoId = (departamento) => Number(departamento?.id_tipo_departamento || 0);
 
+const formatContenidoAsociado = (departamento) => {
+  const recetas = Number(departamento?.cantidad_recetas || 0);
+  const combos = Number(departamento?.cantidad_combos || 0);
+  const parts = [];
+  if (recetas > 0) parts.push(`${recetas} ${recetas === 1 ? 'receta' : 'recetas'}`);
+  if (combos > 0) parts.push(`${combos} ${combos === 1 ? 'combo' : 'combos'}`);
+  return parts.length > 0 ? parts.join(' · ') : 'Sin contenido';
+};
+
+const getVisibilityMeta = (value) => {
+  const status = String(value || '').trim().toUpperCase();
+  if (status === 'VISIBLE') return { label: 'Visible', className: 'is-active' };
+  if (status === 'INACTIVO') return { label: 'Inactivo', className: 'is-inactive' };
+  if (status === 'NO_PUBLICADO' || status === 'SIN_PUBLICACION') return { label: 'No publicado', className: 'is-neutral' };
+  return { label: 'Sin contenido', className: 'is-neutral' };
+};
+
 const DepartamentoActions = ({
   departamento,
   togglingId,
@@ -91,9 +108,9 @@ const DepartamentosTable = ({
             <tr>
               <th>ID</th>
               <th>Nombre</th>
-              <th>Codigo</th>
               <th>Descripcion</th>
-              <th>Orden</th>
+              <th>Contenido asociado</th>
+              <th>Visibilidad publica</th>
               <th>Estado</th>
               <th className="text-end">Acciones</th>
             </tr>
@@ -102,13 +119,18 @@ const DepartamentosTable = ({
             {departamentos.map((departamento) => {
               const id = getDepartamentoId(departamento);
               const estadoActivo = resolveDepartamentoActivo(departamento);
+              const visibility = getVisibilityMeta(departamento?.visibilidad_publica);
               return (
                 <tr key={id}>
                   <td>#{id}</td>
                   <td>{String(departamento?.nombre_departamento || '')}</td>
-                  <td>{String(departamento?.codigo_departamento || '-')}</td>
                   <td>{String(departamento?.descripcion || '-')}</td>
-                  <td>{Number(departamento?.orden_menu || 0) || '-'}</td>
+                  <td>{formatContenidoAsociado(departamento)}</td>
+                  <td>
+                    <span className={`menu-recetas-admin__estado-badge ${visibility.className}`}>
+                      {visibility.label}
+                    </span>
+                  </td>
                   <td>
                     <span className={`menu-recetas-admin__estado-badge ${estadoActivo ? 'is-active' : 'is-inactive'}`}>
                       {estadoActivo ? 'Activo' : 'Inactivo'}
@@ -156,11 +178,11 @@ const DepartamentosTable = ({
           {departamentosCardsPage.map((departamento) => {
             const id = getDepartamentoId(departamento);
             const estadoActivo = resolveDepartamentoActivo(departamento);
+            const visibility = getVisibilityMeta(departamento?.visibilidad_publica);
             const descripcion = truncateText(
               String(departamento?.descripcion || '').trim() || 'Sin descripcion registrada.',
               104
             );
-            const orden = Number(departamento?.orden_menu || 0);
 
             return (
               <article
@@ -176,7 +198,7 @@ const DepartamentosTable = ({
                     <span className={`menu-recetas-admin__estado-badge ${estadoActivo ? 'is-active' : 'is-inactive'}`}>
                       {estadoActivo ? 'Activo' : 'Inactivo'}
                     </span>
-                    <span className="menu-recetas-card__price-pill">{`Orden ${orden || '-'}`}</span>
+                    <span className="menu-recetas-card__price-pill">{visibility.label}</span>
                   </div>
                 </header>
 
@@ -190,12 +212,12 @@ const DepartamentosTable = ({
 
                   <div className="menu-recetas-card__meta">
                     <div>
-                      <small>Codigo</small>
-                      <strong>{String(departamento?.codigo_departamento || '-')}</strong>
+                      <small>Contenido</small>
+                      <strong>{formatContenidoAsociado(departamento)}</strong>
                     </div>
                     <div>
-                      <small>Orden</small>
-                      <strong>{orden || '-'}</strong>
+                      <small>Visibilidad</small>
+                      <strong>{visibility.label}</strong>
                     </div>
                     <div>
                       <small>Estado</small>

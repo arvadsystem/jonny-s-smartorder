@@ -8,11 +8,10 @@ import {
 
 const BASE_ENDPOINT = '/tipo_departamento';
 const ID_FIELD = 'id_tipo_departamento';
-const EDITABLE_FIELDS = ['nombre_departamento', 'descripcion', 'codigo_departamento', 'orden_menu', 'estado'];
+const EDITABLE_FIELDS = ['nombre_departamento', 'descripcion'];
 
 const sameValue = (field, a, b) => {
   if (field === 'estado') return parseBoolean(a) === parseBoolean(b);
-  if (field === 'orden_menu') return Number(a || 0) === Number(b || 0);
   return String(a ?? '').trim() === String(b ?? '').trim();
 };
 

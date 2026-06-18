@@ -84,39 +84,6 @@ const DepartamentosFormDrawer = ({
                       />
                     </div>
 
-                    <div className="col-12 col-md-6">
-                      <label className="form-label" htmlFor="departamento_codigo">Codigo departamento</label>
-                      <input
-                        id="departamento_codigo"
-                        className="form-control"
-                        name="codigo_departamento"
-                        value={form.codigo_departamento}
-                        onChange={onChangeField}
-                        placeholder="PIZZAS_ARTESANALES"
-                        maxLength={80}
-                        disabled={saving}
-                        required
-                      />
-                    </div>
-
-                    <div className="col-12 col-md-6">
-                      <label className="form-label" htmlFor="departamento_orden">Orden menu</label>
-                      <input
-                        id="departamento_orden"
-                        type="number"
-                        inputMode="numeric"
-                        min="1"
-                        step="1"
-                        className="form-control"
-                        name="orden_menu"
-                        value={form.orden_menu}
-                        onChange={onChangeField}
-                        placeholder="Ej: 8"
-                        disabled={saving}
-                        required
-                      />
-                    </div>
-
                     <div className="col-12">
                       <label className="form-label">Estado</label>
                       <div

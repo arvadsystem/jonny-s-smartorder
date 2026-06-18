@@ -1,14 +1,12 @@
 export const emptyDepartamentoForm = {
   nombre_departamento: '',
   descripcion: '',
-  codigo_departamento: '',
-  orden_menu: '',
   estado: 'true'
 };
 
 export const defaultDepartamentoFilters = {
   estado: 'todos',
-  sortBy: 'orden_asc'
+  sortBy: 'nombre_asc'
 };
 
 export const normalizeRows = (response) => {
@@ -40,11 +38,6 @@ export const normalizeDepartamentoCode = (value) =>
 export const normalizeDepartamentoForForm = (departamento) => ({
   nombre_departamento: String(departamento?.nombre_departamento || '').slice(0, 50),
   descripcion: String(departamento?.descripcion || '').slice(0, 50),
-  codigo_departamento: normalizeDepartamentoCode(departamento?.codigo_departamento || ''),
-  orden_menu:
-    departamento?.orden_menu === null || departamento?.orden_menu === undefined
-      ? ''
-      : String(departamento.orden_menu),
   estado: resolveDepartamentoActivo(departamento) ? 'true' : 'false'
 });
 
@@ -66,23 +59,16 @@ export const toPositiveInteger = (value) => {
 export const validateDepartamentoForm = (form) => {
   const nombre = String(form?.nombre_departamento || '').trim();
   const descripcion = String(form?.descripcion || '').trim();
-  const codigo = normalizeDepartamentoCode(form?.codigo_departamento);
-  const orden = toPositiveInteger(form?.orden_menu);
 
   if (!nombre) return 'nombre_departamento es obligatorio.';
   if (nombre.length > 50) return 'nombre_departamento no puede exceder 50 caracteres.';
   if (descripcion.length > 50) return 'descripcion no puede exceder 50 caracteres.';
-  if (!codigo) return 'codigo_departamento es obligatorio.';
-  if (codigo.length > 80) return 'codigo_departamento no puede exceder 80 caracteres.';
-  if (orden === null) return 'orden_menu debe ser un entero positivo entre 1 y 2147483647.';
   return '';
 };
 
 export const buildDepartamentoPayload = (form) => ({
   nombre_departamento: String(form?.nombre_departamento || '').trim(),
   descripcion: String(form?.descripcion || '').trim(),
-  codigo_departamento: normalizeDepartamentoCode(form?.codigo_departamento),
-  orden_menu: toPositiveInteger(form?.orden_menu),
   estado: parseBoolean(form?.estado)
 });
 
@@ -90,18 +76,12 @@ export const countActiveDepartamentoFilters = (filters) => {
   const current = filters || {};
   let total = 0;
   if (String(current.estado || 'todos') !== 'todos') total += 1;
-  if (String(current.sortBy || 'orden_asc') !== 'orden_asc') total += 1;
+  if (String(current.sortBy || 'nombre_asc') !== 'nombre_asc') total += 1;
   return total;
 };
 
 export const sortDepartamentos = (rows, sortBy) => {
   const list = [...rows];
-  if (sortBy === 'orden_desc') {
-    return list.sort((a, b) =>
-      Number(b?.orden_menu || 0) - Number(a?.orden_menu || 0) ||
-      String(a?.nombre_departamento || '').localeCompare(String(b?.nombre_departamento || ''), 'es')
-    );
-  }
   if (sortBy === 'nombre_asc') {
     return list.sort((a, b) =>
       String(a?.nombre_departamento || '').localeCompare(String(b?.nombre_departamento || ''), 'es')
@@ -113,7 +93,6 @@ export const sortDepartamentos = (rows, sortBy) => {
     );
   }
   return list.sort((a, b) =>
-    Number(a?.orden_menu || 0) - Number(b?.orden_menu || 0) ||
     String(a?.nombre_departamento || '').localeCompare(String(b?.nombre_departamento || ''), 'es')
   );
 };

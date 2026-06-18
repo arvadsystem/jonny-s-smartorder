@@ -175,6 +175,18 @@ const menuPublicacionAdminService = {
     };
   },
 
+  async getCategoriasOrden(idSucursal, idMenu = null) {
+    const endpoint = withQueryParams(`${BASE_ENDPOINT}/categorias-orden`, {
+      id_sucursal: idSucursal,
+      id_menu: idMenu
+    });
+    const response = await apiFetch(endpoint, 'GET', null, { noCache: true });
+    return {
+      data: Array.isArray(response?.data) ? response.data : [],
+      meta: response?.meta || {}
+    };
+  },
+
   async getCarruselConfig() {
     const response = await apiFetch(`${BASE_ENDPOINT}/carrusel-config`, 'GET', null, { noCache: true });
     const normalized = normalizeCarruselConfig(response?.data);
@@ -205,6 +217,14 @@ const menuPublicacionAdminService = {
       id_menu: idMenu
     });
     // Guardar publicacion puede tardar mas cuando se actualizan muchos items.
+    return apiFetch(endpoint, 'PUT', { items }, { timeoutMs: 60000 });
+  },
+
+  async saveCategoriasOrden({ idSucursal, idMenu = null, items }) {
+    const endpoint = withQueryParams(`${BASE_ENDPOINT}/categorias-orden`, {
+      id_sucursal: idSucursal,
+      id_menu: idMenu
+    });
     return apiFetch(endpoint, 'PUT', { items }, { timeoutMs: 60000 });
   },
 
