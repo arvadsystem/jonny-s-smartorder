@@ -98,12 +98,12 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
   };
 
   const activeCatalogError = (() => {
-    if (isDiscountCatalog) return null;
+    if (isDiscountCatalog) return catalogErrors.descuentos || null;
     if (composer.activeCatalog === 'PRODUCTOS') return catalogErrors.productos || null;
     if (composer.activeCatalog === 'COMBOS') return catalogErrors.combos || null;
     return catalogErrors.recetas || null;
   })();
-  const hasCatalogErrors = Object.keys(catalogErrors || {}).length > 0;
+  const hasNonDiscountCatalogErrors = Object.keys(catalogErrors || {}).some((key) => key !== 'descuentos');
   const visibleCatalogRows = composer.currentCatalogRows.filter((row) => {
     if (isDiscountCatalog) return false;
     const isProducto = composer.activeCatalog === 'PRODUCTOS';
@@ -251,7 +251,7 @@ export default function VentaComposerCatalog({ composer, catalogLoading, catalog
           {`Error en ${activeCatalogError.endpoint}${activeCatalogError.status ? ` (HTTP ${activeCatalogError.status})` : ''}: ${activeCatalogError.message}`}
         </div>
       ) : null}
-      {!isDiscountCatalog && !activeCatalogError && hasCatalogErrors ? (
+      {!isDiscountCatalog && !activeCatalogError && hasNonDiscountCatalogErrors ? (
         <div className="ventas-create-modal__error">
           Algunos catalogos auxiliares no cargaron. Productos, combos y recetas disponibles siguen habilitados.
         </div>

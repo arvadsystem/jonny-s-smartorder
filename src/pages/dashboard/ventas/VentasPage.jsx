@@ -282,6 +282,7 @@ export default function VentasPage() {
           sucursales={sucursales}
           defaultSucursalId={Number.isInteger(userSucursalId) && userSucursalId > 0 ? userSucursalId : null}
           scopeInfo={scopeInfo}
+          canPrintVenta={canPrintVenta}
         />
       ) : null}
       {activeTab === 'descuentos' ? (

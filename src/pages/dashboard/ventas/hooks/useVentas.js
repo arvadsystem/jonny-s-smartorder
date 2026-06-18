@@ -265,9 +265,7 @@ export const useVentas = () => {
         const reason = result.reason;
         const isOptionalSucursalesForbidden =
           endpoint.key === 'sucursales' && Number(reason?.status ?? 0) === 403;
-        const isOptionalDiscountsForbidden =
-          endpoint.key === 'descuentos' && Number(reason?.status ?? 0) === 403;
-        if (isOptionalSucursalesForbidden || isOptionalDiscountsForbidden) {
+        if (isOptionalSucursalesForbidden) {
           responsesByKey[endpoint.key] = [];
           return;
         }
@@ -284,13 +282,16 @@ export const useVentas = () => {
 
       if (Object.keys(nextCatalogErrors).length > 0) {
         setCatalogErrors(nextCatalogErrors);
-        const firstError = Object.values(nextCatalogErrors)[0];
+        const firstError = Object.entries(nextCatalogErrors)
+          .find(([key]) => key !== 'descuentos')?.[1];
         if (isCurrentRequest()) {
-          openToast(
-            'ERROR CATALOGO',
-            `${firstError.endpoint}: ${firstError.message}`,
-            'danger'
-          );
+          if (firstError) {
+            openToast(
+              'ERROR CATALOGO',
+              `${firstError.endpoint}: ${firstError.message}`,
+              'danger'
+            );
+          }
         }
       }
 

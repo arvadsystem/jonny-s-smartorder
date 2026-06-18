@@ -183,6 +183,21 @@ const normalizePedidoVentaDetail = (pedido) => {
     estado_pedido: pedido?.nombre_estado_pedido,
     metodo_pago: pedido?.metodo_pago || (isPedidoPendientePago(pedido) ? 'Pago pendiente' : null),
     descuento_total: Number(pedido?.descuento_total ?? 0) || 0,
+    contexto: {
+      canal: pedido?.canal || null,
+      modalidad: pedido?.modalidad || null
+    },
+    delivery: pedido?.es_delivery
+      ? {
+          estado_delivery: pedido?.estado_delivery || null,
+          costo_envio: pedido?.costo_envio,
+          nombre_receptor: pedido?.nombre_receptor || null,
+          telefono_receptor: pedido?.telefono_receptor || null,
+          direccion_entrega: pedido?.direccion_entrega || null,
+          referencia_entrega: pedido?.referencia_entrega || null,
+          observacion_delivery: pedido?.observacion_delivery || null
+        }
+      : null,
     items: Array.isArray(pedido?.items) ? pedido.items : []
   });
 };
@@ -192,7 +207,8 @@ export default function PedidosView({
   sucursales = [],
   defaultSucursalId = null,
   scopeInfo = null,
-  selectedSessionId = null
+  selectedSessionId = null,
+  canPrintVenta = false
 }) {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
@@ -785,7 +801,7 @@ export default function PedidosView({
         onClose={closePedidoDetail}
         canReversion={false}
         canExport={false}
-        canPrint={false}
+        canPrint={canPrintVenta}
       />
 
       <VentasToast toast={toast} onClose={closeToast} />

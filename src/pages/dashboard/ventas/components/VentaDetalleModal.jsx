@@ -123,9 +123,9 @@ export default function VentaDetalleModal({
   const shouldShowItemDiscount = detailItems.some((item) => getLineDiscountPercent(item) !== null);
   const reversionBlockReason = resolveVentaReversionBlockReason(venta);
   const delivery = venta?.delivery && typeof venta.delivery === 'object' ? venta.delivery : null;
-  const contacto = venta?.contacto && typeof venta.contacto === 'object' ? venta.contacto : null;
   const contexto = venta?.contexto && typeof venta.contexto === 'object' ? venta.contexto : null;
-  const isDeliveryDetail = Boolean(delivery) || String(contexto?.modalidad || '').toUpperCase() === 'DELIVERY';
+  const isDeliveryDetail = Boolean(delivery);
+  const canPrintTicket = Boolean(canPrint && venta?.id_factura);
 
   const handlePrintTicket = async () => {
     if (typeof window === 'undefined' || !venta || printInProgressRef.current) return;
@@ -337,17 +337,17 @@ export default function VentaDetalleModal({
 
               {isDeliveryDetail ? (
                 <div className="ventas-detail-modal__section">
-                  <div className="ventas-detail-modal__section-title">Datos de entrega</div>
+                  <div className="ventas-detail-modal__section-title">Delivery</div>
                   <dl className="ventas-detail-modal__delivery-grid">
                     <DetailField label="Modalidad" value={contexto?.modalidad || 'DELIVERY'} />
                     <DetailField label="Canal" value={contexto?.canal} />
+                    <DetailField label="Estado delivery" value={delivery?.estado_delivery} />
                     <DetailField label="Nombre receptor" value={delivery?.nombre_receptor} />
                     <DetailField label="Telefono receptor" value={delivery?.telefono_receptor} />
                     <DetailField label="Direccion entrega" value={delivery?.direccion_entrega} />
                     <DetailField label="Referencia entrega" value={delivery?.referencia_entrega} />
                     <DetailField label="Costo envio" value={formatCurrency(delivery?.costo_envio || 0)} />
                     <DetailField label="Observacion delivery" value={delivery?.observacion_delivery} />
-                    <DetailField label="Telefono contacto" value={contacto?.telefono_contacto} />
                   </dl>
                 </div>
               ) : null}
@@ -452,7 +452,7 @@ export default function VentaDetalleModal({
                       <i className="bi bi-download" /> Exportar
                     </button>
                   ) : null}
-                  {canPrint ? (
+                  {canPrintTicket ? (
                     <>
                       <select
                         className="form-select form-select-sm"
@@ -474,7 +474,7 @@ export default function VentaDetalleModal({
             </>
           )}
         </div>
-        {canPrint ? (
+        {canPrintTicket ? (
           <VentaTicketPrint
             venta={venta}
             paperWidth={ticketWidthMm}
