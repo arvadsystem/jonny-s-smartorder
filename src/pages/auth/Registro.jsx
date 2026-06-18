@@ -22,6 +22,7 @@ const Registro = () => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [requiresVerification, setRequiresVerification] = useState(false);
+  const [verificationEmailSent, setVerificationEmailSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const generoOptions = useMemo(
@@ -118,6 +119,7 @@ const Registro = () => {
     setError('');
     setSuccessMsg('');
     setRequiresVerification(false);
+    setVerificationEmailSent(false);
 
     if (!nombre.trim() || !apellido.trim() || !genero.trim() || !email.trim() || !password.trim()) {
       setError('Todos los campos son obligatorios (Nombre, Apellido, Género, Correo y Contraseña).');
@@ -158,13 +160,21 @@ const Registro = () => {
       const verificationRequired = Boolean(
         response?.requiresVerification ?? response?.data?.requiresVerification
       );
+      const emailSent = Boolean(
+        response?.verificationEmailSent ?? response?.data?.verificationEmailSent
+      );
       const backendMessage = response?.message || response?.data?.message || '';
 
       setRequiresVerification(verificationRequired);
+      setVerificationEmailSent(emailSent);
 
-      if (verificationRequired) {
+      if (verificationRequired && emailSent) {
         setSuccessMsg(
           `Te hemos enviado un correo de verificación a ${payload.email}. Revisa tu bandeja de entrada para activar tu cuenta.`
+        );
+      } else if (verificationRequired) {
+        setSuccessMsg(
+          `Tu cuenta fue creada, pero no se pudo enviar el correo de verificacion a ${payload.email}. Podras solicitar un reintento cuando el flujo este disponible.`
         );
       } else {
         setSuccessMsg(backendMessage || 'Registro exitoso.');
@@ -225,7 +235,7 @@ const Registro = () => {
             <div className="verification-icon">
               <FiCheck size={32} />
             </div>
-            <h3>{requiresVerification ? '¡Revisa tu correo!' : '¡Cuenta creada!'}</h3>
+            <h3>{requiresVerification && verificationEmailSent ? '¡Revisa tu correo!' : '¡Cuenta creada!'}</h3>
             <p>{successMsg}</p>
             <Motion.button
               type="button"
