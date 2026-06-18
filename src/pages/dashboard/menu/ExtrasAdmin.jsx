@@ -169,20 +169,6 @@ const ExtrasAdmin = () => {
     return Array.from(map.values());
   }, [insumos]);
 
-  const comboOptions = useMemo(() => {
-    const rows = Array.isArray(combos) ? combos : [];
-    return rows.map((combo) => {
-      const idCombo = Number(combo?.id_combo || 0);
-      const nombre = String(combo?.nombre_combo || combo?.descripcion || `Combo #${idCombo}`);
-      return { value: idCombo, label: `#${idCombo} - ${nombre}`, nombre };
-    });
-  }, [combos]);
-
-  const selectedComboOptions = useMemo(() => {
-    const selected = new Set((Array.isArray(form.combos) ? form.combos : []).map((id) => Number(id)));
-    return comboOptions.filter((option) => selected.has(Number(option.value)));
-  }, [comboOptions, form.combos]);
-
   const updateAlmacenes = useCallback((ids) => {
     const normalized = normalizePositiveIdList(ids);
     setAlmacenError('');
@@ -267,11 +253,18 @@ const ExtrasAdmin = () => {
     setForm((prev) => ({ ...prev, recetas: [] }));
   };
 
-  const updateCombos = (selectedOptions) => {
-    const nextCombos = (Array.isArray(selectedOptions) ? selectedOptions : [])
-      .map((option) => Number(option?.value || 0))
-      .filter((id) => Number.isSafeInteger(id) && id > 0);
-    setForm((prev) => ({ ...prev, combos: [...new Set(nextCombos)] }));
+  const toggleCombo = (idCombo) => {
+    setForm((prev) => {
+      const id = Number(idCombo);
+      const current = new Set(prev.combos);
+      if (current.has(id)) current.delete(id);
+      else current.add(id);
+      return { ...prev, combos: [...current] };
+    });
+  };
+
+  const clearCombos = () => {
+    setForm((prev) => ({ ...prev, combos: [] }));
   };
 
   const activeAlmacenes = useMemo(() => (
@@ -871,30 +864,34 @@ const ExtrasAdmin = () => {
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-secondary"
-                          onClick={() => updateCombos([])}
-                          disabled={saving || selectedComboOptions.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}
+                          onClick={clearCombos}
+                          disabled={saving || form.combos.length === 0 || (editingId ? !canEditExtra : !canCreateExtra)}
                         >
                           Limpiar
                         </button>
                       </div>
-                      <Select
-                        inputId="extra_combos"
-                        classNamePrefix="menu-salsas-receta-select"
-                        options={comboOptions}
-                        value={selectedComboOptions}
-                        onChange={updateCombos}
-                        placeholder="Buscar combo..."
-                        isMulti
-                        isClearable
-                        isSearchable
-                        isDisabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
-                        closeMenuOnSelect={false}
-                        maxMenuHeight={220}
-                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                        menuPosition="fixed"
-                      />
+                      <div className="menu-extras-admin__recipe-list">
+                        {combos.map((combo) => {
+                          const idCombo = Number(combo?.id_combo);
+                          const comboNombre = String(
+                            combo?.nombre_combo || combo?.descripcion || `Combo #${idCombo}`
+                          ).trim();
+
+                          return (
+                            <label className="menu-extras-admin__recipe-option" key={idCombo}>
+                              <input
+                                type="checkbox"
+                                checked={form.combos.includes(idCombo)}
+                                onChange={() => toggleCombo(idCombo)}
+                                disabled={saving || (editingId ? !canEditExtra : !canCreateExtra)}
+                              />
+                              <span>{comboNombre}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                       <div className="menu-extras-admin__selection-count">
-                        {selectedComboOptions.length} combos seleccionados
+                        {form.combos.length} combos seleccionados
                       </div>
                     </section>
                   </div>
