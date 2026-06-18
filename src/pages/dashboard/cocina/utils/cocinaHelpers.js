@@ -88,8 +88,28 @@ const inferModifications = (item) => {
 
 const itemNameKey = (value) => normalizeTextKey(value).replace(/_/g, ' ');
 
+const isTechnicalOrderNote = (note) => {
+  const source = String(note || '').trim().toLowerCase();
+  if (!source) return false;
+  return (
+    source.startsWith('[public-menu]') ||
+    source.includes('[public-menu]') ||
+    source.startsWith('[menu-publico]') ||
+    source.includes('[menu-publico]') ||
+    source.startsWith('idem:') ||
+    source.startsWith('tel:') ||
+    source.startsWith('telefono:') ||
+    source.includes('schema_version') ||
+    source.includes('menu_publico_linea_v1') ||
+    source.includes('pubcfg:v1') ||
+    /(?:^|[\s|,;])salsas=/.test(source) ||
+    /(?:^|[\s|,;])extras=/.test(source)
+  );
+};
+
 const extractPedidoGeneralNotes = (descripcionPedido, items = []) => {
-  const baseNotes = splitObservationSegments(descripcionPedido);
+  const baseNotes = splitObservationSegments(descripcionPedido)
+    .filter((note) => !isTechnicalOrderNote(note));
   if (!baseNotes.length) return [];
 
   const itemKeys = (Array.isArray(items) ? items : [])

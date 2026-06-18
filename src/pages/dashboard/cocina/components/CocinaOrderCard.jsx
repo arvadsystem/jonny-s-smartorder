@@ -177,9 +177,7 @@ export default function CocinaOrderCard({
     }
   };
 
-  const isPublicMenu = allItems.some(
-    (item) => String(item.observacion || '').includes('[PUBLIC-MENU]')
-  );
+  const isPublicMenu = String(pedido?.descripcion_pedido || '').toLowerCase().includes('[public-menu]');
   const inventoryAlertsTotal = Number(pedido?.inventario_alertas_total ?? 0) || 0;
   const inventoryAlertsPending = Number(pedido?.inventario_alertas_pendientes ?? 0) || 0;
   const hasInventoryAlerts = inventoryAlertsTotal > 0;

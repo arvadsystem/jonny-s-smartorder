@@ -1411,6 +1411,43 @@
 .kds-confirm__submit.is-deliver { background: linear-gradient(135deg, #3b82f6, #2563eb); }
 .kds-confirm__submit.is-fail    { background: linear-gradient(135deg, #ef4444, #b91c1c); }
 
+.cocina-page--operator-mode .kds-card {
+  min-height: 132px;
+}
+
+.cocina-page--operator-mode .kds-card__head {
+  padding-top: 1rem;
+}
+
+.cocina-page--operator-mode .kds-card__item-name {
+  font-size: 1.05rem;
+  line-height: 1.36;
+}
+
+.cocina-page--operator-mode .kds-column.is-pending .kds-card__item-name {
+  font-size: 1.16rem;
+}
+
+.cocina-page--operator-mode .kds-action-btn {
+  min-height: 52px;
+  padding: 0.95rem 1rem;
+  font-size: 0.92rem;
+}
+
+.cocina-page--operator-mode .kds-column.is-prep .kds-action-btn,
+.cocina-page--operator-mode .kds-column.is-pending .kds-action-btn {
+  min-height: 52px;
+  padding: 0.95rem 1rem;
+  font-size: 0.92rem;
+}
+
+.cocina-page--operator-mode .kds-confirm__cancel,
+.cocina-page--operator-mode .kds-confirm__submit {
+  min-height: 52px;
+  padding: 0.9rem 1rem;
+  font-size: 0.95rem;
+}
+
 /* ── Toast ───────────────────────────────────────────────────────────── */
 .kds-toast {
   position: fixed;
@@ -1572,6 +1609,22 @@
     font-size: 0.89rem;
   }
 
+  .cocina-page--operator-mode .kds-column.is-pending .kds-column__body {
+    grid-template-columns: 1fr;
+  }
+
+  .cocina-page--operator-mode .kds-column.is-pending .kds-card__item-name {
+    font-size: 1.08rem;
+  }
+
+  .cocina-page--operator-mode .kds-card__ticket {
+    font-size: 1.22rem;
+  }
+
+  .cocina-page--operator-mode .kds-card__timer {
+    font-size: 1.08rem;
+  }
+
 }
 
 .cocina-page--tv-mode {
@@ -1624,6 +1677,15 @@
     grid-template-columns: 1fr;
     display: flex;
     flex-direction: column;
+  }
+
+  .cocina-page--operator-mode .kds-board {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-x: hidden;
+  }
+
+  .cocina-page--operator-mode .kds-card {
+    width: 100%;
   }
 }
 
