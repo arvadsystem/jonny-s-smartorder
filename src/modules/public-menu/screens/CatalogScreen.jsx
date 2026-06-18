@@ -360,6 +360,9 @@ const buildCatalogHeroSlides = ({
 
   if (customSlides.length > 0) return customSlides;
 
+  const preferredIds = toPositiveUniqueIds(preferredDetailIds);
+  if (preferredIds.length === 0) return [];
+
   const productsWithImage = (Array.isArray(products) ? products : [])
     .map((product) => ({
       id: Number(product?.id_detalle_menu || 0),
@@ -371,18 +374,12 @@ const buildCatalogHeroSlides = ({
   if (productsWithImage.length === 0) return [];
 
   const productById = new Map(productsWithImage.map((product) => [product.id, product]));
-  const preferredIds = Array.isArray(preferredDetailIds) ? preferredDetailIds : [];
   const selectedIds = [];
 
   preferredIds.forEach((id) => {
     const parsedId = Number(id || 0);
     if (!productById.has(parsedId) || selectedIds.includes(parsedId)) return;
     selectedIds.push(parsedId);
-  });
-
-  productsWithImage.forEach((product) => {
-    if (selectedIds.includes(product.id)) return;
-    selectedIds.push(product.id);
   });
 
   return selectedIds.slice(0, 6).map((id, index) => {
