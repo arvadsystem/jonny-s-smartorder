@@ -1289,7 +1289,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
     if (isCreateMode) {
       if (clienteOriginType === "persona") {
-        Object.assign(currentErrors, validatePersonaForm(inlinePersonaForm));
+        Object.assign(currentErrors, validatePersonaForm(inlinePersonaForm, { requireLastName: false }));
       } else {
         Object.assign(currentErrors, validateEmpresaForm(inlineEmpresaForm));
       }
@@ -1311,7 +1311,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
     }
 
     if (clienteOriginType === "persona" && usingInlinePersona) {
-      const personaValidationErrors = validatePersonaForm(inlinePersonaForm);
+      const personaValidationErrors = validatePersonaForm(inlinePersonaForm, { requireLastName: false });
       if (Object.keys(personaValidationErrors).length > 0) {
         currentErrors.id_persona = "Completa los datos de la persona antes de continuar";
       }
@@ -1370,7 +1370,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
 
     const baseErrors =
       clienteOriginType === "persona"
-        ? validatePersonaForm(inlinePersonaForm)
+        ? validatePersonaForm(inlinePersonaForm, { requireLastName: false })
         : validateEmpresaForm(inlineEmpresaForm);
 
     if (Object.keys(baseErrors).length > 0) {
@@ -3476,6 +3476,7 @@ const Clientes = ({ openToast, selectedSucursalId = "" }) => {
           )
         }
         initialForm={inlinePersonaForm}
+        requireLastName={false}
         title={drawerMode === "edit" ? "Editar persona vinculada" : "Nueva persona"}
         subtitle={
           drawerMode === "edit"

@@ -17,6 +17,7 @@ import {
   getAllowedTabs,
   MODULE_PRIMARY_PERMISSION,
   PERMISSIONS,
+  normalizeRoles,
   resolveVentasStatsVisibility
 } from '../../../utils/permissions';
 import './styles/ventas.css';
@@ -78,10 +79,17 @@ export default function VentasPage() {
   const [selectedVentaReversion, setSelectedVentaReversion] = useState(null);
   const detailRequestRef = useRef(0);
 
-  const allowedTabs = useMemo(
-    () => getAllowedTabs('ventas', permisos, { isSuperAdmin }).map((tab) => tab.key),
-    [isSuperAdmin, permisos]
-  );
+  const isCajeroOnly = useMemo(() => {
+    const roles = normalizeRoles(user?.roles);
+    const hasAdminRole = roles.some((role) =>
+      ['ADMIN', 'ADMINISTRADOR', 'SUPER_ADMIN'].includes(role)
+    );
+    return roles.includes('CAJERO') && !isSuperAdmin && !hasAdminRole;
+  }, [isSuperAdmin, user?.roles]);
+  const allowedTabs = useMemo(() => {
+    const tabs = getAllowedTabs('ventas', permisos, { isSuperAdmin }).map((tab) => tab.key);
+    return isCajeroOnly ? tabs.filter((tab) => tab !== 'descuentos') : tabs;
+  }, [isCajeroOnly, isSuperAdmin, permisos]);
   const fallbackTab = allowedTabs[0] || null;
   const canCreateVenta = canAny([PERMISSIONS.VENTAS_CREAR]);
   const canApplyDiscount = canAny([PERMISSIONS.VENTAS_DESCUENTO_APLICAR]);

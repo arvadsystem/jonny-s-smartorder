@@ -265,7 +265,9 @@ export const useVentas = () => {
         const reason = result.reason;
         const isOptionalSucursalesForbidden =
           endpoint.key === 'sucursales' && Number(reason?.status ?? 0) === 403;
-        if (isOptionalSucursalesForbidden) {
+        const isOptionalDiscountsForbidden =
+          endpoint.key === 'descuentos' && Number(reason?.status ?? 0) === 403;
+        if (isOptionalSucursalesForbidden || isOptionalDiscountsForbidden) {
           responsesByKey[endpoint.key] = [];
           return;
         }

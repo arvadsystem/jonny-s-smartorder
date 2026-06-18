@@ -102,7 +102,14 @@ export default function VentaFinalizarOperacionModal({
   const [submitDialogError, setSubmitDialogError] = useState('');
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [quickCreateSearch, setQuickCreateSearch] = useState('');
-  const [phoneSaveDialog, setPhoneSaveDialog] = useState({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
+  const [phoneSaveDialog, setPhoneSaveDialog] = useState({
+    open: false,
+    pendingAction: '',
+    telefono: '',
+    cliente: null,
+    saving: false,
+    error: ''
+  });
   const [paidSubmitting, setPaidSubmitting] = useState(false);
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
   const paidSubmittingRef = useRef(false);
@@ -185,7 +192,7 @@ export default function VentaFinalizarOperacionModal({
     lastAutoPhoneRef.current = '';
     phoneSaveAskedRef.current = new Set();
     phoneSaveBypassRef.current = false;
-    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
+    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
   }, [open]);
 
   useEffect(() => {
@@ -224,7 +231,8 @@ export default function VentaFinalizarOperacionModal({
       pendingAction,
       telefono,
       cliente: selectedCliente,
-      saving: false
+      saving: false,
+      error: ''
     });
     return true;
   };
@@ -239,12 +247,12 @@ export default function VentaFinalizarOperacionModal({
   };
 
   const handlePhoneSaveCancel = () => {
-    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
+    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
   };
 
   const handlePhoneSaveSkip = () => {
     const pendingAction = phoneSaveDialog.pendingAction;
-    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
+    setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
     continuePhoneSaveAction(pendingAction);
   };
 
@@ -252,14 +260,29 @@ export default function VentaFinalizarOperacionModal({
     const pendingAction = phoneSaveDialog.pendingAction;
     const telefono = phoneSaveDialog.telefono;
     try {
-      setPhoneSaveDialog((current) => ({ ...current, saving: true }));
+      setPhoneSaveDialog((current) => ({ ...current, saving: true, error: '' }));
       await ventasService.guardarTelefonoCliente(selectedClienteId, { telefono });
       await onClientesRefresh?.();
-      setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false });
+      setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
       continuePhoneSaveAction(pendingAction);
     } catch (error) {
-      setPhoneSaveDialog((current) => ({ ...current, saving: false }));
-      setSubmitDialogError(resolveSubmitErrorMessage(error, 'No se pudo guardar el telefono del cliente.'));
+      const status = Number(error?.status ?? error?.data?.status ?? 0);
+      const code = String(error?.code || error?.data?.code || '').trim().toUpperCase();
+      if (status === 409 && code === 'CLIENTE_TELEFONO_EXISTENTE') {
+        await onClientesRefresh?.();
+        setPhoneSaveDialog({ open: false, pendingAction: '', telefono: '', cliente: null, saving: false, error: '' });
+        continuePhoneSaveAction(pendingAction);
+        return;
+      }
+
+      const message = resolveSubmitErrorMessage(error, 'No se pudo guardar el telefono del cliente.');
+      setPhoneSaveDialog((current) => ({
+        ...current,
+        saving: false,
+        error: status === 403
+          ? 'No tienes permiso para actualizar el telefono de este cliente. Puedes continuar sin guardar.'
+          : message
+      }));
     }
   };
 
@@ -822,6 +845,11 @@ export default function VentaFinalizarOperacionModal({
                 {selectedClienteLabel || 'Este cliente'} no tiene telefono registrado.
                 ¿Deseas guardar {phoneSaveDialog.telefono} antes de continuar?
               </p>
+              {phoneSaveDialog.error ? (
+                <p className="ventas-finalizar-error-modal__detail">
+                  {phoneSaveDialog.error}
+                </p>
+              ) : null}
             </div>
             <div className="ventas-modal-footer">
               <button type="button" className="btn btn-outline-secondary" onClick={handlePhoneSaveCancel} disabled={phoneSaveDialog.saving}>
