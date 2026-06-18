@@ -46,8 +46,10 @@ const AuthRequiredModal = ({
             <p>
               Únete al club Jonny’s para enviar tu pedido
               <br />
+              {' '}
               al restaurante, guardar tus datos y recibir
               <br />
+              {' '}
               beneficios en próximas compras.
             </p>
           </div>
