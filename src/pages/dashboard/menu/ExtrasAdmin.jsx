@@ -35,8 +35,19 @@ const normalizeRows = (response) => {
   return [];
 };
 
-const money = (value) => {
+const roundMoneyAmount = (value) => {
   const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return NaN;
+  return Math.round((parsed + Number.EPSILON) * 100) / 100;
+};
+
+const normalizeExtraRow = (extra = {}) => ({
+  ...extra,
+  precio_adicional: roundMoneyAmount(extra?.precio_adicional)
+});
+
+const money = (value) => {
+  const parsed = roundMoneyAmount(value);
   return `L. ${Number.isFinite(parsed) ? parsed.toFixed(2) : '0.00'}`;
 };
 
@@ -95,7 +106,7 @@ const ExtrasAdmin = () => {
         extrasAdminService.listarCombos(),
         extrasAdminService.listarAlmacenesExtras()
       ]);
-      setExtras(normalizeRows(extrasResponse));
+      setExtras(normalizeRows(extrasResponse).map((extra) => normalizeExtraRow(extra)));
       setInsumos(normalizeRows(insumosResponse));
       setRecetas(normalizeRows(recetasResponse));
       setCombos(normalizeRows(combosResponse));
@@ -453,7 +464,7 @@ const ExtrasAdmin = () => {
   const validate = () => {
     if (!String(form.nombre || '').trim()) return 'El nombre del extra es obligatorio.';
     if (!String(form.codigo || '').trim()) return 'El codigo del extra es obligatorio.';
-    const price = Number(form.precio_adicional);
+    const price = roundMoneyAmount(form.precio_adicional);
     if (!Number.isFinite(price) || price < 0) return 'El precio adicional debe ser mayor o igual a 0.';
     const hasInventory = Boolean(form.id_insumo || form.cant || form.id_unidad_medida);
     if (hasInventory && (!form.id_insumo || !form.cant || !form.id_unidad_medida)) {
@@ -482,10 +493,11 @@ const ExtrasAdmin = () => {
     }
 
     const idAlmacenes = normalizePositiveIdList(form.id_almacenes);
+    const normalizedPrice = roundMoneyAmount(form.precio_adicional);
     const payload = {
       codigo: buildCode(form.nombre),
       nombre: form.nombre,
-      precio_adicional: Number(form.precio_adicional),
+      precio_adicional: normalizedPrice,
       id_insumo: form.id_insumo || null,
       cant: form.cant || null,
       id_unidad_medida: form.id_unidad_medida || null,
@@ -499,17 +511,32 @@ const ExtrasAdmin = () => {
 
     try {
       setSaving(true);
+      let response = null;
       if (editingId) {
-        await extrasAdminService.actualizarExtra(editingId, payload);
+        response = await extrasAdminService.actualizarExtra(editingId, payload);
         setSuccess('Extra actualizado correctamente.');
       } else {
-        await extrasAdminService.crearExtra(payload);
+        response = await extrasAdminService.crearExtra(payload);
         setSuccess('Extra creado correctamente.');
       }
       setDrawerOpen(false);
       setEditingId(null);
       setForm({ ...emptyForm });
       await cargarDatos();
+      const hydratedExtra = response?.extra ? normalizeExtraRow(response.extra) : null;
+      if (hydratedExtra?.id_extra) {
+        setExtras((current) => {
+          const next = Array.isArray(current) ? [...current] : [];
+          const existingIndex = next.findIndex(
+            (item) => Number(item?.id_extra) === Number(hydratedExtra.id_extra)
+          );
+          if (existingIndex >= 0) {
+            next[existingIndex] = { ...next[existingIndex], ...hydratedExtra };
+            return next;
+          }
+          return [hydratedExtra, ...next];
+        });
+      }
     } catch (e) {
       setError(e?.message || 'No se pudo guardar el extra.');
     } finally {
