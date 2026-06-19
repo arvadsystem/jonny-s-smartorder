@@ -13,6 +13,7 @@ import VentaRegistrarPagoPedidoModal from './VentaRegistrarPagoPedidoModal';
 import ventasService from '../../../../services/ventasService';
 import { useAuth } from '../../../../hooks/useAuth';
 import AppSelect from '../../../../components/common/AppSelect';
+import { parseCajaUtcTimestamp } from '../utils/cajasHelpers';
 
 const resolvePendientesErrorMessage = (error) => {
   const status = Number(error?.status || 0);
@@ -49,7 +50,7 @@ const isTimedCacheFresh = (entry, key, ttlMs) =>
 
 const formatDateTime = (value) => {
   if (!value) return 'Sin fecha';
-  const date = new Date(value);
+  const date = new Date(parseCajaUtcTimestamp(value));
   if (!Number.isFinite(date.getTime())) return String(value);
   return new Intl.DateTimeFormat('es-HN', {
     timeZone: 'America/Tegucigalpa',
