@@ -84,6 +84,7 @@ const emptyForm = () => ({
   fecha_ingreso_insumo: '',
   id_almacen: '',
   id_almacenes: [],
+  cantidades_por_almacen: {},
   // NEW: categoria de insumo editable en alta/edicion, alineada con la FK real `insumos.id_categoria_insumo`.
   // WHY: permitir asignar categorias de insumos desde el frontend sin inventar campos nuevos.
   // IMPACT: payloads de create/edit incluiran `id_categoria_insumo` solo cuando se seleccione.
@@ -128,6 +129,12 @@ const toDateInputValue = (v) => (!v ? '' : String(v).includes('T') ? String(v).s
 const parseIntSafe = (v, fb = 0) => { const n = Number.parseInt(String(v ?? ''), 10); return Number.isNaN(n) ? fb : n; };
 const parseFloatSafe = (v, fb = 0) => { const n = Number.parseFloat(String(v ?? '')); return Number.isNaN(n) ? fb : n; };
 const parseDecimalSafe = (v, fb = 0) => { const n = Number(String(v ?? '')); return Number.isFinite(n) ? n : fb; };
+const formatDecimal2ForInput = (value) => {
+  if (value === undefined || value === null || String(value).trim() === '') return '';
+  const parsed = Number(String(value).replace(',', '.'));
+  if (!Number.isFinite(parsed)) return '';
+  return String(Number(parsed.toFixed(2)));
+};
 const fmtMoney = (v) => `L. ${parseFloatSafe(v, 0).toFixed(2)}`;
 const normalize = (v) => String(v ?? '').trim().toLowerCase();
 const sanitizeSpaces = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
@@ -630,7 +637,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     const ingreso = String(data?.fecha_ingreso_insumo ?? '').trim();
     const cad = String(data?.fecha_caducidad ?? '').trim();
     const precio = Number.parseFloat(precioRaw);
-    const cantidad = Number(cantidadRaw);
+    let cantidad = Number(cantidadRaw);
     const stock_minimo = Number(stockRaw);
     const id_almacen = Number.parseInt(almacenRaw, 10);
     const id_categoria_insumo = Number.parseInt(categoriaInsumoRaw, 10);
@@ -639,14 +646,49 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     if (nombre.length < 2) errors.nombre_insumo = 'MINIMO 2 CARACTERES';
     else if (nombre.length > 80) errors.nombre_insumo = 'MAXIMO 80 CARACTERES';
     if (!precioRaw) errors.precio = 'EL PRECIO ES OBLIGATORIO';
+    else if (!/^\d+(\.\d{1,2})?$/.test(precioRaw)) errors.precio = 'SOLO NUMEROS (MAX 2 DECIMALES)';
     else if (Number.isNaN(precio) || precio < 0) errors.precio = 'DEBE SER UN NUMERO >= 0';
-    if (includeCantidad) {
+    let cantidadesPorAlmacen = {};
+    if (includeCantidad && id_almacenes.length > 0) {
+      let totalCantidad = 0;
+      const rawMap = data?.cantidades_por_almacen && typeof data.cantidades_por_almacen === 'object'
+        ? data.cantidades_por_almacen
+        : {};
+      for (const idAlmacen of id_almacenes) {
+        const key = String(idAlmacen);
+        const rawCantidad = String(rawMap[key] ?? '').trim();
+        const parsedCantidad = Number(rawCantidad);
+        if (!rawCantidad) {
+          errors[`cantidad_almacen_${idAlmacen}`] = 'Ingresa la cantidad inicial para cada almacen seleccionado.';
+          continue;
+        }
+        if (!/^\d+(\.\d{1,2})?$/.test(rawCantidad)) {
+          errors[`cantidad_almacen_${idAlmacen}`] = 'Cantidad invalida para el almacen seleccionado.';
+          continue;
+        }
+        if (!Number.isFinite(parsedCantidad) || parsedCantidad < 0) {
+          errors[`cantidad_almacen_${idAlmacen}`] = 'La cantidad por almacen debe ser mayor o igual a 0.';
+          continue;
+        }
+        cantidadesPorAlmacen[key] = parsedCantidad;
+        totalCantidad += parsedCantidad;
+      }
+      cantidad = Number(totalCantidad.toFixed(2));
+      if (Object.keys(errors).some((key) => key.startsWith('cantidad_almacen_'))) {
+        errors.cantidades_por_almacen = 'Ingresa la cantidad inicial para cada almacen seleccionado.';
+      }
+    } else if (includeCantidad && id_almacenes.length === 0) {
+      cantidad = 0;
+    } else if (includeCantidad) {
       if (!cantidadRaw) errors.cantidad = 'LA CANTIDAD ES OBLIGATORIA';
-      else if (!/^\d+(\.\d{1,4})?$/.test(cantidadRaw)) errors.cantidad = 'SOLO NUMEROS (MAX 4 DECIMALES)';
+      else if (!/^\d+(\.\d{1,2})?$/.test(cantidadRaw)) errors.cantidad = 'SOLO NUMEROS (MAX 2 DECIMALES)';
       else if (!Number.isFinite(cantidad) || cantidad < 0) errors.cantidad = 'DEBE SER UN NUMERO >= 0';
+      if (id_almacenes.length === 1 && !errors.cantidad) {
+        cantidadesPorAlmacen = { [String(id_almacenes[0])]: Number(cantidadRaw) };
+      }
     }
     if (!stockRaw) errors.stock_minimo = 'EL STOCK MINIMO ES OBLIGATORIO';
-    else if (!/^\d+(\.\d{1,4})?$/.test(stockRaw)) errors.stock_minimo = 'SOLO NUMEROS (MAX 4 DECIMALES)';
+    else if (!/^\d+(\.\d{1,2})?$/.test(stockRaw)) errors.stock_minimo = 'SOLO NUMEROS (MAX 2 DECIMALES)';
     else if (!Number.isFinite(stock_minimo) || stock_minimo < 0) errors.stock_minimo = 'DEBE SER UN NUMERO >= 0';
     if (id_almacenes.length === 0) errors.id_almacen = 'SELECCIONA AL MENOS UN ALMACEN';
     // NEW: categoria de insumo opcional con validacion defensiva cuando se envia.
@@ -685,6 +727,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
         stock_minimo: !Number.isFinite(stock_minimo) || stock_minimo < 0 ? 0 : stock_minimo,
         id_almacen: id_almacenes[0] ?? id_almacen,
         id_almacenes,
+        cantidades_por_almacen: cantidadesPorAlmacen,
         id_categoria_insumo: categoriaInsumoRaw && !Number.isNaN(id_categoria_insumo) && id_categoria_insumo > 0 ? id_categoria_insumo : null,
         id_unidad_medida: unidadMedidaRaw && !Number.isNaN(id_unidad_medida) && id_unidad_medida > 0 ? id_unidad_medida : null,
         fecha_ingreso_insumo: ingreso,
@@ -701,9 +744,12 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       precio: c.precio,
       stock_minimo: c.stock_minimo,
       id_almacen: c.id_almacen,
-      id_almacenes: c.id_almacenes
+      id_almacenes: Array.isArray(c.id_almacenes) && c.id_almacenes.length > 0 ? c.id_almacenes : [c.id_almacen]
     };
-    if (includeCantidad) payload.cantidad = c.cantidad;
+    if (includeCantidad) {
+      payload.cantidad = c.cantidad;
+      payload.cantidades_por_almacen = c.cantidades_por_almacen || {};
+    }
     // NEW: enviar `id_categoria_insumo` solo si el usuario selecciono una categoria valida.
     // WHY: mantener compatibilidad con payloads legacy evitando mandar strings vacios/null innecesarios.
     // IMPACT: el backend recibe la FK real cuando se usa el nuevo select; resto del payload no cambia.
@@ -912,9 +958,9 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     if (!i) return;
     const nextEditForm = {
       nombre_insumo: String(i?.nombre_insumo ?? ''),
-      precio: String(i?.precio ?? ''),
-      cantidad: String(i?.cantidad ?? ''),
-      stock_minimo: String(i?.stock_minimo ?? '0'),
+      precio: formatDecimal2ForInput(i?.precio),
+      cantidad: formatDecimal2ForInput(i?.cantidad),
+      stock_minimo: formatDecimal2ForInput(i?.stock_minimo ?? '0'),
       fecha_ingreso_insumo: toDateInputValue(i?.fecha_ingreso_insumo),
       id_almacen: String(i?.id_almacen ?? ''),
       id_almacenes: normalizePositiveIdList(
@@ -1134,6 +1180,76 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
       id_almacen: normalized.length > 0 ? String(normalized[0]) : ''
     }));
     setEditErrors((state) => (state.id_almacen ? { ...state, id_almacen: '' } : state));
+  }, []);
+
+  const syncCreateWarehouses = useCallback((rawValues) => {
+    const ids = normalizePositiveIdList(rawValues);
+    setDrawerMsg('');
+    setForm((current) => {
+      const previous = current?.cantidades_por_almacen && typeof current.cantidades_por_almacen === 'object'
+        ? current.cantidades_por_almacen
+        : {};
+      const nextQuantities = {};
+      ids.forEach((id, index) => {
+        const key = String(id);
+        if (Object.prototype.hasOwnProperty.call(previous, key)) {
+          nextQuantities[key] = previous[key];
+        } else if (index === 0 && String(current?.cantidad ?? '').trim() !== '') {
+          nextQuantities[key] = current.cantidad;
+        } else {
+          nextQuantities[key] = '';
+        }
+      });
+      const total = ids.reduce((sum, id) => {
+        const parsed = Number(nextQuantities[String(id)]);
+        return Number.isFinite(parsed) ? sum + parsed : sum;
+      }, 0);
+      return {
+        ...current,
+        id_almacenes: ids,
+        id_almacen: ids.length > 0 ? String(ids[0]) : '',
+        cantidad: ids.length > 0 ? String(Number(total.toFixed(2))) : '',
+        cantidades_por_almacen: nextQuantities
+      };
+    });
+    setCreateErrors((state) => {
+      const next = { ...state };
+      delete next.id_almacen;
+      delete next.cantidades_por_almacen;
+      ids.forEach((id) => delete next[`cantidad_almacen_${id}`]);
+      return next;
+    });
+  }, []);
+
+  const setCreateWarehouseQuantity = useCallback((idAlmacen, rawValue) => {
+    const id = Number.parseInt(String(idAlmacen ?? '').trim(), 10);
+    if (!Number.isInteger(id) || id <= 0) return;
+    const value = decimalInput(rawValue);
+    setDrawerMsg('');
+    setForm((current) => {
+      const nextQuantities = {
+        ...(current?.cantidades_por_almacen && typeof current.cantidades_por_almacen === 'object'
+          ? current.cantidades_por_almacen
+          : {}),
+        [String(id)]: value
+      };
+      const selectedIds = normalizePositiveIdList(current?.id_almacenes?.length ? current.id_almacenes : [current?.id_almacen]);
+      const total = selectedIds.reduce((sum, selectedId) => {
+        const parsed = Number(nextQuantities[String(selectedId)]);
+        return Number.isFinite(parsed) ? sum + parsed : sum;
+      }, 0);
+      return {
+        ...current,
+        cantidades_por_almacen: nextQuantities,
+        cantidad: selectedIds.length > 0 ? String(Number(total.toFixed(2))) : current.cantidad
+      };
+    });
+    setCreateErrors((state) => {
+      const next = { ...state };
+      delete next.cantidades_por_almacen;
+      delete next[`cantidad_almacen_${id}`];
+      return next;
+    });
   }, []);
 
   const renderAlmacenSelectField = useCallback(({
@@ -1817,6 +1933,18 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
 
   const formValues = drawerMode === 'create' ? form : (editForm || emptyForm());
   const formErrors = drawerMode === 'create' ? createErrors : editErrors;
+  const selectedCreateAlmacenes = drawerMode === 'create'
+    ? normalizePositiveIdList(
+        Array.isArray(formValues?.id_almacenes) && formValues.id_almacenes.length > 0
+          ? formValues.id_almacenes
+          : [formValues?.id_almacen]
+      )
+    : [];
+  const showCreateWarehouseQuantities = drawerMode === 'create' && selectedCreateAlmacenes.length > 0;
+  const createWarehouseQuantityTotal = selectedCreateAlmacenes.reduce((sum, idAlmacen) => {
+    const value = Number(formValues?.cantidades_por_almacen?.[String(idAlmacen)]);
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
   const previewItem = useMemo(() => (drawerMode === 'create' ? { ...formValues } : (selectedInsumo ? { ...selectedInsumo, ...formValues } : null)), [drawerMode, formValues, selectedInsumo]);
   const previewSnap = useMemo(() => (previewItem ? snapshot(previewItem) : null), [previewItem, snapshot]);
   // NEW: snapshot derivado para renderizar el modal de detalle con el mismo criterio de stock/estado que cards y listado.
@@ -1995,7 +2123,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
   }, [detailInsumo, detailSnap, getAlmacenLabel, getUnidadMedidaLabel]);
   const submitDrawer = async (e) => { e.preventDefault(); if (drawerMode === 'create') await saveCreate(); else await saveEdit(); };
   const blockInvalidDecimalKeys = (e) => { if (['e', 'E', '+', '-'].includes(e.key)) e.preventDefault(); };
-  // AM: normaliza input decimal no negativo con maximo 4 decimales para insumos.
+  // AM: normaliza input decimal no negativo con maximo 2 decimales para insumos.
   const decimalInput = (value) => {
     const text = String(value ?? '').replace(',', '.').replace(/[^0-9.]/g, '');
     const firstDot = text.indexOf('.');
@@ -2003,7 +2131,7 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
     if (compact === '.') return '';
     const [integerPart = '', decimalPart = ''] = compact.split('.');
     if (decimalPart === '') return integerPart;
-    return `${integerPart}.${decimalPart.slice(0, 4)}`;
+    return `${integerPart}.${decimalPart.slice(0, 2)}`;
   };
   const isAnyDrawerOpen = drawer === 'filters' || drawer === 'form';
   const fieldErr = (key) => (formErrors[key] ? <div className="invalid-feedback d-block">{formErrors[key]}</div> : null);
@@ -2769,32 +2897,30 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
             <div className="inv-ins-drawer-grid">
               <div>
                 <label className="form-label">Precio</label>
-                <input className={`form-control ${formErrors.precio ? 'is-invalid' : ''}`} type="number" step="0.01" min="0" value={formValues.precio ?? ''} onChange={(e) => setField('precio', e.target.value)} />
+                <input className={`form-control ${formErrors.precio ? 'is-invalid' : ''}`} type="number" step="0.01" min="0" value={formValues.precio ?? ''} onKeyDown={blockInvalidDecimalKeys} onChange={(e) => setField('precio', decimalInput(e.target.value))} />
                 {fieldErr('precio')}
               </div>
-              <div>
-                <label className="form-label">Cantidad</label>
-                <input
-                  ref={cantidadInputRef}
-                  className={`form-control ${drawerMode === 'edit' ? '' : (formErrors.cantidad ? 'is-invalid' : '')}`}
-                  type="number"
-                  step="0.0001"
-                  min="0"
-                  inputMode="decimal"
-                  value={formValues.cantidad ?? ''}
-                  readOnly={drawerMode === 'edit'}
-                  disabled={drawerMode === 'edit'}
-                  title={drawerMode === 'edit' ? 'La cantidad se ajusta desde movimientos de inventario.' : undefined}
-                  onKeyDown={drawerMode === 'edit' ? undefined : blockInvalidDecimalKeys}
-                  onChange={drawerMode === 'edit' ? undefined : (e) => setField('cantidad', decimalInput(e.target.value))}
-                />
-                {drawerMode === 'edit'
-                  ? <div className="form-text">Gestiona la cantidad desde Movimientos de inventario.</div>
-                  : fieldErr('cantidad')}
-              </div>
+              {drawerMode === 'edit' ? (
+                <div>
+                  <label className="form-label">Cantidad</label>
+                  <input
+                    ref={cantidadInputRef}
+                    className="form-control"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    value={formValues.cantidad ?? ''}
+                    readOnly
+                    disabled
+                    title="La cantidad se ajusta desde movimientos de inventario."
+                  />
+                  <div className="form-text">Gestiona la cantidad desde Movimientos de inventario.</div>
+                </div>
+              ) : null}
               <div>
                 <label className="form-label">Stock Minimo</label>
-                <input className={`form-control ${formErrors.stock_minimo ? 'is-invalid' : ''}`} type="number" step="0.0001" min="0" inputMode="decimal" value={formValues.stock_minimo ?? ''} onKeyDown={blockInvalidDecimalKeys} onChange={(e) => setField('stock_minimo', decimalInput(e.target.value))} />
+                <input className={`form-control ${formErrors.stock_minimo ? 'is-invalid' : ''}`} type="number" step="0.01" min="0" inputMode="decimal" value={formValues.stock_minimo ?? ''} onKeyDown={blockInvalidDecimalKeys} onChange={(e) => setField('stock_minimo', decimalInput(e.target.value))} />
                 {fieldErr('stock_minimo')}
               </div>
               <div className="inv-ins-drawer-field--span-2">
@@ -2804,9 +2930,44 @@ const InsumosTab = ({ openToast, categorias = [], categoriasInsumos = [] }) => {
                   selectedValue: formValues.id_almacen,
                   selectedValues: formValues.id_almacenes,
                   error: formErrors.id_almacen,
-                  onChangeMulti: drawerMode === 'create' ? updateCreateAlmacenes : updateEditAlmacenes,
+                  onChangeMulti: drawerMode === 'create' ? syncCreateWarehouses : updateEditAlmacenes,
                   compact: drawerMode === 'edit'
                 })}
+                {drawerMode === 'create' && showCreateWarehouseQuantities ? (
+                  <div className="mt-3">
+                    <div className="form-label mb-2">Cantidad inicial por almacén</div>
+                    <div className="d-grid gap-2">
+                      {selectedCreateAlmacenes.map((idAlmacen) => {
+                        const almacen = almacenesMap.get(String(idAlmacen));
+                        const label = almacen
+                          ? [
+                              String(almacen?.sucursal || almacen?.nombre_sucursal || '').trim(),
+                              String(almacen?.nombre || `Almacen #${idAlmacen}`).trim()
+                            ].filter(Boolean).join(' - ')
+                          : `Almacen #${idAlmacen}`;
+                        const errorKey = `cantidad_almacen_${idAlmacen}`;
+                        return (
+                          <div key={idAlmacen}>
+                            <label className="form-label small mb-1">{label}</label>
+                            <input
+                              className={`form-control ${formErrors[errorKey] ? 'is-invalid' : ''}`}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              inputMode="decimal"
+                              value={formValues?.cantidades_por_almacen?.[String(idAlmacen)] ?? ''}
+                              onKeyDown={blockInvalidDecimalKeys}
+                              onChange={(e) => setCreateWarehouseQuantity(idAlmacen, e.target.value)}
+                            />
+                            {formErrors[errorKey] ? <div className="invalid-feedback d-block">{formErrors[errorKey]}</div> : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="form-text mt-2">Cantidad total: {formatDecimal2ForInput(createWarehouseQuantityTotal)}</div>
+                    {fieldErr('cantidades_por_almacen')}
+                  </div>
+                ) : null}
               </div>
               <div>
                 {/* NEW: selector de categoría de insumo usando el catálogo `categorias_insumos`. */}
