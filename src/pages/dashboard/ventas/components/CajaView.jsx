@@ -52,6 +52,7 @@ const formatDateTime = (value) => {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return String(value);
   return new Intl.DateTimeFormat('es-HN', {
+    timeZone: 'America/Tegucigalpa',
     dateStyle: 'short',
     timeStyle: 'short'
   }).format(date);

@@ -96,7 +96,13 @@ export default function VentasPage() {
   const canExportVenta = canAny([PERMISSIONS.VENTAS_EXPORTAR]);
   const canPrintVenta = canAny([PERMISSIONS.VENTAS_IMPRIMIR]);
   const canViewDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_VER]);
-  const canCreateReversion = canAny(['VENTAS_REVERSION_CREAR']);
+  const canManageReversionByRole = useMemo(() => {
+    const roles = normalizeRoles(user?.roles);
+    return isSuperAdmin || roles.some((role) =>
+      ['ADMIN', 'ADMINISTRADOR', 'SUPER_ADMIN'].includes(role)
+    );
+  }, [isSuperAdmin, user?.roles]);
+  const canCreateReversion = canManageReversionByRole && canAny(['VENTAS_REVERSION_CREAR']);
   const canCreateDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_CREAR]);
   const canEditDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_EDITAR]);
   const canToggleDescuentos = canAny([PERMISSIONS.VENTAS_DESCUENTOS_CATALOGO_ESTADO_CAMBIAR]);
@@ -176,7 +182,7 @@ export default function VentasPage() {
   };
 
   const openReversionFromDetail = async (ventaBase) => {
-    if (!ventaBase?.id_factura) return;
+    if (!canCreateReversion || !ventaBase?.id_factura) return;
     try {
       const detail = await getVentaDetail(ventaBase.id_factura);
       setSelectedVentaReversion(detail);
@@ -244,6 +250,7 @@ export default function VentasPage() {
           onGoToCaja={() => goToTab('caja')}
           canCreate={canCreateVenta}
           onOpenReversion={() => {
+            if (!canCreateReversion) return;
             setSelectedVentaReversion(null);
             setReversionOpen(true);
           }}
@@ -306,6 +313,7 @@ export default function VentasPage() {
         loading={detailLoading}
         canReversion={canCreateReversion}
         onOpenReversion={(ventaDetail) => {
+          if (!canCreateReversion) return;
           openReversionFromDetail(ventaDetail);
         }}
         canExport={canExportVenta}
@@ -316,38 +324,40 @@ export default function VentasPage() {
         }}
       />
 
-      <VentaReversionModal
-        open={reversionOpen}
-        onClose={() => {
-          setReversionOpen(false);
-          setSelectedVentaReversion(null);
-        }}
-        getVentaDetail={getVentaDetail}
-        scopeInfo={scopeInfo}
-        sucursales={sucursales}
-        selectedVenta={selectedVentaReversion}
-        onSuccess={(result, refreshedDetail) => {
-          void refreshVentas?.({ suppressErrors: true });
-          if (refreshedDetail?.id_factura) {
-            setSelectedVenta(refreshedDetail);
-            setSelectedVentaReversion(refreshedDetail);
-            return;
-          }
-          const idFactura =
-            result?.id_factura_original ||
-            result?.id_factura ||
-            selectedVentaReversion?.id_factura ||
-            selectedVenta?.id_factura;
-          if (idFactura) {
-            void getVentaDetail(idFactura)
-              .then((detail) => {
-                setSelectedVenta(detail);
-                setSelectedVentaReversion(detail);
-              })
-              .catch(() => undefined);
-          }
-        }}
-      />
+      {canCreateReversion ? (
+        <VentaReversionModal
+          open={reversionOpen}
+          onClose={() => {
+            setReversionOpen(false);
+            setSelectedVentaReversion(null);
+          }}
+          getVentaDetail={getVentaDetail}
+          scopeInfo={scopeInfo}
+          sucursales={sucursales}
+          selectedVenta={selectedVentaReversion}
+          onSuccess={(result, refreshedDetail) => {
+            void refreshVentas?.({ suppressErrors: true });
+            if (refreshedDetail?.id_factura) {
+              setSelectedVenta(refreshedDetail);
+              setSelectedVentaReversion(refreshedDetail);
+              return;
+            }
+            const idFactura =
+              result?.id_factura_original ||
+              result?.id_factura ||
+              selectedVentaReversion?.id_factura ||
+              selectedVenta?.id_factura;
+            if (idFactura) {
+              void getVentaDetail(idFactura)
+                .then((detail) => {
+                  setSelectedVenta(detail);
+                  setSelectedVentaReversion(detail);
+                })
+                .catch(() => undefined);
+            }
+          }}
+        />
+      ) : null}
 
       <VentasToast toast={toast} onClose={closeToast} />
     </>
